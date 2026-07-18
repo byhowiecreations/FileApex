@@ -93,6 +93,7 @@ compose.desktop {
 
             macOS {
                 bundleID = "com.omninode"
+                entitlementsFile.set(project.file("macos/OmniNode.entitlements"))
                 // Prompt for Local Network so phones can reach this Mac share server.
                 infoPlist {
                     extraKeysRawXml = """
@@ -102,11 +103,47 @@ compose.desktop {
                         <array>
                             <string>_http._tcp</string>
                         </array>
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleURLName</key>
+                                <string>com.omninode</string>
+                                <key>CFBundleURLSchemes</key>
+                                <array>
+                                    <string>omninode</string>
+                                </array>
+                            </dict>
+                        </array>
                     """.trimIndent()
                 }
             }
         }
     }
+}
+
+tasks.register("embedMacExtensions") {
+    group = "distribution"
+    description = "Build Finder Sync + Share Extension and embed into OmniNode.app"
+    dependsOn("createDistributable")
+    doLast {
+        val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile
+        val script = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
+        check(script.exists()) { "Missing ${script.absolutePath}" }
+        val process = ProcessBuilder("bash", script.absolutePath, appBundle.absolutePath, "Release")
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+        val code = process.waitFor()
+        // Non-zero is OK when Xcode is unavailable — script warns and exits 0;
+        // treat hard failures as warnings so Android-only machines still build.
+        if (code != 0) {
+            logger.warn("embed_extensions.sh exited $code (extensions may be missing)")
+        }
+    }
+}
+
+tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.configureEach {
+    dependsOn("embedMacExtensions")
 }
 
 /**
@@ -119,7 +156,7 @@ compose.desktop {
 tasks.register("copyCurrentBuilds") {
     group = "distribution"
     description = "Assemble Android debug APK + Mac DMG/.app and copy them into root current/"
-    dependsOn("assembleDebug", "packageDmg")
+    dependsOn("assembleDebug", "embedMacExtensions", "packageDmg")
 
     doLast {
         val dest = rootProject.layout.projectDirectory.dir("current").asFile
@@ -152,6 +189,13 @@ tasks.register("copyCurrentBuilds") {
         dmgs.forEach(::dittoCopy)
 
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile
+        // Re-embed after packageDmg may have rebuilt the .app without PlugIns.
+        val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
+        ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+            .waitFor()
         dittoCopy(appBundle)
 
         val launchedBinary = dest.resolve("OmniNode.app/Contents/MacOS/OmniNode")

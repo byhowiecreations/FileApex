@@ -4,5 +4,9 @@ import java.io.File
 
 actual fun defaultDownloadsDir(): String {
     val home = System.getProperty("user.home") ?: "."
-    return File(home, "Downloads/OmniNode").absolutePath
+    val dir = File(home, "Downloads/OmniNode")
+    if (!dir.exists()) {
+        dir.mkdirs()
+    }
+    return dir.absolutePath
 }

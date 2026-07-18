@@ -25,3 +25,12 @@ out/
 
 # Desktop
 composeApp/release/
+
+# macOS extension build products
+macos/build/
+macos/**/DerivedData/
+
+
+# Xcode user state
+**/xcuserdata/
+*.xcuserstate

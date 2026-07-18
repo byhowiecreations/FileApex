@@ -1,0 +1,383 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A30000000000000000000001 /* AppGroupConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AppGroupConstants.swift */; };
+		A30000000000000000000002 /* PairedDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PairedDeviceStore.swift */; };
+		A30000000000000000000003 /* OmniNodeUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeUploadClient.swift */; };
+		A30000000000000000000004 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
+		A30000000000000000000005 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
+		A30000000000000000000010 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* FinderSync.swift */; };
+		A30000000000000000000011 /* AppGroupConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AppGroupConstants.swift */; };
+		A30000000000000000000012 /* PairedDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PairedDeviceStore.swift */; };
+		A30000000000000000000013 /* OmniNodeUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeUploadClient.swift */; };
+		A30000000000000000000014 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
+		A30000000000000000000015 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
+		A30000000000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ShareViewController.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000012 /* OmniNodeFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OmniNodeFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000013 /* OmniNodeShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OmniNodeShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000001 /* AppGroupConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupConstants.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* PairedDeviceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDeviceStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* OmniNodeUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmniNodeUploadClient.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* DevicePickerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000012 /* FinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderSync.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000020 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		A20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000022 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000022 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000025 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000004 /* Shared */,
+				A10000000000000000000005 /* FinderSync */,
+				A10000000000000000000006 /* ShareExtension */,
+				A10000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000012 /* OmniNodeFinderSync.appex */,
+				A10000000000000000000013 /* OmniNodeShareExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000004 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AppGroupConstants.swift */,
+				A20000000000000000000002 /* PairedDeviceStore.swift */,
+				A20000000000000000000003 /* OmniNodeUploadClient.swift */,
+				A20000000000000000000004 /* DevicePickerModel.swift */,
+				A20000000000000000000005 /* DevicePickerView.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000005 /* FinderSync */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000010 /* FinderSync.swift */,
+				A20000000000000000000011 /* Info.plist */,
+				A20000000000000000000012 /* FinderSync.entitlements */,
+			);
+			path = FinderSync;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000006 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000020 /* ShareViewController.swift */,
+				A20000000000000000000021 /* Info.plist */,
+				A20000000000000000000022 /* ShareExtension.entitlements */,
+			);
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000010 /* OmniNodeFinderSync */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000041 /* Build configuration list for PBXNativeTarget "OmniNodeFinderSync" */;
+			buildPhases = (
+				A10000000000000000000020 /* Sources */,
+				A10000000000000000000022 /* Frameworks */,
+				A10000000000000000000021 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OmniNodeFinderSync;
+			productName = OmniNodeFinderSync;
+			productReference = A10000000000000000000012 /* OmniNodeFinderSync.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A10000000000000000000011 /* OmniNodeShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000042 /* Build configuration list for PBXNativeTarget "OmniNodeShareExtension" */;
+			buildPhases = (
+				A10000000000000000000023 /* Sources */,
+				A10000000000000000000025 /* Frameworks */,
+				A10000000000000000000024 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OmniNodeShareExtension;
+			productName = OmniNodeShareExtension;
+			productReference = A10000000000000000000013 /* OmniNodeShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = A10000000000000000000040 /* Build configuration list for PBXProject "OmniNodeExtensions" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000000000000000000002;
+			productRefGroup = A10000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000000000000000000010 /* OmniNodeFinderSync */,
+				A10000000000000000000011 /* OmniNodeShareExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000021 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000024 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A30000000000000000000001 /* AppGroupConstants.swift in Sources */,
+				A30000000000000000000002 /* PairedDeviceStore.swift in Sources */,
+				A30000000000000000000003 /* OmniNodeUploadClient.swift in Sources */,
+				A30000000000000000000004 /* DevicePickerModel.swift in Sources */,
+				A30000000000000000000005 /* DevicePickerView.swift in Sources */,
+				A30000000000000000000010 /* FinderSync.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000023 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A30000000000000000000011 /* AppGroupConstants.swift in Sources */,
+				A30000000000000000000012 /* PairedDeviceStore.swift in Sources */,
+				A30000000000000000000013 /* OmniNodeUploadClient.swift in Sources */,
+				A30000000000000000000014 /* DevicePickerModel.swift in Sources */,
+				A30000000000000000000015 /* DevicePickerView.swift in Sources */,
+				A30000000000000000000020 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000030 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A10000000000000000000031 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A10000000000000000000032 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.4a;
+				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		A10000000000000000000033 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.4a;
+				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		A10000000000000000000034 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.4a;
+				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		A10000000000000000000035 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.4a;
+				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000040 /* Build configuration list for PBXProject "OmniNodeExtensions" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000030 /* Debug */,
+				A10000000000000000000031 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000041 /* Build configuration list for PBXNativeTarget "OmniNodeFinderSync" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000032 /* Debug */,
+				A10000000000000000000033 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000042 /* Build configuration list for PBXNativeTarget "OmniNodeShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000034 /* Debug */,
+				A10000000000000000000035 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}
