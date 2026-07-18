@@ -6,7 +6,7 @@ OmniNode is an ecosystem file manager designed to seamlessly sync, manage, and b
 
 * **Multi-Target File Broadcasting:** Push files to multiple online devices simultaneously from a single view.
 * **Smart Ingestion Paths:** Incoming files are automatically routed to a designated fallback directory (`Download/OmniNode`) to keep file systems clean.
-* **macOS Finder Integration:** Right-click files directly inside native macOS Finder to broadcast across your local cluster via the Share Extension. (COMING SOON)
+* **macOS Finder Integration:** Right-click files directly inside native macOS Finder to broadcast across your local cluster via the Share Extension. 
 * **Auto-Updates:** Keep your network deployment current with integrated, platform-native automatic updating directly from GitHub releases.
 
 ## Local Configuration
