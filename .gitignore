@@ -1,0 +1,27 @@
+# Built artifacts
+/.gradle/
+**/build/
+/current/
+/local.properties
+/secret.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+.cxx/
+*.log
+*.hprof
+
+# Kotlin
+.kotlin/
+
+# Desktop
+composeApp/release/
