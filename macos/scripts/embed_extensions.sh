@@ -28,7 +28,17 @@ mkdir -p "$PLUGINS"
 rm -rf "$PLUGINS/OmniNodeFinderSync.appex" "$PLUGINS/OmniNodeShareExtension.appex"
 ditto "$FINDER_APPEX" "$PLUGINS/OmniNodeFinderSync.appex"
 ditto "$SHARE_APPEX" "$PLUGINS/OmniNodeShareExtension.appex"
-xattr -cr "$PLUGINS" || true
 
-echo "Embedded extensions into $PLUGINS"
+# Re-sign PlugIns + host with empty entitlements (no App Sandbox).
+FINDER_ENTS="$ROOT/macos/FinderSync/FinderSync.entitlements"
+SHARE_ENTS="$ROOT/macos/ShareExtension/ShareExtension.entitlements"
+HOST_ENTS="$ROOT/composeApp/macos/OmniNode.entitlements"
+codesign --force --deep --sign - --entitlements "$FINDER_ENTS" "$PLUGINS/OmniNodeFinderSync.appex"
+codesign --force --deep --sign - --entitlements "$SHARE_ENTS" "$PLUGINS/OmniNodeShareExtension.appex"
+codesign --force --deep --sign - --entitlements "$HOST_ENTS" "$APP_BUNDLE"
+xattr -cr "$APP_BUNDLE" || true
+
+echo "Embedded + re-signed (unsandboxed) extensions into $PLUGINS"
 ls -la "$PLUGINS"
+codesign -d --entitlements :- "$APP_BUNDLE" 2>/dev/null | plutil -p - 2>/dev/null || true
+

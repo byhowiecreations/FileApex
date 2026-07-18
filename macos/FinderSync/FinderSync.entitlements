@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- No App Sandbox / App Groups — extensions read Application Support via normal paths. -->
-	<key>com.apple.security.network.client</key>
-	<true/>
+	<!-- Intentionally empty: unsandboxed Finder Sync extension. -->
 </dict>
 </plist>

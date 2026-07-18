@@ -93,7 +93,9 @@ compose.desktop {
 
             macOS {
                 bundleID = "com.omninode"
+                // Empty entitlements — no App Sandbox (avoids TCC "access data from other apps").
                 entitlementsFile.set(project.file("macos/OmniNode.entitlements"))
+                runtimeEntitlementsFile.set(project.file("macos/OmniNode.entitlements"))
                 // Prompt for Local Network so phones can reach this Mac share server.
                 infoPlist {
                     extraKeysRawXml = """
