@@ -28,12 +28,10 @@ public struct PairedDevice: Identifiable, Hashable, Sendable {
     }
 }
 
-/// Read-only access to the App Group `omninode.db` roster (Room schema v2).
+/// Read-only access to `~/Library/Application Support/com.omninode/omninode.db` (Room schema v2).
 public enum PairedDeviceStore {
     public static func loadDevices() throws -> [PairedDevice] {
-        guard let dbURL = OmniNodeAppGroup.databaseURL else {
-            throw StoreError.containerUnavailable
-        }
+        let dbURL = OmniNodePaths.databaseURL
         let path = dbURL.path
         guard FileManager.default.fileExists(atPath: path) else {
             return []
@@ -79,14 +77,11 @@ public enum PairedDeviceStore {
     }
 
     public enum StoreError: LocalizedError {
-        case containerUnavailable
         case openFailed(String)
         case prepareFailed(String)
 
         public var errorDescription: String? {
             switch self {
-            case .containerUnavailable:
-                return "App Group container is unavailable."
             case .openFailed(let message):
                 return "Could not open omninode.db: \(message)"
             case .prepareFailed(let message):
