@@ -13,7 +13,7 @@ OmniNode is an ecosystem file manager designed to seamlessly sync, manage, and b
 
 Files broadcasted across devices route automatically to the local device storage paths:
 * **Android:** `/storage/emulated/0/Download/OmniNode/`
-* **macOS:** Tracks default shared environment paths locally.
+* **macOS:** `~/Downloads/OmniNode/`
 
 ## License
 
