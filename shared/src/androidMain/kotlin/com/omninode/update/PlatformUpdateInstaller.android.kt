@@ -24,9 +24,11 @@ actual object PlatformUpdateInstaller {
         val apkFile = File(localFilePath)
         check(apkFile.isFile) { "APK missing at $localFilePath" }
 
-        if (!PlatformInstallPermission.ensureCanRequestPackageInstalls()) {
+        // Never launch system Settings from install/update paths (BAL). Read-only check only.
+        if (!PlatformInstallPermission.canRequestPackageInstalls()) {
             error(
-                "Allow “Install unknown apps” for OmniNode, then reopen the app to finish updating"
+                "Allow “Install unknown apps” for OmniNode via Settings → Check for Updates, " +
+                    "then retry the update"
             )
         }
 

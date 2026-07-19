@@ -8,7 +8,6 @@ import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.di.OmniNodeServices
 import com.omninode.update.AppUpdateCoordinator
-import com.omninode.update.PlatformInstallPermission
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -96,9 +95,6 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun setCheckForUpdates(enabled: Boolean) {
-        if (enabled) {
-            PlatformInstallPermission.ensureCanRequestPackageInstalls()
-        }
         settings.setCheckForUpdatesEnabled(enabled)
         _uiState.update { it.copy(checkForUpdatesEnabled = enabled) }
         if (enabled) {

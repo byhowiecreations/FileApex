@@ -55,6 +55,7 @@ import com.omninode.platform.rememberGoogleSignInLauncher
 import com.omninode.presentation.SettingsUiState
 import com.omninode.presentation.SettingsViewModel
 import com.omninode.ui.theme.OmniTeal
+import com.omninode.update.rememberRequestInstallUnknownAppsPermission
 
 private enum class SettingsPage {
     Root,
@@ -245,6 +246,8 @@ private fun CheckForUpdatesSettingsPage(
     onAmountTextChange: (String) -> Unit,
     onWeekAmountSelected: (Int) -> Unit
 ) {
+    val requestInstallUnknownAppsPermission = rememberRequestInstallUnknownAppsPermission()
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = { SettingsTopBar(title = "Check for Updates", onBack = onBack) }
@@ -266,7 +269,13 @@ private fun CheckForUpdatesSettingsPage(
                 trailingContent = {
                     Switch(
                         checked = state.checkForUpdatesEnabled,
-                        onCheckedChange = onToggle
+                        onCheckedChange = { enabled ->
+                            // BAL-safe: only open install-permission Settings from this user gesture.
+                            if (enabled) {
+                                requestInstallUnknownAppsPermission()
+                            }
+                            onToggle(enabled)
+                        }
                     )
                 }
             )

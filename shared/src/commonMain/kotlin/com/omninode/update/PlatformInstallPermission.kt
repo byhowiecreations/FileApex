@@ -1,16 +1,19 @@
 package com.omninode.update
 
+import androidx.compose.runtime.Composable
+
 /**
- * Android: opens system “Install unknown apps” settings when the app cannot install APKs.
- * Desktop: no-op.
+ * Read-only install-permission probe. Never launches system Settings.
+ * Safe to call from background / update-install paths.
  */
 expect object PlatformInstallPermission {
-    /**
-     * If this platform requires unknown-app install permission and it is not granted,
-     * launch the system settings screen for this package.
-     *
-     * @return true when installs are already allowed (or not required); false when the
-     * settings screen was opened because permission is missing.
-     */
-    fun ensureCanRequestPackageInstalls(): Boolean
+    fun canRequestPackageInstalls(): Boolean
 }
+
+/**
+ * Returns a callback that may open [android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES]
+ * only when invoked from a direct user gesture on the UI thread (e.g. Switch onCheckedChange).
+ * Desktop: no-op.
+ */
+@Composable
+expect fun rememberRequestInstallUnknownAppsPermission(): () -> Unit

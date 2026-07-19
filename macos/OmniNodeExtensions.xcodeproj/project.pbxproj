@@ -257,7 +257,7 @@
 				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -267,7 +267,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.9a;
+				MARKETING_VERSION = 0.0.9b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -282,7 +282,7 @@
 				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -292,7 +292,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.9a;
+				MARKETING_VERSION = 0.0.9b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -307,7 +307,7 @@
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -317,7 +317,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.9a;
+				MARKETING_VERSION = 0.0.9b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -332,7 +332,7 @@
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -342,7 +342,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.9a;
+				MARKETING_VERSION = 0.0.9b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
