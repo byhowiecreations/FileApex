@@ -267,7 +267,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.5a;
+				MARKETING_VERSION = 0.0.5b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -292,7 +292,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.5a;
+				MARKETING_VERSION = 0.0.5b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -317,7 +317,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.5a;
+				MARKETING_VERSION = 0.0.5b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -342,7 +342,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.5a;
+				MARKETING_VERSION = 0.0.5b;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

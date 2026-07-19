@@ -79,6 +79,39 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // rules.md §15 — keystore at ~/AndroidStudioProjects/signed_files/{project}/;
+    // credentials from KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS only.
+    val releaseKeystoreDir = file("${System.getProperty("user.home")}/AndroidStudioProjects/signed_files/OmniNode")
+    val releaseKeystoreFile = releaseKeystoreDir.listFiles()
+        ?.firstOrNull { it.isFile && it.extension.equals("jks", ignoreCase = true) }
+    val envStorePassword = providers.environmentVariable("KEYSTORE_PASSWORD")
+    val envKeyPassword = providers.environmentVariable("KEY_PASSWORD")
+    val envKeyAlias = providers.environmentVariable("KEY_ALIAS")
+    val canSignRelease = releaseKeystoreFile != null &&
+        envStorePassword.isPresent &&
+        envKeyPassword.isPresent &&
+        envKeyAlias.isPresent
+
+    signingConfigs {
+        if (canSignRelease) {
+            create("release") {
+                storeFile = releaseKeystoreFile
+                storePassword = envStorePassword.get()
+                keyAlias = envKeyAlias.get()
+                keyPassword = envKeyPassword.get()
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (canSignRelease) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
 }
 
 compose.desktop {
