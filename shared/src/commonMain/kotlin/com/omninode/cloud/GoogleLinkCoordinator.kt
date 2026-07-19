@@ -26,13 +26,15 @@ import kotlinx.coroutines.sync.withLock
  * Single source of truth for cloud pairing seed → local [com.omninode.data.device.DeviceRepository].
  *
  * [deviceName] is written to Firestore only from explicit user rename actions
- * ([publishUserRenamedDevice]). Heartbeats patch presence fields only.
+ * ([publishUserRenamedDevice]). Heartbeats patch presence fields only, and only when those
+ * fields actually change (never spam updatedAt-only writes that thrash listeners/UI).
  *
  * Session teardown always drains Firestore listeners and session coroutines before Auth sign-out
  * or before a replacement session starts (avoids Firebase/SQLite "destroyed mutex" races).
  */
 object GoogleLinkCoordinator {
     private val gate = Mutex()
+    private val applyMutex = Mutex()
 
     /** Process-lifetime launcher for app-start restore only; never cancelled on unlink. */
     private val bootstrapScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -45,6 +47,10 @@ object GoogleLinkCoordinator {
 
     @Volatile
     private var cloudOpsActive: Boolean = false
+
+    /** Last presence successfully published (network fields only; ignores updatedAt). */
+    @Volatile
+    private var lastPublishedPresence: CloudDevicePresence? = null
 
     private var registryHandle: CloudRegistryHandle? = null
     private var heartbeatJob: Job? = null
@@ -147,6 +153,7 @@ object GoogleLinkCoordinator {
     private suspend fun shutdownCloudSessionLocked() {
         sessionEpoch += 1L
         cloudOpsActive = false
+        lastPublishedPresence = null
 
         val previousHeartbeat = heartbeatJob
         heartbeatJob = null
@@ -211,12 +218,23 @@ object GoogleLinkCoordinator {
         cloudOpsActive && epoch == sessionEpoch && OmniNodeServices.isDatabaseReady()
 
     private suspend fun registerSelf(uid: String) {
-        CloudAuthBackend.registerDevice(uid, buildSelfRecord())
+        val record = buildSelfRecord()
+        CloudAuthBackend.registerDevice(uid, record)
+        lastPublishedPresence = buildSelfPresence().copy(
+            updatedAtEpochMs = record.updatedAtEpochMs
+        )
     }
 
     private suspend fun patchSelfPresence(uid: String) {
         if (!cloudOpsActive) return
-        CloudAuthBackend.patchDevicePresence(uid, buildSelfPresence())
+        val next = buildSelfPresence()
+        val previous = lastPublishedPresence
+        if (previous != null && previous.sameNetworkFieldsAs(next)) {
+            // No LAN/identity change — skip Firestore write so listeners (and UIs) stay quiet.
+            return
+        }
+        CloudAuthBackend.patchDevicePresence(uid, next)
+        lastPublishedPresence = next
     }
 
     private fun buildSelfRecord(): CloudDeviceRecord {
@@ -236,7 +254,8 @@ object GoogleLinkCoordinator {
 
     private fun buildSelfPresence(): CloudDevicePresence {
         val identity = loadLocalIdentity()
-        val host = localIpv4Addresses().firstOrNull() ?: "127.0.0.1"
+        // Stable pick: sorted IPv4 list so heartbeats do not flip between interfaces.
+        val host = localIpv4Addresses().sorted().firstOrNull() ?: "127.0.0.1"
         return CloudDevicePresence(
             deviceId = identity.deviceId,
             lastKnownIp = host,
@@ -249,44 +268,45 @@ object GoogleLinkCoordinator {
     }
 
     /**
-     * Applies remote peers into Room. Same [CloudDeviceRecord.deviceId] updates in place
-     * (no second row). Alias collapse via [DeviceRepository.upsertReplacingAliases] removes
-     * stale rows that share LAN endpoint/fingerprint under a different id.
-     * Never writes back to Firestore from this path; does not delete local-only pairings.
+     * Remote snapshot wins for local Room / display name. Never writes Firestore from here.
+     * Skips Room writes when peer rows are already identical (stops UI jitter).
      */
     private suspend fun applyRemoteDevices(
         records: List<CloudDeviceRecord>,
         selfId: String,
         epoch: Long
     ) {
-        if (!isSessionLive(epoch)) return
-        val repo = OmniNodeServices.deviceRepositoryOrNull() ?: return
-        records.asSequence()
-            .filter { it.deviceId.isNotBlank() }
-            .forEach { remote ->
-                if (!isSessionLive(epoch)) return
-                if (remote.deviceId == selfId) {
-                    applyRemoteSelfName(remote.deviceName, epoch)
-                    return@forEach
-                }
-                runCatching {
-                    if (!isSessionLive(epoch)) return@runCatching
-                    repo.upsertReplacingAliases(
-                        PairedDeviceEntity(
-                            deviceId = remote.deviceId,
-                            deviceName = remote.deviceName.ifBlank { "Cloud device" },
-                            lastKnownIp = remote.lastKnownIp,
-                            port = remote.port,
-                            publicKeyHash = remote.publicKeyHash,
-                            rootPath = remote.rootPath.ifBlank { "/" }
+        applyMutex.withLock {
+            if (!isSessionLive(epoch)) return
+            val repo = OmniNodeServices.deviceRepositoryOrNull() ?: return
+            records.asSequence()
+                .filter { it.deviceId.isNotBlank() }
+                .forEach { remote ->
+                    if (!isSessionLive(epoch)) return
+                    if (remote.deviceId == selfId) {
+                        // Local display name yields to Firestore (rename initiated elsewhere).
+                        applyRemoteSelfName(remote.deviceName, epoch)
+                        return@forEach
+                    }
+                    runCatching {
+                        if (!isSessionLive(epoch)) return@runCatching
+                        repo.upsertReplacingAliases(
+                            PairedDeviceEntity(
+                                deviceId = remote.deviceId,
+                                deviceName = remote.deviceName.ifBlank { "Cloud device" },
+                                lastKnownIp = remote.lastKnownIp,
+                                port = remote.port,
+                                publicKeyHash = remote.publicKeyHash,
+                                rootPath = remote.rootPath.ifBlank { "/" }
+                            )
                         )
-                    )
-                }.onFailure { error ->
-                    println(
-                        "GoogleLinkCoordinator: skip Room upsert after teardown — ${error.message}"
-                    )
+                    }.onFailure { error ->
+                        println(
+                            "GoogleLinkCoordinator: skip Room upsert after teardown — ${error.message}"
+                        )
+                    }
                 }
-            }
+        }
     }
 
     private fun applyRemoteSelfName(remoteName: String, epoch: Long) {
@@ -320,6 +340,14 @@ object GoogleLinkCoordinator {
         }
         return hash.toString(16).padStart(16, '0')
     }
+
+    private fun CloudDevicePresence.sameNetworkFieldsAs(other: CloudDevicePresence): Boolean =
+        deviceId == other.deviceId &&
+            lastKnownIp == other.lastKnownIp &&
+            port == other.port &&
+            publicKeyHash == other.publicKeyHash &&
+            rootPath == other.rootPath &&
+            platform == other.platform
 
     private const val HEARTBEAT_MS = 60_000L
     private const val SESSION_SETTLE_MS = 50L

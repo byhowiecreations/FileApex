@@ -3,42 +3,55 @@ package com.omninode.data.device
 import com.omninode.data.db.DeviceDao
 import com.omninode.data.db.PairedDeviceEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * Single source of truth for paired-device CRUD.
  */
 class DeviceRepository(private val deviceDao: DeviceDao) {
-    fun observeDevices(): Flow<List<PairedDeviceEntity>> = deviceDao.getAllDevices()
+    fun observeDevices(): Flow<List<PairedDeviceEntity>> =
+        deviceDao.getAllDevices().distinctUntilChanged()
 
     suspend fun listDevices(): List<PairedDeviceEntity> = deviceDao.getAllDevicesOnce()
 
     suspend fun getDevice(deviceId: String): PairedDeviceEntity? = deviceDao.getDevice(deviceId)
 
     suspend fun upsert(device: PairedDeviceEntity) {
-        deviceDao.upsertDevice(device)
+        val normalized = normalize(device)
+        val existing = deviceDao.getDevice(normalized.deviceId)
+        if (existing == normalized) return
+        deviceDao.upsertDevice(normalized)
     }
 
     /**
      * Upserts [device] and removes stale rows that are clearly the same physical node under a
      * different [PairedDeviceEntity.deviceId] (e.g. pre-cloud pairing id + Firestore id, or
      * reinstall). Match by LAN endpoint and/or non-empty publicKeyHash.
+     *
+     * No-ops when the canonical row is unchanged and no aliases need removal, so Room Flows
+     * do not spam the UI.
+     *
+     * @return true if Room was mutated.
      */
-    suspend fun upsertReplacingAliases(device: PairedDeviceEntity) {
-        val normalized = device.copy(
-            deviceId = device.deviceId.trim(),
-            deviceName = device.deviceName.trim(),
-            lastKnownIp = device.lastKnownIp.trim(),
-            publicKeyHash = device.publicKeyHash.trim(),
-            rootPath = device.rootPath.ifBlank { "/" }
-        )
+    suspend fun upsertReplacingAliases(device: PairedDeviceEntity): Boolean {
+        val normalized = normalize(device)
         require(normalized.deviceId.isNotEmpty()) { "deviceId cannot be empty" }
 
-        for (alias in findAliases(normalized)) {
+        val existing = deviceDao.getDevice(normalized.deviceId)
+        val aliases = findAliases(normalized)
+        if (aliases.isEmpty() && existing == normalized) {
+            return false
+        }
+
+        for (alias in aliases) {
             if (alias.deviceId != normalized.deviceId) {
                 deviceDao.deleteDevice(alias.deviceId)
             }
         }
-        deviceDao.upsertDevice(normalized)
+        if (existing != normalized) {
+            deviceDao.upsertDevice(normalized)
+        }
+        return true
     }
 
     /**
@@ -79,6 +92,15 @@ class DeviceRepository(private val deviceDao: DeviceDao) {
         }
     }
 
+    private fun normalize(device: PairedDeviceEntity): PairedDeviceEntity =
+        device.copy(
+            deviceId = device.deviceId.trim(),
+            deviceName = device.deviceName.trim(),
+            lastKnownIp = device.lastKnownIp.trim(),
+            publicKeyHash = device.publicKeyHash.trim(),
+            rootPath = device.rootPath.ifBlank { "/" }
+        )
+
     private suspend fun findAliases(canonical: PairedDeviceEntity): List<PairedDeviceEntity> {
         val all = deviceDao.getAllDevicesOnce()
         val endpointKey = endpointKey(canonical.lastKnownIp, canonical.port)
@@ -106,11 +128,16 @@ class DeviceRepository(private val deviceDao: DeviceDao) {
     suspend fun rename(deviceId: String, newName: String) {
         val trimmed = newName.trim()
         require(trimmed.isNotEmpty()) { "Device name cannot be empty" }
+        val existing = deviceDao.getDevice(deviceId) ?: return
+        if (existing.deviceName == trimmed) return
         deviceDao.renameDevice(deviceId, trimmed)
     }
 
     suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {
-        deviceDao.updateEndpoint(deviceId, ip, port)
+        val cleanedIp = ip.trim()
+        val existing = deviceDao.getDevice(deviceId) ?: return
+        if (existing.lastKnownIp == cleanedIp && existing.port == port) return
+        deviceDao.updateEndpoint(deviceId, cleanedIp, port)
     }
 
     suspend fun remove(deviceId: String) {

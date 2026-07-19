@@ -103,7 +103,9 @@ class PeerPresenceMonitor(
                 }
             }
 
-            _onlineDeviceIds.value = online
+            if (_onlineDeviceIds.value != online) {
+                _onlineDeviceIds.value = online
+            }
         }
     }
 

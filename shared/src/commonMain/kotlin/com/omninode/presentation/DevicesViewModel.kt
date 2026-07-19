@@ -11,20 +11,26 @@ import com.omninode.domain.pairing.PairingPayload
 import com.omninode.network.sendWakeBroadcast
 import com.omninode.platform.localIpv4Addresses
 import com.omninode.session.DeviceSessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 
+/**
+ * Ephemeral Devices-screen chrome only.
+ *
+ * Paired-device list rows live in [DevicesViewModel.deviceRows] so snackbars, dialogs,
+ * and scroll bookmarks cannot force a structural list invalidation.
+ */
 data class DevicesUiState(
-    val pairedDevices: List<PairedDeviceEntity> = emptyList(),
-    val onlineDeviceIds: Set<String> = emptySet(),
     val localDeviceName: String = "",
     val renameTargetId: String? = null,
     val statusMessage: String? = null,
@@ -32,10 +38,7 @@ data class DevicesUiState(
     /** When set, UI must collect a PIN before completing pairing. */
     val pendingPinPairing: PairingPayload? = null,
     /** When set, UI must collect a PIN before browsing a PIN-protected peer. */
-    val pendingPinUnlock: PendingPinUnlock? = null,
-    /** Restored LazyColumn first-visible index (survives leaving Devices). */
-    val listScrollIndex: Int = 0,
-    val listScrollOffset: Int = 0
+    val pendingPinUnlock: PendingPinUnlock? = null
 )
 
 data class PendingPinUnlock(
@@ -51,12 +54,40 @@ class DevicesViewModel : ViewModel() {
 
     private var pendingOpenAction: ((BrowseTarget) -> Unit)? = null
 
+    /** Scroll bookmark — not part of reactive UI state (avoids list recomposition on scroll). */
+    private var listScrollIndex: Int = 0
+    private var listScrollOffset: Int = 0
+
     private val _uiState = MutableStateFlow(
         DevicesUiState(localDeviceName = LocalDeviceNameStore.current())
     )
     val uiState: StateFlow<DevicesUiState> = _uiState.asStateFlow()
 
-    val devices = repository.observeDevices()
+    /**
+     * Diffed device rows for LazyColumn.
+     * Emits only when item identity/content actually changes (AsyncListDiffer equivalent).
+     */
+    val deviceRows: StateFlow<List<DeviceListRow>> = combine(
+        repository.observeDevices(),
+        presence.onlineDeviceIds
+    ) { devices, onlineIds ->
+        devices.map { device ->
+            DeviceListRow(
+                deviceId = device.deviceId,
+                deviceName = device.deviceName,
+                lastKnownIp = device.lastKnownIp,
+                port = device.port,
+                online = device.deviceId in onlineIds
+            )
+        }
+    }
+        .distinctUntilChanged { old, new ->
+            if (old.size != new.size) return@distinctUntilChanged false
+            old.indices.all { index ->
+                DeviceListRow.areItemsTheSame(old[index], new[index]) &&
+                    DeviceListRow.areContentsTheSame(old[index], new[index])
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
@@ -69,19 +100,17 @@ class DevicesViewModel : ViewModel() {
                 }
             }
         }
-        viewModelScope.launch {
-            devices.collect { list ->
-                _uiState.update { it.copy(pairedDevices = list) }
-            }
-        }
-        viewModelScope.launch {
-            presence.onlineDeviceIds.collect { online ->
-                _uiState.update { it.copy(onlineDeviceIds = online) }
-            }
-        }
     }
 
-    fun isDeviceOnline(deviceId: String): Boolean = deviceId in _uiState.value.onlineDeviceIds
+    fun isDeviceOnline(deviceId: String): Boolean =
+        deviceId in presence.onlineDeviceIds.value
+
+    fun openDeviceOrExplain(deviceId: String, open: (BrowseTarget) -> Unit) {
+        viewModelScope.launch {
+            val device = repository.getDevice(deviceId) ?: return@launch
+            openDeviceOrExplain(device, open)
+        }
+    }
 
     fun openDeviceOrExplain(device: PairedDeviceEntity, open: (BrowseTarget) -> Unit) {
         if (!isDeviceOnline(device.deviceId)) {
@@ -370,11 +399,13 @@ class DevicesViewModel : ViewModel() {
         _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
     }
 
+    fun initialListScrollIndex(): Int = listScrollIndex
+
+    fun initialListScrollOffset(): Int = listScrollOffset
+
     fun saveListScroll(index: Int, offset: Int) {
-        _uiState.update {
-            if (it.listScrollIndex == index && it.listScrollOffset == offset) it
-            else it.copy(listScrollIndex = index, listScrollOffset = offset)
-        }
+        listScrollIndex = index
+        listScrollOffset = offset
     }
 
     companion object {

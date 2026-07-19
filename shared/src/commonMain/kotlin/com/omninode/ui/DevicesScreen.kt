@@ -1,6 +1,7 @@
 package com.omninode.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -55,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -67,9 +70,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.presentation.BrowseTarget
+import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.DevicesViewModel
 import com.omninode.ui.theme.OmniTeal
 import com.omninode.ui.theme.OmniTealDark
@@ -87,6 +90,12 @@ enum class HomeTab {
     Settings
 }
 
+private data class PendingDelete(
+    val deviceId: String,
+    val deviceName: String
+)
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DevicesScreen(
     onOpenDevice: (BrowseTarget) -> Unit,
@@ -98,17 +107,19 @@ fun DevicesScreen(
     viewModel: DevicesViewModel = viewModel { DevicesViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
+    val deviceRows by viewModel.deviceRows.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var addMenuOpen by remember { mutableStateOf(false) }
-    var pendingDelete by remember { mutableStateOf<PairedDeviceEntity?>(null) }
+    var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
     var renameText by remember { mutableStateOf("") }
     var pinText by remember { mutableStateOf("") }
     var confirmExit by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = state.listScrollIndex,
-        initialFirstVisibleItemScrollOffset = state.listScrollOffset
+        initialFirstVisibleItemIndex = viewModel.initialListScrollIndex(),
+        initialFirstVisibleItemScrollOffset = viewModel.initialListScrollOffset()
     )
+    val currentOnOpenDevice by rememberUpdatedState(onOpenDevice)
 
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -151,68 +162,31 @@ fun DevicesScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            LazyColumn(
-                state = listState,
+            PairedDevicesList(
+                listState = listState,
+                localDeviceName = state.localDeviceName,
+                deviceRows = deviceRows,
+                onOpenLocal = { currentOnOpenDevice(viewModel.thisDeviceTarget()) },
+                onRenameLocal = {
+                    renameText = state.localDeviceName
+                    viewModel.beginRename(LocalIdentity.LOCAL_DEVICE_ID)
+                },
+                onOpenDevice = { deviceId ->
+                    viewModel.openDeviceOrExplain(deviceId) { target ->
+                        currentOnOpenDevice(target)
+                    }
+                },
+                onRenameDevice = { deviceId, deviceName ->
+                    renameText = deviceName
+                    viewModel.beginRename(deviceId)
+                },
+                onRemoveDevice = { deviceId, deviceName ->
+                    pendingDelete = PendingDelete(deviceId, deviceName)
+                },
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    end = 20.dp,
-                    top = 8.dp,
-                    // Breathing room under the last device (~2 card rows), still in the list section.
-                    bottom = DeviceListToAddGap
-                ),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                item(key = "this-device") {
-                    DeviceCard(
-                        title = "This device (${state.localDeviceName})",
-                        subtitle = "Online · Local files",
-                        icon = Icons.Filled.PhoneAndroid,
-                        onClick = { onOpenDevice(viewModel.thisDeviceTarget()) },
-                        onRename = {
-                            renameText = state.localDeviceName
-                            viewModel.beginRename(LocalIdentity.LOCAL_DEVICE_ID)
-                        },
-                        onRemove = null
-                    )
-                }
-
-                if (state.pairedDevices.isEmpty()) {
-                    item(key = "empty") {
-                        Text(
-                            text = "No paired devices yet. Tap Add New Device to generate or scan a QR code.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
-                        )
-                    }
-                } else {
-                    items(state.pairedDevices, key = { it.deviceId }) { device ->
-                        val online = device.deviceId in state.onlineDeviceIds
-                        DeviceCard(
-                            title = device.deviceName,
-                            subtitle = if (online) {
-                                "Online · ${device.lastKnownIp}:${device.port}"
-                            } else {
-                                "Offline · ${device.lastKnownIp}:${device.port}"
-                            },
-                            icon = deviceIconFor(device.deviceName),
-                            onClick = {
-                                viewModel.openDeviceOrExplain(device) { target ->
-                                    onOpenDevice(target)
-                                }
-                            },
-                            onRename = {
-                                renameText = device.deviceName
-                                viewModel.beginRename(device.deviceId)
-                            },
-                            onRemove = { pendingDelete = device }
-                        )
-                    }
-                }
-            }
+                    .fillMaxWidth()
+            )
 
             // Always pinned above bottom navigation — not overlapping the list.
             Box(
@@ -418,6 +392,99 @@ fun DevicesScreen(
     }
 }
 
+/**
+ * Diff-keyed LazyColumn for paired devices.
+ *
+ * Compose equivalent of ListAdapter + DiffUtil + disabled SimpleItemAnimator:
+ * - [items] key = [DeviceListRow.deviceId] (areItemsTheSame)
+ * - row data class equality drives cell invalidation (areContentsTheSame)
+ * - [Modifier.animateItem] with null specs disables placement/change animations
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PairedDevicesList(
+    listState: LazyListState,
+    localDeviceName: String,
+    deviceRows: List<DeviceListRow>,
+    onOpenLocal: () -> Unit,
+    onRenameLocal: () -> Unit,
+    onOpenDevice: (String) -> Unit,
+    onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
+    onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            end = 20.dp,
+            top = 8.dp,
+            bottom = DeviceListToAddGap
+        ),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item(
+            key = "this-device",
+            contentType = "local-device"
+        ) {
+            DeviceCard(
+                title = "This device ($localDeviceName)",
+                subtitle = "Online · Local files",
+                icon = Icons.Filled.PhoneAndroid,
+                onClick = onOpenLocal,
+                onRename = onRenameLocal,
+                onRemove = null,
+                modifier = Modifier.animateItem(
+                    fadeInSpec = null,
+                    fadeOutSpec = null,
+                    placementSpec = null
+                )
+            )
+        }
+
+        if (deviceRows.isEmpty()) {
+            item(
+                key = "empty",
+                contentType = "empty"
+            ) {
+                Text(
+                    text = "No paired devices yet. Tap Add New Device to generate or scan a QR code.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .animateItem(
+                            fadeInSpec = null,
+                            fadeOutSpec = null,
+                            placementSpec = null
+                        )
+                        .padding(horizontal = 4.dp, vertical = 8.dp)
+                )
+            }
+        } else {
+            items(
+                items = deviceRows,
+                key = { it.deviceId },
+                contentType = { "paired-device" }
+            ) { row ->
+                DeviceCard(
+                    title = row.title,
+                    subtitle = row.subtitle,
+                    icon = deviceIconFor(row.deviceName),
+                    onClick = { onOpenDevice(row.deviceId) },
+                    onRename = { onRenameDevice(row.deviceId, row.deviceName) },
+                    onRemove = { onRemoveDevice(row.deviceId, row.deviceName) },
+                    modifier = Modifier.animateItem(
+                        fadeInSpec = null,
+                        fadeOutSpec = null,
+                        placementSpec = null
+                    )
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeTopBar(onExitClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -571,12 +638,13 @@ private fun DeviceCard(
     icon: ImageVector,
     onClick: () -> Unit,
     onRename: (() -> Unit)?,
-    onRemove: (() -> Unit)?
+    onRemove: (() -> Unit)?,
+    modifier: Modifier = Modifier
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
