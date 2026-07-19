@@ -18,11 +18,11 @@ interface AppSettings {
     /** Browse unlock idle window for peers (this device as the browser). Default [PinIdleTimeout.FiveMinutes]. */
     val pinIdleTimeout: StateFlow<PinIdleTimeout>
     /** When true, check GitHub Releases for updates on the configured schedule. Default off. */
-    val autoUpdateEnabled: StateFlow<Boolean>
-    /** Unit for [autoUpdateIntervalAmount]. Default [UpdateCheckUnit.Days]. */
-    val autoUpdateIntervalUnit: StateFlow<UpdateCheckUnit>
-    /** Amount paired with [autoUpdateIntervalUnit]. Default 1. */
-    val autoUpdateIntervalAmount: StateFlow<Int>
+    val checkForUpdatesEnabled: StateFlow<Boolean>
+    /** Unit for [checkForUpdatesIntervalAmount]. Default [UpdateCheckUnit.Days]. */
+    val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit>
+    /** Amount paired with [checkForUpdatesIntervalUnit]. Default 1. */
+    val checkForUpdatesIntervalAmount: StateFlow<Int>
     /** Epoch millis of the last completed update check (0 = never). */
     val lastUpdateCheckEpochMs: StateFlow<Long>
 
@@ -34,14 +34,14 @@ interface AppSettings {
     fun setPinRequiredEnabled(enabled: Boolean)
     fun setDevicePin(pinValue: String)
     fun setPinIdleTimeout(timeout: PinIdleTimeout)
-    fun setAutoUpdateEnabled(enabled: Boolean)
-    fun setAutoUpdateInterval(unit: UpdateCheckUnit, amount: Int)
+    fun setCheckForUpdatesEnabled(enabled: Boolean)
+    fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)
 
-    fun autoUpdateIntervalMillis(): Long {
+    fun checkForUpdatesIntervalMillis(): Long {
         return UpdateCheckFrequency.toMillis(
-            autoUpdateIntervalUnit.value,
-            autoUpdateIntervalAmount.value
+            checkForUpdatesIntervalUnit.value,
+            checkForUpdatesIntervalAmount.value
         )
     }
 }

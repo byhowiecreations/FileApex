@@ -8,6 +8,7 @@ import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.di.OmniNodeServices
 import com.omninode.update.AppUpdateCoordinator
+import com.omninode.update.PlatformInstallPermission
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,10 +25,10 @@ data class SettingsUiState(
     val devicePin: String = "",
     val pinError: String? = null,
     val pinIdleTimeout: PinIdleTimeout = PinIdleTimeout.FiveMinutes,
-    val autoUpdateEnabled: Boolean = false,
-    val autoUpdateIntervalUnit: UpdateCheckUnit = UpdateCheckUnit.Days,
-    val autoUpdateIntervalAmount: Int = 1,
-    val autoUpdateAmountText: String = "1",
+    val checkForUpdatesEnabled: Boolean = false,
+    val checkForUpdatesIntervalUnit: UpdateCheckUnit = UpdateCheckUnit.Days,
+    val checkForUpdatesIntervalAmount: Int = 1,
+    val checkForUpdatesAmountText: String = "1",
     val googleAccountError: String? = null
 )
 
@@ -41,10 +42,10 @@ class SettingsViewModel : ViewModel() {
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
             pinIdleTimeout = settings.pinIdleTimeout.value,
-            autoUpdateEnabled = settings.autoUpdateEnabled.value,
-            autoUpdateIntervalUnit = settings.autoUpdateIntervalUnit.value,
-            autoUpdateIntervalAmount = settings.autoUpdateIntervalAmount.value,
-            autoUpdateAmountText = settings.autoUpdateIntervalAmount.value.toString()
+            checkForUpdatesEnabled = settings.checkForUpdatesEnabled.value,
+            checkForUpdatesIntervalUnit = settings.checkForUpdatesIntervalUnit.value,
+            checkForUpdatesIntervalAmount = settings.checkForUpdatesIntervalAmount.value,
+            checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString()
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -94,59 +95,67 @@ class SettingsViewModel : ViewModel() {
         _uiState.update { it.copy(pinIdleTimeout = timeout) }
     }
 
-    fun setAutoUpdate(enabled: Boolean) {
-        settings.setAutoUpdateEnabled(enabled)
-        _uiState.update { it.copy(autoUpdateEnabled = enabled) }
+    fun setCheckForUpdates(enabled: Boolean) {
         if (enabled) {
-            AppUpdateCoordinator.onAutoUpdateEnabled()
+            PlatformInstallPermission.ensureCanRequestPackageInstalls()
+        }
+        settings.setCheckForUpdatesEnabled(enabled)
+        _uiState.update { it.copy(checkForUpdatesEnabled = enabled) }
+        if (enabled) {
+            AppUpdateCoordinator.onCheckForUpdatesEnabled()
         } else {
-            AppUpdateCoordinator.onAutoUpdateDisabled()
+            AppUpdateCoordinator.onCheckForUpdatesDisabled()
         }
     }
 
-    fun setAutoUpdateUnit(unit: UpdateCheckUnit) {
+    fun setCheckForUpdatesUnit(unit: UpdateCheckUnit) {
         val amount = UpdateCheckFrequency.sanitizeAmount(
             unit,
-            _uiState.value.autoUpdateIntervalAmount
+            _uiState.value.checkForUpdatesIntervalAmount
         )
-        settings.setAutoUpdateInterval(unit, amount)
+        settings.setCheckForUpdatesInterval(unit, amount)
         _uiState.update {
             it.copy(
-                autoUpdateIntervalUnit = unit,
-                autoUpdateIntervalAmount = amount,
-                autoUpdateAmountText = amount.toString()
+                checkForUpdatesIntervalUnit = unit,
+                checkForUpdatesIntervalAmount = amount,
+                checkForUpdatesAmountText = amount.toString()
             )
         }
         AppUpdateCoordinator.onScheduleChanged()
     }
 
-    fun setAutoUpdateAmountText(raw: String) {
+    fun setCheckForUpdatesAmountText(raw: String) {
         val digits = raw.filter { it.isDigit() }.take(2)
-        _uiState.update { it.copy(autoUpdateAmountText = digits) }
+        _uiState.update { it.copy(checkForUpdatesAmountText = digits) }
         val parsed = digits.toIntOrNull() ?: return
-        val unit = _uiState.value.autoUpdateIntervalUnit
+        val unit = _uiState.value.checkForUpdatesIntervalUnit
         val amount = UpdateCheckFrequency.sanitizeAmount(unit, parsed)
-        settings.setAutoUpdateInterval(unit, amount)
+        settings.setCheckForUpdatesInterval(unit, amount)
         _uiState.update {
             it.copy(
-                autoUpdateIntervalAmount = amount,
-                autoUpdateAmountText = if (digits.isEmpty()) "" else amount.toString()
+                checkForUpdatesIntervalAmount = amount,
+                checkForUpdatesAmountText = if (digits.isEmpty()) "" else amount.toString()
             )
         }
         AppUpdateCoordinator.onScheduleChanged()
     }
 
-    fun setAutoUpdateWeekAmount(amount: Int) {
+    fun setCheckForUpdatesWeekAmount(amount: Int) {
         val safe = UpdateCheckFrequency.sanitizeAmount(UpdateCheckUnit.Weeks, amount)
-        settings.setAutoUpdateInterval(UpdateCheckUnit.Weeks, safe)
+        settings.setCheckForUpdatesInterval(UpdateCheckUnit.Weeks, safe)
         _uiState.update {
             it.copy(
-                autoUpdateIntervalUnit = UpdateCheckUnit.Weeks,
-                autoUpdateIntervalAmount = safe,
-                autoUpdateAmountText = safe.toString()
+                checkForUpdatesIntervalUnit = UpdateCheckUnit.Weeks,
+                checkForUpdatesIntervalAmount = safe,
+                checkForUpdatesAmountText = safe.toString()
             )
         }
         AppUpdateCoordinator.onScheduleChanged()
+    }
+
+    /** Hidden Settings version tap easter egg — force an immediate update check. */
+    fun onVersionNumberEasterEgg() {
+        AppUpdateCoordinator.checkNowManual()
     }
 
     /** Credential Manager / desktop OAuth returned a Google ID token. */

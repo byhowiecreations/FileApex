@@ -16,7 +16,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Schedules background update checks when Auto-Update is enabled,
+ * Schedules background update checks when Check for Updates is enabled,
  * using the user-configured Hours/Days/Weeks interval.
  */
 object AppUpdateCoordinator {
@@ -31,15 +31,15 @@ object AppUpdateCoordinator {
     /** Call once after [OmniNodeServices.init] when the process starts. */
     fun onAppLaunch() {
         ensureSchedulerRunning()
-        if (OmniNodeServices.settings.autoUpdateEnabled.value) {
-            scheduleCheck(reason = "launch", force = false)
+        if (OmniNodeServices.settings.checkForUpdatesEnabled.value) {
+            scheduleCheck(reason = "launch", force = false, requireEnabled = true)
         }
     }
 
-    /** Call when the user turns Auto-Update on in Settings. */
-    fun onAutoUpdateEnabled() {
+    /** Call when the user turns Check for Updates on in Settings. */
+    fun onCheckForUpdatesEnabled() {
         ensureSchedulerRunning()
-        scheduleCheck(reason = "settings", force = true)
+        scheduleCheck(reason = "settings", force = true, requireEnabled = true)
     }
 
     /** Call when the user changes the check frequency. */
@@ -47,8 +47,16 @@ object AppUpdateCoordinator {
         restartScheduler()
     }
 
-    fun onAutoUpdateDisabled() {
-        _statusMessage.value = "Auto-Update off"
+    fun onCheckForUpdatesDisabled() {
+        _statusMessage.value = "Check for Updates off"
+    }
+
+    /**
+     * Immediate network update check that bypasses interval timers
+     * (used by the Settings version easter egg).
+     */
+    fun checkNowManual() {
+        scheduleCheck(reason = "manual", force = true, requireEnabled = false)
     }
 
     private fun restartScheduler() {
@@ -62,19 +70,19 @@ object AppUpdateCoordinator {
         schedulerJob = scope.launch {
             while (isActive) {
                 val settings = OmniNodeServices.settings
-                if (!settings.autoUpdateEnabled.value) {
+                if (!settings.checkForUpdatesEnabled.value) {
                     delay(IDLE_POLL_MS)
                     continue
                 }
-                val intervalMs = settings.autoUpdateIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
+                val intervalMs = settings.checkForUpdatesIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
                 val last = settings.lastUpdateCheckEpochMs.value
                 val now = currentTimeMillis()
                 val due = last <= 0L || now - last >= intervalMs
                 if (due) {
-                    scheduleCheck(reason = "interval", force = false)
+                    scheduleCheck(reason = "interval", force = false, requireEnabled = true)
                 }
                 val nextDueAt = (settings.lastUpdateCheckEpochMs.value.takeIf { it > 0L } ?: now) +
-                    settings.autoUpdateIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
+                    settings.checkForUpdatesIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
                 val sleepMs = (nextDueAt - currentTimeMillis())
                     .coerceIn(MIN_SLEEP_MS, MAX_SLEEP_MS)
                 delay(sleepMs)
@@ -82,12 +90,12 @@ object AppUpdateCoordinator {
         }
     }
 
-    private fun scheduleCheck(reason: String, force: Boolean) {
+    private fun scheduleCheck(reason: String, force: Boolean, requireEnabled: Boolean) {
         scope.launch {
             val settings = OmniNodeServices.settings
-            if (!settings.autoUpdateEnabled.value) return@launch
+            if (requireEnabled && !settings.checkForUpdatesEnabled.value) return@launch
             if (!force) {
-                val intervalMs = settings.autoUpdateIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
+                val intervalMs = settings.checkForUpdatesIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
                 val last = settings.lastUpdateCheckEpochMs.value
                 val now = currentTimeMillis()
                 if (last > 0L && now - last < intervalMs) {

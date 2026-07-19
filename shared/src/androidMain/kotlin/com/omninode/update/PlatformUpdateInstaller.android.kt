@@ -1,10 +1,7 @@
 package com.omninode.update
 
 import android.content.Intent
-import android.os.Build
-import android.provider.Settings
 import androidx.core.content.FileProvider
-import androidx.core.net.toUri
 import com.omninode.data.settings.androidAppContextOrNull
 import java.io.File
 
@@ -27,14 +24,7 @@ actual object PlatformUpdateInstaller {
         val apkFile = File(localFilePath)
         check(apkFile.isFile) { "APK missing at $localFilePath" }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) {
-            val permissionIntent = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                "package:${context.packageName}".toUri()
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(permissionIntent)
+        if (!PlatformInstallPermission.ensureCanRequestPackageInstalls()) {
             error(
                 "Allow “Install unknown apps” for OmniNode, then reopen the app to finish updating"
             )
