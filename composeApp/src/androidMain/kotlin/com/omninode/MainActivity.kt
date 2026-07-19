@@ -24,17 +24,31 @@ import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.omninode.domain.pairing.PairingPayload
+import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.network.FileShareServerService
+import com.omninode.platform.AndroidShareIntake
 import com.omninode.ui.theme.OmniTeal
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private var hasStoragePermission by mutableStateOf(false)
     private var hasUnrestrictedBattery by mutableStateOf(false)
     private var scannedPayload by mutableStateOf<PairingPayload?>(null)
+
+    private var incomingShare by mutableStateOf<IncomingSharePayload?>(null)
+    private var isPreparingShare by mutableStateOf(false)
+    private var sharePrepareError by mutableStateOf<String?>(null)
+
+    /** True when this activity instance was brought up primarily for ACTION_SEND*. */
+    private var openedFromShareSheet = false
+
+    private var stageJob: Job? = null
 
     private val legacyStoragePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -69,6 +83,8 @@ class MainActivity : ComponentActivity() {
             startShareServer()
         }
 
+        handleIncomingIntent(intent)
+
         setContent {
             App(
                 hasStoragePermission = hasStoragePermission,
@@ -85,9 +101,21 @@ class MainActivity : ComponentActivity() {
                 }.getOrNull().orEmpty().ifBlank { com.omninode.update.OmniNodeAppVersion.NAME },
                 scannedPayload = scannedPayload,
                 onScannedPayloadConsumed = { scannedPayload = null },
-                onPermissionRecheck = ::refreshPermissions
+                onPermissionRecheck = ::refreshPermissions,
+                incomingShare = incomingShare,
+                isPreparingShare = isPreparingShare,
+                sharePrepareError = sharePrepareError,
+                onIncomingShareConsumed = { incomingShare = null },
+                onShareFlowFinished = ::onShareFlowFinished,
+                onDismissShareError = ::onDismissShareError
             )
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
     }
 
     override fun onResume() {
@@ -97,10 +125,67 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        stageJob?.cancel()
         if (isFinishing) {
             stopShareServer()
         }
         super.onDestroy()
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (!AndroidShareIntake.isShareAction(intent)) return
+
+        val uris = AndroidShareIntake.extractStreamUris(intent)
+        if (uris.isEmpty()) {
+            sharePrepareError = "No shared file was provided"
+            isPreparingShare = false
+            openedFromShareSheet = true
+            return
+        }
+
+        openedFromShareSheet = true
+        sharePrepareError = null
+        isPreparingShare = true
+        incomingShare = null
+
+        stageJob?.cancel()
+        stageJob = lifecycleScope.launch {
+            runCatching {
+                AndroidShareIntake.stageShareUris(this@MainActivity, uris)
+            }.fold(
+                onSuccess = { payload ->
+                    incomingShare = payload
+                    isPreparingShare = false
+                    sharePrepareError = null
+                },
+                onFailure = { error ->
+                    isPreparingShare = false
+                    sharePrepareError = error.message ?: "Could not read shared file(s)"
+                }
+            )
+        }
+    }
+
+    private fun onShareFlowFinished() {
+        incomingShare = null
+        isPreparingShare = false
+        sharePrepareError = null
+        if (openedFromShareSheet) {
+            openedFromShareSheet = false
+            // Return to the app that opened the Share sheet (or leave OmniNode home if reused).
+            if (!isChangingConfigurations) {
+                finish()
+            }
+        }
+    }
+
+    private fun onDismissShareError() {
+        sharePrepareError = null
+        isPreparingShare = false
+        if (openedFromShareSheet) {
+            openedFromShareSheet = false
+            finish()
+        }
     }
 
     private fun exitOmniNode() {

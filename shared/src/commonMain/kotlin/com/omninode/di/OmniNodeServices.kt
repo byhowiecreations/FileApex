@@ -12,6 +12,7 @@ import com.omninode.data.settings.createAppSettings
 import com.omninode.data.transfer.FileTransferService
 import com.omninode.domain.pairing.PairingCoordinator
 import com.omninode.domain.presence.PeerPresenceMonitor
+import com.omninode.domain.transfer.TransferManager
 import com.omninode.network.OmniNodeClient
 import com.omninode.platform.localIpv4Addresses
 
@@ -27,6 +28,19 @@ object OmniNodeServices {
             ?: error("OmniNodeServices.init(database) must be called first")
 
     val transferService: FileTransferService by lazy { FileTransferService(client = client) }
+
+    /** Outbound Multi Copy orchestration — single entry for UI and extension handoff. */
+    val transferManager: TransferManager by lazy {
+        TransferManager(
+            deviceRepository = { deviceRepository },
+            client = client,
+            transferService = transferService,
+            readinessCheck = { isDatabaseReady() },
+            identityProvider = { loadLocalIdentity() },
+            onlineDeviceIds = { presenceMonitor.onlineDeviceIds.value }
+        )
+    }
+
     val client: OmniNodeClient by lazy { OmniNodeClient() }
     val settings: AppSettings by lazy { createAppSettings() }
     val localIdentity: LocalIdentity

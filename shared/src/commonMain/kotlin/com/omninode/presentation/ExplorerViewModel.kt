@@ -10,9 +10,7 @@ import com.omninode.domain.model.RemoteFileItem
 import com.omninode.domain.transfer.MultiCopyDeviceOption
 import com.omninode.domain.transfer.MultiCopySource
 import com.omninode.platform.decodeImageBytes
-import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.localIpv4Addresses
-import com.omninode.platform.TransferPaths
 import com.omninode.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,6 +71,7 @@ class ExplorerViewModel(
     private val target: BrowseTarget
 ) : ViewModel() {
     private val transfer = OmniNodeServices.transferService
+    private val transferManager = OmniNodeServices.transferManager
     private val identity: LocalIdentity
         get() = OmniNodeServices.localIdentity
     private val settings = OmniNodeServices.settings
@@ -786,11 +785,10 @@ class ExplorerViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isMultiCopying = true, errorMessage = null) }
             runCatching {
-                transfer.multiCopyToDevices(sources, selectedDevices)
+                transferManager.sendToDevices(sources, selectedDevices)
             }.fold(
-                onSuccess = { results ->
-                    val okDevices = results.flatMap { it.succeededDeviceIds }.toSet()
-                    val failCount = results.sumOf { it.failures.size }
+                onSuccess = { batch ->
+                    val failCount = batch.results.sumOf { it.failures.size }
                     val message = when {
                         failCount == 0 -> {
                             val deviceLabel = if (selectedDevices.size == 1) {
@@ -804,7 +802,7 @@ class ExplorerViewModel(
                                 "Multi Copied ${items.size} files to $deviceLabel"
                             }
                         }
-                        okDevices.isEmpty() -> "Multi Copy failed for all destinations"
+                        batch.allFailed -> "Multi Copy failed for all destinations"
                         else -> "Multi Copy finished with $failCount error(s)"
                     }
                     _uiState.update {
@@ -818,10 +816,10 @@ class ExplorerViewModel(
                             canDownloadSelection = false,
                             canPaste = TransferClipboard.hasContent(),
                             statusMessage = message,
-                            errorMessage = results
+                            errorMessage = batch.results
                                 .flatMap { it.failures.values }
                                 .firstOrNull()
-                                ?.takeIf { failCount > 0 && okDevices.isEmpty() }
+                                ?.takeIf { batch.allFailed }
                         )
                     }
                 },
@@ -857,45 +855,11 @@ class ExplorerViewModel(
     }
 
     private suspend fun buildMultiCopyOptions(): List<MultiCopyDeviceOption> {
-        val onlineIds = OmniNodeServices.presenceMonitor.onlineDeviceIds.value
-        val localHost = localIpv4Addresses().firstOrNull() ?: "127.0.0.1"
         val sourceDeviceId = when (target) {
             is BrowseTarget.Local -> identity.deviceId
             is BrowseTarget.Remote -> target.deviceId
         }
-        val options = mutableListOf(
-            MultiCopyDeviceOption(
-                deviceId = LocalIdentity.LOCAL_DEVICE_ID,
-                deviceName = "This device (${identity.deviceName})",
-                isLocal = true,
-                host = localHost,
-                port = identity.sharePort,
-                destinationRoot = defaultDownloadsDir()
-            )
-        )
-        val peers = OmniNodeServices.deviceRepository.listDevices()
-            .filter { it.deviceId != sourceDeviceId }
-            .filter { it.deviceId in onlineIds }
-            .sortedBy { it.deviceName.lowercase() }
-        for (peer in peers) {
-            val downloadsRoot = runCatching {
-                val remoteIdentity = OmniNodeServices.client.fetchIdentity(peer.lastKnownIp, peer.port)
-                remoteIdentity.downloadsPath.trim().ifBlank {
-                    TransferPaths.fallbackDownloadsPath(peer.rootPath)
-                }
-            }.getOrElse {
-                TransferPaths.fallbackDownloadsPath(peer.rootPath)
-            }
-            options += MultiCopyDeviceOption(
-                deviceId = peer.deviceId,
-                deviceName = peer.deviceName,
-                isLocal = false,
-                host = peer.lastKnownIp,
-                port = peer.port,
-                destinationRoot = downloadsRoot
-            )
-        }
-        return options
+        return transferManager.buildInAppDeviceOptions(sourceDeviceId)
     }
 
     fun downloadSelected() {

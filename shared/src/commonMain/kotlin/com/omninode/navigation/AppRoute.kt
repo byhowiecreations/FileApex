@@ -1,5 +1,6 @@
 package com.omninode.navigation
 
+import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.presentation.BrowseTarget
 
 sealed interface AppRoute {
@@ -8,4 +9,5 @@ sealed interface AppRoute {
     data object GenerateQr : AppRoute
     data object ScanQr : AppRoute
     data class Explorer(val target: BrowseTarget) : AppRoute
+    data class ShareSend(val payload: IncomingSharePayload) : AppRoute
 }

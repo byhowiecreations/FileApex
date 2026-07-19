@@ -1,25 +1,31 @@
 package com.omninode.platform
 
 import com.omninode.di.OmniNodeServices
-import com.omninode.domain.transfer.MultiCopyDeviceOption
-import com.omninode.domain.transfer.MultiCopySource
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Finder Sync / Share Extension hand off selected files + devices to the main Mac app.
- * The main app runs [com.omninode.data.transfer.FileTransferService.multiCopyToDevices] —
- * the same path as in-app Multi Copy.
+ * Finder Sync / Share Extension shell: write a pending job + open `omninode://send?job=…`.
+ *
+ * Transfer bytes are never started here. The main app’s [com.omninode.domain.transfer.TransferManager]
+ * runs the same outbound Multi Copy path as in-app send.
  *
  * Job files live under `~/Library/Application Support/com.omninode/send-jobs/`.
  */
@@ -32,7 +38,12 @@ object DesktopSendHandoff {
     private val _incomingJobIds = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val incomingJobIds: SharedFlow<String> = _incomingJobIds.asSharedFlow()
 
+    private val processMutex = Mutex()
     private val inFlight = mutableSetOf<String>()
+    private val processorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    @Volatile
+    private var processorStarted = false
 
     private val supportDir: File
         get() = File(
@@ -42,6 +53,13 @@ object DesktopSendHandoff {
 
     private val jobsDir: File
         get() = File(supportDir, "send-jobs").also { it.mkdirs() }
+
+    /**
+     * Canonical deep-link URI for a send job — identical for Finder Sync and Share Extension.
+     * Main app treats this like a single-top “resume send” launch (already-running or cold start).
+     */
+    fun sendJobUri(jobId: String): URI =
+        URI("omninode", /* authority */ "send", /* path */ null, /* query */ "job=$jobId", /* fragment */ null)
 
     fun installOpenUriHandler() {
         runCatching {
@@ -53,13 +71,42 @@ object DesktopSendHandoff {
                 if (handleOAuthCallback(uri)) return@setOpenURIHandler
                 parseJobId(uri)?.let { jobId ->
                     println("DesktopSendHandoff: open URI job=$jobId")
-                    _incomingJobIds.tryEmit(jobId)
+                    enqueueJob(jobId)
                 }
             }
             println("DesktopSendHandoff: APP_OPEN_URI handler installed")
         }.onFailure { error ->
             println("DesktopSendHandoff: URI handler not available :: ${error.message}")
         }
+    }
+
+    /**
+     * Starts the lifecycle-aware job runner once services are initialized.
+     * Safe to call multiple times; must run after [OmniNodeServices.init].
+     * Independent of Compose UI so Finder Sync does not wait on window composition.
+     */
+    fun startJobProcessor() {
+        if (processorStarted) return
+        processorStarted = true
+        processorScope.launch {
+            val transferManager = OmniNodeServices.transferManager
+            runCatching { transferManager.awaitReady() }
+                .onFailure { error ->
+                    println("DesktopSendHandoff: TransferManager not ready :: ${error.message}")
+                    return@launch
+                }
+            println("DesktopSendHandoff: TransferManager ready — draining send jobs")
+            val pending = flow {
+                listPendingJobIds().forEach { emit(it) }
+            }
+            merge(pending, incomingJobIds).collect { jobId ->
+                processJob(jobId)
+            }
+        }
+    }
+
+    fun enqueueJob(jobId: String) {
+        _incomingJobIds.tryEmit(jobId)
     }
 
     /** Pending jobs written while the app was quit (or URI delivery was missed). */
@@ -75,14 +122,16 @@ object DesktopSendHandoff {
             .orEmpty()
     }
 
-    suspend fun processJob(jobId: String) = withContext(Dispatchers.IO) {
-        synchronized(inFlight) {
-            if (!inFlight.add(jobId)) return@withContext
+    suspend fun processJob(jobId: String) {
+        processMutex.withLock {
+            if (!inFlight.add(jobId)) return
         }
         try {
-            processJobUnlocked(jobId)
+            withContext(Dispatchers.IO) {
+                processJobUnlocked(jobId)
+            }
         } finally {
-            synchronized(inFlight) { inFlight.remove(jobId) }
+            processMutex.withLock { inFlight.remove(jobId) }
         }
     }
 
@@ -105,64 +154,27 @@ object DesktopSendHandoff {
             return
         }
 
+        val transferManager = OmniNodeServices.transferManager
+        runCatching { transferManager.awaitReady() }
+            .onFailure { error ->
+                val message = "OmniNode not ready: ${error.message ?: "initialization incomplete"}"
+                writeJob(job.copy(status = STATUS_FAILED, message = message))
+                println("DesktopSendHandoff: $jobId :: $message")
+                return
+            }
+
         writeJob(job.copy(status = STATUS_RUNNING, message = "Sending…"))
         runCatching {
-            val peers = OmniNodeServices.deviceRepository.listDevices()
-                .filter { it.deviceId in job.deviceIds.toSet() }
-            check(peers.isNotEmpty()) { "Selected devices are not in the paired roster" }
-
-            val options = peers.map { peer ->
-                val downloadsRoot = runCatching {
-                    val remote = OmniNodeServices.client.fetchIdentity(peer.lastKnownIp, peer.port)
-                    remote.downloadsPath.trim().ifBlank {
-                        TransferPaths.fallbackDownloadsPath(peer.rootPath)
-                    }
-                }.getOrElse {
-                    TransferPaths.fallbackDownloadsPath(peer.rootPath)
-                }
-                MultiCopyDeviceOption(
-                    deviceId = peer.deviceId,
-                    deviceName = peer.deviceName,
-                    isLocal = false,
-                    host = peer.lastKnownIp,
-                    port = peer.port,
-                    destinationRoot = downloadsRoot
-                )
+            val batch = transferManager.sendLocalPathsToDeviceIds(
+                absolutePaths = job.filePaths,
+                deviceIds = job.deviceIds
+            )
+            val status = if (batch.allFailed) STATUS_FAILED else STATUS_DONE
+            writeJob(job.copy(status = status, message = batch.summaryMessage))
+            if (!batch.allFailed) {
+                cleanupStaging(jobId)
             }
-
-            val sources = job.filePaths.map { path ->
-                val local = File(path)
-                check(local.isFile) { "Missing file: $path" }
-                MultiCopySource.Local(
-                    fileName = local.name,
-                    sizeBytes = local.length(),
-                    absolutePath = local.absolutePath
-                )
-            }
-
-            val results = OmniNodeServices.transferService.multiCopyToDevices(sources, options)
-            val failCount = results.sumOf { it.failures.size }
-            val okDevices = results.flatMap { it.succeededDeviceIds }.toSet()
-            val message = when {
-                failCount == 0 -> {
-                    val deviceLabel = if (options.size == 1) {
-                        options.first().deviceName
-                    } else {
-                        "${options.size} devices"
-                    }
-                    if (sources.size == 1) {
-                        "Sent ${sources.first().fileName} to $deviceLabel"
-                    } else {
-                        "Sent ${sources.size} files to $deviceLabel"
-                    }
-                }
-                okDevices.isEmpty() -> "Send failed for all destinations"
-                else -> "Send finished with $failCount error(s)"
-            }
-            val status = if (okDevices.isEmpty() && failCount > 0) STATUS_FAILED else STATUS_DONE
-            writeJob(job.copy(status = status, message = message))
-            cleanupStaging(jobId)
-            println("DesktopSendHandoff: $status — $message")
+            println("DesktopSendHandoff: $status — ${batch.summaryMessage}")
         }.onFailure { error ->
             val message = error.message ?: "Send failed"
             writeJob(job.copy(status = STATUS_FAILED, message = message))

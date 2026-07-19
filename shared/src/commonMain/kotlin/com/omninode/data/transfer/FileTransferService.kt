@@ -111,6 +111,9 @@ class FileTransferService(
     /**
      * Broadcast selected file(s) from any explorer (local or remote) to user-chosen devices only.
      * Local receives files only when This device is included in [selectedDevices].
+     *
+     * Prefer [com.omninode.domain.transfer.TransferManager.sendToDevices] from UI / handoff —
+     * this method is the stream engine entry used by TransferManager.
      */
     suspend fun multiCopyToDevices(
         sources: List<MultiCopySource>,

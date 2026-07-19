@@ -11,10 +11,22 @@ public final class DevicePickerModel: ObservableObject {
     @Published public var isSending: Bool = false
     @Published public var isLoading: Bool = false
 
+    /// Original / already-staged file URLs shown for status text.
     public let fileURLs: [URL]
 
-    public init(fileURLs: [URL]) {
+    /// When set, files were copied into Application Support before the picker opened
+    /// (required for Finder Sync security scopes; Share uses the same path).
+    private let preStagedJobId: String?
+    private let preStagedPaths: [String]?
+
+    public init(
+        fileURLs: [URL],
+        preStagedJobId: String? = nil,
+        preStagedPaths: [String]? = nil
+    ) {
         self.fileURLs = fileURLs
+        self.preStagedJobId = preStagedJobId
+        self.preStagedPaths = preStagedPaths
     }
 
     public var selectedDevices: [PairedDevice] {
@@ -22,7 +34,8 @@ public final class DevicePickerModel: ObservableObject {
     }
 
     public var canSend: Bool {
-        !selectedIds.isEmpty && !fileURLs.isEmpty && !isSending
+        let hasFiles = !(preStagedPaths?.isEmpty ?? true) || !fileURLs.isEmpty
+        return !selectedIds.isEmpty && hasFiles && !isSending
     }
 
     public func reload() {
@@ -30,10 +43,11 @@ public final class DevicePickerModel: ObservableObject {
         errorMessage = nil
         do {
             devices = try PairedDeviceStore.loadDevices()
+            let fileCount = preStagedPaths?.count ?? fileURLs.count
             if devices.isEmpty {
                 statusMessage = "No paired devices. Open OmniNode and pair a device first."
             } else {
-                statusMessage = "\(fileURLs.count) item(s) · \(devices.count) paired device(s)"
+                statusMessage = "\(fileCount) item(s) · \(devices.count) paired device(s)"
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -50,33 +64,22 @@ public final class DevicePickerModel: ObservableObject {
         }
     }
 
-    /// Stage files + hand off to the main OmniNode.app Multi Copy stack (same as in-app send).
+    /// Hand off to the main OmniNode.app TransferManager (Finder Sync + Share use this only).
     public func send() async -> Bool {
         guard canSend else { return false }
         isSending = true
         errorMessage = nil
         statusMessage = "Handing off to OmniNode…"
-        let jobId = UUID().uuidString
         do {
             let deviceIds = selectedDevices.map(\.deviceId)
-            let stagedPaths = try OmniNodeSendHandoff.stageFiles(fileURLs, jobId: jobId)
-            try OmniNodeSendHandoff.writePendingJob(
-                id: jobId,
-                filePaths: stagedPaths,
-                deviceIds: deviceIds
+            let finished = try await OmniNodeSendHandoff.submitSend(
+                sourceURLs: fileURLs,
+                deviceIds: deviceIds,
+                preStagedJobId: preStagedJobId,
+                preStagedPaths: preStagedPaths
             )
-            guard OmniNodeSendHandoff.openMainApp(jobId: jobId) else {
-                throw OmniNodeSendHandoff.HandoffError.mainAppDidNotOpen
-            }
-            statusMessage = "Sending via OmniNode…"
-            let finished = try await OmniNodeSendHandoff.waitForCompletion(jobId: jobId)
-            if finished.status == OmniNodeSendJob.statusFailed {
-                throw OmniNodeSendHandoff.HandoffError.failed(
-                    finished.message ?? "Send failed"
-                )
-            }
             statusMessage = finished.message
-                ?? "Sent \(stagedPaths.count) item(s) to \(deviceIds.count) device(s)."
+                ?? "Sent to \(deviceIds.count) device(s)."
             isSending = false
             return true
         } catch {

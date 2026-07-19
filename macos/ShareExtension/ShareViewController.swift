@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Share Extension host that presents the shared DevicePicker and streams uploads.
+/// Share Extension host — stages attachments then presents the shared DevicePicker.
+/// Send uses [OmniNodeSendHandoff.submitSend] (same path as Finder Sync → TransferManager).
 @objc(ShareViewController)
 final class ShareViewController: NSViewController {
     private var hosting: NSHostingController<DevicePickerView>?
@@ -20,8 +21,26 @@ final class ShareViewController: NSViewController {
 
     private func prepareAndPresent() async {
         let urls = await resolveAttachmentURLs()
+        let jobId = UUID().uuidString
+        let stagedPaths: [String]
+        do {
+            // Stage while Share still holds security-scoped grants (same as Finder Sync).
+            stagedPaths = try OmniNodeSendHandoff.stageFiles(urls, jobId: jobId)
+            NSLog("OmniNode ShareExtension: staged \(stagedPaths.count) file(s) for job \(jobId)")
+        } catch {
+            await MainActor.run {
+                self.presentStagingFailure(error.localizedDescription)
+            }
+            return
+        }
+
         await MainActor.run {
-            let model = DevicePickerModel(fileURLs: urls)
+            let stagedURLs = stagedPaths.map { URL(fileURLWithPath: $0) }
+            let model = DevicePickerModel(
+                fileURLs: stagedURLs,
+                preStagedJobId: jobId,
+                preStagedPaths: stagedPaths
+            )
             let root = DevicePickerView(model: model, title: "Share with OmniNode") { [weak self] success in
                 self?.finish(success: success)
             }
@@ -37,6 +56,16 @@ final class ShareViewController: NSViewController {
                 host.view.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
             ])
         }
+    }
+
+    private func presentStagingFailure(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "OmniNode"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        finish(success: false)
     }
 
     private func resolveAttachmentURLs() async -> [URL] {

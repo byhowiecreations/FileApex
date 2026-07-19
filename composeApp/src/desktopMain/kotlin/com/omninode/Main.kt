@@ -18,8 +18,6 @@ import com.omninode.ui.DeviceCardSlotHeight
 import com.omninode.ui.DeviceListToAddGap
 import com.omninode.update.AppUpdateCoordinator
 import com.omninode.update.OmniNodeAppVersion
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.flow
 
 private val DesktopWindowWidth = 440.dp
 private val DesktopWindowMinHeight = 560.dp
@@ -30,7 +28,9 @@ fun main() {
     AppUpdateCoordinator.onAppLaunch()
     GoogleLinkCoordinator.onAppLaunch()
     MacOsExtensionRegistrar.registerOnLaunch()
+    // URI handler + job processor before UI so Finder Sync / Share are not Compose-gated.
     DesktopSendHandoff.installOpenUriHandler()
+    DesktopSendHandoff.startJobProcessor()
 
     application {
         val devices by OmniNodeServices.deviceRepository.observeDevices()
@@ -41,16 +41,6 @@ fun main() {
 
         LaunchedEffect(devices.size) {
             windowState.size = preferredWindowSize(deviceCount = devices.size)
-        }
-
-        // Finder Sync / Share Extension → same Multi Copy transfer stack as the main UI.
-        LaunchedEffect(Unit) {
-            val pending = flow {
-                DesktopSendHandoff.listPendingJobIds().forEach { emit(it) }
-            }
-            merge(pending, DesktopSendHandoff.incomingJobIds).collect { jobId ->
-                DesktopSendHandoff.processJob(jobId)
-            }
         }
 
         Window(

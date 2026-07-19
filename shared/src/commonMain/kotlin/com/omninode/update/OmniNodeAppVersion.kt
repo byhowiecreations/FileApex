@@ -5,7 +5,7 @@ package com.omninode.update
  * Desktop reads this constant; Android prefers the installed PackageManager version.
  */
 object OmniNodeAppVersion {
-    const val NAME = "0.1.0a"
+    const val NAME = "0.1.0c"
 }
 
 /**
