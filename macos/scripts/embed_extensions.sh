@@ -29,16 +29,29 @@ rm -rf "$PLUGINS/OmniNodeFinderSync.appex" "$PLUGINS/OmniNodeShareExtension.appe
 ditto "$FINDER_APPEX" "$PLUGINS/OmniNodeFinderSync.appex"
 ditto "$SHARE_APPEX" "$PLUGINS/OmniNodeShareExtension.appex"
 
-# Re-sign PlugIns + host with empty entitlements (no App Sandbox).
 FINDER_ENTS="$ROOT/macos/FinderSync/FinderSync.entitlements"
 SHARE_ENTS="$ROOT/macos/ShareExtension/ShareExtension.entitlements"
 HOST_ENTS="$ROOT/composeApp/macos/OmniNode.entitlements"
-codesign --force --deep --sign - --entitlements "$FINDER_ENTS" "$PLUGINS/OmniNodeFinderSync.appex"
-codesign --force --deep --sign - --entitlements "$SHARE_ENTS" "$PLUGINS/OmniNodeShareExtension.appex"
-codesign --force --deep --sign - --entitlements "$HOST_ENTS" "$APP_BUNDLE"
+
+# Sign nested code first, then the host (do not --deep the host or nested sigs get mangled).
+codesign --force --sign - --entitlements "$FINDER_ENTS" "$PLUGINS/OmniNodeFinderSync.appex"
+codesign --force --sign - --entitlements "$SHARE_ENTS" "$PLUGINS/OmniNodeShareExtension.appex"
+codesign --force --sign - --entitlements "$HOST_ENTS" "$APP_BUNDLE"
 xattr -cr "$APP_BUNDLE" || true
 
-echo "Embedded + re-signed (unsandboxed) extensions into $PLUGINS"
-ls -la "$PLUGINS"
-codesign -d --entitlements :- "$APP_BUNDLE" 2>/dev/null | plutil -p - 2>/dev/null || true
+# Ship entitlement plists inside the app so launch-time re-sign can restore sandbox
+# (required — pluginkit silently ignores appexes with missing sandbox entitlements).
+ENTS_RES="$APP_BUNDLE/Contents/Resources/ExtensionEntitlements"
+mkdir -p "$ENTS_RES"
+cp "$FINDER_ENTS" "$ENTS_RES/FinderSync.entitlements"
+cp "$SHARE_ENTS" "$ENTS_RES/ShareExtension.entitlements"
+cp "$HOST_ENTS" "$ENTS_RES/OmniNode.entitlements"
+# Re-sign host after adding Resources.
+codesign --force --sign - --entitlements "$HOST_ENTS" "$APP_BUNDLE"
 
+echo "Embedded + re-signed extensions into $PLUGINS"
+ls -la "$PLUGINS"
+echo "Host entitlements:"
+codesign -d --entitlements - --xml "$APP_BUNDLE" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null || true
+echo "Finder entitlements:"
+codesign -d --entitlements - --xml "$PLUGINS/OmniNodeFinderSync.appex" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null || true

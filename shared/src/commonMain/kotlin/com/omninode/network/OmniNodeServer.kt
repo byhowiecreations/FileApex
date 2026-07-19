@@ -348,21 +348,30 @@ class OmniNodeServer(
                             SystemFileSystem.createDirectories(parent)
                         }
 
+                        // Must await EOF properly. A busy-loop on readAvailable==0 never
+                        // responds, so URLSession clients hang after the file is already on disk.
                         val channel = call.receiveChannel()
                         SystemFileSystem.sink(targetPath).buffered().use { sink ->
                             val buffer = ByteArray(8192)
-                            while (!channel.isClosedForRead) {
+                            while (true) {
                                 val read = channel.readAvailable(buffer, 0, buffer.size)
-                                if (read > 0) {
-                                    sink.write(buffer, 0, read)
+                                when {
+                                    read < 0 -> break
+                                    read == 0 -> {
+                                        if (channel.isClosedForRead) break
+                                        if (!channel.awaitContent()) break
+                                    }
+                                    else -> sink.write(buffer, 0, read)
                                 }
                             }
                         }
-                        call.respond(HttpStatusCode.Created)
-                        val receivedName = targetPathStr.substringAfterLast('/').substringAfterLast('\\')
+                        val receivedName = targetPathStr
+                            .substringAfterLast('/')
+                            .substringAfterLast('\\')
                         if (receivedName.isNotBlank()) {
                             notifyFilesReceived(listOf(receivedName))
                         }
+                        call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
                     }.onFailure { error ->
                         onLog("POST /api/v1/files/upload failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "upload_failed")

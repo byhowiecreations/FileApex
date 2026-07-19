@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Share Extension host that presents the shared DevicePicker and streams uploads.
+@objc(ShareViewController)
 final class ShareViewController: NSViewController {
     private var hosting: NSHostingController<DevicePickerView>?
     private var securityScopedURLs: [URL] = []

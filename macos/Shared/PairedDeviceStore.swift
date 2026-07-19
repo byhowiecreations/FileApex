@@ -31,9 +31,11 @@ public struct PairedDevice: Identifiable, Hashable, Sendable {
 /// Read-only access to `~/Library/Application Support/com.omninode/omninode.db` (Room schema v2).
 public enum PairedDeviceStore {
     public static func loadDevices() throws -> [PairedDevice] {
-        let dbURL = OmniNodePaths.databaseURL
-        let path = dbURL.path
+        // Always the host app DB — never a Containers/... path.
+        let path = OmniNodePaths.databaseURL.path
+        NSLog("OmniNode PairedDeviceStore reading \(path)")
         guard FileManager.default.fileExists(atPath: path) else {
+            NSLog("OmniNode PairedDeviceStore: missing DB at \(path)")
             return []
         }
 

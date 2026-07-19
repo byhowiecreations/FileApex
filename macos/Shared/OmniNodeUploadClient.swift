@@ -76,13 +76,14 @@ public enum OmniNodeUploadClient {
         request.httpMethod = "POST"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.setValue("OmniNode-macOS-Extension", forHTTPHeaderField: "User-Agent")
+        request.setValue("close", forHTTPHeaderField: "Connection")
         if let values = try? localFileURL.resourceValues(forKeys: [.fileSizeKey]),
            let size = values.fileSize {
             request.setValue(String(size), forHTTPHeaderField: "Content-Length")
         }
 
-        let (_, response) = try await session.upload(for: request, fromFile: localFileURL)
-        try throwIfNeeded(response, data: Data(), context: "upload \(fileName)")
+        let (data, response) = try await session.upload(for: request, fromFile: localFileURL)
+        try throwIfNeeded(response, data: data, context: "upload \(fileName)")
     }
 
     /// Concurrent fan-out of [files] to every selected [devices] (same idea as Multi Copy + Ktor).

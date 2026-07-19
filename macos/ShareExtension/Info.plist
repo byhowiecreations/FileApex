@@ -26,9 +26,12 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-			<!-- Accept multi-file selections of any public.item asset type -->
+			<!-- Dictionary form is more reliable on Finder Share than a SUBQUERY string. -->
 			<key>NSExtensionActivationRule</key>
-			<string>SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.item").@count &gt; 0).@count &gt; 0</string>
+			<dict>
+				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
+				<integer>100</integer>
+			</dict>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>

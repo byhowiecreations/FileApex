@@ -54,7 +54,6 @@ public final class DevicePickerModel: ObservableObject {
         guard canSend else { return false }
         isSending = true
         errorMessage = nil
-        defer { isSending = false }
         do {
             let targets = selectedDevices
             let files = fileURLs
@@ -64,9 +63,11 @@ public final class DevicePickerModel: ObservableObject {
                 }
             }
             statusMessage = "Sent \(files.count) item(s) to \(targets.count) device(s)."
+            isSending = false
             return true
         } catch {
             errorMessage = error.localizedDescription
+            isSending = false
             return false
         }
     }

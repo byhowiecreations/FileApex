@@ -42,8 +42,8 @@ FINDER="$PRODUCTS/OmniNodeFinderSync.appex"
 SHARE="$PRODUCTS/OmniNodeShareExtension.appex"
 
 # Ad-hoc codesign so pluginkit / Gatekeeper can load unsigned local builds.
-codesign --force --deep --sign - --entitlements "$MACOS/FinderSync/FinderSync.entitlements" "$FINDER"
-codesign --force --deep --sign - --entitlements "$MACOS/ShareExtension/ShareExtension.entitlements" "$SHARE"
+codesign --force --sign - --entitlements "$MACOS/FinderSync/FinderSync.entitlements" "$FINDER"
+codesign --force --sign - --entitlements "$MACOS/ShareExtension/ShareExtension.entitlements" "$SHARE"
 
 echo "Built + ad-hoc signed:"
 ls -la "$FINDER" "$SHARE"

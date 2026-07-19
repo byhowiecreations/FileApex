@@ -27,8 +27,20 @@ fun initAndroidTransferReceiveNotifier(context: Context) {
 
 actual fun notifyFilesReceived(fileNames: List<String>) {
     if (fileNames.isEmpty()) return
-    if (!OmniNodeServices.settings.fileTransferNotificationsEnabled.value) return
-    if (!::notifierContext.isInitialized) return
+    if (!OmniNodeServices.settings.fileTransferNotificationsEnabled.value) {
+        println("TransferReceiveNotifier: skipped — notifications disabled in Settings")
+        return
+    }
+    if (!::notifierContext.isInitialized) {
+        println("TransferReceiveNotifier: skipped — notifier not initialized")
+        return
+    }
+
+    val manager = NotificationManagerCompat.from(notifierContext)
+    if (!manager.areNotificationsEnabled()) {
+        println("TransferReceiveNotifier: skipped — system notifications disabled for OmniNode")
+        return
+    }
 
     val title = if (fileNames.size == 1) {
         "File received"
@@ -47,8 +59,9 @@ actual fun notifyFilesReceived(fileNames: List<String>) {
         .build()
 
     runCatching {
-        NotificationManagerCompat.from(notifierContext)
-            .notify(NOTIFICATION_ID_BASE + (fileNames.hashCode() and 0xFFFF), notification)
+        manager.notify(NOTIFICATION_ID_BASE + (fileNames.hashCode() and 0xFFFF), notification)
+    }.onFailure { error ->
+        println("TransferReceiveNotifier: notify failed :: ${error.message}")
     }
 }
 

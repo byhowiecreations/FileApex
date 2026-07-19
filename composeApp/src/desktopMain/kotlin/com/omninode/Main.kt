@@ -11,6 +11,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.omninode.data.db.createOmniNodeDatabase
 import com.omninode.di.OmniNodeServices
 import com.omninode.network.DesktopShareServerController
+import com.omninode.platform.MacOsExtensionRegistrar
 import com.omninode.ui.DeviceCardSlotHeight
 import com.omninode.ui.DeviceListToAddGap
 import com.omninode.update.AppUpdateCoordinator
@@ -23,6 +24,7 @@ private val DesktopWindowMaxHeight = 900.dp
 fun main() {
     OmniNodeServices.init(createOmniNodeDatabase())
     AppUpdateCoordinator.onAppLaunch()
+    MacOsExtensionRegistrar.registerOnLaunch()
 
     application {
         val devices by OmniNodeServices.deviceRepository.observeDevices()
