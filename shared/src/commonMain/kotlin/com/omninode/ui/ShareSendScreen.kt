@@ -3,17 +3,18 @@ package com.omninode.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,7 +28,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -65,6 +68,7 @@ fun ShareSendScreen(
     }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
                 title = { Text("Send with OmniNode") },
@@ -91,7 +95,8 @@ fun ShareSendScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(horizontal = 20.dp)
+                .padding(top = 16.dp, bottom = 16.dp)
         ) {
             Text(
                 text = when {
@@ -136,8 +141,8 @@ fun ShareSendScreen(
                 state.isPreparing -> {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 180.dp),
+                            .weight(1f)
+                            .fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -151,11 +156,18 @@ fun ShareSendScreen(
                     }
                 }
                 state.options.isEmpty() -> {
-                    Text(
-                        text = "No destinations available. Open OmniNode, pair a device, and try again.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = "No destinations available. Open OmniNode, pair a device, and try again.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 else -> {
                     Text(
@@ -164,15 +176,25 @@ fun ShareSendScreen(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    Column(
+                    val listState = rememberLazyListState()
+                    val userScrollEnabled by remember {
+                        derivedStateOf {
+                            listState.canScrollForward || listState.canScrollBackward
+                        }
+                    }
+                    LazyColumn(
+                        state = listState,
                         modifier = Modifier
-                            .weight(1f, fill = false)
-                            .fillMaxWidth()
-                            .heightIn(max = 420.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentPadding = PaddingValues(bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        userScrollEnabled = userScrollEnabled
                     ) {
-                        state.options.forEach { option ->
+                        items(
+                            items = state.options,
+                            key = { it.deviceId }
+                        ) { option ->
                             val checked = option.deviceId in state.selectedDeviceIds
                             Row(
                                 modifier = Modifier
@@ -187,7 +209,10 @@ fun ShareSendScreen(
                             ) {
                                 Checkbox(checked = checked, onCheckedChange = null)
                                 Column(modifier = Modifier.padding(start = 8.dp)) {
-                                    Text(option.deviceName, style = MaterialTheme.typography.bodyLarge)
+                                    Text(
+                                        option.deviceName,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
                                     Text(
                                         text = if (option.isLocal) {
                                             "Save to Downloads/OmniNode"
@@ -203,8 +228,6 @@ fun ShareSendScreen(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.weight(1f))
 
             if (state.isSending) {
                 Row(
