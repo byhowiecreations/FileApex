@@ -21,7 +21,7 @@ private class AndroidAppSettings(context: Context) : AppSettings {
                 ?: PinIdleTimeout.DEFAULT.name
         )
     )
-    private val autoUpdate = MutableStateFlow(prefs.getBoolean(KEY_AUTO_UPDATE, false))
+    private val checkForUpdates = MutableStateFlow(prefs.getBoolean(KEY_CHECK_FOR_UPDATES, false))
     private val updateUnit = MutableStateFlow(
         UpdateCheckUnit.fromStorage(prefs.getString(KEY_UPDATE_UNIT, UpdateCheckUnit.Days.name) ?: UpdateCheckUnit.Days.name)
     )
@@ -42,9 +42,9 @@ private class AndroidAppSettings(context: Context) : AppSettings {
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
     override val devicePin: StateFlow<String> = pin.asStateFlow()
     override val pinIdleTimeout: StateFlow<PinIdleTimeout> = pinIdle.asStateFlow()
-    override val autoUpdateEnabled: StateFlow<Boolean> = autoUpdate.asStateFlow()
-    override val autoUpdateIntervalUnit: StateFlow<UpdateCheckUnit> = updateUnit.asStateFlow()
-    override val autoUpdateIntervalAmount: StateFlow<Int> = updateAmount.asStateFlow()
+    override val checkForUpdatesEnabled: StateFlow<Boolean> = checkForUpdates.asStateFlow()
+    override val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit> = updateUnit.asStateFlow()
+    override val checkForUpdatesIntervalAmount: StateFlow<Int> = updateAmount.asStateFlow()
     override val lastUpdateCheckEpochMs: StateFlow<Long> = lastUpdateCheck.asStateFlow()
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
@@ -94,12 +94,12 @@ private class AndroidAppSettings(context: Context) : AppSettings {
         pinIdle.value = timeout
     }
 
-    override fun setAutoUpdateEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_AUTO_UPDATE, enabled).apply()
-        autoUpdate.value = enabled
+    override fun setCheckForUpdatesEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CHECK_FOR_UPDATES, enabled).apply()
+        checkForUpdates.value = enabled
     }
 
-    override fun setAutoUpdateInterval(unit: UpdateCheckUnit, amount: Int) {
+    override fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int) {
         val safeAmount = UpdateCheckFrequency.sanitizeAmount(unit, amount)
         prefs.edit()
             .putString(KEY_UPDATE_UNIT, unit.name)
@@ -124,7 +124,7 @@ private class AndroidAppSettings(context: Context) : AppSettings {
         const val KEY_PIN_REQUIRED = "pin_required"
         const val KEY_DEVICE_PIN = "device_pin"
         const val KEY_PIN_IDLE_TIMEOUT = "pin_idle_timeout"
-        const val KEY_AUTO_UPDATE = "auto_update"
+        const val KEY_CHECK_FOR_UPDATES = "auto_update"
         const val KEY_UPDATE_UNIT = "auto_update_unit"
         const val KEY_UPDATE_AMOUNT = "auto_update_amount"
         const val KEY_LAST_UPDATE_CHECK = "last_update_check_epoch_ms"

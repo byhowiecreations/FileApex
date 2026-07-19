@@ -1,6 +1,7 @@
 package com.omninode.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,6 +50,7 @@ import com.omninode.data.settings.PinIdleTimeout
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.platform.OmniBackHandler
+import com.omninode.platform.currentTimeMillis
 import com.omninode.platform.rememberGoogleSignInLauncher
 import com.omninode.presentation.SettingsUiState
 import com.omninode.presentation.SettingsViewModel
@@ -54,7 +58,7 @@ import com.omninode.ui.theme.OmniTeal
 
 private enum class SettingsPage {
     Root,
-    AutoUpdate,
+    CheckForUpdates,
     PinRequired,
     GoogleAccount
 }
@@ -86,19 +90,20 @@ fun SettingsScreen(
             appVersionName = appVersionName,
             state = state,
             onBack = onBack,
-            onOpenAutoUpdate = { page = SettingsPage.AutoUpdate },
+            onOpenCheckForUpdates = { page = SettingsPage.CheckForUpdates },
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
-            onFileTransferNotifications = viewModel::setFileTransferNotifications
+            onFileTransferNotifications = viewModel::setFileTransferNotifications,
+            onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg
         )
-        SettingsPage.AutoUpdate -> AutoUpdateSettingsPage(
+        SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
             state = state,
             updateStatus = updateStatus,
             onBack = { page = SettingsPage.Root },
-            onToggle = viewModel::setAutoUpdate,
-            onUnitSelected = viewModel::setAutoUpdateUnit,
-            onAmountTextChange = viewModel::setAutoUpdateAmountText,
-            onWeekAmountSelected = viewModel::setAutoUpdateWeekAmount
+            onToggle = viewModel::setCheckForUpdates,
+            onUnitSelected = viewModel::setCheckForUpdatesUnit,
+            onAmountTextChange = viewModel::setCheckForUpdatesAmountText,
+            onWeekAmountSelected = viewModel::setCheckForUpdatesWeekAmount
         )
         SettingsPage.PinRequired -> PinRequiredSettingsPage(
             state = state,
@@ -123,11 +128,16 @@ private fun SettingsRootPage(
     appVersionName: String,
     state: SettingsUiState,
     onBack: () -> Unit,
-    onOpenAutoUpdate: () -> Unit,
+    onOpenCheckForUpdates: () -> Unit,
     onOpenPinRequired: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
-    onFileTransferNotifications: (Boolean) -> Unit
+    onFileTransferNotifications: (Boolean) -> Unit,
+    onVersionNumberEasterEgg: () -> Unit
 ) {
+    var versionTapCount by remember { mutableIntStateOf(0) }
+    var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
+    val versionTapInteraction = remember { MutableInteractionSource() }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -146,16 +156,16 @@ private fun SettingsRootPage(
                     .padding(bottom = 48.dp)
             ) {
                 SettingsNavItem(
-                    title = "Auto-Update",
-                    subtitle = if (state.autoUpdateEnabled) {
+                    title = "Check for Updates",
+                    subtitle = if (state.checkForUpdatesEnabled) {
                         UpdateCheckFrequency.label(
-                            state.autoUpdateIntervalUnit,
-                            state.autoUpdateIntervalAmount
+                            state.checkForUpdatesIntervalUnit,
+                            state.checkForUpdatesIntervalAmount
                         )
                     } else {
                         "Off"
                     },
-                    onClick = onOpenAutoUpdate
+                    onClick = onOpenCheckForUpdates
                 )
                 SettingsNavItem(
                     title = "PIN required",
@@ -196,7 +206,23 @@ private fun SettingsRootPage(
                 text = "OmniNode v$appVersionName",
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 20.dp),
+                    .padding(bottom = 20.dp)
+                    .clickable(
+                        interactionSource = versionTapInteraction,
+                        indication = null,
+                        onClick = {
+                            val now = currentTimeMillis()
+                            if (now - lastVersionTapEpochMs > VERSION_EASTER_EGG_TAP_WINDOW_MS) {
+                                versionTapCount = 0
+                            }
+                            lastVersionTapEpochMs = now
+                            versionTapCount += 1
+                            if (versionTapCount >= VERSION_EASTER_EGG_TAP_COUNT) {
+                                versionTapCount = 0
+                                onVersionNumberEasterEgg()
+                            }
+                        }
+                    ),
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.6.sp,
@@ -210,7 +236,7 @@ private fun SettingsRootPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AutoUpdateSettingsPage(
+private fun CheckForUpdatesSettingsPage(
     state: SettingsUiState,
     updateStatus: String?,
     onBack: () -> Unit,
@@ -221,7 +247,7 @@ private fun AutoUpdateSettingsPage(
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { SettingsTopBar(title = "Auto-Update", onBack = onBack) }
+        topBar = { SettingsTopBar(title = "Check for Updates", onBack = onBack) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -230,7 +256,7 @@ private fun AutoUpdateSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Enable Auto-Update") },
+                headlineContent = { Text("Enable Check for Updates") },
                 supportingContent = {
                     Text(
                         "When on, OmniNode checks GitHub Releases on your schedule and " +
@@ -239,24 +265,24 @@ private fun AutoUpdateSettingsPage(
                 },
                 trailingContent = {
                     Switch(
-                        checked = state.autoUpdateEnabled,
+                        checked = state.checkForUpdatesEnabled,
                         onCheckedChange = onToggle
                     )
                 }
             )
-            if (state.autoUpdateEnabled) {
+            if (state.checkForUpdatesEnabled) {
                 UpdateFrequencyRow(
-                    unit = state.autoUpdateIntervalUnit,
-                    amountText = state.autoUpdateAmountText,
-                    amount = state.autoUpdateIntervalAmount,
+                    unit = state.checkForUpdatesIntervalUnit,
+                    amountText = state.checkForUpdatesAmountText,
+                    amount = state.checkForUpdatesIntervalAmount,
                     onUnitSelected = onUnitSelected,
                     onAmountTextChange = onAmountTextChange,
                     onWeekAmountSelected = onWeekAmountSelected
                 )
                 Text(
                     text = UpdateCheckFrequency.label(
-                        state.autoUpdateIntervalUnit,
-                        state.autoUpdateIntervalAmount
+                        state.checkForUpdatesIntervalUnit,
+                        state.checkForUpdatesIntervalAmount
                     ),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
@@ -581,3 +607,6 @@ private fun UpdateFrequencyRow(
         }
     }
 }
+
+private const val VERSION_EASTER_EGG_TAP_COUNT = 5
+private const val VERSION_EASTER_EGG_TAP_WINDOW_MS = 2_000L
