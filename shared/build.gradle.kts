@@ -58,6 +58,13 @@ kotlin {
             implementation(libs.ktor.client.cio)
             implementation(libs.androidx.core.ktx)
             implementation(libs.androidx.activity.compose)
+            implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation(libs.firebase.auth)
+            implementation(libs.firebase.firestore)
+            implementation(libs.androidx.credentials)
+            implementation(libs.androidx.credentials.play.services)
+            implementation(libs.googleid)
+            implementation(libs.kotlinx.coroutines.play.services)
         }
 
         val desktopMain by getting {
@@ -75,6 +82,12 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
+        val webClientId = providers.gradleProperty("omninode.google.web.client.id").orElse("").get()
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$webClientId\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
@@ -91,3 +104,4 @@ dependencies {
 room3 {
     schemaDirectory("$projectDir/schemas")
 }
+

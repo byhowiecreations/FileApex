@@ -47,7 +47,7 @@ import com.omninode.data.settings.PinIdleTimeout
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.platform.OmniBackHandler
-import com.omninode.platform.rememberGoogleAccountPicker
+import com.omninode.platform.rememberGoogleSignInLauncher
 import com.omninode.presentation.SettingsUiState
 import com.omninode.presentation.SettingsViewModel
 import com.omninode.ui.theme.OmniTeal
@@ -68,6 +68,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val updateStatus by viewModel.updateStatusMessage.collectAsState()
+    val googleLinkStatus by viewModel.googleLinkStatus.collectAsState()
     var page by remember { mutableStateOf(SettingsPage.Root) }
 
     val leavePage: () -> Unit = {
@@ -108,9 +109,10 @@ fun SettingsScreen(
         )
         SettingsPage.GoogleAccount -> GoogleAccountSettingsPage(
             state = state,
+            linkStatus = googleLinkStatus,
             onBack = { page = SettingsPage.Root },
             onDisable = viewModel::disableGoogleAccountLink,
-            onAccountPicked = viewModel::onGoogleAccountPicked
+            onIdToken = viewModel::onGoogleIdToken
         )
     }
 }
@@ -372,11 +374,12 @@ private fun PinRequiredSettingsPage(
 @Composable
 private fun GoogleAccountSettingsPage(
     state: SettingsUiState,
+    linkStatus: String?,
     onBack: () -> Unit,
     onDisable: () -> Unit,
-    onAccountPicked: (String?) -> Unit
+    onIdToken: (idToken: String?, email: String?, errorMessage: String?) -> Unit
 ) {
-    val launchPicker = rememberGoogleAccountPicker(onPicked = onAccountPicked)
+    val launchSignIn = rememberGoogleSignInLauncher(onResult = onIdToken)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -392,8 +395,10 @@ private fun GoogleAccountSettingsPage(
                 headlineContent = { Text("Link Google Account") },
                 supportingContent = {
                     Text(
-                        "Link a Google Account to discover devices signed into the same account. " +
-                            "Turning this on opens the Android account picker."
+                        "Opt-in only. Signs in with Google and registers this device’s public ID " +
+                            "and LAN address in your private Firebase registry so other OmniNode " +
+                            "apps on the same account can discover you. No files or folder " +
+                            "contents are ever uploaded."
                     )
                 },
                 trailingContent = {
@@ -401,7 +406,7 @@ private fun GoogleAccountSettingsPage(
                         checked = state.googleAccountLinkEnabled,
                         onCheckedChange = { enabled ->
                             if (enabled) {
-                                launchPicker()
+                                launchSignIn()
                             } else {
                                 onDisable()
                             }
@@ -415,6 +420,14 @@ private fun GoogleAccountSettingsPage(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            linkStatus?.let { status ->
+                Text(
+                    text = status,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             state.googleAccountError?.let { err ->

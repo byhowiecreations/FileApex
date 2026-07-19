@@ -14,6 +14,7 @@ OmniNode is an ecosystem file manager designed to seamlessly sync, manage, and b
 * **macOS Finder Integration:** Right-click files directly inside native macOS Finder to broadcast across your local cluster via the Share Extension. 
 * **Auto-Updates:** Keep your network deployment current with integrated, platform-native automatic updating directly from GitHub releases.
 
+
 ## Local Configuration
 
 Files broadcasted across devices route automatically to the local device storage paths:
@@ -26,9 +27,11 @@ To provide cross-platform file access and seamless system integration, the app r
 
 * **File System Access:** Core functionality. Allows the app to navigate, list, and read the user's local directory structure to facilitate remote file management.
 * **Unrestricted Battery Usage (Android):** Prevents the OS from aggressively putting the background service to sleep, ensuring the device does not unexpectedly appear "Offline" to connected clients.
-* **Internet & External Network Access:** This is strictly **Opt-In**. Used solely to validate Google Account authentication (coming soon) and to safely query for software updates.
+* **Internet & External Network Access:** This is strictly **Opt-In**. Used solely to validate Google Account authentication and to safely query for software updates directly from Github.
+    * **Strict Privacy Boundary:** No actual files, folders, or personal user data will ever touch Firebase. Firestore will be used strictly as a serverless "virtual registry" to exchange public keys, random device IDs, and local network connection strings. Using Firebase (Google Account) is entirely **Opt-In**.
 * **Local Network (LAN) Sockets:** Initiates local network traffic to discover peer devices and stream file data securely between your machines. No personal file data ever leaves your local network.
 * **Finder & Share Menu Extensions (macOS):** Integrates directly with the native macOS file manager to provide quick-access context menus and enables sending files to your device pipeline using the system Share menu.
+
 
 
 

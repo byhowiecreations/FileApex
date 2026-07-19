@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.omninode.cloud.GoogleLinkCoordinator
 import com.omninode.data.db.createOmniNodeDatabase
 import com.omninode.di.OmniNodeServices
 import com.omninode.network.DesktopShareServerController
@@ -27,6 +28,7 @@ private val DesktopWindowMaxHeight = 900.dp
 fun main() {
     OmniNodeServices.init(createOmniNodeDatabase())
     AppUpdateCoordinator.onAppLaunch()
+    GoogleLinkCoordinator.onAppLaunch()
     MacOsExtensionRegistrar.registerOnLaunch()
     DesktopSendHandoff.installOpenUriHandler()
 

@@ -8,6 +8,7 @@ import com.omninode.data.settings.initAndroidAppSettings
 import com.omninode.di.OmniNodeServices
 import com.omninode.platform.OmniNodeWakeService
 import com.omninode.platform.initAndroidTransferReceiveNotifier
+import com.omninode.cloud.GoogleLinkCoordinator
 import com.omninode.update.AppUpdateCoordinator
 
 class OmniNodeApplication : Application() {
@@ -18,6 +19,7 @@ class OmniNodeApplication : Application() {
         initAndroidTransferReceiveNotifier(this)
         OmniNodeServices.init(createOmniNodeDatabase(this))
         AppUpdateCoordinator.onAppLaunch()
+        GoogleLinkCoordinator.onAppLaunch()
         startService(Intent(this, OmniNodeWakeService::class.java))
     }
 }

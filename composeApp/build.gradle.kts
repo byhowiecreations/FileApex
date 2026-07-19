@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlinCompose)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.googleServices)
 }
 
 kotlin {
@@ -147,6 +148,7 @@ compose.desktop {
                                 <key>CFBundleURLSchemes</key>
                                 <array>
                                     <string>omninode</string>
+                                    <string>omni</string>
                                 </array>
                             </dict>
                         </array>
