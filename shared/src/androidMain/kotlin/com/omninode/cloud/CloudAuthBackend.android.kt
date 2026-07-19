@@ -6,6 +6,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import com.omninode.shared.BuildConfig
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 
 actual object CloudAuthBackend {
@@ -35,7 +37,7 @@ actual object CloudAuthBackend {
         FirebaseAuth.getInstance().signOut()
     }
 
-    actual suspend fun publishDevice(uid: String, record: CloudDeviceRecord) {
+    actual suspend fun registerDevice(uid: String, record: CloudDeviceRecord) {
         val data = mapOf(
             "deviceId" to record.deviceId,
             "deviceName" to record.deviceName,
@@ -46,39 +48,79 @@ actual object CloudAuthBackend {
             "platform" to record.platform,
             "updatedAtEpochMs" to record.updatedAtEpochMs
         )
-        FirebaseFirestore.getInstance()
-            .collection("users").document(uid)
-            .collection("devices").document(record.deviceId)
+        deviceDoc(uid, record.deviceId)
             .set(data, SetOptions.merge())
             .await()
     }
 
+    actual suspend fun patchDevicePresence(uid: String, presence: CloudDevicePresence) {
+        val fields = mapOf(
+            "deviceId" to presence.deviceId,
+            "lastKnownIp" to presence.lastKnownIp,
+            "port" to presence.port,
+            "publicKeyHash" to presence.publicKeyHash,
+            "rootPath" to presence.rootPath,
+            "platform" to presence.platform,
+            "updatedAtEpochMs" to presence.updatedAtEpochMs
+        )
+        val ref = deviceDoc(uid, presence.deviceId)
+        runCatching {
+            ref.update(fields).await()
+        }.onFailure {
+            // Document missing (first heartbeat before register completed) — create without clobbering name
+            // if another client already wrote one: merge omits deviceName so existing name is preserved.
+            ref.set(fields, SetOptions.merge()).await()
+        }
+    }
+
+    actual suspend fun patchDeviceName(
+        uid: String,
+        deviceId: String,
+        deviceName: String,
+        updatedAtEpochMs: Long
+    ) {
+        val fields = mapOf(
+            "deviceName" to deviceName,
+            "updatedAtEpochMs" to updatedAtEpochMs
+        )
+        val ref = deviceDoc(uid, deviceId)
+        runCatching {
+            ref.update(fields).await()
+        }.onFailure {
+            ref.set(fields, SetOptions.merge()).await()
+        }
+    }
+
     actual suspend fun deleteDevice(uid: String, deviceId: String) {
-        FirebaseFirestore.getInstance()
-            .collection("users").document(uid)
-            .collection("devices").document(deviceId)
-            .delete()
-            .await()
+        deviceDoc(uid, deviceId).delete().await()
     }
 
     actual fun observeUserDevices(
         uid: String,
-        excludeDeviceId: String,
         onDevices: (List<CloudDeviceRecord>) -> Unit,
         onError: (Throwable) -> Unit
     ): CloudRegistryHandle {
+        val idle = CompletableDeferred<Unit>()
+        val state = ListenerState()
         val registration: ListenerRegistration = FirebaseFirestore.getInstance()
             .collection("users").document(uid)
             .collection("devices")
             .addSnapshotListener { snapshot, error ->
+                if (state.stopped) {
+                    return@addSnapshotListener
+                }
                 if (error != null) {
-                    onError(error)
+                    if (!state.stopped) {
+                        onError(error)
+                    }
+                    return@addSnapshotListener
+                }
+                if (state.stopped) {
                     return@addSnapshotListener
                 }
                 val docs = snapshot?.documents.orEmpty()
-                val records = docs.mapNotNull { doc ->
+                val records = docs.map { doc ->
                     val id = doc.getString("deviceId") ?: doc.id
-                    if (id == excludeDeviceId) return@mapNotNull null
                     CloudDeviceRecord(
                         deviceId = id,
                         deviceName = doc.getString("deviceName").orEmpty(),
@@ -90,14 +132,41 @@ actual object CloudAuthBackend {
                         updatedAtEpochMs = doc.getLong("updatedAtEpochMs") ?: 0L
                     )
                 }
-                onDevices(records)
+                if (!state.stopped) {
+                    onDevices(records)
+                }
             }
         return object : CloudRegistryHandle {
             override fun stop() {
-                registration.remove()
+                if (state.stopped) {
+                    return
+                }
+                state.stopped = true
+                runCatching { registration.remove() }
+                if (!idle.isCompleted) {
+                    idle.complete(Unit)
+                }
+            }
+
+            override suspend fun awaitIdle() {
+                idle.await()
+                // Let Firebase finish any in-flight native callback before Auth tear-down.
+                delay(LISTENER_DRAIN_MS)
             }
         }
     }
+
+    private fun deviceDoc(uid: String, deviceId: String) =
+        FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection("devices").document(deviceId)
+
+    private class ListenerState {
+        @Volatile
+        var stopped: Boolean = false
+    }
+
+    private const val LISTENER_DRAIN_MS = 75L
 }
 
 actual fun googleWebClientId(): String = BuildConfig.GOOGLE_WEB_CLIENT_ID

@@ -13,27 +13,45 @@ expect object CloudAuthBackend {
     suspend fun signOut()
 
     /**
-     * Upsert this device under `users/{uid}/devices/{deviceId}`.
+     * First-time (or recovery) upsert of the full device document, including [CloudDeviceRecord.deviceName].
+     * Must not be used from heartbeats or other lifecycle loops.
      */
-    suspend fun publishDevice(uid: String, record: CloudDeviceRecord)
+    suspend fun registerDevice(uid: String, record: CloudDeviceRecord)
+
+    /**
+     * Partial field update for LAN/presence only — never writes [deviceName].
+     */
+    suspend fun patchDevicePresence(uid: String, presence: CloudDevicePresence)
+
+    /**
+     * Partial field update for display name only — caller must be an explicit user rename action.
+     */
+    suspend fun patchDeviceName(uid: String, deviceId: String, deviceName: String, updatedAtEpochMs: Long)
 
     suspend fun deleteDevice(uid: String, deviceId: String)
 
     /**
-     * Start listening / polling the user device collection.
-     * [onDevices] receives every device except [excludeDeviceId] when possible.
+     * Start listening / polling the user device collection (includes this device’s document).
+     * Remote snapshots are authoritative for all fields including [CloudDeviceRecord.deviceName].
      * @return a handle that stops the listener when [CloudRegistryHandle.stop] is called.
      */
     fun observeUserDevices(
         uid: String,
-        excludeDeviceId: String,
         onDevices: (List<CloudDeviceRecord>) -> Unit,
         onError: (Throwable) -> Unit
     ): CloudRegistryHandle
 }
 
+/**
+ * Firestore registry subscription. Always [stop] then [awaitIdle] before Auth sign-out or
+ * opening a replacement listener so Firebase’s local persistence/mutexes are not used after teardown.
+ */
 interface CloudRegistryHandle {
+    /** Marks the subscription stopped and begins detach; may return while callbacks finish. */
     fun stop()
+
+    /** Suspends until the subscription has fully drained (no further callbacks will run). */
+    suspend fun awaitIdle()
 }
 
 expect fun googleWebClientId(): String

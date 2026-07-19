@@ -15,10 +15,15 @@ import com.omninode.network.OmniNodeClient
 import com.omninode.platform.localIpv4Addresses
 
 object OmniNodeServices {
+    @Volatile
     private var database: OmniNodeDatabase? = null
 
+    @Volatile
+    private var deviceRepositoryInstance: DeviceRepository? = null
+
     val deviceRepository: DeviceRepository
-        get() = DeviceRepository(requireDb().deviceDao())
+        get() = deviceRepositoryInstance
+            ?: error("OmniNodeServices.init(database) must be called first")
 
     val transferService: FileTransferService by lazy { FileTransferService(client = client) }
     val client: OmniNodeClient by lazy { OmniNodeClient() }
@@ -54,12 +59,20 @@ object OmniNodeServices {
     }
 
     fun init(database: OmniNodeDatabase) {
+        val existing = this.database
+        if (existing != null) {
+            check(existing === database) {
+                "OmniNodeServices.init must not replace an active Room database instance"
+            }
+            return
+        }
         this.database = database
+        this.deviceRepositoryInstance = DeviceRepository(database.deviceDao())
         LocalDeviceNameStore.ensureLoaded()
         presenceMonitor.start()
     }
 
-    private fun requireDb(): OmniNodeDatabase {
-        return database ?: error("OmniNodeServices.init(database) must be called first")
-    }
+    fun isDatabaseReady(): Boolean = database != null && deviceRepositoryInstance != null
+
+    fun deviceRepositoryOrNull(): DeviceRepository? = deviceRepositoryInstance
 }

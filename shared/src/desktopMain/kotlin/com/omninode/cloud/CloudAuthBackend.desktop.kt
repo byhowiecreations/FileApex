@@ -21,6 +21,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.prefs.Preferences
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -105,48 +106,115 @@ actual object CloudAuthBackend {
         prefs.remove(KEY_DISPLAY_NAME)
     }
 
-    actual suspend fun publishDevice(uid: String, record: CloudDeviceRecord) {
+    actual suspend fun registerDevice(uid: String, record: CloudDeviceRecord) {
         val token = requireIdToken()
         val project = firebaseProjectId()
         val parent =
             "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
                 "users/$uid/devices"
-        val fields = buildJsonObject {
+        val body = firestoreDocumentBody(
+            deviceId = record.deviceId,
+            deviceName = record.deviceName,
+            lastKnownIp = record.lastKnownIp,
+            port = record.port,
+            publicKeyHash = record.publicKeyHash,
+            rootPath = record.rootPath,
+            platform = record.platform,
+            updatedAtEpochMs = record.updatedAtEpochMs
+        )
+        patchOrCreateDocument(
+            token = token,
+            parent = parent,
+            deviceId = record.deviceId,
+            body = body,
+            fieldPaths = listOf(
+                "deviceId",
+                "deviceName",
+                "lastKnownIp",
+                "port",
+                "publicKeyHash",
+                "rootPath",
+                "platform",
+                "updatedAtEpochMs"
+            )
+        )
+    }
+
+    actual suspend fun patchDevicePresence(uid: String, presence: CloudDevicePresence) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val parent =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/devices"
+        val body = buildJsonObject {
             put(
                 "fields",
                 buildJsonObject {
-                    put("deviceId", buildJsonObject { put("stringValue", record.deviceId) })
-                    put("deviceName", buildJsonObject { put("stringValue", record.deviceName) })
-                    put("lastKnownIp", buildJsonObject { put("stringValue", record.lastKnownIp) })
-                    put("port", buildJsonObject { put("integerValue", record.port.toString()) })
-                    put("publicKeyHash", buildJsonObject { put("stringValue", record.publicKeyHash) })
-                    put("rootPath", buildJsonObject { put("stringValue", record.rootPath) })
-                    put("platform", buildJsonObject { put("stringValue", record.platform) })
+                    put("deviceId", buildJsonObject { put("stringValue", presence.deviceId) })
+                    put("lastKnownIp", buildJsonObject { put("stringValue", presence.lastKnownIp) })
+                    put("port", buildJsonObject { put("integerValue", presence.port.toString()) })
+                    put(
+                        "publicKeyHash",
+                        buildJsonObject { put("stringValue", presence.publicKeyHash) }
+                    )
+                    put("rootPath", buildJsonObject { put("stringValue", presence.rootPath) })
+                    put("platform", buildJsonObject { put("stringValue", presence.platform) })
                     put(
                         "updatedAtEpochMs",
-                        buildJsonObject { put("integerValue", record.updatedAtEpochMs.toString()) }
+                        buildJsonObject {
+                            put("integerValue", presence.updatedAtEpochMs.toString())
+                        }
                     )
                 }
             )
         }
-        // Upsert: PATCH existing document; if missing, create with documentId.
-        val patchUrl = "$parent/${record.deviceId}"
-        val patch = client.patch(patchUrl) {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            contentType(ContentType.Application.Json)
-            parameter("currentDocument.exists", "true")
-            setBody(fields)
+        patchOrCreateDocument(
+            token = token,
+            parent = parent,
+            deviceId = presence.deviceId,
+            body = body,
+            fieldPaths = listOf(
+                "deviceId",
+                "lastKnownIp",
+                "port",
+                "publicKeyHash",
+                "rootPath",
+                "platform",
+                "updatedAtEpochMs"
+            )
+        )
+    }
+
+    actual suspend fun patchDeviceName(
+        uid: String,
+        deviceId: String,
+        deviceName: String,
+        updatedAtEpochMs: Long
+    ) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val parent =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/devices"
+        val body = buildJsonObject {
+            put(
+                "fields",
+                buildJsonObject {
+                    put("deviceName", buildJsonObject { put("stringValue", deviceName) })
+                    put(
+                        "updatedAtEpochMs",
+                        buildJsonObject { put("integerValue", updatedAtEpochMs.toString()) }
+                    )
+                }
+            )
         }
-        if (patch.status.isSuccess()) return
-        val create = client.post(parent) {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            contentType(ContentType.Application.Json)
-            parameter("documentId", record.deviceId)
-            setBody(fields)
-        }
-        if (!create.status.isSuccess()) {
-            error("Firestore publish failed (${create.status}): ${create.bodyAsText()}")
-        }
+        patchOrCreateDocument(
+            token = token,
+            parent = parent,
+            deviceId = deviceId,
+            body = body,
+            fieldPaths = listOf("deviceName", "updatedAtEpochMs")
+        )
     }
 
     actual suspend fun deleteDevice(uid: String, deviceId: String) {
@@ -162,60 +230,140 @@ actual object CloudAuthBackend {
 
     actual fun observeUserDevices(
         uid: String,
-        excludeDeviceId: String,
         onDevices: (List<CloudDeviceRecord>) -> Unit,
         onError: (Throwable) -> Unit
     ): CloudRegistryHandle {
-        var job: Job? = null
-        job = pollScope.launch {
-            while (isActive) {
-                runCatching {
-                    val token = requireIdToken()
-                    val project = firebaseProjectId()
-                    val url =
-                        "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
-                            "users/$uid/devices"
-                    val response = client.get(url) {
-                        header(HttpHeaders.Authorization, "Bearer $token")
+        val idle = CompletableDeferred<Unit>()
+        val state = ListenerState()
+        val job = pollScope.launch {
+            try {
+                while (isActive && !state.stopped) {
+                    runCatching {
+                        val token = requireIdToken()
+                        val project = firebaseProjectId()
+                        val url =
+                            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                                "users/$uid/devices"
+                        val response = client.get(url) {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                        }
+                        if (!response.status.isSuccess()) {
+                            error("Firestore list failed (${response.status}): ${response.bodyAsText()}")
+                        }
+                        val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
+                        val docsEl = body["documents"]
+                        val list = mutableListOf<CloudDeviceRecord>()
+                        val arr = docsEl as? kotlinx.serialization.json.JsonArray
+                        arr?.forEach { el ->
+                            val doc = el.jsonObject
+                            val fields = doc["fields"]?.jsonObject ?: return@forEach
+                            val id = stringField(fields, "deviceId")
+                                ?: doc["name"]?.jsonPrimitive?.contentOrNull
+                                    ?.substringAfterLast('/')
+                                ?: return@forEach
+                            list += CloudDeviceRecord(
+                                deviceId = id,
+                                deviceName = stringField(fields, "deviceName").orEmpty(),
+                                lastKnownIp = stringField(fields, "lastKnownIp").orEmpty(),
+                                port = integerField(fields, "port")?.toInt() ?: 8080,
+                                publicKeyHash = stringField(fields, "publicKeyHash").orEmpty(),
+                                rootPath = stringField(fields, "rootPath").orEmpty(),
+                                platform = stringField(fields, "platform").orEmpty(),
+                                updatedAtEpochMs = integerField(fields, "updatedAtEpochMs") ?: 0L
+                            )
+                        }
+                        if (!state.stopped) {
+                            onDevices(list)
+                        }
+                    }.onFailure { error ->
+                        if (!state.stopped) {
+                            onError(error)
+                        }
                     }
-                    if (!response.status.isSuccess()) {
-                        error("Firestore list failed (${response.status}): ${response.bodyAsText()}")
-                    }
-                    val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
-                    val docsEl = body["documents"]
-                    val list = mutableListOf<CloudDeviceRecord>()
-                    val arr = docsEl as? kotlinx.serialization.json.JsonArray
-                    arr?.forEach { el ->
-                        val doc = el.jsonObject
-                        val fields = doc["fields"]?.jsonObject ?: return@forEach
-                        val id = stringField(fields, "deviceId")
-                            ?: doc["name"]?.jsonPrimitive?.contentOrNull
-                                ?.substringAfterLast('/')
-                            ?: return@forEach
-                        if (id == excludeDeviceId) return@forEach
-                        list += CloudDeviceRecord(
-                            deviceId = id,
-                            deviceName = stringField(fields, "deviceName").orEmpty(),
-                            lastKnownIp = stringField(fields, "lastKnownIp").orEmpty(),
-                            port = integerField(fields, "port")?.toInt() ?: 8080,
-                            publicKeyHash = stringField(fields, "publicKeyHash").orEmpty(),
-                            rootPath = stringField(fields, "rootPath").orEmpty(),
-                            platform = stringField(fields, "platform").orEmpty(),
-                            updatedAtEpochMs = integerField(fields, "updatedAtEpochMs") ?: 0L
-                        )
-                    }
-                    onDevices(list)
-                }.onFailure { error ->
-                    onError(error)
+                    if (state.stopped) break
+                    delay(POLL_MS)
                 }
-                delay(POLL_MS)
+            } finally {
+                if (!idle.isCompleted) {
+                    idle.complete(Unit)
+                }
             }
         }
         return object : CloudRegistryHandle {
             override fun stop() {
-                job?.cancel()
+                if (state.stopped) {
+                    return
+                }
+                state.stopped = true
+                job.cancel()
+            }
+
+            override suspend fun awaitIdle() {
+                idle.await()
             }
         }
+    }
+
+    private class ListenerState {
+        @Volatile
+        var stopped: Boolean = false
+    }
+
+    private suspend fun patchOrCreateDocument(
+        token: String,
+        parent: String,
+        deviceId: String,
+        body: JsonObject,
+        fieldPaths: List<String>
+    ) {
+        val patchUrl = "$parent/$deviceId"
+        val patch = client.patch(patchUrl) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            parameter("currentDocument.exists", "true")
+            fieldPaths.forEach { path ->
+                parameter("updateMask.fieldPaths", path)
+            }
+            setBody(body)
+        }
+        if (patch.status.isSuccess()) return
+        val create = client.post(parent) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            parameter("documentId", deviceId)
+            setBody(body)
+        }
+        if (!create.status.isSuccess()) {
+            error("Firestore write failed (${create.status}): ${create.bodyAsText()}")
+        }
+    }
+
+    private fun firestoreDocumentBody(
+        deviceId: String,
+        deviceName: String,
+        lastKnownIp: String,
+        port: Int,
+        publicKeyHash: String,
+        rootPath: String,
+        platform: String,
+        updatedAtEpochMs: Long
+    ): JsonObject = buildJsonObject {
+        put(
+            "fields",
+            buildJsonObject {
+                put("deviceId", buildJsonObject { put("stringValue", deviceId) })
+                put("deviceName", buildJsonObject { put("stringValue", deviceName) })
+                put("lastKnownIp", buildJsonObject { put("stringValue", lastKnownIp) })
+                put("port", buildJsonObject { put("integerValue", port.toString()) })
+                put("publicKeyHash", buildJsonObject { put("stringValue", publicKeyHash) })
+                put("rootPath", buildJsonObject { put("stringValue", rootPath) })
+                put("platform", buildJsonObject { put("stringValue", platform) })
+                put(
+                    "updatedAtEpochMs",
+                    buildJsonObject { put("integerValue", updatedAtEpochMs.toString()) }
+                )
+            }
+        )
     }
 
     private suspend fun requireIdToken(): String {

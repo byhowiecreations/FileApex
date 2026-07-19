@@ -82,7 +82,7 @@ class PeerPresenceMonitor(
                             port = identity.port.takeIf { it > 0 } ?: peer.port
                         )
                         if (refreshed != peer) {
-                            repository.upsert(refreshed)
+                            repository.upsertReplacingAliases(refreshed)
                         }
                     }
                 }

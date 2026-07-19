@@ -2,6 +2,7 @@ package com.omninode.cloud
 
 import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.identity.LocalDeviceNameStore
+import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.loadLocalIdentity
 import com.omninode.di.OmniNodeServices
 import com.omninode.platform.currentTimeMillis
@@ -10,9 +11,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,10 +24,28 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Opt-in Google Account linking + Firestore virtual device registry.
  * Single source of truth for cloud pairing seed → local [com.omninode.data.device.DeviceRepository].
+ *
+ * [deviceName] is written to Firestore only from explicit user rename actions
+ * ([publishUserRenamedDevice]). Heartbeats patch presence fields only.
+ *
+ * Session teardown always drains Firestore listeners and session coroutines before Auth sign-out
+ * or before a replacement session starts (avoids Firebase/SQLite "destroyed mutex" races).
  */
 object GoogleLinkCoordinator {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gate = Mutex()
+
+    /** Process-lifetime launcher for app-start restore only; never cancelled on unlink. */
+    private val bootstrapScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private var sessionJob: Job = SupervisorJob()
+    private var sessionScope: CoroutineScope = CoroutineScope(sessionJob + Dispatchers.Default)
+
+    @Volatile
+    private var sessionEpoch: Long = 0L
+
+    @Volatile
+    private var cloudOpsActive: Boolean = false
+
     private var registryHandle: CloudRegistryHandle? = null
     private var heartbeatJob: Job? = null
 
@@ -32,7 +54,7 @@ object GoogleLinkCoordinator {
 
     fun onAppLaunch() {
         if (!OmniNodeServices.settings.googleAccountLinkEnabled.value) return
-        scope.launch {
+        bootstrapScope.launch {
             runCatching { restoreSessionAndListen() }
                 .onFailure { error ->
                     _status.value = error.message ?: "Cloud link restore failed"
@@ -51,15 +73,15 @@ object GoogleLinkCoordinator {
             }
             require(idToken.isNotBlank()) { "Missing Google ID token" }
             _status.value = "Signing in…"
+            shutdownCloudSessionLocked()
             val session = CloudAuthBackend.signInWithGoogleIdToken(idToken)
             val email = session.email.ifBlank { emailHint.orEmpty() }
             val settings = OmniNodeServices.settings
             settings.setGoogleAccountEmail(email)
             settings.setGoogleAccountUid(session.firebaseUid)
             settings.setGoogleAccountLinkEnabled(true)
-            publishSelf(session.firebaseUid)
-            startListening(session.firebaseUid)
-            startHeartbeat(session.firebaseUid)
+            registerSelf(session.firebaseUid)
+            startCloudSessionLocked(session.firebaseUid)
             _status.value = "Linked as ${email.ifBlank { session.firebaseUid }}"
             return session.copy(email = email)
         }
@@ -68,11 +90,10 @@ object GoogleLinkCoordinator {
     suspend fun unlinkAndSignOut() {
         gate.withLock {
             _status.value = "Signing out…"
-            stopListening()
-            heartbeatJob?.cancel()
-            heartbeatJob = null
             val uid = OmniNodeServices.settings.googleAccountUid.value
             val deviceId = loadLocalIdentity().deviceId
+            // Drain listeners/workers before any Auth/Firestore mutation or sign-out.
+            shutdownCloudSessionLocked()
             if (uid.isNotBlank()) {
                 runCatching { CloudAuthBackend.deleteDevice(uid, deviceId) }
             }
@@ -80,6 +101,26 @@ object GoogleLinkCoordinator {
             OmniNodeServices.settings.setGoogleAccountLinkEnabled(false)
             _status.value = "Google Account unlinked"
         }
+    }
+
+    /**
+     * Explicit user rename → Firestore `deviceName` field patch only.
+     * [deviceId] may be [LocalIdentity.LOCAL_DEVICE_ID] or a peer cloud/local device id.
+     */
+    suspend fun publishUserRenamedDevice(deviceId: String, newName: String) {
+        if (!OmniNodeServices.settings.googleAccountLinkEnabled.value) return
+        if (!cloudOpsActive) return
+        val uid = OmniNodeServices.settings.googleAccountUid.value
+        if (uid.isBlank()) return
+        val trimmed = newName.trim()
+        require(trimmed.isNotEmpty()) { "Device name cannot be empty" }
+        val cloudDeviceId = resolveCloudDeviceId(deviceId)
+        CloudAuthBackend.patchDeviceName(
+            uid = uid,
+            deviceId = cloudDeviceId,
+            deviceName = trimmed,
+            updatedAtEpochMs = currentTimeMillis()
+        )
     }
 
     private suspend fun restoreSessionAndListen() {
@@ -91,24 +132,113 @@ object GoogleLinkCoordinator {
                 settings.setGoogleAccountEmail(session.email)
             }
             settings.setGoogleAccountUid(session.firebaseUid)
-            publishSelf(session.firebaseUid)
-            startListening(session.firebaseUid)
-            startHeartbeat(session.firebaseUid)
+            shutdownCloudSessionLocked()
+            // Presence only on restore — never overwrite remote deviceName with stale local memory.
+            runCatching { patchSelfPresence(session.firebaseUid) }
+            startCloudSessionLocked(session.firebaseUid)
             _status.value = "Cloud registry active"
         }
     }
 
-    private suspend fun publishSelf(uid: String) {
-        CloudAuthBackend.publishDevice(uid, buildSelfRecord())
+    /**
+     * Invalidate epoch, cancel heartbeat, detach Firestore listener, and join all session work
+     * before Auth teardown or a new session attaches.
+     */
+    private suspend fun shutdownCloudSessionLocked() {
+        sessionEpoch += 1L
+        cloudOpsActive = false
+
+        val previousHeartbeat = heartbeatJob
+        heartbeatJob = null
+        previousHeartbeat?.cancelAndJoin()
+
+        val previousHandle = registryHandle
+        registryHandle = null
+        previousHandle?.stop()
+        previousHandle?.awaitIdle()
+
+        val previousJob = sessionJob
+        sessionJob = SupervisorJob()
+        sessionScope = CoroutineScope(sessionJob + Dispatchers.Default)
+        previousJob.cancelAndJoin()
+
+        // Brief settle so native Firebase/SQLite mutexes are not reused mid-destroy.
+        delay(SESSION_SETTLE_MS)
+    }
+
+    private fun startCloudSessionLocked(uid: String) {
+        cloudOpsActive = true
+        val epoch = sessionEpoch
+        val selfId = loadLocalIdentity().deviceId
+        val scope = sessionScope
+
+        scope.launch {
+            if (!isSessionLive(epoch)) return@launch
+            runCatching {
+                OmniNodeServices.deviceRepositoryOrNull()?.reconcileDuplicateEndpoints()
+            }.onFailure { error ->
+                println("GoogleLinkCoordinator: reconcile failed — ${error.message}")
+            }
+        }
+
+        registryHandle = CloudAuthBackend.observeUserDevices(
+            uid = uid,
+            onDevices = { records ->
+                if (!isSessionLive(epoch)) return@observeUserDevices
+                scope.launch {
+                    if (!isSessionLive(epoch)) return@launch
+                    applyRemoteDevices(records, selfId, epoch)
+                }
+            },
+            onError = { error ->
+                if (isSessionLive(epoch)) {
+                    _status.value = error.message ?: "Cloud registry error"
+                    println("GoogleLinkCoordinator: observe error — ${error.message}")
+                }
+            }
+        )
+
+        heartbeatJob = scope.launch {
+            while (isActive && isSessionLive(epoch)) {
+                delay(HEARTBEAT_MS)
+                if (!isSessionLive(epoch)) break
+                runCatching { patchSelfPresence(uid) }
+            }
+        }
+    }
+
+    private fun isSessionLive(epoch: Long): Boolean =
+        cloudOpsActive && epoch == sessionEpoch && OmniNodeServices.isDatabaseReady()
+
+    private suspend fun registerSelf(uid: String) {
+        CloudAuthBackend.registerDevice(uid, buildSelfRecord())
+    }
+
+    private suspend fun patchSelfPresence(uid: String) {
+        if (!cloudOpsActive) return
+        CloudAuthBackend.patchDevicePresence(uid, buildSelfPresence())
     }
 
     private fun buildSelfRecord(): CloudDeviceRecord {
+        val presence = buildSelfPresence()
+        val name = LocalDeviceNameStore.current().ifBlank { loadLocalIdentity().deviceName }
+        return CloudDeviceRecord(
+            deviceId = presence.deviceId,
+            deviceName = name,
+            lastKnownIp = presence.lastKnownIp,
+            port = presence.port,
+            publicKeyHash = presence.publicKeyHash,
+            rootPath = presence.rootPath,
+            platform = presence.platform,
+            updatedAtEpochMs = presence.updatedAtEpochMs
+        )
+    }
+
+    private fun buildSelfPresence(): CloudDevicePresence {
         val identity = loadLocalIdentity()
         val host = localIpv4Addresses().firstOrNull() ?: "127.0.0.1"
-        val name = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
-        return CloudDeviceRecord(
+        return CloudDevicePresence(
             deviceId = identity.deviceId,
-            deviceName = name,
             lastKnownIp = host,
             port = identity.sharePort,
             publicKeyHash = deviceFingerprint(identity.deviceId),
@@ -118,55 +248,66 @@ object GoogleLinkCoordinator {
         )
     }
 
-    private fun startListening(uid: String) {
-        stopListening()
-        val selfId = loadLocalIdentity().deviceId
-        registryHandle = CloudAuthBackend.observeUserDevices(
-            uid = uid,
-            excludeDeviceId = selfId,
-            onDevices = { records ->
-                scope.launch {
-                    mergeCloudDevices(records, selfId)
-                }
-            },
-            onError = { error ->
-                _status.value = error.message ?: "Cloud registry error"
-                println("GoogleLinkCoordinator: observe error — ${error.message}")
-            }
-        )
-    }
-
-    private fun stopListening() {
-        registryHandle?.stop()
-        registryHandle = null
-    }
-
-    private fun startHeartbeat(uid: String) {
-        heartbeatJob?.cancel()
-        heartbeatJob = scope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(HEARTBEAT_MS)
-                runCatching { publishSelf(uid) }
-            }
-        }
-    }
-
-    private suspend fun mergeCloudDevices(records: List<CloudDeviceRecord>, selfId: String) {
-        val repo = OmniNodeServices.deviceRepository
+    /**
+     * Applies remote peers into Room. Same [CloudDeviceRecord.deviceId] updates in place
+     * (no second row). Alias collapse via [DeviceRepository.upsertReplacingAliases] removes
+     * stale rows that share LAN endpoint/fingerprint under a different id.
+     * Never writes back to Firestore from this path; does not delete local-only pairings.
+     */
+    private suspend fun applyRemoteDevices(
+        records: List<CloudDeviceRecord>,
+        selfId: String,
+        epoch: Long
+    ) {
+        if (!isSessionLive(epoch)) return
+        val repo = OmniNodeServices.deviceRepositoryOrNull() ?: return
         records.asSequence()
-            .filter { it.deviceId.isNotBlank() && it.deviceId != selfId }
+            .filter { it.deviceId.isNotBlank() }
             .forEach { remote ->
-                repo.upsert(
-                    PairedDeviceEntity(
-                        deviceId = remote.deviceId,
-                        deviceName = remote.deviceName.ifBlank { "Cloud device" },
-                        lastKnownIp = remote.lastKnownIp,
-                        port = remote.port,
-                        publicKeyHash = remote.publicKeyHash,
-                        rootPath = remote.rootPath.ifBlank { "/" }
+                if (!isSessionLive(epoch)) return
+                if (remote.deviceId == selfId) {
+                    applyRemoteSelfName(remote.deviceName, epoch)
+                    return@forEach
+                }
+                runCatching {
+                    if (!isSessionLive(epoch)) return@runCatching
+                    repo.upsertReplacingAliases(
+                        PairedDeviceEntity(
+                            deviceId = remote.deviceId,
+                            deviceName = remote.deviceName.ifBlank { "Cloud device" },
+                            lastKnownIp = remote.lastKnownIp,
+                            port = remote.port,
+                            publicKeyHash = remote.publicKeyHash,
+                            rootPath = remote.rootPath.ifBlank { "/" }
+                        )
                     )
+                }.onFailure { error ->
+                    println(
+                        "GoogleLinkCoordinator: skip Room upsert after teardown — ${error.message}"
+                    )
+                }
+            }
+    }
+
+    private fun applyRemoteSelfName(remoteName: String, epoch: Long) {
+        if (!isSessionLive(epoch)) return
+        val trimmed = remoteName.trim()
+        if (trimmed.isEmpty()) return
+        if (trimmed == LocalDeviceNameStore.current()) return
+        // Accept remote rename without pushing back to Firestore.
+        runCatching { LocalDeviceNameStore.apply(trimmed) }
+            .onFailure { error ->
+                println(
+                    "GoogleLinkCoordinator: skip local name apply after teardown — ${error.message}"
                 )
             }
+    }
+
+    private fun resolveCloudDeviceId(deviceId: String): String {
+        if (deviceId == LocalIdentity.LOCAL_DEVICE_ID) {
+            return loadLocalIdentity().deviceId
+        }
+        return deviceId
     }
 
     private fun deviceFingerprint(deviceId: String): String {
@@ -181,6 +322,7 @@ object GoogleLinkCoordinator {
     }
 
     private const val HEARTBEAT_MS = 60_000L
+    private const val SESSION_SETTLE_MS = 50L
 }
 
 expect fun currentPlatformLabel(): String

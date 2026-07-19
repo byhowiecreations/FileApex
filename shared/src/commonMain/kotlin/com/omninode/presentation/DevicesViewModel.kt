@@ -2,6 +2,7 @@ package com.omninode.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omninode.cloud.GoogleLinkCoordinator
 import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
@@ -235,7 +236,7 @@ class DevicesViewModel : ViewModel() {
             publicKeyHash = payload.publicKeyHash,
             rootPath = broadcasterRoot
         )
-        repository.upsert(broadcasterEntity)
+        repository.upsertReplacingAliases(broadcasterEntity)
 
         val scannerHost = localIpv4Addresses().firstOrNull()
             ?: error("No LAN IPv4 address available for reverse pairing")
@@ -281,6 +282,9 @@ class DevicesViewModel : ViewModel() {
                     LocalDeviceNameStore.apply(trimmed)
                     OmniNodeServices.pairingCoordinator.broadcastSelfIdentity()
                     presence.refreshNow()
+                    runCatching {
+                        GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
+                    }
                     _uiState.update {
                         it.copy(
                             localDeviceName = trimmed,
@@ -300,11 +304,15 @@ class DevicesViewModel : ViewModel() {
                             newName = trimmed
                         )
                     }.isSuccess
-                    repository.upsert(updated)
+                    repository.upsertReplacingAliases(updated)
                     // Always fan-out via cluster merge (includes the target) so rosters
                     // update instantly — and 0.0.2b+ targets adopt the name even if
                     // /identity/rename is missing or the share server wasn't restarted.
                     OmniNodeServices.pairingCoordinator.broadcastDeviceUpdate(updated)
+                    // Initiator is source of truth for Firestore deviceName (field patch only).
+                    runCatching {
+                        GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
+                    }
                     presence.refreshNow()
                     _uiState.update {
                         it.copy(

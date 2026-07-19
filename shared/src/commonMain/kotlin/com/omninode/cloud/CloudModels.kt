@@ -15,6 +15,20 @@ data class CloudDeviceRecord(
     val updatedAtEpochMs: Long
 )
 
+/**
+ * Presence / connectivity fields only. Never includes [deviceName] so heartbeats cannot
+ * roll back an explicit user rename.
+ */
+data class CloudDevicePresence(
+    val deviceId: String,
+    val lastKnownIp: String,
+    val port: Int,
+    val publicKeyHash: String,
+    val rootPath: String,
+    val platform: String,
+    val updatedAtEpochMs: Long
+)
+
 data class GoogleAuthSession(
     val firebaseUid: String,
     val email: String,

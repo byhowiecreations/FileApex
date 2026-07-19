@@ -20,7 +20,7 @@ class PairingCoordinator(
      * Broadcaster path: inbound POST /pairing/respond from a scanner.
      */
     suspend fun handleInboundScanner(scanner: PairedDeviceEntity) {
-        repository.upsert(scanner)
+        repository.upsertReplacingAliases(scanner)
         fanOutCluster(newlyPaired = scanner)
     }
 
@@ -51,7 +51,7 @@ class PairingCoordinator(
                 }
                 continue
             }
-            repository.upsert(device)
+            repository.upsertReplacingAliases(device)
         }
         // Re-announce so every roster / identity probe sees the adopted name.
         if (renamedSelf != null) {
