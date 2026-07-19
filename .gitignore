@@ -34,5 +34,5 @@ macos/**/DerivedData/
 # Xcode user state
 **/xcuserdata/
 *.xcuserstate
-rules.md
 docs/
+
