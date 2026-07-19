@@ -14,7 +14,7 @@ import kotlinx.io.files.SystemFileSystem
 /**
  * Single source of truth for outbound Multi Copy orchestration.
  *
- * UI (explorer), Finder Sync / Share job handoff, and any future entry points must call here —
+ * UI (explorer), Share Extension job handoff, and any future entry points must call here —
  * not [FileTransferService.multiCopyToDevices] or [MultiCopyBroadcastEngine] directly from Views.
  * Stream fan-out stays in [FileTransferService] / [MultiCopyBroadcastEngine]; this class owns
  * readiness, device-option resolution, local-path source building, and result summaries.
@@ -29,7 +29,7 @@ class TransferManager(
 ) {
     /**
      * Block until [OmniNodeServices] has finished init (DB + repositories).
-     * External launch paths (Finder Sync URI) must call this before enqueuing work.
+     * External launch paths (Share Extension URI) must call this before enqueuing work.
      */
     suspend fun awaitReady(timeoutMs: Long = DEFAULT_READY_TIMEOUT_MS) {
         if (isReady()) return
@@ -109,7 +109,7 @@ class TransferManager(
     }
 
     /**
-     * Finder Sync / Share job consumer: local absolute paths + paired device IDs.
+     * Share Extension job consumer: local absolute paths + paired device IDs.
      */
     suspend fun sendLocalPathsToDeviceIds(
         absolutePaths: List<String>,

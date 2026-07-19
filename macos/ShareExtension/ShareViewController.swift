@@ -2,8 +2,11 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Share Extension host — stages attachments then presents the shared DevicePicker.
-/// Send uses [OmniNodeSendHandoff.submitSend] (same path as Finder Sync → TransferManager).
+/// Share Extension host — stages attachments then presents the device picker.
+///
+/// Triggered from Finder (right-click → Share → OmniNode) or the system Share sheet.
+/// Never streams bytes itself: stages into Application Support, then
+/// [OmniNodeSendHandoff.submitSend] opens the main app’s TransferManager.
 @objc(ShareViewController)
 final class ShareViewController: NSViewController {
     private var hosting: NSHostingController<DevicePickerView>?
@@ -21,10 +24,18 @@ final class ShareViewController: NSViewController {
 
     private func prepareAndPresent() async {
         let urls = await resolveAttachmentURLs()
+        guard !urls.isEmpty else {
+            await MainActor.run {
+                self.presentStagingFailure("No files were provided to share.")
+            }
+            return
+        }
+
         let jobId = UUID().uuidString
         let stagedPaths: [String]
         do {
-            // Stage while Share still holds security-scoped grants (same as Finder Sync).
+            // Copy while Share still holds security-scoped grants so the main app
+            // receives real file bytes (avoids 0-byte transfers).
             stagedPaths = try OmniNodeSendHandoff.stageFiles(urls, jobId: jobId)
             NSLog("OmniNode ShareExtension: staged \(stagedPaths.count) file(s) for job \(jobId)")
         } catch {
@@ -88,6 +99,8 @@ final class ShareViewController: NSViewController {
         let typeIds = [
             UTType.fileURL.identifier,
             UTType.url.identifier,
+            UTType.image.identifier,
+            UTType.movie.identifier,
             UTType.item.identifier,
             UTType.data.identifier
         ]

@@ -7,12 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A30000000000000000000001 /* OmniNodePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OmniNodePaths.swift */; };
-		A30000000000000000000002 /* PairedDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PairedDeviceStore.swift */; };
-		A30000000000000000000003 /* OmniNodeSendHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeSendHandoff.swift */; };
-		A30000000000000000000004 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
-		A30000000000000000000005 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
-		A30000000000000000000010 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* FinderSync.swift */; };
 		A30000000000000000000011 /* OmniNodePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OmniNodePaths.swift */; };
 		A30000000000000000000012 /* PairedDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PairedDeviceStore.swift */; };
 		A30000000000000000000013 /* OmniNodeSendHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeSendHandoff.swift */; };
@@ -22,29 +16,18 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A10000000000000000000012 /* OmniNodeFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OmniNodeFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000013 /* OmniNodeShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OmniNodeShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000001 /* OmniNodePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmniNodePaths.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* PairedDeviceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDeviceStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* OmniNodeSendHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmniNodeSendHandoff.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* DevicePickerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerModel.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
-		A20000000000000000000010 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
-		A20000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A20000000000000000000012 /* FinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderSync.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000020 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000022 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		A10000000000000000000022 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		A10000000000000000000025 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -59,7 +42,6 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000004 /* Shared */,
-				A10000000000000000000005 /* FinderSync */,
 				A10000000000000000000006 /* ShareExtension */,
 				A10000000000000000000003 /* Products */,
 			);
@@ -68,7 +50,6 @@
 		A10000000000000000000003 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000012 /* OmniNodeFinderSync.appex */,
 				A10000000000000000000013 /* OmniNodeShareExtension.appex */,
 			);
 			name = Products;
@@ -86,16 +67,6 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		A10000000000000000000005 /* FinderSync */ = {
-			isa = PBXGroup;
-			children = (
-				A20000000000000000000010 /* FinderSync.swift */,
-				A20000000000000000000011 /* Info.plist */,
-				A20000000000000000000012 /* FinderSync.entitlements */,
-			);
-			path = FinderSync;
-			sourceTree = "<group>";
-		};
 		A10000000000000000000006 /* ShareExtension */ = {
 			isa = PBXGroup;
 			children = (
@@ -109,23 +80,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A10000000000000000000010 /* OmniNodeFinderSync */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = A10000000000000000000041 /* Build configuration list for PBXNativeTarget "OmniNodeFinderSync" */;
-			buildPhases = (
-				A10000000000000000000020 /* Sources */,
-				A10000000000000000000022 /* Frameworks */,
-				A10000000000000000000021 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = OmniNodeFinderSync;
-			productName = OmniNodeFinderSync;
-			productReference = A10000000000000000000012 /* OmniNodeFinderSync.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 		A10000000000000000000011 /* OmniNodeShareExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A10000000000000000000042 /* Build configuration list for PBXNativeTarget "OmniNodeShareExtension" */;
@@ -166,20 +120,12 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A10000000000000000000010 /* OmniNodeFinderSync */,
 				A10000000000000000000011 /* OmniNodeShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A10000000000000000000021 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		A10000000000000000000024 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -190,19 +136,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A10000000000000000000020 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A30000000000000000000001 /* OmniNodePaths.swift in Sources */,
-				A30000000000000000000002 /* PairedDeviceStore.swift in Sources */,
-				A30000000000000000000003 /* OmniNodeSendHandoff.swift in Sources */,
-				A30000000000000000000004 /* DevicePickerModel.swift in Sources */,
-				A30000000000000000000005 /* DevicePickerView.swift in Sources */,
-				A30000000000000000000010 /* FinderSync.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		A10000000000000000000023 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -251,63 +184,13 @@
 			};
 			name = Release;
 		};
-		A10000000000000000000032 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_APP_SANDBOX = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = FinderSync/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@executable_path/../../../../Frameworks",
-				);
-				MARKETING_VERSION = 0.0.9d;
-				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-			};
-			name = Debug;
-		};
-		A10000000000000000000033 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_APP_SANDBOX = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = FinderSync/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@executable_path/../../../../Frameworks",
-				);
-				MARKETING_VERSION = 0.0.9d;
-				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-			};
-			name = Release;
-		};
 		A10000000000000000000034 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -317,7 +200,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.9d;
+				MARKETING_VERSION = 0.1.0c;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -332,7 +215,7 @@
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -342,7 +225,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.9d;
+				MARKETING_VERSION = 0.1.0c;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -359,15 +242,6 @@
 			buildConfigurations = (
 				A10000000000000000000030 /* Debug */,
 				A10000000000000000000031 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		A10000000000000000000041 /* Build configuration list for PBXNativeTarget "OmniNodeFinderSync" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A10000000000000000000032 /* Debug */,
-				A10000000000000000000033 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

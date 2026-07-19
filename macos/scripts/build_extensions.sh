@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Finder Sync + Share Extension with ad-hoc signing (no Apple ID).
+# Build the OmniNode Share Extension with ad-hoc signing (no Apple ID).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -16,7 +16,7 @@ if [[ "$(xcode-select -p 2>/dev/null)" == "/Library/Developer/CommandLineTools" 
   if [[ -d /Applications/Xcode.app ]]; then
     echo "Developer dir is Command Line Tools; prefer: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
   else
-    echo "Full Xcode.app is required to build Finder Sync / Share extensions."
+    echo "Full Xcode.app is required to build the Share extension."
     exit 1
   fi
 fi
@@ -34,17 +34,14 @@ common=(
   PROVISIONING_PROFILE_SPECIFIER=
 )
 
-xcodebuild "${common[@]}" -scheme OmniNodeFinderSync build
 xcodebuild "${common[@]}" -scheme OmniNodeShareExtension build
 
 PRODUCTS="$OUT/DerivedData/Build/Products/$CONFIGURATION"
-FINDER="$PRODUCTS/OmniNodeFinderSync.appex"
 SHARE="$PRODUCTS/OmniNodeShareExtension.appex"
 
 # Ad-hoc codesign so pluginkit / Gatekeeper can load unsigned local builds.
-codesign --force --sign - --entitlements "$MACOS/FinderSync/FinderSync.entitlements" "$FINDER"
 codesign --force --sign - --entitlements "$MACOS/ShareExtension/ShareExtension.entitlements" "$SHARE"
 
 echo "Built + ad-hoc signed:"
-ls -la "$FINDER" "$SHARE"
-codesign -dv --verbose=2 "$FINDER" 2>&1 | head -20
+ls -la "$SHARE"
+codesign -dv --verbose=2 "$SHARE"

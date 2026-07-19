@@ -15,7 +15,7 @@ public final class DevicePickerModel: ObservableObject {
     public let fileURLs: [URL]
 
     /// When set, files were copied into Application Support before the picker opened
-    /// (required for Finder Sync security scopes; Share uses the same path).
+    /// so the main-app TransferManager can stream real bytes.
     private let preStagedJobId: String?
     private let preStagedPaths: [String]?
 
@@ -64,7 +64,7 @@ public final class DevicePickerModel: ObservableObject {
         }
     }
 
-    /// Hand off to the main OmniNode.app TransferManager (Finder Sync + Share use this only).
+    /// Hand off to the main OmniNode.app TransferManager (Share Extension only entry).
     public func send() async -> Bool {
         guard canSend else { return false }
         isSending = true

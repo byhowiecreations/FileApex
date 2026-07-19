@@ -28,7 +28,7 @@ fun main() {
     AppUpdateCoordinator.onAppLaunch()
     GoogleLinkCoordinator.onAppLaunch()
     MacOsExtensionRegistrar.registerOnLaunch()
-    // URI handler + job processor before UI so Finder Sync / Share are not Compose-gated.
+    // URI handler + job processor before UI so Share handoff is not Compose-gated.
     DesktopSendHandoff.installOpenUriHandler()
     DesktopSendHandoff.startJobProcessor()
 

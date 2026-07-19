@@ -161,7 +161,7 @@ compose.desktop {
 
 tasks.register("embedMacExtensions") {
     group = "distribution"
-    description = "Build Finder Sync + Share Extension and embed into OmniNode.app"
+    description = "Build Share Extension and embed into OmniNode.app"
     dependsOn("createDistributable")
     doLast {
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile

@@ -25,7 +25,7 @@ actual class RoomDbBuilder {
  * Roster DB lives at:
  * `~/Library/Application Support/com.omninode/omninode.db`
  *
- * Finder Sync and Share Extension read the same path with normal file I/O
+ * Share Extension reads the same path with normal file I/O
  * (no App Group / sandbox). Migrates from older locations when present.
  */
 internal fun resolveDesktopDatabaseFile(): File {

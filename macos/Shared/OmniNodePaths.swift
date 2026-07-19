@@ -5,7 +5,6 @@ import Foundation
 /// Uses Application Support — not App Groups — so ad-hoc builds can share the roster DB.
 public enum OmniNodePaths {
     public static let mainBundleId = "com.omninode"
-    public static let finderSyncBundleId = "com.omninode.FinderSync"
     public static let shareExtensionBundleId = "com.omninode.ShareExtension"
     public static let databaseFileName = "omninode.db"
 

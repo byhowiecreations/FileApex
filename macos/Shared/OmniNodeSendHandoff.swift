@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 
-/// Job handoff file written by Finder Sync / Share for the main OmniNode.app.
-/// The main app runs [TransferManager.sendLocalPathsToDeviceIds] — same path as in-app Multi Copy.
+/// Job handoff file written by the Share Extension for the main OmniNode.app.
+/// The main app runs TransferManager.sendLocalPathsToDeviceIds — same path as in-app Multi Copy.
 struct OmniNodeSendJob: Codable {
     var id: String
     var filePaths: [String]
@@ -19,7 +19,7 @@ struct OmniNodeSendJob: Codable {
 /// Thin shell for macOS extensions. Never starts transfers itself — only stages files,
 /// writes a pending job, and opens the main app with a normalized `omninode://send?job=` URI.
 enum OmniNodeSendHandoff {
-    /// Canonical deep link — identical for Finder Sync and Share Extension.
+    /// Canonical deep link for the Share Extension → main-app TransferManager handoff.
     static func sendJobURL(jobId: String) -> URL? {
         var components = URLComponents()
         components.scheme = "omninode"
@@ -110,7 +110,7 @@ enum OmniNodeSendHandoff {
     }
 
     /**
-     Single send entry used by Finder Sync and Share Extension alike:
+     Single send entry used by the Share Extension:
      stage (unless already staged) → write pending job → open main app → wait for TransferManager.
      */
     static func submitSend(

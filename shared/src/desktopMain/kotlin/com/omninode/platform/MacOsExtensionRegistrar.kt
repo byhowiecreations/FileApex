@@ -4,18 +4,20 @@ import java.io.File
 import java.time.Instant
 
 /**
- * Registers Finder Sync + Share Extension with pluginkit **only** when OmniNode is
+ * Registers the Share Extension with pluginkit **only** when OmniNode is
  * running from `/Applications/OmniNode.app`. Never registers project/`current/` builds.
  *
- * Also re-signs PlugIns with the sandbox entitlements shipped under
+ * Also re-signs the PlugIn with the sandbox entitlements shipped under
  * `Contents/Resources/ExtensionEntitlements/` — without `app-sandbox`, pluginkit
- * accepts `-a` then silently drops the plugin (menus disappear).
+ * accepts `-a` then silently drops the plugin (Share menu disappears).
+ *
+ * Deprecated Finder Sync (`com.omninode.FinderSync`) is unregistered on every launch.
  */
 object MacOsExtensionRegistrar {
     private const val ApplicationsAppPath = "/Applications/OmniNode.app"
-    private const val FinderSyncId = "com.omninode.FinderSync"
+    private const val DeprecatedFinderSyncId = "com.omninode.FinderSync"
     private const val ShareExtensionId = "com.omninode.ShareExtension"
-    private const val FinderAppexName = "OmniNodeFinderSync.appex"
+    private const val DeprecatedFinderAppexName = "OmniNodeFinderSync.appex"
     private const val ShareAppexName = "OmniNodeShareExtension.appex"
     private const val Pluginkit = "/usr/bin/pluginkit"
     private const val Codesign = "/usr/bin/codesign"
@@ -23,7 +25,8 @@ object MacOsExtensionRegistrar {
     fun registerOnLaunch() {
         if (!isMacOs()) return
 
-        removeNonApplicationsRegistrations(FinderSyncId)
+        // Always purge the deprecated Finder Sync extension (any install location).
+        removeAllRegistrations(DeprecatedFinderSyncId)
         removeNonApplicationsRegistrations(ShareExtensionId)
 
         val bundle = resolveRunningAppBundle()
@@ -36,18 +39,23 @@ object MacOsExtensionRegistrar {
         }
 
         val appsRoot = File(ApplicationsAppPath)
-        val finder = File(appsRoot, "Contents/PlugIns/$FinderAppexName")
         val share = File(appsRoot, "Contents/PlugIns/$ShareAppexName")
+        val legacyFinder = File(appsRoot, "Contents/PlugIns/$DeprecatedFinderAppexName")
         val entsDir = File(appsRoot, "Contents/Resources/ExtensionEntitlements")
-        val finderEnts = File(entsDir, "FinderSync.entitlements")
         val shareEnts = File(entsDir, "ShareExtension.entitlements")
         val hostEnts = File(entsDir, "OmniNode.entitlements")
 
-        if (!finder.isDirectory || !share.isDirectory) {
-            log("PlugIns missing under $ApplicationsAppPath")
+        if (legacyFinder.isDirectory) {
+            log("removing deprecated $DeprecatedFinderAppexName from $ApplicationsAppPath")
+            runCapture(Pluginkit, "-r", legacyFinder.absolutePath)
+            legacyFinder.deleteRecursively()
+        }
+
+        if (!share.isDirectory) {
+            log("Share PlugIn missing under $ApplicationsAppPath")
             return
         }
-        if (!finderEnts.isFile || !shareEnts.isFile) {
+        if (!shareEnts.isFile) {
             log(
                 "ExtensionEntitlements missing under $entsDir — " +
                     "re-copy current/OmniNode.app to /Applications"
@@ -56,10 +64,6 @@ object MacOsExtensionRegistrar {
         }
 
         // Restore sandbox entitlements before pluginkit (adhoc).
-        val signFinder = runCapture(
-            Codesign, "--force", "--sign", "-",
-            "--entitlements", finderEnts.absolutePath, finder.absolutePath
-        )
         val signShare = runCapture(
             Codesign, "--force", "--sign", "-",
             "--entitlements", shareEnts.absolutePath, share.absolutePath
@@ -72,15 +76,13 @@ object MacOsExtensionRegistrar {
         }
         runCapture("/usr/bin/xattr", "-cr", appsRoot.absolutePath)
 
-        val addFinder = runCapture(Pluginkit, "-a", finder.absolutePath)
         val addShare = runCapture(Pluginkit, "-a", share.absolutePath)
-        val useFinder = runCapture(Pluginkit, "-e", "use", "-i", FinderSyncId)
         val useShare = runCapture(Pluginkit, "-e", "use", "-i", ShareExtensionId)
+        val ignoreFinder = runCapture(Pluginkit, "-e", "ignore", "-i", DeprecatedFinderSyncId)
         log(
-            "registered from $ApplicationsAppPath " +
-                "(signFinder=$signFinder signShare=$signShare " +
-                "addFinder=$addFinder addShare=$addShare " +
-                "useFinder=$useFinder useShare=$useShare)"
+            "registered Share from $ApplicationsAppPath " +
+                "(signShare=$signShare addShare=$addShare useShare=$useShare " +
+                "ignoreFinder=$ignoreFinder)"
         )
     }
 
@@ -111,6 +113,15 @@ object MacOsExtensionRegistrar {
             cursor = current.parentFile
         }
         return null
+    }
+
+    private fun removeAllRegistrations(bundleId: String) {
+        val listing = runCapture(Pluginkit, "-mAvvv")
+        val paths = pathsForBundle(listing, bundleId)
+        for (path in paths) {
+            log("removing $bundleId plugin $path")
+            runCapture(Pluginkit, "-r", path)
+        }
     }
 
     private fun removeNonApplicationsRegistrations(bundleId: String) {

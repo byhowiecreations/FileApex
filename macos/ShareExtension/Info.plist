@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>OmniNode</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -26,10 +26,19 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-			<!-- Dictionary form is more reliable on Finder Share than a SUBQUERY string. -->
+			<!--
+			  Dictionary activation rules surface OmniNode in Finder's Share submenu
+			  (right-click → Share) and the system Share sheet for files/media.
+			-->
 			<key>NSExtensionActivationRule</key>
 			<dict>
 				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
+				<integer>100</integer>
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>100</integer>
+				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
+				<integer>100</integer>
+				<key>NSExtensionActivationSupportsAttachmentsWithMaxCount</key>
 				<integer>100</integer>
 			</dict>
 		</dict>

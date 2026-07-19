@@ -22,7 +22,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Finder Sync / Share Extension shell: write a pending job + open `omninode://send?job=…`.
+ * Share Extension shell: write a pending job + open `omninode://send?job=…`.
  *
  * Transfer bytes are never started here. The main app’s [com.omninode.domain.transfer.TransferManager]
  * runs the same outbound Multi Copy path as in-app send.
@@ -55,7 +55,7 @@ object DesktopSendHandoff {
         get() = File(supportDir, "send-jobs").also { it.mkdirs() }
 
     /**
-     * Canonical deep-link URI for a send job — identical for Finder Sync and Share Extension.
+     * Canonical deep-link URI for a send job from the Share Extension.
      * Main app treats this like a single-top “resume send” launch (already-running or cold start).
      */
     fun sendJobUri(jobId: String): URI =
@@ -83,7 +83,7 @@ object DesktopSendHandoff {
     /**
      * Starts the lifecycle-aware job runner once services are initialized.
      * Safe to call multiple times; must run after [OmniNodeServices.init].
-     * Independent of Compose UI so Finder Sync does not wait on window composition.
+     * Independent of Compose UI so Share handoff does not wait on window composition.
      */
     fun startJobProcessor() {
         if (processorStarted) return

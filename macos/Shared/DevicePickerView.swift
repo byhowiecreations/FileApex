@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Compact device roster sheet shared by Finder Sync and the Share Extension.
+/// Compact device roster sheet for the Share Extension.
 public struct DevicePickerView: View {
     @ObservedObject private var model: DevicePickerModel
     private let title: String
