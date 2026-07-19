@@ -32,7 +32,10 @@ expect object CloudAuthBackend {
 
     /**
      * Start listening / polling the user device collection (includes this device’s document).
-     * Remote snapshots are authoritative for all fields including [CloudDeviceRecord.deviceName].
+     * Remote snapshots seed peer devices into the local repository.
+     * This device's own [CloudDeviceRecord.deviceName] is published only via
+     * [GoogleLinkCoordinator.publishUserRenamedDevice] / initial register — never imported
+     * back onto the local identity from a snapshot.
      * @return a handle that stops the listener when [CloudRegistryHandle.stop] is called.
      */
     fun observeUserDevices(

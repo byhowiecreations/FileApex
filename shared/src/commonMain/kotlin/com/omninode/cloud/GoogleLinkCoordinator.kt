@@ -268,8 +268,11 @@ object GoogleLinkCoordinator {
     }
 
     /**
-     * Remote snapshot wins for local Room / display name. Never writes Firestore from here.
-     * Skips Room writes when peer rows are already identical (stops UI jitter).
+     * Remote snapshot seeds peers into Room. Never writes Firestore from here.
+     *
+     * This device's display name is owned locally (UI rename or POST /identity/rename).
+     * Firestore / peer-roster copies of our name are ignored so stale snapshots cannot
+     * toggle "This device" after a rename.
      */
     private suspend fun applyRemoteDevices(
         records: List<CloudDeviceRecord>,
@@ -290,8 +293,7 @@ object GoogleLinkCoordinator {
                 .forEach { remote ->
                     if (!isSessionLive(epoch)) return
                     if (remote.deviceId == selfId) {
-                        // Local display name yields to Firestore (rename initiated elsewhere).
-                        applyRemoteSelfName(remote.deviceName, epoch)
+                        // Publish our name TO the cloud on rename; never import OUR name FROM cloud.
                         return@forEach
                     }
                     runCatching {
@@ -314,20 +316,6 @@ object GoogleLinkCoordinator {
                 }
             runCatching { repo.reconcileDuplicateEndpoints() }
         }
-    }
-
-    private fun applyRemoteSelfName(remoteName: String, epoch: Long) {
-        if (!isSessionLive(epoch)) return
-        val trimmed = remoteName.trim()
-        if (trimmed.isEmpty()) return
-        if (trimmed == LocalDeviceNameStore.current()) return
-        // Accept remote rename without pushing back to Firestore.
-        runCatching { LocalDeviceNameStore.apply(trimmed) }
-            .onFailure { error ->
-                println(
-                    "GoogleLinkCoordinator: skip local name apply after teardown — ${error.message}"
-                )
-            }
     }
 
     private fun resolveCloudDeviceId(deviceId: String): String {

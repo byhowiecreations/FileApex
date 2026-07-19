@@ -33,31 +33,23 @@ class PairingCoordinator(
 
     /**
      * Passive merge from a peer — upsert only (no recursive fan-out).
-     * If a peer pushes a new name for this device, adopt it as our local identity.
+     *
+     * Never adopts this device's display name from a peer roster: those copies go stale
+     * the moment we rename locally, and writing them back causes name flicker.
+     * Peer-initiated renames of this device use POST /identity/rename only.
      */
     suspend fun mergeIncoming(request: ClusterSyncRequest) {
         val localId = identityProvider().deviceId
         val candidates = (listOf(request.introducer) + request.devices)
             .filter { it.deviceId.isNotBlank() }
             .distinctBy { it.deviceId }
-        var renamedSelf: String? = null
         for (device in candidates) {
             if (device.deviceId == localId) {
-                val newName = device.deviceName.trim()
-                val currentName = identityProvider().deviceName
-                if (newName.isNotEmpty() && newName != currentName) {
-                    LocalDeviceNameStore.apply(newName)
-                    renamedSelf = newName
-                }
                 continue
             }
             repository.upsertReplacingAliases(device)
         }
         runCatching { repository.reconcileDuplicateEndpoints() }
-        // Re-announce so every roster / identity probe sees the adopted name.
-        if (renamedSelf != null) {
-            broadcastSelfIdentity()
-        }
     }
 
     /**
@@ -155,10 +147,10 @@ class PairingCoordinator(
 
     private fun selfAsPairedDevice(): PairedDeviceEntity {
         val identity = identityProvider()
-        val host = localIpv4Addresses().firstOrNull() ?: "127.0.0.1"
+        val host = localIpv4Addresses().sorted().firstOrNull() ?: "127.0.0.1"
         return PairedDeviceEntity(
             deviceId = identity.deviceId,
-            deviceName = identity.deviceName,
+            deviceName = LocalDeviceNameStore.current().ifBlank { identity.deviceName },
             lastKnownIp = host,
             port = identity.sharePort,
             publicKeyHash = "",

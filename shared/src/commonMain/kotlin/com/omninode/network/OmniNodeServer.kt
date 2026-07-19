@@ -103,11 +103,12 @@ class OmniNodeServer(
                     runCatching {
                         val identity = identityProvider()
                         val settings = OmniNodeServices.settings
+                        val liveName = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
                         call.respondText(
                             text = json.encodeToString(
                                 NodeIdentityResponse(
                                     deviceId = identity.deviceId,
-                                    deviceName = identity.deviceName,
+                                    deviceName = liveName,
                                     rootPath = identity.rootPath,
                                     port = identity.sharePort,
                                     downloadsPath = defaultDownloadsDir(),

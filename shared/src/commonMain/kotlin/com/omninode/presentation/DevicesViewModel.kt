@@ -314,11 +314,12 @@ class DevicesViewModel : ViewModel() {
                 require(trimmed.isNotEmpty()) { "Name cannot be empty" }
                 if (deviceId == LocalIdentity.LOCAL_DEVICE_ID) {
                     LocalDeviceNameStore.apply(trimmed)
-                    OmniNodeServices.pairingCoordinator.broadcastSelfIdentity()
-                    presence.refreshNow()
+                    // Cloud first so peer firestore views update; LAN fan-out next.
+                    // Never refresh presence before publish — peers still hold the old name.
                     runCatching {
                         GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
                     }
+                    OmniNodeServices.pairingCoordinator.broadcastSelfIdentity()
                     _uiState.update {
                         it.copy(
                             localDeviceName = trimmed,
