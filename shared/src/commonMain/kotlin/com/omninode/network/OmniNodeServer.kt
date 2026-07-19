@@ -8,6 +8,7 @@ import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
 import com.omninode.domain.model.RemoteFileItem
 import com.omninode.domain.pairing.ClusterSyncRequest
+import com.omninode.platform.UniqueFileNames
 import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.notifyFilesReceived
 import io.ktor.http.ContentType
@@ -334,8 +335,14 @@ class OmniNodeServer(
                     runCatching {
                         // Browse/list/stream stay PIN-gated. Direct send (upload) is allowed
                         // regardless of peer browse-lock state so Multi Copy / Send File work.
-                        val targetPathStr = call.request.queryParameters["targetPath"]
+                        val preferredPathStr = call.request.queryParameters["targetPath"]
                             ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+                        if (!isPathAllowed(preferredPathStr)) {
+                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
+                            return@runCatching
+                        }
+                        // Never overwrite an existing file — collide like Finder/Files: name (1).ext
+                        val targetPathStr = UniqueFileNames.resolve(preferredPathStr)
                         if (!isPathAllowed(targetPathStr)) {
                             call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                             return@runCatching

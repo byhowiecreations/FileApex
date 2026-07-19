@@ -8,6 +8,8 @@ import com.omninode.data.settings.initAndroidAppSettings
 import com.omninode.di.OmniNodeServices
 import com.omninode.platform.OmniNodeWakeService
 import com.omninode.platform.initAndroidTransferReceiveNotifier
+import com.omninode.platform.initAndroidBriefToast
+import com.omninode.platform.initAndroidUpdateAvailableNotifier
 import com.omninode.cloud.GoogleLinkCoordinator
 import com.omninode.update.AppUpdateCoordinator
 
@@ -17,6 +19,8 @@ class OmniNodeApplication : Application() {
         initAndroidAppSettings(this)
         initAndroidLocalIdentity(this)
         initAndroidTransferReceiveNotifier(this)
+        initAndroidBriefToast(this)
+        initAndroidUpdateAvailableNotifier(this)
         OmniNodeServices.init(createOmniNodeDatabase(this))
         AppUpdateCoordinator.onAppLaunch()
         GoogleLinkCoordinator.onAppLaunch()

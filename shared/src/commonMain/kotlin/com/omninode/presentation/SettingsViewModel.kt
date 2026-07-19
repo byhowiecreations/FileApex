@@ -149,7 +149,7 @@ class SettingsViewModel : ViewModel() {
         AppUpdateCoordinator.onScheduleChanged()
     }
 
-    /** Hidden Settings version tap easter egg — force an immediate update check. */
+    /** Force an immediate update check from repeated Settings version taps. */
     fun onVersionNumberEasterEgg() {
         AppUpdateCoordinator.checkNowManual()
     }

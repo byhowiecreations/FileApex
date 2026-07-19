@@ -50,24 +50,36 @@ object AppUpdater {
 
     /**
      * Fetches the latest release; if newer than the running app, downloads and installs it.
-     * @return human-readable status for Settings.
+     * [onNewerRelease] runs before download so the UI can surface update info immediately.
      */
-    suspend fun checkForUpdatesAndInstall(): String {
+    suspend fun checkForUpdatesAndInstall(
+        onNewerRelease: (UpdateCheckOutcome.Installing) -> Unit = {}
+    ): UpdateCheckOutcome {
         checkMutex.withLock {
             val localVersion = currentAppVersionName()
             println("AppUpdater: checking for updates (local=$localVersion)")
             val release = fetchLatestRelease()
             if (!isRemoteVersionNewer(localVersion, release.tagName)) {
-                val message =
-                    "Up to date (local $localVersion, latest ${release.tagName.trim()})"
-                println("AppUpdater: $message")
-                return message
+                println(
+                    "AppUpdater: already current " +
+                        "(local $localVersion, latest ${release.tagName.trim()})"
+                )
+                return UpdateCheckOutcome.AlreadyCurrent(
+                    localVersion = localVersion,
+                    latestTag = release.tagName.trim()
+                )
             }
             val asset = PlatformUpdateInstaller.selectAsset(release.assets)
                 ?: error(
                     "No platform asset found in release ${release.tagName} " +
                         "(assets=${release.assets.map { it.name }})"
                 )
+            val installing = UpdateCheckOutcome.Installing(
+                remoteVersion = release.tagName.trim(),
+                releaseTitle = release.name?.trim()?.takeIf { it.isNotEmpty() },
+                releaseNotes = release.body?.trim()?.takeIf { it.isNotEmpty() }
+            )
+            onNewerRelease(installing)
             println(
                 "AppUpdater: downloading ${asset.name} " +
                     "(${asset.size} bytes) for ${release.tagName}"
@@ -81,7 +93,7 @@ object AppUpdater {
                 localFilePath = targetPath.toString(),
                 remoteVersion = release.tagName
             )
-            return "Installing ${release.tagName.trim()}…"
+            return installing
         }
     }
 

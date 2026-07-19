@@ -1,7 +1,9 @@
 package com.omninode.update
 
 import com.omninode.di.OmniNodeServices
+import com.omninode.platform.BriefToast
 import com.omninode.platform.currentTimeMillis
+import com.omninode.platform.notifyAppUpdateAvailable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,14 +34,24 @@ object AppUpdateCoordinator {
     fun onAppLaunch() {
         ensureSchedulerRunning()
         if (OmniNodeServices.settings.checkForUpdatesEnabled.value) {
-            scheduleCheck(reason = "launch", force = false, requireEnabled = true)
+            scheduleCheck(
+                reason = "launch",
+                force = false,
+                requireEnabled = true,
+                toastFeedback = false
+            )
         }
     }
 
     /** Call when the user turns Check for Updates on in Settings. */
     fun onCheckForUpdatesEnabled() {
         ensureSchedulerRunning()
-        scheduleCheck(reason = "settings", force = true, requireEnabled = true)
+        scheduleCheck(
+            reason = "settings",
+            force = true,
+            requireEnabled = true,
+            toastFeedback = false
+        )
     }
 
     /** Call when the user changes the check frequency. */
@@ -51,12 +63,15 @@ object AppUpdateCoordinator {
         _statusMessage.value = "Check for Updates off"
     }
 
-    /**
-     * Immediate network update check that bypasses interval timers
-     * (used by the Settings version easter egg).
-     */
+    /** Immediate network update check that bypasses interval timers. */
     fun checkNowManual() {
-        scheduleCheck(reason = "manual", force = true, requireEnabled = false)
+        BriefToast.show("Checking…")
+        scheduleCheck(
+            reason = "manual",
+            force = true,
+            requireEnabled = false,
+            toastFeedback = true
+        )
     }
 
     private fun restartScheduler() {
@@ -79,7 +94,12 @@ object AppUpdateCoordinator {
                 val now = currentTimeMillis()
                 val due = last <= 0L || now - last >= intervalMs
                 if (due) {
-                    scheduleCheck(reason = "interval", force = false, requireEnabled = true)
+                    scheduleCheck(
+                        reason = "interval",
+                        force = false,
+                        requireEnabled = true,
+                        toastFeedback = false
+                    )
                 }
                 val nextDueAt = (settings.lastUpdateCheckEpochMs.value.takeIf { it > 0L } ?: now) +
                     settings.checkForUpdatesIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
@@ -90,7 +110,12 @@ object AppUpdateCoordinator {
         }
     }
 
-    private fun scheduleCheck(reason: String, force: Boolean, requireEnabled: Boolean) {
+    private fun scheduleCheck(
+        reason: String,
+        force: Boolean,
+        requireEnabled: Boolean,
+        toastFeedback: Boolean
+    ) {
         scope.launch {
             val settings = OmniNodeServices.settings
             if (requireEnabled && !settings.checkForUpdatesEnabled.value) return@launch
@@ -113,19 +138,61 @@ object AppUpdateCoordinator {
             }
             if (!shouldRun) return@launch
             try {
-                _statusMessage.value = "Checking for updates…"
+                if (!toastFeedback) {
+                    _statusMessage.value = "Checking for updates…"
+                }
                 println("AppUpdateCoordinator: starting update check ($reason)")
-                val result = AppUpdater.checkForUpdatesAndInstall()
-                settings.setLastUpdateCheckEpochMs(currentTimeMillis())
-                _statusMessage.value = result
+                when (
+                    val outcome = AppUpdater.checkForUpdatesAndInstall { installing ->
+                        val detail = buildUpdateDetail(installing)
+                        notifyAppUpdateAvailable(installing.remoteVersion, detail)
+                        _statusMessage.value =
+                            "OmniNode ${installing.remoteVersion} available — installing…"
+                    }
+                ) {
+                    is UpdateCheckOutcome.AlreadyCurrent -> {
+                        settings.setLastUpdateCheckEpochMs(currentTimeMillis())
+                        _statusMessage.value = "On Current Version"
+                        if (toastFeedback) {
+                            BriefToast.show("On Current Version")
+                        }
+                    }
+                    is UpdateCheckOutcome.Installing -> {
+                        settings.setLastUpdateCheckEpochMs(currentTimeMillis())
+                    }
+                }
             } catch (error: Throwable) {
                 settings.setLastUpdateCheckEpochMs(currentTimeMillis())
                 val message = error.message ?: "Update check failed"
                 _statusMessage.value = message
+                if (toastFeedback) {
+                    BriefToast.show(message)
+                }
                 println("AppUpdateCoordinator: update check failed — $message")
                 error.printStackTrace()
             } finally {
                 gate.withLock { inFlight = false }
+            }
+        }
+    }
+
+    private fun buildUpdateDetail(outcome: UpdateCheckOutcome.Installing): String {
+        val title = outcome.releaseTitle
+        val notes = outcome.releaseNotes?.lineSequence()
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.take(6)
+            ?.joinToString(separator = "\n")
+        return buildString {
+            if (!title.isNullOrBlank() && title != outcome.remoteVersion) {
+                append(title)
+            }
+            if (!notes.isNullOrBlank()) {
+                if (isNotEmpty()) append('\n')
+                append(notes)
+            }
+            if (isEmpty()) {
+                append("A newer build is ready. Installing…")
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.omninode.domain.transfer
 
 import com.omninode.network.OmniNodeClient
+import com.omninode.platform.UniqueFileNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -141,7 +142,8 @@ class MultiCopyBroadcastEngine(
         absolutePath: String,
         chunks: Channel<ByteArray>
     ) {
-        val target = Path(absolutePath)
+        val resolved = UniqueFileNames.resolve(absolutePath)
+        val target = Path(resolved)
         target.parent?.let { parent ->
             if (!SystemFileSystem.exists(parent)) {
                 SystemFileSystem.createDirectories(parent)

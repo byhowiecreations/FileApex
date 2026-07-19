@@ -12,6 +12,7 @@ import com.omninode.domain.transfer.MultiCopyDeviceOption
 import com.omninode.domain.transfer.MultiCopyResult
 import com.omninode.domain.transfer.MultiCopySource
 import com.omninode.network.OmniNodeClient
+import com.omninode.platform.UniqueFileNames
 import com.omninode.platform.defaultDownloadsDir
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -123,8 +124,9 @@ class FileTransferService(
                     SystemFileSystem.createDirectories(Path(option.destinationRoot))
                 }
                 val fileTarget = if (option.isLocal) {
-                    uniqueTargetPath(option.destinationRoot, source.fileName)
+                    UniqueFileNames.resolveInDirectory(option.destinationRoot, source.fileName)
                 } else {
+                    // Remote server also resolves collisions; preferred name is fine here.
                     joinPath(option.destinationRoot, source.fileName)
                 }
                 if (option.isLocal) {
@@ -151,7 +153,7 @@ class FileTransferService(
         val payloads = TransferClipboard.peekAll()
         check(payloads.isNotEmpty()) { "Clipboard is empty" }
         payloads.map { payload ->
-            val targetPath = uniqueTargetPath(targetDirectory, payload.fileName)
+            val targetPath = UniqueFileNames.resolveInDirectory(targetDirectory, payload.fileName)
             when {
                 payload.isLocalSource -> copyLocalToLocal(payload.remoteAbsolutePath, targetPath)
                 else -> client.downloadToLocal(
@@ -215,7 +217,7 @@ class FileTransferService(
         val downloadsRoot = defaultDownloadsDir()
         SystemFileSystem.createDirectories(Path(downloadsRoot))
         items.map { item ->
-            val targetPath = uniqueTargetPath(downloadsRoot, item.name)
+            val targetPath = UniqueFileNames.resolveInDirectory(downloadsRoot, item.name)
             client.downloadToLocal(
                 host = host,
                 port = port,
@@ -242,20 +244,6 @@ class FileTransferService(
                     if (read > 0) output.write(buffer, 0, read)
                 }
             }
-        }
-    }
-
-    private fun uniqueTargetPath(directory: String, fileName: String): String {
-        val preferred = joinPath(directory, fileName)
-        if (!SystemFileSystem.exists(Path(preferred))) return preferred
-        val dot = fileName.lastIndexOf('.')
-        val base = if (dot > 0) fileName.substring(0, dot) else fileName
-        val ext = if (dot > 0) fileName.substring(dot) else ""
-        var index = 1
-        while (true) {
-            val candidate = joinPath(directory, "$base ($index)$ext")
-            if (!SystemFileSystem.exists(Path(candidate))) return candidate
-            index++
         }
     }
 

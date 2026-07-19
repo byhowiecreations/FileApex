@@ -110,7 +110,8 @@ class MainActivity : ComponentActivity() {
 
     private fun configureVisibleSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Honor the system display timeout — do not keep the screen on while OmniNode is open.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         controller.show(WindowInsetsCompat.Type.systemBars())
