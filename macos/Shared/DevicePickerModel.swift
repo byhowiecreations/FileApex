@@ -50,19 +50,33 @@ public final class DevicePickerModel: ObservableObject {
         }
     }
 
+    /// Stage files + hand off to the main OmniNode.app Multi Copy stack (same as in-app send).
     public func send() async -> Bool {
         guard canSend else { return false }
         isSending = true
         errorMessage = nil
+        statusMessage = "Handing off to OmniNode…"
+        let jobId = UUID().uuidString
         do {
-            let targets = selectedDevices
-            let files = fileURLs
-            try await OmniNodeUploadClient.uploadFiles(files, to: targets) { [weak self] message in
-                Task { @MainActor in
-                    self?.statusMessage = message
-                }
+            let deviceIds = selectedDevices.map(\.deviceId)
+            let stagedPaths = try OmniNodeSendHandoff.stageFiles(fileURLs, jobId: jobId)
+            try OmniNodeSendHandoff.writePendingJob(
+                id: jobId,
+                filePaths: stagedPaths,
+                deviceIds: deviceIds
+            )
+            guard OmniNodeSendHandoff.openMainApp(jobId: jobId) else {
+                throw OmniNodeSendHandoff.HandoffError.mainAppDidNotOpen
             }
-            statusMessage = "Sent \(files.count) item(s) to \(targets.count) device(s)."
+            statusMessage = "Sending via OmniNode…"
+            let finished = try await OmniNodeSendHandoff.waitForCompletion(jobId: jobId)
+            if finished.status == OmniNodeSendJob.statusFailed {
+                throw OmniNodeSendHandoff.HandoffError.failed(
+                    finished.message ?? "Send failed"
+                )
+            }
+            statusMessage = finished.message
+                ?? "Sent \(stagedPaths.count) item(s) to \(deviceIds.count) device(s)."
             isSending = false
             return true
         } catch {

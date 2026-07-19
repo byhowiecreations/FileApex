@@ -243,6 +243,10 @@ fun FileExplorerScreen(
                                 onContentDirectoryClick = viewModel::onContentDirectoryClick,
                                 onFileOpen = viewModel::onFileClick,
                                 onFileLongPress = viewModel::onFileLongClick,
+                                onFileSelectExclusive = viewModel::selectFileExclusive,
+                                onFileToggleSelect = viewModel::toggleFileSelectionDesktop,
+                                onFileExtendSelect = viewModel::extendFileSelection,
+                                onFileActivate = viewModel::activateFile,
                                 contentBottomPadding = if (showCopyFabs) 140.dp else 24.dp,
                                 modifier = Modifier
                                     .weight(1f)

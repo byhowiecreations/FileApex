@@ -4,6 +4,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,12 +32,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.omninode.domain.model.RemoteFileItem
+import com.omninode.platform.usesDesktopFileSelection
 import com.omninode.ui.theme.OmniTeal
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Phone: single list of folders + files with ".." at top.
@@ -56,11 +67,16 @@ fun AdaptiveExplorerView(
     onContentDirectoryClick: (RemoteFileItem) -> Unit,
     onFileOpen: (RemoteFileItem) -> Unit,
     onFileLongPress: (RemoteFileItem) -> Unit,
+    onFileSelectExclusive: (RemoteFileItem) -> Unit = {},
+    onFileToggleSelect: (RemoteFileItem) -> Unit = {},
+    onFileExtendSelect: (RemoteFileItem) -> Unit = {},
+    onFileActivate: (RemoteFileItem) -> Unit = {},
     modifier: Modifier = Modifier,
     contentBottomPadding: Dp = 24.dp
 ) {
     val listPadding = PaddingValues(bottom = contentBottomPadding)
     val showingPaneRootFiles = selectedFolderPath == null
+    val desktopSelection = usesDesktopFileSelection()
 
     if (isWideDisplay) {
         val rightDirs = if (showingPaneRootFiles) emptyList() else contentDirectories
@@ -137,8 +153,13 @@ fun AdaptiveExplorerView(
                         file = file,
                         isSelectionMode = isSelectionMode,
                         isSelected = file.id in selectedFileIds,
+                        desktopSelection = desktopSelection,
                         onClick = { onFileOpen(file) },
-                        onLongClick = { onFileLongPress(file) }
+                        onLongClick = { onFileLongPress(file) },
+                        onSelectExclusive = { onFileSelectExclusive(file) },
+                        onToggleSelect = { onFileToggleSelect(file) },
+                        onExtendSelect = { onFileExtendSelect(file) },
+                        onActivate = { onFileActivate(file) }
                     )
                 }
             }
@@ -184,8 +205,13 @@ fun AdaptiveExplorerView(
                 file = file,
                 isSelectionMode = isSelectionMode,
                 isSelected = file.id in selectedFileIds,
+                desktopSelection = desktopSelection,
                 onClick = { onFileOpen(file) },
-                onLongClick = { onFileLongPress(file) }
+                onLongClick = { onFileLongPress(file) },
+                onSelectExclusive = { onFileSelectExclusive(file) },
+                onToggleSelect = { onFileToggleSelect(file) },
+                onExtendSelect = { onFileExtendSelect(file) },
+                onActivate = { onFileActivate(file) }
             )
         }
     }
@@ -265,16 +291,33 @@ private fun FileRow(
     file: RemoteFileItem,
     isSelectionMode: Boolean,
     isSelected: Boolean,
+    desktopSelection: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onSelectExclusive: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onExtendSelect: () -> Unit,
+    onActivate: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
+    val rowModifier = if (desktopSelection) {
+        Modifier
+            .fillMaxWidth()
+            .desktopFileSelectionClicks(
+                onSelectExclusive = onSelectExclusive,
+                onToggleSelect = onToggleSelect,
+                onExtendSelect = onExtendSelect,
+                onActivate = onActivate
+            )
+    } else {
+        Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
+    }
+    Row(
+        modifier = rowModifier
             .background(
                 if (isSelected) OmniTeal.copy(alpha = 0.10f)
                 else MaterialTheme.colorScheme.surface
@@ -304,6 +347,50 @@ private fun FileRow(
         }
     }
     HorizontalDivider()
+}
+
+private fun Modifier.desktopFileSelectionClicks(
+    onSelectExclusive: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onExtendSelect: () -> Unit,
+    onActivate: () -> Unit
+): Modifier = pointerInput(
+    onSelectExclusive,
+    onToggleSelect,
+    onExtendSelect,
+    onActivate
+) {
+    awaitEachGesture {
+        // Wait for primary press (ignore hover/move).
+        var downEvent = awaitPointerEvent(PointerEventPass.Main)
+        while (downEvent.changes.none { it.changedToDown() }) {
+            downEvent = awaitPointerEvent(PointerEventPass.Main)
+        }
+        val downChange = downEvent.changes.first { it.changedToDown() }
+        val toggleMulti = downEvent.keyboardModifiers.isMetaPressed ||
+            downEvent.keyboardModifiers.isCtrlPressed
+        val extendRange = downEvent.keyboardModifiers.isShiftPressed && !toggleMulti
+        downChange.consume()
+
+        val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+        up.consume()
+
+        // Select immediately (Finder-like); double-click also opens.
+        when {
+            toggleMulti -> onToggleSelect()
+            extendRange -> onExtendSelect()
+            else -> onSelectExclusive()
+        }
+
+        val secondDown = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+            awaitFirstDown(requireUnconsumed = false)
+        }
+        if (secondDown != null) {
+            secondDown.consume()
+            waitForUpOrCancellation()?.consume()
+            onActivate()
+        }
+    }
 }
 
 @Composable

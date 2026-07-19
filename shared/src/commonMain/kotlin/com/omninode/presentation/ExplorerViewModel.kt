@@ -12,6 +12,7 @@ import com.omninode.domain.transfer.MultiCopySource
 import com.omninode.platform.decodeImageBytes
 import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.localIpv4Addresses
+import com.omninode.platform.TransferPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,6 +74,8 @@ class ExplorerViewModel(
     private val settings = OmniNodeServices.settings
     private val browseRoot: String = normalizePath(target.rootPath)
     private val isRemote: Boolean = target is BrowseTarget.Remote
+    /** Anchor for desktop Shift-click range selection. */
+    private var selectionAnchorId: String? = null
 
     private val _uiState = MutableStateFlow(
         ExplorerUiState(
@@ -263,6 +266,65 @@ class ExplorerViewModel(
             toggleFileSelection(item)
             return
         }
+        activateFile(item)
+    }
+
+    fun onFileLongClick(item: RemoteFileItem) {
+        enterSelectionMode(preselect = item)
+    }
+
+    /** Desktop: plain click replaces selection with this file. */
+    fun selectFileExclusive(item: RemoteFileItem) {
+        if (item.isDirectory) return
+        selectionAnchorId = item.id
+        enterSelectionMode(preselect = item)
+    }
+
+    /** Desktop: ⌘/Ctrl-click toggles membership in the selection. */
+    fun toggleFileSelectionDesktop(item: RemoteFileItem) {
+        if (item.isDirectory) return
+        if (!_uiState.value.isSelectionMode) {
+            selectionAnchorId = item.id
+            enterSelectionMode(preselect = item)
+            return
+        }
+        toggleFileSelection(item)
+        val selected = _uiState.value.selectedFileIds
+        if (item.id in selected) {
+            selectionAnchorId = item.id
+        }
+        if (selected.isEmpty()) {
+            exitSelectionMode()
+        }
+    }
+
+    /** Desktop: Shift-click selects a contiguous range from the anchor. */
+    fun extendFileSelection(item: RemoteFileItem) {
+        if (item.isDirectory) return
+        val files = _uiState.value.contentFiles
+        val anchorId = selectionAnchorId
+        val anchorIndex = anchorId?.let { id -> files.indexOfFirst { it.id == id } } ?: -1
+        val targetIndex = files.indexOfFirst { it.id == item.id }
+        if (anchorIndex < 0 || targetIndex < 0) {
+            selectFileExclusive(item)
+            return
+        }
+        val from = minOf(anchorIndex, targetIndex)
+        val to = maxOf(anchorIndex, targetIndex)
+        val rangeIds = files.subList(from, to + 1).map { it.id }.toSet()
+        _uiState.update {
+            it.copy(
+                isSelectionMode = true,
+                selectedFileIds = rangeIds,
+                canDownloadSelection = isRemote && rangeIds.isNotEmpty(),
+                canPaste = false,
+                statusMessage = null
+            )
+        }
+    }
+
+    /** Open / preview a file (Android tap outside selection; desktop double-click). */
+    fun activateFile(item: RemoteFileItem) {
         when {
             isImageFile(item) -> openImagePreview(item)
             isTextFile(item) -> openTextPreview(item)
@@ -274,12 +336,11 @@ class ExplorerViewModel(
         }
     }
 
-    fun onFileLongClick(item: RemoteFileItem) {
-        enterSelectionMode(preselect = item)
-    }
-
     fun enterSelectionMode(preselect: RemoteFileItem? = null) {
         val selected = if (preselect != null) setOf(preselect.id) else emptySet()
+        if (preselect != null) {
+            selectionAnchorId = preselect.id
+        }
         _uiState.update {
             it.copy(
                 isSelectionMode = true,
@@ -292,6 +353,7 @@ class ExplorerViewModel(
     }
 
     fun exitSelectionMode() {
+        selectionAnchorId = null
         _uiState.update {
             it.copy(
                 isSelectionMode = false,
@@ -773,10 +835,10 @@ class ExplorerViewModel(
             val downloadsRoot = runCatching {
                 val remoteIdentity = OmniNodeServices.client.fetchIdentity(peer.lastKnownIp, peer.port)
                 remoteIdentity.downloadsPath.trim().ifBlank {
-                    fallbackDownloadsPath(peer.rootPath)
+                    TransferPaths.fallbackDownloadsPath(peer.rootPath)
                 }
             }.getOrElse {
-                fallbackDownloadsPath(peer.rootPath)
+                TransferPaths.fallbackDownloadsPath(peer.rootPath)
             }
             options += MultiCopyDeviceOption(
                 deviceId = peer.deviceId,
@@ -788,12 +850,6 @@ class ExplorerViewModel(
             )
         }
         return options
-    }
-
-    private fun fallbackDownloadsPath(rootPath: String): String {
-        val trimmed = rootPath.trimEnd('/', '\\')
-        // Prefer Android-style Download/, then desktop Downloads/.
-        return "$trimmed/Download/OmniNode"
     }
 
     fun downloadSelected() {

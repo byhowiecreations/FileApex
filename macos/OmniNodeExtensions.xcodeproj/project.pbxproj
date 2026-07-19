@@ -9,13 +9,13 @@
 /* Begin PBXBuildFile section */
 		A30000000000000000000001 /* OmniNodePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OmniNodePaths.swift */; };
 		A30000000000000000000002 /* PairedDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PairedDeviceStore.swift */; };
-		A30000000000000000000003 /* OmniNodeUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeUploadClient.swift */; };
+		A30000000000000000000003 /* OmniNodeSendHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeSendHandoff.swift */; };
 		A30000000000000000000004 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
 		A30000000000000000000005 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
 		A30000000000000000000010 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* FinderSync.swift */; };
 		A30000000000000000000011 /* OmniNodePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OmniNodePaths.swift */; };
 		A30000000000000000000012 /* PairedDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* PairedDeviceStore.swift */; };
-		A30000000000000000000013 /* OmniNodeUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeUploadClient.swift */; };
+		A30000000000000000000013 /* OmniNodeSendHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* OmniNodeSendHandoff.swift */; };
 		A30000000000000000000014 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
 		A30000000000000000000015 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
 		A30000000000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ShareViewController.swift */; };
@@ -26,7 +26,7 @@
 		A10000000000000000000013 /* OmniNodeShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OmniNodeShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000001 /* OmniNodePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmniNodePaths.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* PairedDeviceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDeviceStore.swift; sourceTree = "<group>"; };
-		A20000000000000000000003 /* OmniNodeUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmniNodeUploadClient.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* OmniNodeSendHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OmniNodeSendHandoff.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* DevicePickerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerModel.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
@@ -79,7 +79,7 @@
 			children = (
 				A20000000000000000000001 /* OmniNodePaths.swift */,
 				A20000000000000000000002 /* PairedDeviceStore.swift */,
-				A20000000000000000000003 /* OmniNodeUploadClient.swift */,
+				A20000000000000000000003 /* OmniNodeSendHandoff.swift */,
 				A20000000000000000000004 /* DevicePickerModel.swift */,
 				A20000000000000000000005 /* DevicePickerView.swift */,
 			);
@@ -196,7 +196,7 @@
 			files = (
 				A30000000000000000000001 /* OmniNodePaths.swift in Sources */,
 				A30000000000000000000002 /* PairedDeviceStore.swift in Sources */,
-				A30000000000000000000003 /* OmniNodeUploadClient.swift in Sources */,
+				A30000000000000000000003 /* OmniNodeSendHandoff.swift in Sources */,
 				A30000000000000000000004 /* DevicePickerModel.swift in Sources */,
 				A30000000000000000000005 /* DevicePickerView.swift in Sources */,
 				A30000000000000000000010 /* FinderSync.swift in Sources */,
@@ -209,7 +209,7 @@
 			files = (
 				A30000000000000000000011 /* OmniNodePaths.swift in Sources */,
 				A30000000000000000000012 /* PairedDeviceStore.swift in Sources */,
-				A30000000000000000000013 /* OmniNodeUploadClient.swift in Sources */,
+				A30000000000000000000013 /* OmniNodeSendHandoff.swift in Sources */,
 				A30000000000000000000014 /* DevicePickerModel.swift in Sources */,
 				A30000000000000000000015 /* DevicePickerView.swift in Sources */,
 				A30000000000000000000020 /* ShareViewController.swift in Sources */,
@@ -267,7 +267,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.4c;
+				MARKETING_VERSION = 0.0.5a;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -292,7 +292,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.4c;
+				MARKETING_VERSION = 0.0.5a;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -317,7 +317,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.4c;
+				MARKETING_VERSION = 0.0.5a;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -342,7 +342,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.4c;
+				MARKETING_VERSION = 0.0.5a;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omninode.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

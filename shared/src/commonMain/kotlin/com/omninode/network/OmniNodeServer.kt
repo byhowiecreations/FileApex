@@ -348,23 +348,42 @@ class OmniNodeServer(
                             SystemFileSystem.createDirectories(parent)
                         }
 
-                        // Must await EOF properly. A busy-loop on readAvailable==0 never
-                        // responds, so URLSession clients hang after the file is already on disk.
+                        // URLSession uploads set Content-Length and then wait for the HTTP
+                        // response. If we keep waiting for channel EOF after those bytes, both
+                        // sides deadlock — file is on disk, client spins on "Sending…", and
+                        // notifyFilesReceived never runs.
+                        val expectedLength = call.request.headers["Content-Length"]?.toLongOrNull()
                         val channel = call.receiveChannel()
+                        var received = 0L
                         SystemFileSystem.sink(targetPath).buffered().use { sink ->
                             val buffer = ByteArray(8192)
-                            while (true) {
-                                val read = channel.readAvailable(buffer, 0, buffer.size)
+                            while (expectedLength == null || received < expectedLength) {
+                                val remaining = expectedLength?.minus(received)
+                                val want = if (remaining == null) {
+                                    buffer.size
+                                } else {
+                                    minOf(buffer.size.toLong(), remaining).toInt().coerceAtLeast(1)
+                                }
+                                val read = channel.readAvailable(buffer, 0, want)
                                 when {
                                     read < 0 -> break
                                     read == 0 -> {
                                         if (channel.isClosedForRead) break
+                                        if (expectedLength != null && received >= expectedLength) break
                                         if (!channel.awaitContent()) break
                                     }
-                                    else -> sink.write(buffer, 0, read)
+                                    else -> {
+                                        sink.write(buffer, 0, read)
+                                        received += read.toLong()
+                                    }
                                 }
                             }
                         }
+                        onLog(
+                            "upload complete path=$targetPathStr bytes=$received" +
+                                (expectedLength?.let { " expected=$it" } ?: ""),
+                            null
+                        )
                         val receivedName = targetPathStr
                             .substringAfterLast('/')
                             .substringAfterLast('\\')

@@ -7,7 +7,9 @@ import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
 import com.omninode.domain.pairing.PairingPayload
+import com.omninode.network.sendWakeBroadcast
 import com.omninode.platform.localIpv4Addresses
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 data class DevicesUiState(
     val pairedDevices: List<PairedDeviceEntity> = emptyList(),
@@ -81,11 +85,33 @@ class DevicesViewModel : ViewModel() {
 
     fun openDeviceOrExplain(device: PairedDeviceEntity, open: (BrowseTarget) -> Unit) {
         if (!isDeviceOnline(device.deviceId)) {
-            _uiState.update {
-                it.copy(statusMessage = "${device.deviceName} is offline — open OmniNode on that device")
+            viewModelScope.launch {
+                _uiState.update {
+                    it.copy(statusMessage = "Waking ${device.deviceName}…")
+                }
+                withContext(Dispatchers.IO) {
+                    runCatching { sendWakeBroadcast() }
+                }
+                repeat(WAKE_POLL_ATTEMPTS) {
+                    delay(WAKE_POLL_INTERVAL_MS)
+                    runCatching { presence.refreshNow() }
+                    if (isDeviceOnline(device.deviceId)) {
+                        continueOpenDevice(device, open)
+                        return@launch
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        statusMessage = "${device.deviceName} is offline — open OmniNode on that device"
+                    )
+                }
             }
             return
         }
+        continueOpenDevice(device, open)
+    }
+
+    private fun continueOpenDevice(device: PairedDeviceEntity, open: (BrowseTarget) -> Unit) {
         if (device.deviceId in sessionUnlockedDeviceIds) {
             open(browseTargetFor(device))
             return
@@ -340,6 +366,11 @@ class DevicesViewModel : ViewModel() {
             if (it.listScrollIndex == index && it.listScrollOffset == offset) it
             else it.copy(listScrollIndex = index, listScrollOffset = offset)
         }
+    }
+
+    companion object {
+        private const val WAKE_POLL_ATTEMPTS = 10
+        private const val WAKE_POLL_INTERVAL_MS = 500L
     }
 }
 

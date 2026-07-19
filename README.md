@@ -20,6 +20,30 @@ Files broadcasted across devices route automatically to the local device storage
 * **Android:** `/storage/emulated/0/Download/OmniNode/`
 * **macOS:** `~/Downloads/OmniNode/`
 
+## Privacy & Permissions Disclosures
+
+To provide cross-platform file access and seamless system integration, the app requests the following system permissions and capabilities:
+
+* **File System Access:** Core functionality. Allows the app to navigate, list, and read the user's local directory structure to facilitate remote file management.
+* **Unrestricted Battery Usage (Android):** Prevents the OS from aggressively putting the background service to sleep, ensuring the device does not unexpectedly appear "Offline" to connected clients.
+* **Internet & External Network Access:** This is strictly **Opt-In**. Used solely to validate Google Account authentication (coming soon) and to safely query for software updates.
+* **Local Network (LAN) Sockets:** Initiates local network traffic to discover peer devices and stream file data securely between your machines. No personal file data ever leaves your local network.
+* **Finder & Share Menu Extensions (macOS):** Integrates directly with the native macOS file manager to provide quick-access context menus and enables sending files to your device pipeline using the system Share menu.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## License
 
 Copyright (c) 2026 ByHowieCreations
