@@ -3,6 +3,7 @@ package com.omninode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,14 +30,19 @@ import com.omninode.domain.pairing.PairingPayload
 import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.navigation.AppRoute
 import com.omninode.platform.OmniBackHandler
+import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DevicesViewModel
 import com.omninode.session.DeviceSessionManager
 import com.omninode.ui.DevicesScreen
 import com.omninode.ui.FileExplorerScreen
 import com.omninode.ui.GenerateQrScreen
+import com.omninode.ui.HomeTab
 import com.omninode.ui.SettingsScreen
 import com.omninode.ui.ShareSendScreen
 import com.omninode.ui.StoragePermissionScreen
+import com.omninode.ui.adaptive.AdaptiveWideHome
+import com.omninode.ui.adaptive.widthSizeClassFor
+import com.omninode.ui.adaptive.isWide
 import com.omninode.ui.theme.OmniNodeTheme
 import com.omninode.ui.theme.OmniTeal
 
@@ -66,11 +72,17 @@ fun App(
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
     val setupComplete = hasStoragePermission && hasUnrestrictedBattery
 
+    // Wide-layout detail state (list-detail). Survives compact/wide transitions.
+    var wideSelectedTarget by remember { mutableStateOf<BrowseTarget?>(null) }
+    var wideHomeTab by remember { mutableStateOf(HomeTab.Devices) }
+    var previouslyWide by remember { mutableStateOf(false) }
+
     LaunchedEffect(scannedPayload) {
         val payload = scannedPayload ?: return@LaunchedEffect
         devicesViewModel.pairFromQrPayload(payload)
         onScannedPayloadConsumed()
         route = AppRoute.Devices
+        wideHomeTab = HomeTab.Devices
     }
 
     LaunchedEffect(incomingShare, setupComplete) {
@@ -80,9 +92,11 @@ fun App(
         onIncomingShareConsumed()
     }
 
-    val onNavigateHome: () -> Unit = { route = AppRoute.Devices }
+    val onNavigateHome: () -> Unit = {
+        route = AppRoute.Devices
+        wideHomeTab = HomeTab.Devices
+    }
 
-    // Power exit always tears down the share server; Home/swipe-away leaves it running.
     val exitOmniNode: () -> Unit = {
         onStopShareServer()
         onExitApp()
@@ -90,6 +104,7 @@ fun App(
 
     val finishShareFlow: () -> Unit = {
         route = AppRoute.Devices
+        wideHomeTab = HomeTab.Devices
         onShareFlowFinished()
     }
 
@@ -103,7 +118,6 @@ fun App(
     }
 
     OmniNodeTheme {
-        // Teal behind system bars; app content is inset so bars stay visible without flicker.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -153,53 +167,94 @@ fun App(
                         }
                     }
                 } else {
-                    // Keep the share server listening while the app has storage access so
-                    // recently paired peers can browse this device without "connection refused".
                     LaunchedEffect(Unit) {
                         onStartShareServer()
                     }
 
-                    when (val current = route) {
-                        AppRoute.Devices -> DevicesScreen(
-                            onOpenDevice = { route = AppRoute.Explorer(it) },
-                            onOpenLocalFiles = {
-                                route = AppRoute.Explorer(devicesViewModel.thisDeviceTarget())
-                            },
-                            onGenerateQr = {
-                                onStartShareServer()
-                                route = AppRoute.GenerateQr
-                            },
-                            onScanQr = onScanQr,
-                            onOpenSettings = { route = AppRoute.Settings },
-                            onExitApp = exitOmniNode,
-                            viewModel = devicesViewModel
+                    // Overlay routes stay full-screen on every size class.
+                    when (val overlay = route) {
+                        AppRoute.GenerateQr -> GenerateQrScreen(onBack = onNavigateHome)
+                        is AppRoute.ShareSend -> ShareSendScreen(
+                            payload = overlay.payload,
+                            onFinished = finishShareFlow
                         )
-
-                        AppRoute.GenerateQr -> GenerateQrScreen(
-                            onBack = onNavigateHome
-                        )
-
                         AppRoute.ScanQr -> {
                             route = AppRoute.Devices
                         }
+                        else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                            val widthClass = widthSizeClassFor(maxWidth)
+                            val isWide = widthClass.isWide
 
-                        AppRoute.Settings -> SettingsScreen(
-                            appVersionName = appVersionName,
-                            onBack = onNavigateHome
-                        )
-
-                        is AppRoute.Explorer -> FileExplorerScreen(
-                            target = current.target,
-                            onBack = {
-                                DeviceSessionManager.clearSession(current.target.deviceId)
-                                onNavigateHome()
+                            // Fold / unfold synchronization with the selected detail target.
+                            LaunchedEffect(isWide, wideSelectedTarget, route) {
+                                if (!isWide && previouslyWide && wideSelectedTarget != null) {
+                                    // Folded while browsing in dual-pane → push detail full-screen.
+                                    route = AppRoute.Explorer(wideSelectedTarget!!)
+                                } else if (isWide && route is AppRoute.Explorer) {
+                                    // Unfolded while on explorer → restore list-detail.
+                                    wideSelectedTarget = (route as AppRoute.Explorer).target
+                                    wideHomeTab = HomeTab.Devices
+                                    route = AppRoute.Devices
+                                } else if (isWide && route is AppRoute.Settings) {
+                                    wideHomeTab = HomeTab.Settings
+                                    route = AppRoute.Devices
+                                }
+                                previouslyWide = isWide
                             }
-                        )
 
-                        is AppRoute.ShareSend -> ShareSendScreen(
-                            payload = current.payload,
-                            onFinished = finishShareFlow
-                        )
+                            if (isWide &&
+                                route !is AppRoute.Explorer &&
+                                route !is AppRoute.Settings
+                            ) {
+                                AdaptiveWideHome(
+                                    selectedTab = wideHomeTab,
+                                    onSelectTab = { wideHomeTab = it },
+                                    selectedTarget = wideSelectedTarget,
+                                    selectedDeviceId = wideSelectedTarget?.deviceId,
+                                    onSelectDevice = { target ->
+                                        wideSelectedTarget = target
+                                        wideHomeTab = HomeTab.Devices
+                                    },
+                                    onOpenLocalFiles = {
+                                        wideSelectedTarget = devicesViewModel.thisDeviceTarget()
+                                        wideHomeTab = HomeTab.Files
+                                    },
+                                    onGenerateQr = {
+                                        onStartShareServer()
+                                        route = AppRoute.GenerateQr
+                                    },
+                                    onScanQr = onScanQr,
+                                    onExitApp = exitOmniNode,
+                                    onClearDetail = {
+                                        wideSelectedTarget?.deviceId?.let {
+                                            DeviceSessionManager.clearSession(it)
+                                        }
+                                        wideSelectedTarget = null
+                                        wideHomeTab = HomeTab.Devices
+                                    },
+                                    appVersionName = appVersionName,
+                                    devicesViewModel = devicesViewModel
+                                )
+                            } else {
+                                CompactHomeContent(
+                                    route = route,
+                                    devicesViewModel = devicesViewModel,
+                                    appVersionName = appVersionName,
+                                    onOpenDevice = { route = AppRoute.Explorer(it) },
+                                    onOpenLocalFiles = {
+                                        route = AppRoute.Explorer(devicesViewModel.thisDeviceTarget())
+                                    },
+                                    onGenerateQr = {
+                                        onStartShareServer()
+                                        route = AppRoute.GenerateQr
+                                    },
+                                    onScanQr = onScanQr,
+                                    onOpenSettings = { route = AppRoute.Settings },
+                                    onNavigateHome = onNavigateHome,
+                                    onExitApp = exitOmniNode
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -212,5 +267,51 @@ fun App(
         } else {
             onStartShareServer()
         }
+    }
+}
+
+@Composable
+private fun CompactHomeContent(
+    route: AppRoute,
+    devicesViewModel: DevicesViewModel,
+    appVersionName: String,
+    onOpenDevice: (BrowseTarget) -> Unit,
+    onOpenLocalFiles: () -> Unit,
+    onGenerateQr: () -> Unit,
+    onScanQr: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onExitApp: () -> Unit
+) {
+    when (val current = route) {
+        AppRoute.Devices -> DevicesScreen(
+            onOpenDevice = onOpenDevice,
+            onOpenLocalFiles = onOpenLocalFiles,
+            onGenerateQr = onGenerateQr,
+            onScanQr = onScanQr,
+            onOpenSettings = onOpenSettings,
+            onExitApp = onExitApp,
+            viewModel = devicesViewModel
+        )
+        AppRoute.Settings -> SettingsScreen(
+            appVersionName = appVersionName,
+            onBack = onNavigateHome
+        )
+        is AppRoute.Explorer -> FileExplorerScreen(
+            target = current.target,
+            onBack = {
+                DeviceSessionManager.clearSession(current.target.deviceId)
+                onNavigateHome()
+            }
+        )
+        else -> DevicesScreen(
+            onOpenDevice = onOpenDevice,
+            onOpenLocalFiles = onOpenLocalFiles,
+            onGenerateQr = onGenerateQr,
+            onScanQr = onScanQr,
+            onOpenSettings = onOpenSettings,
+            onExitApp = onExitApp,
+            viewModel = devicesViewModel
+        )
     }
 }

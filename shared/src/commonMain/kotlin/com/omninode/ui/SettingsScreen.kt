@@ -69,6 +69,11 @@ private enum class SettingsPage {
 fun SettingsScreen(
     appVersionName: String,
     onBack: () -> Unit,
+    /**
+     * When false (wide NavigationRail layout), root Settings has no up/back affordance;
+     * leave via the rail. Sub-pages still show back to Settings root. Compact stays true.
+     */
+    showRootBackNavigation: Boolean = true,
     viewModel: SettingsViewModel = viewModel { SettingsViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -78,19 +83,23 @@ fun SettingsScreen(
 
     val leavePage: () -> Unit = {
         if (page == SettingsPage.Root) {
-            onBack()
+            if (showRootBackNavigation) onBack()
         } else {
             page = SettingsPage.Root
         }
     }
 
-    OmniBackHandler(onBack = leavePage)
+    OmniBackHandler(
+        enabled = page != SettingsPage.Root || showRootBackNavigation,
+        onBack = leavePage
+    )
 
     when (page) {
         SettingsPage.Root -> SettingsRootPage(
             appVersionName = appVersionName,
             state = state,
             onBack = onBack,
+            showBackNavigation = showRootBackNavigation,
             onOpenCheckForUpdates = { page = SettingsPage.CheckForUpdates },
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
@@ -129,6 +138,7 @@ private fun SettingsRootPage(
     appVersionName: String,
     state: SettingsUiState,
     onBack: () -> Unit,
+    showBackNavigation: Boolean,
     onOpenCheckForUpdates: () -> Unit,
     onOpenPinRequired: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
@@ -142,7 +152,10 @@ private fun SettingsRootPage(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            SettingsTopBar(title = "Settings", onBack = onBack)
+            SettingsTopBar(
+                title = "Settings",
+                onBack = onBack.takeIf { showBackNavigation }
+            )
         }
     ) { padding ->
         Box(
@@ -479,15 +492,17 @@ private fun GoogleAccountSettingsPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsTopBar(title: String, onBack: () -> Unit) {
+private fun SettingsTopBar(title: String, onBack: (() -> Unit)?) {
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back"
-                )
+            if (onBack != null) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back"
+                    )
+                }
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(

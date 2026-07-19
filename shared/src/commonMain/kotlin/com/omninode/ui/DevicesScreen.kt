@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Folder
@@ -90,6 +91,13 @@ enum class HomeTab {
     Settings
 }
 
+enum class DevicesScreenLayoutMode {
+    /** Phone / folded: full scaffold with bottom bar. */
+    FullScreen,
+    /** Tablet / unfolded list pane (~35%). */
+    ListPane
+}
+
 private data class PendingDelete(
     val deviceId: String,
     val deviceName: String
@@ -104,7 +112,9 @@ fun DevicesScreen(
     onScanQr: () -> Unit,
     onOpenSettings: () -> Unit,
     onExitApp: () -> Unit,
-    viewModel: DevicesViewModel = viewModel { DevicesViewModel() }
+    viewModel: DevicesViewModel = viewModel { DevicesViewModel() },
+    layoutMode: DevicesScreenLayoutMode = DevicesScreenLayoutMode.FullScreen,
+    selectedDeviceId: String? = null
 ) {
     val state by viewModel.uiState.collectAsState()
     val deviceRows by viewModel.deviceRows.collectAsState()
@@ -114,6 +124,7 @@ fun DevicesScreen(
     var renameText by remember { mutableStateOf("") }
     var pinText by remember { mutableStateOf("") }
     var confirmExit by remember { mutableStateOf(false) }
+    val isListPane = layoutMode == DevicesScreenLayoutMode.ListPane
 
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = viewModel.initialListScrollIndex(),
@@ -146,15 +157,19 @@ fun DevicesScreen(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            HomeTopBar(onExitClick = { confirmExit = true })
+            if (!isListPane) {
+                HomeTopBar(onExitClick = { confirmExit = true })
+            }
         },
         bottomBar = {
-            OmniBottomBar(
-                selected = HomeTab.Devices,
-                onDevices = {},
-                onFiles = onOpenLocalFiles,
-                onSettings = onOpenSettings
-            )
+            if (!isListPane) {
+                OmniBottomBar(
+                    selected = HomeTab.Devices,
+                    onDevices = {},
+                    onFiles = onOpenLocalFiles,
+                    onSettings = onOpenSettings
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -162,10 +177,19 @@ fun DevicesScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            if (isListPane) {
+                Text(
+                    text = "Paired Devices",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+            }
             PairedDevicesList(
                 listState = listState,
                 localDeviceName = state.localDeviceName,
                 deviceRows = deviceRows,
+                selectedDeviceId = selectedDeviceId,
                 onOpenLocal = { currentOnOpenDevice(viewModel.thisDeviceTarget()) },
                 onRenameLocal = {
                     renameText = state.localDeviceName
@@ -406,6 +430,7 @@ private fun PairedDevicesList(
     listState: LazyListState,
     localDeviceName: String,
     deviceRows: List<DeviceListRow>,
+    selectedDeviceId: String?,
     onOpenLocal: () -> Unit,
     onRenameLocal: () -> Unit,
     onOpenDevice: (String) -> Unit,
@@ -432,6 +457,7 @@ private fun PairedDevicesList(
                 title = "This device ($localDeviceName)",
                 subtitle = "Online · Local files",
                 icon = Icons.Filled.PhoneAndroid,
+                selected = selectedDeviceId == LocalIdentity.LOCAL_DEVICE_ID,
                 onClick = onOpenLocal,
                 onRename = onRenameLocal,
                 onRemove = null,
@@ -471,6 +497,7 @@ private fun PairedDevicesList(
                     title = row.title,
                     subtitle = row.subtitle,
                     icon = deviceIconFor(row.deviceName),
+                    selected = selectedDeviceId == row.deviceId,
                     onClick = { onOpenDevice(row.deviceId) },
                     onRename = { onRenameDevice(row.deviceId, row.deviceName) },
                     onRemove = { onRemoveDevice(row.deviceId, row.deviceName) },
@@ -568,12 +595,12 @@ fun OmniBottomBar(
                 NavIcon(
                     selected = selected == HomeTab.Files,
                     imageVector = Icons.Filled.Folder,
-                    contentDescription = "Files"
+                    contentDescription = "Local Files"
                 )
             },
             label = {
                 Text(
-                    "Files",
+                    "Local Files",
                     color = if (selected == HomeTab.Files) Color.White else Color.White.copy(alpha = 0.85f)
                 )
             },
@@ -639,18 +666,27 @@ private fun DeviceCard(
     onClick: () -> Unit,
     onRename: (() -> Unit)?,
     onRemove: (() -> Unit)?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    selected: Boolean = false
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val containerColor = if (selected) {
+        OmniTeal.copy(alpha = 0.12f)
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        border = BorderStroke(1.5.dp, OmniTeal.copy(alpha = 0.55f))
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 0.dp else 3.dp),
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.5.dp,
+            color = if (selected) OmniTeal else OmniTeal.copy(alpha = 0.55f)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -687,6 +723,16 @@ private fun DeviceCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = "Selected",
+                    tint = OmniTeal,
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(22.dp)
                 )
             }
             if (onRename != null || onRemove != null) {

@@ -63,12 +63,19 @@ import com.omninode.ui.theme.OmniTeal
 fun FileExplorerScreen(
     target: BrowseTarget,
     onBack: () -> Unit,
+    /**
+     * Optional TopAppBar title override (e.g. "Local Files" in wide list-detail).
+     * Compact full-screen explorer keeps [ExplorerUiState.deviceTitle] when null.
+     */
+    titleOverride: String? = null,
     viewModel: ExplorerViewModel = viewModel(key = target.deviceId) { ExplorerViewModel(target) }
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val showCopyFabs = state.isSelectionMode && state.selectedFileIds.isNotEmpty() && !state.isMultiCopying
     var pinText by remember { mutableStateOf("") }
+    val topBarTitle = titleOverride
+        ?: if (target is BrowseTarget.Local) "Local Files" else state.deviceTitle
 
     OmniBackHandler(enabled = true) {
         when {
@@ -95,7 +102,7 @@ fun FileExplorerScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(state.deviceTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(topBarTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             text = if (state.isSelectionMode) {
                                 val count = state.selectedFileIds.size
