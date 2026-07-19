@@ -71,15 +71,17 @@ class DevicesViewModel : ViewModel() {
         repository.observeDevices(),
         presence.onlineDeviceIds
     ) { devices, onlineIds ->
-        devices.map { device ->
-            DeviceListRow(
-                deviceId = device.deviceId,
-                deviceName = device.deviceName,
-                lastKnownIp = device.lastKnownIp,
-                port = device.port,
-                online = device.deviceId in onlineIds
-            )
-        }
+        devices
+            .distinctBy { it.deviceId }
+            .map { device ->
+                DeviceListRow(
+                    deviceId = device.deviceId,
+                    deviceName = device.deviceName,
+                    lastKnownIp = device.lastKnownIp,
+                    port = device.port,
+                    online = device.deviceId in onlineIds
+                )
+            }
     }
         .distinctUntilChanged { old, new ->
             if (old.size != new.size) return@distinctUntilChanged false
@@ -93,6 +95,9 @@ class DevicesViewModel : ViewModel() {
     init {
         presence.start()
         LocalDeviceNameStore.ensureLoaded()
+        viewModelScope.launch {
+            runCatching { repository.reconcileDuplicateEndpoints() }
+        }
         viewModelScope.launch {
             LocalDeviceNameStore.deviceName.collect { name ->
                 if (name.isNotBlank()) {

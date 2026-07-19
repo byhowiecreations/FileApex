@@ -69,12 +69,18 @@ class PeerPresenceMonitor(
             val self = selfDeviceProvider()
 
             for (peer in peers) {
-                val reachable = client.pingHealth(peer.lastKnownIp, peer.port)
+                val host = peer.lastKnownIp.trim()
+                // Empty/loopback hosts can resolve oddly (e.g. probe this device) and
+                // produce fake "Online · :8080" rows — skip until a real LAN IP exists.
+                if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
+                    continue
+                }
+                val reachable = client.pingHealth(host, peer.port)
                 if (!reachable) continue
                 online += peer.deviceId
 
                 runCatching {
-                    val identity = client.fetchIdentity(peer.lastKnownIp, peer.port)
+                    val identity = client.fetchIdentity(host, peer.port)
                     if (identity.deviceId == peer.deviceId) {
                         val refreshed = peer.copy(
                             deviceName = identity.deviceName.ifBlank { peer.deviceName },
@@ -88,7 +94,7 @@ class PeerPresenceMonitor(
                 }
 
                 runCatching {
-                    val remoteRoster = client.listPairedDevices(peer.lastKnownIp, peer.port)
+                    val remoteRoster = client.listPairedDevices(host, peer.port)
                     pairingCoordinator.mergeIncoming(
                         ClusterSyncRequest(
                             introducer = peer,
@@ -102,6 +108,8 @@ class PeerPresenceMonitor(
                     )
                 }
             }
+
+            runCatching { repository.reconcileDuplicateEndpoints() }
 
             if (_onlineDeviceIds.value != online) {
                 _onlineDeviceIds.value = online

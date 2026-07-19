@@ -53,6 +53,7 @@ class PairingCoordinator(
             }
             repository.upsertReplacingAliases(device)
         }
+        runCatching { repository.reconcileDuplicateEndpoints() }
         // Re-announce so every roster / identity probe sees the adopted name.
         if (renamedSelf != null) {
             broadcastSelfIdentity()

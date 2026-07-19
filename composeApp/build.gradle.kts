@@ -185,7 +185,7 @@ tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.con
 }
 
 /**
- * Builds Android + Mac packaging, then copies (never moves) APK, .app, and .dmg
+ * Builds Android + Mac packaging, then copies (never moves) APKs, .app, and .dmg
  * into the project-root `current/` folder for quick manual testing.
  *
  * Uses `ditto` so .app bundles keep execute bits and resource forks intact
@@ -193,8 +193,9 @@ tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.con
  */
 tasks.register("copyCurrentBuilds") {
     group = "distribution"
-    description = "Assemble Android debug APK + Mac DMG/.app and copy them into root current/"
-    dependsOn("assembleDebug", "embedMacExtensions", "packageDmg")
+    description =
+        "Assemble Android debug+release APKs and Mac DMG/.app, then copy them into root current/"
+    dependsOn("assembleDebug", "assembleRelease", "embedMacExtensions", "packageDmg")
 
     doLast {
         val dest = rootProject.layout.projectDirectory.dir("current").asFile
@@ -218,10 +219,14 @@ tasks.register("copyCurrentBuilds") {
 
         val appVersionName = providers.gradleProperty("omninode.version.name").get()
 
-        val apkDir = layout.buildDirectory.dir("outputs/apk/debug").get().asFile
-        val apks = apkDir.listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
-        check(apks.isNotEmpty()) { "No APK found in ${apkDir.absolutePath}" }
-        apks.forEach(::dittoCopy)
+        fun copyApksFrom(variant: String) {
+            val apkDir = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
+            val apks = apkDir.listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
+            check(apks.isNotEmpty()) { "No APK found in ${apkDir.absolutePath}" }
+            apks.forEach(::dittoCopy)
+        }
+        copyApksFrom("debug")
+        copyApksFrom("release")
 
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
         val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension == "dmg" }

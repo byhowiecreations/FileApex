@@ -3,6 +3,7 @@ package com.omninode.di
 import com.omninode.data.db.OmniNodeDatabase
 import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.device.DeviceRepository
+import com.omninode.data.device.LocalDeviceRef
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.data.identity.loadLocalIdentity
@@ -67,7 +68,22 @@ object OmniNodeServices {
             return
         }
         this.database = database
-        this.deviceRepositoryInstance = DeviceRepository(database.deviceDao())
+        this.deviceRepositoryInstance = DeviceRepository(database.deviceDao()) {
+            val identity = loadLocalIdentity()
+            LocalDeviceRef(
+                deviceId = identity.deviceId,
+                endpoints = localIpv4Addresses()
+                    .mapNotNull { raw ->
+                        val ip = raw.trim()
+                        if (ip.isEmpty() || ip == "127.0.0.1" || ip == "0.0.0.0") {
+                            null
+                        } else {
+                            "$ip:${identity.sharePort}"
+                        }
+                    }
+                    .toSet()
+            )
+        }
         LocalDeviceNameStore.ensureLoaded()
         presenceMonitor.start()
     }

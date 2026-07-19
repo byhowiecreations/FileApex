@@ -279,8 +279,14 @@ object GoogleLinkCoordinator {
         applyMutex.withLock {
             if (!isSessionLive(epoch)) return
             val repo = OmniNodeServices.deviceRepositoryOrNull() ?: return
+            // Apply peers with usable LAN endpoints first so blank-IP stubs merge into them
+            // instead of temporarily winning and deleting the good row.
             records.asSequence()
                 .filter { it.deviceId.isNotBlank() }
+                .sortedBy { record ->
+                    val ip = record.lastKnownIp.trim()
+                    if (ip.isEmpty() || ip == "127.0.0.1" || ip == "0.0.0.0") 1 else 0
+                }
                 .forEach { remote ->
                     if (!isSessionLive(epoch)) return
                     if (remote.deviceId == selfId) {
@@ -306,6 +312,7 @@ object GoogleLinkCoordinator {
                         )
                     }
                 }
+            runCatching { repo.reconcileDuplicateEndpoints() }
         }
     }
 
