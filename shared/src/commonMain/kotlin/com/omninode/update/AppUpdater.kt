@@ -50,19 +50,18 @@ object AppUpdater {
 
     /**
      * Fetches the latest release; if newer than the running app, downloads and installs it.
-     * No-ops when already up to date or when no matching asset exists.
+     * @return human-readable status for Settings.
      */
-    suspend fun checkForUpdatesAndInstall() {
+    suspend fun checkForUpdatesAndInstall(): String {
         checkMutex.withLock {
             val localVersion = currentAppVersionName()
             println("AppUpdater: checking for updates (local=$localVersion)")
             val release = fetchLatestRelease()
             if (!isRemoteVersionNewer(localVersion, release.tagName)) {
-                println(
-                    "AppUpdater: up to date " +
-                        "(local=$localVersion, remote=${release.tagName})"
-                )
-                return
+                val message =
+                    "Up to date (local $localVersion, latest ${release.tagName.trim()})"
+                println("AppUpdater: $message")
+                return message
             }
             val asset = PlatformUpdateInstaller.selectAsset(release.assets)
                 ?: error(
@@ -82,6 +81,7 @@ object AppUpdater {
                 localFilePath = targetPath.toString(),
                 remoteVersion = release.tagName
             )
+            return "Installing ${release.tagName.trim()}…"
         }
     }
 

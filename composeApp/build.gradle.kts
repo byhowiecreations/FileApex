@@ -121,7 +121,8 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "OmniNode"
-            // jpackage macOS requires MAJOR > 0; app name version stays omninode.version.name (e.g. 0.0.1c)
+            // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
+            // Marketing version stays omninode.version.name; DMG is renamed on copy.
             packageVersion = "1.0.${providers.gradleProperty("omninode.version.code").get()}"
 
             macOS {
@@ -200,9 +201,9 @@ tasks.register("copyCurrentBuilds") {
         }
         dest.mkdirs()
 
-        fun dittoCopy(source: File) {
+        fun dittoCopy(source: File, destName: String = source.name) {
             check(source.exists()) { "Missing build output: ${source.absolutePath}" }
-            val target = dest.resolve(source.name)
+            val target = dest.resolve(destName)
             val process = ProcessBuilder("ditto", source.absolutePath, target.absolutePath)
                 .inheritIO()
                 .start()
@@ -210,8 +211,10 @@ tasks.register("copyCurrentBuilds") {
             check(code == 0) { "ditto failed ($code) for ${source.name}" }
             // Clear Gatekeeper quarantine so local test copies open without friction.
             ProcessBuilder("xattr", "-cr", target.absolutePath).start().waitFor()
-            logger.lifecycle("Copied ${source.name} -> current/${source.name}")
+            logger.lifecycle("Copied ${source.name} -> current/$destName")
         }
+
+        val appVersionName = providers.gradleProperty("omninode.version.name").get()
 
         val apkDir = layout.buildDirectory.dir("outputs/apk/debug").get().asFile
         val apks = apkDir.listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
@@ -221,7 +224,10 @@ tasks.register("copyCurrentBuilds") {
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
         val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension == "dmg" }
         check(dmgs.isNotEmpty()) { "No DMG found in ${dmgDir.absolutePath}" }
-        dmgs.forEach(::dittoCopy)
+        // Rename so the shipped DMG matches Android's marketing version (jpackage forbids 0.x.ya).
+        dmgs.forEach { dmg ->
+            dittoCopy(dmg, "OmniNode-$appVersionName.dmg")
+        }
 
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile
         // Re-embed after packageDmg may have rebuilt the .app without PlugIns.
@@ -232,6 +238,21 @@ tasks.register("copyCurrentBuilds") {
             .start()
             .waitFor()
         dittoCopy(appBundle)
+
+        // Align macOS marketing version with Android (jpackage packageVersion stays numeric).
+        val copiedInfoPlist = dest.resolve("OmniNode.app/Contents/Info.plist")
+        if (copiedInfoPlist.exists()) {
+            ProcessBuilder(
+                "plutil", "-replace", "CFBundleShortVersionString",
+                "-string", appVersionName, copiedInfoPlist.absolutePath
+            ).start().waitFor()
+            ProcessBuilder(
+                "plutil", "-replace", "CFBundleVersion",
+                "-string", providers.gradleProperty("omninode.version.code").get(),
+                copiedInfoPlist.absolutePath
+            ).start().waitFor()
+            logger.lifecycle("Set OmniNode.app CFBundleShortVersionString=$appVersionName")
+        }
 
         val launchedBinary = dest.resolve("OmniNode.app/Contents/MacOS/OmniNode")
         check(launchedBinary.exists() && launchedBinary.canExecute()) {

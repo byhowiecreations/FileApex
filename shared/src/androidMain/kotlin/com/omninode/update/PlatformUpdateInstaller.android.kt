@@ -35,11 +35,9 @@ actual object PlatformUpdateInstaller {
                 "package:${context.packageName}".toUri()
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(permissionIntent)
-            println(
-                "PlatformUpdateInstaller: requested install-unknown-apps permission; " +
-                    "retry update after granting"
+            error(
+                "Allow “Install unknown apps” for OmniNode, then reopen the app to finish updating"
             )
-            return
         }
 
         val uri = FileProvider.getUriForFile(
