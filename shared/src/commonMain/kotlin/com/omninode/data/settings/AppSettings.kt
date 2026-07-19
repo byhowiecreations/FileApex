@@ -13,6 +13,8 @@ interface AppSettings {
     val pinRequiredEnabled: StateFlow<Boolean>
     /** Local PIN others must enter when [pinRequiredEnabled] is on. */
     val devicePin: StateFlow<String>
+    /** Browse unlock idle window for peers (this device as the browser). Default [PinIdleTimeout.FiveMinutes]. */
+    val pinIdleTimeout: StateFlow<PinIdleTimeout>
     /** When true, check GitHub Releases for updates on the configured schedule. Default off. */
     val autoUpdateEnabled: StateFlow<Boolean>
     /** Unit for [autoUpdateIntervalAmount]. Default [UpdateCheckUnit.Days]. */
@@ -28,6 +30,7 @@ interface AppSettings {
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
     fun setPinRequiredEnabled(enabled: Boolean)
     fun setDevicePin(pinValue: String)
+    fun setPinIdleTimeout(timeout: PinIdleTimeout)
     fun setAutoUpdateEnabled(enabled: Boolean)
     fun setAutoUpdateInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)

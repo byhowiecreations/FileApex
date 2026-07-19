@@ -2,6 +2,7 @@ package com.omninode.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omninode.data.settings.PinIdleTimeout
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.di.OmniNodeServices
@@ -20,6 +21,7 @@ data class SettingsUiState(
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
     val pinError: String? = null,
+    val pinIdleTimeout: PinIdleTimeout = PinIdleTimeout.FiveMinutes,
     val autoUpdateEnabled: Boolean = false,
     val autoUpdateIntervalUnit: UpdateCheckUnit = UpdateCheckUnit.Days,
     val autoUpdateIntervalAmount: Int = 1,
@@ -36,6 +38,7 @@ class SettingsViewModel : ViewModel() {
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
+            pinIdleTimeout = settings.pinIdleTimeout.value,
             autoUpdateEnabled = settings.autoUpdateEnabled.value,
             autoUpdateIntervalUnit = settings.autoUpdateIntervalUnit.value,
             autoUpdateIntervalAmount = settings.autoUpdateIntervalAmount.value,
@@ -79,6 +82,11 @@ class SettingsViewModel : ViewModel() {
             return
         }
         _uiState.update { it.copy(devicePin = pin, pinError = null) }
+    }
+
+    fun setPinIdleTimeout(timeout: PinIdleTimeout) {
+        settings.setPinIdleTimeout(timeout)
+        _uiState.update { it.copy(pinIdleTimeout = timeout) }
     }
 
     fun setAutoUpdate(enabled: Boolean) {

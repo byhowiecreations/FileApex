@@ -25,6 +25,7 @@ import com.omninode.ui.SettingsScreen
 import com.omninode.ui.StoragePermissionScreen
 import com.omninode.ui.theme.OmniNodeTheme
 import com.omninode.ui.theme.OmniTeal
+import com.omninode.session.DeviceSessionManager
 
 @Composable
 fun App(
@@ -128,7 +129,10 @@ fun App(
 
                         is AppRoute.Explorer -> FileExplorerScreen(
                             target = current.target,
-                            onBack = onNavigateHome
+                            onBack = {
+                                DeviceSessionManager.clearSession(current.target.deviceId)
+                                onNavigateHome()
+                            }
                         )
                     }
                 }

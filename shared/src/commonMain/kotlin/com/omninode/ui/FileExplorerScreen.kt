@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CopyAll
@@ -26,6 +27,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -38,12 +40,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -62,6 +68,7 @@ fun FileExplorerScreen(
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val showCopyFabs = state.isSelectionMode && state.selectedFileIds.isNotEmpty() && !state.isMultiCopying
+    var pinText by remember { mutableStateOf("") }
 
     OmniBackHandler(enabled = true) {
         when {
@@ -269,6 +276,58 @@ fun FileExplorerScreen(
                 }
             }
         }
+    }
+
+    if (state.pendingPinUnlock) {
+        AlertDialog(
+            onDismissRequest = {
+                pinText = ""
+                viewModel.cancelPinUnlock()
+            },
+            title = { Text("Enter device PIN") },
+            text = {
+                Column {
+                    Text(
+                        text = "PIN session expired for ${state.deviceTitle}. Enter the PIN to keep browsing.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = pinText,
+                        onValueChange = { pinText = it.filter { ch -> ch.isDigit() }.take(8) },
+                        singleLine = true,
+                        label = { Text("PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        isError = state.pinUnlockError != null,
+                        supportingText = state.pinUnlockError?.let { err ->
+                            {
+                                Text(err, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.confirmPinUnlock(pinText)
+                        pinText = ""
+                    },
+                    enabled = pinText.isNotBlank()
+                ) {
+                    Text("Unlock")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pinText = ""
+                        viewModel.cancelPinUnlock()
+                    }
+                ) { Text("Cancel") }
+            }
+        )
     }
 
     if (state.showMultiCopyIntro) {

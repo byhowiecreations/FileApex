@@ -332,10 +332,8 @@ class OmniNodeServer(
 
                 post("/api/v1/files/upload") {
                     runCatching {
-                        if (!isPeerPinAccepted(providedPin(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pin_required")
-                            return@runCatching
-                        }
+                        // Browse/list/stream stay PIN-gated. Direct send (upload) is allowed
+                        // regardless of peer browse-lock state so Multi Copy / Send File work.
                         val targetPathStr = call.request.queryParameters["targetPath"]
                             ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
                         if (!isPathAllowed(targetPathStr)) {

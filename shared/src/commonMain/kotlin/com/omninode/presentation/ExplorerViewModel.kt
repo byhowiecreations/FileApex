@@ -13,6 +13,7 @@ import com.omninode.platform.decodeImageBytes
 import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.localIpv4Addresses
 import com.omninode.platform.TransferPaths
+import com.omninode.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,7 +63,10 @@ data class ExplorerUiState(
     val showMultiCopyPicker: Boolean = false,
     val multiCopyOptions: List<MultiCopyDeviceOption> = emptyList(),
     val selectedMultiCopyDeviceIds: Set<String> = emptySet(),
-    val isMultiCopying: Boolean = false
+    val isMultiCopying: Boolean = false,
+    /** When set, explorer must collect PIN before continuing navigation (idle expiry). */
+    val pendingPinUnlock: Boolean = false,
+    val pinUnlockError: String? = null
 )
 
 class ExplorerViewModel(
@@ -74,6 +78,10 @@ class ExplorerViewModel(
     private val settings = OmniNodeServices.settings
     private val browseRoot: String = normalizePath(target.rootPath)
     private val isRemote: Boolean = target is BrowseTarget.Remote
+    private val remotePinRequired: Boolean =
+        (target as? BrowseTarget.Remote)?.pinRequired == true
+    /** Resume after mid-explorer PIN re-entry. */
+    private var pendingBrowseAction: (suspend () -> Unit)? = null
     /** Anchor for desktop Shift-click range selection. */
     private var selectionAnchorId: String? = null
 
@@ -104,23 +112,23 @@ class ExplorerViewModel(
     fun openPath(path: String) {
         val resolved = resolveWithinRoot(path)
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    errorMessage = null,
-                    selectedFolderPath = null,
-                    previewItem = null,
-                    previewText = null,
-                    previewImage = null,
-                    isPreviewLoading = false,
-                    canDownloadPreview = false,
-                    isSelectionMode = false,
-                    selectedFileIds = emptySet(),
-                    canDownloadSelection = false,
-                    canPaste = TransferClipboard.hasContent()
-                )
-            }
-            runCatching {
+            browseWithPinRetry {
+                _uiState.update {
+                    it.copy(
+                        isLoading = true,
+                        errorMessage = null,
+                        selectedFolderPath = null,
+                        previewItem = null,
+                        previewText = null,
+                        previewImage = null,
+                        isPreviewLoading = false,
+                        canDownloadPreview = false,
+                        isSelectionMode = false,
+                        selectedFileIds = emptySet(),
+                        canDownloadSelection = false,
+                        canPaste = TransferClipboard.hasContent()
+                    )
+                }
                 val (dirs, files) = listAt(resolved)
                 applyPaneAndContent(
                     panePath = resolved,
@@ -130,14 +138,6 @@ class ExplorerViewModel(
                     contentFiles = files,
                     selectedFolderPath = null
                 )
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        errorMessage = error.message ?: "Unable to open folder"
-                    )
-                }
             }
         }
     }
@@ -154,8 +154,8 @@ class ExplorerViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            runCatching {
+            browseWithPinRetry {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
                 val resolved = resolveWithinRoot(item.absolutePath)
                 val (dirs, files) = listAt(resolved)
                 applyPaneAndContent(
@@ -166,13 +166,6 @@ class ExplorerViewModel(
                     contentFiles = files,
                     selectedFolderPath = resolved
                 )
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = error.message ?: "Unable to open folder"
-                    )
-                }
             }
         }
     }
@@ -189,8 +182,8 @@ class ExplorerViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            runCatching {
+            browseWithPinRetry {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
                 val newContent = resolveWithinRoot(item.absolutePath)
                 val newPane = parentWithinRoot(newContent) ?: browseRoot
                 val (paneDirs, _) = listAt(newPane)
@@ -203,13 +196,6 @@ class ExplorerViewModel(
                     contentFiles = contentFiles,
                     selectedFolderPath = newContent
                 )
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = error.message ?: "Unable to open folder"
-                    )
-                }
             }
         }
     }
@@ -219,18 +205,92 @@ class ExplorerViewModel(
         onContentDirectoryClick(item)
     }
 
+    private suspend fun browseWithPinRetry(block: suspend () -> Unit) {
+        runCatching {
+            block()
+        }.onFailure { error ->
+            if (error is PinSessionRequiredException) {
+                requestPinThen { browseWithPinRetry(block) }
+                return
+            }
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    errorMessage = error.message ?: "Unable to open folder"
+                )
+            }
+        }
+    }
+
     private suspend fun listAt(path: String): Pair<List<RemoteFileItem>, List<RemoteFileItem>> {
-        return when (target) {
+        ensureBrowseAccess()
+        return when (val browseTarget = target) {
             is BrowseTarget.Local -> {
                 val listing = transfer.listLocal(path)
                 listing.directories to listing.files
             }
             is BrowseTarget.Remote -> {
-                val items = transfer.listRemote(target.host, target.port, path)
+                DeviceSessionManager.markDeviceAccessed(browseTarget.deviceId)
+                val items = transfer.listRemote(browseTarget.host, browseTarget.port, path)
                 val directories = items.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
                 val files = items.filter { !it.isDirectory }.sortedBy { it.name.lowercase() }
                 directories to files
             }
+        }
+    }
+
+    /**
+     * Blocks remote folder navigation when the peer requires PIN and the browse session
+     * is missing or idle-expired. Throws [PinSessionRequiredException] so callers can show UI.
+     */
+    private fun ensureBrowseAccess() {
+        if (!isRemote || !remotePinRequired) return
+        if (DeviceSessionManager.isSessionValid(target.deviceId)) return
+        throw PinSessionRequiredException()
+    }
+
+    fun cancelPinUnlock() {
+        pendingBrowseAction = null
+        _uiState.update {
+            it.copy(pendingPinUnlock = false, pinUnlockError = null, isLoading = false)
+        }
+    }
+
+    fun confirmPinUnlock(pin: String) {
+        val remote = target as? BrowseTarget.Remote ?: return
+        viewModelScope.launch {
+            runCatching {
+                require(pin.isNotBlank()) { "PIN is required" }
+                OmniNodeServices.client.verifyPin(
+                    host = remote.host,
+                    port = remote.port,
+                    pin = pin.trim()
+                )
+                DeviceSessionManager.markDeviceAccessed(remote.deviceId)
+                val resume = pendingBrowseAction
+                pendingBrowseAction = null
+                _uiState.update {
+                    it.copy(pendingPinUnlock = false, pinUnlockError = null)
+                }
+                resume?.invoke()
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(pinUnlockError = error.message ?: "Incorrect PIN")
+                }
+            }
+        }
+    }
+
+    private fun requestPinThen(action: suspend () -> Unit) {
+        pendingBrowseAction = action
+        _uiState.update {
+            it.copy(
+                pendingPinUnlock = true,
+                pinUnlockError = null,
+                isLoading = false,
+                isRefreshing = false
+            )
         }
     }
 
@@ -544,8 +604,8 @@ class ExplorerViewModel(
 
         // Deeper drill: show parent folder contents; left lists that parent's siblings.
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            runCatching {
+            browseWithPinRetry {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
                 val newContent = resolveWithinRoot(parent)
                 val newPane = parentWithinRoot(newContent) ?: browseRoot
                 val (paneDirs, _) = listAt(newPane)
@@ -558,13 +618,6 @@ class ExplorerViewModel(
                     contentFiles = contentFiles,
                     selectedFolderPath = newContent
                 )
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = error.message ?: "Unable to navigate up"
-                    )
-                }
             }
         }
     }
@@ -591,8 +644,8 @@ class ExplorerViewModel(
         val panePath = state.panePath.ifBlank { contentPath }
         val selected = state.selectedFolderPath
         viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
-            runCatching {
+            browseWithPinRetry {
+                _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
                 val (paneDirs, paneFiles) = listAt(resolveWithinRoot(panePath))
                 if (selected == null || normalizePath(contentPath) == normalizePath(panePath)) {
                     applyPaneAndContent(
@@ -612,13 +665,6 @@ class ExplorerViewModel(
                         contentDirectories = contentDirs,
                         contentFiles = contentFiles,
                         selectedFolderPath = selected
-                    )
-                }
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isRefreshing = false,
-                        errorMessage = error.message ?: "Unable to refresh folder"
                     )
                 }
             }
@@ -994,3 +1040,6 @@ class ExplorerViewModel(
         private const val MAX_TEXT_PREVIEW_BYTES = 1L * 1024L * 1024L
     }
 }
+
+/** Thrown when a PIN-protected peer needs (re)unlock before folder navigation. */
+class PinSessionRequiredException : Exception("PIN required to browse this device")

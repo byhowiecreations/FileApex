@@ -9,6 +9,7 @@ import com.omninode.di.OmniNodeServices
 import com.omninode.domain.pairing.PairingPayload
 import com.omninode.network.sendWakeBroadcast
 import com.omninode.platform.localIpv4Addresses
+import com.omninode.session.DeviceSessionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -47,8 +48,6 @@ class DevicesViewModel : ViewModel() {
     private val identity: LocalIdentity
         get() = OmniNodeServices.localIdentity
 
-    /** Peers unlocked with PIN for this app session (deviceId). */
-    private val sessionUnlockedDeviceIds = mutableSetOf<String>()
     private var pendingOpenAction: ((BrowseTarget) -> Unit)? = null
 
     private val _uiState = MutableStateFlow(
@@ -112,8 +111,9 @@ class DevicesViewModel : ViewModel() {
     }
 
     private fun continueOpenDevice(device: PairedDeviceEntity, open: (BrowseTarget) -> Unit) {
-        if (device.deviceId in sessionUnlockedDeviceIds) {
-            open(browseTargetFor(device))
+        if (DeviceSessionManager.isSessionValid(device.deviceId)) {
+            DeviceSessionManager.markDeviceAccessed(device.deviceId)
+            open(browseTargetFor(device, pinRequired = true))
             return
         }
         viewModelScope.launch {
@@ -130,7 +130,7 @@ class DevicesViewModel : ViewModel() {
                     }
                     return@launch
                 }
-                open(browseTargetFor(device))
+                open(browseTargetFor(device, pinRequired = false))
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(errorMessage = error.message ?: "Could not reach ${device.deviceName}")
@@ -205,11 +205,11 @@ class DevicesViewModel : ViewModel() {
                     port = pending.device.port,
                     pin = pin.trim()
                 )
-                sessionUnlockedDeviceIds += pending.device.deviceId
+                DeviceSessionManager.markDeviceAccessed(pending.device.deviceId)
                 val action = pendingOpenAction
                 pendingOpenAction = null
                 _uiState.update { it.copy(pendingPinUnlock = null) }
-                action?.invoke(browseTargetFor(pending.device))
+                action?.invoke(browseTargetFor(pending.device, pinRequired = true))
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(errorMessage = error.message ?: "Incorrect PIN")
@@ -255,7 +255,7 @@ class DevicesViewModel : ViewModel() {
         )
         if (!pin.isNullOrBlank()) {
             OmniNodeServices.client.rememberSessionPin(payload.host, payload.port, pin)
-            sessionUnlockedDeviceIds += broadcasterId
+            DeviceSessionManager.markDeviceAccessed(broadcasterId)
         }
         OmniNodeServices.pairingCoordinator.afterOutboundPair(broadcasterEntity)
 
@@ -347,13 +347,14 @@ class DevicesViewModel : ViewModel() {
         )
     }
 
-    fun browseTargetFor(device: PairedDeviceEntity): BrowseTarget {
+    fun browseTargetFor(device: PairedDeviceEntity, pinRequired: Boolean = false): BrowseTarget {
         return BrowseTarget.Remote(
             deviceId = device.deviceId,
             displayName = device.deviceName,
             host = device.lastKnownIp,
             port = device.port,
-            rootPath = device.rootPath
+            rootPath = device.rootPath,
+            pinRequired = pinRequired
         )
     }
 
@@ -390,6 +391,8 @@ sealed interface BrowseTarget {
         override val displayName: String,
         val host: String,
         val port: Int,
-        override val rootPath: String
+        override val rootPath: String,
+        /** Peer advertised PIN requirement; explorer re-checks session before navigation. */
+        val pinRequired: Boolean = false
     ) : BrowseTarget
 }

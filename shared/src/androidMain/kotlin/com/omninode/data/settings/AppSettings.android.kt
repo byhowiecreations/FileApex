@@ -14,6 +14,12 @@ private class AndroidAppSettings(context: Context) : AppSettings {
         MutableStateFlow(prefs.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
     private val pinRequired = MutableStateFlow(prefs.getBoolean(KEY_PIN_REQUIRED, false))
     private val pin = MutableStateFlow(prefs.getString(KEY_DEVICE_PIN, "") ?: "")
+    private val pinIdle = MutableStateFlow(
+        PinIdleTimeout.fromStorage(
+            prefs.getString(KEY_PIN_IDLE_TIMEOUT, PinIdleTimeout.DEFAULT.name)
+                ?: PinIdleTimeout.DEFAULT.name
+        )
+    )
     private val autoUpdate = MutableStateFlow(prefs.getBoolean(KEY_AUTO_UPDATE, false))
     private val updateUnit = MutableStateFlow(
         UpdateCheckUnit.fromStorage(prefs.getString(KEY_UPDATE_UNIT, UpdateCheckUnit.Days.name) ?: UpdateCheckUnit.Days.name)
@@ -33,6 +39,7 @@ private class AndroidAppSettings(context: Context) : AppSettings {
         transferNotifications.asStateFlow()
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
     override val devicePin: StateFlow<String> = pin.asStateFlow()
+    override val pinIdleTimeout: StateFlow<PinIdleTimeout> = pinIdle.asStateFlow()
     override val autoUpdateEnabled: StateFlow<Boolean> = autoUpdate.asStateFlow()
     override val autoUpdateIntervalUnit: StateFlow<UpdateCheckUnit> = updateUnit.asStateFlow()
     override val autoUpdateIntervalAmount: StateFlow<Int> = updateAmount.asStateFlow()
@@ -73,6 +80,11 @@ private class AndroidAppSettings(context: Context) : AppSettings {
         pin.value = cleaned
     }
 
+    override fun setPinIdleTimeout(timeout: PinIdleTimeout) {
+        prefs.edit().putString(KEY_PIN_IDLE_TIMEOUT, timeout.name).apply()
+        pinIdle.value = timeout
+    }
+
     override fun setAutoUpdateEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AUTO_UPDATE, enabled).apply()
         autoUpdate.value = enabled
@@ -101,6 +113,7 @@ private class AndroidAppSettings(context: Context) : AppSettings {
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
         const val KEY_PIN_REQUIRED = "pin_required"
         const val KEY_DEVICE_PIN = "device_pin"
+        const val KEY_PIN_IDLE_TIMEOUT = "pin_idle_timeout"
         const val KEY_AUTO_UPDATE = "auto_update"
         const val KEY_UPDATE_UNIT = "auto_update_unit"
         const val KEY_UPDATE_AMOUNT = "auto_update_amount"

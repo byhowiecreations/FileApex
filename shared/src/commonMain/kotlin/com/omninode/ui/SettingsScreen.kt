@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.omninode.data.settings.PinIdleTimeout
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.platform.OmniBackHandler
@@ -102,7 +103,8 @@ fun SettingsScreen(
             state = state,
             onBack = { page = SettingsPage.Root },
             onToggle = viewModel::setPinRequired,
-            onPinChange = viewModel::setDevicePin
+            onPinChange = viewModel::setDevicePin,
+            onIdleTimeoutSelected = viewModel::setPinIdleTimeout
         )
         SettingsPage.GoogleAccount -> GoogleAccountSettingsPage(
             state = state,
@@ -155,7 +157,11 @@ private fun SettingsRootPage(
                 )
                 SettingsNavItem(
                     title = "PIN required",
-                    subtitle = if (state.pinRequiredEnabled) "On" else "Off",
+                    subtitle = buildString {
+                        append(if (state.pinRequiredEnabled) "On" else "Off")
+                        append(" · Browse unlock: ")
+                        append(state.pinIdleTimeout.label)
+                    },
                     onClick = onOpenPinRequired
                 )
                 ListItem(
@@ -273,8 +279,11 @@ private fun PinRequiredSettingsPage(
     state: SettingsUiState,
     onBack: () -> Unit,
     onToggle: (Boolean) -> Unit,
-    onPinChange: (String) -> Unit
+    onPinChange: (String) -> Unit,
+    onIdleTimeoutSelected: (PinIdleTimeout) -> Unit
 ) {
+    var timeoutExpanded by remember { mutableStateOf(false) }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = { SettingsTopBar(title = "PIN required", onBack = onBack) }
@@ -290,7 +299,8 @@ private fun PinRequiredSettingsPage(
                 supportingContent = {
                     Text(
                         "When on, other devices must enter this device's PIN to pair and to " +
-                            "browse or transfer files. Default is off. Only this device stores the PIN."
+                            "browse files. Sending files to this device does not require PIN. " +
+                            "Default is off. Only this device stores the PIN."
                     )
                 },
                 trailingContent = {
@@ -321,6 +331,38 @@ private fun PinRequiredSettingsPage(
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
                 )
+            }
+
+            Text(
+                text = "Browse unlock idle timeout",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = "How long this device stays unlocked when browsing a PIN-protected peer. " +
+                    "Returning to the device list always re-locks. Default is 5 Minutes.",
+                modifier = Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                TextButton(onClick = { timeoutExpanded = true }) {
+                    Text(state.pinIdleTimeout.label)
+                }
+                DropdownMenu(
+                    expanded = timeoutExpanded,
+                    onDismissRequest = { timeoutExpanded = false }
+                ) {
+                    PinIdleTimeout.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.label) },
+                            onClick = {
+                                onIdleTimeoutSelected(option)
+                                timeoutExpanded = false
+                            }
+                        )
+                    }
+                }
             }
         }
     }
