@@ -10,6 +10,7 @@ private class DesktopAppSettings : AppSettings {
     private val prefs = Preferences.userRoot().node("com.omninode.settings")
     private val google = MutableStateFlow(prefs.getBoolean(KEY_GOOGLE, false))
     private val googleEmail = MutableStateFlow(prefs.get(KEY_GOOGLE_EMAIL, ""))
+    private val googleUid = MutableStateFlow(prefs.get(KEY_GOOGLE_UID, ""))
     private val multiCopyIntro = MutableStateFlow(prefs.getBoolean(KEY_MULTI_COPY_INTRO, false))
     private val transferNotifications =
         MutableStateFlow(prefs.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
@@ -32,6 +33,7 @@ private class DesktopAppSettings : AppSettings {
 
     override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
+    override val googleAccountUid: StateFlow<String> = googleUid.asStateFlow()
     override val multiCopyIntroAcknowledged: StateFlow<Boolean> = multiCopyIntro.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
@@ -48,6 +50,7 @@ private class DesktopAppSettings : AppSettings {
         google.value = enabled
         if (!enabled) {
             setGoogleAccountEmail("")
+            setGoogleAccountUid("")
         }
     }
 
@@ -55,6 +58,12 @@ private class DesktopAppSettings : AppSettings {
         val cleaned = email.trim()
         prefs.put(KEY_GOOGLE_EMAIL, cleaned)
         googleEmail.value = cleaned
+    }
+
+    override fun setGoogleAccountUid(uid: String) {
+        val cleaned = uid.trim()
+        prefs.put(KEY_GOOGLE_UID, cleaned)
+        googleUid.value = cleaned
     }
 
     override fun setMultiCopyIntroAcknowledged(acknowledged: Boolean) {
@@ -104,6 +113,7 @@ private class DesktopAppSettings : AppSettings {
     private companion object {
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
+        const val KEY_GOOGLE_UID = "google_account_uid"
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
         const val KEY_PIN_REQUIRED = "pin_required"

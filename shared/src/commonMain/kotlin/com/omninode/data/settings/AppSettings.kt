@@ -6,6 +6,8 @@ interface AppSettings {
     val googleAccountLinkEnabled: StateFlow<Boolean>
     /** Email of the linked Google account when [googleAccountLinkEnabled] is on; empty otherwise. */
     val googleAccountEmail: StateFlow<String>
+    /** Firebase Auth UID for Firestore path users/{uid}/devices. Empty when unlinked. */
+    val googleAccountUid: StateFlow<String>
     val multiCopyIntroAcknowledged: StateFlow<Boolean>
     /** When true, this device shows a notification after successfully receiving files. Default off. */
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
@@ -26,6 +28,7 @@ interface AppSettings {
 
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
+    fun setGoogleAccountUid(uid: String)
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
     fun setPinRequiredEnabled(enabled: Boolean)

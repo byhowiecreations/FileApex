@@ -2,6 +2,7 @@ package com.omninode.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omninode.cloud.GoogleLinkCoordinator
 import com.omninode.data.settings.PinIdleTimeout
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val googleAccountLinkEnabled: Boolean = false,
@@ -48,6 +50,9 @@ class SettingsViewModel : ViewModel() {
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     val updateStatusMessage: StateFlow<String?> = AppUpdateCoordinator.statusMessage
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val googleLinkStatus: StateFlow<String?> = GoogleLinkCoordinator.status
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun setFileTransferNotifications(enabled: Boolean) {
@@ -144,33 +149,55 @@ class SettingsViewModel : ViewModel() {
         AppUpdateCoordinator.onScheduleChanged()
     }
 
-    /** Call after the platform account picker returns. Null = cancelled. */
-    fun onGoogleAccountPicked(email: String?) {
-        if (email == null) {
+    /** Credential Manager / desktop OAuth returned a Google ID token. */
+    fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?) {
+        if (idToken.isNullOrBlank()) {
             _uiState.update {
-                it.copy(googleAccountError = "Google Account linking cancelled")
+                it.copy(googleAccountError = errorMessage ?: "Google sign-in cancelled")
             }
             return
         }
-        settings.setGoogleAccountEmail(email)
-        settings.setGoogleAccountLinkEnabled(true)
-        _uiState.update {
-            it.copy(
-                googleAccountLinkEnabled = true,
-                googleAccountEmail = email,
-                googleAccountError = null
-            )
+        viewModelScope.launch {
+            runCatching {
+                GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, emailHint)
+            }.onSuccess { session ->
+                _uiState.update {
+                    it.copy(
+                        googleAccountLinkEnabled = true,
+                        googleAccountEmail = session.email,
+                        googleAccountError = null
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(googleAccountError = error.message ?: "Google link failed")
+                }
+            }
         }
     }
 
     fun disableGoogleAccountLink() {
-        settings.setGoogleAccountLinkEnabled(false)
-        _uiState.update {
-            it.copy(
-                googleAccountLinkEnabled = false,
-                googleAccountEmail = "",
-                googleAccountError = null
-            )
+        viewModelScope.launch {
+            runCatching {
+                GoogleLinkCoordinator.unlinkAndSignOut()
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        googleAccountLinkEnabled = false,
+                        googleAccountEmail = "",
+                        googleAccountError = null
+                    )
+                }
+            }.onFailure { error ->
+                settings.setGoogleAccountLinkEnabled(false)
+                _uiState.update {
+                    it.copy(
+                        googleAccountLinkEnabled = false,
+                        googleAccountEmail = "",
+                        googleAccountError = error.message
+                    )
+                }
+            }
         }
     }
 

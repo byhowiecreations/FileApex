@@ -49,7 +49,9 @@ object DesktopSendHandoff {
             val desktop = Desktop.getDesktop()
             if (!desktop.isSupported(Desktop.Action.APP_OPEN_URI)) return
             desktop.setOpenURIHandler { event ->
-                parseJobId(event.uri)?.let { jobId ->
+                val uri = event.uri
+                if (handleOAuthCallback(uri)) return@setOpenURIHandler
+                parseJobId(uri)?.let { jobId ->
                     println("DesktopSendHandoff: open URI job=$jobId")
                     _incomingJobIds.tryEmit(jobId)
                 }
@@ -181,20 +183,39 @@ object DesktopSendHandoff {
 
     private fun jobFile(jobId: String): File = File(jobsDir, "$jobId.json")
 
+    private fun handleOAuthCallback(uri: URI): Boolean {
+        val scheme = uri.scheme?.lowercase() ?: return false
+        if (scheme != "omni" && scheme != "omninode") return false
+        if (uri.host != "oauth-callback") return false
+        val params = parseQuery(uri)
+        val error = params["error"]
+        val code = params["code"]
+        val state = params["state"]
+        DesktopOAuthCallbacks.emit(
+            OAuthCodeResult(
+                code = code,
+                state = state,
+                error = error
+            )
+        )
+        println("DesktopSendHandoff: OAuth callback received")
+        return true
+    }
+
+    private fun parseQuery(uri: URI): Map<String, String> {
+        val query = uri.rawQuery ?: uri.query ?: return emptyMap()
+        return query.split('&').mapNotNull { part ->
+            val idx = part.indexOf('=')
+            if (idx <= 0) return@mapNotNull null
+            val key = java.net.URLDecoder.decode(part.substring(0, idx), Charsets.UTF_8)
+            val value = java.net.URLDecoder.decode(part.substring(idx + 1), Charsets.UTF_8)
+            key to value
+        }.toMap()
+    }
+
     private fun parseJobId(uri: URI): String? {
         if (uri.scheme != "omninode") return null
-        val query = uri.rawQuery ?: uri.query ?: return null
-        return query.split('&')
-            .mapNotNull { part ->
-                val idx = part.indexOf('=')
-                if (idx <= 0) return@mapNotNull null
-                val key = part.substring(0, idx)
-                val value = part.substring(idx + 1)
-                key to value
-            }
-            .firstOrNull { it.first == "job" }
-            ?.second
-            ?.takeIf { it.isNotBlank() }
+        return parseQuery(uri)["job"]?.takeIf { it.isNotBlank() }
     }
 
     const val STATUS_PENDING = "pending"
