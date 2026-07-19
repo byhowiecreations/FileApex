@@ -2,6 +2,11 @@
 
 OmniNode is an ecosystem file manager designed to seamlessly sync, manage, and broadcast files across multiple Android devices and macOS. 
 
+<img height="640" alt="Screenshot_20260718-153323_OmniNode" src="https://github.com/user-attachments/assets/6d317156-96bd-4a2d-8b11-f49f12863c17" />
+<br>
+<img height="640" alt="Screenshot 2026-07-18 at 3 57 11 PM" src="https://github.com/user-attachments/assets/67fa7d7f-757f-4192-8d5f-1d6213fe941a" />
+
+
 ## Features
 
 * **Multi-Target File Broadcasting:** Push files to multiple online devices simultaneously from a single view.
@@ -13,7 +18,7 @@ OmniNode is an ecosystem file manager designed to seamlessly sync, manage, and b
 
 Files broadcasted across devices route automatically to the local device storage paths:
 * **Android:** `/storage/emulated/0/Download/OmniNode/`
-* **macOS:** Tracks default shared environment paths locally.
+* **macOS:** `~/Downloads/OmniNode/`
 
 ## License
 
