@@ -41,7 +41,8 @@ object OmniNodeServices {
             transferService = transferService,
             readinessCheck = { isDatabaseReady() },
             identityProvider = { loadLocalIdentity() },
-            onlineDeviceIds = { presenceMonitor.onlineDeviceIds.value }
+            onlineDeviceIds = { presenceMonitor.onlineDeviceIds.value },
+            peerAppVersions = { presenceMonitor.peerAppVersions.value }
         )
     }
 

@@ -10,6 +10,7 @@ import com.omninode.domain.pairing.ClusterSyncRequest
 import com.omninode.platform.UniqueFileNames
 import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.notifyFilesReceived
+import com.omninode.update.currentAppVersionName
 import com.omninode.util.PathUtils
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -115,7 +116,8 @@ class OmniNodeServer(
                                     rootPath = identity.rootPath,
                                     port = identity.sharePort,
                                     downloadsPath = defaultDownloadsDir(),
-                                    pinRequired = settings.pinRequiredEnabled.value
+                                    pinRequired = settings.pinRequiredEnabled.value,
+                                    appVersion = currentAppVersionName()
                                 )
                             ),
                             contentType = ContentType.Application.Json

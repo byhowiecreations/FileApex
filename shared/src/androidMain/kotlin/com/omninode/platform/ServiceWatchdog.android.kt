@@ -6,6 +6,7 @@ import com.omninode.data.settings.androidAppContextOrNull
 
 private const val PREFS_NAME = "omninode_service_watchdog"
 private const val KEY_CLEAN_STOP = "clean_stop"
+private const val KEY_TIMEOUT_STOP = "timeout_stop"
 
 object ServiceWatchdogState {
     private fun prefs(context: Context): SharedPreferences =
@@ -22,6 +23,20 @@ object ServiceWatchdogState {
             prefs.edit().remove(KEY_CLEAN_STOP).commit()
         }
         return clean
+    }
+
+    /** FGS hit Android dataSync / connectedDevice runtime quota — defer watchdog restart. */
+    fun markTimeoutStop(context: Context) {
+        prefs(context).edit().putBoolean(KEY_TIMEOUT_STOP, true).commit()
+    }
+
+    fun consumeTimeoutStop(context: Context): Boolean {
+        val prefs = prefs(context)
+        val timedOut = prefs.getBoolean(KEY_TIMEOUT_STOP, false)
+        if (timedOut) {
+            prefs.edit().remove(KEY_TIMEOUT_STOP).commit()
+        }
+        return timedOut
     }
 }
 

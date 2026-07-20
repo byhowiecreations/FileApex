@@ -94,16 +94,34 @@ class FileShareServerService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Log.w(
+            TAG,
+            "FGS runtime quota exceeded (type=$fgsType, startId=$startId) — " +
+                "stopping cleanly and scheduling deferred watchdog restart"
+        )
+        ServiceWatchdogState.markTimeoutStop(this)
+        ServiceWatchdog.scheduleNextAlarmIfEnabled()
+        stopSelf(startId)
+    }
+
     override fun onDestroy() {
         val cleanStop = ServiceWatchdogState.consumeCleanStop(this)
-        if (cleanStop || !ServiceWatchdogScheduler.isWatchdogEnabled(this)) {
-            ServiceWatchdog.cancelAlarm()
-            if (cleanStop) {
-                ServiceWatchdogScheduler.clearShareServerHeartbeat(this)
+        val timeoutStop = ServiceWatchdogState.consumeTimeoutStop(this)
+        when {
+            cleanStop || !ServiceWatchdogScheduler.isWatchdogEnabled(this) -> {
+                ServiceWatchdog.cancelAlarm()
+                if (cleanStop) {
+                    ServiceWatchdogScheduler.clearShareServerHeartbeat(this)
+                }
             }
-        } else {
-            Log.i(TAG, "Unexpected FGS stop — scheduling immediate watchdog recovery")
-            ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
+            timeoutStop -> {
+                Log.i(TAG, "FGS stopped after runtime timeout — deferred watchdog restart pending")
+            }
+            else -> {
+                Log.i(TAG, "Unexpected FGS stop — scheduling immediate watchdog recovery")
+                ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
+            }
         }
         wakeReceiver?.stop()
         wakeReceiver = null

@@ -27,6 +27,8 @@ interface AppSettings {
     val lastUpdateCheckEpochMs: StateFlow<Long>
     /** When true, AlarmManager may restart the Android share-server FGS after OEM kills. */
     val enableServiceWatchdog: StateFlow<Boolean>
+    /** Desktop-only: force compact or expanded adaptive layout regardless of window width. */
+    val desktopLayoutMode: StateFlow<DesktopLayoutMode>
 
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
@@ -41,6 +43,8 @@ interface AppSettings {
     fun setLastUpdateCheckEpochMs(epochMs: Long)
 
     fun setEnableServiceWatchdog(enabled: Boolean)
+
+    fun setDesktopLayoutMode(mode: DesktopLayoutMode)
 
     fun checkForUpdatesIntervalMillis(): Long {
         return UpdateCheckFrequency.toMillis(

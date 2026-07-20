@@ -10,7 +10,8 @@ data class MultiCopyDeviceOption(
     val isLocal: Boolean,
     val host: String,
     val port: Int,
-    val destinationRoot: String
+    val destinationRoot: String,
+    val appVersion: String? = null
 )
 
 sealed interface MultiCopySource {

@@ -70,17 +70,17 @@ class DevicesViewModel : ViewModel() {
      */
     val deviceRows: StateFlow<List<DeviceListRow>> = combine(
         repository.observeDevices(),
-        presence.onlineDeviceIds
-    ) { devices, onlineIds ->
+        presence.onlineDeviceIds,
+        presence.peerAppVersions
+    ) { devices, onlineIds, versions ->
         devices
             .distinctBy { it.deviceId }
             .map { device ->
                 DeviceListRow(
                     deviceId = device.deviceId,
                     deviceName = device.deviceName,
-                    lastKnownIp = device.lastKnownIp,
-                    port = device.port,
-                    online = device.deviceId in onlineIds
+                    online = device.deviceId in onlineIds,
+                    appVersion = versions[device.deviceId]
                 )
             }
     }

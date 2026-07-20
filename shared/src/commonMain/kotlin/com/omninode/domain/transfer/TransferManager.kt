@@ -27,7 +27,8 @@ class TransferManager(
     private val transferService: FileTransferService,
     private val readinessCheck: () -> Boolean,
     private val identityProvider: () -> LocalIdentity,
-    private val onlineDeviceIds: () -> Set<String>
+    private val onlineDeviceIds: () -> Set<String>,
+    private val peerAppVersions: () -> Map<String, String> = { emptyMap() }
 ) {
     /**
      * Block until [OmniNodeServices] has finished init (DB + repositories).
@@ -70,7 +71,14 @@ class TransferManager(
             .filter { it.deviceId in onlineIds }
             .sortedBy { it.deviceName.lowercase() }
         for (peer in peers) {
-            options += resolveRemoteOption(peer.deviceId, peer.deviceName, peer.lastKnownIp, peer.port, peer.rootPath)
+            options += resolveRemoteOption(
+                deviceId = peer.deviceId,
+                deviceName = peer.deviceName,
+                host = peer.lastKnownIp,
+                port = peer.port,
+                rootPath = peer.rootPath,
+                appVersion = peerAppVersions()[peer.deviceId]
+            )
         }
         return options
     }
@@ -91,7 +99,8 @@ class TransferManager(
                 deviceName = peer.deviceName,
                 host = peer.lastKnownIp,
                 port = peer.port,
-                rootPath = peer.rootPath
+                rootPath = peer.rootPath,
+                appVersion = peerAppVersions()[peer.deviceId]
             )
         }
     }
@@ -169,7 +178,8 @@ class TransferManager(
         deviceName: String,
         host: String,
         port: Int,
-        rootPath: String
+        rootPath: String,
+        appVersion: String?
     ): MultiCopyDeviceOption {
         val downloadsRoot = runCatching {
             val remote = client.fetchIdentity(host, port)
@@ -185,7 +195,8 @@ class TransferManager(
             isLocal = false,
             host = host,
             port = port,
-            destinationRoot = downloadsRoot
+            destinationRoot = downloadsRoot,
+            appVersion = appVersion
         )
     }
 

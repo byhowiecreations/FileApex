@@ -48,6 +48,9 @@ class BaseAppSettings(
     )
     private val lastUpdateCheck = MutableStateFlow(store.getLong(KEY_LAST_UPDATE_CHECK, 0L))
     private val serviceWatchdog = MutableStateFlow(store.getBoolean(KEY_SERVICE_WATCHDOG, true))
+    private val desktopLayout = MutableStateFlow(
+        DesktopLayoutMode.fromStorage(store.getString(KEY_DESKTOP_LAYOUT, DesktopLayoutMode.DEFAULT.name))
+    )
 
     override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
@@ -63,6 +66,7 @@ class BaseAppSettings(
     override val checkForUpdatesIntervalAmount: StateFlow<Int> = updateAmount.asStateFlow()
     override val lastUpdateCheckEpochMs: StateFlow<Long> = lastUpdateCheck.asStateFlow()
     override val enableServiceWatchdog: StateFlow<Boolean> = serviceWatchdog.asStateFlow()
+    override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
         store.putBoolean(KEY_GOOGLE, enabled)
@@ -135,6 +139,11 @@ class BaseAppSettings(
         serviceWatchdog.value = enabled
     }
 
+    override fun setDesktopLayoutMode(mode: DesktopLayoutMode) {
+        store.putString(KEY_DESKTOP_LAYOUT, mode.name)
+        desktopLayout.value = mode
+    }
+
     companion object {
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
@@ -149,5 +158,6 @@ class BaseAppSettings(
         const val KEY_UPDATE_AMOUNT = "auto_update_amount"
         const val KEY_LAST_UPDATE_CHECK = "last_update_check_epoch_ms"
         const val KEY_SERVICE_WATCHDOG = "enable_service_watchdog"
+        const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
     }
 }

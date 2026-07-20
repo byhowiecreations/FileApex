@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,8 +29,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omninode.domain.pairing.PairingPayload
 import com.omninode.domain.share.IncomingSharePayload
+import com.omninode.data.settings.DesktopLayoutMode
+import com.omninode.di.OmniNodeServices
 import com.omninode.navigation.AppRoute
 import com.omninode.platform.OmniBackHandler
+import com.omninode.platform.usesDesktopFileSelection
 import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DevicesViewModel
 import com.omninode.session.DeviceSessionManager
@@ -186,7 +190,16 @@ fun App(
                         }
                         else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                             val widthClass = widthSizeClassFor(maxWidth)
-                            val isWide = widthClass.isWide
+                            val desktopLayoutMode = if (usesDesktopFileSelection()) {
+                                OmniNodeServices.settings.desktopLayoutMode.collectAsState().value
+                            } else {
+                                null
+                            }
+                            val isWide = when (desktopLayoutMode) {
+                                DesktopLayoutMode.Compact -> false
+                                DesktopLayoutMode.Expanded -> true
+                                null -> widthClass.isWide
+                            }
 
                             // Fold / unfold synchronization with the selected detail target.
                             LaunchedEffect(isWide, wideSelectedTarget, route) {

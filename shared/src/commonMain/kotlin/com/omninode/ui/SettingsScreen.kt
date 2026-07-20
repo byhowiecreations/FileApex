@@ -47,13 +47,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omninode.data.settings.PinIdleTimeout
+import com.omninode.data.settings.DesktopLayoutMode
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.platform.OmniBackHandler
+import com.omninode.platform.usesDesktopFileSelection
 import com.omninode.util.TimeUtils
 import com.omninode.platform.rememberGoogleSignInLauncher
 import com.omninode.presentation.SettingsUiState
 import com.omninode.presentation.SettingsViewModel
+import com.omninode.ui.adaptive.OmniPaneSectionHeader
 import com.omninode.ui.theme.OmniTeal
 import com.omninode.update.rememberRequestInstallUnknownAppsPermission
 
@@ -62,7 +65,16 @@ private enum class SettingsPage {
     CheckForUpdates,
     PinRequired,
     BackgroundPersistence,
-    GoogleAccount
+    FileTransferNotifications,
+    GoogleAccount,
+    DesktopLayout
+}
+
+enum class SettingsScreenLayoutMode {
+    /** Phone / compact: teal top bar scaffold. */
+    FullScreen,
+    /** Wide navigation rail: white pane header matching Devices list pane. */
+    ListPane
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,6 +87,7 @@ fun SettingsScreen(
      * leave via the rail. Sub-pages still show back to Settings root. Compact stays true.
      */
     showRootBackNavigation: Boolean = true,
+    layoutMode: SettingsScreenLayoutMode = SettingsScreenLayoutMode.FullScreen,
     batteryOptimizationRestricted: Boolean = false,
     onRequestBatteryUnrestricted: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
@@ -106,11 +119,13 @@ fun SettingsScreen(
             state = state,
             onBack = onBack,
             showBackNavigation = showRootBackNavigation,
+            layoutMode = layoutMode,
             onOpenCheckForUpdates = { page = SettingsPage.CheckForUpdates },
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
+            onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
-            onFileTransferNotifications = viewModel::setFileTransferNotifications,
+            onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             batteryOptimizationRestricted = batteryOptimizationRestricted,
             exactAlarmWarningActive = exactAlarmWarningActive
@@ -118,6 +133,7 @@ fun SettingsScreen(
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
             state = state,
             updateStatus = updateStatus,
+            layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onToggle = viewModel::setCheckForUpdates,
             onUnitSelected = viewModel::setCheckForUpdatesUnit,
@@ -126,6 +142,7 @@ fun SettingsScreen(
         )
         SettingsPage.PinRequired -> PinRequiredSettingsPage(
             state = state,
+            layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onToggle = viewModel::setPinRequired,
             onPinChange = viewModel::setDevicePin,
@@ -133,6 +150,7 @@ fun SettingsScreen(
         )
         SettingsPage.BackgroundPersistence -> BackgroundPersistenceSettingsPage(
             state = state,
+            layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
             batteryOptimizationRestricted = batteryOptimizationRestricted,
@@ -141,12 +159,29 @@ fun SettingsScreen(
             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
             onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
+        SettingsPage.FileTransferNotifications -> FileTransferNotificationsSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onToggle = viewModel::setFileTransferNotifications
+        )
         SettingsPage.GoogleAccount -> GoogleAccountSettingsPage(
             state = state,
             linkStatus = googleLinkStatus,
+            layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onDisable = viewModel::disableGoogleAccountLink,
             onIdToken = viewModel::onGoogleIdToken
+        )
+        SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onExpanded = { expanded ->
+                viewModel.setDesktopLayoutMode(
+                    if (expanded) DesktopLayoutMode.Expanded else DesktopLayoutMode.Compact
+                )
+            }
         )
     }
 }
@@ -158,11 +193,13 @@ private fun SettingsRootPage(
     state: SettingsUiState,
     onBack: () -> Unit,
     showBackNavigation: Boolean,
+    layoutMode: SettingsScreenLayoutMode,
     onOpenCheckForUpdates: () -> Unit,
     onOpenPinRequired: () -> Unit,
     onOpenBackgroundPersistence: () -> Unit,
+    onOpenFileTransferNotifications: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
-    onFileTransferNotifications: (Boolean) -> Unit,
+    onOpenDesktopLayout: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     batteryOptimizationRestricted: Boolean,
     exactAlarmWarningActive: Boolean
@@ -171,20 +208,12 @@ private fun SettingsRootPage(
     var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
     val versionTapInteraction = remember { MutableInteractionSource() }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            SettingsTopBar(
-                title = "Settings",
-                onBack = onBack.takeIf { showBackNavigation }
-            )
-        }
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
+    SettingsPageShell(
+        title = "Settings",
+        layoutMode = layoutMode,
+        onBack = onBack.takeIf { showBackNavigation }
+    ) { contentModifier ->
+        Box(modifier = contentModifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -221,21 +250,10 @@ private fun SettingsRootPage(
                     ),
                     onClick = onOpenBackgroundPersistence
                 )
-                ListItem(
-                    headlineContent = { Text("File Transfer notifications") },
-                    supportingContent = {
-                        Text(
-                            "When on, this device shows a notification after files are received " +
-                                "successfully (includes filenames). Off keeps transfers silent. " +
-                                "Applies only when receiving, not when sending."
-                        )
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = state.fileTransferNotificationsEnabled,
-                            onCheckedChange = onFileTransferNotifications
-                        )
-                    }
+                SettingsNavItem(
+                    title = "File Transfer Notifications",
+                    subtitle = if (state.fileTransferNotificationsEnabled) "On" else "Off",
+                    onClick = onOpenFileTransferNotifications
                 )
                 SettingsNavItem(
                     title = "Google Account",
@@ -246,6 +264,13 @@ private fun SettingsRootPage(
                     },
                     onClick = onOpenGoogleAccount
                 )
+                if (usesDesktopFileSelection()) {
+                    SettingsNavItem(
+                        title = "Desktop Layout",
+                        subtitle = state.desktopLayoutMode.label,
+                        onClick = onOpenDesktopLayout
+                    )
+                }
             }
             Text(
                 text = "OmniNode v$appVersionName",
@@ -303,6 +328,7 @@ private fun backgroundPersistenceSubtitle(
 @Composable
 private fun BackgroundPersistenceSettingsPage(
     state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onEnableServiceWatchdog: (Boolean) -> Unit,
     batteryOptimizationRestricted: Boolean,
@@ -311,14 +337,14 @@ private fun BackgroundPersistenceSettingsPage(
     onOpenExactAlarmSettings: () -> Unit,
     onOpenAppDetailsSettings: () -> Unit
 ) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = { SettingsTopBar(title = "Background Persistence", onBack = onBack) }
-    ) { padding ->
+    SettingsPageShell(
+        title = "Background Persistence",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
         Column(
-            modifier = Modifier
+            modifier = contentModifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
@@ -383,9 +409,86 @@ private fun BackgroundPersistenceSettingsPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun FileTransferNotificationsSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onToggle: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "File Transfer Notifications",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Show receive notifications") },
+                supportingContent = {
+                    Text(
+                        "When on, this device shows a notification after files are received " +
+                            "successfully (includes filenames). Off keeps transfers silent. " +
+                            "Applies only when receiving, not when sending. Default is off."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.fileTransferNotificationsEnabled,
+                        onCheckedChange = onToggle
+                    )
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DesktopLayoutSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onExpanded: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Desktop Layout",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Expanded layout") },
+                supportingContent = {
+                    Text(
+                        "When on, always uses the adaptive multi-pane layout with navigation " +
+                            "rail and list-detail, regardless of window size. When off, uses " +
+                            "the compact single-column layout. Default is Compact."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.desktopLayoutMode == DesktopLayoutMode.Expanded,
+                        onCheckedChange = onExpanded
+                    )
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun CheckForUpdatesSettingsPage(
     state: SettingsUiState,
     updateStatus: String?,
+    layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onUnitSelected: (UpdateCheckUnit) -> Unit,
@@ -394,14 +497,14 @@ private fun CheckForUpdatesSettingsPage(
 ) {
     val requestInstallUnknownAppsPermission = rememberRequestInstallUnknownAppsPermission()
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = { SettingsTopBar(title = "Check for Updates", onBack = onBack) }
-    ) { padding ->
+    SettingsPageShell(
+        title = "Check for Updates",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
         Column(
-            modifier = Modifier
+            modifier = contentModifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
@@ -460,6 +563,7 @@ private fun CheckForUpdatesSettingsPage(
 @Composable
 private fun PinRequiredSettingsPage(
     state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onPinChange: (String) -> Unit,
@@ -467,14 +571,14 @@ private fun PinRequiredSettingsPage(
 ) {
     var timeoutExpanded by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = { SettingsTopBar(title = "PIN required", onBack = onBack) }
-    ) { padding ->
+    SettingsPageShell(
+        title = "PIN required",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
         Column(
-            modifier = Modifier
+            modifier = contentModifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
@@ -556,20 +660,21 @@ private fun PinRequiredSettingsPage(
 private fun GoogleAccountSettingsPage(
     state: SettingsUiState,
     linkStatus: String?,
+    layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onDisable: () -> Unit,
     onIdToken: (idToken: String?, email: String?, errorMessage: String?) -> Unit
 ) {
     val launchSignIn = rememberGoogleSignInLauncher(onResult = onIdToken)
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = { SettingsTopBar(title = "Google Account", onBack = onBack) }
-    ) { padding ->
+    SettingsPageShell(
+        title = "Google Account",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
         Column(
-            modifier = Modifier
+            modifier = contentModifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
@@ -618,6 +723,32 @@ private fun GoogleAccountSettingsPage(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsPageShell(
+    title: String,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: (() -> Unit)?,
+    content: @Composable (Modifier) -> Unit
+) {
+    when (layoutMode) {
+        SettingsScreenLayoutMode.FullScreen -> {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = { SettingsTopBar(title = title, onBack = onBack) }
+            ) { padding ->
+                content(Modifier.fillMaxSize().padding(padding))
+            }
+        }
+        SettingsScreenLayoutMode.ListPane -> {
+            Column(modifier = Modifier.fillMaxSize()) {
+                OmniPaneSectionHeader(title = title, onBack = onBack)
+                content(Modifier.weight(1f).fillMaxWidth())
             }
         }
     }

@@ -13,18 +13,12 @@ import androidx.compose.runtime.Immutable
 data class DeviceListRow(
     val deviceId: String,
     val deviceName: String,
-    val lastKnownIp: String,
-    val port: Int,
-    val online: Boolean
+    val online: Boolean,
+    val appVersion: String?
 ) {
     val title: String get() = deviceName
 
-    val subtitle: String
-        get() = if (online) {
-            "Online · $lastKnownIp:$port"
-        } else {
-            "Offline · $lastKnownIp:$port"
-        }
+    val subtitle: String get() = peerStatusSubtitle(online, appVersion)
 
     companion object {
         fun areItemsTheSame(oldItem: DeviceListRow, newItem: DeviceListRow): Boolean =
@@ -32,5 +26,11 @@ data class DeviceListRow(
 
         fun areContentsTheSame(oldItem: DeviceListRow, newItem: DeviceListRow): Boolean =
             oldItem == newItem
+
+        fun peerStatusSubtitle(online: Boolean, appVersion: String?): String {
+            val status = if (online) "Online" else "Offline"
+            val version = appVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return status
+            return "$status · v$version"
+        }
     }
 }

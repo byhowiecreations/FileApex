@@ -75,6 +75,7 @@ import com.omninode.data.identity.LocalIdentity
 import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.DevicesViewModel
+import com.omninode.ui.adaptive.OmniPaneSectionHeader
 import com.omninode.ui.dnd.deviceFileDropTarget
 import com.omninode.ui.theme.OmniTeal
 import com.omninode.ui.theme.OmniTealDark
@@ -179,12 +180,7 @@ fun DevicesScreen(
                 .padding(padding)
         ) {
             if (isListPane) {
-                Text(
-                    text = "Paired Devices",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                )
+                OmniPaneSectionHeader(title = "Paired Devices")
             }
             PairedDevicesList(
                 listState = listState,

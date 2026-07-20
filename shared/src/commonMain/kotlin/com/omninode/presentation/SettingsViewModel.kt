@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omninode.cloud.GoogleLinkCoordinator
 import com.omninode.data.settings.PinIdleTimeout
+import com.omninode.data.settings.DesktopLayoutMode
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.di.OmniNodeServices
@@ -30,6 +31,7 @@ data class SettingsUiState(
     val checkForUpdatesIntervalAmount: Int = 1,
     val checkForUpdatesAmountText: String = "1",
     val enableServiceWatchdog: Boolean = true,
+    val desktopLayoutMode: DesktopLayoutMode = DesktopLayoutMode.Compact,
     val googleAccountError: String? = null
 )
 
@@ -47,7 +49,8 @@ class SettingsViewModel : ViewModel() {
             checkForUpdatesIntervalUnit = settings.checkForUpdatesIntervalUnit.value,
             checkForUpdatesIntervalAmount = settings.checkForUpdatesIntervalAmount.value,
             checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString(),
-            enableServiceWatchdog = settings.enableServiceWatchdog.value
+            enableServiceWatchdog = settings.enableServiceWatchdog.value,
+            desktopLayoutMode = settings.desktopLayoutMode.value
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -62,6 +65,11 @@ class SettingsViewModel : ViewModel() {
         settings.setEnableServiceWatchdog(enabled)
         ServiceWatchdog.onPreferenceChanged(enabled)
         _uiState.update { it.copy(enableServiceWatchdog = enabled) }
+    }
+
+    fun setDesktopLayoutMode(mode: DesktopLayoutMode) {
+        settings.setDesktopLayoutMode(mode)
+        _uiState.update { it.copy(desktopLayoutMode = mode) }
     }
 
     fun setFileTransferNotifications(enabled: Boolean) {

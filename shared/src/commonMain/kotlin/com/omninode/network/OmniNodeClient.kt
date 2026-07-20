@@ -378,7 +378,9 @@ data class NodeIdentityResponse(
     /** Absolute Downloads/OmniNode path on this node (Multi Copy / Download landing zone). */
     val downloadsPath: String = "",
     /** When true, pairing requires this device's PIN. */
-    val pinRequired: Boolean = false
+    val pinRequired: Boolean = false,
+    /** Marketing app version from [com.omninode.update.currentAppVersionName]. */
+    val appVersion: String = ""
 )
 
 @kotlinx.serialization.Serializable

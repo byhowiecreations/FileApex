@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.platform.OmniBackHandler
+import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.ShareSendViewModel
 import com.omninode.ui.theme.OmniTeal
 import kotlinx.coroutines.delay
@@ -217,7 +218,10 @@ fun ShareSendScreen(
                                         text = if (option.isLocal) {
                                             "Save to Downloads/OmniNode"
                                         } else {
-                                            "Online · ${option.host}"
+                                            DeviceListRow.peerStatusSubtitle(
+                                                online = true,
+                                                appVersion = option.appVersion
+                                            )
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant

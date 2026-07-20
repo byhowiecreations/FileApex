@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omninode.platform.OmniBackHandler
 import com.omninode.presentation.BrowseTarget
+import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.ExplorerViewModel
 import com.omninode.ui.theme.OmniTeal
 
@@ -409,7 +410,14 @@ fun FileExplorerScreen(
                             Column(modifier = Modifier.padding(start = 8.dp)) {
                                 Text(option.deviceName, style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    text = if (option.isLocal) "Local device" else "Online · ${option.host}",
+                                    text = if (option.isLocal) {
+                                        "Local device"
+                                    } else {
+                                        DeviceListRow.peerStatusSubtitle(
+                                            online = true,
+                                            appVersion = option.appVersion
+                                        )
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

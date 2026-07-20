@@ -38,6 +38,9 @@ class PeerPresenceMonitor(
     private val _onlineDeviceIds = MutableStateFlow<Set<String>>(emptySet())
     val onlineDeviceIds: StateFlow<Set<String>> = _onlineDeviceIds.asStateFlow()
 
+    private val _peerAppVersions = MutableStateFlow<Map<String, String>>(emptyMap())
+    val peerAppVersions: StateFlow<Map<String, String>> = _peerAppVersions.asStateFlow()
+
     fun start() {
         if (pollJob?.isActive == true) return
         pollJob = scope.launch {
@@ -75,9 +78,13 @@ class PeerPresenceMonitor(
         }
 
         val online = linkedSetOf<String>()
+        val versionUpdates = mutableMapOf<String, String>()
         for (result in probeResults) {
             if (result == null) continue
             online += result.peer.deviceId
+            result.appVersion?.let { version ->
+                versionUpdates[result.peer.deviceId] = version
+            }
             result.refreshedPeer?.let { refreshed ->
                 mutex.withLock {
                     repository.upsertReplacingAliases(refreshed)
@@ -100,6 +107,19 @@ class PeerPresenceMonitor(
             if (_onlineDeviceIds.value != online) {
                 _onlineDeviceIds.value = online
             }
+            if (versionUpdates.isNotEmpty()) {
+                val merged = _peerAppVersions.value.toMutableMap()
+                var changed = false
+                for ((deviceId, version) in versionUpdates) {
+                    if (merged[deviceId] != version) {
+                        merged[deviceId] = version
+                        changed = true
+                    }
+                }
+                if (changed) {
+                    _peerAppVersions.value = merged
+                }
+            }
         }
     }
 
@@ -117,16 +137,20 @@ class PeerPresenceMonitor(
             return null
         }
 
-        val refreshedPeer = runCatching {
-            val identity = client.fetchIdentity(host, peer.port)
-            if (identity.deviceId != peer.deviceId) return@runCatching null
-            val refreshed = peer.copy(
-                deviceName = identity.deviceName.ifBlank { peer.deviceName },
-                rootPath = identity.rootPath.ifBlank { peer.rootPath },
-                port = identity.port.takeIf { it > 0 } ?: peer.port
-            )
-            refreshed.takeIf { it != peer }
-        }.getOrNull()
+        val identityResult = runCatching { client.fetchIdentity(host, peer.port) }.getOrNull()
+            ?: return PeerProbeResult(peer = peer, refreshedPeer = null, mergeRequest = null, appVersion = null)
+
+        if (identityResult.deviceId != peer.deviceId) {
+            return PeerProbeResult(peer = peer, refreshedPeer = null, mergeRequest = null, appVersion = null)
+        }
+
+        val refreshedPeer = peer.copy(
+            deviceName = identityResult.deviceName.ifBlank { peer.deviceName },
+            rootPath = identityResult.rootPath.ifBlank { peer.rootPath },
+            port = identityResult.port.takeIf { it > 0 } ?: peer.port
+        ).takeIf { it != peer }
+
+        val appVersion = identityResult.appVersion.trim().takeIf { it.isNotEmpty() }
 
         val mergeRequest = runCatching {
             val remoteRoster = client.listPairedDevices(host, peer.port)
@@ -139,14 +163,16 @@ class PeerPresenceMonitor(
         return PeerProbeResult(
             peer = peer,
             refreshedPeer = refreshedPeer,
-            mergeRequest = mergeRequest
+            mergeRequest = mergeRequest,
+            appVersion = appVersion
         )
     }
 
     private data class PeerProbeResult(
         val peer: PairedDeviceEntity,
         val refreshedPeer: PairedDeviceEntity?,
-        val mergeRequest: ClusterSyncRequest?
+        val mergeRequest: ClusterSyncRequest?,
+        val appVersion: String?
     )
 
     companion object {

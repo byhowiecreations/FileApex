@@ -3,17 +3,12 @@ package com.omninode.update
 /**
  * Marketing version string (Android + Desktop UI).
  *
- * Dual versioning (keep in sync each letter bump):
- * - Marketing: [NAME] **must** equal `omninode.version.name` in gradle.properties
- * - Code / jpackage: `omninode.version.code` → Android `versionCode` and
- *   macOS jpackage `packageVersion` `1.0.${code}` (jpackage forbids `0.x.ya` forms)
- * - Shipped DMG/`OmniNode.app` marketing strings are rewritten to [NAME] in
- *   `copyCurrentBuilds`
- *
- * Edit gradle.properties first, then update [NAME] in the same change set.
+ * [NAME] is generated at build time from `omninode.version.name` in gradle.properties
+ * (see [GeneratedAppVersion]). Android APK [versionName] and jpackage [packageVersion]
+ * use the same gradle.properties keys.
  */
 object OmniNodeAppVersion {
-    const val NAME = "0.1.5a"
+    const val NAME: String = GeneratedAppVersion.NAME
 }
 
 /**

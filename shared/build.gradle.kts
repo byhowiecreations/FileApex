@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -24,6 +25,10 @@ kotlin {
     jvm("desktop")
 
     sourceSets {
+        val commonMain by getting {
+            kotlin.srcDir(layout.buildDirectory.dir("generated/omninodeAppVersion/kotlin"))
+        }
+
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -106,5 +111,39 @@ dependencies {
 
 room3 {
     schemaDirectory("$projectDir/schemas")
+}
+
+val generateOmniNodeAppVersion = tasks.register("generateOmniNodeAppVersion") {
+    val outDir = layout.buildDirectory.dir("generated/omninodeAppVersion/kotlin")
+    outputs.dir(outDir)
+    doLast {
+        val versionName = providers.gradleProperty("omninode.version.name").get()
+        val versionCode = providers.gradleProperty("omninode.version.code").get()
+        val dir = outDir.get().asFile.resolve("com/omninode/update")
+        dir.mkdirs()
+        dir.resolve("GeneratedAppVersion.kt").writeText(
+            """
+            |package com.omninode.update
+            |
+            |/**
+            | * Generated from gradle.properties — do not edit.
+            | *   omninode.version.name → [NAME]
+            | *   omninode.version.code → [CODE]
+            | */
+            |internal object GeneratedAppVersion {
+            |    const val NAME = "$versionName"
+            |    const val CODE = $versionCode
+            |}
+            """.trimMargin()
+        )
+    }
+}
+
+tasks.withType<KotlinCompilationTask<*>>().configureEach {
+    dependsOn(generateOmniNodeAppVersion)
+}
+
+tasks.matching { it.name.startsWith("ksp") }.configureEach {
+    dependsOn(generateOmniNodeAppVersion)
 }
 

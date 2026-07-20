@@ -43,6 +43,7 @@ import com.omninode.ui.DevicesScreenLayoutMode
 import com.omninode.ui.FileExplorerScreen
 import com.omninode.ui.HomeTab
 import com.omninode.ui.SettingsScreen
+import com.omninode.ui.SettingsScreenLayoutMode
 import com.omninode.ui.theme.OmniTeal
 import com.omninode.ui.theme.OmniTealDark
 
@@ -83,12 +84,18 @@ fun AdaptiveWideHome(
             )
             when (selectedTab) {
                 HomeTab.Settings -> {
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
                         SettingsScreen(
                             appVersionName = appVersionName,
                             onBack = { onSelectTab(HomeTab.Devices) },
                             // Rail is top-level nav; no redundant up/back on Settings root.
                             showRootBackNavigation = false,
+                            layoutMode = SettingsScreenLayoutMode.ListPane,
                             batteryOptimizationRestricted = batteryOptimizationRestricted,
                             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
                             exactAlarmWarningActive = exactAlarmWarningActive,
