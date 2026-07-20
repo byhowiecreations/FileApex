@@ -25,6 +25,8 @@ interface AppSettings {
     val checkForUpdatesIntervalAmount: StateFlow<Int>
     /** Epoch millis of the last completed update check (0 = never). */
     val lastUpdateCheckEpochMs: StateFlow<Long>
+    /** When true, AlarmManager may restart the Android share-server FGS after OEM kills. */
+    val enableServiceWatchdog: StateFlow<Boolean>
 
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
@@ -37,6 +39,8 @@ interface AppSettings {
     fun setCheckForUpdatesEnabled(enabled: Boolean)
     fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)
+
+    fun setEnableServiceWatchdog(enabled: Boolean)
 
     fun checkForUpdatesIntervalMillis(): Long {
         return UpdateCheckFrequency.toMillis(

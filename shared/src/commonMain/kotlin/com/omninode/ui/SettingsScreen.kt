@@ -104,6 +104,7 @@ fun SettingsScreen(
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onFileTransferNotifications = viewModel::setFileTransferNotifications,
+            onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg
         )
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
@@ -143,6 +144,7 @@ private fun SettingsRootPage(
     onOpenPinRequired: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onFileTransferNotifications: (Boolean) -> Unit,
+    onEnableServiceWatchdog: (Boolean) -> Unit,
     onVersionNumberEasterEgg: () -> Unit
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
@@ -189,6 +191,28 @@ private fun SettingsRootPage(
                         append(state.pinIdleTimeout.label)
                     },
                     onClick = onOpenPinRequired
+                )
+                Text(
+                    text = "Background Persistence",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp)
+                )
+                ListItem(
+                    headlineContent = { Text("Service watchdog") },
+                    supportingContent = {
+                        Text(
+                            "Enable background watchdog to automatically restart the OmniNode " +
+                                "file server daemon if aggressive OEM battery management " +
+                                "terminates it in the background."
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = state.enableServiceWatchdog,
+                            onCheckedChange = onEnableServiceWatchdog
+                        )
+                    }
                 )
                 ListItem(
                     headlineContent = { Text("File Transfer notifications") },

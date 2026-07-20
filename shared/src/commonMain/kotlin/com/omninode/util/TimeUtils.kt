@@ -17,6 +17,13 @@ object TimeUtils {
     fun isWithinWindow(epochMs: Long, windowMs: Long): Boolean =
         epochMs > 0L && millisSince(epochMs) <= windowMs
 
+    /** Default AlarmManager interval for the Android service watchdog (20 minutes). */
+    const val SERVICE_WATCHDOG_ALARM_INTERVAL_MS: Long = 20 * 60 * 1000L
+
+    /** Epoch millis when the next watchdog alarm should fire. */
+    fun nextAlarmEpochMs(intervalMs: Long = SERVICE_WATCHDOG_ALARM_INTERVAL_MS): Long =
+        now() + intervalMs.coerceAtLeast(1L)
+
     /**
      * Formats a UTC epoch millis instant into a local offset datetime using [zoneId].
      * Default zone follows RULES.md (America/New_York) for DST-safe localization.

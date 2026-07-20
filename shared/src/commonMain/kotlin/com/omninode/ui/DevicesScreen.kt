@@ -75,6 +75,7 @@ import com.omninode.data.identity.LocalIdentity
 import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.DevicesViewModel
+import com.omninode.ui.dnd.deviceFileDropTarget
 import com.omninode.ui.theme.OmniTeal
 import com.omninode.ui.theme.OmniTealDark
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -206,6 +207,9 @@ fun DevicesScreen(
                 },
                 onRemoveDevice = { deviceId, deviceName ->
                     pendingDelete = PendingDelete(deviceId, deviceName)
+                },
+                onFilesDropped = { deviceId, paths ->
+                    viewModel.sendDroppedLocalFiles(deviceId, paths)
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -436,6 +440,7 @@ private fun PairedDevicesList(
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
+    onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -461,6 +466,8 @@ private fun PairedDevicesList(
                 onClick = onOpenLocal,
                 onRename = onRenameLocal,
                 onRemove = null,
+                dropDeviceId = LocalIdentity.LOCAL_DEVICE_ID,
+                onFilesDropped = onFilesDropped,
                 modifier = Modifier.animateItem(
                     fadeInSpec = null,
                     fadeOutSpec = null,
@@ -501,6 +508,8 @@ private fun PairedDevicesList(
                     onClick = { onOpenDevice(row.deviceId) },
                     onRename = { onRenameDevice(row.deviceId, row.deviceName) },
                     onRemove = { onRemoveDevice(row.deviceId, row.deviceName) },
+                    dropDeviceId = row.deviceId,
+                    onFilesDropped = onFilesDropped,
                     modifier = Modifier.animateItem(
                         fadeInSpec = null,
                         fadeOutSpec = null,
@@ -667,25 +676,41 @@ private fun DeviceCard(
     onRename: (() -> Unit)?,
     onRemove: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    selected: Boolean = false
+    selected: Boolean = false,
+    dropDeviceId: String? = null,
+    onFilesDropped: ((deviceId: String, paths: List<String>) -> Unit)? = null
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val containerColor = if (selected) {
-        OmniTeal.copy(alpha = 0.12f)
+    var dropHover by remember { mutableStateOf(false) }
+    val dropTargetId = dropDeviceId
+    val dropCallback = onFilesDropped
+    val dropModifier = if (dropTargetId != null && dropCallback != null) {
+        Modifier.deviceFileDropTarget(
+            enabled = true,
+            onHoverChange = { dropHover = it },
+            onFilesDropped = { paths -> dropCallback(dropTargetId, paths) }
+        )
     } else {
-        MaterialTheme.colorScheme.surface
+        Modifier
+    }
+    val highlighted = selected || dropHover
+    val containerColor = when {
+        dropHover -> OmniTeal.copy(alpha = 0.22f)
+        selected -> OmniTeal.copy(alpha = 0.12f)
+        else -> MaterialTheme.colorScheme.surface
     }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .then(dropModifier)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 0.dp else 3.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (highlighted) 0.dp else 3.dp),
         border = BorderStroke(
-            width = if (selected) 2.dp else 1.5.dp,
-            color = if (selected) OmniTeal else OmniTeal.copy(alpha = 0.55f)
+            width = if (highlighted) 2.dp else 1.5.dp,
+            color = if (highlighted) OmniTeal else OmniTeal.copy(alpha = 0.55f)
         )
     ) {
         Row(

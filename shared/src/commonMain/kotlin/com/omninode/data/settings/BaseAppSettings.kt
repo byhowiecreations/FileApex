@@ -47,6 +47,7 @@ class BaseAppSettings(
         )
     )
     private val lastUpdateCheck = MutableStateFlow(store.getLong(KEY_LAST_UPDATE_CHECK, 0L))
+    private val serviceWatchdog = MutableStateFlow(store.getBoolean(KEY_SERVICE_WATCHDOG, true))
 
     override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
@@ -61,6 +62,7 @@ class BaseAppSettings(
     override val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit> = updateUnit.asStateFlow()
     override val checkForUpdatesIntervalAmount: StateFlow<Int> = updateAmount.asStateFlow()
     override val lastUpdateCheckEpochMs: StateFlow<Long> = lastUpdateCheck.asStateFlow()
+    override val enableServiceWatchdog: StateFlow<Boolean> = serviceWatchdog.asStateFlow()
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
         store.putBoolean(KEY_GOOGLE, enabled)
@@ -128,6 +130,11 @@ class BaseAppSettings(
         lastUpdateCheck.value = epochMs
     }
 
+    override fun setEnableServiceWatchdog(enabled: Boolean) {
+        store.putBoolean(KEY_SERVICE_WATCHDOG, enabled)
+        serviceWatchdog.value = enabled
+    }
+
     companion object {
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
@@ -141,5 +148,6 @@ class BaseAppSettings(
         const val KEY_UPDATE_UNIT = "auto_update_unit"
         const val KEY_UPDATE_AMOUNT = "auto_update_amount"
         const val KEY_LAST_UPDATE_CHECK = "last_update_check_epoch_ms"
+        const val KEY_SERVICE_WATCHDOG = "enable_service_watchdog"
     }
 }

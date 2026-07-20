@@ -13,7 +13,7 @@ package com.omninode.update
  * Edit gradle.properties first, then update [NAME] in the same change set.
  */
 object OmniNodeAppVersion {
-    const val NAME = "0.1.3a"
+    const val NAME = "0.1.4c"
 }
 
 /**

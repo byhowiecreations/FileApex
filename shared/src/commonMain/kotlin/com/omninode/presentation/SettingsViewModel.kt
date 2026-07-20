@@ -7,6 +7,7 @@ import com.omninode.data.settings.PinIdleTimeout
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.di.OmniNodeServices
+import com.omninode.platform.ServiceWatchdog
 import com.omninode.update.AppUpdateCoordinator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +29,7 @@ data class SettingsUiState(
     val checkForUpdatesIntervalUnit: UpdateCheckUnit = UpdateCheckUnit.Days,
     val checkForUpdatesIntervalAmount: Int = 1,
     val checkForUpdatesAmountText: String = "1",
+    val enableServiceWatchdog: Boolean = true,
     val googleAccountError: String? = null
 )
 
@@ -44,7 +46,8 @@ class SettingsViewModel : ViewModel() {
             checkForUpdatesEnabled = settings.checkForUpdatesEnabled.value,
             checkForUpdatesIntervalUnit = settings.checkForUpdatesIntervalUnit.value,
             checkForUpdatesIntervalAmount = settings.checkForUpdatesIntervalAmount.value,
-            checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString()
+            checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString(),
+            enableServiceWatchdog = settings.enableServiceWatchdog.value
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -54,6 +57,12 @@ class SettingsViewModel : ViewModel() {
 
     val googleLinkStatus: StateFlow<String?> = GoogleLinkCoordinator.status
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun setEnableServiceWatchdog(enabled: Boolean) {
+        settings.setEnableServiceWatchdog(enabled)
+        ServiceWatchdog.onPreferenceChanged(enabled)
+        _uiState.update { it.copy(enableServiceWatchdog = enabled) }
+    }
 
     fun setFileTransferNotifications(enabled: Boolean) {
         settings.setFileTransferNotificationsEnabled(enabled)

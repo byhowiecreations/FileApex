@@ -30,6 +30,7 @@ import com.omninode.domain.pairing.PairingPayload
 import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.network.FileShareServerService
 import com.omninode.platform.AndroidShareIntake
+import com.omninode.platform.ServiceWatchdog
 import com.omninode.ui.theme.OmniTeal
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -127,6 +128,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         configureVisibleSystemBars()
         refreshPermissions()
+        if (hasStoragePermission && hasUnrestrictedBattery) {
+            startShareServer()
+        }
     }
 
     override fun onDestroy() {
@@ -324,6 +328,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopShareServer() {
+        ServiceWatchdog.markCleanStop()
         stopService(Intent(this, FileShareServerService::class.java))
     }
 }

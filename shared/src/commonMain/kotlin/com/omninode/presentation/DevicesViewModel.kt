@@ -49,6 +49,7 @@ data class PendingPinUnlock(
 class DevicesViewModel : ViewModel() {
     private val repository = OmniNodeServices.deviceRepository
     private val presence = OmniNodeServices.presenceMonitor
+    private val transferManager = OmniNodeServices.transferManager
     private val identity: LocalIdentity
         get() = OmniNodeServices.localIdentity
 
@@ -372,6 +373,92 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             repository.remove(deviceId)
             _uiState.update { it.copy(statusMessage = "Device removed") }
+        }
+    }
+
+    /**
+     * Finder / OS drop onto a device tile → outbound send via [transferManager] (SSOT).
+     * Local "This device" drops are refused (no same-device remote transfer).
+     */
+    fun sendDroppedLocalFiles(deviceId: String, absolutePaths: List<String>) {
+        viewModelScope.launch {
+            if (deviceId == LocalIdentity.LOCAL_DEVICE_ID || deviceId == identity.deviceId) {
+                _uiState.update {
+                    it.copy(
+                        statusMessage = null,
+                        errorMessage = "Can't send to this device — drop onto a paired peer"
+                    )
+                }
+                return@launch
+            }
+            val files = withContext(Dispatchers.IO) {
+                absolutePaths.filter { path ->
+                    runCatching {
+                        val file = kotlinx.io.files.Path(path)
+                        val meta = kotlinx.io.files.SystemFileSystem.metadataOrNull(file)
+                        meta != null && !meta.isDirectory
+                    }.getOrDefault(false)
+                }
+            }
+            if (files.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        statusMessage = null,
+                        errorMessage = "Drop one or more files (folders are not sent)"
+                    )
+                }
+                return@launch
+            }
+            val target = repository.getDevice(deviceId)
+            if (target == null) {
+                _uiState.update {
+                    it.copy(errorMessage = "Device is no longer paired")
+                }
+                return@launch
+            }
+            if (!isDeviceOnline(deviceId)) {
+                _uiState.update {
+                    it.copy(statusMessage = "Waking ${target.deviceName}…")
+                }
+                withContext(Dispatchers.IO) {
+                    runCatching { sendWakeBroadcast() }
+                }
+            }
+            _uiState.update {
+                it.copy(
+                    statusMessage = "Sending ${files.size} file(s) to ${target.deviceName}…",
+                    errorMessage = null
+                )
+            }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    transferManager.sendLocalPathsToDeviceIds(files, listOf(deviceId))
+                }
+            }.fold(
+                onSuccess = { batch ->
+                    _uiState.update {
+                        if (batch.allFailed) {
+                            it.copy(
+                                statusMessage = null,
+                                errorMessage = batch.summaryMessage
+                            )
+                        } else {
+                            it.copy(
+                                statusMessage = batch.summaryMessage,
+                                errorMessage = null
+                            )
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            statusMessage = null,
+                            errorMessage = error.message ?: "Send failed"
+                        )
+                    }
+                }
+            )
         }
     }
 
