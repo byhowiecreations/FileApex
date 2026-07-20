@@ -30,17 +30,22 @@ class OmniNodeWatchdogReceiver : BroadcastReceiver() {
     }
 
     private fun maybeRestartShareServer(context: Context) {
-        val serviceClass = "$FILE_SHARE_SERVER_SERVICE"
+        val serviceClass = FILE_SHARE_SERVER_SERVICE
         if (ServiceWatchdogScheduler.isShareServerRunning(context, serviceClass)) {
             Log.i(TAG, "Share server already running — skip restart")
             return
         }
+        // Background FGS starts are often blocked on Android 15+; defer to MainActivity.
+        ShareServerPendingStart.mark(context)
         runCatching {
             val start = Intent().setClassName(context.packageName, serviceClass)
             ContextCompat.startForegroundService(context, start)
             Log.i(TAG, "Started share-server FGS from watchdog")
         }.onFailure { error ->
-            Log.w(TAG, "Watchdog could not start share server :: ${error.message}")
+            Log.i(
+                TAG,
+                "Watchdog FGS start blocked — deferred until foreground :: ${error.message}"
+            )
         }
     }
 

@@ -1,5 +1,6 @@
 package com.omninode.network
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -35,22 +36,27 @@ class FileShareServerService : Service() {
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     private var wakeReceiver: UdpWakeReceiver? = null
+    private var engineWatchdogStarted = false
+    private var isForegroundPromoted = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        promoteToForeground()
-        ensureServerRunning()
-        startWakeListener()
-        startEngineWatchdog()
-        ServiceWatchdog.scheduleNextAlarmIfEnabled()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        promoteToForeground()
+        if (!isForegroundPromoted && !promoteToForegroundSafely()) {
+            Log.w(TAG, "Foreground promotion blocked — stopping service (retry from UI)")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         ensureServerRunning()
         if (wakeReceiver == null) {
             startWakeListener()
+        }
+        if (!engineWatchdogStarted) {
+            engineWatchdogStarted = true
+            startEngineWatchdog()
         }
         ServiceWatchdog.scheduleNextAlarmIfEnabled()
         return START_STICKY
@@ -81,22 +87,39 @@ class FileShareServerService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun promoteToForeground() {
-        val notification = buildServerNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, foregroundServiceTypeFlags())
-        } else {
-            @Suppress("DEPRECATION")
-            startForeground(NOTIFICATION_ID, notification)
+    private fun promoteToForegroundSafely(): Boolean {
+        if (isForegroundPromoted) return true
+        return try {
+            val notification = buildServerNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, foregroundServiceTypeFlags())
+            } else {
+                @Suppress("DEPRECATION")
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            isForegroundPromoted = true
+            true
+        } catch (error: ForegroundServiceStartNotAllowedException) {
+            Log.w(TAG, "Foreground promotion not allowed :: ${error.message}")
+            false
+        } catch (error: SecurityException) {
+            Log.w(TAG, "Foreground promotion denied :: ${error.message}")
+            false
         }
     }
 
+    /**
+     * Prefer [CONNECTED_DEVICE] on API 34+ (LAN peers). Avoid combining with [DATA_SYNC] so
+     * Android 15+ background time limits for dataSync do not apply to this service.
+     */
     private fun foregroundServiceTypeFlags(): Int {
-        var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            else -> 0
         }
-        return type
     }
 
     private fun buildServerNotification(): Notification {
@@ -168,6 +191,8 @@ class FileShareServerService : Service() {
         private const val CHANNEL_ID = "OmniNodeServerChannel"
         private const val NOTIFICATION_ID = 1
         private const val ENGINE_WATCHDOG_INTERVAL_MS = 5_000L
+        const val ACTION_START = "com.omninode.action.START_SHARE_SERVER"
+        const val EXTRA_FROM_FOREGROUND = "extra_from_foreground"
         const val SERVER_PORT = LocalIdentity.DEFAULT_SHARE_PORT
 
         private val androidLog: (String, Throwable?) -> Unit = { message, error ->

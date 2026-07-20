@@ -64,8 +64,13 @@ class OmniNodeWakeService : Service() {
     }
 
     private fun startShareServer() {
+        ShareServerPendingStart.mark(this)
         val intent = Intent().setClassName(packageName, FILE_SHARE_SERVER_SERVICE)
-        ContextCompat.startForegroundService(this, intent)
+        runCatching {
+            ContextCompat.startForegroundService(this, intent)
+        }.onFailure { error ->
+            Log.i(TAG, "Wake FGS start blocked — deferred until foreground :: ${error.message}")
+        }
     }
 
     companion object {

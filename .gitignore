@@ -3,6 +3,7 @@
 **/build/
 /current/
 /local.properties
+/.build-jdk/
 /secret.properties
 *.iml
 .idea/

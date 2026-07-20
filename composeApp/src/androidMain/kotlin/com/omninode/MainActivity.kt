@@ -2,6 +2,7 @@ package com.omninode
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.ForegroundServiceStartNotAllowedException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -31,6 +32,8 @@ import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.network.FileShareServerService
 import com.omninode.platform.AndroidShareIntake
 import com.omninode.platform.ServiceWatchdog
+import com.omninode.platform.ShareServerPendingStart
+import android.util.Log
 import com.omninode.ui.theme.OmniTeal
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -38,6 +41,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
 
     private var hasStoragePermission by mutableStateOf(false)
     private var hasUnrestrictedBattery by mutableStateOf(false)
@@ -323,8 +330,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startShareServer() {
-        val intent = Intent(this, FileShareServerService::class.java)
-        ContextCompat.startForegroundService(this, intent)
+        ShareServerPendingStart.clear(this)
+        val intent = Intent(this, FileShareServerService::class.java).apply {
+            action = FileShareServerService.ACTION_START
+            putExtra(FileShareServerService.EXTRA_FROM_FOREGROUND, true)
+        }
+        runCatching {
+            ContextCompat.startForegroundService(this, intent)
+        }.onFailure { error ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                error is ForegroundServiceStartNotAllowedException
+            ) {
+                Log.w(TAG, "Share server start deferred — FGS not allowed :: ${error.message}")
+                ShareServerPendingStart.mark(this)
+            } else {
+                Log.e(TAG, "Share server start failed", error)
+            }
+        }
     }
 
     private fun stopShareServer() {

@@ -1,0 +1,22 @@
+---
+description: Use existing Temurin JDK for Mac builds — never re-download
+alwaysApply: true
+---
+
+# Mac build JDK (already installed)
+
+Temurin JDK 21 is **already installed** at:
+
+`.build-jdk/jdk-21.0.11+10/Contents/Home`
+
+`gradle.properties` sets `org.gradle.java.home` to that path for `jpackage` / `copyCurrentBuilds`.
+
+**Never download or install Temurin again** unless the user explicitly says it is missing or broken.
+
+Before Mac/desktop builds, verify only:
+
+```bash
+test -x .build-jdk/jdk-21.0.11+10/Contents/Home/bin/jpackage
+```
+
+If missing, tell the user — do not curl/download automatically.
