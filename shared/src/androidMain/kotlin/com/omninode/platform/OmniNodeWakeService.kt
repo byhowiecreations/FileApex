@@ -3,79 +3,64 @@ package com.omninode.platform
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
+import android.util.Log
 import androidx.core.content.ContextCompat
-import com.omninode.network.WakeProtocol
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetSocketAddress
-import java.net.SocketException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.omninode.network.ServerLifecycleManager
+import com.omninode.network.UdpWakeReceiver
 
+/**
+ * Process-owned UDP wake listener. Holds [OmniNode:ShareServerWakeLock] only for the
+ * short processing window after a coalesced wake packet — never for the service lifetime.
+ */
 class OmniNodeWakeService : Service() {
-    private val serviceJob = SupervisorJob()
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
-    private var socket: DatagramSocket? = null
+    private var wakeReceiver: UdpWakeReceiver? = null
 
     override fun onCreate() {
         super.onCreate()
-        serviceScope.launch {
-            listenForWake()
-        }
+        val receiver = UdpWakeReceiver(
+            onWakeAccepted = { processWakeSignal() },
+            onLog = { message -> Log.i(TAG, message) }
+        )
+        wakeReceiver = receiver
+        receiver.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
-        runCatching { socket?.close() }
-        socket = null
-        serviceScope.cancel()
+        wakeReceiver?.stop()
+        wakeReceiver = null
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private suspend fun listenForWake() {
-        val buffer = ByteArray(256)
-        while (serviceJob.isActive) {
-            val activeSocket = openSocket()
-            if (activeSocket == null) {
-                delay(1_000)
-                continue
-            }
-            try {
-                while (serviceJob.isActive) {
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    activeSocket.receive(packet)
-                    val payload = String(packet.data, 0, packet.length, Charsets.UTF_8)
-                    if (payload == WakeProtocol.PAYLOAD) {
-                        startShareServer()
-                    }
-                }
-            } catch (_: SocketException) {
-                if (!serviceJob.isActive) return
-            } finally {
-                runCatching { activeSocket.close() }
-                if (socket === activeSocket) {
-                    socket = null
-                }
-            }
+    private fun processWakeSignal() {
+        withShortLivedWakeLock {
+            // Foreground share service owns ServerLifecycleManager while running;
+            // ensureRunning here covers the race before the FGS attaches.
+            ServerLifecycleManager.ensureRunning(androidLog)
+            startShareServer()
         }
     }
 
-    private fun openSocket(): DatagramSocket? {
-        return runCatching {
-            DatagramSocket(null).apply {
-                reuseAddress = true
-                broadcast = true
-                bind(InetSocketAddress("0.0.0.0", WakeProtocol.PORT))
-                socket = this
+    private fun withShortLivedWakeLock(block: () -> Unit) {
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        val lock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "OmniNode:ShareServerWakeLock"
+        ).apply {
+            setReferenceCounted(true)
+            acquire(PROCESS_WAKE_LOCK_MS)
+        }
+        try {
+            block()
+        } finally {
+            if (lock.isHeld) {
+                runCatching { lock.release() }
             }
-        }.getOrNull()
+        }
     }
 
     private fun startShareServer() {
@@ -84,7 +69,17 @@ class OmniNodeWakeService : Service() {
     }
 
     companion object {
+        private const val TAG = "OmniNodeWakeService"
+        private const val PROCESS_WAKE_LOCK_MS = 10_000L
         private const val FILE_SHARE_SERVER_SERVICE =
             "com.omninode.network.FileShareServerService"
+
+        private val androidLog: (String, Throwable?) -> Unit = { message, error ->
+            if (error != null) {
+                Log.e(TAG, message, error)
+            } else {
+                Log.i(TAG, message)
+            }
+        }
     }
 }

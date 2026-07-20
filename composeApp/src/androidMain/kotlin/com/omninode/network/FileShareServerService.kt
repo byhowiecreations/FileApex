@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import android.util.Log
 import com.omninode.R
 import com.omninode.data.identity.LocalIdentity
@@ -21,17 +20,16 @@ import kotlinx.coroutines.launch
 
 /**
  * Foreground service that keeps the process-alive share server via [ServerLifecycleManager].
- * The engine is restarted if it ever drops while the service remains alive.
+ * Does not hold a persistent PARTIAL_WAKE_LOCK — wake packets use a short-lived lock in
+ * [com.omninode.platform.OmniNodeWakeService] only during UDP signal processing.
  */
 class FileShareServerService : Service() {
-    private var wakeLock: PowerManager.WakeLock? = null
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        acquireWakeLock()
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("OmniNode Server Active")
@@ -71,7 +69,6 @@ class FileShareServerService : Service() {
     override fun onDestroy() {
         serviceJob.cancel()
         ServerLifecycleManager.stop(androidLog)
-        releaseWakeLock()
         super.onDestroy()
     }
 
@@ -91,26 +88,6 @@ class FileShareServerService : Service() {
                 }
             }
         }
-    }
-
-    private fun acquireWakeLock() {
-        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "OmniNode:ShareServerWakeLock"
-        ).apply {
-            setReferenceCounted(false)
-            acquire(10 * 60 * 60 * 1000L)
-        }
-    }
-
-    private fun releaseWakeLock() {
-        wakeLock?.let { lock ->
-            if (lock.isHeld) {
-                runCatching { lock.release() }
-            }
-        }
-        wakeLock = null
     }
 
     private fun createNotificationChannel() {
