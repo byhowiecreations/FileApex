@@ -1,7 +1,7 @@
 package com.omninode.ui.adaptive
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material3.Icon
@@ -32,6 +33,8 @@ import com.omninode.ui.theme.OmniTeal
 
 /** Shared compact home header metrics — keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
+    /** Fixed teal strip height on every tab (IconButton row — same as Devices power affordance). */
+    val tealStripHeight = 56.dp
     val titleBandHorizontalPadding = 20.dp
     val titleBandVerticalPadding = 16.dp
     val eyebrowHeadlineGap = 4.dp
@@ -55,12 +58,6 @@ fun CompactPrimaryShell(
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            CompactTealStrip(
-                showExitPower = showExitPower,
-                onExitClick = onExitApp
-            )
-        },
         bottomBar = {
             OmniBottomBar(
                 selected = selectedTab,
@@ -75,6 +72,11 @@ fun CompactPrimaryShell(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // In content — not Scaffold topBar (Compose Desktop collapses an empty topBar slot).
+            CompactTealStrip(
+                showExitPower = showExitPower,
+                onExitClick = onExitApp
+            )
             content()
         }
     }
@@ -85,23 +87,26 @@ fun CompactTealStrip(
     showExitPower: Boolean,
     onExitClick: () -> Unit
 ) {
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(CompactHomeChrome.tealStripHeight)
             .background(OmniTeal)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.End
     ) {
         if (showExitPower) {
-            IconButton(
-                onClick = onExitClick,
-                modifier = Modifier.align(Alignment.CenterEnd)
-            ) {
+            IconButton(onClick = onExitClick) {
                 Icon(
                     imageVector = Icons.Filled.PowerSettingsNew,
                     contentDescription = "Exit OmniNode",
                     tint = Color.White
                 )
             }
+        } else {
+            // Reserve the same trailing space as the Devices power button row.
+            Spacer(modifier = Modifier.size(48.dp))
         }
     }
 }

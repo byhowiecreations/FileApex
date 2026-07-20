@@ -186,6 +186,43 @@ tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.con
     dependsOn("embedMacExtensions")
 }
 
+/** After [moveToCurrent], Gradle must rebuild when outputs no longer exist under `build/`. */
+afterEvaluate {
+    fun Project.apkOutputsPresent(variant: String): Boolean =
+        apkOutputDir(variant).listFiles()?.any { it.isFile && it.extension == "apk" } == true
+
+    listOf("assembleDebug", "packageDebug").forEach { taskName ->
+        tasks.named(taskName).configure {
+            outputs.upToDateWhen { apkOutputsPresent("debug") }
+        }
+    }
+
+    listOf("assembleRelease", "packageRelease").forEach { taskName ->
+        tasks.named(taskName).configure {
+            outputs.upToDateWhen { apkOutputsPresent("release") }
+        }
+    }
+
+    tasks.named("createDistributable").configure {
+        outputs.upToDateWhen {
+            distributableAppBundle().exists()
+        }
+    }
+
+    tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.configureEach {
+        outputs.upToDateWhen {
+            val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
+            dmgDir.listFiles()?.any { it.isFile && it.extension.equals("dmg", ignoreCase = true) } == true
+        }
+    }
+}
+
+private fun Project.apkOutputDir(variant: String): File =
+    layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
+
+private fun Project.distributableAppBundle(): File =
+    layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile
+
 /**
  * Moves build outputs into project-root `current/` (never copies — avoids duplicating large artifacts).
  */
@@ -253,6 +290,73 @@ private fun patchShippedAppMarketingVersion(dest: File, appVersionName: String, 
     ).start().waitFor()
 }
 
+private fun Project.embedMacExtensionsIn(appBundle: File) {
+    val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
+    ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
+        .directory(rootProject.projectDir)
+        .inheritIO()
+        .start()
+        .waitFor()
+}
+
+private fun Project.shipToCurrent(
+    includeDebugApk: Boolean,
+    includeReleaseApk: Boolean,
+    includeDmg: Boolean,
+    mountDmg: Boolean,
+    preserveExistingDmgOnWipe: Boolean
+) {
+    if (!preserveExistingDmgOnWipe) {
+        detachOmniNodeDmgVolumes()
+    }
+    val dest = currentBuildsDest()
+    prepareCurrentDirectory(dest, preserveDmgFiles = preserveExistingDmgOnWipe)
+
+    val logger = logger
+    val appVersionName = providers.gradleProperty("omninode.version.name").get()
+    val versionCode = providers.gradleProperty("omninode.version.code").get()
+
+    fun moveApksFrom(variant: String) {
+        val apks = apkOutputDir(variant).listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
+        check(apks.isNotEmpty()) { "No APK found in ${apkOutputDir(variant).absolutePath}" }
+        apks.forEach { moveToCurrent(dest, it, logger = logger) }
+    }
+    if (includeDebugApk) moveApksFrom("debug")
+    if (includeReleaseApk) moveApksFrom("release")
+
+    val dmgDestName = "OmniNode-$appVersionName.dmg"
+    if (includeDmg) {
+        val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
+        val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension == "dmg" }
+        check(dmgs.isNotEmpty()) { "No DMG found in ${dmgDir.absolutePath}" }
+        dmgs.forEach { dmg ->
+            moveToCurrent(dest, dmg, destName = dmgDestName, logger = logger)
+        }
+    }
+
+    val buildAppBundle = distributableAppBundle()
+    check(buildAppBundle.exists()) {
+        "Missing build output: ${buildAppBundle.absolutePath}"
+    }
+    embedMacExtensionsIn(buildAppBundle)
+    moveToCurrent(dest, buildAppBundle, logger = logger)
+
+    patchShippedAppMarketingVersion(dest, appVersionName, versionCode)
+    logger.lifecycle("Set OmniNode.app CFBundleShortVersionString=$appVersionName")
+
+    val launchedBinary = dest.resolve("OmniNode.app/Contents/MacOS/OmniNode")
+    check(launchedBinary.exists() && launchedBinary.canExecute()) {
+        "OmniNode.app binary missing execute permission after move"
+    }
+
+    if (mountDmg) {
+        val shippedDmg = dest.resolve(dmgDestName)
+        check(shippedDmg.exists()) { "Missing DMG to mount: ${shippedDmg.absolutePath}" }
+        ProcessBuilder("open", shippedDmg.absolutePath).start().waitFor()
+        logger.lifecycle("Mounted $dmgDestName for manual install (left attached)")
+    }
+}
+
 /**
  * Post-[assembleDebug]: debug APK + Mac .app into `current/`.
  * Does **not** build or mount a DMG (avoids hdiutil attach/detach during iteration).
@@ -263,36 +367,13 @@ tasks.register("copyCurrentBuilds") {
     dependsOn("assembleDebug", "embedMacExtensions")
 
     doLast {
-        val dest = currentBuildsDest()
-        prepareCurrentDirectory(dest, preserveDmgFiles = true)
-
-        val logger = logger
-        fun moveApksFrom(variant: String) {
-            val apkDir = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
-            val apks = apkDir.listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
-            check(apks.isNotEmpty()) { "No APK found in ${apkDir.absolutePath}" }
-            apks.forEach { moveToCurrent(dest, it, logger = logger) }
-        }
-        moveApksFrom("debug")
-
-        val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile
-        val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
-        ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
-            .directory(rootProject.projectDir)
-            .inheritIO()
-            .start()
-            .waitFor()
-        moveToCurrent(dest, appBundle, logger = logger)
-
-        val appVersionName = providers.gradleProperty("omninode.version.name").get()
-        val versionCode = providers.gradleProperty("omninode.version.code").get()
-        patchShippedAppMarketingVersion(dest, appVersionName, versionCode)
-        logger.lifecycle("Set OmniNode.app CFBundleShortVersionString=$appVersionName")
-
-        val launchedBinary = dest.resolve("OmniNode.app/Contents/MacOS/OmniNode")
-        check(launchedBinary.exists() && launchedBinary.canExecute()) {
-            "OmniNode.app binary missing execute permission after move"
-        }
+        shipToCurrent(
+            includeDebugApk = true,
+            includeReleaseApk = false,
+            includeDmg = false,
+            mountDmg = false,
+            preserveExistingDmgOnWipe = true
+        )
     }
 }
 
@@ -306,50 +387,34 @@ tasks.register("copyReleaseBuilds") {
     dependsOn("assembleRelease", "embedMacExtensions", "packageDmg")
 
     doLast {
-        detachOmniNodeDmgVolumes()
-        val dest = currentBuildsDest()
-        prepareCurrentDirectory(dest, preserveDmgFiles = false)
+        shipToCurrent(
+            includeDebugApk = false,
+            includeReleaseApk = true,
+            includeDmg = true,
+            mountDmg = true,
+            preserveExistingDmgOnWipe = false
+        )
+    }
+}
 
-        val logger = logger
-        val appVersionName = providers.gradleProperty("omninode.version.name").get()
-        val versionCode = providers.gradleProperty("omninode.version.code").get()
+/**
+ * Full ship after [assembleDebug] + [assembleRelease]: all APKs, .app, and DMG into `current/`,
+ * then mount the release DMG once. Use this instead of running [copyCurrentBuilds] and
+ * [copyReleaseBuilds] back-to-back (they would fight over the same .app bundle).
+ */
+tasks.register("copyAllBuilds") {
+    group = "distribution"
+    description = "Move debug+release APKs, Mac .app, and DMG into current/, then mount DMG"
+    dependsOn("assembleDebug", "assembleRelease", "embedMacExtensions", "packageDmg")
 
-        fun moveApksFrom(variant: String) {
-            val apkDir = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
-            val apks = apkDir.listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
-            check(apks.isNotEmpty()) { "No APK found in ${apkDir.absolutePath}" }
-            apks.forEach { moveToCurrent(dest, it, logger = logger) }
-        }
-        moveApksFrom("release")
-
-        val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
-        val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension == "dmg" }
-        check(dmgs.isNotEmpty()) { "No DMG found in ${dmgDir.absolutePath}" }
-        val dmgDestName = "OmniNode-$appVersionName.dmg"
-        dmgs.forEach { dmg ->
-            moveToCurrent(dest, dmg, destName = dmgDestName, logger = logger)
-        }
-
-        val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile
-        val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
-        ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
-            .directory(rootProject.projectDir)
-            .inheritIO()
-            .start()
-            .waitFor()
-        moveToCurrent(dest, appBundle, logger = logger)
-
-        patchShippedAppMarketingVersion(dest, appVersionName, versionCode)
-        logger.lifecycle("Set OmniNode.app CFBundleShortVersionString=$appVersionName")
-
-        val launchedBinary = dest.resolve("OmniNode.app/Contents/MacOS/OmniNode")
-        check(launchedBinary.exists() && launchedBinary.canExecute()) {
-            "OmniNode.app binary missing execute permission after move"
-        }
-
-        val shippedDmg = dest.resolve(dmgDestName)
-        ProcessBuilder("open", shippedDmg.absolutePath).start().waitFor()
-        logger.lifecycle("Mounted $dmgDestName for manual install (left attached)")
+    doLast {
+        shipToCurrent(
+            includeDebugApk = true,
+            includeReleaseApk = true,
+            includeDmg = true,
+            mountDmg = true,
+            preserveExistingDmgOnWipe = false
+        )
     }
 }
 
