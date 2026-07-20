@@ -18,7 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * First-run setup: all-files access (required) + unrestricted battery (required on Android).
+ * First-run setup: all-files access (required) + unrestricted battery (recommended on Android).
  */
 @Composable
 fun StoragePermissionScreen(
@@ -81,7 +81,7 @@ fun StoragePermissionScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "2. Unrestricted battery",
+            text = "2. Unrestricted battery (recommended)",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.fillMaxWidth()
         )
@@ -90,7 +90,8 @@ fun StoragePermissionScreen(
             text = if (hasUnrestrictedBattery) {
                 "Granted"
             } else {
-                "Required so background file sharing is not killed by battery optimization."
+                "Recommended so background file sharing is not killed by battery optimization. " +
+                    "You can grant this later in Settings if you skip it now."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

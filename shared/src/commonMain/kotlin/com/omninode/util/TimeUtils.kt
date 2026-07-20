@@ -20,9 +20,20 @@ object TimeUtils {
     /** Default AlarmManager interval for the Android service watchdog (20 minutes). */
     const val SERVICE_WATCHDOG_ALARM_INTERVAL_MS: Long = 20 * 60 * 1000L
 
-    /** Epoch millis when the next watchdog alarm should fire. */
+    /** Delay before an immediate watchdog retry after a blocked sticky restart. */
+    const val SERVICE_WATCHDOG_IMMEDIATE_ALARM_DELAY_MS: Long = 30_000L
+
+    /** Max age of a share-server heartbeat before the watchdog treats the FGS as dead. */
+    const val SHARE_SERVER_HEARTBEAT_STALE_MS: Long = 60_000L
+
+    /** Epoch millis when the next periodic watchdog alarm should fire. */
     fun nextAlarmEpochMs(intervalMs: Long = SERVICE_WATCHDOG_ALARM_INTERVAL_MS): Long =
         now() + intervalMs.coerceAtLeast(1L)
+
+    /** Epoch millis for a near-term watchdog retry (sticky restart / blocked background FGS). */
+    fun immediateWatchdogAlarmEpochMs(
+        delayMs: Long = SERVICE_WATCHDOG_IMMEDIATE_ALARM_DELAY_MS
+    ): Long = now() + delayMs.coerceAtLeast(1L)
 
     /**
      * Formats a UTC epoch millis instant into a local offset datetime using [zoneId].

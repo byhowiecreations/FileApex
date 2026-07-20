@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * AlarmManager / boot heartbeat — restarts [FileShareServerService] only (never the UI).
+ * [android.content.Intent.ACTION_LOCKED_BOOT_COMPLETED] uses device-protected prefs only.
  */
 class OmniNodeWatchdogReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
@@ -15,14 +16,14 @@ class OmniNodeWatchdogReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
         Log.i(TAG, "Watchdog received action=$action")
 
-        if (!ServiceWatchdogScheduler.isWatchdogEnabled()) {
-            ServiceWatchdogScheduler.cancel(appContext)
-            return
-        }
-
         when (action) {
+            Intent.ACTION_LOCKED_BOOT_COMPLETED,
             Intent.ACTION_BOOT_COMPLETED,
             ServiceWatchdogScheduler.ACTION_SERVICE_WATCHDOG -> {
+                if (!ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
+                    ServiceWatchdogScheduler.cancel(appContext)
+                    return
+                }
                 maybeRestartShareServer(appContext)
                 ServiceWatchdogScheduler.scheduleNext(appContext)
             }
@@ -30,15 +31,13 @@ class OmniNodeWatchdogReceiver : BroadcastReceiver() {
     }
 
     private fun maybeRestartShareServer(context: Context) {
-        val serviceClass = FILE_SHARE_SERVER_SERVICE
-        if (ServiceWatchdogScheduler.isShareServerRunning(context, serviceClass)) {
-            Log.i(TAG, "Share server already running — skip restart")
+        if (ServiceWatchdogScheduler.isShareServerRunning(context)) {
+            Log.i(TAG, "Share server heartbeat fresh — skip restart")
             return
         }
-        // Background FGS starts are often blocked on Android 15+; defer to MainActivity.
         ShareServerPendingStart.mark(context)
         runCatching {
-            val start = Intent().setClassName(context.packageName, serviceClass)
+            val start = Intent().setClassName(context.packageName, FILE_SHARE_SERVER_SERVICE)
             ContextCompat.startForegroundService(context, start)
             Log.i(TAG, "Started share-server FGS from watchdog")
         }.onFailure { error ->

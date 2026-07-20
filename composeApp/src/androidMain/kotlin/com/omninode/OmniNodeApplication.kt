@@ -9,6 +9,7 @@ import com.omninode.di.OmniNodeServices
 import com.omninode.platform.initAndroidBriefToast
 import com.omninode.platform.initAndroidTransferReceiveNotifier
 import com.omninode.platform.initAndroidUpdateAvailableNotifier
+import com.omninode.platform.ServiceWatchdogScheduler
 import com.omninode.update.AppUpdateCoordinator
 
 class OmniNodeApplication : Application() {
@@ -20,6 +21,7 @@ class OmniNodeApplication : Application() {
         initAndroidBriefToast(this)
         initAndroidUpdateAvailableNotifier(this)
         OmniNodeServices.init(createOmniNodeDatabase(this))
+        ServiceWatchdogScheduler.syncWatchdogEnabledFromSettings(this)
         AppUpdateCoordinator.onAppLaunch()
         GoogleLinkCoordinator.onAppLaunch()
         // UDP wake + share server run inside FileShareServerService (typed foreground service).

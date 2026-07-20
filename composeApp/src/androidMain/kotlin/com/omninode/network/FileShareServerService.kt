@@ -4,17 +4,20 @@ import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import com.omninode.MainActivity
 import com.omninode.R
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.platform.ServiceWatchdog
 import com.omninode.platform.ServiceWatchdogScheduler
 import com.omninode.platform.ServiceWatchdogState
+import com.omninode.platform.ShareServerPendingStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,12 +28,12 @@ import kotlinx.coroutines.launch
 /**
  * Foreground service that keeps the LAN share server alive via [ServerLifecycleManager].
  *
- * Manifest declares `connectedDevice|dataSync`; [promoteToForeground] passes matching
- * [ServiceInfo] flags on every start so OEM morning pruning treats this as a typed FGS.
- * UDP wake listening runs inside this service (not a separate background service).
+ * UI starts pass [EXTRA_FROM_FOREGROUND] and promote immediately (persistent notification).
+ * Watchdog / sticky restarts use a guarded path so Android 14/15 background FGS limits do not crash.
  *
- * When [enableServiceWatchdog] is on, [ServiceWatchdog] schedules AlarmManager heartbeats
- * on unexpected termination ([onTaskRemoved] / non-clean [onDestroy]).
+ * UDP peer-wake listening lives only in this FGS — there is no separate process-level wake
+ * service; peers cannot wake the device via UDP until this service (or a watchdog/UI restart)
+ * is running again.
  */
 class FileShareServerService : Service() {
     private val serviceJob = SupervisorJob()
@@ -45,12 +48,23 @@ class FileShareServerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!isForegroundPromoted && !promoteToForegroundSafely()) {
-            Log.w(TAG, "Foreground promotion blocked — stopping service (retry from UI)")
-            stopSelf()
-            return START_NOT_STICKY
+        if (!isForegroundPromoted) {
+            val fromForeground = isForegroundStart(intent)
+            val stickyRestart = intent == null
+            val promoted = if (fromForeground) {
+                promoteToForegroundFromUi()
+            } else {
+                promoteToForegroundSafely()
+            }
+            if (!promoted) {
+                handlePromotionFailure(fromForeground = fromForeground, stickyRestart = stickyRestart)
+                return START_NOT_STICKY
+            }
+            isForegroundPromoted = true
+            ShareServerPendingStart.clear(this)
         }
         ensureServerRunning()
+        recordServiceHeartbeat()
         if (wakeReceiver == null) {
             startWakeListener()
         }
@@ -63,20 +77,23 @@ class FileShareServerService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (ServiceWatchdogScheduler.isWatchdogEnabled()) {
-            Log.i(TAG, "Task removed — scheduling service watchdog alarm")
-            ServiceWatchdogScheduler.scheduleNext(this)
+        if (ServiceWatchdogScheduler.isWatchdogEnabled(this)) {
+            Log.i(TAG, "Task removed — scheduling immediate watchdog recovery")
+            ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
         }
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
         val cleanStop = ServiceWatchdogState.consumeCleanStop(this)
-        if (cleanStop || !ServiceWatchdogScheduler.isWatchdogEnabled()) {
+        if (cleanStop || !ServiceWatchdogScheduler.isWatchdogEnabled(this)) {
             ServiceWatchdog.cancelAlarm()
+            if (cleanStop) {
+                ServiceWatchdogScheduler.clearShareServerHeartbeat(this)
+            }
         } else {
-            Log.i(TAG, "Unexpected FGS stop — scheduling service watchdog alarm")
-            ServiceWatchdogScheduler.scheduleNext(this)
+            Log.i(TAG, "Unexpected FGS stop — scheduling immediate watchdog recovery")
+            ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
         }
         wakeReceiver?.stop()
         wakeReceiver = null
@@ -87,30 +104,70 @@ class FileShareServerService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun promoteToForegroundSafely(): Boolean {
-        if (isForegroundPromoted) return true
-        return try {
-            val notification = buildServerNotification()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, notification, foregroundServiceTypeFlags())
-            } else {
-                @Suppress("DEPRECATION")
-                startForeground(NOTIFICATION_ID, notification)
+    private fun isForegroundStart(intent: Intent?): Boolean =
+        intent?.getBooleanExtra(EXTRA_FROM_FOREGROUND, false) == true ||
+            intent?.action == ACTION_START
+
+    private fun handlePromotionFailure(fromForeground: Boolean, stickyRestart: Boolean) {
+        when {
+            stickyRestart -> {
+                Log.i(TAG, "Sticky restart blocked — scheduling immediate watchdog recovery")
+                ShareServerPendingStart.mark(this)
+                ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
             }
-            isForegroundPromoted = true
+            fromForeground -> {
+                Log.w(TAG, "Foreground promotion failed from UI — server not started")
+            }
+            else -> {
+                Log.w(TAG, "Background FGS promotion blocked — deferred until app opens")
+                ShareServerPendingStart.mark(this)
+            }
+        }
+        stopSelf()
+    }
+
+    /** UI path — only catch known FGS policy exceptions; others propagate. */
+    private fun promoteToForegroundFromUi(): Boolean {
+        return try {
+            promoteToForeground()
             true
         } catch (error: ForegroundServiceStartNotAllowedException) {
-            Log.w(TAG, "Foreground promotion not allowed :: ${error.message}")
+            Log.w(TAG, "UI FGS not allowed :: ${error.message}")
             false
         } catch (error: SecurityException) {
-            Log.w(TAG, "Foreground promotion denied :: ${error.message}")
+            Log.w(TAG, "UI FGS security denied :: ${error.message}")
+            false
+        }
+    }
+
+    private fun promoteToForeground() {
+        val notification = buildServerNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, foregroundServiceTypeFlags())
+        } else {
+            @Suppress("DEPRECATION")
+            startForeground(NOTIFICATION_ID, notification)
+        }
+        Log.i(TAG, "Foreground service promoted with ongoing notification")
+    }
+
+    /** Guarded promotion for watchdog / boot / sticky restart — must not crash the process. */
+    private fun promoteToForegroundSafely(): Boolean {
+        return try {
+            promoteToForeground()
+            true
+        } catch (error: ForegroundServiceStartNotAllowedException) {
+            Log.w(TAG, "Background FGS not allowed :: ${error.message}")
+            false
+        } catch (error: SecurityException) {
+            Log.w(TAG, "Background FGS security denied :: ${error.message}")
             false
         }
     }
 
     /**
-     * Prefer [CONNECTED_DEVICE] on API 34+ (LAN peers). Avoid combining with [DATA_SYNC] so
-     * Android 15+ background time limits for dataSync do not apply to this service.
+     * API 34+: [CONNECTED_DEVICE] only (LAN peers) — avoids Android 15 dataSync daily quota.
+     * API 29–33: [DATA_SYNC] only.
      */
     private fun foregroundServiceTypeFlags(): Int {
         return when {
@@ -123,11 +180,13 @@ class FileShareServerService : Service() {
     }
 
     private fun buildServerNotification(): Notification {
+        val contentIntent = openMainActivityPendingIntent()
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("OmniNode Server Active")
                 .setContentText("Local WiFi secure ecosystem running...")
                 .setSmallIcon(R.drawable.ic_notification)
+                .setContentIntent(contentIntent)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .build()
@@ -137,9 +196,20 @@ class FileShareServerService : Service() {
                 .setContentTitle("OmniNode Server Active")
                 .setContentText("Local WiFi secure ecosystem running...")
                 .setSmallIcon(R.drawable.ic_notification)
+                .setContentIntent(contentIntent)
                 .setOngoing(true)
                 .build()
         }
+    }
+
+    private fun openMainActivityPendingIntent(): PendingIntent {
+        val launch = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        return PendingIntent.getActivity(this, NOTIFICATION_CONTENT_REQUEST, launch, flags)
     }
 
     private fun startWakeListener() {
@@ -158,7 +228,6 @@ class FileShareServerService : Service() {
         ServerLifecycleManager.ensureRunning(androidLog)
     }
 
-    /** In-process engine health check (distinct from AlarmManager service watchdog). */
     private fun startEngineWatchdog() {
         serviceScope.launch {
             while (isActive) {
@@ -167,8 +236,15 @@ class FileShareServerService : Service() {
                     Log.w(TAG, "Engine watchdog detected dead share server — restarting")
                     ensureServerRunning()
                 }
+                if (ServerLifecycleManager.isRunning) {
+                    recordServiceHeartbeat()
+                }
             }
         }
+    }
+
+    private fun recordServiceHeartbeat() {
+        ServiceWatchdogScheduler.recordShareServerHeartbeat(this)
     }
 
     private fun createNotificationChannel() {
@@ -181,8 +257,8 @@ class FileShareServerService : Service() {
                 description = "Keeps OmniNode available for local WiFi file sharing"
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(serviceChannel)
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(serviceChannel)
         }
     }
 
@@ -190,6 +266,7 @@ class FileShareServerService : Service() {
         private const val TAG = "OmniNodeServerService"
         private const val CHANNEL_ID = "OmniNodeServerChannel"
         private const val NOTIFICATION_ID = 1
+        private const val NOTIFICATION_CONTENT_REQUEST = 1_101
         private const val ENGINE_WATCHDOG_INTERVAL_MS = 5_000L
         const val ACTION_START = "com.omninode.action.START_SHARE_SERVER"
         const val EXTRA_FROM_FOREGROUND = "extra_from_foreground"

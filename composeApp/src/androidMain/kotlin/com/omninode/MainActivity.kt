@@ -32,6 +32,7 @@ import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.network.FileShareServerService
 import com.omninode.platform.AndroidShareIntake
 import com.omninode.platform.ServiceWatchdog
+import com.omninode.platform.ServiceWatchdogScheduler
 import com.omninode.platform.ShareServerPendingStart
 import android.util.Log
 import com.omninode.ui.theme.OmniTeal
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
 
     private var hasStoragePermission by mutableStateOf(false)
     private var hasUnrestrictedBattery by mutableStateOf(false)
+    private var exactAlarmWarningActive by mutableStateOf(false)
     private var scannedPayload by mutableStateOf<PairingPayload?>(null)
 
     private var incomingShare by mutableStateOf<IncomingSharePayload?>(null)
@@ -67,7 +69,14 @@ class MainActivity : ComponentActivity() {
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { }
+    ) { granted ->
+        if (granted) {
+            refreshPermissions()
+            if (hasStoragePermission) {
+                startShareServer()
+            }
+        }
+    }
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -92,7 +101,7 @@ class MainActivity : ComponentActivity() {
         configureVisibleSystemBars()
         refreshPermissions()
         requestNotificationPermissionIfNeeded()
-        if (hasStoragePermission && hasUnrestrictedBattery) {
+        if (hasStoragePermission) {
             startShareServer()
         }
 
@@ -105,6 +114,9 @@ class MainActivity : ComponentActivity() {
                 onRequestStoragePermission = ::requestStoragePermission,
                 onOpenStorageSettings = ::openStorageSettings,
                 onRequestBatteryUnrestricted = ::requestBatteryUnrestricted,
+                onOpenExactAlarmSettings = ::openExactAlarmSettings,
+                onOpenAppDetailsSettings = ::openAppDetailsSettings,
+                exactAlarmWarningActive = exactAlarmWarningActive,
                 onStartShareServer = ::startShareServer,
                 onStopShareServer = ::stopShareServer,
                 onExitApp = ::exitOmniNode,
@@ -135,16 +147,13 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         configureVisibleSystemBars()
         refreshPermissions()
-        if (hasStoragePermission && hasUnrestrictedBattery) {
+        if (hasStoragePermission) {
             startShareServer()
         }
     }
 
     override fun onDestroy() {
         stageJob?.cancel()
-        if (isFinishing) {
-            stopShareServer()
-        }
         super.onDestroy()
     }
 
@@ -230,6 +239,12 @@ class MainActivity : ComponentActivity() {
     private fun refreshPermissions() {
         hasStoragePermission = hasFullStorageAccess()
         hasUnrestrictedBattery = isBatteryUnrestricted()
+        ServiceWatchdogScheduler.syncBatteryOptimizationWarning(
+            this,
+            restricted = !hasUnrestrictedBattery
+        )
+        val exactAvailable = ServiceWatchdogScheduler.refreshExactAlarmAvailability(this)
+        exactAlarmWarningActive = !exactAvailable
     }
 
     private fun hasFullStorageAccess(): Boolean {
@@ -296,6 +311,28 @@ class MainActivity : ComponentActivity() {
             }
     }
 
+    private fun openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            runCatching { startActivity(intent) }
+                .onFailure { openAppDetailsSettings() }
+        } else {
+            openAppDetailsSettings()
+        }
+    }
+
+    private fun openAppDetailsSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        runCatching { startActivity(intent) }
+            .onFailure {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            }
+    }
+
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
@@ -330,7 +367,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startShareServer() {
-        ShareServerPendingStart.clear(this)
+        val wasPending = ShareServerPendingStart.consume(this)
+        if (wasPending) {
+            Log.i(TAG, "Recovering share server after background suppression")
+        }
+        if (!hasUnrestrictedBattery) {
+            Log.w(TAG, "Starting share server without battery exemption — background survival may be limited")
+        }
         val intent = Intent(this, FileShareServerService::class.java).apply {
             action = FileShareServerService.ACTION_START
             putExtra(FileShareServerService.EXTRA_FROM_FOREGROUND, true)

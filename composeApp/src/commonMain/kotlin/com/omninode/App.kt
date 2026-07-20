@@ -53,6 +53,9 @@ fun App(
     onRequestStoragePermission: () -> Unit,
     onOpenStorageSettings: () -> Unit,
     onRequestBatteryUnrestricted: () -> Unit = {},
+    exactAlarmWarningActive: Boolean = false,
+    onOpenExactAlarmSettings: () -> Unit = {},
+    onOpenAppDetailsSettings: () -> Unit = {},
     onStartShareServer: () -> Unit,
     onStopShareServer: () -> Unit,
     onExitApp: () -> Unit,
@@ -70,7 +73,7 @@ fun App(
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
-    val setupComplete = hasStoragePermission && hasUnrestrictedBattery
+    val setupComplete = hasStoragePermission
 
     // Wide-layout detail state (list-detail). Survives compact/wide transitions.
     var wideSelectedTarget by remember { mutableStateOf<BrowseTarget?>(null) }
@@ -233,7 +236,12 @@ fun App(
                                         wideHomeTab = HomeTab.Devices
                                     },
                                     appVersionName = appVersionName,
-                                    devicesViewModel = devicesViewModel
+                                    devicesViewModel = devicesViewModel,
+                                    batteryOptimizationRestricted = !hasUnrestrictedBattery,
+                                    onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                    exactAlarmWarningActive = exactAlarmWarningActive,
+                                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings
                                 )
                             } else {
                                 CompactHomeContent(
@@ -251,7 +259,12 @@ fun App(
                                     onScanQr = onScanQr,
                                     onOpenSettings = { route = AppRoute.Settings },
                                     onNavigateHome = onNavigateHome,
-                                    onExitApp = exitOmniNode
+                                    onExitApp = exitOmniNode,
+                                    batteryOptimizationRestricted = !hasUnrestrictedBattery,
+                                    onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                    exactAlarmWarningActive = exactAlarmWarningActive,
+                                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings
                                 )
                             }
                         }
@@ -261,8 +274,8 @@ fun App(
         }
     }
 
-    LaunchedEffect(hasStoragePermission, hasUnrestrictedBattery) {
-        if (!setupComplete) {
+    LaunchedEffect(hasStoragePermission) {
+        if (!hasStoragePermission) {
             onPermissionRecheck()
         } else {
             onStartShareServer()
@@ -281,7 +294,12 @@ private fun CompactHomeContent(
     onScanQr: () -> Unit,
     onOpenSettings: () -> Unit,
     onNavigateHome: () -> Unit,
-    onExitApp: () -> Unit
+    onExitApp: () -> Unit,
+    batteryOptimizationRestricted: Boolean = false,
+    onRequestBatteryUnrestricted: () -> Unit = {},
+    exactAlarmWarningActive: Boolean = false,
+    onOpenExactAlarmSettings: () -> Unit = {},
+    onOpenAppDetailsSettings: () -> Unit = {}
 ) {
     when (val current = route) {
         AppRoute.Devices -> DevicesScreen(
@@ -295,7 +313,12 @@ private fun CompactHomeContent(
         )
         AppRoute.Settings -> SettingsScreen(
             appVersionName = appVersionName,
-            onBack = onNavigateHome
+            onBack = onNavigateHome,
+            batteryOptimizationRestricted = batteryOptimizationRestricted,
+            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+            exactAlarmWarningActive = exactAlarmWarningActive,
+            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+            onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
         is AppRoute.Explorer -> FileExplorerScreen(
             target = current.target,

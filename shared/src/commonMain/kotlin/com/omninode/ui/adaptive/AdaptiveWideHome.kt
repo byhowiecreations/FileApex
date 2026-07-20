@@ -62,7 +62,12 @@ fun AdaptiveWideHome(
     onExitApp: () -> Unit,
     onClearDetail: () -> Unit,
     appVersionName: String,
-    devicesViewModel: DevicesViewModel
+    devicesViewModel: DevicesViewModel,
+    batteryOptimizationRestricted: Boolean = false,
+    onRequestBatteryUnrestricted: () -> Unit = {},
+    exactAlarmWarningActive: Boolean = false,
+    onOpenExactAlarmSettings: () -> Unit = {},
+    onOpenAppDetailsSettings: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         WideTopBar(onExitClick = onExitApp)
@@ -83,7 +88,12 @@ fun AdaptiveWideHome(
                             appVersionName = appVersionName,
                             onBack = { onSelectTab(HomeTab.Devices) },
                             // Rail is top-level nav; no redundant up/back on Settings root.
-                            showRootBackNavigation = false
+                            showRootBackNavigation = false,
+                            batteryOptimizationRestricted = batteryOptimizationRestricted,
+                            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                            exactAlarmWarningActive = exactAlarmWarningActive,
+                            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                            onOpenAppDetailsSettings = onOpenAppDetailsSettings
                         )
                     }
                 }

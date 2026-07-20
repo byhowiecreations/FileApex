@@ -74,6 +74,11 @@ fun SettingsScreen(
      * leave via the rail. Sub-pages still show back to Settings root. Compact stays true.
      */
     showRootBackNavigation: Boolean = true,
+    batteryOptimizationRestricted: Boolean = false,
+    onRequestBatteryUnrestricted: () -> Unit = {},
+    exactAlarmWarningActive: Boolean = false,
+    onOpenExactAlarmSettings: () -> Unit = {},
+    onOpenAppDetailsSettings: () -> Unit = {},
     viewModel: SettingsViewModel = viewModel { SettingsViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -105,7 +110,12 @@ fun SettingsScreen(
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onFileTransferNotifications = viewModel::setFileTransferNotifications,
             onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
-            onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg
+            onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
+            batteryOptimizationRestricted = batteryOptimizationRestricted,
+            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+            exactAlarmWarningActive = exactAlarmWarningActive,
+            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+            onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
             state = state,
@@ -145,7 +155,12 @@ private fun SettingsRootPage(
     onOpenGoogleAccount: () -> Unit,
     onFileTransferNotifications: (Boolean) -> Unit,
     onEnableServiceWatchdog: (Boolean) -> Unit,
-    onVersionNumberEasterEgg: () -> Unit
+    onVersionNumberEasterEgg: () -> Unit,
+    batteryOptimizationRestricted: Boolean,
+    onRequestBatteryUnrestricted: () -> Unit,
+    exactAlarmWarningActive: Boolean,
+    onOpenExactAlarmSettings: () -> Unit,
+    onOpenAppDetailsSettings: () -> Unit
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
     var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
@@ -204,7 +219,8 @@ private fun SettingsRootPage(
                         Text(
                             "Enable background watchdog to automatically restart the OmniNode " +
                                 "file server daemon if aggressive OEM battery management " +
-                                "terminates it in the background."
+                                "terminates it in the background. Peer UDP wake only works while " +
+                                "the share-server notification is active."
                         )
                     },
                     trailingContent = {
@@ -213,6 +229,45 @@ private fun SettingsRootPage(
                             onCheckedChange = onEnableServiceWatchdog
                         )
                     }
+                )
+                if (batteryOptimizationRestricted) {
+                    ListItem(
+                        headlineContent = { Text("Battery optimization active") },
+                        supportingContent = {
+                            Text(
+                                "OmniNode is not exempt from battery restrictions. Background " +
+                                    "file sharing may stop until you open the app again. Tap to " +
+                                    "request unrestricted battery for best reliability."
+                            )
+                        },
+                        modifier = Modifier.clickable { onRequestBatteryUnrestricted() }
+                    )
+                }
+                if (exactAlarmWarningActive) {
+                    ListItem(
+                        headlineContent = { Text("Exact alarms disabled") },
+                        supportingContent = {
+                            Text(
+                                "Alarms & reminders permission is off. The service watchdog may " +
+                                    "fire late or miss restarts after OEM kills. Tap to open " +
+                                    "system alarm settings and allow OmniNode."
+                            )
+                        },
+                        modifier = Modifier.clickable { onOpenExactAlarmSettings() }
+                    )
+                }
+                ListItem(
+                    headlineContent = { Text("OEM auto-start & updates") },
+                    supportingContent = {
+                        Text(
+                            "On Motorola, Oppo, Xiaomi, and similar phones, also enable " +
+                                "auto-launch / background activity for OmniNode in the system " +
+                                "battery or app-management screens. After an app update, open " +
+                                "OmniNode once so the share server can restart. Tap to open " +
+                                "OmniNode’s system app settings."
+                        )
+                    },
+                    modifier = Modifier.clickable { onOpenAppDetailsSettings() }
                 )
                 ListItem(
                     headlineContent = { Text("File Transfer notifications") },

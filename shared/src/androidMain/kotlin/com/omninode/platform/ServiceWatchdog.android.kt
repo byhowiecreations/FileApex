@@ -12,14 +12,14 @@ object ServiceWatchdogState {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun markCleanStop(context: Context) {
-        prefs(context).edit().putBoolean(KEY_CLEAN_STOP, true).apply()
+        prefs(context).edit().putBoolean(KEY_CLEAN_STOP, true).commit()
     }
 
     fun consumeCleanStop(context: Context): Boolean {
         val prefs = prefs(context)
         val clean = prefs.getBoolean(KEY_CLEAN_STOP, false)
         if (clean) {
-            prefs.edit().remove(KEY_CLEAN_STOP).apply()
+            prefs.edit().remove(KEY_CLEAN_STOP).commit()
         }
         return clean
     }
@@ -33,8 +33,14 @@ actual object ServiceWatchdog {
 
     actual fun scheduleNextAlarmIfEnabled() {
         val context = ServiceWatchdogScheduler.contextOrNull() ?: return
-        if (!ServiceWatchdogScheduler.isWatchdogEnabled()) return
+        if (!ServiceWatchdogScheduler.isWatchdogEnabled(context)) return
         ServiceWatchdogScheduler.scheduleNext(context)
+    }
+
+    actual fun scheduleImmediateAlarmIfEnabled() {
+        val context = ServiceWatchdogScheduler.contextOrNull() ?: return
+        if (!ServiceWatchdogScheduler.isWatchdogEnabled(context)) return
+        ServiceWatchdogScheduler.scheduleImmediate(context)
     }
 
     actual fun cancelAlarm() {
@@ -44,6 +50,7 @@ actual object ServiceWatchdog {
 
     actual fun onPreferenceChanged(enabled: Boolean) {
         val context = androidAppContextOrNull() ?: return
+        ServiceWatchdogScheduler.syncWatchdogEnabledMirror(context, enabled)
         if (enabled) {
             ServiceWatchdogScheduler.scheduleNext(context)
         } else {
