@@ -1,9 +1,8 @@
 package com.omninode.cloud
 
-import io.ktor.client.HttpClient
+import com.omninode.di.OmniNodeServices
+import com.omninode.network.OmniHttpClientFactory
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -16,10 +15,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import io.ktor.serialization.kotlinx.json.json
-import java.security.MessageDigest
-import java.security.SecureRandom
-import java.util.Base64
 import java.util.prefs.Preferences
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +26,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -43,10 +37,8 @@ import kotlinx.serialization.json.put
 
 actual object CloudAuthBackend {
     private val prefs = Preferences.userRoot().node("com.omninode.firebase")
-    private val client = HttpClient(CIO) {
-        expectSuccess = false
-        install(ContentNegotiation) { json(desktopJson) }
-    }
+    private val client get() = OmniNodeServices.httpClient
+    private val desktopJson get() = OmniHttpClientFactory.defaultJson
     private val pollScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     actual fun isConfigured(): Boolean =
@@ -424,105 +416,3 @@ private data class SignInWithIdpResponse(
     val email: String? = null,
     @SerialName("displayName") val displayName: String? = null
 )
-
-actual fun googleWebClientId(): String =
-    DesktopCloudIds.WEB_CLIENT_ID.ifBlank {
-        System.getProperty("omninode.google.web.client.id").orEmpty()
-    }
-
-actual fun firebaseApiKey(): String =
-    DesktopCloudIds.API_KEY.ifBlank {
-        System.getProperty("omninode.firebase.api.key") ?: DEFAULT_API_KEY
-    }
-
-actual fun firebaseProjectId(): String =
-    DesktopCloudIds.PROJECT_ID.ifBlank {
-        System.getProperty("omninode.firebase.project.id") ?: DEFAULT_PROJECT_ID
-    }
-
-actual fun currentPlatformLabel(): String = "desktop"
-
-private const val DEFAULT_API_KEY = "REDACTED_API_KEY"
-private const val DEFAULT_PROJECT_ID = "omninode-502915"
-
-private val desktopJson = Json {
-    ignoreUnknownKeys = true
-    isLenient = true
-}
-
-object DesktopOAuthPkce {
-    data class PendingAuth(
-        val codeVerifier: String,
-        val state: String
-    )
-
-    @Volatile
-    var pending: PendingAuth? = null
-
-    fun beginAuthorizationUrl(webClientId: String): String {
-        val verifier = randomUrlSafe(64)
-        val challenge = sha256Base64Url(verifier)
-        val state = randomUrlSafe(24)
-        pending = PendingAuth(codeVerifier = verifier, state = state)
-        return buildString {
-            append("https://accounts.google.com/o/oauth2/v2/auth")
-            append("?client_id=").append(webClientId.encodeUrl())
-            append("&redirect_uri=").append(OAUTH_REDIRECT_URI.encodeUrl())
-            append("&response_type=code")
-            append("&scope=").append("openid%20email%20profile")
-            append("&code_challenge=").append(challenge.encodeUrl())
-            append("&code_challenge_method=S256")
-            append("&state=").append(state.encodeUrl())
-            append("&access_type=online")
-            append("&prompt=select_account")
-        }
-    }
-
-    suspend fun exchangeCodeForIdToken(code: String, state: String?): String {
-        val pendingAuth = pending ?: error("No pending OAuth request")
-        if (state != null && state != pendingAuth.state) {
-            error("OAuth state mismatch")
-        }
-        pending = null
-        val client = HttpClient(CIO) {
-            expectSuccess = false
-            install(ContentNegotiation) {
-                json(desktopJson)
-            }
-        }
-        return try {
-            val response = client.post("https://oauth2.googleapis.com/token") {
-                contentType(ContentType.Application.FormUrlEncoded)
-                setBody(
-                    "code=${code.encodeUrl()}" +
-                        "&client_id=${googleWebClientId().encodeUrl()}" +
-                        "&redirect_uri=${OAUTH_REDIRECT_URI.encodeUrl()}" +
-                        "&grant_type=authorization_code" +
-                        "&code_verifier=${pendingAuth.codeVerifier.encodeUrl()}"
-                )
-            }
-            if (!response.status.isSuccess()) {
-                error("Token exchange failed (${response.status}): ${response.bodyAsText()}")
-            }
-            val obj = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
-            obj["id_token"]?.jsonPrimitive?.contentOrNull
-                ?: error("Token response missing id_token")
-        } finally {
-            client.close()
-        }
-    }
-
-    private fun randomUrlSafe(bytes: Int): String {
-        val buf = ByteArray(bytes)
-        SecureRandom().nextBytes(buf)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(buf)
-    }
-
-    private fun sha256Base64Url(value: String): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
-    }
-
-    private fun String.encodeUrl(): String =
-        java.net.URLEncoder.encode(this, Charsets.UTF_8)
-}

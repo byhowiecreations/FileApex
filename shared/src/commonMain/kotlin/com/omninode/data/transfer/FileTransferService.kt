@@ -12,6 +12,7 @@ import com.omninode.domain.transfer.MultiCopyDeviceOption
 import com.omninode.domain.transfer.MultiCopyResult
 import com.omninode.domain.transfer.MultiCopySource
 import com.omninode.network.OmniNodeClient
+import com.omninode.util.PathUtils
 import com.omninode.platform.UniqueFileNames
 import com.omninode.platform.defaultDownloadsDir
 import kotlinx.coroutines.Dispatchers
@@ -23,11 +24,12 @@ import kotlinx.io.readAtMostTo
 import kotlinx.io.write
 
 /**
- * Centralized COPY/PASTE, Multi Copy broadcast, and browse operations across local + remote nodes.
+ * Stream I/O for copy/paste/download/browse listing.
+ * Outbound Multi Copy and explorer transfer actions enter through [com.omninode.domain.transfer.TransferManager].
  */
 class FileTransferService(
     private val localFiles: LocalFileRepository = LocalFileRepository(),
-    private val client: OmniNodeClient = OmniNodeClient()
+    private val client: OmniNodeClient
 ) {
     private val multiCopyEngine = MultiCopyBroadcastEngine(client)
 
@@ -109,13 +111,10 @@ class FileTransferService(
     }
 
     /**
-     * Broadcast selected file(s) from any explorer (local or remote) to user-chosen devices only.
-     * Local receives files only when This device is included in [selectedDevices].
-     *
-     * Prefer [com.omninode.domain.transfer.TransferManager.sendToDevices] from UI / handoff —
-     * this method is the stream engine entry used by TransferManager.
+     * Broadcast selected file(s) to destinations. Engine-only — call via
+     * [com.omninode.domain.transfer.TransferManager.sendToDevices].
      */
-    suspend fun multiCopyToDevices(
+    internal suspend fun multiCopyToDevices(
         sources: List<MultiCopySource>,
         selectedDevices: List<MultiCopyDeviceOption>
     ): List<MultiCopyResult> = withContext(Dispatchers.IO) {
@@ -130,7 +129,7 @@ class FileTransferService(
                     UniqueFileNames.resolveInDirectory(option.destinationRoot, source.fileName)
                 } else {
                     // Remote server also resolves collisions; preferred name is fine here.
-                    joinPath(option.destinationRoot, source.fileName)
+                    PathUtils.join(option.destinationRoot, source.fileName)
                 }
                 if (option.isLocal) {
                     MultiCopyDestination.LocalDevice(
@@ -178,8 +177,8 @@ class FileTransferService(
         val payloads = TransferClipboard.peekAll()
         check(payloads.isNotEmpty()) { "Clipboard is empty" }
         payloads.map { payload ->
-            val remoteTarget = joinPath(targetDirectory, payload.fileName)
-            val tempLocal = joinPath(defaultTempDir(), "omninode-paste-${payload.fileName}")
+            val remoteTarget = PathUtils.join(targetDirectory, payload.fileName)
+            val tempLocal = PathUtils.join(defaultTempDir(), "omninode-paste-${payload.fileName}")
             try {
                 when {
                     payload.isLocalSource -> {
@@ -248,11 +247,6 @@ class FileTransferService(
                 }
             }
         }
-    }
-
-    private fun joinPath(directory: String, name: String): String {
-        val trimmed = directory.trimEnd('/', '\\')
-        return "$trimmed/$name"
     }
 }
 

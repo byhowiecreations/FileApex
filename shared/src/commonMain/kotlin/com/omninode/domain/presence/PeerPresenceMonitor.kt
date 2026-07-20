@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,64 +61,93 @@ class PeerPresenceMonitor(
     }
 
     private suspend fun pollOnce() {
-        mutex.withLock {
-            val peers = repository.listDevices()
-            if (peers.isEmpty()) {
-                _onlineDeviceIds.value = emptySet()
-                return
+        val peers = mutex.withLock { repository.listDevices() }
+        if (peers.isEmpty()) {
+            mutex.withLock { _onlineDeviceIds.value = emptySet() }
+            return
+        }
+
+        val self = selfDeviceProvider()
+        val probeResults = coroutineScope {
+            peers.map { peer ->
+                async { probePeer(peer, self) }
+            }.awaitAll()
+        }
+
+        val online = linkedSetOf<String>()
+        for (result in probeResults) {
+            if (result == null) continue
+            online += result.peer.deviceId
+            result.refreshedPeer?.let { refreshed ->
+                mutex.withLock {
+                    repository.upsertReplacingAliases(refreshed)
+                }
             }
-
-            val online = linkedSetOf<String>()
-            val self = selfDeviceProvider()
-
-            for (peer in peers) {
-                val host = peer.lastKnownIp.trim()
-                // Empty/loopback hosts can resolve oddly (e.g. probe this device) and
-                // produce fake "Online · :8080" rows — skip until a real LAN IP exists.
-                if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
-                    continue
-                }
-                val reachable = client.pingHealth(host, peer.port)
-                if (!reachable) continue
-                online += peer.deviceId
-
+            result.mergeRequest?.let { request ->
                 runCatching {
-                    val identity = client.fetchIdentity(host, peer.port)
-                    if (identity.deviceId == peer.deviceId) {
-                        val refreshed = peer.copy(
-                            deviceName = identity.deviceName.ifBlank { peer.deviceName },
-                            rootPath = identity.rootPath.ifBlank { peer.rootPath },
-                            port = identity.port.takeIf { it > 0 } ?: peer.port
-                        )
-                        if (refreshed != peer) {
-                            repository.upsertReplacingAliases(refreshed)
-                        }
-                    }
-                }
-
-                runCatching {
-                    val remoteRoster = client.listPairedDevices(host, peer.port)
-                    pairingCoordinator.mergeIncoming(
-                        ClusterSyncRequest(
-                            introducer = peer,
-                            devices = remoteRoster + self
-                        )
-                    )
+                    pairingCoordinator.mergeIncoming(request)
                 }.onFailure { error ->
                     println(
                         "PeerPresenceMonitor: roster pull failed for " +
-                            "${peer.deviceName}: ${error.message}"
+                            "${result.peer.deviceName}: ${error.message}"
                     )
                 }
             }
+        }
 
+        mutex.withLock {
             runCatching { repository.reconcileDuplicateEndpoints() }
-
             if (_onlineDeviceIds.value != online) {
                 _onlineDeviceIds.value = online
             }
         }
     }
+
+    private suspend fun probePeer(
+        peer: PairedDeviceEntity,
+        self: PairedDeviceEntity
+    ): PeerProbeResult? {
+        val host = peer.lastKnownIp.trim()
+        // Empty/loopback hosts can resolve oddly (e.g. probe this device) and
+        // produce fake "Online · :8080" rows — skip until a real LAN IP exists.
+        if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
+            return null
+        }
+        if (!client.pingHealth(host, peer.port)) {
+            return null
+        }
+
+        val refreshedPeer = runCatching {
+            val identity = client.fetchIdentity(host, peer.port)
+            if (identity.deviceId != peer.deviceId) return@runCatching null
+            val refreshed = peer.copy(
+                deviceName = identity.deviceName.ifBlank { peer.deviceName },
+                rootPath = identity.rootPath.ifBlank { peer.rootPath },
+                port = identity.port.takeIf { it > 0 } ?: peer.port
+            )
+            refreshed.takeIf { it != peer }
+        }.getOrNull()
+
+        val mergeRequest = runCatching {
+            val remoteRoster = client.listPairedDevices(host, peer.port)
+            ClusterSyncRequest(
+                introducer = peer,
+                devices = remoteRoster + self
+            )
+        }.getOrNull()
+
+        return PeerProbeResult(
+            peer = peer,
+            refreshedPeer = refreshedPeer,
+            mergeRequest = mergeRequest
+        )
+    }
+
+    private data class PeerProbeResult(
+        val peer: PairedDeviceEntity,
+        val refreshedPeer: PairedDeviceEntity?,
+        val mergeRequest: ClusterSyncRequest?
+    )
 
     companion object {
         private const val POLL_INTERVAL_MS = 4_000L

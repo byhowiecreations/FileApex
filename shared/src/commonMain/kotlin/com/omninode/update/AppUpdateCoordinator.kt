@@ -2,7 +2,8 @@ package com.omninode.update
 
 import com.omninode.di.OmniNodeServices
 import com.omninode.platform.BriefToast
-import com.omninode.platform.currentTimeMillis
+import com.omninode.util.TimeUtils
+import com.omninode.util.TimestampDiagnostics
 import com.omninode.platform.notifyAppUpdateAvailable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -91,8 +92,7 @@ object AppUpdateCoordinator {
                 }
                 val intervalMs = settings.checkForUpdatesIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
                 val last = settings.lastUpdateCheckEpochMs.value
-                val now = currentTimeMillis()
-                val due = last <= 0L || now - last >= intervalMs
+                val due = last <= 0L || TimeUtils.millisSince(last) >= intervalMs
                 if (due) {
                     scheduleCheck(
                         reason = "interval",
@@ -101,9 +101,10 @@ object AppUpdateCoordinator {
                         toastFeedback = false
                     )
                 }
+                val now = TimeUtils.now()
                 val nextDueAt = (settings.lastUpdateCheckEpochMs.value.takeIf { it > 0L } ?: now) +
                     settings.checkForUpdatesIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
-                val sleepMs = (nextDueAt - currentTimeMillis())
+                val sleepMs = (nextDueAt - TimeUtils.now())
                     .coerceIn(MIN_SLEEP_MS, MAX_SLEEP_MS)
                 delay(sleepMs)
             }
@@ -122,8 +123,7 @@ object AppUpdateCoordinator {
             if (!force) {
                 val intervalMs = settings.checkForUpdatesIntervalMillis().coerceAtLeast(MIN_INTERVAL_MS)
                 val last = settings.lastUpdateCheckEpochMs.value
-                val now = currentTimeMillis()
-                if (last > 0L && now - last < intervalMs) {
+                if (last > 0L && TimeUtils.millisSince(last) < intervalMs) {
                     return@launch
                 }
             }
@@ -151,18 +151,18 @@ object AppUpdateCoordinator {
                     }
                 ) {
                     is UpdateCheckOutcome.AlreadyCurrent -> {
-                        settings.setLastUpdateCheckEpochMs(currentTimeMillis())
+                        settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                         _statusMessage.value = "On Current Version"
                         if (toastFeedback) {
                             BriefToast.show("On Current Version")
                         }
                     }
                     is UpdateCheckOutcome.Installing -> {
-                        settings.setLastUpdateCheckEpochMs(currentTimeMillis())
+                        settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                     }
                 }
             } catch (error: Throwable) {
-                settings.setLastUpdateCheckEpochMs(currentTimeMillis())
+                settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                 val message = error.message ?: "Update check failed"
                 _statusMessage.value = message
                 if (toastFeedback) {

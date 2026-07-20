@@ -3,21 +3,23 @@ package com.omninode.domain.transfer
 import com.omninode.data.device.DeviceRepository
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.transfer.FileTransferService
+import com.omninode.domain.model.RemoteFileItem
 import com.omninode.network.OmniNodeClient
 import com.omninode.platform.TransferPaths
 import com.omninode.platform.defaultDownloadsDir
-import com.omninode.platform.localIpv4Addresses
+import com.omninode.util.NetworkUtils
+import com.omninode.util.TimeUtils
 import kotlinx.coroutines.delay
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
 /**
- * Single source of truth for outbound Multi Copy orchestration.
+ * Single source of truth for outbound Multi Copy and explorer transfer actions.
  *
- * UI (explorer), Share Extension job handoff, and any future entry points must call here —
- * not [FileTransferService.multiCopyToDevices] or [MultiCopyBroadcastEngine] directly from Views.
+ * UI (explorer), Share Extension job handoff, and copy/paste/download must call here —
+ * not [FileTransferService.multiCopyToDevices] or [MultiCopyBroadcastEngine] directly.
  * Stream fan-out stays in [FileTransferService] / [MultiCopyBroadcastEngine]; this class owns
- * readiness, device-option resolution, local-path source building, and result summaries.
+ * readiness, device-option resolution, and public transfer entry points.
  */
 class TransferManager(
     private val deviceRepository: () -> DeviceRepository,
@@ -33,9 +35,9 @@ class TransferManager(
      */
     suspend fun awaitReady(timeoutMs: Long = DEFAULT_READY_TIMEOUT_MS) {
         if (isReady()) return
-        val deadline = System.currentTimeMillis() + timeoutMs
+        val deadline = TimeUtils.now() + timeoutMs
         while (!isReady()) {
-            check(System.currentTimeMillis() < deadline) {
+            check(TimeUtils.now() < deadline) {
                 "TransferManager is not ready — OmniNodeServices.init was not completed"
             }
             delay(READY_POLL_MS)
@@ -52,7 +54,7 @@ class TransferManager(
         awaitReady()
         val identity = identityProvider()
         val onlineIds = onlineDeviceIds()
-        val localHost = localIpv4Addresses().firstOrNull() ?: "127.0.0.1"
+        val localHost = NetworkUtils.preferredLanIpv4()
         val options = mutableListOf(
             MultiCopyDeviceOption(
                 deviceId = LocalIdentity.LOCAL_DEVICE_ID,
@@ -107,6 +109,36 @@ class TransferManager(
         val results = transferService.multiCopyToDevices(sources, selectedDevices)
         return TransferBatchResult.from(results, sources, selectedDevices)
     }
+
+    fun copyLocalFiles(
+        localIdentity: LocalIdentity,
+        items: List<RemoteFileItem>,
+        hostForPeers: String
+    ) {
+        transferService.copyLocalFiles(localIdentity, items, hostForPeers)
+    }
+
+    fun copyRemoteFiles(
+        sourceDeviceId: String,
+        sourceDeviceName: String,
+        host: String,
+        port: Int,
+        items: List<RemoteFileItem>
+    ) {
+        transferService.copyRemoteFiles(sourceDeviceId, sourceDeviceName, host, port, items)
+    }
+
+    suspend fun pasteIntoLocal(targetDirectory: String): List<String> =
+        transferService.pasteIntoLocal(targetDirectory)
+
+    suspend fun pasteIntoRemote(host: String, port: Int, targetDirectory: String): List<String> =
+        transferService.pasteIntoRemote(host, port, targetDirectory)
+
+    suspend fun downloadRemoteToDownloads(
+        host: String,
+        port: Int,
+        items: List<RemoteFileItem>
+    ): List<String> = transferService.downloadRemoteToDownloads(host, port, items)
 
     /**
      * Share Extension job consumer: local absolute paths + paired device IDs.

@@ -12,22 +12,18 @@ import android.os.PowerManager
 import android.util.Log
 import com.omninode.R
 import com.omninode.data.identity.LocalIdentity
-import com.omninode.data.identity.loadLocalIdentity
-import com.omninode.di.OmniNodeServices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Foreground service that owns the OmniNode Ktor lifecycle for the process.
+ * Foreground service that keeps the process-alive share server via [ServerLifecycleManager].
  * The engine is restarted if it ever drops while the service remains alive.
  */
 class FileShareServerService : Service() {
-    private var serverInstance: OmniNodeServer? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
@@ -74,8 +70,7 @@ class FileShareServerService : Service() {
 
     override fun onDestroy() {
         serviceJob.cancel()
-        runCatching { serverInstance?.stop() }
-        serverInstance = null
+        ServerLifecycleManager.stop(androidLog)
         releaseWakeLock()
         super.onDestroy()
     }
@@ -83,40 +78,14 @@ class FileShareServerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun ensureServerRunning() {
-        val current = serverInstance
-        if (current != null && current.isRunning) {
-            return
-        }
-        runCatching { current?.stop() }
-        val identity = loadLocalIdentity()
-        serverInstance = OmniNodeServer(
-            port = identity.sharePort,
-            identityProvider = { loadLocalIdentity() },
-            onPairingRespond = { scanningDevice ->
-                OmniNodeServices.pairingCoordinator.handleInboundScanner(scanningDevice)
-            },
-            onClusterMerge = { request ->
-                OmniNodeServices.pairingCoordinator.mergeIncoming(request)
-            },
-            onListDevices = {
-                OmniNodeServices.deviceRepository.listDevices()
-            },
-            onLog = { message, error ->
-                if (error != null) {
-                    Log.e(TAG, message, error)
-                } else {
-                    Log.i(TAG, message)
-                }
-            }
-        ).also { it.start() }
-        Log.i(TAG, "Share server ensured running on port ${identity.sharePort}")
+        ServerLifecycleManager.ensureRunning(androidLog)
     }
 
     private fun startWatchdog() {
         serviceScope.launch {
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
-                if (serverInstance?.isRunning != true) {
+                if (!ServerLifecycleManager.isRunning) {
                     Log.w(TAG, "Watchdog detected dead share server — restarting")
                     ensureServerRunning()
                 }
@@ -162,5 +131,13 @@ class FileShareServerService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val WATCHDOG_INTERVAL_MS = 5_000L
         const val SERVER_PORT = LocalIdentity.DEFAULT_SHARE_PORT
+
+        private val androidLog: (String, Throwable?) -> Unit = { message, error ->
+            if (error != null) {
+                Log.e(TAG, message, error)
+            } else {
+                Log.i(TAG, message)
+            }
+        }
     }
 }

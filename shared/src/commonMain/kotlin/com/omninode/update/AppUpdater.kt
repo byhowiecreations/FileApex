@@ -1,17 +1,13 @@
 package com.omninode.update
 
-import io.ktor.client.HttpClient
+import com.omninode.di.OmniNodeServices
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
-import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,7 +15,6 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.write
-import kotlinx.serialization.json.Json
 
 /**
  * Checks GitHub Releases for a newer OmniNode build, downloads the platform asset,
@@ -29,22 +24,7 @@ object AppUpdater {
     const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/byhowiecreations/OmniNode/releases/latest"
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
-
-    private val client = HttpClient(CIO) {
-        expectSuccess = false
-        install(ContentNegotiation) {
-            json(json)
-        }
-        install(HttpTimeout) {
-            requestTimeoutMillis = 10 * 60 * 1000
-            connectTimeoutMillis = 30_000
-            socketTimeoutMillis = 10 * 60 * 1000
-        }
-    }
+    private val client get() = OmniNodeServices.httpClient
 
     private val checkMutex = Mutex()
 

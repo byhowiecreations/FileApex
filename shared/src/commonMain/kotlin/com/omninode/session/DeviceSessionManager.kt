@@ -1,7 +1,8 @@
 package com.omninode.session
 
 import com.omninode.di.OmniNodeServices
-import com.omninode.platform.currentTimeMillis
+import com.omninode.util.TimeUtils
+import com.omninode.util.TimestampDiagnostics
 
 /**
  * Thread-safe, timestamp-based browse unlock sessions for PIN-protected peers.
@@ -24,15 +25,15 @@ object DeviceSessionManager {
                 // Immediate: valid until explicitly cleared (return Home).
                 return true
             }
-            val now = currentTimeMillis()
-            return now - lastAccessed < timeoutMs
+            return TimeUtils.isWithinWindow(lastAccessed, timeoutMs)
         }
     }
 
     /** Refresh last-access time after successful unlock or active folder navigation. */
     fun markDeviceAccessed(deviceId: String) {
         synchronized(lock) {
-            lastAccessedByDeviceId[deviceId] = currentTimeMillis()
+            lastAccessedByDeviceId[deviceId] =
+                TimestampDiagnostics.mutatingNow("DeviceSessionManager.lastAccessed[$deviceId]")
         }
     }
 

@@ -5,8 +5,6 @@ import com.omninode.domain.model.RemoteFileItem
 import com.omninode.domain.pairing.ClusterSyncRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
@@ -17,54 +15,53 @@ import io.ktor.http.ContentType
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.io.Buffer
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readAtMostTo
+import kotlinx.io.readByteArray
 import kotlinx.io.write
 import kotlinx.serialization.json.Json
 
 /**
  * Single Ktor client for remote file list/stream/upload against paired nodes.
+ * Uses the process-wide [HttpClient] from [com.omninode.di.OmniNodeServices].
  */
-class OmniNodeClient {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
-
-    private val client = HttpClient(CIO) {
-        expectSuccess = false
-        install(ContentNegotiation) {
-            json(json)
-        }
-    }
-
+class OmniNodeClient(
+    private val client: HttpClient,
+    private val json: Json = OmniHttpClientFactory.defaultJson
+) {
     /** In-memory PINs for peers that require PIN this session (host:port → pin). */
+    private val sessionPinsLock = Any()
     private val sessionPins = mutableMapOf<String, String>()
 
     fun rememberSessionPin(host: String, port: Int, pin: String) {
         val trimmed = pin.trim()
         if (trimmed.isNotEmpty()) {
-            sessionPins[endpointKey(host, port)] = trimmed
+            synchronized(sessionPinsLock) {
+                sessionPins[endpointKey(host, port)] = trimmed
+            }
         }
     }
 
     fun clearSessionPin(host: String, port: Int) {
-        sessionPins.remove(endpointKey(host, port))
+        synchronized(sessionPinsLock) {
+            sessionPins.remove(endpointKey(host, port))
+        }
     }
 
     private fun endpointKey(host: String, port: Int): String = "$host:$port"
 
     private fun io.ktor.client.request.HttpRequestBuilder.attachSessionPin(host: String, port: Int) {
-        sessionPins[endpointKey(host, port)]?.let { pin ->
-            parameter("pin", pin)
+        val pin = synchronized(sessionPinsLock) {
+            sessionPins[endpointKey(host, port)]
         }
+        pin?.let { parameter("pin", it) }
     }
 
     suspend fun listFiles(host: String, port: Int, path: String): List<RemoteFileItem> {
@@ -202,9 +199,10 @@ class OmniNodeClient {
                 error("Download failed (${response.status})")
             }
             val channel = response.bodyAsChannel()
-            val chunks = ArrayList<ByteArray>()
+            // Single sink buffer — avoid chunk list + second full-size ByteArray peak.
+            val sink = Buffer()
             val buffer = ByteArray(8192)
-            var total = 0
+            var total = 0L
             while (!channel.isClosedForRead) {
                 val read = channel.readAvailable(buffer, 0, buffer.size)
                 if (read > 0) {
@@ -212,16 +210,10 @@ class OmniNodeClient {
                     if (total > maxBytes) {
                         error("File is too large to preview (>${maxBytes / (1024 * 1024)} MB)")
                     }
-                    chunks.add(buffer.copyOf(read))
+                    sink.write(buffer, startIndex = 0, endIndex = read)
                 }
             }
-            val result = ByteArray(total)
-            var offset = 0
-            for (chunk in chunks) {
-                chunk.copyInto(result, destinationOffset = offset)
-                offset += chunk.size
-            }
-            result
+            sink.readByteArray()
         }
     }
 
@@ -369,7 +361,7 @@ class OmniNodeClient {
     }
 
     fun close() {
-        client.close()
+        // Shared process HttpClient lifecycle is owned by OmniNodeServices — do not close here.
     }
 
     companion object {

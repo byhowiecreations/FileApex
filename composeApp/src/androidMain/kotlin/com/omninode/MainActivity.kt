@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -74,7 +75,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        val barColor = OmniTeal.toArgb()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(barColor),
+            navigationBarStyle = SystemBarStyle.dark(barColor)
+        )
         super.onCreate(savedInstanceState)
         configureVisibleSystemBars()
         refreshPermissions()
@@ -202,12 +207,6 @@ class MainActivity : ComponentActivity() {
         controller.show(WindowInsetsCompat.Type.systemBars())
         controller.isAppearanceLightStatusBars = false
         controller.isAppearanceLightNavigationBars = false
-
-        @Suppress("DEPRECATION")
-        run {
-            window.statusBarColor = OmniTeal.toArgb()
-            window.navigationBarColor = OmniTeal.toArgb()
-        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {

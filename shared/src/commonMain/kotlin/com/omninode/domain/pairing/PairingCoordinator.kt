@@ -3,9 +3,8 @@ package com.omninode.domain.pairing
 import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.device.DeviceRepository
 import com.omninode.data.identity.LocalIdentity
-import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.network.OmniNodeClient
-import com.omninode.platform.localIpv4Addresses
+import com.omninode.util.NetworkUtils
 
 /**
  * Single coordinator for bilateral pairing completion and one-hop cluster fan-out.
@@ -146,15 +145,6 @@ class PairingCoordinator(
     }
 
     private fun selfAsPairedDevice(): PairedDeviceEntity {
-        val identity = identityProvider()
-        val host = localIpv4Addresses().sorted().firstOrNull() ?: "127.0.0.1"
-        return PairedDeviceEntity(
-            deviceId = identity.deviceId,
-            deviceName = LocalDeviceNameStore.current().ifBlank { identity.deviceName },
-            lastKnownIp = host,
-            port = identity.sharePort,
-            publicKeyHash = "",
-            rootPath = identity.rootPath
-        )
+        return NetworkUtils.selfAsPairedDevice(identityProvider())
     }
 }

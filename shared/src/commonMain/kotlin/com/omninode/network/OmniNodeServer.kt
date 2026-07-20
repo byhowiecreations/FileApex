@@ -1,16 +1,16 @@
 package com.omninode.network
 
 import com.omninode.data.db.PairedDeviceEntity
-import com.omninode.data.files.isHiddenDotName
+import com.omninode.data.files.LocalFileRepository
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.loadLocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
-import com.omninode.domain.model.RemoteFileItem
 import com.omninode.domain.pairing.ClusterSyncRequest
 import com.omninode.platform.UniqueFileNames
 import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.notifyFilesReceived
+import com.omninode.util.PathUtils
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -63,6 +63,7 @@ class OmniNodeServer(
         }
     }
 ) {
+    private val engineLock = Any()
     private var serverEngine: EmbeddedServer<*, *>? = null
     private var lifecycleJob: Job = SupervisorJob()
     private var serverScope: CoroutineScope = CoroutineScope(Dispatchers.IO + lifecycleJob)
@@ -70,22 +71,24 @@ class OmniNodeServer(
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
+    private val localFiles = LocalFileRepository()
 
     val isRunning: Boolean
-        get() = serverEngine != null
+        get() = synchronized(engineLock) { serverEngine != null }
 
     fun start() {
-        if (serverEngine != null) {
-            onLog("start() ignored — engine already running on port $port", null)
-            return
-        }
-        if (lifecycleJob.isCancelled) {
-            lifecycleJob = SupervisorJob()
-            serverScope = CoroutineScope(Dispatchers.IO + lifecycleJob)
-        }
+        synchronized(engineLock) {
+            if (serverEngine != null) {
+                onLog("start() ignored — engine already running on port $port", null)
+                return
+            }
+            if (lifecycleJob.isCancelled) {
+                lifecycleJob = SupervisorJob()
+                serverScope = CoroutineScope(Dispatchers.IO + lifecycleJob)
+            }
 
-        onLog("Starting CIO engine on 0.0.0.0:$port", null)
-        serverEngine = embeddedServer(CIO, port = port, host = "0.0.0.0") {
+            onLog("Starting CIO engine on 0.0.0.0:$port", null)
+            serverEngine = embeddedServer(CIO, port = port, host = "0.0.0.0") {
             install(StatusPages) {
                 exception<Throwable> { call, cause ->
                     onLog("Unhandled route exception", cause)
@@ -253,39 +256,22 @@ class OmniNodeServer(
                             call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                             return@runCatching
                         }
-                        val basePath = Path(pathStr)
-
-                        if (SystemFileSystem.exists(basePath)) {
-                            val items = SystemFileSystem.list(basePath).mapNotNull { path ->
-                                runCatching {
-                                    val name = path.name
-                                    if (isHiddenDotName(name)) return@runCatching null
-                                    val metadata = SystemFileSystem.metadataOrNull(path)
-                                    val isDirectory = metadata?.isDirectory == true
-                                    RemoteFileItem(
-                                        id = path.toString().hashCode().toString(),
-                                        name = name,
-                                        absolutePath = path.toString(),
-                                        sizeBytes = metadata?.size ?: 0L,
-                                        lastModified = 0L,
-                                        isDirectory = isDirectory,
-                                        mimeType = if (isDirectory) {
-                                            "inode/directory"
-                                        } else {
-                                            "application/octet-stream"
-                                        }
-                                    )
-                                }.onFailure { error ->
-                                    onLog("Skipping unlistable path $path", error)
-                                }.getOrNull()
+                        val listing = withContext(Dispatchers.IO) {
+                            localFiles.listDirectory(pathStr)
+                        }.getOrElse { error ->
+                            val missing = error.message?.contains("does not exist") == true
+                            if (missing) {
+                                call.respond(HttpStatusCode.NotFound)
+                            } else {
+                                call.respond(HttpStatusCode.BadRequest, error.message ?: "list_failed")
                             }
-                            call.respondText(
-                                text = json.encodeToString(items),
-                                contentType = ContentType.Application.Json
-                            )
-                        } else {
-                            call.respond(HttpStatusCode.NotFound)
+                            return@runCatching
                         }
+                        val items = listing.directories + listing.files
+                        call.respondText(
+                            text = json.encodeToString(items),
+                            contentType = ContentType.Application.Json
+                        )
                     }.onFailure { error ->
                         onLog("GET /api/v1/files/list failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "list_failed")
@@ -409,31 +395,27 @@ class OmniNodeServer(
             }
         }.start(wait = false)
 
-        serverScope.launch {
-            onLog("CIO engine started and listening on port $port", null)
+            serverScope.launch {
+                onLog("CIO engine started and listening on port $port", null)
+            }
         }
     }
 
     fun stop() {
-        onLog("Stopping CIO engine", null)
-        runCatching {
-            serverEngine?.stop(gracePeriodMillis = 1000, timeoutMillis = 2000)
-        }.onFailure { error ->
-            onLog("Error while stopping engine", error)
+        synchronized(engineLock) {
+            onLog("Stopping CIO engine", null)
+            runCatching {
+                serverEngine?.stop(gracePeriodMillis = 1000, timeoutMillis = 2000)
+            }.onFailure { error ->
+                onLog("Error while stopping engine", error)
+            }
+            serverEngine = null
+            lifecycleJob.cancel()
         }
-        serverEngine = null
-        lifecycleJob.cancel()
     }
 
     private fun isPathAllowed(absolutePath: String): Boolean {
-        val root = normalizePath(identityProvider().rootPath)
-        val current = normalizePath(absolutePath)
-        return current == root || current.startsWith("$root/")
-    }
-
-    private fun normalizePath(path: String): String {
-        val trimmed = path.replace('\\', '/').trimEnd('/')
-        return trimmed.ifBlank { "/" }
+        return PathUtils.isWithinRoot(absolutePath, identityProvider().rootPath)
     }
 
     private fun providedPin(call: ApplicationCall): String {

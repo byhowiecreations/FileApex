@@ -5,8 +5,8 @@ import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.loadLocalIdentity
 import com.omninode.di.OmniNodeServices
-import com.omninode.platform.currentTimeMillis
-import com.omninode.platform.localIpv4Addresses
+import com.omninode.util.NetworkUtils
+import com.omninode.util.TimestampDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -125,7 +125,9 @@ object GoogleLinkCoordinator {
             uid = uid,
             deviceId = cloudDeviceId,
             deviceName = trimmed,
-            updatedAtEpochMs = currentTimeMillis()
+            updatedAtEpochMs = TimestampDiagnostics.mutatingNow(
+                "GoogleLinkCoordinator.publishUserRenamedDevice.updatedAtEpochMs"
+            )
         )
     }
 
@@ -255,7 +257,7 @@ object GoogleLinkCoordinator {
     private fun buildSelfPresence(): CloudDevicePresence {
         val identity = loadLocalIdentity()
         // Stable pick: sorted IPv4 list so heartbeats do not flip between interfaces.
-        val host = localIpv4Addresses().sorted().firstOrNull() ?: "127.0.0.1"
+        val host = NetworkUtils.preferredLanIpv4()
         return CloudDevicePresence(
             deviceId = identity.deviceId,
             lastKnownIp = host,
@@ -263,7 +265,9 @@ object GoogleLinkCoordinator {
             publicKeyHash = deviceFingerprint(identity.deviceId),
             rootPath = identity.rootPath,
             platform = currentPlatformLabel(),
-            updatedAtEpochMs = currentTimeMillis()
+            updatedAtEpochMs = TimestampDiagnostics.mutatingNow(
+                "GoogleLinkCoordinator.buildSelfPresence.updatedAtEpochMs"
+            )
         )
     }
 

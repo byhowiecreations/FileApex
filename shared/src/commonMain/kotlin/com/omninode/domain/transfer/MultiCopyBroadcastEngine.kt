@@ -17,7 +17,8 @@ import kotlinx.io.write
 
 /**
  * Coordinates Multi Copy: one source stream fan-out to many destinations in parallel.
- * Reads each source file once and multiplexes chunks to every selected target.
+ * Reads each source file once and multiplexes the same immutable chunk reference to every
+ * destination channel (no per-destination copies). Writer results are gathered via [awaitAll].
  */
 class MultiCopyBroadcastEngine(
     private val client: OmniNodeClient
@@ -37,11 +38,10 @@ class MultiCopyBroadcastEngine(
         source: MultiCopySource,
         destinations: List<MultiCopyDestination>
     ): MultiCopyResult = coroutineScope {
+        // Small bound keeps only a few shared chunk refs in flight per destination.
         val chunkChannels = destinations.map {
-            Channel<ByteArray>(capacity = Channel.BUFFERED)
+            Channel<ByteArray>(capacity = CHANNEL_CAPACITY)
         }
-        val failures = linkedMapOf<String, String>()
-        val succeeded = linkedSetOf<String>()
 
         val writers = destinations.mapIndexed { index, destination ->
             async(Dispatchers.IO) {
@@ -63,11 +63,14 @@ class MultiCopyBroadcastEngine(
                             )
                         }
                     }
-                    succeeded += destination.deviceId
-                }.onFailure { error ->
+                    WriterOutcome(deviceId = destination.deviceId, errorMessage = null)
+                }.getOrElse { error ->
                     runCatching { chunkChannels[index].close() }
-                    failures[destination.deviceId] =
-                        error.message ?: "Transfer failed on ${destination.deviceName}"
+                    WriterOutcome(
+                        deviceId = destination.deviceId,
+                        errorMessage = error.message
+                            ?: "Transfer failed on ${destination.deviceName}"
+                    )
                 }
             }
         }
@@ -75,9 +78,9 @@ class MultiCopyBroadcastEngine(
         val producer = launch(Dispatchers.IO) {
             try {
                 streamSource(source) { chunk ->
+                    // Same immutable array ref to every channel — no per-destination copyOf().
                     for (channel in chunkChannels) {
-                        // Skip destinations that already failed/closed so others keep receiving.
-                        runCatching { channel.send(chunk.copyOf()) }
+                        runCatching { channel.send(chunk) }
                     }
                 }
                 chunkChannels.forEach { channel ->
@@ -91,16 +94,27 @@ class MultiCopyBroadcastEngine(
             }
         }
 
-        runCatching { producer.join() }
-            .onFailure { error ->
-                destinations.forEach { dest ->
-                    failures.putIfAbsent(
-                        dest.deviceId,
-                        error.message ?: "Source read failed"
-                    )
-                }
+        val producerError = runCatching { producer.join() }.exceptionOrNull()
+        val outcomes = writers.awaitAll()
+
+        val failures = linkedMapOf<String, String>()
+        val succeeded = linkedSetOf<String>()
+        for (outcome in outcomes) {
+            val message = outcome.errorMessage
+            if (message == null) {
+                succeeded += outcome.deviceId
+            } else {
+                failures[outcome.deviceId] = message
             }
-        writers.awaitAll()
+        }
+        if (producerError != null) {
+            destinations.forEach { dest ->
+                failures.putIfAbsent(
+                    dest.deviceId,
+                    producerError.message ?: "Source read failed"
+                )
+            }
+        }
 
         MultiCopyResult(
             fileName = source.fileName,
@@ -122,6 +136,7 @@ class MultiCopyBroadcastEngine(
                     while (!input.exhausted()) {
                         val read = input.readAtMostTo(buffer)
                         if (read > 0) {
+                            // One immutable slice per read; shared by all destination channels.
                             onChunk(buffer.copyOf(read))
                         }
                     }
@@ -154,5 +169,14 @@ class MultiCopyBroadcastEngine(
                 sink.write(chunk)
             }
         }
+    }
+
+    private data class WriterOutcome(
+        val deviceId: String,
+        val errorMessage: String?
+    )
+
+    companion object {
+        private const val CHANNEL_CAPACITY = 2
     }
 }

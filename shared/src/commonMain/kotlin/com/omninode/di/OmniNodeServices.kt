@@ -1,7 +1,6 @@
 package com.omninode.di
 
 import com.omninode.data.db.OmniNodeDatabase
-import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.device.DeviceRepository
 import com.omninode.data.device.LocalDeviceRef
 import com.omninode.data.identity.LocalIdentity
@@ -13,8 +12,10 @@ import com.omninode.data.transfer.FileTransferService
 import com.omninode.domain.pairing.PairingCoordinator
 import com.omninode.domain.presence.PeerPresenceMonitor
 import com.omninode.domain.transfer.TransferManager
+import com.omninode.network.OmniHttpClientFactory
 import com.omninode.network.OmniNodeClient
-import com.omninode.platform.localIpv4Addresses
+import com.omninode.util.NetworkUtils
+import io.ktor.client.HttpClient
 
 object OmniNodeServices {
     @Volatile
@@ -26,6 +27,9 @@ object OmniNodeServices {
     val deviceRepository: DeviceRepository
         get() = deviceRepositoryInstance
             ?: error("OmniNodeServices.init(database) must be called first")
+
+    /** Process-wide Ktor client (pairing, transfers, updates, desktop cloud). */
+    val httpClient: HttpClient by lazy { OmniHttpClientFactory.create() }
 
     val transferService: FileTransferService by lazy { FileTransferService(client = client) }
 
@@ -41,7 +45,12 @@ object OmniNodeServices {
         )
     }
 
-    val client: OmniNodeClient by lazy { OmniNodeClient() }
+    val client: OmniNodeClient by lazy {
+        OmniNodeClient(
+            client = httpClient,
+            json = OmniHttpClientFactory.defaultJson
+        )
+    }
     val settings: AppSettings by lazy { createAppSettings() }
     val localIdentity: LocalIdentity
         get() = loadLocalIdentity()
@@ -60,15 +69,7 @@ object OmniNodeServices {
             client = client,
             pairingCoordinator = pairingCoordinator,
             selfDeviceProvider = {
-                val identity = loadLocalIdentity()
-                PairedDeviceEntity(
-                    deviceId = identity.deviceId,
-                    deviceName = identity.deviceName,
-                    lastKnownIp = localIpv4Addresses().firstOrNull() ?: "127.0.0.1",
-                    port = identity.sharePort,
-                    publicKeyHash = "",
-                    rootPath = identity.rootPath
-                )
+                NetworkUtils.selfAsPairedDevice(loadLocalIdentity())
             }
         )
     }
@@ -86,16 +87,7 @@ object OmniNodeServices {
             val identity = loadLocalIdentity()
             LocalDeviceRef(
                 deviceId = identity.deviceId,
-                endpoints = localIpv4Addresses()
-                    .mapNotNull { raw ->
-                        val ip = raw.trim()
-                        if (ip.isEmpty() || ip == "127.0.0.1" || ip == "0.0.0.0") {
-                            null
-                        } else {
-                            "$ip:${identity.sharePort}"
-                        }
-                    }
-                    .toSet()
+                endpoints = NetworkUtils.shareEndpoints(identity)
             )
         }
         LocalDeviceNameStore.ensureLoaded()

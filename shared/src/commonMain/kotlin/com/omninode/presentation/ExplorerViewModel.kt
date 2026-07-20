@@ -4,25 +4,22 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omninode.data.clipboard.TransferClipboard
-import com.omninode.data.identity.LocalIdentity
 import com.omninode.di.OmniNodeServices
+import com.omninode.domain.browse.BrowserCoordinator
 import com.omninode.domain.model.RemoteFileItem
+import com.omninode.domain.preview.FilePreviewManager
+import com.omninode.domain.transfer.ExplorerTransferManager
 import com.omninode.domain.transfer.MultiCopyDeviceOption
-import com.omninode.domain.transfer.MultiCopySource
 import com.omninode.platform.decodeImageBytes
-import com.omninode.platform.localIpv4Addresses
 import com.omninode.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.io.buffered
-import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.readByteArray
 
 data class ExplorerUiState(
     val deviceTitle: String = "",
@@ -70,25 +67,27 @@ data class ExplorerUiState(
 class ExplorerViewModel(
     private val target: BrowseTarget
 ) : ViewModel() {
-    private val transfer = OmniNodeServices.transferService
-    private val transferManager = OmniNodeServices.transferManager
-    private val identity: LocalIdentity
-        get() = OmniNodeServices.localIdentity
+    private val browser = BrowserCoordinator(target, OmniNodeServices.transferService)
+    private val preview = FilePreviewManager(target)
+    private val transfers = ExplorerTransferManager(
+        target = target,
+        transferManager = OmniNodeServices.transferManager,
+        identityProvider = { OmniNodeServices.localIdentity }
+    )
     private val settings = OmniNodeServices.settings
-    private val browseRoot: String = normalizePath(target.rootPath)
-    private val isRemote: Boolean = target is BrowseTarget.Remote
-    private val remotePinRequired: Boolean =
-        (target as? BrowseTarget.Remote)?.pinRequired == true
+    private val browseRoot: String = browser.browseRoot
+    private val isRemote: Boolean = browser.isRemote
     /** Resume after mid-explorer PIN re-entry. */
     private var pendingBrowseAction: (suspend () -> Unit)? = null
     /** Anchor for desktop Shift-click range selection. */
     private var selectionAnchorId: String? = null
+    private var browseJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         ExplorerUiState(
             deviceTitle = target.displayName,
-            clipboardLabel = TransferClipboard.label(),
-            canPaste = TransferClipboard.hasContent(),
+            clipboardLabel = transfers.clipboardLabel(),
+            canPaste = transfers.clipboardHasContent(),
             isRemoteTarget = isRemote
         )
     )
@@ -109,8 +108,8 @@ class ExplorerViewModel(
     }
 
     fun openPath(path: String) {
-        val resolved = resolveWithinRoot(path)
-        viewModelScope.launch {
+        val resolved = browser.resolveWithinRoot(path)
+        launchBrowse {
             browseWithPinRetry {
                 _uiState.update {
                     it.copy(
@@ -128,13 +127,13 @@ class ExplorerViewModel(
                         canPaste = TransferClipboard.hasContent()
                     )
                 }
-                val (dirs, files) = listAt(resolved)
+                val listing = browser.listAt(resolved)
                 applyPaneAndContent(
                     panePath = resolved,
                     contentPath = resolved,
-                    paneDirectories = dirs,
-                    contentDirectories = dirs,
-                    contentFiles = files,
+                    paneDirectories = listing.directories,
+                    contentDirectories = listing.directories,
+                    contentFiles = listing.files,
                     selectedFolderPath = null
                 )
             }
@@ -146,23 +145,23 @@ class ExplorerViewModel(
      */
     fun onPaneFolderClick(item: RemoteFileItem) {
         if (_uiState.value.isSelectionMode) return
-        if (!isWithinRoot(item.absolutePath)) {
+        if (!browser.isWithinRoot(item.absolutePath)) {
             _uiState.update {
                 it.copy(statusMessage = "That folder is outside this device's browsable root")
             }
             return
         }
-        viewModelScope.launch {
+        launchBrowse {
             browseWithPinRetry {
                 _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-                val resolved = resolveWithinRoot(item.absolutePath)
-                val (dirs, files) = listAt(resolved)
+                val resolved = browser.resolveWithinRoot(item.absolutePath)
+                val listing = browser.listAt(resolved)
                 applyPaneAndContent(
                     panePath = _uiState.value.panePath.ifBlank { browseRoot },
                     contentPath = resolved,
                     paneDirectories = _uiState.value.paneDirectories,
-                    contentDirectories = dirs,
-                    contentFiles = files,
+                    contentDirectories = listing.directories,
+                    contentFiles = listing.files,
                     selectedFolderPath = resolved
                 )
             }
@@ -174,25 +173,25 @@ class ExplorerViewModel(
      */
     fun onContentDirectoryClick(item: RemoteFileItem) {
         if (_uiState.value.isSelectionMode) return
-        if (!isWithinRoot(item.absolutePath)) {
+        if (!browser.isWithinRoot(item.absolutePath)) {
             _uiState.update {
                 it.copy(statusMessage = "That folder is outside this device's browsable root")
             }
             return
         }
-        viewModelScope.launch {
+        launchBrowse {
             browseWithPinRetry {
                 _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-                val newContent = resolveWithinRoot(item.absolutePath)
-                val newPane = parentWithinRoot(newContent) ?: browseRoot
-                val (paneDirs, _) = listAt(newPane)
-                val (contentDirs, contentFiles) = listAt(newContent)
+                val newContent = browser.resolveWithinRoot(item.absolutePath)
+                val newPane = browser.parentWithinRoot(newContent) ?: browseRoot
+                val paneListing = browser.listAt(newPane)
+                val contentListing = browser.listAt(newContent)
                 applyPaneAndContent(
                     panePath = newPane,
                     contentPath = newContent,
-                    paneDirectories = paneDirs,
-                    contentDirectories = contentDirs,
-                    contentFiles = contentFiles,
+                    paneDirectories = paneListing.directories,
+                    contentDirectories = contentListing.directories,
+                    contentFiles = contentListing.files,
                     selectedFolderPath = newContent
                 )
             }
@@ -200,8 +199,12 @@ class ExplorerViewModel(
     }
 
     fun onDirectoryClick(item: RemoteFileItem) {
-        // Phone / single-column: full navigation into the folder.
         onContentDirectoryClick(item)
+    }
+
+    private fun launchBrowse(block: suspend () -> Unit) {
+        browseJob?.cancel()
+        browseJob = viewModelScope.launch { block() }
     }
 
     private suspend fun browseWithPinRetry(block: suspend () -> Unit) {
@@ -220,33 +223,6 @@ class ExplorerViewModel(
                 )
             }
         }
-    }
-
-    private suspend fun listAt(path: String): Pair<List<RemoteFileItem>, List<RemoteFileItem>> {
-        ensureBrowseAccess()
-        return when (val browseTarget = target) {
-            is BrowseTarget.Local -> {
-                val listing = transfer.listLocal(path)
-                listing.directories to listing.files
-            }
-            is BrowseTarget.Remote -> {
-                DeviceSessionManager.markDeviceAccessed(browseTarget.deviceId)
-                val items = transfer.listRemote(browseTarget.host, browseTarget.port, path)
-                val directories = items.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
-                val files = items.filter { !it.isDirectory }.sortedBy { it.name.lowercase() }
-                directories to files
-            }
-        }
-    }
-
-    /**
-     * Blocks remote folder navigation when the peer requires PIN and the browse session
-     * is missing or idle-expired. Throws [PinSessionRequiredException] so callers can show UI.
-     */
-    private fun ensureBrowseAccess() {
-        if (!isRemote || !remotePinRequired) return
-        if (DeviceSessionManager.isSessionValid(target.deviceId)) return
-        throw PinSessionRequiredException()
     }
 
     fun cancelPinUnlock() {
@@ -301,9 +277,9 @@ class ExplorerViewModel(
         contentFiles: List<RemoteFileItem>,
         selectedFolderPath: String?
     ) {
-        val normalizedContent = normalizePath(contentPath)
-        val normalizedPane = normalizePath(panePath)
-        val parent = parentWithinRoot(normalizedContent)
+        val normalizedContent = browser.normalizePath(contentPath)
+        val normalizedPane = browser.normalizePath(panePath)
+        val parent = browser.parentWithinRoot(normalizedContent)
         _uiState.update {
             it.copy(
                 currentPath = normalizedContent,
@@ -313,7 +289,7 @@ class ExplorerViewModel(
                 paneDirectories = paneDirectories,
                 contentDirectories = contentDirectories,
                 contentFiles = contentFiles,
-                selectedFolderPath = selectedFolderPath?.let(::normalizePath),
+                selectedFolderPath = selectedFolderPath?.let(browser::normalizePath),
                 isLoading = false,
                 isRefreshing = false
             )
@@ -385,11 +361,11 @@ class ExplorerViewModel(
     /** Open / preview a file (Android tap outside selection; desktop double-click). */
     fun activateFile(item: RemoteFileItem) {
         when {
-            isImageFile(item) -> openImagePreview(item)
-            isTextFile(item) -> openTextPreview(item)
+            preview.isImageFile(item) -> openImagePreview(item)
+            preview.isTextFile(item) -> openTextPreview(item)
             else -> {
                 _uiState.update {
-                    it.copy(statusMessage = "${item.name} · ${formatBytes(item.sizeBytes)}")
+                    it.copy(statusMessage = "${item.name} · ${preview.formatBytes(item.sizeBytes)}")
                 }
             }
         }
@@ -444,9 +420,11 @@ class ExplorerViewModel(
     }
 
     private fun openImagePreview(item: RemoteFileItem) {
-        if (item.sizeBytes > MAX_PREVIEW_BYTES) {
+        runCatching {
+            preview.assertPreviewAllowed(item, FilePreviewManager.MAX_PREVIEW_BYTES)
+        }.onFailure { error ->
             _uiState.update {
-                it.copy(errorMessage = "Image is too large to preview (>${MAX_PREVIEW_BYTES / (1024 * 1024)} MB)")
+                it.copy(errorMessage = error.message ?: "Preview failed")
             }
             return
         }
@@ -463,7 +441,9 @@ class ExplorerViewModel(
                 )
             }
             runCatching {
-                val bytes = withContext(Dispatchers.IO) { loadFileBytes(item) }
+                val bytes = withContext(Dispatchers.IO) {
+                    preview.loadPreviewBytes(item, FilePreviewManager.MAX_PREVIEW_BYTES)
+                }
                 decodeImageBytes(bytes)
                     ?: error("Unable to decode image")
             }.fold(
@@ -491,9 +471,11 @@ class ExplorerViewModel(
     }
 
     private fun openTextPreview(item: RemoteFileItem) {
-        if (item.sizeBytes > MAX_TEXT_PREVIEW_BYTES) {
+        runCatching {
+            preview.assertPreviewAllowed(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
+        }.onFailure { error ->
             _uiState.update {
-                it.copy(errorMessage = "Text file is too large to preview")
+                it.copy(errorMessage = error.message ?: "Text file is too large to preview")
             }
             return
         }
@@ -511,7 +493,9 @@ class ExplorerViewModel(
             }
             runCatching {
                 withContext(Dispatchers.IO) {
-                    loadFileBytes(item).decodeToString().take(12_000)
+                    preview.loadPreviewBytes(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
+                        .decodeToString()
+                        .take(12_000)
                 }
             }.fold(
                 onSuccess = { text ->
@@ -536,85 +520,35 @@ class ExplorerViewModel(
         }
     }
 
-    private suspend fun loadFileBytes(item: RemoteFileItem): ByteArray {
-        return when (target) {
-            is BrowseTarget.Local -> {
-                SystemFileSystem.source(Path(item.absolutePath)).buffered().use { it.readByteArray() }
-            }
-            is BrowseTarget.Remote -> {
-                OmniNodeServices.client.downloadBytes(
-                    host = target.host,
-                    port = target.port,
-                    remotePath = item.absolutePath,
-                    maxBytes = MAX_PREVIEW_BYTES
-                )
-            }
-        }
-    }
-
-    private fun isImageFile(item: RemoteFileItem): Boolean {
-        val name = item.name.lowercase()
-        return item.mimeType.startsWith("image/") ||
-            name.endsWith(".jpg") ||
-            name.endsWith(".jpeg") ||
-            name.endsWith(".png") ||
-            name.endsWith(".webp") ||
-            name.endsWith(".gif") ||
-            name.endsWith(".bmp")
-    }
-
-    private fun isTextFile(item: RemoteFileItem): Boolean {
-        val name = item.name.lowercase()
-        return item.mimeType.startsWith("text/") ||
-            name.endsWith(".txt") ||
-            name.endsWith(".md") ||
-            name.endsWith(".log") ||
-            name.endsWith(".json") ||
-            name.endsWith(".csv")
-    }
-
-    private fun formatBytes(bytes: Long): String {
-        if (bytes < 1024) return "$bytes B"
-        val kb = bytes / 1024.0
-        if (kb < 1024) return "${(kb * 10).toInt() / 10.0} KB"
-        val mb = kb / 1024.0
-        if (mb < 1024) return "${(mb * 10).toInt() / 10.0} MB"
-        val gb = mb / 1024.0
-        return "${(gb * 10).toInt() / 10.0} GB"
-    }
-
     fun navigateUp() {
         val state = _uiState.value
         val parent = state.parentPath ?: return
-        val pane = normalizePath(state.panePath.ifBlank { browseRoot })
-        val content = normalizePath(state.currentPath)
+        val pane = browser.normalizePath(state.panePath.ifBlank { browseRoot })
+        val content = browser.normalizePath(state.currentPath)
 
-        // At pane root view (no left selection): move both panes up.
         if (state.selectedFolderPath == null && content == pane) {
             openPath(parent)
             return
         }
 
-        // Selected/drilled folder whose parent is the left pane → return to pane file list.
-        if (normalizePath(parent) == pane) {
+        if (browser.normalizePath(parent) == pane) {
             openPath(pane)
             return
         }
 
-        // Deeper drill: show parent folder contents; left lists that parent's siblings.
-        viewModelScope.launch {
+        launchBrowse {
             browseWithPinRetry {
                 _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-                val newContent = resolveWithinRoot(parent)
-                val newPane = parentWithinRoot(newContent) ?: browseRoot
-                val (paneDirs, _) = listAt(newPane)
-                val (contentDirs, contentFiles) = listAt(newContent)
+                val newContent = browser.resolveWithinRoot(parent)
+                val newPane = browser.parentWithinRoot(newContent) ?: browseRoot
+                val paneListing = browser.listAt(newPane)
+                val contentListing = browser.listAt(newContent)
                 applyPaneAndContent(
                     panePath = newPane,
                     contentPath = newContent,
-                    paneDirectories = paneDirs,
-                    contentDirectories = contentDirs,
-                    contentFiles = contentFiles,
+                    paneDirectories = paneListing.directories,
+                    contentDirectories = contentListing.directories,
+                    contentFiles = contentListing.files,
                     selectedFolderPath = newContent
                 )
             }
@@ -642,27 +576,29 @@ class ExplorerViewModel(
         val contentPath = state.currentPath.ifBlank { browseRoot }
         val panePath = state.panePath.ifBlank { contentPath }
         val selected = state.selectedFolderPath
-        viewModelScope.launch {
+        launchBrowse {
             browseWithPinRetry {
                 _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
-                val (paneDirs, paneFiles) = listAt(resolveWithinRoot(panePath))
-                if (selected == null || normalizePath(contentPath) == normalizePath(panePath)) {
+                val paneListing = browser.listAt(browser.resolveWithinRoot(panePath))
+                if (selected == null ||
+                    browser.normalizePath(contentPath) == browser.normalizePath(panePath)
+                ) {
                     applyPaneAndContent(
-                        panePath = resolveWithinRoot(panePath),
-                        contentPath = resolveWithinRoot(panePath),
-                        paneDirectories = paneDirs,
-                        contentDirectories = paneDirs,
-                        contentFiles = paneFiles,
+                        panePath = browser.resolveWithinRoot(panePath),
+                        contentPath = browser.resolveWithinRoot(panePath),
+                        paneDirectories = paneListing.directories,
+                        contentDirectories = paneListing.directories,
+                        contentFiles = paneListing.files,
                         selectedFolderPath = null
                     )
                 } else {
-                    val (contentDirs, contentFiles) = listAt(resolveWithinRoot(contentPath))
+                    val contentListing = browser.listAt(browser.resolveWithinRoot(contentPath))
                     applyPaneAndContent(
-                        panePath = resolveWithinRoot(panePath),
-                        contentPath = resolveWithinRoot(contentPath),
-                        paneDirectories = paneDirs,
-                        contentDirectories = contentDirs,
-                        contentFiles = contentFiles,
+                        panePath = browser.resolveWithinRoot(panePath),
+                        contentPath = browser.resolveWithinRoot(contentPath),
+                        paneDirectories = paneListing.directories,
+                        contentDirectories = contentListing.directories,
+                        contentFiles = contentListing.files,
                         selectedFolderPath = selected
                     )
                 }
@@ -672,26 +608,8 @@ class ExplorerViewModel(
 
     fun copySelected() {
         val items = selectedFiles()
-        if (items.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Select at least one file to copy") }
-            return
-        }
         runCatching {
-            when (target) {
-                is BrowseTarget.Local -> {
-                    val host = localIpv4Addresses().firstOrNull() ?: "127.0.0.1"
-                    transfer.copyLocalFiles(identity, items, host)
-                }
-                is BrowseTarget.Remote -> {
-                    transfer.copyRemoteFiles(
-                        sourceDeviceId = target.deviceId,
-                        sourceDeviceName = target.displayName,
-                        host = target.host,
-                        port = target.port,
-                        items = items
-                    )
-                }
-            }
+            val message = transfers.copySelected(items)
             _uiState.update {
                 it.copy(
                     isSelectionMode = false,
@@ -699,11 +617,7 @@ class ExplorerViewModel(
                     canDownloadSelection = false,
                     canPaste = true,
                     clipboardLabel = TransferClipboard.label(),
-                    statusMessage = if (items.size == 1) {
-                        "Copied ${items.first().name} — open a folder and tap Paste here"
-                    } else {
-                        "Copied ${items.size} files — open a folder and tap Paste here"
-                    }
+                    statusMessage = message
                 )
             }
         }.onFailure { error ->
@@ -766,26 +680,11 @@ class ExplorerViewModel(
             _uiState.update { it.copy(errorMessage = "Select at least one destination device") }
             return
         }
-        val sources = items.map { item ->
-            when (target) {
-                is BrowseTarget.Local -> MultiCopySource.Local(
-                    fileName = item.name,
-                    sizeBytes = item.sizeBytes,
-                    absolutePath = item.absolutePath
-                )
-                is BrowseTarget.Remote -> MultiCopySource.Remote(
-                    fileName = item.name,
-                    sizeBytes = item.sizeBytes,
-                    absolutePath = item.absolutePath,
-                    host = target.host,
-                    port = target.port
-                )
-            }
-        }
+        val sources = transfers.sourcesFrom(items)
         viewModelScope.launch {
             _uiState.update { it.copy(isMultiCopying = true, errorMessage = null) }
             runCatching {
-                transferManager.sendToDevices(sources, selectedDevices)
+                transfers.sendToDevices(sources, selectedDevices)
             }.fold(
                 onSuccess = { batch ->
                     val failCount = batch.results.sumOf { it.failures.size }
@@ -837,7 +736,7 @@ class ExplorerViewModel(
 
     private fun openMultiCopyPicker() {
         viewModelScope.launch {
-            val options = buildMultiCopyOptions()
+            val options = transfers.buildMultiCopyOptions()
             if (options.isEmpty()) {
                 _uiState.update {
                     it.copy(errorMessage = "No online destination devices available")
@@ -854,25 +753,12 @@ class ExplorerViewModel(
         }
     }
 
-    private suspend fun buildMultiCopyOptions(): List<MultiCopyDeviceOption> {
-        val sourceDeviceId = when (target) {
-            is BrowseTarget.Local -> identity.deviceId
-            is BrowseTarget.Remote -> target.deviceId
-        }
-        return transferManager.buildInAppDeviceOptions(sourceDeviceId)
-    }
-
     fun downloadSelected() {
-        val remote = target as? BrowseTarget.Remote ?: return
         val items = selectedFiles()
-        if (items.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Select at least one file to download") }
-            return
-        }
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
             runCatching {
-                transfer.downloadRemoteToDownloads(remote.host, remote.port, items)
+                transfers.downloadRemote(items)
             }.fold(
                 onSuccess = { paths ->
                     _uiState.update {
@@ -903,12 +789,11 @@ class ExplorerViewModel(
     }
 
     fun downloadPreview() {
-        val remote = target as? BrowseTarget.Remote ?: return
         val item = _uiState.value.previewItem ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
             runCatching {
-                transfer.downloadRemoteToDownloads(remote.host, remote.port, listOf(item))
+                transfers.downloadRemote(listOf(item))
             }.fold(
                 onSuccess = { paths ->
                     _uiState.update {
@@ -933,14 +818,7 @@ class ExplorerViewModel(
     fun pasteHere() {
         viewModelScope.launch {
             runCatching {
-                val paths = when (target) {
-                    is BrowseTarget.Local -> transfer.pasteIntoLocal(_uiState.value.currentPath)
-                    is BrowseTarget.Remote -> transfer.pasteIntoRemote(
-                        host = target.host,
-                        port = target.port,
-                        targetDirectory = _uiState.value.currentPath
-                    )
-                }
+                val paths = transfers.pasteInto(_uiState.value.currentPath)
                 _uiState.update {
                     it.copy(
                         statusMessage = if (paths.size == 1) {
@@ -971,37 +849,6 @@ class ExplorerViewModel(
 
     fun dismissMessages() {
         _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
-    }
-
-    private fun resolveWithinRoot(path: String): String {
-        val normalized = normalizePath(path)
-        return if (isWithinRoot(normalized)) normalized else browseRoot
-    }
-
-    private fun isWithinRoot(path: String): Boolean {
-        val current = normalizePath(path)
-        return current == browseRoot || current.startsWith("$browseRoot/")
-    }
-
-    private fun parentWithinRoot(path: String): String? {
-        val current = normalizePath(path)
-        if (current == browseRoot) return null
-        val slash = current.lastIndexOf('/')
-        if (slash <= 0) return null
-        val parent = current.substring(0, slash).ifBlank { "/" }
-        val normalizedParent = normalizePath(parent)
-        return if (isWithinRoot(normalizedParent)) normalizedParent else null
-    }
-
-    private fun normalizePath(path: String): String {
-        if (path.isBlank()) return browseRoot
-        val trimmed = path.replace('\\', '/').trimEnd('/')
-        return trimmed.ifBlank { "/" }
-    }
-
-    companion object {
-        private const val MAX_PREVIEW_BYTES = 25L * 1024L * 1024L
-        private const val MAX_TEXT_PREVIEW_BYTES = 1L * 1024L * 1024L
     }
 }
 

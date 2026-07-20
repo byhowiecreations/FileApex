@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.omninode.cloud.DesktopOAuthPkce
+import com.omninode.cloud.DesktopAuthCoordinator
 import com.omninode.cloud.googleWebClientId
 import java.awt.Desktop
 import java.net.URI
@@ -46,7 +46,7 @@ actual fun rememberGoogleSignInLauncher(
                 return@collect
             }
             runCatching {
-                DesktopOAuthPkce.exchangeCodeForIdToken(code, result.state)
+                DesktopAuthCoordinator.exchangeCodeForIdToken(code, result.state)
             }.onSuccess { idToken ->
                 onResult(idToken, null, null)
             }.onFailure { error ->
@@ -67,7 +67,7 @@ actual fun rememberGoogleSignInLauncher(
             } else {
                 scope.launch {
                     runCatching {
-                        val url = DesktopOAuthPkce.beginAuthorizationUrl(clientId)
+                        val url = DesktopAuthCoordinator.beginAuthorizationUrl(clientId)
                         if (!Desktop.isDesktopSupported() ||
                             !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)
                         ) {

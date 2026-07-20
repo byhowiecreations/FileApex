@@ -50,7 +50,7 @@ import com.omninode.data.settings.PinIdleTimeout
 import com.omninode.data.settings.UpdateCheckFrequency
 import com.omninode.data.settings.UpdateCheckUnit
 import com.omninode.platform.OmniBackHandler
-import com.omninode.platform.currentTimeMillis
+import com.omninode.util.TimeUtils
 import com.omninode.platform.rememberGoogleSignInLauncher
 import com.omninode.presentation.SettingsUiState
 import com.omninode.presentation.SettingsViewModel
@@ -225,11 +225,14 @@ private fun SettingsRootPage(
                         interactionSource = versionTapInteraction,
                         indication = null,
                         onClick = {
-                            val now = currentTimeMillis()
-                            if (now - lastVersionTapEpochMs > VERSION_EASTER_EGG_TAP_WINDOW_MS) {
+                            if (!TimeUtils.isWithinWindow(
+                                    lastVersionTapEpochMs,
+                                    VERSION_EASTER_EGG_TAP_WINDOW_MS
+                                )
+                            ) {
                                 versionTapCount = 0
                             }
-                            lastVersionTapEpochMs = now
+                            lastVersionTapEpochMs = TimeUtils.now()
                             versionTapCount += 1
                             if (versionTapCount >= VERSION_EASTER_EGG_TAP_COUNT) {
                                 versionTapCount = 0

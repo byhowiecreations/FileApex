@@ -1,5 +1,6 @@
 package com.omninode.platform
 
+import com.omninode.util.TimeUtils
 import java.io.File
 import java.time.Instant
 
@@ -182,7 +183,7 @@ object MacOsExtensionRegistrar {
             )
             if (!dir.exists()) dir.mkdirs()
             File(dir, "extension-registrar.log")
-                .appendText("${Instant.now()} $line\n")
+                .appendText("${Instant.ofEpochMilli(TimeUtils.now())} $line\n")
         } catch (_: Exception) {
             // Best-effort diagnostics only.
         }

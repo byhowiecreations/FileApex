@@ -6,7 +6,7 @@ import com.omninode.data.identity.LocalIdentity
 import com.omninode.di.OmniNodeServices
 import com.omninode.domain.pairing.PairingPayload
 import com.omninode.domain.pairing.PairingPayloadFactory
-import com.omninode.platform.localIpv4Addresses
+import com.omninode.util.NetworkUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,7 +41,7 @@ class GenerateQrViewModel : ViewModel() {
 
     fun refresh() {
         val live = OmniNodeServices.localIdentity
-        val host = localIpv4Addresses().firstOrNull()
+        val host = NetworkUtils.lanIpv4Addresses().sorted().firstOrNull()
         if (host == null) {
             _uiState.update {
                 it.copy(

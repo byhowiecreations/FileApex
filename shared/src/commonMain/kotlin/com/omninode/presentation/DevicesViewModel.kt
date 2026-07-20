@@ -9,7 +9,7 @@ import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
 import com.omninode.domain.pairing.PairingPayload
 import com.omninode.network.sendWakeBroadcast
-import com.omninode.platform.localIpv4Addresses
+import com.omninode.util.NetworkUtils
 import com.omninode.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -93,7 +93,6 @@ class DevicesViewModel : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
-        presence.start()
         LocalDeviceNameStore.ensureLoaded()
         viewModelScope.launch {
             runCatching { repository.reconcileDuplicateEndpoints() }
@@ -272,7 +271,7 @@ class DevicesViewModel : ViewModel() {
         )
         repository.upsertReplacingAliases(broadcasterEntity)
 
-        val scannerHost = localIpv4Addresses().firstOrNull()
+        val scannerHost = NetworkUtils.lanIpv4Addresses().sorted().firstOrNull()
             ?: error("No LAN IPv4 address available for reverse pairing")
         val scannerEntity = PairedDeviceEntity(
             deviceId = identity.deviceId,

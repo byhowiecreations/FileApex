@@ -51,14 +51,24 @@ actual object PlatformUpdateInstaller {
 
     private fun resolveInstallTargetApp(): File {
         val resourcesDir = System.getProperty("compose.application.resources.dir")
-        if (!resourcesDir.isNullOrBlank()) {
-            // …/OmniNode.app/Contents/app  →  OmniNode.app
-            val appBundle = File(resourcesDir).parentFile?.parentFile
-            if (appBundle != null && appBundle.name.endsWith(".app")) {
-                return appBundle
-            }
+        if (resourcesDir.isNullOrBlank()) {
+            val message =
+                "CRITICAL: cannot resolve OmniNode.app bundle " +
+                    "(compose.application.resources.dir is missing). Aborting update — " +
+                    "refusing to fall back to /Applications/OmniNode.app"
+            System.err.println("PlatformUpdateInstaller: $message")
+            error(message)
         }
-        return File("/Applications/OmniNode.app")
+        // …/OmniNode.app/Contents/app  →  OmniNode.app
+        val appBundle = File(resourcesDir).parentFile?.parentFile
+        if (appBundle == null || !appBundle.name.endsWith(".app") || !appBundle.isDirectory) {
+            val message =
+                "CRITICAL: cannot resolve OmniNode.app from resources.dir=$resourcesDir. " +
+                    "Aborting update — refusing to fall back to /Applications/OmniNode.app"
+            System.err.println("PlatformUpdateInstaller: $message")
+            error(message)
+        }
+        return appBundle
     }
 
     private fun buildMacUpdateScript(assetPath: String, targetAppPath: String): String {
