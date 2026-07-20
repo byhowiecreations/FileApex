@@ -627,7 +627,7 @@ class ExplorerViewModel(
 
     fun onMultiCopyFabClick() {
         if (selectedFiles().isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Select at least one file for Multi Copy") }
+            _uiState.update { it.copy(errorMessage = ExplorerActionCopy.ERROR_SELECT_FILES) }
             return
         }
         if (!settings.multiCopyIntroAcknowledged.value) {
@@ -671,7 +671,7 @@ class ExplorerViewModel(
     fun confirmMultiCopy() {
         val items = selectedFiles()
         if (items.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Select at least one file for Multi Copy") }
+            _uiState.update { it.copy(errorMessage = ExplorerActionCopy.ERROR_SELECT_FILES) }
             return
         }
         val selectedIds = _uiState.value.selectedMultiCopyDeviceIds
@@ -701,8 +701,8 @@ class ExplorerViewModel(
                                 "Multi Copied ${items.size} files to $deviceLabel"
                             }
                         }
-                        batch.allFailed -> "Multi Copy failed for all destinations"
-                        else -> "Multi Copy finished with $failCount error(s)"
+                        batch.allFailed -> ExplorerActionCopy.ERROR_SEND_FAILED
+                        else -> ExplorerActionCopy.sendFinishedWithErrors(failCount)
                     }
                     _uiState.update {
                         it.copy(
@@ -726,7 +726,7 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isMultiCopying = false,
-                            errorMessage = error.message ?: "Multi Copy failed"
+                            errorMessage = error.message ?: ExplorerActionCopy.ERROR_SEND_FAILED
                         )
                     }
                 }

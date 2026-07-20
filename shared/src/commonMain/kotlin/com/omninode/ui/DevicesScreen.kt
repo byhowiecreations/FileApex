@@ -75,6 +75,8 @@ import com.omninode.data.identity.LocalIdentity
 import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.DevicesViewModel
+import com.omninode.ui.adaptive.CompactDevicesTitleBand
+import com.omninode.ui.adaptive.CompactTealStrip
 import com.omninode.ui.adaptive.OmniPaneSectionHeader
 import com.omninode.ui.dnd.deviceFileDropTarget
 import com.omninode.ui.theme.OmniTeal
@@ -114,6 +116,7 @@ fun DevicesScreen(
     onScanQr: () -> Unit,
     onOpenSettings: () -> Unit,
     onExitApp: () -> Unit,
+    embeddedInCompactShell: Boolean = false,
     viewModel: DevicesViewModel = viewModel { DevicesViewModel() },
     layoutMode: DevicesScreenLayoutMode = DevicesScreenLayoutMode.FullScreen,
     selectedDeviceId: String? = null
@@ -127,6 +130,7 @@ fun DevicesScreen(
     var pinText by remember { mutableStateOf("") }
     var confirmExit by remember { mutableStateOf(false) }
     val isListPane = layoutMode == DevicesScreenLayoutMode.ListPane
+    val usesOwnChrome = !isListPane && !embeddedInCompactShell
 
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = viewModel.initialListScrollIndex(),
@@ -159,12 +163,12 @@ fun DevicesScreen(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            if (!isListPane) {
+            if (usesOwnChrome) {
                 HomeTopBar(onExitClick = { confirmExit = true })
             }
         },
         bottomBar = {
-            if (!isListPane) {
+            if (usesOwnChrome) {
                 OmniBottomBar(
                     selected = HomeTab.Devices,
                     onDevices = {},
@@ -179,6 +183,9 @@ fun DevicesScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            if (embeddedInCompactShell && !isListPane) {
+                CompactDevicesTitleBand()
+            }
             if (isListPane) {
                 OmniPaneSectionHeader(title = "Paired Devices")
             }
@@ -520,46 +527,8 @@ private fun PairedDevicesList(
 @Composable
 private fun HomeTopBar(onExitClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(OmniTeal)
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-        ) {
-            IconButton(
-                onClick = onExitClick,
-                modifier = Modifier.align(Alignment.CenterEnd)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PowerSettingsNew,
-                    contentDescription = "Exit OmniNode",
-                    tint = Color.White
-                )
-            }
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
-            Text(
-                text = "Paired Devices",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "OmniNode",
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 34.sp,
-                    letterSpacing = (-0.5).sp
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
+        CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
+        CompactDevicesTitleBand()
     }
 }
 

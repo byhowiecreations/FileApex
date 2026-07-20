@@ -56,7 +56,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omninode.platform.OmniBackHandler
 import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DeviceListRow
+import com.omninode.presentation.ExplorerActionCopy
+import com.omninode.presentation.ExplorerUiState
 import com.omninode.presentation.ExplorerViewModel
+import com.omninode.ui.adaptive.CompactHomeTitleBand
+import com.omninode.ui.adaptive.CompactHomeTitleStyle
 import com.omninode.ui.theme.OmniTeal
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,6 +73,7 @@ fun FileExplorerScreen(
      * Compact full-screen explorer keeps [ExplorerUiState.deviceTitle] when null.
      */
     titleOverride: String? = null,
+    embeddedInCompactShell: Boolean = false,
     viewModel: ExplorerViewModel = viewModel(key = target.deviceId) { ExplorerViewModel(target) }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -100,67 +105,41 @@ fun FileExplorerScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(topBarTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            text = if (state.isSelectionMode) {
-                                val count = state.selectedFileIds.size
-                                if (count == 0) "Select files" else "$count selected"
-                            } else {
-                                state.currentPath
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                },
-                navigationIcon = {
-                    TextButton(
-                        onClick = {
-                            if (!viewModel.handleBackNavigation()) {
-                                onBack()
-                            }
+            if (!embeddedInCompactShell) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(topBarTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                text = explorerSubtitle(state),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                    ) {
-                        Text(
-                            when {
-                                state.isSelectionMode -> "Cancel"
-                                state.canNavigateUp -> "Up"
-                                else -> "Devices"
-                            }
-                        )
-                    }
-                },
-                actions = {
-                    if (state.canNavigateUp && !state.isSelectionMode) {
-                        TextButton(onClick = onBack) { Text("Devices") }
-                    }
-                    when {
-                        state.isSelectionMode -> {
-                            // Copy lives only on the FAB stack — top bar keeps Download (remote).
-                            if (state.isRemoteTarget) {
-                                TextButton(
-                                    onClick = viewModel::downloadSelected,
-                                    enabled = state.canDownloadSelection && !state.isDownloading
-                                ) {
-                                    Text(if (state.isDownloading) "…" else "Download")
+                    },
+                    navigationIcon = {
+                        ExplorerNavigationAction(
+                            state = state,
+                            embeddedInCompactShell = false,
+                            onNavigate = {
+                                if (!viewModel.handleBackNavigation()) {
+                                    onBack()
                                 }
-                            }
-                        }
-                        else -> {
-                            TextButton(onClick = { viewModel.enterSelectionMode() }) {
-                                Text("Select")
-                            }
-                            if (state.canPaste) {
-                                TextButton(onClick = viewModel::pasteHere) { Text("Paste") }
-                            }
-                        }
+                            },
+                            onBack = onBack
+                        )
+                    },
+                    actions = {
+                        ExplorerTopBarActions(
+                            state = state,
+                            embeddedInCompactShell = false,
+                            onBack = onBack,
+                            viewModel = viewModel
+                        )
                     }
-                }
-            )
+                )
+            }
         },
         floatingActionButton = {
             if (showCopyFabs) {
@@ -176,7 +155,7 @@ fun FileExplorerScreen(
                                 contentDescription = null
                             )
                         },
-                        text = { Text("Copy") },
+                        text = { Text(ExplorerActionCopy.COPY_ACTION) },
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -188,7 +167,7 @@ fun FileExplorerScreen(
                                 contentDescription = null
                             )
                         },
-                        text = { Text("Multi Copy") },
+                        text = { Text(ExplorerActionCopy.SEND_TO_ACTION) },
                         containerColor = OmniTeal,
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     )
@@ -214,9 +193,34 @@ fun FileExplorerScreen(
                     }
                     else -> {
                         Column(modifier = Modifier.fillMaxSize()) {
+                            if (embeddedInCompactShell) {
+                                CompactHomeTitleBand(
+                                    primaryLine = topBarTitle,
+                                    secondaryLine = explorerSubtitle(state),
+                                    style = CompactHomeTitleStyle.Detail,
+                                    actions = {
+                                        ExplorerNavigationAction(
+                                            state = state,
+                                            embeddedInCompactShell = true,
+                                            onNavigate = {
+                                                if (!viewModel.handleBackNavigation()) {
+                                                    onBack()
+                                                }
+                                            },
+                                            onBack = onBack
+                                        )
+                                        ExplorerTopBarActions(
+                                            state = state,
+                                            embeddedInCompactShell = true,
+                                            onBack = onBack,
+                                            viewModel = viewModel
+                                        )
+                                    }
+                                )
+                            }
                             if (state.isSelectionMode && state.selectedFileIds.isNotEmpty()) {
                                 Text(
-                                    text = "Copy = save for Paste later · Multi Copy = send now to devices",
+                                    text = ExplorerActionCopy.SELECTION_MODE_HELPER,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -278,7 +282,7 @@ fun FileExplorerScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("Multi Copy in progress…")
+                            Text(ExplorerActionCopy.SEND_TO_IN_PROGRESS)
                         }
                     }
                 }
@@ -341,12 +345,9 @@ fun FileExplorerScreen(
     if (state.showMultiCopyIntro) {
         AlertDialog(
             onDismissRequest = viewModel::dismissMultiCopyIntro,
-            title = { Text("Multi Copy") },
+            title = { Text(ExplorerActionCopy.SEND_TO_INTRO_TITLE) },
             text = {
-                Text(
-                    "Multi Copy allows you to broadcast the selected file(s) to multiple devices " +
-                        "simultaneously. Select your targets on the next screen."
-                )
+                Text(ExplorerActionCopy.SEND_TO_INTRO_BODY)
             },
             confirmButton = {
                 TextButton(onClick = viewModel::acknowledgeMultiCopyIntro) {
@@ -374,7 +375,7 @@ fun FileExplorerScreen(
                     .padding(bottom = 28.dp)
             ) {
                 Text(
-                    text = "Multi Copy to devices",
+                    text = ExplorerActionCopy.SEND_TO_PICKER_TITLE,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -431,7 +432,7 @@ fun FileExplorerScreen(
                     enabled = state.selectedMultiCopyDeviceIds.isNotEmpty() && !state.isMultiCopying,
                     modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text("Multi Copy to Selected Devices")
+                    Text(ExplorerActionCopy.SEND_TO_PICKER_CONFIRM)
                 }
             }
         }
@@ -492,5 +493,65 @@ fun FileExplorerScreen(
                 }
             }
         )
+    }
+}
+
+private fun explorerSubtitle(state: ExplorerUiState): String =
+    if (state.isSelectionMode) {
+        val count = state.selectedFileIds.size
+        if (count == 0) "Select files" else "$count selected"
+    } else {
+        state.currentPath
+    }
+
+@Composable
+private fun ExplorerNavigationAction(
+    state: ExplorerUiState,
+    embeddedInCompactShell: Boolean,
+    onNavigate: () -> Unit,
+    onBack: () -> Unit
+) {
+    val label = when {
+        state.isSelectionMode -> "Cancel"
+        state.canNavigateUp -> "Up"
+        embeddedInCompactShell -> null
+        else -> "Devices"
+    }
+    if (label != null) {
+        TextButton(onClick = onNavigate) {
+            Text(label)
+        }
+    }
+}
+
+@Composable
+private fun ExplorerTopBarActions(
+    state: ExplorerUiState,
+    embeddedInCompactShell: Boolean,
+    onBack: () -> Unit,
+    viewModel: ExplorerViewModel
+) {
+    if (!embeddedInCompactShell && state.canNavigateUp && !state.isSelectionMode) {
+        TextButton(onClick = onBack) { Text("Devices") }
+    }
+    when {
+        state.isSelectionMode -> {
+            if (state.isRemoteTarget) {
+                TextButton(
+                    onClick = viewModel::downloadSelected,
+                    enabled = state.canDownloadSelection && !state.isDownloading
+                ) {
+                    Text(if (state.isDownloading) "…" else "Download")
+                }
+            }
+        }
+        else -> {
+            TextButton(onClick = { viewModel.enterSelectionMode() }) {
+                Text("Select")
+            }
+            if (state.canPaste) {
+                TextButton(onClick = viewModel::pasteHere) { Text("Paste") }
+            }
+        }
     }
 }

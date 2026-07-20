@@ -3,6 +3,8 @@ package com.omninode
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -13,12 +15,16 @@ import com.omninode.data.db.createOmniNodeDatabase
 import com.omninode.data.settings.DesktopLayoutMode
 import com.omninode.di.OmniNodeServices
 import com.omninode.network.DesktopShareServerController
+import com.omninode.platform.DesktopScreenGeometry
+import com.omninode.platform.DesktopWindowBoundsStore
 import com.omninode.platform.DesktopSendHandoff
 import com.omninode.platform.MacOsExtensionRegistrar
 import com.omninode.ui.DeviceCardSlotHeight
 import com.omninode.ui.DeviceListToAddGap
 import com.omninode.update.AppUpdateCoordinator
 import com.omninode.update.OmniNodeAppVersion
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.debounce
 
 private val DesktopWindowCompactWidth = 440.dp
 private val DesktopWindowExpandedWidth = 1200.dp
@@ -31,7 +37,6 @@ fun main() {
     GoogleLinkCoordinator.onAppLaunch()
     MacOsExtensionRegistrar.registerOnLaunch()
     DesktopShareServerController.startWakeListener()
-    // URI handler + job processor before UI so Share handoff is not Compose-gated.
     DesktopSendHandoff.installOpenUriHandler()
     DesktopSendHandoff.startJobProcessor()
 
@@ -39,23 +44,53 @@ fun main() {
         val devices by OmniNodeServices.deviceRepository.observeDevices()
             .collectAsState(initial = emptyList())
         val desktopLayoutMode by OmniNodeServices.settings.desktopLayoutMode.collectAsState()
+        val savedBounds = remember { DesktopWindowBoundsStore.loadValidated() }
+        val defaultSize = preferredWindowSize(
+            deviceCount = devices.size,
+            layoutMode = desktopLayoutMode
+        )
+        val initialSize = savedBounds?.toDpSize() ?: defaultSize
+        val initialPosition = savedBounds?.toWindowPosition()
+            ?: DesktopScreenGeometry.primaryTopLeftPosition()
+
         val windowState = rememberWindowState(
-            size = preferredWindowSize(
-                deviceCount = devices.size,
-                layoutMode = desktopLayoutMode
-            )
+            width = initialSize.width,
+            height = initialSize.height,
+            position = initialPosition
         )
 
         LaunchedEffect(devices.size, desktopLayoutMode) {
-            windowState.size = preferredWindowSize(
-                deviceCount = devices.size,
-                layoutMode = desktopLayoutMode
-            )
+            if (!DesktopWindowBoundsStore.hasValidSaved()) {
+                windowState.size = preferredWindowSize(
+                    deviceCount = devices.size,
+                    layoutMode = desktopLayoutMode
+                )
+            }
+        }
+
+        LaunchedEffect(windowState) {
+            snapshotFlow {
+                Triple(windowState.size, windowState.position, windowState.isMinimized)
+            }
+                .distinctUntilChanged()
+                .debounce(400)
+                .collect { (size, position, minimized) ->
+                    if (!minimized) {
+                        DesktopWindowBoundsStore.persist(size, position)
+                    }
+                }
+        }
+
+        fun shutdownDesktop() {
+            if (!windowState.isMinimized) {
+                DesktopWindowBoundsStore.persist(windowState.size, windowState.position)
+            }
+            DesktopShareServerController.shutdownBlocking()
         }
 
         Window(
             onCloseRequest = {
-                DesktopShareServerController.shutdownBlocking()
+                shutdownDesktop()
                 exitApplication()
             },
             title = "OmniNode",
@@ -70,7 +105,7 @@ fun main() {
                 onStartShareServer = DesktopShareServerController::start,
                 onStopShareServer = DesktopShareServerController::stop,
                 onExitApp = {
-                    DesktopShareServerController.shutdownBlocking()
+                    shutdownDesktop()
                     exitApplication()
                 },
                 onScanQr = {},
@@ -81,10 +116,8 @@ fun main() {
 }
 
 private fun preferredWindowSize(deviceCount: Int, layoutMode: DesktopLayoutMode): DpSize {
-    // Top bar + nav + compact Add (+ small padding around it).
     val chromeHeight = 286.dp
-    val cardSlots = deviceCount + 1 // include "This device"
-    // Tall enough for every card plus list bottom padding (~2 empty card rows).
+    val cardSlots = deviceCount + 1
     val height = (
         chromeHeight +
             DeviceCardSlotHeight * cardSlots +

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,9 +43,11 @@ import com.omninode.ui.FileExplorerScreen
 import com.omninode.ui.GenerateQrScreen
 import com.omninode.ui.HomeTab
 import com.omninode.ui.SettingsScreen
+import com.omninode.ui.SettingsScreenLayoutMode
 import com.omninode.ui.ShareSendScreen
 import com.omninode.ui.StoragePermissionScreen
 import com.omninode.ui.adaptive.AdaptiveWideHome
+import com.omninode.ui.adaptive.CompactPrimaryShell
 import com.omninode.ui.adaptive.widthSizeClassFor
 import com.omninode.ui.adaptive.isWide
 import com.omninode.ui.theme.OmniNodeTheme
@@ -296,6 +299,13 @@ fun App(
     }
 }
 
+private fun compactHomeTab(route: AppRoute): HomeTab = when (route) {
+    AppRoute.Devices -> HomeTab.Devices
+    AppRoute.Settings -> HomeTab.Settings
+    is AppRoute.Explorer -> if (route.target is BrowseTarget.Local) HomeTab.Files else HomeTab.Devices
+    else -> HomeTab.Devices
+}
+
 @Composable
 private fun CompactHomeContent(
     route: AppRoute,
@@ -314,40 +324,75 @@ private fun CompactHomeContent(
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {}
 ) {
-    when (val current = route) {
-        AppRoute.Devices -> DevicesScreen(
-            onOpenDevice = onOpenDevice,
-            onOpenLocalFiles = onOpenLocalFiles,
-            onGenerateQr = onGenerateQr,
-            onScanQr = onScanQr,
-            onOpenSettings = onOpenSettings,
-            onExitApp = onExitApp,
-            viewModel = devicesViewModel
-        )
-        AppRoute.Settings -> SettingsScreen(
-            appVersionName = appVersionName,
-            onBack = onNavigateHome,
-            batteryOptimizationRestricted = batteryOptimizationRestricted,
-            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-            exactAlarmWarningActive = exactAlarmWarningActive,
-            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-            onOpenAppDetailsSettings = onOpenAppDetailsSettings
-        )
-        is AppRoute.Explorer -> FileExplorerScreen(
-            target = current.target,
-            onBack = {
-                DeviceSessionManager.clearSession(current.target.deviceId)
-                onNavigateHome()
+    var confirmExit by remember { mutableStateOf(false) }
+    val selectedTab = compactHomeTab(route)
+    CompactPrimaryShell(
+        selectedTab = selectedTab,
+        showExitPower = selectedTab == HomeTab.Devices,
+        onDevices = onNavigateHome,
+        onFiles = onOpenLocalFiles,
+        onSettings = onOpenSettings,
+        onExitApp = { confirmExit = true }
+    ) {
+        when (val current = route) {
+            AppRoute.Devices -> DevicesScreen(
+                onOpenDevice = onOpenDevice,
+                onOpenLocalFiles = onOpenLocalFiles,
+                onGenerateQr = onGenerateQr,
+                onScanQr = onScanQr,
+                onOpenSettings = onOpenSettings,
+                onExitApp = onExitApp,
+                viewModel = devicesViewModel,
+                embeddedInCompactShell = true
+            )
+            AppRoute.Settings -> SettingsScreen(
+                appVersionName = appVersionName,
+                onBack = onNavigateHome,
+                showRootBackNavigation = false,
+                layoutMode = SettingsScreenLayoutMode.CompactShell,
+                batteryOptimizationRestricted = batteryOptimizationRestricted,
+                onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                exactAlarmWarningActive = exactAlarmWarningActive,
+                onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                onOpenAppDetailsSettings = onOpenAppDetailsSettings
+            )
+            is AppRoute.Explorer -> FileExplorerScreen(
+                target = current.target,
+                embeddedInCompactShell = true,
+                onBack = {
+                    DeviceSessionManager.clearSession(current.target.deviceId)
+                    onNavigateHome()
+                }
+            )
+            else -> DevicesScreen(
+                onOpenDevice = onOpenDevice,
+                onOpenLocalFiles = onOpenLocalFiles,
+                onGenerateQr = onGenerateQr,
+                onScanQr = onScanQr,
+                onOpenSettings = onOpenSettings,
+                onExitApp = onExitApp,
+                viewModel = devicesViewModel,
+                embeddedInCompactShell = true
+            )
+        }
+    }
+
+    if (confirmExit) {
+        AlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text("Exit OmniNode?") },
+            text = { Text("Stop sharing and close the app.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmExit = false
+                        onExitApp()
+                    }
+                ) { Text("Exit") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = false }) { Text("Cancel") }
             }
-        )
-        else -> DevicesScreen(
-            onOpenDevice = onOpenDevice,
-            onOpenLocalFiles = onOpenLocalFiles,
-            onGenerateQr = onGenerateQr,
-            onScanQr = onScanQr,
-            onOpenSettings = onOpenSettings,
-            onExitApp = onExitApp,
-            viewModel = devicesViewModel
         )
     }
 }

@@ -115,10 +115,14 @@ room3 {
 
 val generateOmniNodeAppVersion = tasks.register("generateOmniNodeAppVersion") {
     val outDir = layout.buildDirectory.dir("generated/omninodeAppVersion/kotlin")
+    val versionName = providers.gradleProperty("omninode.version.name")
+    val versionCode = providers.gradleProperty("omninode.version.code")
+    inputs.property("versionName", versionName)
+    inputs.property("versionCode", versionCode)
     outputs.dir(outDir)
     doLast {
-        val versionName = providers.gradleProperty("omninode.version.name").get()
-        val versionCode = providers.gradleProperty("omninode.version.code").get()
+        val name = versionName.get()
+        val code = versionCode.get()
         val dir = outDir.get().asFile.resolve("com/omninode/update")
         dir.mkdirs()
         dir.resolve("GeneratedAppVersion.kt").writeText(
@@ -131,8 +135,8 @@ val generateOmniNodeAppVersion = tasks.register("generateOmniNodeAppVersion") {
             | *   omninode.version.code → [CODE]
             | */
             |internal object GeneratedAppVersion {
-            |    const val NAME = "$versionName"
-            |    const val CODE = $versionCode
+            |    const val NAME = "$name"
+            |    const val CODE = $code
             |}
             """.trimMargin()
         )

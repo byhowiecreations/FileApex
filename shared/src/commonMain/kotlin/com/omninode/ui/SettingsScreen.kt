@@ -56,6 +56,8 @@ import com.omninode.util.TimeUtils
 import com.omninode.platform.rememberGoogleSignInLauncher
 import com.omninode.presentation.SettingsUiState
 import com.omninode.presentation.SettingsViewModel
+import com.omninode.ui.adaptive.CompactHomeTitleBand
+import com.omninode.ui.adaptive.CompactHomeTitleStyle
 import com.omninode.ui.adaptive.OmniPaneSectionHeader
 import com.omninode.ui.theme.OmniTeal
 import com.omninode.update.rememberRequestInstallUnknownAppsPermission
@@ -74,7 +76,9 @@ enum class SettingsScreenLayoutMode {
     /** Phone / compact: teal top bar scaffold. */
     FullScreen,
     /** Wide navigation rail: white pane header matching Devices list pane. */
-    ListPane
+    ListPane,
+    /** Compact primary shell: pane title band on root, section header on sub-pages. */
+    CompactShell
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -748,6 +752,20 @@ private fun SettingsPageShell(
         SettingsScreenLayoutMode.ListPane -> {
             Column(modifier = Modifier.fillMaxSize()) {
                 OmniPaneSectionHeader(title = title, onBack = onBack)
+                content(Modifier.weight(1f).fillMaxWidth())
+            }
+        }
+        SettingsScreenLayoutMode.CompactShell -> {
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (onBack != null) {
+                    OmniPaneSectionHeader(title = title, onBack = onBack)
+                } else {
+                    CompactHomeTitleBand(
+                        primaryLine = "OmniNode",
+                        secondaryLine = title,
+                        style = CompactHomeTitleStyle.Prominent
+                    )
+                }
                 content(Modifier.weight(1f).fillMaxWidth())
             }
         }
