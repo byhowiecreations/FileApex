@@ -26,10 +26,15 @@ object ShareServerPendingStart {
     private const val PENDING_INTENT_REQUEST = 44_011
 
     fun mark(context: Context) {
-        directBootPrefs(context).edit()
+        val prefs = directBootPrefs(context)
+        val alreadyPending = prefs.getBoolean(KEY_PENDING, false)
+        prefs.edit()
             .putBoolean(KEY_PENDING, true)
             .commit()
-        postRecoveryNotification(context.applicationContext)
+        // Avoid re-alerting if the nudge is already showing.
+        if (!alreadyPending) {
+            postRecoveryNotification(context.applicationContext)
+        }
     }
 
     fun clear(context: Context) {

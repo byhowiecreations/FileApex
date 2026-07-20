@@ -61,6 +61,7 @@ private enum class SettingsPage {
     Root,
     CheckForUpdates,
     PinRequired,
+    BackgroundPersistence,
     GoogleAccount
 }
 
@@ -107,15 +108,12 @@ fun SettingsScreen(
             showBackNavigation = showRootBackNavigation,
             onOpenCheckForUpdates = { page = SettingsPage.CheckForUpdates },
             onOpenPinRequired = { page = SettingsPage.PinRequired },
+            onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onFileTransferNotifications = viewModel::setFileTransferNotifications,
-            onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             batteryOptimizationRestricted = batteryOptimizationRestricted,
-            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-            exactAlarmWarningActive = exactAlarmWarningActive,
-            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-            onOpenAppDetailsSettings = onOpenAppDetailsSettings
+            exactAlarmWarningActive = exactAlarmWarningActive
         )
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
             state = state,
@@ -132,6 +130,16 @@ fun SettingsScreen(
             onToggle = viewModel::setPinRequired,
             onPinChange = viewModel::setDevicePin,
             onIdleTimeoutSelected = viewModel::setPinIdleTimeout
+        )
+        SettingsPage.BackgroundPersistence -> BackgroundPersistenceSettingsPage(
+            state = state,
+            onBack = { page = SettingsPage.Root },
+            onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
+            batteryOptimizationRestricted = batteryOptimizationRestricted,
+            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+            exactAlarmWarningActive = exactAlarmWarningActive,
+            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+            onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
         SettingsPage.GoogleAccount -> GoogleAccountSettingsPage(
             state = state,
@@ -152,15 +160,12 @@ private fun SettingsRootPage(
     showBackNavigation: Boolean,
     onOpenCheckForUpdates: () -> Unit,
     onOpenPinRequired: () -> Unit,
+    onOpenBackgroundPersistence: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onFileTransferNotifications: (Boolean) -> Unit,
-    onEnableServiceWatchdog: (Boolean) -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     batteryOptimizationRestricted: Boolean,
-    onRequestBatteryUnrestricted: () -> Unit,
-    exactAlarmWarningActive: Boolean,
-    onOpenExactAlarmSettings: () -> Unit,
-    onOpenAppDetailsSettings: () -> Unit
+    exactAlarmWarningActive: Boolean
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
     var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
@@ -207,67 +212,14 @@ private fun SettingsRootPage(
                     },
                     onClick = onOpenPinRequired
                 )
-                Text(
-                    text = "Background Persistence",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp)
-                )
-                ListItem(
-                    headlineContent = { Text("Service watchdog") },
-                    supportingContent = {
-                        Text(
-                            "Enable background watchdog to automatically restart the OmniNode " +
-                                "file server daemon if aggressive OEM battery management " +
-                                "terminates it in the background. Peer UDP wake only works while " +
-                                "the share-server notification is active."
-                        )
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = state.enableServiceWatchdog,
-                            onCheckedChange = onEnableServiceWatchdog
-                        )
-                    }
-                )
-                if (batteryOptimizationRestricted) {
-                    ListItem(
-                        headlineContent = { Text("Battery optimization active") },
-                        supportingContent = {
-                            Text(
-                                "OmniNode is not exempt from battery restrictions. Background " +
-                                    "file sharing may stop until you open the app again. Tap to " +
-                                    "request unrestricted battery for best reliability."
-                            )
-                        },
-                        modifier = Modifier.clickable { onRequestBatteryUnrestricted() }
-                    )
-                }
-                if (exactAlarmWarningActive) {
-                    ListItem(
-                        headlineContent = { Text("Exact alarms disabled") },
-                        supportingContent = {
-                            Text(
-                                "Alarms & reminders permission is off. The service watchdog may " +
-                                    "fire late or miss restarts after OEM kills. Tap to open " +
-                                    "system alarm settings and allow OmniNode."
-                            )
-                        },
-                        modifier = Modifier.clickable { onOpenExactAlarmSettings() }
-                    )
-                }
-                ListItem(
-                    headlineContent = { Text("OEM auto-start & updates") },
-                    supportingContent = {
-                        Text(
-                            "On Motorola, Oppo, Xiaomi, and similar phones, also enable " +
-                                "auto-launch / background activity for OmniNode in the system " +
-                                "battery or app-management screens. After an app update, open " +
-                                "OmniNode once so the share server can restart. Tap to open " +
-                                "OmniNode’s system app settings."
-                        )
-                    },
-                    modifier = Modifier.clickable { onOpenAppDetailsSettings() }
+                SettingsNavItem(
+                    title = "Background Persistence",
+                    subtitle = backgroundPersistenceSubtitle(
+                        watchdogEnabled = state.enableServiceWatchdog,
+                        batteryOptimizationRestricted = batteryOptimizationRestricted,
+                        exactAlarmWarningActive = exactAlarmWarningActive
+                    ),
+                    onClick = onOpenBackgroundPersistence
                 )
                 ListItem(
                     headlineContent = { Text("File Transfer notifications") },
@@ -325,6 +277,105 @@ private fun SettingsRootPage(
                     fontSize = 12.sp
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+            )
+        }
+    }
+}
+
+private fun backgroundPersistenceSubtitle(
+    watchdogEnabled: Boolean,
+    batteryOptimizationRestricted: Boolean,
+    exactAlarmWarningActive: Boolean
+): String {
+    val status = if (watchdogEnabled) "On" else "Off"
+    val warnings = buildList {
+        if (batteryOptimizationRestricted) add("battery restricted")
+        if (exactAlarmWarningActive) add("alarms off")
+    }
+    return if (warnings.isEmpty()) {
+        status
+    } else {
+        "$status · ${warnings.joinToString(", ")}"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackgroundPersistenceSettingsPage(
+    state: SettingsUiState,
+    onBack: () -> Unit,
+    onEnableServiceWatchdog: (Boolean) -> Unit,
+    batteryOptimizationRestricted: Boolean,
+    onRequestBatteryUnrestricted: () -> Unit,
+    exactAlarmWarningActive: Boolean,
+    onOpenExactAlarmSettings: () -> Unit,
+    onOpenAppDetailsSettings: () -> Unit
+) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { SettingsTopBar(title = "Background Persistence", onBack = onBack) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Service watchdog") },
+                supportingContent = {
+                    Text(
+                        "Enable background watchdog to automatically restart the OmniNode " +
+                            "file server daemon if aggressive OEM battery management " +
+                            "terminates it in the background. Peer UDP wake only works while " +
+                            "the share-server notification is active."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.enableServiceWatchdog,
+                        onCheckedChange = onEnableServiceWatchdog
+                    )
+                }
+            )
+            if (batteryOptimizationRestricted) {
+                ListItem(
+                    headlineContent = { Text("Battery optimization active") },
+                    supportingContent = {
+                        Text(
+                            "OmniNode is not exempt from battery restrictions. Background " +
+                                "file sharing may stop until you open the app again. Tap to " +
+                                "request unrestricted battery for best reliability."
+                        )
+                    },
+                    modifier = Modifier.clickable { onRequestBatteryUnrestricted() }
+                )
+            }
+            if (exactAlarmWarningActive) {
+                ListItem(
+                    headlineContent = { Text("Exact alarms disabled") },
+                    supportingContent = {
+                        Text(
+                            "Alarms & reminders permission is off. The service watchdog may " +
+                                "fire late or miss restarts after OEM kills. Tap to open " +
+                                "system alarm settings and allow OmniNode."
+                        )
+                    },
+                    modifier = Modifier.clickable { onOpenExactAlarmSettings() }
+                )
+            }
+            ListItem(
+                headlineContent = { Text("OEM auto-start & updates") },
+                supportingContent = {
+                    Text(
+                        "On Motorola, Oppo, Xiaomi, and similar phones, also enable " +
+                            "auto-launch / background activity for OmniNode in the system " +
+                            "battery or app-management screens. After an app update, open " +
+                            "OmniNode once so the share server can restart. Tap to open " +
+                            "OmniNode’s system app settings."
+                    )
+                },
+                modifier = Modifier.clickable { onOpenAppDetailsSettings() }
             )
         }
     }

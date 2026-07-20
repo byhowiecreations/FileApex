@@ -70,11 +70,10 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            refreshPermissions()
-            if (hasStoragePermission) {
-                startShareServer()
-            }
+        refreshPermissions()
+        if (granted && hasStoragePermission) {
+            // Force FGS notification re-post now that POST_NOTIFICATIONS is allowed.
+            startShareServer()
         }
     }
 

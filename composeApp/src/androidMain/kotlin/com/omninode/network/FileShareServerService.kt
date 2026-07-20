@@ -11,6 +11,8 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.omninode.MainActivity
 import com.omninode.R
 import com.omninode.data.identity.LocalIdentity
@@ -44,13 +46,13 @@ class FileShareServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        ensureServerNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val fromForeground = isForegroundStart(intent)
+        val stickyRestart = intent == null
         if (!isForegroundPromoted) {
-            val fromForeground = isForegroundStart(intent)
-            val stickyRestart = intent == null
             val promoted = if (fromForeground) {
                 promoteToForegroundFromUi()
             } else {
@@ -61,6 +63,14 @@ class FileShareServerService : Service() {
                 return START_NOT_STICKY
             }
             isForegroundPromoted = true
+            ShareServerPendingStart.clear(this)
+        } else if (fromForeground) {
+            // Re-post after POST_NOTIFICATIONS grant (or UI reopen). First promote may have
+            // succeeded while notifications were still denied, leaving no visible ongoing alert.
+            runCatching { promoteToForeground() }
+                .onFailure { error ->
+                    Log.w(TAG, "Foreground notification refresh failed :: ${error.message}")
+                }
             ShareServerPendingStart.clear(this)
         }
         ensureServerRunning()
@@ -141,13 +151,36 @@ class FileShareServerService : Service() {
     }
 
     private fun promoteToForeground() {
+        ensureServerNotificationChannel()
         val notification = buildServerNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, foregroundServiceTypeFlags())
+            val preferred = preferredForegroundServiceType()
+            try {
+                startForeground(NOTIFICATION_ID, notification, preferred)
+            } catch (error: SecurityException) {
+                // targetSdk 36+: connectedDevice also needs Wi‑Fi/BT/NFC companion permission.
+                // Fall back to dataSync so the ongoing notification and server still come up.
+                if (preferred == ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) {
+                    Log.w(
+                        TAG,
+                        "connectedDevice FGS denied — falling back to dataSync :: ${error.message}"
+                    )
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                } else {
+                    throw error
+                }
+            }
         } else {
             @Suppress("DEPRECATION")
             startForeground(NOTIFICATION_ID, notification)
         }
+        // Explicit re-notify so the shade updates after channel migration / permission grant.
+        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+        ShareServerPendingStart.clear(this)
         Log.i(TAG, "Foreground service promoted with ongoing notification")
     }
 
@@ -166,10 +199,10 @@ class FileShareServerService : Service() {
     }
 
     /**
-     * API 34+: [CONNECTED_DEVICE] only (LAN peers) — avoids Android 15 dataSync daily quota.
+     * API 34+: prefer [CONNECTED_DEVICE] (LAN peers) to avoid Android 15 dataSync daily quota.
      * API 29–33: [DATA_SYNC] only.
      */
-    private fun foregroundServiceTypeFlags(): Int {
+    private fun preferredForegroundServiceType(): Int {
         return when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
@@ -181,25 +214,18 @@ class FileShareServerService : Service() {
 
     private fun buildServerNotification(): Notification {
         val contentIntent = openMainActivityPendingIntent()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("OmniNode Server Active")
-                .setContentText("Local WiFi secure ecosystem running...")
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentIntent(contentIntent)
-                .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setContentTitle("OmniNode Server Active")
-                .setContentText("Local WiFi secure ecosystem running...")
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentIntent(contentIntent)
-                .setOngoing(true)
-                .build()
-        }
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("OmniNode Server Active")
+            .setContentText("Local WiFi secure ecosystem running...")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(contentIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        return builder.build()
     }
 
     private fun openMainActivityPendingIntent(): PendingIntent {
@@ -247,24 +273,39 @@ class FileShareServerService : Service() {
         ServiceWatchdogScheduler.recordShareServerHeartbeat(this)
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "OmniNode Background Server",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Keeps OmniNode available for local WiFi file sharing"
-                setShowBadge(false)
+    /**
+     * Android never upgrades channel importance after first create. Earlier silent/min builds
+     * could leave [LEGACY_CHANNEL_ID] invisible while the recovery channel still showed alerts.
+     */
+    private fun ensureServerNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        val existing = manager.getNotificationChannel(CHANNEL_ID)
+        if (existing == null || existing.importance < NotificationManager.IMPORTANCE_LOW) {
+            if (existing != null) {
+                manager.deleteNotificationChannel(CHANNEL_ID)
             }
-            getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(serviceChannel)
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "OmniNode Server",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows while the OmniNode share server is running"
+                setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setSound(null, null)
+            }
+            manager.createNotificationChannel(channel)
+            Log.i(TAG, "Created FGS notification channel $CHANNEL_ID importance=LOW")
         }
     }
 
     companion object {
         private const val TAG = "OmniNodeServerService"
-        private const val CHANNEL_ID = "OmniNodeServerChannel"
+        /** New id — legacy [LEGACY_CHANNEL_ID] may be stuck at silent/min importance. */
+        private const val CHANNEL_ID = "omninode_share_server_active"
+        private const val LEGACY_CHANNEL_ID = "OmniNodeServerChannel"
         private const val NOTIFICATION_ID = 1
         private const val NOTIFICATION_CONTENT_REQUEST = 1_101
         private const val ENGINE_WATCHDOG_INTERVAL_MS = 5_000L
