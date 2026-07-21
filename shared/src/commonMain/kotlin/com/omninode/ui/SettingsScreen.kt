@@ -93,7 +93,11 @@ fun SettingsScreen(
     showRootBackNavigation: Boolean = true,
     layoutMode: SettingsScreenLayoutMode = SettingsScreenLayoutMode.FullScreen,
     batteryOptimizationRestricted: Boolean = false,
+    unusedAppRestrictionsActive: Boolean = false,
+    showMotorolaSmartUseGuidance: Boolean = false,
     onRequestBatteryUnrestricted: () -> Unit = {},
+    onOpenUnusedAppRestrictionsSettings: () -> Unit = {},
+    onOpenMotorolaBackgroundAppsSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
@@ -132,6 +136,8 @@ fun SettingsScreen(
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             batteryOptimizationRestricted = batteryOptimizationRestricted,
+            unusedAppRestrictionsActive = unusedAppRestrictionsActive,
+            showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
             exactAlarmWarningActive = exactAlarmWarningActive
         )
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
@@ -158,7 +164,11 @@ fun SettingsScreen(
             onBack = { page = SettingsPage.Root },
             onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
             batteryOptimizationRestricted = batteryOptimizationRestricted,
+            unusedAppRestrictionsActive = unusedAppRestrictionsActive,
+            showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+            onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
+            onOpenMotorolaBackgroundAppsSettings = onOpenMotorolaBackgroundAppsSettings,
             exactAlarmWarningActive = exactAlarmWarningActive,
             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
             onOpenAppDetailsSettings = onOpenAppDetailsSettings
@@ -206,6 +216,8 @@ private fun SettingsRootPage(
     onOpenDesktopLayout: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     batteryOptimizationRestricted: Boolean,
+    unusedAppRestrictionsActive: Boolean,
+    showMotorolaSmartUseGuidance: Boolean,
     exactAlarmWarningActive: Boolean
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
@@ -250,6 +262,7 @@ private fun SettingsRootPage(
                     subtitle = backgroundPersistenceSubtitle(
                         watchdogEnabled = state.enableServiceWatchdog,
                         batteryOptimizationRestricted = batteryOptimizationRestricted,
+                        unusedAppRestrictionsActive = unusedAppRestrictionsActive,
                         exactAlarmWarningActive = exactAlarmWarningActive
                     ),
                     onClick = onOpenBackgroundPersistence
@@ -314,11 +327,13 @@ private fun SettingsRootPage(
 private fun backgroundPersistenceSubtitle(
     watchdogEnabled: Boolean,
     batteryOptimizationRestricted: Boolean,
+    unusedAppRestrictionsActive: Boolean,
     exactAlarmWarningActive: Boolean
 ): String {
     val status = if (watchdogEnabled) "On" else "Off"
     val warnings = buildList {
         if (batteryOptimizationRestricted) add("battery restricted")
+        if (unusedAppRestrictionsActive) add("hibernation on")
         if (exactAlarmWarningActive) add("alarms off")
     }
     return if (warnings.isEmpty()) {
@@ -336,7 +351,11 @@ private fun BackgroundPersistenceSettingsPage(
     onBack: () -> Unit,
     onEnableServiceWatchdog: (Boolean) -> Unit,
     batteryOptimizationRestricted: Boolean,
+    unusedAppRestrictionsActive: Boolean,
+    showMotorolaSmartUseGuidance: Boolean,
     onRequestBatteryUnrestricted: () -> Unit,
+    onOpenUnusedAppRestrictionsSettings: () -> Unit,
+    onOpenMotorolaBackgroundAppsSettings: () -> Unit,
     exactAlarmWarningActive: Boolean,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenAppDetailsSettings: () -> Unit
@@ -373,12 +392,45 @@ private fun BackgroundPersistenceSettingsPage(
                     headlineContent = { Text("Battery optimization active") },
                     supportingContent = {
                         Text(
-                            "OmniNode is not exempt from battery restrictions. Background " +
-                                "file sharing may stop until you open the app again. Tap to " +
-                                "request unrestricted battery for best reliability."
+                            if (showMotorolaSmartUseGuidance) {
+                                "OmniNode is not exempt from battery optimization. Tap to " +
+                                    "request unrestricted battery, then set Smart use to " +
+                                    "Always allow under Manage background apps."
+                            } else {
+                                "OmniNode is not exempt from battery restrictions. Background " +
+                                    "file sharing may stop until you open the app again. Tap to " +
+                                    "request unrestricted battery for best reliability."
+                            }
                         )
                     },
                     modifier = Modifier.clickable { onRequestBatteryUnrestricted() }
+                )
+            }
+            if (unusedAppRestrictionsActive) {
+                ListItem(
+                    headlineContent = { Text("Pause app activity if unused") },
+                    supportingContent = {
+                        Text(
+                            "Android may hibernate OmniNode when you have not opened it recently. " +
+                                "Tap to turn off this restriction so the share server stays running " +
+                                "overnight."
+                        )
+                    },
+                    modifier = Modifier.clickable { onOpenUnusedAppRestrictionsSettings() }
+                )
+            }
+            if (showMotorolaSmartUseGuidance &&
+                (batteryOptimizationRestricted || unusedAppRestrictionsActive)
+            ) {
+                ListItem(
+                    headlineContent = { Text("Motorola Smart use") },
+                    supportingContent = {
+                        Text(
+                            "On Motorola phones, open Settings → Battery → Manage background " +
+                                "apps, select OmniNode, and change Smart use to Always allow."
+                        )
+                    },
+                    modifier = Modifier.clickable { onOpenMotorolaBackgroundAppsSettings() }
                 )
             }
             if (exactAlarmWarningActive) {

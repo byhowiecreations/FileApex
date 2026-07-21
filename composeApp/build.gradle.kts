@@ -227,7 +227,7 @@ private fun Project.distributableAppBundle(): File =
  * Moves build outputs into project-root `current/` (never copies — avoids duplicating large artifacts).
  */
 private fun Project.currentBuildsDest(): File =
-    layout.projectDirectory.dir("current").asFile
+    rootProject.layout.projectDirectory.dir("current").asFile
 
 private fun moveToCurrent(
     dest: File,

@@ -65,7 +65,11 @@ fun AdaptiveWideHome(
     appVersionName: String,
     devicesViewModel: DevicesViewModel,
     batteryOptimizationRestricted: Boolean = false,
+    unusedAppRestrictionsActive: Boolean = false,
+    showMotorolaSmartUseGuidance: Boolean = false,
     onRequestBatteryUnrestricted: () -> Unit = {},
+    onOpenUnusedAppRestrictionsSettings: () -> Unit = {},
+    onOpenMotorolaBackgroundAppsSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {}
@@ -97,7 +101,11 @@ fun AdaptiveWideHome(
                             showRootBackNavigation = false,
                             layoutMode = SettingsScreenLayoutMode.ListPane,
                             batteryOptimizationRestricted = batteryOptimizationRestricted,
+                            unusedAppRestrictionsActive = unusedAppRestrictionsActive,
+                            showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
                             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                            onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
+                            onOpenMotorolaBackgroundAppsSettings = onOpenMotorolaBackgroundAppsSettings,
                             exactAlarmWarningActive = exactAlarmWarningActive,
                             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                             onOpenAppDetailsSettings = onOpenAppDetailsSettings

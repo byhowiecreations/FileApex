@@ -20,6 +20,7 @@ import com.omninode.platform.ServiceWatchdog
 import com.omninode.platform.ServiceWatchdogScheduler
 import com.omninode.platform.ServiceWatchdogState
 import com.omninode.platform.ShareServerPendingStart
+import com.omninode.platform.ShareServerRestartCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -137,20 +138,17 @@ class FileShareServerService : Service() {
             intent?.action == ACTION_START
 
     private fun handlePromotionFailure(fromForeground: Boolean, stickyRestart: Boolean) {
-        when {
-            stickyRestart -> {
-                Log.i(TAG, "Sticky restart blocked — scheduling immediate watchdog recovery")
-                ShareServerPendingStart.mark(this)
-                ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
-            }
-            fromForeground -> {
-                Log.w(TAG, "Foreground promotion failed from UI — server not started")
-            }
-            else -> {
-                Log.w(TAG, "Background FGS promotion blocked — deferred until app opens")
-                ShareServerPendingStart.mark(this)
-            }
+        if (fromForeground) {
+            Log.w(TAG, "Foreground promotion failed from UI — server not started")
+            stopSelf()
+            return
         }
+        val trigger = if (stickyRestart) {
+            ShareServerRestartCoordinator.RestartTrigger.STICKY_RESTART
+        } else {
+            ShareServerRestartCoordinator.RestartTrigger.WATCHDOG_ALARM
+        }
+        ShareServerRestartCoordinator.onForegroundPromotionBlocked(this, trigger)
         stopSelf()
     }
 
@@ -212,6 +210,9 @@ class FileShareServerService : Service() {
             false
         } catch (error: SecurityException) {
             Log.w(TAG, "Background FGS security denied :: ${error.message}")
+            false
+        } catch (error: IllegalStateException) {
+            Log.w(TAG, "Background FGS illegal state :: ${error.message}")
             false
         }
     }

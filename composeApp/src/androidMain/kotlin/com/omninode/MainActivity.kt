@@ -9,7 +9,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.PowerManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -31,9 +30,11 @@ import com.omninode.domain.pairing.PairingPayload
 import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.network.FileShareServerService
 import com.omninode.platform.AndroidShareIntake
+import com.omninode.platform.BackgroundPersistenceGuidance
 import com.omninode.platform.ServiceWatchdog
 import com.omninode.platform.ServiceWatchdogScheduler
 import com.omninode.platform.ShareServerPendingStart
+import com.omninode.platform.ShareServerRestartCoordinator
 import android.util.Log
 import com.omninode.ui.theme.OmniTeal
 import com.journeyapps.barcodescanner.ScanContract
@@ -49,6 +50,8 @@ class MainActivity : ComponentActivity() {
 
     private var hasStoragePermission by mutableStateOf(false)
     private var hasUnrestrictedBattery by mutableStateOf(false)
+    private var unusedAppRestrictionsActive by mutableStateOf(false)
+    private var showMotorolaSmartUseGuidance by mutableStateOf(false)
     private var exactAlarmWarningActive by mutableStateOf(false)
     private var scannedPayload by mutableStateOf<PairingPayload?>(null)
 
@@ -110,9 +113,13 @@ class MainActivity : ComponentActivity() {
             App(
                 hasStoragePermission = hasStoragePermission,
                 hasUnrestrictedBattery = hasUnrestrictedBattery,
+                unusedAppRestrictionsActive = unusedAppRestrictionsActive,
+                showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
                 onRequestStoragePermission = ::requestStoragePermission,
                 onOpenStorageSettings = ::openStorageSettings,
                 onRequestBatteryUnrestricted = ::requestBatteryUnrestricted,
+                onOpenUnusedAppRestrictionsSettings = ::openUnusedAppRestrictionsSettings,
+                onOpenMotorolaBackgroundAppsSettings = ::openMotorolaBackgroundAppsSettings,
                 onOpenExactAlarmSettings = ::openExactAlarmSettings,
                 onOpenAppDetailsSettings = ::openAppDetailsSettings,
                 exactAlarmWarningActive = exactAlarmWarningActive,
@@ -237,7 +244,9 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshPermissions() {
         hasStoragePermission = hasFullStorageAccess()
-        hasUnrestrictedBattery = isBatteryUnrestricted()
+        hasUnrestrictedBattery = !BackgroundPersistenceGuidance.isBatteryOptimizationRestricted(this)
+        unusedAppRestrictionsActive = BackgroundPersistenceGuidance.isUnusedAppRestrictionsActive(this)
+        showMotorolaSmartUseGuidance = BackgroundPersistenceGuidance.isMotorolaDevice()
         ServiceWatchdogScheduler.syncBatteryOptimizationWarning(
             this,
             restricted = !hasUnrestrictedBattery
@@ -262,9 +271,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isBatteryUnrestricted(): Boolean {
-        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-        return powerManager.isIgnoringBatteryOptimizations(packageName)
+    @SuppressLint("BatteryLife")
+    private fun requestBatteryUnrestricted() {
+        BackgroundPersistenceGuidance.launchBatteryOptimizationRequest(this)
+    }
+
+    private fun openUnusedAppRestrictionsSettings() {
+        BackgroundPersistenceGuidance.launchUnusedAppRestrictionsSettings(this)
+    }
+
+    private fun openMotorolaBackgroundAppsSettings() {
+        BackgroundPersistenceGuidance.launchMotorolaBackgroundAppsSettings(this)
     }
 
     private fun requestStoragePermission() {
@@ -295,21 +312,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @SuppressLint("BatteryLife")
-    private fun requestBatteryUnrestricted() {
-        if (isBatteryUnrestricted()) {
-            hasUnrestrictedBattery = true
-            return
-        }
-        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-            data = Uri.parse("package:$packageName")
-        }
-        runCatching { startActivity(intent) }
-            .onFailure {
-                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-            }
-    }
-
     private fun openExactAlarmSettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -323,13 +325,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openAppDetailsSettings() {
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-            data = Uri.parse("package:$packageName")
-        }
-        runCatching { startActivity(intent) }
-            .onFailure {
-                startActivity(Intent(Settings.ACTION_SETTINGS))
-            }
+        BackgroundPersistenceGuidance.launchAppDetailsSettings(this)
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -367,8 +363,13 @@ class MainActivity : ComponentActivity() {
 
     private fun startShareServer() {
         val wasPending = ShareServerPendingStart.consume(this)
-        if (wasPending) {
-            Log.i(TAG, "Recovering share server after background suppression")
+        val heartbeatStale = !ServiceWatchdogScheduler.isShareServerRunning(this)
+        if (wasPending || heartbeatStale) {
+            Log.i(
+                TAG,
+                "Recovering share server after suppression or stale heartbeat " +
+                    "(pending=$wasPending, stale=$heartbeatStale)"
+            )
         }
         if (!hasUnrestrictedBattery) {
             Log.w(TAG, "Starting share server without battery exemption — background survival may be limited")
@@ -384,7 +385,10 @@ class MainActivity : ComponentActivity() {
                 error is ForegroundServiceStartNotAllowedException
             ) {
                 Log.w(TAG, "Share server start deferred — FGS not allowed :: ${error.message}")
-                ShareServerPendingStart.mark(this)
+                ShareServerRestartCoordinator.deferUntilForeground(
+                    this,
+                    "ui_start_blocked"
+                )
             } else {
                 Log.e(TAG, "Share server start failed", error)
             }
