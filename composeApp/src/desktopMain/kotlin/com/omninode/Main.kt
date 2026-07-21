@@ -15,6 +15,7 @@ import com.omninode.data.db.createOmniNodeDatabase
 import com.omninode.data.settings.DesktopLayoutMode
 import com.omninode.di.OmniNodeServices
 import com.omninode.network.DesktopShareServerController
+import com.omninode.platform.DesktopMacTrayCoordinator
 import com.omninode.platform.DesktopScreenGeometry
 import com.omninode.platform.DesktopWindowBoundsStore
 import com.omninode.platform.DesktopSendHandoff
@@ -25,6 +26,7 @@ import com.omninode.update.AppUpdateCoordinator
 import com.omninode.update.OmniNodeAppVersion
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.FlowPreview
 
 private val DesktopWindowCompactWidth = 440.dp
 private val DesktopWindowExpandedWidth = 1200.dp
@@ -69,6 +71,7 @@ fun main() {
         }
 
         LaunchedEffect(windowState) {
+            @OptIn(FlowPreview::class)
             snapshotFlow {
                 Triple(windowState.size, windowState.position, windowState.isMinimized)
             }
@@ -90,12 +93,22 @@ fun main() {
 
         Window(
             onCloseRequest = {
+                if (DesktopMacTrayCoordinator.handleCloseRequest()) {
+                    return@Window
+                }
                 shutdownDesktop()
                 exitApplication()
             },
             title = "OmniNode",
             state = windowState
         ) {
+            LaunchedEffect(window) {
+                DesktopMacTrayCoordinator.attachMainWindow(window) {
+                    shutdownDesktop()
+                    exitApplication()
+                }
+            }
+
             App(
                 hasStoragePermission = true,
                 hasUnrestrictedBattery = true,

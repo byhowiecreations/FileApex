@@ -23,6 +23,7 @@ firebase-bom = "33.12.0"
 credentials = "1.5.0"
 googleid = "1.1.1"
 google-services = "4.4.2"
+jna = "5.16.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
@@ -69,6 +70,7 @@ firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "credentials" }
 androidx-credentials-play-services = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

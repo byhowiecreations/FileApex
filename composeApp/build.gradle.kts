@@ -121,6 +121,13 @@ compose.desktop {
     application {
         mainClass = "com.omninode.MainKt"
 
+        jvmArgs += listOf(
+            "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED"
+        )
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "OmniNode"
@@ -161,12 +168,54 @@ compose.desktop {
     }
 }
 
+tasks.register("buildMacTrayBridge") {
+    group = "distribution"
+    description = "Compile libOmniNodeTray.dylib (NSStatusItem + NSPopover)"
+    doLast {
+        val script = rootProject.layout.projectDirectory.file("macos/scripts/build_tray_bridge.sh").asFile
+        if (!script.exists()) {
+            logger.warn("Missing ${script.absolutePath}")
+            return@doLast
+        }
+        val process = ProcessBuilder("bash", script.absolutePath)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+        val code = process.waitFor()
+        if (code != 0) {
+            logger.warn("build_tray_bridge.sh exited $code (tray may be disabled)")
+        }
+    }
+}
+
+tasks.matching { it.name == "createDistributable" }.configureEach {
+    dependsOn("buildMacTrayBridge")
+}
+
+private fun Project.embedMacTrayBridgeIn(appBundle: File) {
+    val dylib = rootProject.layout.projectDirectory.file("macos/build/Tray/libOmniNodeTray.dylib").asFile
+    if (!dylib.isFile) {
+        logger.warn("libOmniNodeTray.dylib missing — menu bar tray disabled")
+        return
+    }
+    val frameworksDir = appBundle.resolve("Contents/Frameworks")
+    frameworksDir.mkdirs()
+    val dest = frameworksDir.resolve("libOmniNodeTray.dylib")
+    Files.copy(dylib.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    ProcessBuilder("/usr/bin/codesign", "--force", "--sign", "-", dest.absolutePath)
+        .inheritIO()
+        .start()
+        .waitFor()
+    logger.lifecycle("Embedded native tray bridge at ${dest.absolutePath}")
+}
+
 tasks.register("embedMacExtensions") {
     group = "distribution"
     description = "Build Share Extension and embed into OmniNode.app"
     dependsOn("createDistributable")
     doLast {
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/OmniNode.app").get().asFile
+        embedMacTrayBridgeIn(appBundle)
         val script = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
         check(script.exists()) { "Missing ${script.absolutePath}" }
         val process = ProcessBuilder("bash", script.absolutePath, appBundle.absolutePath, "Release")
@@ -214,6 +263,10 @@ afterEvaluate {
             val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
             dmgDir.listFiles()?.any { it.isFile && it.extension.equals("dmg", ignoreCase = true) } == true
         }
+    }
+
+    tasks.named("assembleDebug").configure {
+        finalizedBy("copyAllBuilds")
     }
 }
 
@@ -291,6 +344,7 @@ private fun patchShippedAppMarketingVersion(dest: File, appVersionName: String, 
 }
 
 private fun Project.embedMacExtensionsIn(appBundle: File) {
+    embedMacTrayBridgeIn(appBundle)
     val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
     ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
         .directory(rootProject.projectDir)
@@ -378,12 +432,11 @@ tasks.register("copyCurrentBuilds") {
 }
 
 /**
- * Final release ship: release APK, Mac .app, and DMG into `current/`, then mount the DMG once
- * for drag-to-Applications (left attached — no detach).
+ * Final release ship: release APK, Mac .app, and DMG into `current/` (no auto-mount).
  */
 tasks.register("copyReleaseBuilds") {
     group = "distribution"
-    description = "Release APK + Mac .app + DMG into current/, then mount the DMG for install"
+    description = "Release APK + Mac .app + DMG into current/"
     dependsOn("assembleRelease", "embedMacExtensions", "packageDmg")
 
     doLast {
@@ -391,20 +444,19 @@ tasks.register("copyReleaseBuilds") {
             includeDebugApk = false,
             includeReleaseApk = true,
             includeDmg = true,
-            mountDmg = true,
+            mountDmg = false,
             preserveExistingDmgOnWipe = false
         )
     }
 }
 
 /**
- * Full ship after [assembleDebug] + [assembleRelease]: all APKs, .app, and DMG into `current/`,
- * then mount the release DMG once. Use this instead of running [copyCurrentBuilds] and
- * [copyReleaseBuilds] back-to-back (they would fight over the same .app bundle).
+ * Full ship after [assembleDebug] + [assembleRelease]: all APKs, .app, and DMG into `current/`.
+ * Does not mount the DMG.
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Move debug+release APKs, Mac .app, and DMG into current/, then mount DMG"
+    description = "Move debug+release APKs, Mac .app, and DMG into current/"
     dependsOn("assembleDebug", "assembleRelease", "embedMacExtensions", "packageDmg")
 
     doLast {
@@ -412,7 +464,7 @@ tasks.register("copyAllBuilds") {
             includeDebugApk = true,
             includeReleaseApk = true,
             includeDmg = true,
-            mountDmg = true,
+            mountDmg = false,
             preserveExistingDmgOnWipe = false
         )
     }
