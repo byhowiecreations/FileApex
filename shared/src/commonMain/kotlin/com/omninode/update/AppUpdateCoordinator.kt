@@ -2,9 +2,10 @@ package com.omninode.update
 
 import com.omninode.di.OmniNodeServices
 import com.omninode.platform.BriefToast
-import com.omninode.util.TimeUtils
-import com.omninode.util.TimestampDiagnostics
+import com.omninode.platform.dismissAppUpdateNotification
 import com.omninode.platform.notifyAppUpdateAvailable
+import com.omninode.platform.shouldDeferUpdateInstallToUser
+import com.omninode.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +31,12 @@ object AppUpdateCoordinator {
 
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
+
+    private val _pendingUpdate = MutableStateFlow<PendingUpdateOffer?>(null)
+    val pendingUpdate: StateFlow<PendingUpdateOffer?> = _pendingUpdate.asStateFlow()
+
+    private val _showUpdateSheet = MutableStateFlow(false)
+    val showUpdateSheet: StateFlow<Boolean> = _showUpdateSheet.asStateFlow()
 
     /** Call once after [OmniNodeServices.init] when the process starts. */
     fun onAppLaunch() {
@@ -73,6 +80,46 @@ object AppUpdateCoordinator {
             requireEnabled = false,
             toastFeedback = true
         )
+    }
+
+    fun requestShowUpdateSheet() {
+        if (_pendingUpdate.value != null) {
+            _showUpdateSheet.value = true
+        }
+    }
+
+    fun dismissUpdateSheet() {
+        _showUpdateSheet.value = false
+    }
+
+    fun skipPendingUpdate() {
+        val offer = _pendingUpdate.value ?: return
+        OmniNodeServices.settings.setSkippedUpdateVersion(offer.remoteVersion)
+        _pendingUpdate.value = null
+        _showUpdateSheet.value = false
+        _statusMessage.value = "Skipped OmniNode ${offer.remoteVersion}"
+        dismissAppUpdateNotification()
+    }
+
+    fun downloadPendingUpdate() {
+        val offer = _pendingUpdate.value ?: return
+        scope.launch {
+            runCatching {
+                _statusMessage.value = "Downloading OmniNode ${offer.remoteVersion}…"
+                dismissAppUpdateNotification()
+                AppUpdater.downloadAndInstall(offer)
+                OmniNodeServices.settings.setLastUpdateCheckEpochMs(TimeUtils.now())
+                _pendingUpdate.value = null
+                _showUpdateSheet.value = false
+                _statusMessage.value = "Installing OmniNode ${offer.remoteVersion}…"
+            }.onFailure { error ->
+                val message = error.message ?: "Update download failed"
+                _statusMessage.value = message
+                BriefToast.show(message)
+                println("AppUpdateCoordinator: download failed — $message")
+                error.printStackTrace()
+            }
+        }
     }
 
     private fun restartScheduler() {
@@ -142,14 +189,7 @@ object AppUpdateCoordinator {
                     _statusMessage.value = "Checking for updates…"
                 }
                 println("AppUpdateCoordinator: starting update check ($reason)")
-                when (
-                    val outcome = AppUpdater.checkForUpdatesAndInstall { installing ->
-                        val detail = buildUpdateDetail(installing)
-                        notifyAppUpdateAvailable(installing.remoteVersion, detail)
-                        _statusMessage.value =
-                            "OmniNode ${installing.remoteVersion} available — installing…"
-                    }
-                ) {
+                when (val outcome = AppUpdater.probeForUpdates()) {
                     is UpdateCheckOutcome.AlreadyCurrent -> {
                         settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                         _statusMessage.value = "On Current Version"
@@ -157,9 +197,18 @@ object AppUpdateCoordinator {
                             BriefToast.show("On Current Version")
                         }
                     }
-                    is UpdateCheckOutcome.Installing -> {
+                    is UpdateCheckOutcome.Available -> {
                         settings.setLastUpdateCheckEpochMs(TimeUtils.now())
+                        if (isOfferSkipped(outcome.offer)) {
+                            _statusMessage.value = "On Current Version"
+                            if (toastFeedback) {
+                                BriefToast.show("On Current Version")
+                            }
+                            return@launch
+                        }
+                        handleAvailableUpdate(outcome.offer, toastFeedback)
                     }
+                    is UpdateCheckOutcome.Installing -> Unit
                 }
             } catch (error: Throwable) {
                 settings.setLastUpdateCheckEpochMs(TimeUtils.now())
@@ -176,25 +225,27 @@ object AppUpdateCoordinator {
         }
     }
 
-    private fun buildUpdateDetail(outcome: UpdateCheckOutcome.Installing): String {
-        val title = outcome.releaseTitle
-        val notes = outcome.releaseNotes?.lineSequence()
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?.take(6)
-            ?.joinToString(separator = "\n")
-        return buildString {
-            if (!title.isNullOrBlank() && title != outcome.remoteVersion) {
-                append(title)
+    private suspend fun handleAvailableUpdate(offer: PendingUpdateOffer, toastFeedback: Boolean) {
+        if (shouldDeferUpdateInstallToUser()) {
+            _pendingUpdate.value = offer
+            notifyAppUpdateAvailable(offer)
+            _statusMessage.value = "OmniNode ${offer.remoteVersion} available"
+            if (toastFeedback) {
+                _showUpdateSheet.value = true
             }
-            if (!notes.isNullOrBlank()) {
-                if (isNotEmpty()) append('\n')
-                append(notes)
-            }
-            if (isEmpty()) {
-                append("A newer build is ready. Installing…")
-            }
+            return
         }
+        _statusMessage.value = "OmniNode ${offer.remoteVersion} available — installing…"
+        notifyAppUpdateAvailable(offer)
+        AppUpdater.downloadAndInstall(offer)
+    }
+
+    private fun isOfferSkipped(offer: PendingUpdateOffer): Boolean {
+        val skipped = OmniNodeServices.settings.skippedUpdateVersion.value.trim()
+        if (skipped.isEmpty()) return false
+        val skippedParsed = OmniSemVer.parse(skipped) ?: return skipped == offer.remoteVersion
+        val remoteParsed = OmniSemVer.parse(offer.remoteVersion) ?: return false
+        return remoteParsed <= skippedParsed
     }
 
     private const val IDLE_POLL_MS = 30_000L

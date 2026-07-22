@@ -3,6 +3,7 @@ package com.omninode.network
 import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.domain.model.RemoteFileItem
 import com.omninode.domain.pairing.ClusterSyncRequest
+import com.omninode.domain.peer.PeerNodeState
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -78,12 +79,14 @@ class OmniNodeClient(
         return response.body()
     }
 
-    suspend fun fetchIdentity(host: String, port: Int): NodeIdentityResponse {
-        val response = client.get("http://$host:$port/api/v1/identity")
-        if (!response.status.isSuccess()) {
-            error("Identity check failed (${response.status})")
+    suspend fun fetchPeerNodeState(host: String, port: Int): PeerNodeState {
+        return kotlinx.coroutines.withTimeout(PEER_STATE_TIMEOUT_MS) {
+            val response = client.get("http://$host:$port/api/v1/identity")
+            if (!response.status.isSuccess()) {
+                error("Peer state fetch failed (${response.status})")
+            }
+            response.body()
         }
-        return response.body()
     }
 
     /**
@@ -108,7 +111,7 @@ class OmniNodeClient(
     /** Lightweight liveness probe used by PeerPresenceMonitor. */
     suspend fun pingHealth(host: String, port: Int): Boolean {
         return runCatching {
-            kotlinx.coroutines.withTimeout(2_500) {
+            kotlinx.coroutines.withTimeout(HEALTH_PROBE_TIMEOUT_MS) {
                 val response = client.get("http://$host:$port/api/v1/health")
                 response.status.isSuccess()
             }
@@ -366,22 +369,10 @@ class OmniNodeClient(
 
     companion object {
         const val CHUNK_SIZE = 64 * 1024
+        private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
+        private const val PEER_STATE_TIMEOUT_MS = 5_000L
     }
 }
-
-@kotlinx.serialization.Serializable
-data class NodeIdentityResponse(
-    val deviceId: String,
-    val deviceName: String,
-    val rootPath: String,
-    val port: Int,
-    /** Absolute Downloads/OmniNode path on this node (Multi Copy / Download landing zone). */
-    val downloadsPath: String = "",
-    /** When true, pairing requires this device's PIN. */
-    val pinRequired: Boolean = false,
-    /** Marketing app version from [com.omninode.update.currentAppVersionName]. */
-    val appVersion: String = ""
-)
 
 @kotlinx.serialization.Serializable
 data class RenameDeviceRequest(

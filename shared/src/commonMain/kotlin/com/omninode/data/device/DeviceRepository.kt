@@ -2,7 +2,12 @@ package com.omninode.data.device
 
 import com.omninode.data.db.DeviceDao
 import com.omninode.data.db.PairedDeviceEntity
+import com.omninode.data.db.RemovedDeviceEntity
 import com.omninode.data.identity.LocalIdentity
+import com.omninode.domain.pairing.RemovedDeviceRecord
+import com.omninode.domain.peer.PeerNodeState
+import com.omninode.domain.peer.PeerNodeStateMapper
+import com.omninode.util.TimeUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -48,6 +53,7 @@ class DeviceRepository(
                 purgeLocalRowsLocked()
                 return
             }
+            if (isBlocklistedLocked(normalized)) return
             val existing = deviceDao.getDevice(normalized.deviceId)
             if (existing == normalized) return
             deviceDao.upsertDevice(normalized)
@@ -68,7 +74,142 @@ class DeviceRepository(
             if (isLocalDevice(normalized)) {
                 return purgeLocalRowsLocked()
             }
+            if (isBlocklistedLocked(normalized)) return false
             upsertReplacingAliasesLocked(normalized)
+        }
+
+    /**
+     * Explicit pairing handshake — clears the removal blocklist entry and upserts the peer.
+     */
+    suspend fun adoptFromPairing(device: PairedDeviceEntity): Boolean =
+        mutateMutex.withLock {
+            val normalized = normalize(device)
+            if (isLocalDevice(normalized)) {
+                return purgeLocalRowsLocked()
+            }
+            deviceDao.clearRemovedDevice(normalized.deviceId)
+            val hash = normalized.publicKeyHash.trim()
+            if (hash.isNotEmpty()) {
+                deviceDao.clearRemovedByPublicKeyHash(hash)
+            }
+            upsertReplacingAliasesLocked(normalized)
+        }
+
+    /**
+     * Atomically replaces the peer record keyed by [PeerNodeState.deviceId].
+     *
+     * [rosterDeviceId] is the row id used to reach this peer when it differs from the
+     * authoritative payload id (stale roster restore). The payload [deviceName] always wins.
+     */
+    suspend fun applyPeerNodeState(state: PeerNodeState, rosterDeviceId: String? = null): Boolean =
+        mutateMutex.withLock {
+            val existingById = deviceDao.getDevice(state.deviceId.trim())
+            val rosterId = rosterDeviceId?.trim().orEmpty()
+            val existingByRoster = if (rosterId.isNotEmpty()) deviceDao.getDevice(rosterId) else null
+            val existing = existingById ?: existingByRoster
+            val entity = PeerNodeStateMapper.toEntity(state, existing)
+            val normalized = normalize(entity, existing)
+            if (isLocalDevice(normalized)) {
+                return purgeLocalRowsLocked()
+            }
+            if (isBlocklistedLocked(normalized)) return false
+            replacePeerRecordAuthoritative(normalized, rosterDeviceId)
+        }
+
+    /**
+     * Records a successful health probe when the full identity payload could not be fetched.
+     * Preserves version metadata while extending the offline grace window.
+     */
+    suspend fun touchPeerLastSeen(
+        deviceId: String,
+        ip: String,
+        port: Int,
+        epochMs: Long = TimeUtils.now()
+    ): Boolean = mutateMutex.withLock {
+        val trimmedId = deviceId.trim()
+        if (trimmedId.isEmpty()) return false
+        val existing = deviceDao.getDevice(trimmedId) ?: return false
+        val cleanedIp = ip.trim()
+        val nextEpoch = epochMs.coerceAtLeast(existing.lastSeenEpochMs)
+        if (existing.lastSeenEpochMs == nextEpoch &&
+            existing.lastKnownIp == cleanedIp &&
+            existing.port == port
+        ) {
+            return false
+        }
+        deviceDao.touchLastSeen(trimmedId, cleanedIp, port, nextEpoch)
+        true
+    }
+
+    /**
+     * LAN identity probe is authoritative for [live] — replaces a stale Room row when ids diverge
+     * (common after roster restore from an older database file).
+     */
+    suspend fun adoptLiveIdentity(staleDeviceId: String, live: PairedDeviceEntity): Boolean =
+        applyPeerNodeState(PeerNodeStateMapper.fromEntity(live), staleDeviceId)
+
+    /**
+     * Permanently removes a peer from the roster and blocklists it against
+     * cluster/cloud re-import until the user pairs again.
+     */
+    suspend fun removePermanently(deviceId: String): Boolean =
+        mutateMutex.withLock {
+            val trimmedId = deviceId.trim()
+            if (trimmedId.isEmpty() || trimmedId == LocalIdentity.LOCAL_DEVICE_ID) {
+                return false
+            }
+            val local = localDeviceProvider()
+            if (local.deviceId.isNotBlank() && trimmedId == local.deviceId) {
+                return false
+            }
+            val device = deviceDao.getDevice(trimmedId) ?: return false
+            deviceDao.insertRemovedDevice(
+                RemovedDeviceEntity(
+                    deviceId = device.deviceId,
+                    publicKeyHash = device.publicKeyHash.trim(),
+                    lastKnownIp = device.lastKnownIp.trim(),
+                    port = device.port,
+                    removedAtEpochMs = TimeUtils.now()
+                )
+            )
+            deviceDao.deleteDevice(trimmedId)
+            true
+        }
+
+    /**
+     * Apply a removal event from a cluster peer or cloud snapshot.
+     * Blocklists the peer even when it is not currently in the local roster.
+     */
+    suspend fun applyRemoteRemoval(record: RemovedDeviceRecord): Boolean =
+        mutateMutex.withLock {
+            val trimmedId = record.deviceId.trim()
+            if (trimmedId.isEmpty() || trimmedId == LocalIdentity.LOCAL_DEVICE_ID) {
+                return false
+            }
+            val local = localDeviceProvider()
+            if (local.deviceId.isNotBlank() && trimmedId == local.deviceId) {
+                return false
+            }
+            val existing = deviceDao.getDevice(trimmedId)
+            val hash = record.publicKeyHash.trim().ifBlank { existing?.publicKeyHash?.trim().orEmpty() }
+            deviceDao.insertRemovedDevice(
+                RemovedDeviceEntity(
+                    deviceId = trimmedId,
+                    publicKeyHash = hash,
+                    lastKnownIp = record.lastKnownIp.trim().ifBlank { existing?.lastKnownIp?.trim().orEmpty() },
+                    port = record.port.takeIf { it > 0 } ?: existing?.port ?: 0,
+                    removedAtEpochMs = TimeUtils.now()
+                )
+            )
+            if (existing != null) {
+                deviceDao.deleteDevice(trimmedId)
+            }
+            if (hash.isNotEmpty()) {
+                deviceDao.getAllDevicesOnce()
+                    .filter { row -> row.publicKeyHash.trim() == hash && row.deviceId != trimmedId }
+                    .forEach { row -> deviceDao.deleteDevice(row.deviceId) }
+            }
+            true
         }
 
     /**
@@ -81,6 +222,34 @@ class DeviceRepository(
             if (all.size < 2) return
             persistCollapsed(all)
         }
+    }
+
+    /**
+     * Authoritative ingestion for live [PeerNodeState] payloads — never re-keys via alias merge.
+     */
+    private suspend fun replacePeerRecordAuthoritative(
+        normalized: PairedDeviceEntity,
+        rosterDeviceId: String?
+    ): Boolean {
+        require(normalized.deviceId.isNotEmpty()) { "deviceId cannot be empty" }
+        val rosterId = rosterDeviceId?.trim().orEmpty()
+        val endpoint = endpointKey(normalized.lastKnownIp, normalized.port)
+        for (row in deviceDao.getAllDevicesOnce()) {
+            if (row.deviceId == normalized.deviceId) continue
+            val sameEndpoint = endpoint != null && endpointKey(row.lastKnownIp, row.port) == endpoint
+            val staleRoster = rosterId.isNotEmpty() && row.deviceId == rosterId
+            if (sameEndpoint || staleRoster) {
+                deviceDao.deleteDevice(row.deviceId)
+            }
+        }
+        val purgedSelf = purgeLocalRowsLocked()
+        val existing = deviceDao.getDevice(normalized.deviceId)
+        val merged = normalize(normalized, existing)
+        if (existing == merged && !purgedSelf) {
+            return false
+        }
+        deviceDao.upsertDevice(merged)
+        return true
     }
 
     private suspend fun upsertReplacingAliasesLocked(normalized: PairedDeviceEntity): Boolean {
@@ -216,7 +385,7 @@ class DeviceRepository(
         }
         val secondary = if (primary.deviceId == incoming.deviceId) existing else incoming
         return primary.copy(
-            deviceName = primary.deviceName.ifBlank { secondary.deviceName },
+            deviceName = incoming.deviceName.trim().ifBlank { primary.deviceName.ifBlank { secondary.deviceName } },
             lastKnownIp = when {
                 hasUsableEndpoint(primary) -> primary.lastKnownIp
                 hasUsableEndpoint(secondary) -> secondary.lastKnownIp
@@ -230,12 +399,27 @@ class DeviceRepository(
             publicKeyHash = primary.publicKeyHash.ifBlank { secondary.publicKeyHash },
             rootPath = primary.rootPath.ifBlank {
                 secondary.rootPath.ifBlank { "/" }
-            }
+            },
+            clientVersion = incoming.clientVersion.ifBlank { primary.clientVersion.ifBlank { secondary.clientVersion } },
+            clientVersionCode = incoming.clientVersionCode.takeIf { it > 0 }
+                ?: primary.clientVersionCode.takeIf { it > 0 }
+                ?: secondary.clientVersionCode,
+            platform = incoming.platform.ifBlank { primary.platform.ifBlank { secondary.platform } },
+            supportedProtocolsJson = incoming.supportedProtocolsJson.ifBlank {
+                primary.supportedProtocolsJson.ifBlank { secondary.supportedProtocolsJson }
+            },
+            lastSeenEpochMs = maxOf(
+                incoming.lastSeenEpochMs,
+                primary.lastSeenEpochMs,
+                secondary.lastSeenEpochMs
+            )
         )
     }
 
     private fun devicePreferenceOrder(): Comparator<PairedDeviceEntity> =
         compareBy<PairedDeviceEntity> { !hasUsableEndpoint(it) }
+            .thenByDescending { it.lastSeenEpochMs }
+            .thenByDescending { it.clientVersion.isNotBlank() }
             .thenBy { it.deviceId }
 
     private fun hasUsableEndpoint(device: PairedDeviceEntity): Boolean =
@@ -263,14 +447,29 @@ class DeviceRepository(
         return true
     }
 
-    private fun normalize(device: PairedDeviceEntity): PairedDeviceEntity =
-        device.copy(
+    private fun normalize(
+        device: PairedDeviceEntity,
+        preserveFrom: PairedDeviceEntity? = null
+    ): PairedDeviceEntity {
+        val trimmed = device.copy(
             deviceId = device.deviceId.trim(),
             deviceName = device.deviceName.trim(),
             lastKnownIp = device.lastKnownIp.trim(),
             publicKeyHash = device.publicKeyHash.trim(),
-            rootPath = device.rootPath.ifBlank { "/" }
+            rootPath = device.rootPath.ifBlank { "/" },
+            clientVersion = device.clientVersion.trim(),
+            platform = device.platform.trim(),
+            supportedProtocolsJson = device.supportedProtocolsJson.ifBlank { "[]" },
+            lastSeenEpochMs = device.lastSeenEpochMs.coerceAtLeast(0L)
         )
+        return trimmed.copy(
+            clientVersion = trimmed.clientVersion.ifBlank { preserveFrom?.clientVersion.orEmpty() },
+            clientVersionCode = trimmed.clientVersionCode.takeIf { it > 0 }
+                ?: preserveFrom?.clientVersionCode
+                ?: 0,
+            platform = trimmed.platform.ifBlank { preserveFrom?.platform.orEmpty() }
+        )
+    }
 
     private fun normalizeName(name: String): String = name.trim().lowercase()
 
@@ -302,8 +501,18 @@ class DeviceRepository(
     }
 
     suspend fun remove(deviceId: String) {
-        mutateMutex.withLock {
-            deviceDao.deleteDevice(deviceId)
+        removePermanently(deviceId)
+    }
+
+    suspend fun isBlocklisted(device: PairedDeviceEntity): Boolean =
+        mutateMutex.withLock { isBlocklistedLocked(device) }
+
+    private suspend fun isBlocklistedLocked(device: PairedDeviceEntity): Boolean {
+        if (deviceDao.countRemovedById(device.deviceId) > 0) return true
+        val hash = device.publicKeyHash.trim()
+        if (hash.isNotEmpty() && deviceDao.countRemovedByPublicKeyHash(hash) > 0) {
+            return true
         }
+        return false
     }
 }

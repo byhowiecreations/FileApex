@@ -78,6 +78,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <activity
@@ -115,6 +118,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <receiver
+            android:name="com.omninode.platform.UpdateNotificationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.omninode.action.UPDATE_OPEN" />
+                <action android:name="com.omninode.action.UPDATE_DOWNLOAD" />
+                <action android:name="com.omninode.action.UPDATE_SKIP" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".update.UpdatePackageReplacedReceiver"

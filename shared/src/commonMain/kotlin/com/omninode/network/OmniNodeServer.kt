@@ -7,10 +7,11 @@ import com.omninode.data.identity.loadLocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
 import com.omninode.domain.pairing.ClusterSyncRequest
+import com.omninode.domain.peer.PeerNodeState
+import com.omninode.domain.peer.PeerNodeStateMapper
 import com.omninode.platform.UniqueFileNames
 import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.notifyFilesReceived
-import com.omninode.update.currentAppVersionName
 import com.omninode.util.PathUtils
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -103,28 +104,34 @@ class OmniNodeServer(
             }
 
             routing {
+                suspend fun respondSelfPeerState(call: io.ktor.server.application.ApplicationCall) {
+                    val identity = identityProvider()
+                    val settings = OmniNodeServices.settings
+                    val state = PeerNodeStateMapper.selfState(
+                        identity = identity,
+                        pinRequired = settings.pinRequiredEnabled.value
+                    )
+                    call.respondText(
+                        text = json.encodeToString(PeerNodeState.serializer(), state),
+                        contentType = ContentType.Application.Json
+                    )
+                }
+
                 get("/api/v1/identity") {
                     runCatching {
-                        val identity = identityProvider()
-                        val settings = OmniNodeServices.settings
-                        val liveName = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
-                        call.respondText(
-                            text = json.encodeToString(
-                                NodeIdentityResponse(
-                                    deviceId = identity.deviceId,
-                                    deviceName = liveName,
-                                    rootPath = identity.rootPath,
-                                    port = identity.sharePort,
-                                    downloadsPath = defaultDownloadsDir(),
-                                    pinRequired = settings.pinRequiredEnabled.value,
-                                    appVersion = currentAppVersionName()
-                                )
-                            ),
-                            contentType = ContentType.Application.Json
-                        )
+                        respondSelfPeerState(call)
                     }.onFailure { error ->
                         onLog("GET /api/v1/identity failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "identity_failed")
+                    }
+                }
+
+                get("/api/v1/heartbeat") {
+                    runCatching {
+                        respondSelfPeerState(call)
+                    }.onFailure { error ->
+                        onLog("GET /api/v1/heartbeat failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "heartbeat_failed")
                     }
                 }
 

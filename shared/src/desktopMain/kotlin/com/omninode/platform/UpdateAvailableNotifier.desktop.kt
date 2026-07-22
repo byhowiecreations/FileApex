@@ -1,8 +1,12 @@
 package com.omninode.platform
 
-actual fun notifyAppUpdateAvailable(versionLabel: String, detail: String?) {
+import com.omninode.update.PendingUpdateOffer
+
+actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
     println(
-        "UpdateAvailableNotifier: OmniNode $versionLabel available" +
-            (detail?.takeIf { it.isNotBlank() }?.let { " — $it" } ?: "")
+        "UpdateAvailableNotifier: OmniNode ${offer.remoteVersion} available — " +
+            offer.notificationDetail(maxNoteLines = 2)
     )
 }
+
+actual fun dismissAppUpdateNotification() = Unit

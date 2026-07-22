@@ -4,6 +4,7 @@ import com.omninode.data.device.DeviceRepository
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.transfer.FileTransferService
 import com.omninode.domain.model.RemoteFileItem
+import com.omninode.domain.presence.PeerPresenceMonitor
 import com.omninode.network.OmniNodeClient
 import com.omninode.platform.TransferPaths
 import com.omninode.platform.defaultDownloadsDir
@@ -28,7 +29,7 @@ class TransferManager(
     private val readinessCheck: () -> Boolean,
     private val identityProvider: () -> LocalIdentity,
     private val onlineDeviceIds: () -> Set<String>,
-    private val peerAppVersions: () -> Map<String, String> = { emptyMap() }
+    private val presenceMonitor: () -> PeerPresenceMonitor
 ) {
     /**
      * Block until [OmniNodeServices] has finished init (DB + repositories).
@@ -77,10 +78,20 @@ class TransferManager(
                 host = peer.lastKnownIp,
                 port = peer.port,
                 rootPath = peer.rootPath,
-                appVersion = peerAppVersions()[peer.deviceId]
+                appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
             )
         }
         return options
+    }
+
+    /**
+     * Android system Share sheet picker: online paired peers only (no "This device").
+     */
+    suspend fun buildShareSheetDeviceOptions(): List<MultiCopyDeviceOption> {
+        awaitReady()
+        val identity = identityProvider()
+        return buildInAppDeviceOptions(sourceDeviceId = identity.deviceId)
+            .filter { !it.isLocal }
     }
 
     /**
@@ -100,7 +111,7 @@ class TransferManager(
                 host = peer.lastKnownIp,
                 port = peer.port,
                 rootPath = peer.rootPath,
-                appVersion = peerAppVersions()[peer.deviceId]
+                appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
             )
         }
     }
@@ -115,6 +126,10 @@ class TransferManager(
         awaitReady()
         require(sources.isNotEmpty()) { "Select at least one file" }
         require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
+        val remoteTargets = selectedDevices.filter { !it.isLocal }
+        if (remoteTargets.isNotEmpty()) {
+            presenceMonitor().primePeersForTransfer(remoteTargets)
+        }
         val results = transferService.multiCopyToDevices(sources, selectedDevices)
         return TransferBatchResult.from(results, sources, selectedDevices)
     }
@@ -182,7 +197,7 @@ class TransferManager(
         appVersion: String?
     ): MultiCopyDeviceOption {
         val downloadsRoot = runCatching {
-            val remote = client.fetchIdentity(host, port)
+            val remote = client.fetchPeerNodeState(host, port)
             remote.downloadsPath.trim().ifBlank {
                 TransferPaths.fallbackDownloadsPath(rootPath)
             }

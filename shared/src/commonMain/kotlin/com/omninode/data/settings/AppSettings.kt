@@ -25,6 +25,8 @@ interface AppSettings {
     val checkForUpdatesIntervalAmount: StateFlow<Int>
     /** Epoch millis of the last completed update check (0 = never). */
     val lastUpdateCheckEpochMs: StateFlow<Long>
+    /** Remote version the user skipped; suppresses repeat prompts until a newer tag appears. */
+    val skippedUpdateVersion: StateFlow<String>
     /** When true, AlarmManager may restart the Android share-server FGS after OEM kills. */
     val enableServiceWatchdog: StateFlow<Boolean>
     /** Desktop-only: force compact or expanded adaptive layout regardless of window width. */
@@ -41,6 +43,8 @@ interface AppSettings {
     fun setCheckForUpdatesEnabled(enabled: Boolean)
     fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)
+
+    fun setSkippedUpdateVersion(version: String)
 
     fun setEnableServiceWatchdog(enabled: Boolean)
 

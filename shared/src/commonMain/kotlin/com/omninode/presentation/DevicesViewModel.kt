@@ -9,6 +9,7 @@ import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
 import com.omninode.domain.pairing.PairingPayload
 import com.omninode.network.sendWakeBroadcast
+import com.omninode.platform.purgeDirectShareTarget
 import com.omninode.util.NetworkUtils
 import com.omninode.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
@@ -70,17 +71,19 @@ class DevicesViewModel : ViewModel() {
      */
     val deviceRows: StateFlow<List<DeviceListRow>> = combine(
         repository.observeDevices(),
-        presence.onlineDeviceIds,
-        presence.peerAppVersions
-    ) { devices, onlineIds, versions ->
+        presence.reachabilityEpochMs,
+        presence.onlineDeviceIds
+    ) { devices, _, _ ->
         devices
             .distinctBy { it.deviceId }
             .map { device ->
                 DeviceListRow(
                     deviceId = device.deviceId,
                     deviceName = device.deviceName,
-                    online = device.deviceId in onlineIds,
-                    appVersion = versions[device.deviceId]
+                    online = presence.isDeviceOnline(device),
+                    appVersion = device.clientVersion.takeIf { it.isNotEmpty() },
+                    appVersionCode = device.clientVersionCode,
+                    lastSeenEpochMs = device.lastSeenEpochMs
                 )
             }
     }
@@ -107,8 +110,13 @@ class DevicesViewModel : ViewModel() {
         }
     }
 
-    fun isDeviceOnline(deviceId: String): Boolean =
-        deviceId in presence.onlineDeviceIds.value
+    fun isDeviceOnline(device: PairedDeviceEntity): Boolean =
+        presence.isDeviceOnline(device)
+
+    fun isDeviceOnline(deviceId: String): Boolean {
+        val row = deviceRows.value.firstOrNull { it.deviceId == deviceId } ?: return false
+        return row.online
+    }
 
     fun openDeviceOrExplain(deviceId: String, open: (BrowseTarget) -> Unit) {
         viewModelScope.launch {
@@ -118,7 +126,7 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun openDeviceOrExplain(device: PairedDeviceEntity, open: (BrowseTarget) -> Unit) {
-        if (!isDeviceOnline(device.deviceId)) {
+        if (!isDeviceOnline(device)) {
             viewModelScope.launch {
                 _uiState.update {
                     it.copy(statusMessage = "Waking ${device.deviceName}…")
@@ -129,7 +137,7 @@ class DevicesViewModel : ViewModel() {
                 repeat(WAKE_POLL_ATTEMPTS) {
                     delay(WAKE_POLL_INTERVAL_MS)
                     runCatching { presence.refreshNow() }
-                    if (isDeviceOnline(device.deviceId)) {
+                    if (isDeviceOnline(device)) {
                         continueOpenDevice(device, open)
                         return@launch
                     }
@@ -153,7 +161,7 @@ class DevicesViewModel : ViewModel() {
         }
         viewModelScope.launch {
             runCatching {
-                val remote = OmniNodeServices.client.fetchIdentity(device.lastKnownIp, device.port)
+                val remote = OmniNodeServices.client.fetchPeerNodeState(device.lastKnownIp, device.port)
                 if (remote.pinRequired) {
                     pendingOpenAction = open
                     val name = remote.deviceName.ifBlank { device.deviceName }
@@ -185,7 +193,7 @@ class DevicesViewModel : ViewModel() {
                     error("You scanned this device's own QR code")
                 }
                 val verified = runCatching {
-                    OmniNodeServices.client.fetchIdentity(payload.host, payload.port)
+                    OmniNodeServices.client.fetchPeerNodeState(payload.host, payload.port)
                 }.getOrNull()
                 val pinRequired = verified?.pinRequired == true || payload.pinRequired
                 if (pinRequired) {
@@ -255,7 +263,7 @@ class DevicesViewModel : ViewModel() {
 
     private suspend fun completePairing(payload: PairingPayload, pin: String?) {
         val verified = runCatching {
-            OmniNodeServices.client.fetchIdentity(payload.host, payload.port)
+            OmniNodeServices.client.fetchPeerNodeState(payload.host, payload.port)
         }.getOrNull()
 
         val broadcasterId = verified?.deviceId ?: payload.deviceId
@@ -267,10 +275,13 @@ class DevicesViewModel : ViewModel() {
             deviceName = broadcasterName,
             lastKnownIp = payload.host,
             port = payload.port,
-            publicKeyHash = payload.publicKeyHash,
+            publicKeyHash = verified?.publicKeyHash?.ifBlank { payload.publicKeyHash } ?: payload.publicKeyHash,
             rootPath = broadcasterRoot
         )
-        repository.upsertReplacingAliases(broadcasterEntity)
+        repository.adoptFromPairing(broadcasterEntity)
+        verified?.let { state ->
+            repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId)
+        }
 
         val scannerHost = NetworkUtils.lanIpv4Addresses().sorted().firstOrNull()
             ?: error("No LAN IPv4 address available for reverse pairing")
@@ -340,11 +351,7 @@ class DevicesViewModel : ViewModel() {
                         )
                     }.isSuccess
                     repository.upsertReplacingAliases(updated)
-                    // Always fan-out via cluster merge (includes the target) so rosters
-                    // update instantly — and 0.0.2b+ targets adopt the name even if
-                    // /identity/rename is missing or the share server wasn't restarted.
-                    OmniNodeServices.pairingCoordinator.broadcastDeviceUpdate(updated)
-                    // Initiator is source of truth for Firestore deviceName (field patch only).
+                    // Remote rename API triggers self-metadata broadcast on the peer; no proxy fan-out.
                     runCatching {
                         GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
                     }
@@ -371,8 +378,36 @@ class DevicesViewModel : ViewModel() {
 
     fun removeDevice(deviceId: String) {
         viewModelScope.launch {
-            repository.remove(deviceId)
-            _uiState.update { it.copy(statusMessage = "Device removed") }
+            val device = repository.getDevice(deviceId)
+            if (device == null) {
+                _uiState.update {
+                    it.copy(errorMessage = "Device is no longer in the paired list")
+                }
+                return@launch
+            }
+            runCatching {
+                val removed = repository.removePermanently(deviceId)
+                check(removed) { "Could not remove device" }
+                DeviceSessionManager.clearSession(deviceId)
+                purgeDirectShareTarget(deviceId)
+                OmniNodeServices.pairingCoordinator.broadcastDeviceRemoval(device)
+                GoogleLinkCoordinator.publishRemovedPeer(deviceId)
+                presence.refreshNow()
+            }.fold(
+                onSuccess = {
+                    _uiState.update {
+                        it.copy(
+                            statusMessage = "${device.deviceName} removed — pair again to restore",
+                            errorMessage = null
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(errorMessage = error.message ?: "Remove failed")
+                    }
+                }
+            )
         }
     }
 
@@ -416,7 +451,7 @@ class DevicesViewModel : ViewModel() {
                 }
                 return@launch
             }
-            if (!isDeviceOnline(deviceId)) {
+            if (!isDeviceOnline(target)) {
                 _uiState.update {
                     it.copy(statusMessage = "Waking ${target.deviceName}…")
                 }

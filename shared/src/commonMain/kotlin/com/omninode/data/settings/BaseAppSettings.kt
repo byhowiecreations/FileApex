@@ -47,6 +47,8 @@ class BaseAppSettings(
         )
     )
     private val lastUpdateCheck = MutableStateFlow(store.getLong(KEY_LAST_UPDATE_CHECK, 0L))
+    private val skippedUpdateVersionFlow =
+        MutableStateFlow(store.getString(KEY_SKIPPED_UPDATE_VERSION, ""))
     private val serviceWatchdog = MutableStateFlow(store.getBoolean(KEY_SERVICE_WATCHDOG, true))
     private val desktopLayout = MutableStateFlow(
         DesktopLayoutMode.fromStorage(store.getString(KEY_DESKTOP_LAYOUT, DesktopLayoutMode.DEFAULT.name))
@@ -65,6 +67,7 @@ class BaseAppSettings(
     override val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit> = updateUnit.asStateFlow()
     override val checkForUpdatesIntervalAmount: StateFlow<Int> = updateAmount.asStateFlow()
     override val lastUpdateCheckEpochMs: StateFlow<Long> = lastUpdateCheck.asStateFlow()
+    override val skippedUpdateVersion: StateFlow<String> = skippedUpdateVersionFlow.asStateFlow()
     override val enableServiceWatchdog: StateFlow<Boolean> = serviceWatchdog.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
 
@@ -134,6 +137,12 @@ class BaseAppSettings(
         lastUpdateCheck.value = epochMs
     }
 
+    override fun setSkippedUpdateVersion(version: String) {
+        val cleaned = version.trim()
+        store.putString(KEY_SKIPPED_UPDATE_VERSION, cleaned)
+        skippedUpdateVersionFlow.value = cleaned
+    }
+
     override fun setEnableServiceWatchdog(enabled: Boolean) {
         store.putBoolean(KEY_SERVICE_WATCHDOG, enabled)
         serviceWatchdog.value = enabled
@@ -157,6 +166,7 @@ class BaseAppSettings(
         const val KEY_UPDATE_UNIT = "auto_update_unit"
         const val KEY_UPDATE_AMOUNT = "auto_update_amount"
         const val KEY_LAST_UPDATE_CHECK = "last_update_check_epoch_ms"
+        const val KEY_SKIPPED_UPDATE_VERSION = "skipped_update_version"
         const val KEY_SERVICE_WATCHDOG = "enable_service_watchdog"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
     }

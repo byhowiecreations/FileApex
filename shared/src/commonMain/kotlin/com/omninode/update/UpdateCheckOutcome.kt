@@ -9,6 +9,10 @@ sealed class UpdateCheckOutcome {
         val latestTag: String
     ) : UpdateCheckOutcome()
 
+    data class Available(
+        val offer: PendingUpdateOffer
+    ) : UpdateCheckOutcome()
+
     data class Installing(
         val remoteVersion: String,
         val releaseTitle: String?,

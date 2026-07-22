@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omninode.data.identity.LocalIdentity
+import com.omninode.update.currentAppVersionCode
+import com.omninode.update.currentAppVersionName
 import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.DevicesViewModel
@@ -388,7 +390,12 @@ fun DevicesScreen(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("Remove device?") },
-            text = { Text("Remove ${device.deviceName} from paired devices?") },
+            text = {
+                Text(
+                    "Remove ${device.deviceName} from paired devices? " +
+                        "It will stay gone until you pair again."
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -463,7 +470,7 @@ private fun PairedDevicesList(
         ) {
             DeviceCard(
                 title = "This device ($localDeviceName)",
-                subtitle = "Online · Local files",
+                subtitle = localDeviceSubtitle(),
                 icon = Icons.Filled.PhoneAndroid,
                 selected = selectedDeviceId == LocalIdentity.LOCAL_DEVICE_ID,
                 onClick = onOpenLocal,
@@ -522,6 +529,14 @@ private fun PairedDevicesList(
             }
         }
     }
+}
+
+private fun localDeviceSubtitle(): String {
+    return DeviceListRow.peerStatusSubtitle(
+        online = true,
+        appVersion = currentAppVersionName(),
+        appVersionCode = currentAppVersionCode()
+    ) + " · Local files"
 }
 
 @Composable

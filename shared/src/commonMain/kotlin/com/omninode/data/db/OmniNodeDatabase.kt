@@ -13,6 +13,17 @@ import androidx.room3.RoomDatabaseConstructor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
+@Entity(tableName = "removed_devices")
+@Serializable
+data class RemovedDeviceEntity(
+    @PrimaryKey val deviceId: String,
+    val publicKeyHash: String,
+    val lastKnownIp: String,
+    val port: Int,
+    /** Epoch millis when the user removed this node (UTC). */
+    val removedAtEpochMs: Long
+)
+
 @Entity(tableName = "paired_devices")
 @Serializable
 data class PairedDeviceEntity(
@@ -21,7 +32,13 @@ data class PairedDeviceEntity(
     val lastKnownIp: String,
     val port: Int,
     val publicKeyHash: String,
-    val rootPath: String
+    val rootPath: String,
+    val clientVersion: String = "",
+    val clientVersionCode: Int = 0,
+    val platform: String = "",
+    val supportedProtocolsJson: String = "[]",
+    /** Epoch millis when this peer was last observed online (UTC). */
+    val lastSeenEpochMs: Long = 0L
 )
 
 @Dao
@@ -44,11 +61,38 @@ interface DeviceDao {
     @Query("UPDATE paired_devices SET lastKnownIp = :ip, port = :port WHERE deviceId = :deviceId")
     suspend fun updateEndpoint(deviceId: String, ip: String, port: Int)
 
+    @Query(
+        "UPDATE paired_devices SET lastSeenEpochMs = :epochMs, lastKnownIp = :ip, port = :port " +
+            "WHERE deviceId = :deviceId"
+    )
+    suspend fun touchLastSeen(deviceId: String, ip: String, port: Int, epochMs: Long)
+
     @Query("DELETE FROM paired_devices WHERE deviceId = :deviceId")
     suspend fun deleteDevice(deviceId: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRemovedDevice(device: RemovedDeviceEntity)
+
+    @Query("SELECT COUNT(*) FROM removed_devices WHERE deviceId = :deviceId")
+    suspend fun countRemovedById(deviceId: String): Int
+
+    @Query(
+        "SELECT COUNT(*) FROM removed_devices " +
+            "WHERE publicKeyHash = :publicKeyHash AND publicKeyHash != ''"
+    )
+    suspend fun countRemovedByPublicKeyHash(publicKeyHash: String): Int
+
+    @Query("DELETE FROM removed_devices WHERE deviceId = :deviceId")
+    suspend fun clearRemovedDevice(deviceId: String)
+
+    @Query(
+        "DELETE FROM removed_devices " +
+            "WHERE publicKeyHash = :publicKeyHash AND publicKeyHash != ''"
+    )
+    suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String)
 }
 
-@Database(entities = [PairedDeviceEntity::class], version = 2)
+@Database(entities = [PairedDeviceEntity::class, RemovedDeviceEntity::class], version = 4)
 @ConstructedBy(OmniNodeDatabaseConstructor::class)
 abstract class OmniNodeDatabase : RoomDatabase() {
     abstract fun deviceDao(): DeviceDao

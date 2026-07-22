@@ -49,9 +49,12 @@ import kotlinx.coroutines.delay
 @Composable
 fun ShareSendScreen(
     payload: IncomingSharePayload,
+    directTargetDeviceId: String? = null,
     onFinished: () -> Unit,
-    viewModel: ShareSendViewModel = viewModel(key = payload.sessionId) {
-        ShareSendViewModel(payload)
+    viewModel: ShareSendViewModel = viewModel(
+        key = "${payload.sessionId}:${directTargetDeviceId.orEmpty()}"
+    ) {
+        ShareSendViewModel(payload, directTargetDeviceId)
     }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -139,6 +142,31 @@ fun ShareSendScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             when {
+                state.isDirectSend -> {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Text(
+                                text = state.statusMessage ?: "Sending…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                            state.errorMessage?.let { error ->
+                                Text(
+                                    text = error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
                 state.isPreparing -> {
                     Box(
                         modifier = Modifier
@@ -251,7 +279,8 @@ fun ShareSendScreen(
 
             Button(
                 onClick = viewModel::send,
-                enabled = state.selectedDeviceIds.isNotEmpty() &&
+                enabled = !state.isDirectSend &&
+                    state.selectedDeviceIds.isNotEmpty() &&
                     !state.isSending &&
                     !state.isPreparing,
                 modifier = Modifier.fillMaxWidth()

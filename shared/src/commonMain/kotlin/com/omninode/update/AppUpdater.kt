@@ -27,6 +27,44 @@ object AppUpdater {
     private val client get() = OmniNodeServices.httpClient
 
     private val checkMutex = Mutex()
+    private val installMutex = Mutex()
+
+    /**
+     * Fetches the latest release and returns [UpdateCheckOutcome.Available] when newer than local.
+     */
+    suspend fun probeForUpdates(): UpdateCheckOutcome {
+        checkMutex.withLock {
+            val localVersion = currentAppVersionName()
+            println("AppUpdater: checking for updates (local=$localVersion)")
+            val release = fetchLatestRelease()
+            val remoteTag = release.tagName.trim()
+            if (!isRemoteVersionNewer(localVersion, release.tagName)) {
+                println(
+                    "AppUpdater: already current " +
+                        "(local $localVersion, latest $remoteTag)"
+                )
+                return UpdateCheckOutcome.AlreadyCurrent(
+                    localVersion = localVersion,
+                    latestTag = remoteTag
+                )
+            }
+            val asset = PlatformUpdateInstaller.selectAsset(release.assets)
+                ?: error(
+                    "No platform asset found in release ${release.tagName} " +
+                        "(assets=${release.assets.map { it.name }})"
+                )
+            return UpdateCheckOutcome.Available(
+                offer = PendingUpdateOffer(
+                    remoteVersion = remoteTag,
+                    releaseTitle = release.name?.trim()?.takeIf { it.isNotEmpty() },
+                    releaseNotes = release.body?.trim()?.takeIf { it.isNotEmpty() },
+                    assetName = asset.name,
+                    assetDownloadUrl = asset.browserDownloadUrl,
+                    assetSizeBytes = asset.size
+                )
+            )
+        }
+    }
 
     /**
      * Fetches the latest release; if newer than the running app, downloads and installs it.
@@ -35,45 +73,42 @@ object AppUpdater {
     suspend fun checkForUpdatesAndInstall(
         onNewerRelease: (UpdateCheckOutcome.Installing) -> Unit = {}
     ): UpdateCheckOutcome {
-        checkMutex.withLock {
-            val localVersion = currentAppVersionName()
-            println("AppUpdater: checking for updates (local=$localVersion)")
-            val release = fetchLatestRelease()
-            if (!isRemoteVersionNewer(localVersion, release.tagName)) {
-                println(
-                    "AppUpdater: already current " +
-                        "(local $localVersion, latest ${release.tagName.trim()})"
+        return when (val outcome = probeForUpdates()) {
+            is UpdateCheckOutcome.AlreadyCurrent -> outcome
+            is UpdateCheckOutcome.Available -> {
+                onNewerRelease(
+                    UpdateCheckOutcome.Installing(
+                        remoteVersion = outcome.offer.remoteVersion,
+                        releaseTitle = outcome.offer.releaseTitle,
+                        releaseNotes = outcome.offer.releaseNotes
+                    )
                 )
-                return UpdateCheckOutcome.AlreadyCurrent(
-                    localVersion = localVersion,
-                    latestTag = release.tagName.trim()
-                )
+                downloadAndInstall(outcome.offer)
             }
-            val asset = PlatformUpdateInstaller.selectAsset(release.assets)
-                ?: error(
-                    "No platform asset found in release ${release.tagName} " +
-                        "(assets=${release.assets.map { it.name }})"
-                )
-            val installing = UpdateCheckOutcome.Installing(
-                remoteVersion = release.tagName.trim(),
-                releaseTitle = release.name?.trim()?.takeIf { it.isNotEmpty() },
-                releaseNotes = release.body?.trim()?.takeIf { it.isNotEmpty() }
-            )
-            onNewerRelease(installing)
+            is UpdateCheckOutcome.Installing -> outcome
+        }
+    }
+
+    suspend fun downloadAndInstall(offer: PendingUpdateOffer): UpdateCheckOutcome.Installing {
+        installMutex.withLock {
             println(
-                "AppUpdater: downloading ${asset.name} " +
-                    "(${asset.size} bytes) for ${release.tagName}"
+                "AppUpdater: downloading ${offer.assetName} " +
+                    "(${offer.assetSizeBytes} bytes) for ${offer.remoteVersion}"
             )
             val cacheDir = PlatformUpdateInstaller.updateCacheDirectory()
             SystemFileSystem.createDirectories(Path(cacheDir))
-            val targetPath = Path("$cacheDir/${asset.name}")
-            downloadToFile(asset.browserDownloadUrl, targetPath)
+            val targetPath = Path("$cacheDir/${offer.assetName}")
+            downloadToFile(offer.assetDownloadUrl, targetPath)
             println("AppUpdater: download complete → $targetPath; installing…")
             PlatformUpdateInstaller.installAndRelaunch(
                 localFilePath = targetPath.toString(),
-                remoteVersion = release.tagName
+                remoteVersion = offer.remoteVersion
             )
-            return installing
+            return UpdateCheckOutcome.Installing(
+                remoteVersion = offer.remoteVersion,
+                releaseTitle = offer.offerTitleOrNull(),
+                releaseNotes = offer.releaseNotes
+            )
         }
     }
 
@@ -116,4 +151,7 @@ object AppUpdater {
             }
         }
     }
+
+    private fun PendingUpdateOffer.offerTitleOrNull(): String? =
+        releaseTitle?.trim()?.takeIf { it.isNotEmpty() }
 }

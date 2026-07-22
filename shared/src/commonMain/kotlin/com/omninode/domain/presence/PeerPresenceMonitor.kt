@@ -2,9 +2,11 @@ package com.omninode.domain.presence
 
 import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.device.DeviceRepository
-import com.omninode.domain.pairing.ClusterSyncRequest
-import com.omninode.domain.pairing.PairingCoordinator
+import com.omninode.domain.peer.PeerNodeState
+import com.omninode.domain.transfer.MultiCopyDeviceOption
 import com.omninode.network.OmniNodeClient
+import com.omninode.network.sendWakeBroadcast
+import com.omninode.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,24 +24,32 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Periodically probes paired peers and pulls their device rosters so
- * online/offline status and new cluster members appear without app restart.
+ * Listens for direct peer heartbeats/identity payloads and tracks reachability.
+ *
+ * This monitor never ingests gossip rosters — only direct [PeerNodeState] from each peer endpoint.
  */
 class PeerPresenceMonitor(
     private val repository: DeviceRepository,
-    private val client: OmniNodeClient,
-    private val pairingCoordinator: PairingCoordinator,
-    private val selfDeviceProvider: () -> PairedDeviceEntity
+    private val client: OmniNodeClient
 ) {
     private val mutex = Mutex()
+    private val reachabilityLock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pollJob: Job? = null
+
+    private val lastReachableEpochById = mutableMapOf<String, Long>()
+    private val _reachabilityEpochMs = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    val reachabilityEpochMs: StateFlow<Map<String, Long>> = _reachabilityEpochMs.asStateFlow()
 
     private val _onlineDeviceIds = MutableStateFlow<Set<String>>(emptySet())
     val onlineDeviceIds: StateFlow<Set<String>> = _onlineDeviceIds.asStateFlow()
 
-    private val _peerAppVersions = MutableStateFlow<Map<String, String>>(emptyMap())
-    val peerAppVersions: StateFlow<Map<String, String>> = _peerAppVersions.asStateFlow()
+    fun isDeviceOnline(device: PairedDeviceEntity): Boolean {
+        val probeEpoch = _reachabilityEpochMs.value[device.deviceId] ?: 0L
+        val lastSeen = maxOf(probeEpoch, device.lastSeenEpochMs)
+        return TimeUtils.isWithinWindow(lastSeen, OFFLINE_GRACE_MS)
+    }
 
     fun start() {
         if (pollJob?.isActive == true) return
@@ -63,73 +73,116 @@ class PeerPresenceMonitor(
         pollOnce()
     }
 
+    /**
+     * Pre-transfer wake/ping: UDP wake, health probe, identity ingest, and reachability refresh.
+     */
+    suspend fun primePeersForTransfer(targets: List<MultiCopyDeviceOption>) {
+        if (targets.isEmpty()) return
+        runCatching { sendWakeBroadcast() }
+        for (target in targets.filter { !it.isLocal }) {
+            val peer = mutex.withLock { repository.getDevice(target.deviceId) } ?: continue
+            primePeer(peer)
+        }
+        val refreshedPeers = mutex.withLock { repository.listDevices() }
+        publishStableOnlineIds(refreshedPeers)
+    }
+
+    suspend fun primePeer(peer: PairedDeviceEntity): Boolean {
+        val host = peer.lastKnownIp.trim()
+        if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
+            return false
+        }
+        repeat(PRIME_ATTEMPTS) { attempt ->
+            if (client.pingHealth(host, peer.port)) {
+                markReachable(peer.deviceId)
+                val state = runCatching { client.fetchPeerNodeState(host, peer.port) }.getOrNull()
+                if (state != null) {
+                    mutex.withLock {
+                        repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId)
+                    }
+                    markReachable(state.deviceId.trim())
+                    return true
+                }
+                mutex.withLock {
+                    repository.touchPeerLastSeen(peer.deviceId, host, peer.port)
+                }
+                return true
+            }
+            if (attempt < PRIME_ATTEMPTS - 1) {
+                delay(PRIME_RETRY_MS)
+            }
+        }
+        return isDeviceOnline(peer)
+    }
+
     private suspend fun pollOnce() {
         val peers = mutex.withLock { repository.listDevices() }
         if (peers.isEmpty()) {
-            mutex.withLock { _onlineDeviceIds.value = emptySet() }
+            publishStableOnlineIds(emptyList())
             return
         }
 
-        val self = selfDeviceProvider()
         val probeResults = coroutineScope {
             peers.map { peer ->
-                async { probePeer(peer, self) }
+                async { probePeer(peer) }
             }.awaitAll()
         }
 
-        val online = linkedSetOf<String>()
-        val versionUpdates = mutableMapOf<String, String>()
         for (result in probeResults) {
             if (result == null) continue
-            online += result.peer.deviceId
-            result.appVersion?.let { version ->
-                versionUpdates[result.peer.deviceId] = version
-            }
-            result.refreshedPeer?.let { refreshed ->
+            markReachable(result.rosterDeviceId, result.liveDeviceId)
+            if (result.nodeState != null) {
                 mutex.withLock {
-                    repository.upsertReplacingAliases(refreshed)
+                    repository.applyPeerNodeState(
+                        result.nodeState,
+                        rosterDeviceId = result.rosterDeviceId
+                    )
                 }
-            }
-            result.mergeRequest?.let { request ->
-                runCatching {
-                    pairingCoordinator.mergeIncoming(request)
-                }.onFailure { error ->
-                    println(
-                        "PeerPresenceMonitor: roster pull failed for " +
-                            "${result.peer.deviceName}: ${error.message}"
+            } else {
+                mutex.withLock {
+                    repository.touchPeerLastSeen(
+                        deviceId = result.rosterDeviceId,
+                        ip = result.host,
+                        port = result.port
                     )
                 }
             }
         }
 
-        mutex.withLock {
-            runCatching { repository.reconcileDuplicateEndpoints() }
-            if (_onlineDeviceIds.value != online) {
-                _onlineDeviceIds.value = online
+        val refreshedPeers = mutex.withLock { repository.listDevices() }
+        publishStableOnlineIds(refreshedPeers)
+    }
+
+    private suspend fun markReachable(vararg deviceIds: String, epochMs: Long = TimeUtils.now()) {
+        reachabilityLock.withLock {
+            var changed = false
+            for (id in deviceIds) {
+                val trimmed = id.trim()
+                if (trimmed.isEmpty()) continue
+                val previous = lastReachableEpochById[trimmed] ?: 0L
+                val next = epochMs.coerceAtLeast(previous)
+                if (next > previous) {
+                    lastReachableEpochById[trimmed] = next
+                    changed = true
+                }
             }
-            if (versionUpdates.isNotEmpty()) {
-                val merged = _peerAppVersions.value.toMutableMap()
-                var changed = false
-                for ((deviceId, version) in versionUpdates) {
-                    if (merged[deviceId] != version) {
-                        merged[deviceId] = version
-                        changed = true
-                    }
-                }
-                if (changed) {
-                    _peerAppVersions.value = merged
-                }
+            if (changed) {
+                _reachabilityEpochMs.value = lastReachableEpochById.toMap()
             }
         }
     }
 
-    private suspend fun probePeer(
-        peer: PairedDeviceEntity,
-        self: PairedDeviceEntity
-    ): PeerProbeResult? {
+    private suspend fun publishStableOnlineIds(devices: List<PairedDeviceEntity>) {
+        val nextOnline = devices.filter { isDeviceOnline(it) }.map { it.deviceId }.toSet()
+        reachabilityLock.withLock {
+            if (_onlineDeviceIds.value != nextOnline) {
+                _onlineDeviceIds.value = nextOnline
+            }
+        }
+    }
+
+    private suspend fun probePeer(peer: PairedDeviceEntity): PeerProbeResult? {
         val host = peer.lastKnownIp.trim()
-        // Empty/loopback hosts can resolve oddly (e.g. probe this device) and
-        // produce fake "Online · :8080" rows — skip until a real LAN IP exists.
         if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
             return null
         }
@@ -137,45 +190,46 @@ class PeerPresenceMonitor(
             return null
         }
 
-        val identityResult = runCatching { client.fetchIdentity(host, peer.port) }.getOrNull()
-            ?: return PeerProbeResult(peer = peer, refreshedPeer = null, mergeRequest = null, appVersion = null)
-
-        if (identityResult.deviceId != peer.deviceId) {
-            return PeerProbeResult(peer = peer, refreshedPeer = null, mergeRequest = null, appVersion = null)
-        }
-
-        val refreshedPeer = peer.copy(
-            deviceName = identityResult.deviceName.ifBlank { peer.deviceName },
-            rootPath = identityResult.rootPath.ifBlank { peer.rootPath },
-            port = identityResult.port.takeIf { it > 0 } ?: peer.port
-        ).takeIf { it != peer }
-
-        val appVersion = identityResult.appVersion.trim().takeIf { it.isNotEmpty() }
-
-        val mergeRequest = runCatching {
-            val remoteRoster = client.listPairedDevices(host, peer.port)
-            ClusterSyncRequest(
-                introducer = peer,
-                devices = remoteRoster + self
+        val rawState = runCatching { client.fetchPeerNodeState(host, peer.port) }.getOrNull()
+            ?: return PeerProbeResult(
+                rosterDeviceId = peer.deviceId,
+                liveDeviceId = peer.deviceId,
+                deviceName = peer.deviceName,
+                host = host,
+                port = peer.port,
+                nodeState = null
             )
-        }.getOrNull()
+
+        val nodeState = rawState.copy(
+            lastSeenTimestamp = TimeUtils.now().coerceAtLeast(rawState.lastSeenTimestamp)
+        )
+        val liveHost = nodeState.resolvedIpAddress.ifBlank { host }
+        val livePort = nodeState.port.takeIf { it > 0 } ?: peer.port
 
         return PeerProbeResult(
-            peer = peer,
-            refreshedPeer = refreshedPeer,
-            mergeRequest = mergeRequest,
-            appVersion = appVersion
+            rosterDeviceId = peer.deviceId,
+            liveDeviceId = nodeState.deviceId,
+            deviceName = nodeState.deviceName.ifBlank { peer.deviceName },
+            host = liveHost,
+            port = livePort,
+            nodeState = nodeState
         )
     }
 
     private data class PeerProbeResult(
-        val peer: PairedDeviceEntity,
-        val refreshedPeer: PairedDeviceEntity?,
-        val mergeRequest: ClusterSyncRequest?,
-        val appVersion: String?
+        val rosterDeviceId: String,
+        val liveDeviceId: String,
+        val deviceName: String,
+        val host: String,
+        val port: Int,
+        val nodeState: PeerNodeState?
     )
 
     companion object {
         private const val POLL_INTERVAL_MS = 4_000L
+        /** UI offline grace — roster rows are retained until explicit removal. */
+        const val OFFLINE_GRACE_MS = 120_000L
+        private const val PRIME_ATTEMPTS = 4
+        private const val PRIME_RETRY_MS = 750L
     }
 }

@@ -7,6 +7,7 @@ import com.omninode.domain.share.IncomingShareFile
 import com.omninode.domain.share.IncomingSharePayload
 import com.omninode.domain.transfer.MultiCopyDeviceOption
 import com.omninode.domain.transfer.MultiCopySource
+import com.omninode.platform.recordDirectShareTargetUsed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,29 +24,36 @@ data class ShareSendUiState(
     val isSending: Boolean = false,
     val statusMessage: String? = null,
     val errorMessage: String? = null,
-    val sendCompleted: Boolean = false
+    val sendCompleted: Boolean = false,
+    val isDirectSend: Boolean = false
 )
 
 /**
- * Android system Share sheet → device picker.
+ * Android system Share sheet → device picker or one-tap Direct Share shortcut send.
  * All outbound work goes through [com.omninode.domain.transfer.TransferManager].
  */
 class ShareSendViewModel(
-    private val payload: IncomingSharePayload
+    private val payload: IncomingSharePayload,
+    private val directTargetDeviceId: String? = null
 ) : ViewModel() {
     private val transferManager = OmniNodeServices.transferManager
-    private val identity get() = OmniNodeServices.localIdentity
 
     private val _uiState = MutableStateFlow(
         ShareSendUiState(
             fileNames = payload.files.map { it.fileName },
-            isPreparing = true
+            isPreparing = true,
+            isDirectSend = !directTargetDeviceId.isNullOrBlank()
         )
     )
     val uiState: StateFlow<ShareSendUiState> = _uiState.asStateFlow()
 
     init {
-        prepareDestinations()
+        val targetId = directTargetDeviceId?.trim().orEmpty()
+        if (targetId.isNotEmpty()) {
+            sendDirectToDevice(targetId)
+        } else {
+            prepareDestinations()
+        }
     }
 
     fun toggleDevice(deviceId: String) {
@@ -65,34 +73,7 @@ class ShareSendViewModel(
         val selected = state.options.filter { it.deviceId in state.selectedDeviceIds }
         if (selected.isEmpty()) return
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(isSending = true, errorMessage = null, statusMessage = "Sending…")
-            }
-            runCatching {
-                transferManager.awaitReady()
-                val sources = payload.files.map { it.toSource() }
-                transferManager.sendToDevices(sources, selected)
-            }.fold(
-                onSuccess = { batch ->
-                    cleanupStaging()
-                    _uiState.update {
-                        it.copy(
-                            isSending = false,
-                            sendCompleted = !batch.allFailed,
-                            statusMessage = batch.summaryMessage,
-                            errorMessage = batch.summaryMessage.takeIf { batch.allFailed }
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isSending = false,
-                            errorMessage = error.message ?: "Send failed"
-                        )
-                    }
-                }
-            )
+            runSend(selected)
         }
     }
 
@@ -107,21 +88,18 @@ class ShareSendViewModel(
             }
             runCatching {
                 transferManager.awaitReady()
-                transferManager.buildInAppDeviceOptions(sourceDeviceId = identity.deviceId)
+                transferManager.buildShareSheetDeviceOptions()
             }.fold(
                 onSuccess = { options ->
-                    val remotes = options.filter { !it.isLocal }
                     _uiState.update {
                         it.copy(
                             isPreparing = false,
                             options = options,
                             statusMessage = when {
-                                remotes.isEmpty() && options.any { it.isLocal } ->
-                                    "No online paired devices. You can still save to This device."
-                                remotes.isEmpty() ->
+                                options.isEmpty() ->
                                     "No online destination devices. Pair a device in OmniNode first."
                                 else ->
-                                    "${payload.files.size} file(s) · ${remotes.size} online device(s)"
+                                    "${payload.files.size} file(s) · ${options.size} online device(s)"
                             }
                         )
                     }
@@ -136,6 +114,73 @@ class ShareSendViewModel(
                 }
             )
         }
+    }
+
+    private fun sendDirectToDevice(deviceId: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isPreparing = true,
+                    isSending = true,
+                    errorMessage = null,
+                    statusMessage = "Sending…"
+                )
+            }
+            runCatching {
+                transferManager.awaitReady()
+                transferManager.resolveRemoteDeviceOptions(listOf(deviceId))
+            }.fold(
+                onSuccess = { selected -> runSend(selected, recordDirectShareOnSuccess = deviceId) },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isPreparing = false,
+                            isSending = false,
+                            errorMessage = error.message ?: "Send failed"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    private suspend fun runSend(
+        selected: List<MultiCopyDeviceOption>,
+        recordDirectShareOnSuccess: String? = null
+    ) {
+        _uiState.update {
+            it.copy(isSending = true, errorMessage = null, statusMessage = "Sending…")
+        }
+        runCatching {
+            transferManager.awaitReady()
+            val sources = payload.files.map { it.toSource() }
+            transferManager.sendToDevices(sources, selected)
+        }.fold(
+            onSuccess = { batch ->
+                cleanupStaging()
+                if (!batch.allFailed) {
+                    recordDirectShareOnSuccess?.let { recordDirectShareTargetUsed(it) }
+                }
+                _uiState.update {
+                    it.copy(
+                        isPreparing = false,
+                        isSending = false,
+                        sendCompleted = !batch.allFailed,
+                        statusMessage = batch.summaryMessage,
+                        errorMessage = batch.summaryMessage.takeIf { batch.allFailed }
+                    )
+                }
+            },
+            onFailure = { error ->
+                _uiState.update {
+                    it.copy(
+                        isPreparing = false,
+                        isSending = false,
+                        errorMessage = error.message ?: "Send failed"
+                    )
+                }
+            }
+        )
     }
 
     private fun IncomingShareFile.toSource(): MultiCopySource.Local =

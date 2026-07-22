@@ -38,6 +38,7 @@ import com.omninode.platform.usesDesktopFileSelection
 import com.omninode.presentation.BrowseTarget
 import com.omninode.presentation.DevicesViewModel
 import com.omninode.session.DeviceSessionManager
+import com.omninode.update.AppUpdateCoordinator
 import com.omninode.ui.DevicesScreen
 import com.omninode.ui.FileExplorerScreen
 import com.omninode.ui.GenerateQrScreen
@@ -46,6 +47,7 @@ import com.omninode.ui.SettingsScreen
 import com.omninode.ui.SettingsScreenLayoutMode
 import com.omninode.ui.ShareSendScreen
 import com.omninode.ui.StoragePermissionScreen
+import com.omninode.ui.UpdateAvailableSheet
 import com.omninode.ui.adaptive.AdaptiveWideHome
 import com.omninode.ui.adaptive.CompactPrimaryShell
 import com.omninode.ui.adaptive.widthSizeClassFor
@@ -80,7 +82,10 @@ fun App(
     sharePrepareError: String? = null,
     onIncomingShareConsumed: () -> Unit = {},
     onShareFlowFinished: () -> Unit = {},
-    onDismissShareError: () -> Unit = {}
+    onDismissShareError: () -> Unit = {},
+    directShareDeviceId: String? = null,
+    requestShowUpdateSheet: Boolean = false,
+    onUpdateSheetRequestConsumed: () -> Unit = {}
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
@@ -99,12 +104,22 @@ fun App(
         wideHomeTab = HomeTab.Devices
     }
 
-    LaunchedEffect(incomingShare, setupComplete) {
+    LaunchedEffect(incomingShare, setupComplete, directShareDeviceId) {
         val payload = incomingShare ?: return@LaunchedEffect
         if (!setupComplete) return@LaunchedEffect
-        route = AppRoute.ShareSend(payload)
+        route = AppRoute.ShareSend(payload, directShareDeviceId)
         onIncomingShareConsumed()
     }
+
+    LaunchedEffect(requestShowUpdateSheet) {
+        if (requestShowUpdateSheet) {
+            AppUpdateCoordinator.requestShowUpdateSheet()
+            onUpdateSheetRequestConsumed()
+        }
+    }
+
+    val pendingUpdate by AppUpdateCoordinator.pendingUpdate.collectAsState()
+    val showUpdateSheet by AppUpdateCoordinator.showUpdateSheet.collectAsState()
 
     val onNavigateHome: () -> Unit = {
         route = AppRoute.Devices
@@ -190,6 +205,7 @@ fun App(
                         AppRoute.GenerateQr -> GenerateQrScreen(onBack = onNavigateHome)
                         is AppRoute.ShareSend -> ShareSendScreen(
                             payload = overlay.payload,
+                            directTargetDeviceId = overlay.directTargetDeviceId,
                             onFinished = finishShareFlow
                         )
                         AppRoute.ScanQr -> {
@@ -308,6 +324,11 @@ fun App(
         } else {
             onStartShareServer()
         }
+    }
+
+    val offer = pendingUpdate
+    if (showUpdateSheet && offer != null) {
+        UpdateAvailableSheet(offer = offer)
     }
 }
 

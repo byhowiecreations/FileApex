@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.omninode.data.db.MIGRATION_2_3
+import com.omninode.data.db.MIGRATION_3_4
 import kotlinx.coroutines.Dispatchers
 
 actual class RoomDbBuilder(private val context: Context) {
@@ -15,6 +17,6 @@ actual class RoomDbBuilder(private val context: Context) {
         )
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
     }
 }

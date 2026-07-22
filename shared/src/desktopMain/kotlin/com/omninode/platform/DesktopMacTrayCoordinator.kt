@@ -141,13 +141,14 @@ object DesktopMacTrayCoordinator {
         observeJob = scope.launch {
             combine(
                 OmniNodeServices.deviceRepository.observeDevices(),
+                OmniNodeServices.presenceMonitor.reachabilityEpochMs,
                 OmniNodeServices.presenceMonitor.onlineDeviceIds
-            ) { devices, onlineIds ->
+            ) { devices, _, _ ->
                 devices.map { device ->
                     TrayDeviceSnapshot(
                         id = device.deviceId,
                         name = device.deviceName,
-                        isOnline = device.deviceId in onlineIds
+                        isOnline = OmniNodeServices.presenceMonitor.isDeviceOnline(device)
                     )
                 }
             }.collect { snapshots ->
@@ -158,25 +159,18 @@ object DesktopMacTrayCoordinator {
 
     private suspend fun pushDeviceSnapshot() {
         val devices = OmniNodeServices.deviceRepository.listDevices()
-        val onlineIds = OmniNodeServices.presenceMonitor.onlineDeviceIds.value
         val snapshots = devices.map { device ->
             TrayDeviceSnapshot(
                 id = device.deviceId,
                 name = device.deviceName,
-                isOnline = device.deviceId in onlineIds
+                isOnline = OmniNodeServices.presenceMonitor.isDeviceOnline(device)
             )
         }
         DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
     }
 
     private fun updatePresencePolling() {
-        val mainVisible = mainWindow?.isVisible == true
-        val shouldPoll = popoverVisible || dropBoxVisible || mainVisible
-        if (shouldPoll) {
-            OmniNodeServices.presenceMonitor.start()
-        } else {
-            OmniNodeServices.presenceMonitor.stop()
-        }
+        OmniNodeServices.presenceMonitor.start()
     }
 
     private fun handleSend(deviceIdsJson: String, filePathsJson: String) {

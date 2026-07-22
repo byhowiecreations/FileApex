@@ -7,6 +7,7 @@ import com.omninode.data.identity.initAndroidLocalIdentity
 import com.omninode.data.settings.initAndroidAppSettings
 import com.omninode.di.OmniNodeServices
 import com.omninode.platform.initAndroidBriefToast
+import com.omninode.platform.initAndroidDirectShareShortcuts
 import com.omninode.platform.initAndroidTransferReceiveNotifier
 import com.omninode.platform.initAndroidUpdateAvailableNotifier
 import com.omninode.platform.ServiceWatchdogScheduler
@@ -21,6 +22,7 @@ class OmniNodeApplication : Application() {
         initAndroidBriefToast(this)
         initAndroidUpdateAvailableNotifier(this)
         OmniNodeServices.init(createOmniNodeDatabase(this))
+        initAndroidDirectShareShortcuts(this)
         ServiceWatchdogScheduler.syncWatchdogEnabledFromSettings(this)
         AppUpdateCoordinator.onAppLaunch()
         GoogleLinkCoordinator.onAppLaunch()

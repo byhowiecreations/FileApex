@@ -5,6 +5,8 @@ import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.loadLocalIdentity
 import com.omninode.di.OmniNodeServices
+import com.omninode.domain.pairing.RemovedDeviceRecord
+import com.omninode.util.DeviceIdentityMarkers
 import com.omninode.util.NetworkUtils
 import com.omninode.util.TimestampDiagnostics
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +49,10 @@ object GoogleLinkCoordinator {
 
     @Volatile
     private var cloudOpsActive: Boolean = false
+
+    /** Last cloud registry ids seen — used to propagate explicit cloud removals locally. */
+    @Volatile
+    private var lastCloudRegistryIds: Set<String> = emptySet()
 
     /** Last presence successfully published (network fields only; ignores updatedAt). */
     @Volatile
@@ -109,6 +115,18 @@ object GoogleLinkCoordinator {
         }
     }
 
+    suspend fun publishRemovedPeer(deviceId: String) {
+        if (!OmniNodeServices.settings.googleAccountLinkEnabled.value) return
+        if (!cloudOpsActive) return
+        val uid = OmniNodeServices.settings.googleAccountUid.value
+        if (uid.isBlank()) return
+        val cloudId = resolveCloudDeviceId(deviceId)
+        runCatching { CloudAuthBackend.deleteDevice(uid, cloudId) }
+            .onFailure { error ->
+                println("GoogleLinkCoordinator: cloud remove failed — ${error.message}")
+            }
+    }
+
     /**
      * Explicit user rename → Firestore `deviceName` field patch only.
      * [deviceId] may be [LocalIdentity.LOCAL_DEVICE_ID] or a peer cloud/local device id.
@@ -156,6 +174,7 @@ object GoogleLinkCoordinator {
         sessionEpoch += 1L
         cloudOpsActive = false
         lastPublishedPresence = null
+        lastCloudRegistryIds = emptySet()
 
         val previousHeartbeat = heartbeatJob
         heartbeatJob = null
@@ -262,7 +281,7 @@ object GoogleLinkCoordinator {
             deviceId = identity.deviceId,
             lastKnownIp = host,
             port = identity.sharePort,
-            publicKeyHash = deviceFingerprint(identity.deviceId),
+            publicKeyHash = DeviceIdentityMarkers.fingerprint(identity.deviceId),
             rootPath = identity.rootPath,
             platform = currentPlatformLabel(),
             updatedAtEpochMs = TimestampDiagnostics.mutatingNow(
@@ -286,6 +305,30 @@ object GoogleLinkCoordinator {
         applyMutex.withLock {
             if (!isSessionLive(epoch)) return
             val repo = OmniNodeServices.deviceRepositoryOrNull() ?: return
+            val remoteIds = records.map { it.deviceId }.filter { it.isNotBlank() }.toSet()
+            if (lastCloudRegistryIds.isNotEmpty()) {
+                val removedFromCloud = lastCloudRegistryIds - remoteIds - selfId
+                for (vanishedId in removedFromCloud) {
+                    if (!isSessionLive(epoch)) return
+                    val local = repo.getDevice(vanishedId)
+                    runCatching {
+                        repo.applyRemoteRemoval(
+                            RemovedDeviceRecord(
+                                deviceId = vanishedId,
+                                publicKeyHash = local?.publicKeyHash.orEmpty(),
+                                lastKnownIp = local?.lastKnownIp.orEmpty(),
+                                port = local?.port ?: 0
+                            )
+                        )
+                    }.onFailure { error ->
+                        println(
+                            "GoogleLinkCoordinator: cloud removal apply failed for " +
+                                "$vanishedId — ${error.message}"
+                        )
+                    }
+                }
+            }
+            lastCloudRegistryIds = remoteIds
             // Apply peers with usable LAN endpoints first so blank-IP stubs merge into them
             // instead of temporarily winning and deleting the good row.
             records.asSequence()
@@ -327,17 +370,6 @@ object GoogleLinkCoordinator {
             return loadLocalIdentity().deviceId
         }
         return deviceId
-    }
-
-    private fun deviceFingerprint(deviceId: String): String {
-        // Identity marker only — not a signing key; never used for file content.
-        var hash = 0xcbf29ce484222325UL
-        val prime = 0x100000001b3UL
-        for (ch in deviceId) {
-            hash = hash xor ch.code.toULong()
-            hash *= prime
-        }
-        return hash.toString(16).padStart(16, '0')
     }
 
     private fun CloudDevicePresence.sameNetworkFieldsAs(other: CloudDevicePresence): Boolean =

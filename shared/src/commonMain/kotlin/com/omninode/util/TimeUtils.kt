@@ -44,6 +44,12 @@ object TimeUtils {
         zoneId: String = DEFAULT_ZONE_ID
     ): String = formatEpochMsToLocal(epochMs, zoneId)
 
+    /** User-facing label for offline peer last-seen timestamps (pre-localized). */
+    fun formatLastSeenLabel(epochMs: Long, zoneId: String = DEFAULT_ZONE_ID): String? {
+        if (epochMs <= 0L) return null
+        return "Last seen ${formatUtcToLocal(epochMs, zoneId)}"
+    }
+
     const val DEFAULT_ZONE_ID: String = "America/New_York"
 }
 

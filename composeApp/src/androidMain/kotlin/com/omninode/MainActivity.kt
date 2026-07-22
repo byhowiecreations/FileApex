@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity() {
     private var scannedPayload by mutableStateOf<PairingPayload?>(null)
 
     private var incomingShare by mutableStateOf<IncomingSharePayload?>(null)
+    private var directShareDeviceId by mutableStateOf<String?>(null)
+    private var requestShowUpdateSheet by mutableStateOf(false)
     private var isPreparingShare by mutableStateOf(false)
     private var sharePrepareError by mutableStateOf<String?>(null)
 
@@ -138,7 +140,10 @@ class MainActivity : ComponentActivity() {
                 sharePrepareError = sharePrepareError,
                 onIncomingShareConsumed = { incomingShare = null },
                 onShareFlowFinished = ::onShareFlowFinished,
-                onDismissShareError = ::onDismissShareError
+                onDismissShareError = ::onDismissShareError,
+                directShareDeviceId = directShareDeviceId,
+                requestShowUpdateSheet = requestShowUpdateSheet,
+                onUpdateSheetRequestConsumed = { requestShowUpdateSheet = false }
             )
         }
     }
@@ -164,9 +169,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
-        if (!AndroidShareIntake.isShareAction(intent)) return
+        if (intent?.getBooleanExtra(
+                com.omninode.platform.UpdateNotificationReceiver.EXTRA_SHOW_UPDATE_SHEET,
+                false
+            ) == true
+        ) {
+            requestShowUpdateSheet = true
+        }
 
-        val uris = AndroidShareIntake.extractStreamUris(intent)
+        if (!AndroidShareIntake.isShareAction(intent)) return
+        val shareIntent = intent ?: return
+
+        val targetDeviceId = shareIntent.getStringExtra(
+            com.omninode.platform.DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID
+        )?.trim()?.takeIf { it.isNotEmpty() }
+
+        val uris = AndroidShareIntake.extractStreamUris(shareIntent)
         if (uris.isEmpty()) {
             sharePrepareError = "No shared file was provided"
             isPreparingShare = false
@@ -178,6 +196,7 @@ class MainActivity : ComponentActivity() {
         sharePrepareError = null
         isPreparingShare = true
         incomingShare = null
+        directShareDeviceId = targetDeviceId
 
         stageJob?.cancel()
         stageJob = lifecycleScope.launch {
@@ -199,6 +218,7 @@ class MainActivity : ComponentActivity() {
 
     private fun onShareFlowFinished() {
         incomingShare = null
+        directShareDeviceId = null
         isPreparingShare = false
         sharePrepareError = null
         if (openedFromShareSheet) {
