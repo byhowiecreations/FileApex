@@ -378,6 +378,7 @@ class DeviceRepository(
         if (existing == null) return incoming
         val existingOk = hasUsableEndpoint(existing)
         val incomingOk = hasUsableEndpoint(incoming)
+        val endpointSource = pickEndpointSource(existing, incoming)
         val primary = when {
             !existingOk && incomingOk -> incoming
             existingOk && !incomingOk -> existing
@@ -387,12 +388,12 @@ class DeviceRepository(
         return primary.copy(
             deviceName = incoming.deviceName.trim().ifBlank { primary.deviceName.ifBlank { secondary.deviceName } },
             lastKnownIp = when {
-                hasUsableEndpoint(primary) -> primary.lastKnownIp
+                hasUsableEndpoint(endpointSource) -> endpointSource.lastKnownIp
                 hasUsableEndpoint(secondary) -> secondary.lastKnownIp
                 else -> primary.lastKnownIp
             },
             port = when {
-                hasUsableEndpoint(primary) -> primary.port
+                hasUsableEndpoint(endpointSource) -> endpointSource.port
                 hasUsableEndpoint(secondary) -> secondary.port
                 else -> primary.port
             },
@@ -424,6 +425,28 @@ class DeviceRepository(
 
     private fun hasUsableEndpoint(device: PairedDeviceEntity): Boolean =
         endpointKey(device.lastKnownIp, device.port) != null
+
+    /**
+     * Prefer the endpoint observed most recently on the LAN. Cloud snapshots with
+     * [PairedDeviceEntity.lastSeenEpochMs] = 0 must not overwrite a fresher local probe.
+     */
+    private fun pickEndpointSource(
+        existing: PairedDeviceEntity?,
+        incoming: PairedDeviceEntity
+    ): PairedDeviceEntity {
+        if (existing == null) return incoming
+        val existingOk = hasUsableEndpoint(existing)
+        val incomingOk = hasUsableEndpoint(incoming)
+        return when {
+            !existingOk && incomingOk -> incoming
+            existingOk && !incomingOk -> existing
+            !existingOk && !incomingOk -> incoming
+            existing.lastSeenEpochMs > incoming.lastSeenEpochMs -> existing
+            incoming.lastSeenEpochMs > existing.lastSeenEpochMs -> incoming
+            existing.lastSeenEpochMs == 0L && incoming.lastSeenEpochMs == 0L -> incoming
+            else -> existing
+        }
+    }
 
     /**
      * True when [device] is this phone/Mac — must never appear under paired peers.

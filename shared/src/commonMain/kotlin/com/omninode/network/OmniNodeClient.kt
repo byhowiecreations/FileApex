@@ -108,7 +108,7 @@ class OmniNodeClient(
         rememberSessionPin(host, port, trimmed)
     }
 
-    /** Lightweight liveness probe used by PeerPresenceMonitor. */
+    /** On-demand liveness probe for browse/transfer actions only — not used for idle polling. */
     suspend fun pingHealth(host: String, port: Int): Boolean {
         return runCatching {
             kotlinx.coroutines.withTimeout(HEALTH_PROBE_TIMEOUT_MS) {

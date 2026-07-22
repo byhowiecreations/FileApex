@@ -2,7 +2,7 @@ package com.omninode.domain.presence
 
 import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.device.DeviceRepository
-import com.omninode.domain.peer.PeerNodeState
+import com.omninode.domain.presence.LanPresenceTiming
 import com.omninode.domain.transfer.MultiCopyDeviceOption
 import com.omninode.network.OmniNodeClient
 import com.omninode.network.sendWakeBroadcast
@@ -11,9 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,9 +21,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Listens for direct peer heartbeats/identity payloads and tracks reachability.
+ * Passive peer reachability from inbound LAN merge payloads and Firebase sync.
  *
- * This monitor never ingests gossip rosters — only direct [PeerNodeState] from each peer endpoint.
+ * Active LAN health probes run only on user-initiated browse or transfer actions —
+ * never as an idle background poll loop.
  */
 class PeerPresenceMonitor(
     private val repository: DeviceRepository,
@@ -35,12 +33,15 @@ class PeerPresenceMonitor(
     private val mutex = Mutex()
     private val reachabilityLock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var pollJob: Job? = null
+    private var snapshotWatcherJob: Job? = null
 
     private val lastReachableEpochById = mutableMapOf<String, Long>()
     private val _reachabilityEpochMs = MutableStateFlow<Map<String, Long>>(emptyMap())
+    private val _onlineSnapshotEpochMs = MutableStateFlow(0L)
 
     val reachabilityEpochMs: StateFlow<Map<String, Long>> = _reachabilityEpochMs.asStateFlow()
+    /** Bumps when offline-grace windows are re-evaluated locally (no network I/O). */
+    val onlineSnapshotEpochMs: StateFlow<Long> = _onlineSnapshotEpochMs.asStateFlow()
 
     private val _onlineDeviceIds = MutableStateFlow<Set<String>>(emptySet())
     val onlineDeviceIds: StateFlow<Set<String>> = _onlineDeviceIds.asStateFlow()
@@ -48,29 +49,49 @@ class PeerPresenceMonitor(
     fun isDeviceOnline(device: PairedDeviceEntity): Boolean {
         val probeEpoch = _reachabilityEpochMs.value[device.deviceId] ?: 0L
         val lastSeen = maxOf(probeEpoch, device.lastSeenEpochMs)
-        return TimeUtils.isWithinWindow(lastSeen, OFFLINE_GRACE_MS)
+        return TimeUtils.isWithinWindow(lastSeen, LanPresenceTiming.OFFLINE_GRACE_MS)
     }
 
-    fun start() {
-        if (pollJob?.isActive == true) return
-        pollJob = scope.launch {
+    /**
+     * Starts a local-only watcher that re-evaluates grace windows for UI badges.
+     * Does not perform any outbound network probes.
+     */
+    fun ensureOnlineSnapshotWatcher() {
+        if (snapshotWatcherJob?.isActive == true) return
+        snapshotWatcherJob = scope.launch {
+            refreshOnlineSnapshot()
             while (isActive) {
-                runCatching { pollOnce() }
-                    .onFailure { error ->
-                        println("PeerPresenceMonitor: poll failed :: ${error.message}")
-                    }
-                delay(POLL_INTERVAL_MS)
+                delay(LanPresenceTiming.ONLINE_SNAPSHOT_REFRESH_MS)
+                refreshOnlineSnapshot()
             }
         }
     }
 
-    fun stop() {
-        pollJob?.cancel()
-        pollJob = null
+    fun stopOnlineSnapshotWatcher() {
+        snapshotWatcherJob?.cancel()
+        snapshotWatcherJob = null
     }
 
-    suspend fun refreshNow() {
-        pollOnce()
+    /**
+     * Records passive reachability from inbound [POST /devices/merge] payloads or Firebase sync.
+     */
+    suspend fun notifyPassiveReachability(vararg deviceIds: String, epochMs: Long = TimeUtils.now()) {
+        markReachable(*deviceIds, epochMs = epochMs)
+        refreshOnlineSnapshot()
+    }
+
+    suspend fun refreshOnlineSnapshot() {
+        val peers = mutex.withLock { repository.listDevices() }
+        publishStableOnlineIds(peers)
+        _onlineSnapshotEpochMs.value = TimeUtils.now()
+    }
+
+    /**
+     * On-demand health validation when the user opens a remote device.
+     */
+    suspend fun validatePeerOnDemand(peer: PairedDeviceEntity): Boolean {
+        runCatching { sendWakeBroadcast() }
+        return primePeer(peer)
     }
 
     /**
@@ -83,11 +104,10 @@ class PeerPresenceMonitor(
             val peer = mutex.withLock { repository.getDevice(target.deviceId) } ?: continue
             primePeer(peer)
         }
-        val refreshedPeers = mutex.withLock { repository.listDevices() }
-        publishStableOnlineIds(refreshedPeers)
+        refreshOnlineSnapshot()
     }
 
-    suspend fun primePeer(peer: PairedDeviceEntity): Boolean {
+    private suspend fun primePeer(peer: PairedDeviceEntity): Boolean {
         val host = peer.lastKnownIp.trim()
         if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
             return false
@@ -101,11 +121,13 @@ class PeerPresenceMonitor(
                         repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId)
                     }
                     markReachable(state.deviceId.trim())
+                    refreshOnlineSnapshot()
                     return true
                 }
                 mutex.withLock {
                     repository.touchPeerLastSeen(peer.deviceId, host, peer.port)
                 }
+                refreshOnlineSnapshot()
                 return true
             }
             if (attempt < PRIME_ATTEMPTS - 1) {
@@ -113,44 +135,6 @@ class PeerPresenceMonitor(
             }
         }
         return isDeviceOnline(peer)
-    }
-
-    private suspend fun pollOnce() {
-        val peers = mutex.withLock { repository.listDevices() }
-        if (peers.isEmpty()) {
-            publishStableOnlineIds(emptyList())
-            return
-        }
-
-        val probeResults = coroutineScope {
-            peers.map { peer ->
-                async { probePeer(peer) }
-            }.awaitAll()
-        }
-
-        for (result in probeResults) {
-            if (result == null) continue
-            markReachable(result.rosterDeviceId, result.liveDeviceId)
-            if (result.nodeState != null) {
-                mutex.withLock {
-                    repository.applyPeerNodeState(
-                        result.nodeState,
-                        rosterDeviceId = result.rosterDeviceId
-                    )
-                }
-            } else {
-                mutex.withLock {
-                    repository.touchPeerLastSeen(
-                        deviceId = result.rosterDeviceId,
-                        ip = result.host,
-                        port = result.port
-                    )
-                }
-            }
-        }
-
-        val refreshedPeers = mutex.withLock { repository.listDevices() }
-        publishStableOnlineIds(refreshedPeers)
     }
 
     private suspend fun markReachable(vararg deviceIds: String, epochMs: Long = TimeUtils.now()) {
@@ -181,54 +165,9 @@ class PeerPresenceMonitor(
         }
     }
 
-    private suspend fun probePeer(peer: PairedDeviceEntity): PeerProbeResult? {
-        val host = peer.lastKnownIp.trim()
-        if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
-            return null
-        }
-        if (!client.pingHealth(host, peer.port)) {
-            return null
-        }
-
-        val rawState = runCatching { client.fetchPeerNodeState(host, peer.port) }.getOrNull()
-            ?: return PeerProbeResult(
-                rosterDeviceId = peer.deviceId,
-                liveDeviceId = peer.deviceId,
-                deviceName = peer.deviceName,
-                host = host,
-                port = peer.port,
-                nodeState = null
-            )
-
-        val nodeState = rawState.copy(
-            lastSeenTimestamp = TimeUtils.now().coerceAtLeast(rawState.lastSeenTimestamp)
-        )
-        val liveHost = nodeState.resolvedIpAddress.ifBlank { host }
-        val livePort = nodeState.port.takeIf { it > 0 } ?: peer.port
-
-        return PeerProbeResult(
-            rosterDeviceId = peer.deviceId,
-            liveDeviceId = nodeState.deviceId,
-            deviceName = nodeState.deviceName.ifBlank { peer.deviceName },
-            host = liveHost,
-            port = livePort,
-            nodeState = nodeState
-        )
-    }
-
-    private data class PeerProbeResult(
-        val rosterDeviceId: String,
-        val liveDeviceId: String,
-        val deviceName: String,
-        val host: String,
-        val port: Int,
-        val nodeState: PeerNodeState?
-    )
-
     companion object {
-        private const val POLL_INTERVAL_MS = 4_000L
-        /** UI offline grace — roster rows are retained until explicit removal. */
-        const val OFFLINE_GRACE_MS = 120_000L
+        /** @see LanPresenceTiming.OFFLINE_GRACE_MS */
+        const val OFFLINE_GRACE_MS = LanPresenceTiming.OFFLINE_GRACE_MS
         private const val PRIME_ATTEMPTS = 4
         private const val PRIME_RETRY_MS = 750L
     }

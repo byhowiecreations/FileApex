@@ -42,8 +42,9 @@ object DirectShareShortcutCoordinator {
             combine(
                 OmniNodeServices.presenceMonitor.reachabilityEpochMs,
                 OmniNodeServices.presenceMonitor.onlineDeviceIds,
+                OmniNodeServices.presenceMonitor.onlineSnapshotEpochMs,
                 OmniNodeServices.deviceRepository.observeDevices()
-            ) { _, _, devices ->
+            ) { _, _, _, devices ->
                 rankOnlinePeers(
                     devices.filter { OmniNodeServices.presenceMonitor.isDeviceOnline(it) }
                 )

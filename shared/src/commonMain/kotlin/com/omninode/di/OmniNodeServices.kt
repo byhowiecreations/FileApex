@@ -67,7 +67,10 @@ object OmniNodeServices {
         PairingCoordinator(
             repository = deviceRepository,
             client = client,
-            identityProvider = { loadLocalIdentity() }
+            identityProvider = { loadLocalIdentity() },
+            onPassiveReachability = { deviceIds, epochMs ->
+                presenceMonitor.notifyPassiveReachability(*deviceIds.toTypedArray(), epochMs = epochMs)
+            }
         )
     }
 
@@ -95,7 +98,7 @@ object OmniNodeServices {
             )
         }
         LocalDeviceNameStore.ensureLoaded()
-        presenceMonitor.start()
+        presenceMonitor.ensureOnlineSnapshotWatcher()
         bootstrapScope.launch {
             runCatching {
                 recoverEmptyRosterIfNeeded(deviceRepository)

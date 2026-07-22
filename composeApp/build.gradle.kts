@@ -144,10 +144,10 @@ compose.desktop {
                 infoPlist {
                     extraKeysRawXml = """
                         <key>NSLocalNetworkUsageDescription</key>
-                        <string>OmniNode shares files with paired phones and computers on your local network.</string>
+                        <string>OmniNode communicates directly with local devices over your network to sync files and manage node discovery.</string>
                         <key>NSBonjourServices</key>
                         <array>
-                            <string>_http._tcp</string>
+                            <string>_omninode._tcp</string>
                         </array>
                         <key>CFBundleURLTypes</key>
                         <array>

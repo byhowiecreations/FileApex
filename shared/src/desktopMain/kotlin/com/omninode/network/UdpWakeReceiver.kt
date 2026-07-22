@@ -2,7 +2,6 @@ package com.omninode.network
 
 import java.net.DatagramPacket
 import java.net.DatagramSocket
-import java.net.InetSocketAddress
 import java.net.SocketException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -86,18 +85,7 @@ class UdpWakeReceiver(
         }
     }
 
-    private fun openSocket(): DatagramSocket? {
-        return runCatching {
-            DatagramSocket(null).apply {
-                reuseAddress = true
-                broadcast = true
-                bind(InetSocketAddress("0.0.0.0", WakeProtocol.PORT))
-                socket = this
-            }
-        }.onFailure { error ->
-            onLog("UDP wake bind failed: ${error.message}")
-        }.getOrNull()
-    }
+    private fun openSocket(): DatagramSocket? = openWakeListenerSocket(onLog)?.also { socket = it }
 
     companion object {
         private const val SOCKET_RETRY_MS = 1_000L

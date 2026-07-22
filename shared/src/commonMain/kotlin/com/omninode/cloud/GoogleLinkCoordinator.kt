@@ -352,9 +352,16 @@ object GoogleLinkCoordinator {
                                 lastKnownIp = remote.lastKnownIp,
                                 port = remote.port,
                                 publicKeyHash = remote.publicKeyHash,
-                                rootPath = remote.rootPath.ifBlank { "/" }
+                                rootPath = remote.rootPath.ifBlank { "/" },
+                                lastSeenEpochMs = remote.updatedAtEpochMs.coerceAtLeast(0L)
                             )
                         )
+                        if (remote.updatedAtEpochMs > 0L && OmniNodeServices.isDatabaseReady()) {
+                            OmniNodeServices.presenceMonitor.notifyPassiveReachability(
+                                remote.deviceId,
+                                epochMs = remote.updatedAtEpochMs
+                            )
+                        }
                     }.onFailure { error ->
                         println(
                             "GoogleLinkCoordinator: skip Room upsert after teardown — ${error.message}"

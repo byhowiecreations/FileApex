@@ -8,6 +8,7 @@ import com.omninode.domain.peer.PeerNodeState
 import com.omninode.domain.peer.PeerNodeStateMapper
 import com.omninode.network.OmniNodeClient
 import com.omninode.util.NetworkUtils
+import com.omninode.util.TimeUtils
 
 /**
  * Coordinates one-time pairing/rename/removal deltas and local-only metadata broadcasts.
@@ -18,13 +19,15 @@ import com.omninode.util.NetworkUtils
 class PairingCoordinator(
     private val repository: DeviceRepository,
     private val client: OmniNodeClient,
-    private val identityProvider: () -> LocalIdentity
+    private val identityProvider: () -> LocalIdentity,
+    private val onPassiveReachability: suspend (deviceIds: List<String>, epochMs: Long) -> Unit = { _, _ -> }
 ) {
     /**
      * Broadcaster path: inbound POST /pairing/respond from a scanner.
      */
     suspend fun handleInboundScanner(scanner: PairedDeviceEntity) {
         repository.adoptFromPairing(scanner)
+        onPassiveReachability(listOf(scanner.deviceId), TimeUtils.now())
         broadcastPairingCompleteOnce(scanner)
     }
 
@@ -56,6 +59,10 @@ class PairingCoordinator(
                 continue
             }
             runCatching { repository.applyPeerNodeState(state) }
+                .onSuccess {
+                    val epochMs = state.lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now()
+                    onPassiveReachability(listOf(state.deviceId.trim()), epochMs)
+                }
                 .onFailure { error ->
                     println(
                         "PairingCoordinator: node state apply failed for ${state.deviceId} — ${error.message}"

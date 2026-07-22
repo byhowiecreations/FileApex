@@ -16,7 +16,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * SSOT for macOS menu-bar tray: device roster sync, send handoff, presence polling, battery hints.
+ * SSOT for macOS menu-bar tray: device roster sync, send handoff, passive presence badges, battery hints.
  */
 object DesktopMacTrayCoordinator {
     private val json = Json { encodeDefaults = true }
@@ -26,8 +26,6 @@ object DesktopMacTrayCoordinator {
     private var observeJob: Job? = null
     private var bindJob: Job? = null
     private var installed = false
-    private var popoverVisible = false
-    private var dropBoxVisible = false
     private var nativeMainWindowBound = false
 
     fun isMacOs(): Boolean =
@@ -43,15 +41,11 @@ object DesktopMacTrayCoordinator {
         DesktopMacTrayBridge.registerCallbacks(
             onSend = { deviceIdsJson, filePathsJson -> handleSend(deviceIdsJson, filePathsJson) },
             onPopoverVisible = { visible ->
-                popoverVisible = visible
-                updatePresencePolling()
                 if (visible) {
                     refreshDeviceSnapshotFromTray()
                 }
             },
             onDropBoxVisible = { visible ->
-                dropBoxVisible = visible
-                updatePresencePolling()
                 if (visible) {
                     refreshDeviceSnapshotFromTray()
                 }
@@ -64,7 +58,6 @@ object DesktopMacTrayCoordinator {
         DesktopMacTrayBridge.setup()
         scheduleMainWindowBinding(window)
         startDeviceSync()
-        updatePresencePolling()
         installed = true
         refreshDeviceSnapshotFromTray()
         println("DesktopMacTrayCoordinator: native tray installed")
@@ -74,7 +67,6 @@ object DesktopMacTrayCoordinator {
     fun handleCloseRequest(): Boolean {
         if (!installed) return false
         hideMainWindow()
-        updatePresencePolling()
         return true
     }
 
@@ -108,13 +100,12 @@ object DesktopMacTrayCoordinator {
             mainWindow?.toFront()
             mainWindow?.requestFocus()
         }
-        updatePresencePolling()
         refreshDeviceSnapshotFromTray()
     }
 
     private fun refreshDeviceSnapshotFromTray() {
         scope.launch {
-            OmniNodeServices.presenceMonitor.refreshNow()
+            OmniNodeServices.presenceMonitor.refreshOnlineSnapshot()
             pushDeviceSnapshot()
         }
     }
@@ -142,8 +133,9 @@ object DesktopMacTrayCoordinator {
             combine(
                 OmniNodeServices.deviceRepository.observeDevices(),
                 OmniNodeServices.presenceMonitor.reachabilityEpochMs,
-                OmniNodeServices.presenceMonitor.onlineDeviceIds
-            ) { devices, _, _ ->
+                OmniNodeServices.presenceMonitor.onlineDeviceIds,
+                OmniNodeServices.presenceMonitor.onlineSnapshotEpochMs
+            ) { devices, _, _, _ ->
                 devices.map { device ->
                     TrayDeviceSnapshot(
                         id = device.deviceId,
@@ -167,10 +159,6 @@ object DesktopMacTrayCoordinator {
             )
         }
         DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
-    }
-
-    private fun updatePresencePolling() {
-        OmniNodeServices.presenceMonitor.start()
     }
 
     private fun handleSend(deviceIdsJson: String, filePathsJson: String) {

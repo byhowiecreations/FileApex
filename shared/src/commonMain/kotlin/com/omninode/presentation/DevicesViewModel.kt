@@ -8,12 +8,10 @@ import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
 import com.omninode.domain.pairing.PairingPayload
-import com.omninode.network.sendWakeBroadcast
 import com.omninode.platform.purgeDirectShareTarget
 import com.omninode.util.NetworkUtils
 import com.omninode.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -72,8 +70,9 @@ class DevicesViewModel : ViewModel() {
     val deviceRows: StateFlow<List<DeviceListRow>> = combine(
         repository.observeDevices(),
         presence.reachabilityEpochMs,
-        presence.onlineDeviceIds
-    ) { devices, _, _ ->
+        presence.onlineDeviceIds,
+        presence.onlineSnapshotEpochMs
+    ) { devices, _, _, _ ->
         devices
             .distinctBy { it.deviceId }
             .map { device ->
@@ -126,31 +125,30 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun openDeviceOrExplain(device: PairedDeviceEntity, open: (BrowseTarget) -> Unit) {
-        if (!isDeviceOnline(device)) {
-            viewModelScope.launch {
-                _uiState.update {
-                    it.copy(statusMessage = "Waking ${device.deviceName}…")
-                }
-                withContext(Dispatchers.IO) {
-                    runCatching { sendWakeBroadcast() }
-                }
-                repeat(WAKE_POLL_ATTEMPTS) {
-                    delay(WAKE_POLL_INTERVAL_MS)
-                    runCatching { presence.refreshNow() }
-                    if (isDeviceOnline(device)) {
-                        continueOpenDevice(device, open)
-                        return@launch
-                    }
-                }
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    statusMessage = "Connecting to ${device.deviceName}…",
+                    errorMessage = null
+                )
+            }
+            val peer = repository.getDevice(device.deviceId) ?: device
+            val reached = withContext(Dispatchers.IO) {
+                presence.validatePeerOnDemand(peer)
+            }
+            val refreshed = repository.getDevice(device.deviceId) ?: peer
+            if (!reached && !presence.isDeviceOnline(refreshed)) {
                 _uiState.update {
                     it.copy(
-                        statusMessage = "${device.deviceName} is offline — open OmniNode on that device"
+                        statusMessage = "${device.deviceName} is offline — open OmniNode on that device",
+                        errorMessage = null
                     )
                 }
+                return@launch
             }
-            return
+            _uiState.update { it.copy(statusMessage = null) }
+            continueOpenDevice(refreshed, open)
         }
-        continueOpenDevice(device, open)
     }
 
     private fun continueOpenDevice(device: PairedDeviceEntity, open: (BrowseTarget) -> Unit) {
@@ -355,7 +353,7 @@ class DevicesViewModel : ViewModel() {
                     runCatching {
                         GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
                     }
-                    presence.refreshNow()
+                    presence.refreshOnlineSnapshot()
                     _uiState.update {
                         it.copy(
                             renameTargetId = null,
@@ -392,7 +390,7 @@ class DevicesViewModel : ViewModel() {
                 purgeDirectShareTarget(deviceId)
                 OmniNodeServices.pairingCoordinator.broadcastDeviceRemoval(device)
                 GoogleLinkCoordinator.publishRemovedPeer(deviceId)
-                presence.refreshNow()
+                presence.refreshOnlineSnapshot()
             }.fold(
                 onSuccess = {
                     _uiState.update {
@@ -450,14 +448,6 @@ class DevicesViewModel : ViewModel() {
                     it.copy(errorMessage = "Device is no longer paired")
                 }
                 return@launch
-            }
-            if (!isDeviceOnline(target)) {
-                _uiState.update {
-                    it.copy(statusMessage = "Waking ${target.deviceName}…")
-                }
-                withContext(Dispatchers.IO) {
-                    runCatching { sendWakeBroadcast() }
-                }
             }
             _uiState.update {
                 it.copy(
@@ -533,11 +523,6 @@ class DevicesViewModel : ViewModel() {
     fun saveListScroll(index: Int, offset: Int) {
         listScrollIndex = index
         listScrollOffset = offset
-    }
-
-    companion object {
-        private const val WAKE_POLL_ATTEMPTS = 10
-        private const val WAKE_POLL_INTERVAL_MS = 500L
     }
 }
 

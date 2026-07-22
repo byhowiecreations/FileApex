@@ -6,6 +6,7 @@ import com.omninode.data.db.createOmniNodeDatabase
 import com.omninode.data.identity.initAndroidLocalIdentity
 import com.omninode.data.settings.initAndroidAppSettings
 import com.omninode.di.OmniNodeServices
+import com.omninode.platform.initAndroidLanConnectivity
 import com.omninode.platform.initAndroidBriefToast
 import com.omninode.platform.initAndroidDirectShareShortcuts
 import com.omninode.platform.initAndroidTransferReceiveNotifier
@@ -18,6 +19,7 @@ class OmniNodeApplication : Application() {
         super.onCreate()
         initAndroidAppSettings(this)
         initAndroidLocalIdentity(this)
+        initAndroidLanConnectivity(this)
         initAndroidTransferReceiveNotifier(this)
         initAndroidBriefToast(this)
         initAndroidUpdateAvailableNotifier(this)

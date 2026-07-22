@@ -15,6 +15,7 @@ actual fun localIpv4Addresses(): List<String> {
                     .filter { address ->
                         address != null &&
                             !address.startsWith("127.") &&
+                            !address.startsWith("169.254.") &&
                             address != "0.0.0.0"
                     }
                     .filterNotNull()

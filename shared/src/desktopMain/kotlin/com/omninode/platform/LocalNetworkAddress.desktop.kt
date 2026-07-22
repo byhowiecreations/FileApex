@@ -13,7 +13,9 @@ actual fun localIpv4Addresses(): List<String> {
                     .filterIsInstance<Inet4Address>()
                     .mapNotNull { it.hostAddress }
                     .filter { address ->
-                        !address.startsWith("127.") && address != "0.0.0.0"
+                        !address.startsWith("127.") &&
+                            !address.startsWith("169.254.") &&
+                            address != "0.0.0.0"
                     }
             }
             .distinct()
