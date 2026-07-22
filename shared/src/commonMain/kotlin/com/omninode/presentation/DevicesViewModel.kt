@@ -7,6 +7,7 @@ import com.omninode.data.db.PairedDeviceEntity
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
+import com.omninode.domain.diagnostics.PeerDeviceDiagnostics
 import com.omninode.domain.pairing.PairingPayload
 import com.omninode.platform.purgeDirectShareTarget
 import com.omninode.util.NetworkUtils
@@ -37,7 +38,17 @@ data class DevicesUiState(
     /** When set, UI must collect a PIN before completing pairing. */
     val pendingPinPairing: PairingPayload? = null,
     /** When set, UI must collect a PIN before browsing a PIN-protected peer. */
-    val pendingPinUnlock: PendingPinUnlock? = null
+    val pendingPinUnlock: PendingPinUnlock? = null,
+    /** When set, UI shows on-demand peer diagnostics. */
+    val deviceDetails: DeviceDetailsState? = null
+)
+
+data class DeviceDetailsState(
+    val deviceId: String,
+    val deviceName: String,
+    val loading: Boolean = false,
+    val snapshot: PeerDeviceDiagnostics? = null,
+    val errorMessage: String? = null
 )
 
 data class PendingPinUnlock(
@@ -514,6 +525,63 @@ class DevicesViewModel : ViewModel() {
 
     fun dismissMessages() {
         _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+    }
+
+    fun requestDeviceDetails(deviceId: String) {
+        viewModelScope.launch {
+            val device = repository.getDevice(deviceId) ?: return@launch
+            requestDeviceDetails(device)
+        }
+    }
+
+    fun requestDeviceDetails(device: PairedDeviceEntity) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    deviceDetails = DeviceDetailsState(
+                        deviceId = device.deviceId,
+                        deviceName = device.deviceName,
+                        loading = true
+                    ),
+                    errorMessage = null
+                )
+            }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    presence.validatePeerOnDemand(device)
+                    OmniNodeServices.client.fetchDeviceDiagnostics(device.lastKnownIp, device.port)
+                }
+            }.fold(
+                onSuccess = { snapshot ->
+                    _uiState.update {
+                        it.copy(
+                            deviceDetails = DeviceDetailsState(
+                                deviceId = device.deviceId,
+                                deviceName = device.deviceName,
+                                loading = false,
+                                snapshot = snapshot
+                            )
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            deviceDetails = DeviceDetailsState(
+                                deviceId = device.deviceId,
+                                deviceName = device.deviceName,
+                                loading = false,
+                                errorMessage = error.message ?: "Could not load device details"
+                            )
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun dismissDeviceDetails() {
+        _uiState.update { it.copy(deviceDetails = null) }
     }
 
     fun initialListScrollIndex(): Int = listScrollIndex

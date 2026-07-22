@@ -17,6 +17,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
     private var stagedFilePaths: [String] = []
     private var savedFrame: NSRect?
     private var persistWorkItem: DispatchWorkItem?
+    private var isSubmittingSend = false
 
     public var onSend: ((_ deviceIdsJson: String, _ filePathsJson: String) -> Void)?
     public var onFrameChanged: ((_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> Void)?
@@ -39,6 +40,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
     public func showDropBox(for deviceIds: [String]) {
         targetDeviceIds = deviceIds
         stagedFilePaths = []
+        isSubmittingSend = false
 
         let window = ensureDropBoxWindow()
         window.contentViewController = TrayHostingController(
@@ -48,7 +50,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
                     self?.stagedFilePaths = paths
                 },
                 onSend: { [weak self] in
-                    self?.submitSend()
+                    self?.submitSend() ?? false
                 }
             )
         )
@@ -63,6 +65,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
         persistFrameImmediately()
         dropBoxWindow?.orderOut(nil)
         stagedFilePaths = []
+        isSubmittingSend = false
         onVisibilityChanged?(false)
     }
 
@@ -107,12 +110,14 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
         window.center()
     }
 
-    private func submitSend() {
-        guard !targetDeviceIds.isEmpty else { return }
+    @discardableResult
+    private func submitSend() -> Bool {
+        guard !isSubmittingSend else { return false }
+        guard !targetDeviceIds.isEmpty else { return false }
         let paths = stagedFilePaths
         guard !paths.isEmpty else {
             NSApp.showNativeToast(message: "Drop one or more files first")
-            return
+            return false
         }
 
         guard
@@ -122,10 +127,12 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
             let pathJson = String(data: pathData, encoding: .utf8)
         else {
             NSApp.showNativeToast(message: "Send failed")
-            return
+            return false
         }
 
+        isSubmittingSend = true
         onSend?(deviceJson, pathJson)
+        return true
     }
 
     public func windowDidMove(_ notification: Notification) {
@@ -173,10 +180,11 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
 struct DropBoxContentView: View {
     let targetDeviceCount: Int
     let onFilesChanged: ([String]) -> Void
-    let onSend: () -> Void
+    let onSend: () -> Bool
 
     @State private var filePaths: [String] = []
     @State private var isTargeted = false
+    @State private var isSending = false
 
     var body: some View {
         VStack(spacing: 14) {
@@ -192,12 +200,19 @@ struct DropBoxContentView: View {
                 .foregroundStyle(.secondary)
 
             if !filePaths.isEmpty {
-                Button(action: onSend) {
-                    Text("Send")
+                Button {
+                    guard !isSending else { return }
+                    isSending = true
+                    if !onSend() {
+                        isSending = false
+                    }
+                } label: {
+                    Text(isSending ? "Sending" : "Send")
                         .frame(minWidth: 120)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .disabled(isSending)
                 .padding(.top, 4)
             }
         }

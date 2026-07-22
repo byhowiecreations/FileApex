@@ -1,6 +1,7 @@
 package com.omninode.network
 
 import com.omninode.data.db.PairedDeviceEntity
+import com.omninode.domain.diagnostics.PeerDeviceDiagnostics
 import com.omninode.domain.model.RemoteFileItem
 import com.omninode.domain.pairing.ClusterSyncRequest
 import com.omninode.domain.peer.PeerNodeState
@@ -84,6 +85,22 @@ class OmniNodeClient(
             val response = client.get("http://$host:$port/api/v1/identity")
             if (!response.status.isSuccess()) {
                 error("Peer state fetch failed (${response.status})")
+            }
+            response.body()
+        }
+    }
+
+    /** On-demand diagnostic snapshot — never part of periodic LAN heartbeats. */
+    suspend fun fetchDeviceDiagnostics(host: String, port: Int): PeerDeviceDiagnostics {
+        return kotlinx.coroutines.withTimeout(DIAGNOSTICS_TIMEOUT_MS) {
+            val response = client.get("http://$host:$port/api/v1/diagnostics") {
+                attachSessionPin(host, port)
+            }
+            if (response.status.value == 403) {
+                error("PIN required — open the device and enter its PIN")
+            }
+            if (!response.status.isSuccess()) {
+                error("Device details failed (${response.status})")
             }
             response.body()
         }
@@ -371,6 +388,7 @@ class OmniNodeClient(
         const val CHUNK_SIZE = 64 * 1024
         private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
         private const val PEER_STATE_TIMEOUT_MS = 5_000L
+        private const val DIAGNOSTICS_TIMEOUT_MS = 15_000L
     }
 }
 

@@ -6,10 +6,12 @@ import com.omninode.data.identity.LocalIdentity
 import com.omninode.data.identity.loadLocalIdentity
 import com.omninode.data.identity.LocalDeviceNameStore
 import com.omninode.di.OmniNodeServices
+import com.omninode.domain.diagnostics.PeerDeviceDiagnostics
 import com.omninode.domain.pairing.ClusterSyncRequest
 import com.omninode.domain.peer.PeerNodeState
 import com.omninode.domain.peer.PeerNodeStateMapper
 import com.omninode.platform.UniqueFileNames
+import com.omninode.platform.collectDeviceDiagnostics
 import com.omninode.platform.defaultDownloadsDir
 import com.omninode.platform.notifyFilesReceived
 import com.omninode.util.PathUtils
@@ -400,6 +402,25 @@ class OmniNodeServer(
 
                 get("/api/v1/health") {
                     call.respondText("ok", ContentType.Text.Plain)
+                }
+
+                get("/api/v1/diagnostics") {
+                    runCatching {
+                        if (!isPeerPinAccepted(providedPin(call))) {
+                            call.respond(HttpStatusCode.Forbidden, "pin_required")
+                            return@runCatching
+                        }
+                        val snapshot = withContext(Dispatchers.IO) {
+                            collectDeviceDiagnostics()
+                        }
+                        call.respondText(
+                            text = json.encodeToString(PeerDeviceDiagnostics.serializer(), snapshot),
+                            contentType = ContentType.Application.Json
+                        )
+                    }.onFailure { error ->
+                        onLog("GET /api/v1/diagnostics failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "diagnostics_failed")
+                    }
                 }
             }
         }.start(wait = false)

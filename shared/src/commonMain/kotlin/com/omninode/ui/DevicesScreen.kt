@@ -20,8 +20,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -74,7 +77,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omninode.data.identity.LocalIdentity
 import com.omninode.update.currentAppVersionCode
 import com.omninode.update.currentAppVersionName
+import com.omninode.domain.diagnostics.DeviceDiagnosticsFormatter
 import com.omninode.presentation.BrowseTarget
+import com.omninode.presentation.DeviceDetailsState
 import com.omninode.presentation.DeviceListRow
 import com.omninode.presentation.DevicesViewModel
 import com.omninode.ui.adaptive.CompactDevicesTitleBand
@@ -209,6 +214,9 @@ fun DevicesScreen(
                 onRenameDevice = { deviceId, deviceName ->
                     renameText = deviceName
                     viewModel.beginRename(deviceId)
+                },
+                onDeviceDetails = { deviceId ->
+                    viewModel.requestDeviceDetails(deviceId)
                 },
                 onRemoveDevice = { deviceId, deviceName ->
                     pendingDelete = PendingDelete(deviceId, deviceName)
@@ -410,6 +418,13 @@ fun DevicesScreen(
         )
     }
 
+    state.deviceDetails?.let { details ->
+        DeviceDetailsDialog(
+            details = details,
+            onDismiss = viewModel::dismissDeviceDetails
+        )
+    }
+
     if (confirmExit) {
         AlertDialog(
             onDismissRequest = { confirmExit = false },
@@ -449,6 +464,7 @@ private fun PairedDevicesList(
     onRenameLocal: () -> Unit,
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
+    onDeviceDetails: (deviceId: String) -> Unit,
     onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     modifier: Modifier = Modifier
@@ -517,6 +533,7 @@ private fun PairedDevicesList(
                     selected = selectedDeviceId == row.deviceId,
                     onClick = { onOpenDevice(row.deviceId) },
                     onRename = { onRenameDevice(row.deviceId, row.deviceName) },
+                    onDeviceDetails = { onDeviceDetails(row.deviceId) },
                     onRemove = { onRemoveDevice(row.deviceId, row.deviceName) },
                     dropDeviceId = row.deviceId,
                     onFilesDropped = onFilesDropped,
@@ -654,6 +671,7 @@ private fun DeviceCard(
     icon: ImageVector,
     onClick: () -> Unit,
     onRename: (() -> Unit)?,
+    onDeviceDetails: (() -> Unit)? = null,
     onRemove: (() -> Unit)?,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
@@ -740,7 +758,7 @@ private fun DeviceCard(
                         .size(22.dp)
                 )
             }
-            if (onRename != null || onRemove != null) {
+            if (onRename != null || onDeviceDetails != null || onRemove != null) {
                 Box {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
@@ -756,6 +774,15 @@ private fun DeviceCard(
                                 onClick = {
                                     menuOpen = false
                                     onRename()
+                                }
+                            )
+                        }
+                        if (onDeviceDetails != null) {
+                            DropdownMenuItem(
+                                text = { Text("Device Details") },
+                                onClick = {
+                                    menuOpen = false
+                                    onDeviceDetails()
                                 }
                             )
                         }
@@ -783,4 +810,63 @@ private fun deviceIconFor(name: String): ImageVector {
         "ipad" in lower || "tablet" in lower -> Icons.Filled.TabletAndroid
         else -> Icons.Filled.PhoneAndroid
     }
+}
+
+@Composable
+private fun DeviceDetailsDialog(
+    details: DeviceDetailsState,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Device Details — ${details.deviceName}") },
+        text = {
+            when {
+                details.loading -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Fetching snapshot…")
+                    }
+                }
+                details.errorMessage != null -> {
+                    Text(
+                        text = details.errorMessage,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                details.snapshot != null -> {
+                    val scrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                            .verticalScroll(scrollState),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        DeviceDiagnosticsFormatter.detailRows(details.snapshot).forEach { (label, value) ->
+                            Column {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = value,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }
