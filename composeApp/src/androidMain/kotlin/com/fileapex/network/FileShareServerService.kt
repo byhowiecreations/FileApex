@@ -23,12 +23,6 @@ import com.fileapex.platform.ServiceWatchdogState
 import com.fileapex.platform.ShareServerKeepAliveCoordinator
 import com.fileapex.platform.ShareServerPendingStart
 import com.fileapex.platform.ShareServerRestartCoordinator
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 
 /**
  * Foreground service that keeps the LAN share server alive via [ServerLifecycleManager].
@@ -36,15 +30,17 @@ import kotlinx.coroutines.launch
  * UI starts pass [EXTRA_FROM_FOREGROUND] and promote immediately (persistent notification).
  * Watchdog / sticky restarts use a guarded path so Android 14/15 background FGS limits do not crash.
  *
+ * Background recovery uses the **20-minute** AlarmManager watchdog ([ServiceWatchdogScheduler] /
+ * [com.fileapex.util.TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS]) — not an in-process poll loop.
+ * Cloud peer visibility uses the separate **10-minute** Firestore heartbeat
+ * ([com.fileapex.cloud.CloudPresenceHeartbeat]).
+ *
  * UDP peer-wake listening lives only in this FGS — there is no separate process-level wake
  * service; peers cannot wake the device via UDP until this service (or a watchdog/UI restart)
  * is running again.
  */
 class FileShareServerService : Service() {
-    private val serviceJob = SupervisorJob()
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     private var wakeReceiver: UdpWakeReceiver? = null
-    private var engineWatchdogStarted = false
     private var isForegroundPromoted = false
 
     override fun onCreate() {
@@ -93,10 +89,6 @@ class FileShareServerService : Service() {
         if (wakeReceiver == null) {
             startWakeListener()
         }
-        if (!engineWatchdogStarted) {
-            engineWatchdogStarted = true
-            startEngineWatchdog()
-        }
         ServiceWatchdog.scheduleNextAlarmIfEnabled()
         return START_STICKY
     }
@@ -141,7 +133,6 @@ class FileShareServerService : Service() {
         }
         wakeReceiver?.stop()
         wakeReceiver = null
-        serviceJob.cancel()
         ServerLifecycleManager.stop(androidLog)
         super.onDestroy()
     }
@@ -296,22 +287,7 @@ class FileShareServerService : Service() {
         ServerLifecycleManager.ensureRunning(androidLog)
     }
 
-    private fun startEngineWatchdog() {
-        serviceScope.launch {
-            while (isActive) {
-                delay(ShareServerKeepAliveCoordinator.engineWatchdogIntervalMs())
-                if (!ServerLifecycleManager.isRunning) {
-                    Log.w(TAG, "Engine watchdog detected dead share server — restarting")
-                    ensureServerRunning()
-                }
-                if (ServerLifecycleManager.isRunning) {
-                    recordServiceHeartbeat()
-                    ShareServerKeepAliveCoordinator.renewWakeLock(this@FileShareServerService)
-                }
-            }
-        }
-    }
-
+    /** Records FGS liveness for the 20-minute AlarmManager recovery watchdog (not cloud presence). */
     private fun recordServiceHeartbeat() {
         ServiceWatchdogScheduler.recordShareServerHeartbeat(this)
     }

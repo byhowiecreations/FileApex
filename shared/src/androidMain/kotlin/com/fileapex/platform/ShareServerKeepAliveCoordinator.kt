@@ -14,8 +14,14 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
- * SSOT for OEM-resistant share-server keep-alive: wake lock, freeze-guard receivers,
- * JobScheduler fallback, and foreground re-assertion.
+ * SSOT for OEM-resistant share-server keep-alive: freeze-guard receivers,
+ * JobScheduler fallback, and foreground re-assertion on network resume.
+ *
+ * Timer responsibilities (do not conflate):
+ * - **10 min** — [com.fileapex.cloud.CloudPresenceHeartbeat] Firestore cloud presence only.
+ * - **20 min** — [ServiceWatchdogScheduler] AlarmManager FGS recovery ([TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS]).
+ *
+ * There is no in-process polling loop; recovery is event-driven (alarms, FCM, network, freeze-guard).
  */
 object ShareServerKeepAliveCoordinator {
     private const val TAG = "ShareServerKeepAlive"
@@ -23,9 +29,6 @@ object ShareServerKeepAliveCoordinator {
     const val ACTION_REASSERT = "com.fileapex.action.REASSERT_SHARE_SERVER"
     private const val JOB_ID = 42_025
     private const val JOB_INTERVAL_MS = 15 * 60 * 1000L
-    private const val MOTOROLA_WATCHDOG_ALARM_INTERVAL_MS = 5 * 60 * 1000L
-    private const val MOTOROLA_ENGINE_WATCHDOG_INTERVAL_MS = 3_000L
-    private const val DEFAULT_ENGINE_WATCHDOG_INTERVAL_MS = 5_000L
 
     @Volatile
     private var freezeGuardRegistered = false
@@ -36,13 +39,8 @@ object ShareServerKeepAliveCoordinator {
     @Volatile
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    fun renewWakeLock(context: Context) {
-        ShareServerWakeLock.acquire(context.applicationContext)
-    }
-
     fun onForegroundServiceActive(context: Context) {
         val appContext = context.applicationContext
-        ShareServerWakeLock.acquire(appContext)
         registerFreezeGuard(appContext)
         registerNetworkCallback(appContext)
         scheduleJobIfNeeded(appContext)
@@ -51,30 +49,10 @@ object ShareServerKeepAliveCoordinator {
 
     fun onForegroundServiceInactive(context: Context) {
         val appContext = context.applicationContext
-        ShareServerWakeLock.release()
         unregisterFreezeGuard(appContext)
         unregisterNetworkCallback(appContext)
         cancelJob(appContext)
     }
-
-    fun engineWatchdogIntervalMs(): Long {
-        return if (isMotorolaDevice()) {
-            MOTOROLA_ENGINE_WATCHDOG_INTERVAL_MS
-        } else {
-            DEFAULT_ENGINE_WATCHDOG_INTERVAL_MS
-        }
-    }
-
-    fun effectiveWatchdogAlarmIntervalMs(): Long {
-        return if (isMotorolaDevice()) {
-            MOTOROLA_WATCHDOG_ALARM_INTERVAL_MS
-        } else {
-            com.fileapex.util.TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS
-        }
-    }
-
-    private fun isMotorolaDevice(): Boolean =
-        Build.MANUFACTURER.equals("motorola", ignoreCase = true)
 
     /**
      * Called from freeze-guard receivers, JobScheduler, and network transitions to restore

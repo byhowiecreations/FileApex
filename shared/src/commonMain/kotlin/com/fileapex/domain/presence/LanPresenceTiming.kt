@@ -13,7 +13,10 @@ object LanPresenceTiming {
     /** @deprecated Use [PRESENCE_READY_THRESHOLD_MS] — kept for internal reachability checks. */
     const val OFFLINE_GRACE_MS = PRESENCE_READY_THRESHOLD_MS
 
-    /** Firestore `updatedAtEpochMs` heartbeat while the share server is active. */
+    /**
+     * **10-minute** Firestore cloud presence heartbeat ([com.fileapex.cloud.CloudPresenceHeartbeat]).
+     * Remote peer visibility only — not the Android FGS recovery watchdog (20 min AlarmManager).
+     */
     const val FIRESTORE_PRESENCE_HEARTBEAT_MS = 10 * 60 * 1000L
 
     /** Minimum device-card "Connecting…" state before navigation or failure feedback. */

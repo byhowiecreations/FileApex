@@ -11,9 +11,13 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.util.TimeUtils
 
 /**
- * AlarmManager heartbeat for [FileApexWatchdogReceiver].
- * All trigger times route through [TimeUtils].
- * Watchdog enablement and exact-alarm warnings use device-protected storage for direct boot.
+ * **20-minute** AlarmManager FGS recovery watchdog for [FileApexWatchdogReceiver].
+ *
+ * Distinct from the **10-minute** Firestore cloud presence heartbeat
+ * ([com.fileapex.cloud.CloudPresenceHeartbeat] / [com.fileapex.domain.presence.LanPresenceTiming.FIRESTORE_PRESENCE_HEARTBEAT_MS]).
+ *
+ * All trigger times route through [TimeUtils]. Watchdog enablement and exact-alarm warnings use
+ * device-protected storage for direct boot.
  */
 object ServiceWatchdogScheduler {
     private const val TAG = "ServiceWatchdogScheduler"
@@ -28,8 +32,8 @@ object ServiceWatchdogScheduler {
     fun scheduleNext(context: Context) {
         scheduleAt(
             context,
-            TimeUtils.nextAlarmEpochMs(ShareServerKeepAliveCoordinator.effectiveWatchdogAlarmIntervalMs()),
-            ShareServerKeepAliveCoordinator.effectiveWatchdogAlarmIntervalMs()
+            TimeUtils.nextAlarmEpochMs(TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS),
+            TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS
         )
     }
 

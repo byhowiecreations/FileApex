@@ -11,7 +11,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Periodic Firestore presence heartbeat while the share server is active.
+ * **10-minute** Firestore cloud presence heartbeat while the share server is active.
+ *
+ * Distinct from the **20-minute** Android FGS recovery watchdog
+ * ([com.fileapex.util.TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS] / [ServiceWatchdogScheduler]).
+ *
  * Started/stopped with [com.fileapex.domain.presence.BackgroundPresenceServices].
  */
 object CloudPresenceHeartbeat {

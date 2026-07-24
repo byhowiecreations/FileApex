@@ -17,14 +17,21 @@ object TimeUtils {
     fun isWithinWindow(epochMs: Long, windowMs: Long): Boolean =
         epochMs > 0L && millisSince(epochMs) <= windowMs
 
-    /** Default AlarmManager interval for the Android service watchdog (20 minutes). */
+    /**
+     * **20-minute** AlarmManager interval for Android FGS recovery ([ServiceWatchdogScheduler]).
+     * Not used for cloud presence — that timer is [com.fileapex.domain.presence.LanPresenceTiming.FIRESTORE_PRESENCE_HEARTBEAT_MS].
+     */
     const val SERVICE_WATCHDOG_ALARM_INTERVAL_MS: Long = 20 * 60 * 1000L
 
     /** Delay before an immediate watchdog retry after a blocked sticky restart. */
     const val SERVICE_WATCHDOG_IMMEDIATE_ALARM_DELAY_MS: Long = 30_000L
 
-    /** Max age of a share-server heartbeat before the watchdog treats the FGS as dead. */
-    const val SHARE_SERVER_HEARTBEAT_STALE_MS: Long = 60_000L
+    /**
+     * Max age of an FGS liveness heartbeat before recovery treats the share server as dead.
+     * Slightly longer than [SERVICE_WATCHDOG_ALARM_INTERVAL_MS] so a healthy FGS is not restarted
+     * on every alarm tick; heartbeats refresh on [onStartCommand] / re-assert paths only.
+     */
+    const val SHARE_SERVER_HEARTBEAT_STALE_MS: Long = 25 * 60 * 1000L
 
     /** Epoch millis when the next periodic watchdog alarm should fire. */
     fun nextAlarmEpochMs(intervalMs: Long = SERVICE_WATCHDOG_ALARM_INTERVAL_MS): Long =
