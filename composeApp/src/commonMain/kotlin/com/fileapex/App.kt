@@ -137,10 +137,8 @@ fun App(
         wideHomeTab = HomeTab.Devices
     }
 
-    val exitFileApex: () -> Unit = {
-        onStopShareServer()
-        onExitApp()
-    }
+    // Platform exit hooks own teardown (Android stops FGS; desktop uses shutdownForQuit).
+    val exitFileApex: () -> Unit = onExitApp
 
     val finishShareFlow: () -> Unit = {
         route = AppRoute.Devices

@@ -57,39 +57,48 @@ internal fun resolveDesktopDatabaseFile(): File {
     val home = System.getProperty("user.home") ?: "."
     val supportDir = File(home, "Library/Application Support/${MacOsSharedPaths.BUNDLE_ID}")
     val supportDb = File(supportDir, MacOsSharedPaths.DATABASE_FILE_NAME)
+    val rosterResolvedMarker = File(supportDir, ".roster-resolved")
 
     if (!supportDir.exists()) {
         supportDir.mkdirs()
     }
 
-    val legacyCandidates = listOf(
-        File(home, ".fileapex/fileapex.db"),
-        File(
-            home,
-            "Library/Group Containers/group.com.fileapex/Database/fileapex.db"
+    if (!rosterResolvedMarker.exists()) {
+        val legacyCandidates = listOf(
+            File(home, ".fileapex/fileapex.db"),
+            File(
+                home,
+                "Library/Group Containers/group.com.fileapex/Database/fileapex.db"
+            )
         )
-    )
 
-    if (!supportDb.exists()) {
-        val source = legacyCandidates.firstOrNull { it.exists() }
-        if (source != null) {
-            runCatching {
-                copyDatabaseTree(source, supportDb, supportDir)
-            }.onFailure { error ->
-                println("FileApexDatabase: DB migration failed — ${error.message}")
+        if (!supportDb.exists()) {
+            val source = legacyCandidates.firstOrNull { it.exists() }
+            if (source != null) {
+                runCatching {
+                    copyDatabaseTree(source, supportDb, supportDir)
+                }.onFailure { error ->
+                    println("FileApexDatabase: DB migration failed — ${error.message}")
+                }
+            }
+        } else if (countPairedDevices(supportDb) == 0) {
+            val source = legacyCandidates.firstOrNull { countPairedDevices(it) > 0 }
+            if (source != null) {
+                runCatching {
+                    copyDatabaseTree(source, supportDb, supportDir)
+                    println(
+                        "FileApexDatabase: restored empty roster from ${source.absolutePath}"
+                    )
+                }.onFailure { error ->
+                    println("FileApexDatabase: roster restore failed — ${error.message}")
+                }
             }
         }
-    } else if (countPairedDevices(supportDb) == 0) {
-        val source = legacyCandidates.firstOrNull { countPairedDevices(it) > 0 }
-        if (source != null) {
-            runCatching {
-                copyDatabaseTree(source, supportDb, supportDir)
-                println(
-                    "FileApexDatabase: restored empty roster from ${source.absolutePath}"
-                )
-            }.onFailure { error ->
-                println("FileApexDatabase: roster restore failed — ${error.message}")
-            }
+
+        runCatching {
+            rosterResolvedMarker.writeText("ok")
+        }.onFailure { error ->
+            println("FileApexDatabase: roster marker write failed — ${error.message}")
         }
     }
 

@@ -1,10 +1,17 @@
 package com.fileapex
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -24,8 +31,11 @@ import com.fileapex.ui.DeviceCardSlotHeight
 import com.fileapex.ui.DeviceListToAddGap
 import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.update.FileApexAppVersion
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
 
 private val DesktopWindowCompactWidth = 440.dp
@@ -34,23 +44,51 @@ private val DesktopWindowMinHeight = 560.dp
 private val DesktopWindowMaxHeight = 900.dp
 
 fun main() {
-    FileApexServices.init(createFileApexDatabase())
-    AppUpdateCoordinator.onAppLaunch()
-    GoogleLinkCoordinator.onAppLaunch()
     MacOsExtensionRegistrar.registerOnLaunchDeferred()
     DesktopSendHandoff.installOpenUriHandler()
-    DesktopSendHandoff.startJobProcessor()
+    FileApexServices.beginBootstrap { createFileApexDatabase() }
 
     application {
-        val devices by FileApexServices.deviceRepository.observeDevices()
-            .collectAsState(initial = emptyList())
-        val desktopLayoutMode by FileApexServices.settings.desktopLayoutMode.collectAsState()
+        var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
+
+        LaunchedEffect(Unit) {
+            if (!servicesReady) {
+                FileApexServices.awaitBootstrap()
+            }
+            servicesReady = true
+        }
+
+        LaunchedEffect(servicesReady) {
+            if (!servicesReady) return@LaunchedEffect
+            launch(Dispatchers.Default) {
+                AppUpdateCoordinator.onAppLaunch()
+                GoogleLinkCoordinator.onAppLaunch()
+                DesktopSendHandoff.startJobProcessor()
+            }
+        }
+
         val savedBounds = remember { DesktopWindowBoundsStore.loadValidated() }
-        val defaultSize = preferredWindowSize(
-            deviceCount = devices.size,
-            layoutMode = desktopLayoutMode
+        val deviceFlow = remember(servicesReady) {
+            if (servicesReady) {
+                FileApexServices.deviceRepository.observeDevices()
+            } else {
+                flowOf(emptyList())
+            }
+        }
+        val devices by deviceFlow.collectAsState(initial = emptyList())
+        val layoutModeFlow = remember(servicesReady) {
+            if (servicesReady) {
+                FileApexServices.settings.desktopLayoutMode
+            } else {
+                flowOf(DesktopLayoutMode.Compact)
+            }
+        }
+        val desktopLayoutMode by layoutModeFlow.collectAsState(initial = DesktopLayoutMode.Compact)
+        val defaultBootstrapSize = DpSize(
+            width = DesktopWindowCompactWidth,
+            height = DesktopWindowMinHeight
         )
-        val initialSize = savedBounds?.toDpSize() ?: defaultSize
+        val initialSize = savedBounds?.toDpSize() ?: defaultBootstrapSize
         val initialPosition = savedBounds?.toWindowPosition()
             ?: DesktopScreenGeometry.primaryTopLeftPosition()
 
@@ -60,7 +98,8 @@ fun main() {
             position = initialPosition
         )
 
-        LaunchedEffect(devices.size, desktopLayoutMode) {
+        LaunchedEffect(servicesReady, devices.size, desktopLayoutMode) {
+            if (!servicesReady) return@LaunchedEffect
             if (!DesktopWindowBoundsStore.hasValidSaved()) {
                 windowState.size = preferredWindowSize(
                     deviceCount = devices.size,
@@ -102,6 +141,16 @@ fun main() {
             title = "FileApex",
             state = windowState
         ) {
+            if (!servicesReady) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                return@Window
+            }
+
             LaunchedEffect(window) {
                 DesktopMacTrayCoordinator.attachMainWindow(window) {
                     shutdownDesktop()

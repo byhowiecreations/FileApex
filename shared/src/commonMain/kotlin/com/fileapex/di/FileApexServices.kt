@@ -20,10 +20,15 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 
 object FileApexServices {
     private val bootstrapScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val bootstrapDeferred = CompletableDeferred<Unit>()
+
+    @Volatile
+    private var bootstrapStarted = false
 
     @Volatile
     private var database: FileApexDatabase? = null
@@ -105,6 +110,41 @@ object FileApexServices {
             }.onFailure { error ->
                 println("FileApexServices: roster recovery skipped — ${error.message}")
             }
+        }
+        markBootstrapComplete()
+    }
+
+    /**
+     * Desktop cold start: open Room on a background dispatcher while Compose creates the window.
+     * Android continues to call [init] synchronously from [com.fileapex.FileApexApplication].
+     */
+    fun beginBootstrap(createDatabase: () -> FileApexDatabase) {
+        if (isDatabaseReady()) {
+            markBootstrapComplete()
+            return
+        }
+        if (bootstrapStarted) return
+        bootstrapStarted = true
+        bootstrapScope.launch(Dispatchers.IO) {
+            runCatching {
+                init(createDatabase())
+            }.onFailure { error ->
+                println("FileApexServices: bootstrap failed — ${error.message}")
+                markBootstrapComplete()
+            }
+        }
+    }
+
+    suspend fun awaitBootstrap() {
+        bootstrapDeferred.await()
+    }
+
+    val isBootstrapComplete: Boolean
+        get() = bootstrapDeferred.isCompleted
+
+    private fun markBootstrapComplete() {
+        if (!bootstrapDeferred.isCompleted) {
+            bootstrapDeferred.complete(Unit)
         }
     }
 
