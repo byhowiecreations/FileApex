@@ -2,9 +2,10 @@
 
 FileApex is an ecosystem file manager designed to seamlessly sync, manage, and broadcast files across multiple Android devices and macOS. 
 
-<img height="640" alt="Screenshot_20260718-153323_FileApex" src="https://github.com/user-attachments/assets/6d317156-96bd-4a2d-8b11-f49f12863c17" />
+
+<img width="439" height="988" alt="home" src="https://github.com/user-attachments/assets/c423486d-6691-44ed-8d22-d437067d5c15" />
 <br>
-<img height="640" alt="Screenshot 2026-07-18 at 3 57 11 PM" src="https://github.com/user-attachments/assets/67fa7d7f-757f-4192-8d5f-1d6213fe941a" />
+<img width="437" height="986" alt="send-to" src="https://github.com/user-attachments/assets/b673b122-63d8-4ed2-8e33-f4dd50c68f33" />
 
 
 ## Features
