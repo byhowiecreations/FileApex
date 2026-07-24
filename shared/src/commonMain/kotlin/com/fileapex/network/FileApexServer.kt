@@ -15,6 +15,7 @@ import com.fileapex.platform.collectDeviceDiagnostics
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.notifyFilesReceived
 import com.fileapex.util.PathUtils
+import com.fileapex.util.TimeUtils
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -31,6 +32,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CoroutineScope
@@ -357,36 +359,25 @@ class FileApexServer(
                             SystemFileSystem.createDirectories(parent)
                         }
 
-                        // URLSession uploads set Content-Length and then wait for the HTTP
-                        // response. If we keep waiting for channel EOF after those bytes, both
-                        // sides deadlock — file is on disk, client spins on "Sending…", and
-                        // notifyFilesReceived never runs.
                         val expectedLength = call.request.headers["Content-Length"]?.toLongOrNull()
                         val channel = call.receiveChannel()
-                        var received = 0L
-                        SystemFileSystem.sink(targetPath).buffered().use { sink ->
-                            val buffer = ByteArray(8192)
-                            while (expectedLength == null || received < expectedLength) {
-                                val remaining = expectedLength?.minus(received)
-                                val want = if (remaining == null) {
-                                    buffer.size
-                                } else {
-                                    minOf(buffer.size.toLong(), remaining).toInt().coerceAtLeast(1)
-                                }
-                                val read = channel.readAvailable(buffer, 0, want)
-                                when {
-                                    read < 0 -> break
-                                    read == 0 -> {
-                                        if (channel.isClosedForRead) break
-                                        if (expectedLength != null && received >= expectedLength) break
-                                        if (!channel.awaitContent()) break
-                                    }
-                                    else -> {
-                                        sink.write(buffer, 0, read)
-                                        received += read.toLong()
-                                    }
+                        val received = receiveUploadBytes(channel, targetPath, expectedLength)
+                        val complete = expectedLength == null || received == expectedLength
+                        if (!complete || received <= 0L) {
+                            runCatching {
+                                if (SystemFileSystem.exists(targetPath)) {
+                                    SystemFileSystem.delete(targetPath)
                                 }
                             }
+                            val reason = if (received <= 0L) "upload_empty" else "upload_incomplete"
+                            onLog(
+                                "upload rejected path=$targetPathStr bytes=$received" +
+                                    (expectedLength?.let { " expected=$it" } ?: "") +
+                                    " reason=$reason",
+                                null
+                            )
+                            call.respond(HttpStatusCode.BadRequest, reason)
+                            return@runCatching
                         }
                         onLog(
                             "upload complete path=$targetPathStr bytes=$received" +
@@ -472,5 +463,46 @@ class FileApexServer(
         if (!settings.pinRequiredEnabled.value) return true
         val expected = settings.devicePin.value
         return expected.isNotBlank() && provided == expected
+    }
+
+    /**
+     * Reads an upload body without hanging when the sender closes early or stalls.
+     * URLSession clients send Content-Length; FileApex/Ktor senders may use chunked EOF.
+     */
+    private suspend fun receiveUploadBytes(
+        channel: ByteReadChannel,
+        targetPath: Path,
+        expectedLength: Long?
+    ): Long {
+        var received = 0L
+        var idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
+        SystemFileSystem.sink(targetPath).buffered().use { sink ->
+            val buffer = ByteArray(8192)
+            while (expectedLength == null || received < expectedLength) {
+                if (TimeUtils.now() >= idleDeadlineMs) break
+                val remaining = expectedLength?.minus(received)
+                val want = if (remaining == null) {
+                    buffer.size
+                } else {
+                    minOf(buffer.size.toLong(), remaining).toInt().coerceAtLeast(1)
+                }
+                val read = channel.readAvailable(buffer, 0, want)
+                when {
+                    read > 0 -> {
+                        sink.write(buffer, 0, read)
+                        received += read.toLong()
+                        idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
+                    }
+                    channel.isClosedForRead -> break
+                    expectedLength != null && received >= expectedLength -> break
+                    !channel.awaitContent() -> break
+                }
+            }
+        }
+        return received
+    }
+
+    companion object {
+        private const val UPLOAD_IDLE_TIMEOUT_MS = 60_000L
     }
 }

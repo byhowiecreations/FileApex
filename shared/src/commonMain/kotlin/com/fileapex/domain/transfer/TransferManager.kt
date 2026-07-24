@@ -10,6 +10,7 @@ import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.domain.transfer.verifiedFromDisk
 import kotlinx.coroutines.delay
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -128,12 +129,13 @@ class TransferManager(
         awaitReady()
         require(sources.isNotEmpty()) { "Select at least one file" }
         require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
+        val verifiedSources = sources.verifiedFromDisk()
         val remoteTargets = selectedDevices.filter { !it.isLocal }
         if (remoteTargets.isNotEmpty()) {
             presenceMonitor().primePeersForTransfer(remoteTargets)
         }
-        val results = transferService.multiCopyToDevices(sources, selectedDevices)
-        return TransferBatchResult.from(results, sources, selectedDevices)
+        val results = transferService.multiCopyToDevices(verifiedSources, selectedDevices)
+        return TransferBatchResult.from(results, verifiedSources, selectedDevices)
     }
 
     fun copyLocalFiles(

@@ -415,13 +415,13 @@ class FileApexClient(
 
     /**
      * Uploads chunk packets from [chunks] to a peer (used by Multi Copy fan-out).
+     * Uses chunked transfer (no Content-Length) so declared sizes cannot deadlock the receiver.
      */
     suspend fun uploadFromChunkChannel(
         host: String,
         port: Int,
         remoteTargetPath: String,
-        chunks: ReceiveChannel<ByteArray>,
-        contentLength: Long? = null
+        chunks: ReceiveChannel<ByteArray>
     ) {
         val response = client.post("http://$host:$port/api/v1/files/upload") {
             parameter("targetPath", remoteTargetPath)
@@ -430,7 +430,7 @@ class FileApexClient(
             setBody(
                 object : OutgoingContent.WriteChannelContent() {
                     override val contentType: ContentType = ContentType.Application.OctetStream
-                    override val contentLength: Long? = contentLength
+                    override val contentLength: Long? = null
 
                     override suspend fun writeTo(channel: ByteWriteChannel) {
                         for (chunk in chunks) {

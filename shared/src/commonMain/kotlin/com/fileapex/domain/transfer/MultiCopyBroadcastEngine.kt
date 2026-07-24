@@ -38,6 +38,10 @@ class MultiCopyBroadcastEngine(
         source: MultiCopySource,
         destinations: List<MultiCopyDestination>
     ): MultiCopyResult = coroutineScope {
+        val verifiedSource = when (source) {
+            is MultiCopySource.Local -> source.verifiedFromDisk()
+            is MultiCopySource.Remote -> source
+        }
         // Small bound keeps only a few shared chunk refs in flight per destination.
         val chunkChannels = destinations.map {
             Channel<ByteArray>(capacity = CHANNEL_CAPACITY)
@@ -58,14 +62,18 @@ class MultiCopyBroadcastEngine(
                                 host = destination.host,
                                 port = destination.port,
                                 remoteTargetPath = destination.absolutePath,
-                                chunks = chunkChannels[index],
-                                contentLength = source.sizeBytes.takeIf { it > 0 }
+                                chunks = chunkChannels[index]
                             )
                         }
                     }
                     WriterOutcome(deviceId = destination.deviceId, errorMessage = null)
                 }.getOrElse { error ->
                     runCatching { chunkChannels[index].close() }
+                    when (destination) {
+                        is MultiCopyDestination.LocalDevice ->
+                            deletePartialLocalFile(destination.absolutePath)
+                        is MultiCopyDestination.RemoteDevice -> Unit
+                    }
                     WriterOutcome(
                         deviceId = destination.deviceId,
                         errorMessage = error.message
@@ -77,7 +85,7 @@ class MultiCopyBroadcastEngine(
 
         val producer = launch(Dispatchers.IO) {
             try {
-                streamSource(source) { chunk ->
+                streamSource(verifiedSource) { chunk ->
                     // Same immutable array ref to every channel — no per-destination copyOf().
                     for (channel in chunkChannels) {
                         runCatching { channel.send(chunk) }
@@ -117,10 +125,19 @@ class MultiCopyBroadcastEngine(
         }
 
         MultiCopyResult(
-            fileName = source.fileName,
+            fileName = verifiedSource.fileName,
             succeededDeviceIds = succeeded.toSet(),
             failures = failures.toMap()
         )
+    }
+
+    private fun deletePartialLocalFile(absolutePath: String) {
+        runCatching {
+            val path = Path(absolutePath)
+            if (SystemFileSystem.exists(path)) {
+                SystemFileSystem.delete(path)
+            }
+        }
     }
 
     private suspend fun streamSource(
@@ -164,10 +181,15 @@ class MultiCopyBroadcastEngine(
                 SystemFileSystem.createDirectories(parent)
             }
         }
-        SystemFileSystem.sink(target).buffered().use { sink ->
-            for (chunk in chunks) {
-                sink.write(chunk)
+        try {
+            SystemFileSystem.sink(target).buffered().use { sink ->
+                for (chunk in chunks) {
+                    sink.write(chunk)
+                }
             }
+        } catch (error: Throwable) {
+            deletePartialLocalFile(resolved)
+            throw error
         }
     }
 

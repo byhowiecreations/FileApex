@@ -7,6 +7,7 @@ import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.MultiCopySource
+import com.fileapex.domain.transfer.verifiedFromDisk
 import com.fileapex.platform.recordDirectShareTargetUsed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -153,7 +154,7 @@ class ShareSendViewModel(
         }
         runCatching {
             transferManager.awaitReady()
-            val sources = payload.files.map { it.toSource() }
+            val sources = payload.files.map { it.toSource().verifiedFromDisk() }
             transferManager.sendToDevices(sources, selected)
         }.fold(
             onSuccess = { batch ->

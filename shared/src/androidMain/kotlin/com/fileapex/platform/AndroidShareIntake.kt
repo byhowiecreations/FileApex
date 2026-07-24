@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import android.content.ClipData
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -24,11 +25,18 @@ object AndroidShareIntake {
 
     fun extractStreamUris(intent: Intent?): List<Uri> {
         if (intent == null) return emptyList()
-        return when (intent.action) {
-            Intent.ACTION_SEND -> listOfNotNull(readSingleStream(intent))
-            Intent.ACTION_SEND_MULTIPLE -> readMultipleStreams(intent)
+        val uris = when (intent.action) {
+            Intent.ACTION_SEND -> buildList {
+                readSingleStream(intent)?.let { add(it) }
+                addAll(readClipDataUris(intent))
+            }
+            Intent.ACTION_SEND_MULTIPLE -> buildList {
+                addAll(readMultipleStreams(intent))
+                addAll(readClipDataUris(intent))
+            }
             else -> emptyList()
         }
+        return uris.distinctBy { it.toString() }
     }
 
     /**
@@ -74,13 +82,14 @@ object AndroidShareIntake {
                 n++
             } while (dest.exists())
         }
-        resolver.openInputStream(uri)?.use { input ->
+        val copiedBytes = resolver.openInputStream(uri)?.use { input ->
             dest.outputStream().use { output -> input.copyTo(output) }
         } ?: error("Cannot read shared file: $displayName")
+        check(copiedBytes > 0L) { "Shared file is empty: $displayName" }
         return IncomingShareFile(
             fileName = dest.name,
             absolutePath = dest.absolutePath,
-            sizeBytes = dest.length()
+            sizeBytes = copiedBytes
         )
     }
 
@@ -125,6 +134,15 @@ object AndroidShareIntake {
         } else {
             @Suppress("DEPRECATION")
             intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+        }
+    }
+
+    private fun readClipDataUris(intent: Intent): List<Uri> {
+        val clip: ClipData = intent.clipData ?: return emptyList()
+        return buildList {
+            for (index in 0 until clip.itemCount) {
+                clip.getItemAt(index)?.uri?.let { add(it) }
+            }
         }
     }
 }
