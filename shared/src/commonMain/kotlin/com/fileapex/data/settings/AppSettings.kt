@@ -29,6 +29,12 @@ interface AppSettings {
     val skippedUpdateVersion: StateFlow<String>
     /** When true, AlarmManager may restart the Android share-server FGS after OEM kills. */
     val enableServiceWatchdog: StateFlow<Boolean>
+    /** When true, paired-device order syncs via Firestore across signed-in devices. */
+    val syncLayoutEnabled: StateFlow<Boolean>
+    /** Encoded paired-device order (see DeviceOrderCoordinator). */
+    val deviceOrderIds: StateFlow<String>
+    /** Epoch millis when [deviceOrderIds] last changed locally or from cloud sync. */
+    val deviceOrderUpdatedAtEpochMs: StateFlow<Long>
     /** Desktop-only: force compact or expanded adaptive layout regardless of window width. */
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
 
@@ -47,6 +53,12 @@ interface AppSettings {
     fun setSkippedUpdateVersion(version: String)
 
     fun setEnableServiceWatchdog(enabled: Boolean)
+
+    fun setSyncLayoutEnabled(enabled: Boolean)
+
+    fun setDeviceOrderIds(encodedOrder: String)
+
+    fun setDeviceOrderUpdatedAtEpochMs(epochMs: Long)
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode)
 

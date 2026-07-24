@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,7 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +31,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -68,11 +72,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.diagnostics.DeviceDiagnosticsFormatter
 import com.fileapex.presentation.BrowseTarget
@@ -127,6 +136,8 @@ fun DevicesScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val deviceRows by viewModel.deviceRows.collectAsState()
+    val listRows = if (state.deviceOrderEditMode) state.editOrderRows else deviceRows
+    val editMode = state.deviceOrderEditMode
     val snackbarHostState = remember { SnackbarHostState() }
     var addMenuOpen by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
@@ -136,6 +147,23 @@ fun DevicesScreen(
     val isListPane = layoutMode == DevicesScreenLayoutMode.ListPane
     val usesOwnChrome = !isListPane && !embeddedInCompactShell
 
+    val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
+        if (editMode) {
+            TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
+                Text("Revert")
+            }
+            TextButton(onClick = viewModel::saveDeviceOrderAndExitEditMode) {
+                Text("Done")
+            }
+        } else if (deviceRows.isNotEmpty()) {
+            IconButton(onClick = viewModel::enterDeviceOrderEditMode) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = "Reorder devices"
+                )
+            }
+        }
+    }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = viewModel.initialListScrollIndex(),
         initialFirstVisibleItemScrollOffset = viewModel.initialListScrollOffset()
@@ -168,7 +196,10 @@ fun DevicesScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (usesOwnChrome) {
-                HomeTopBar(onExitClick = { confirmExit = true })
+                HomeTopBar(
+                    onExitClick = { confirmExit = true },
+                    headerActions = deviceOrderHeaderActions
+                )
             }
         },
         bottomBar = {
@@ -188,15 +219,19 @@ fun DevicesScreen(
                 .padding(padding)
         ) {
             if (embeddedInCompactShell && !isListPane) {
-                CompactDevicesTitleBand()
+                CompactDevicesTitleBand(actions = deviceOrderHeaderActions)
             }
             if (isListPane) {
-                FileApexPaneSectionHeader(title = "Paired Devices")
+                FileApexPaneSectionHeader(
+                    title = "Paired Devices",
+                    actions = deviceOrderHeaderActions
+                )
             }
             PairedDevicesList(
                 listState = listState,
-                deviceRows = deviceRows,
-                connectingDeviceId = state.connectingDeviceId,
+                deviceRows = listRows,
+                editMode = editMode,
+                connectingDeviceId = if (editMode) null else state.connectingDeviceId,
                 selectedDeviceId = selectedDeviceId,
                 onOpenDevice = { deviceId ->
                     viewModel.openDeviceOrExplain(deviceId) { target ->
@@ -216,12 +251,14 @@ fun DevicesScreen(
                 onFilesDropped = { deviceId, paths ->
                     viewModel.sendDroppedLocalFiles(deviceId, paths)
                 },
+                onReorder = viewModel::reorderEditDevice,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             )
 
             // Always pinned above bottom navigation — not overlapping the list.
+            if (!editMode) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -270,6 +307,7 @@ fun DevicesScreen(
                         }
                     )
                 }
+            }
             }
         }
     }
@@ -438,16 +476,172 @@ fun DevicesScreen(
 }
 
 /**
- * Diff-keyed LazyColumn for paired devices.
- *
- * Compose equivalent of ListAdapter + DiffUtil + disabled SimpleItemAnimator:
- * - [items] key = [DeviceListRow.deviceId] (areItemsTheSame)
- * - row data class equality drives cell invalidation (areContentsTheSame)
- * - [Modifier.animateItem] with null specs disables placement/change animations
+ * Diff-keyed list for paired devices. Edit reorder uses a fixed-height [Column] so every
+ * device stays composed; browse mode uses a diff-keyed [LazyColumn].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PairedDevicesList(
+    listState: LazyListState,
+    deviceRows: List<DeviceListRow>,
+    editMode: Boolean,
+    connectingDeviceId: String?,
+    selectedDeviceId: String?,
+    onOpenDevice: (String) -> Unit,
+    onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
+    onDeviceDetails: (deviceId: String) -> Unit,
+    onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
+    onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
+    onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (editMode) {
+        PairedDevicesEditReorderList(
+            deviceRows = deviceRows,
+            selectedDeviceId = selectedDeviceId,
+            onReorder = onReorder,
+            modifier = modifier
+        )
+    } else {
+        PairedDevicesBrowseList(
+            listState = listState,
+            deviceRows = deviceRows,
+            connectingDeviceId = connectingDeviceId,
+            selectedDeviceId = selectedDeviceId,
+            onOpenDevice = onOpenDevice,
+            onRenameDevice = onRenameDevice,
+            onDeviceDetails = onDeviceDetails,
+            onRemoveDevice = onRemoveDevice,
+            onFilesDropped = onFilesDropped,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun PairedDevicesEditReorderList(
+    deviceRows: List<DeviceListRow>,
+    selectedDeviceId: String?,
+    onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val itemSpacing = 14.dp
+    val listTopPadding = 8.dp
+    val horizontalPadding = 20.dp
+    val cardHeightPx = with(density) { DeviceCardSlotHeight.toPx() }
+    val itemSpacingPx = with(density) { itemSpacing.toPx() }
+    val topPaddingPx = with(density) { listTopPadding.toPx() }
+    val itemStridePx = cardHeightPx + itemSpacingPx
+    val dragState = rememberDeviceOrderDragState()
+    val deviceIds = deviceRows.map { it.deviceId }
+    val scrollState = rememberScrollState()
+
+    BoxWithConstraints(modifier = modifier) {
+        val viewportHeightPx = with(density) { maxHeight.toPx().roundToInt() }
+        val listOverflowsViewport = deviceOrderListOverflowsViewport(
+            itemCount = deviceIds.size,
+            viewportHeightPx = viewportHeightPx,
+            cardHeightPx = cardHeightPx,
+            itemSpacingPx = itemSpacingPx,
+            topPaddingPx = topPaddingPx
+        )
+
+        DeviceOrderEdgeAutoScrollEffect(
+            dragState = dragState,
+            scrollState = scrollState,
+            deviceIds = deviceIds,
+            itemStridePx = itemStridePx,
+            viewportHeightPx = viewportHeightPx,
+            listOverflowsViewport = listOverflowsViewport
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(
+                    state = scrollState,
+                    enabled = !dragState.isDragging && listOverflowsViewport
+                )
+                .padding(
+                    start = horizontalPadding,
+                    end = horizontalPadding,
+                    top = listTopPadding,
+                    bottom = DeviceListToAddGap
+                ),
+            verticalArrangement = Arrangement.spacedBy(itemSpacing)
+        ) {
+            if (deviceRows.isEmpty()) {
+                Text(
+                    text = "No paired devices yet. Tap Add New Device to generate or scan a QR code.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                )
+            } else {
+                deviceRows.forEachIndexed { index, row ->
+                    val isDragging = dragState.draggingDeviceId == row.deviceId
+                    val visualOffsetPx = if (dragState.isDragging) {
+                        deviceOrderItemVisualOffsetPx(
+                            index = index,
+                            dragState = dragState,
+                            itemCount = deviceRows.size,
+                            itemStridePx = itemStridePx
+                        )
+                    } else {
+                        0f
+                    }
+                    val cardModifier = Modifier
+                        .fillMaxWidth()
+                        .height(DeviceCardSlotHeight)
+                        .zIndex(if (isDragging) 1f else 0f)
+                        .offset { deviceOrderDragIntOffset(visualOffsetPx) }
+                        .then(
+                            if (isDragging) {
+                                Modifier.graphicsLayer {
+                                    shadowElevation = 8f
+                                    alpha = 0.98f
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
+                    DeviceCard(
+                        title = row.title,
+                        subtitle = row.subtitle,
+                        icon = deviceIconFor(row.deviceName),
+                        selected = selectedDeviceId == row.deviceId,
+                        connecting = false,
+                        editMode = true,
+                        dragging = isDragging,
+                        dragHandle = {
+                            DeviceOrderDragHandle(
+                                modifier = Modifier.padding(start = 4.dp),
+                                deviceId = row.deviceId,
+                                startIndex = index,
+                                itemCount = deviceRows.size,
+                                dragState = dragState,
+                                itemStridePx = itemStridePx,
+                                onReorder = onReorder
+                            )
+                        },
+                        onClick = {},
+                        onRename = null,
+                        onDeviceDetails = null,
+                        onRemove = null,
+                        dropDeviceId = null,
+                        onFilesDropped = null,
+                        modifier = cardModifier
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PairedDevicesBrowseList(
     listState: LazyListState,
     deviceRows: List<DeviceListRow>,
     connectingDeviceId: String?,
@@ -459,16 +653,19 @@ private fun PairedDevicesList(
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val itemSpacing = 14.dp
+    val listTopPadding = 8.dp
+
     LazyColumn(
         state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(
             start = 20.dp,
             end = 20.dp,
-            top = 8.dp,
+            top = listTopPadding,
             bottom = DeviceListToAddGap
         ),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(itemSpacing)
     ) {
         if (deviceRows.isEmpty()) {
             item(
@@ -489,17 +686,20 @@ private fun PairedDevicesList(
                 )
             }
         } else {
-            items(
+            itemsIndexed(
                 items = deviceRows,
-                key = { it.deviceId },
-                contentType = { "paired-device" }
-            ) { row ->
+                key = { _, row -> row.deviceId },
+                contentType = { _, _ -> "paired-device" }
+            ) { _, row ->
                 DeviceCard(
                     title = row.title,
                     subtitle = row.subtitle,
                     icon = deviceIconFor(row.deviceName),
                     selected = selectedDeviceId == row.deviceId,
                     connecting = connectingDeviceId == row.deviceId,
+                    editMode = false,
+                    dragging = false,
+                    dragHandle = null,
                     onClick = { onOpenDevice(row.deviceId) },
                     onRename = { onRenameDevice(row.deviceId, row.deviceName) },
                     onDeviceDetails = { onDeviceDetails(row.deviceId) },
@@ -509,7 +709,7 @@ private fun PairedDevicesList(
                     modifier = Modifier.animateItem(
                         fadeInSpec = null,
                         fadeOutSpec = null,
-                        placementSpec = null
+                        placementSpec = DeviceOrderItemPlacementSpec
                     )
                 )
             }
@@ -518,10 +718,13 @@ private fun PairedDevicesList(
 }
 
 @Composable
-private fun HomeTopBar(onExitClick: () -> Unit) {
+private fun HomeTopBar(
+    onExitClick: () -> Unit,
+    headerActions: @Composable RowScope.() -> Unit = {}
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
         CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
-        CompactDevicesTitleBand()
+        CompactDevicesTitleBand(actions = headerActions)
     }
 }
 
@@ -637,6 +840,9 @@ private fun DeviceCard(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     connecting: Boolean = false,
+    editMode: Boolean = false,
+    dragging: Boolean = false,
+    dragHandle: (@Composable () -> Unit)? = null,
     dropDeviceId: String? = null,
     onFilesDropped: ((deviceId: String, paths: List<String>) -> Unit)? = null
 ) {
@@ -653,8 +859,9 @@ private fun DeviceCard(
     } else {
         Modifier
     }
-    val highlighted = selected || dropHover
+    val highlighted = selected || dropHover || dragging
     val containerColor = when {
+        dragging -> FileApexTeal.copy(alpha = 0.14f)
         dropHover -> FileApexTeal.copy(alpha = 0.22f)
         selected -> FileApexTeal.copy(alpha = 0.12f)
         else -> MaterialTheme.colorScheme.surface
@@ -664,7 +871,7 @@ private fun DeviceCard(
         modifier = modifier
             .fillMaxWidth()
             .then(dropModifier)
-            .clickable(enabled = !connecting, onClick = onClick),
+            .clickable(enabled = !connecting && !editMode, onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = if (highlighted) 0.dp else 3.dp),
@@ -738,7 +945,9 @@ private fun DeviceCard(
                         .size(22.dp)
                 )
             }
-            if (onRename != null || onDeviceDetails != null || onRemove != null) {
+            if (editMode && dragHandle != null) {
+                dragHandle()
+            } else if (onRename != null || onDeviceDetails != null || onRemove != null) {
                 Box {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(

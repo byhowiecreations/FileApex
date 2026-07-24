@@ -1,6 +1,7 @@
 package com.fileapex.ui.adaptive
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -25,7 +26,8 @@ object FileApexPaneLayout {
 fun FileApexPaneSectionHeader(
     title: String,
     onBack: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {}
 ) {
     Row(
         modifier = modifier
@@ -47,7 +49,9 @@ fun FileApexPaneSectionHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
         )
+        actions()
     }
 }

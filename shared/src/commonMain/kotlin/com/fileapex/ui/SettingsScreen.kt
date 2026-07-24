@@ -69,6 +69,7 @@ private enum class SettingsPage {
     BackgroundPersistence,
     FileTransferNotifications,
     GoogleAccount,
+    Layout,
     DesktopLayout
 }
 
@@ -133,6 +134,7 @@ fun SettingsScreen(
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
+            onOpenLayout = { page = SettingsPage.Layout },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             batteryOptimizationRestricted = batteryOptimizationRestricted,
@@ -187,6 +189,12 @@ fun SettingsScreen(
             onDisable = viewModel::disableGoogleAccountLink,
             onIdToken = viewModel::onGoogleIdToken
         )
+        SettingsPage.Layout -> LayoutSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onSyncLayout = viewModel::setSyncLayoutEnabled
+        )
         SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
             state = state,
             layoutMode = layoutMode,
@@ -213,6 +221,7 @@ private fun SettingsRootPage(
     onOpenBackgroundPersistence: () -> Unit,
     onOpenFileTransferNotifications: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
+    onOpenLayout: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     batteryOptimizationRestricted: Boolean,
@@ -280,6 +289,11 @@ private fun SettingsRootPage(
                         else -> "On"
                     },
                     onClick = onOpenGoogleAccount
+                )
+                SettingsNavItem(
+                    title = "Layout",
+                    subtitle = if (state.syncLayoutEnabled) "Sync layout on" else "Local layout",
+                    onClick = onOpenLayout
                 )
                 if (usesDesktopFileSelection()) {
                     SettingsNavItem(
@@ -494,6 +508,43 @@ private fun FileTransferNotificationsSettingsPage(
                     Switch(
                         checked = state.fileTransferNotificationsEnabled,
                         onCheckedChange = onToggle
+                    )
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LayoutSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onSyncLayout: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Layout",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Sync Layout") },
+                supportingContent = {
+                    Text(
+                        "When on, paired-device order syncs across all devices signed in with " +
+                            "your Google Account. When off, each device keeps its own custom order."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.syncLayoutEnabled,
+                        onCheckedChange = onSyncLayout
                     )
                 }
             )

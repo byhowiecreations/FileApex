@@ -109,6 +109,73 @@ actual object CloudAuthBackend {
         }
     }
 
+    actual suspend fun patchUserLayout(uid: String, layout: CloudUserLayout) {
+        layoutDoc(uid).set(
+            mapOf(
+                "deviceOrderIds" to layout.deviceOrderIds,
+                "updatedAtEpochMs" to layout.updatedAtEpochMs
+            ),
+            SetOptions.merge()
+        ).await()
+    }
+
+    actual fun observeUserLayout(
+        uid: String,
+        onLayout: (CloudUserLayout?) -> Unit,
+        onError: (Throwable) -> Unit
+    ): CloudRegistryHandle {
+        val idle = CompletableDeferred<Unit>()
+        val state = ListenerState()
+        val registration = layoutDoc(uid).addSnapshotListener { snapshot, error ->
+            if (state.stopped) return@addSnapshotListener
+            if (error != null) {
+                if (!state.stopped) onError(error)
+                return@addSnapshotListener
+            }
+            if (state.stopped) return@addSnapshotListener
+            if (!state.stopped) {
+                onLayout(parseCloudUserLayout(snapshot?.data))
+            }
+        }
+        return registryHandle(state, registration, idle)
+    }
+
+    private fun registryHandle(
+        state: ListenerState,
+        registration: ListenerRegistration,
+        idle: CompletableDeferred<Unit>
+    ): CloudRegistryHandle = object : CloudRegistryHandle {
+        override fun stop() {
+            if (state.stopped) return
+            state.stopped = true
+            runCatching { registration.remove() }
+            if (!idle.isCompleted) idle.complete(Unit)
+        }
+
+        override suspend fun awaitIdle() {
+            idle.await()
+            delay(LISTENER_DRAIN_MS)
+        }
+    }
+
+    private fun layoutDoc(uid: String) =
+        FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection("preferences").document("layout")
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseCloudUserLayout(data: Map<String, Any>?): CloudUserLayout? {
+        if (data == null) return null
+        val ids = data["deviceOrderIds"] as? List<String> ?: return null
+        val epoch = (data["updatedAtEpochMs"] as? Number)?.toLong() ?: return null
+        return CloudUserLayout(deviceOrderIds = ids, updatedAtEpochMs = epoch)
+    }
+
+    private fun deviceDoc(uid: String, deviceId: String) =
+        FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection("devices").document(deviceId)
+
     actual fun observeUserDevices(
         uid: String,
         onDevices: (List<CloudDeviceRecord>) -> Unit,
@@ -116,24 +183,17 @@ actual object CloudAuthBackend {
     ): CloudRegistryHandle {
         val idle = CompletableDeferred<Unit>()
         val state = ListenerState()
-        val registration: ListenerRegistration = FirebaseFirestore.getInstance()
+        val registration = FirebaseFirestore.getInstance()
             .collection("users").document(uid)
             .collection("devices")
             .addSnapshotListener { snapshot, error ->
-                if (state.stopped) {
-                    return@addSnapshotListener
-                }
+                if (state.stopped) return@addSnapshotListener
                 if (error != null) {
-                    if (!state.stopped) {
-                        onError(error)
-                    }
+                    if (!state.stopped) onError(error)
                     return@addSnapshotListener
                 }
-                if (state.stopped) {
-                    return@addSnapshotListener
-                }
-                val docs = snapshot?.documents.orEmpty()
-                val records = docs.map { doc ->
+                if (state.stopped) return@addSnapshotListener
+                val records = snapshot?.documents.orEmpty().map { doc ->
                     val id = doc.getString("deviceId") ?: doc.id
                     CloudDeviceRecord(
                         deviceId = id,
@@ -149,34 +209,10 @@ actual object CloudAuthBackend {
                         fcmToken = doc.getString("fcmToken").orEmpty()
                     )
                 }
-                if (!state.stopped) {
-                    onDevices(records)
-                }
+                if (!state.stopped) onDevices(records)
             }
-        return object : CloudRegistryHandle {
-            override fun stop() {
-                if (state.stopped) {
-                    return
-                }
-                state.stopped = true
-                runCatching { registration.remove() }
-                if (!idle.isCompleted) {
-                    idle.complete(Unit)
-                }
-            }
-
-            override suspend fun awaitIdle() {
-                idle.await()
-                // Let Firebase finish any in-flight native callback before Auth tear-down.
-                delay(LISTENER_DRAIN_MS)
-            }
-        }
+        return registryHandle(state, registration, idle)
     }
-
-    private fun deviceDoc(uid: String, deviceId: String) =
-        FirebaseFirestore.getInstance()
-            .collection("users").document(uid)
-            .collection("devices").document(deviceId)
 
     private class ListenerState {
         @Volatile

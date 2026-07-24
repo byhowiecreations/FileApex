@@ -26,11 +26,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -119,7 +122,7 @@ actual object CloudAuthBackend {
         patchOrCreateDocument(
             token = token,
             parent = parent,
-            deviceId = record.deviceId,
+            documentId = record.deviceId,
             body = body,
             fieldPaths = listOf(
                 "deviceId",
@@ -172,7 +175,7 @@ actual object CloudAuthBackend {
         patchOrCreateDocument(
             token = token,
             parent = parent,
-            deviceId = presence.deviceId,
+            documentId = presence.deviceId,
             body = body,
             fieldPaths = listOf(
                 "deviceId",
@@ -214,7 +217,7 @@ actual object CloudAuthBackend {
         patchOrCreateDocument(
             token = token,
             parent = parent,
-            deviceId = deviceId,
+            documentId = deviceId,
             body = body,
             fieldPaths = listOf("deviceName", "updatedAtEpochMs")
         )
@@ -228,6 +231,104 @@ actual object CloudAuthBackend {
                 "users/$uid/devices/$deviceId"
         client.delete(url) {
             header(HttpHeaders.Authorization, "Bearer $token")
+        }
+    }
+
+    actual suspend fun patchUserLayout(uid: String, layout: CloudUserLayout) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val parent =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/preferences"
+        val body = buildJsonObject {
+            put(
+                "fields",
+                buildJsonObject {
+                    put(
+                        "deviceOrderIds",
+                        buildJsonObject {
+                            put(
+                                "arrayValue",
+                                buildJsonObject {
+                                    put(
+                                        "values",
+                                        buildJsonArray {
+                                            layout.deviceOrderIds.forEach { id ->
+                                                add(buildJsonObject { put("stringValue", id) })
+                                            }
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    )
+                    put(
+                        "updatedAtEpochMs",
+                        buildJsonObject {
+                            put("integerValue", layout.updatedAtEpochMs.toString())
+                        }
+                    )
+                }
+            )
+        }
+        patchOrCreateDocument(
+            token = token,
+            parent = parent,
+            documentId = "layout",
+            body = body,
+            fieldPaths = listOf("deviceOrderIds", "updatedAtEpochMs")
+        )
+    }
+
+    actual fun observeUserLayout(
+        uid: String,
+        onLayout: (CloudUserLayout?) -> Unit,
+        onError: (Throwable) -> Unit
+    ): CloudRegistryHandle {
+        val idle = CompletableDeferred<Unit>()
+        val state = ListenerState()
+        val job = pollScope.launch {
+            try {
+                while (isActive && !state.stopped) {
+                    runCatching {
+                        val token = requireIdToken()
+                        val project = firebaseProjectId()
+                        val url =
+                            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                                "users/$uid/preferences/layout"
+                        val response = client.get(url) {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                        }
+                        if (response.status.value == 404) {
+                            if (!state.stopped) onLayout(null)
+                        } else if (!response.status.isSuccess()) {
+                            error("Firestore layout read failed (${response.status}): ${response.bodyAsText()}")
+                        } else {
+                            val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
+                            val fields = body["fields"]?.jsonObject
+                            val layout = fields?.let { parseCloudUserLayout(it) }
+                            if (!state.stopped) onLayout(layout)
+                        }
+                    }.onFailure { error ->
+                        if (!state.stopped) onError(error)
+                    }
+                    if (state.stopped) break
+                    delay(POLL_MS)
+                }
+            } finally {
+                if (!idle.isCompleted) idle.complete(Unit)
+            }
+        }
+        return object : CloudRegistryHandle {
+            override fun stop() {
+                if (state.stopped) return
+                state.stopped = true
+                job.cancel()
+            }
+
+            override suspend fun awaitIdle() {
+                idle.await()
+            }
         }
     }
 
@@ -248,7 +349,7 @@ actual object CloudAuthBackend {
         patchOrCreateDocument(
             token = token,
             parent = parent,
-            deviceId = deviceId,
+            documentId = deviceId,
             body = body,
             fieldPaths = listOf("fcmToken")
         )
@@ -341,11 +442,11 @@ actual object CloudAuthBackend {
     private suspend fun patchOrCreateDocument(
         token: String,
         parent: String,
-        deviceId: String,
+        documentId: String,
         body: JsonObject,
         fieldPaths: List<String>
     ) {
-        val patchUrl = "$parent/$deviceId"
+        val patchUrl = "$parent/$documentId"
         val patch = client.patch(patchUrl) {
             header(HttpHeaders.Authorization, "Bearer $token")
             contentType(ContentType.Application.Json)
@@ -359,12 +460,24 @@ actual object CloudAuthBackend {
         val create = client.post(parent) {
             header(HttpHeaders.Authorization, "Bearer $token")
             contentType(ContentType.Application.Json)
-            parameter("documentId", deviceId)
+            parameter("documentId", documentId)
             setBody(body)
         }
         if (!create.status.isSuccess()) {
             error("Firestore write failed (${create.status}): ${create.bodyAsText()}")
         }
+    }
+
+    private fun parseCloudUserLayout(fields: JsonObject): CloudUserLayout? {
+        val values = fields["deviceOrderIds"]?.jsonObject
+            ?.get("arrayValue")?.jsonObject
+            ?.get("values")?.jsonArray
+            ?: return null
+        val ids = values.mapNotNull { element ->
+            element.jsonObject["stringValue"]?.jsonPrimitive?.contentOrNull
+        }
+        val epoch = integerField(fields, "updatedAtEpochMs") ?: return null
+        return CloudUserLayout(deviceOrderIds = ids, updatedAtEpochMs = epoch)
     }
 
     private fun firestoreDocumentBody(

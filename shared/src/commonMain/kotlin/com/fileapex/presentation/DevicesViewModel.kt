@@ -7,6 +7,7 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.presence.LanPresenceTiming
@@ -44,6 +45,10 @@ data class DevicesUiState(
     val pendingPinPairing: PairingPayload? = null,
     /** When set, UI must collect a PIN before browsing a PIN-protected peer. */
     val pendingPinUnlock: PendingPinUnlock? = null,
+    /** Reorder mode for paired-device list on the home screen. */
+    val deviceOrderEditMode: Boolean = false,
+    /** Draft order while [deviceOrderEditMode] is active. */
+    val editOrderRows: List<DeviceListRow> = emptyList(),
     /** When set, UI shows on-demand peer diagnostics. */
     val deviceDetails: DeviceDetailsState? = null
 )
@@ -93,28 +98,34 @@ class DevicesViewModel : ViewModel() {
      * Emits only when item identity/content actually changes (AsyncListDiffer equivalent).
      */
     val deviceRows: StateFlow<List<DeviceListRow>> = combine(
-        repository.observeDevices(),
-        presence.reachabilityEpochMs,
-        presence.onlineDeviceIds,
-        presence.onlineSnapshotEpochMs
-    ) { devices, _, _, _ ->
-        val selfDeviceId = identity.deviceId
-        devices
-            .distinctBy { it.deviceId }
-            .filter { device ->
-                device.deviceId != LocalIdentity.LOCAL_DEVICE_ID &&
-                    device.deviceId != selfDeviceId
-            }
-            .map { device ->
-                DeviceListRow(
-                    deviceId = device.deviceId,
-                    deviceName = device.deviceName,
-                    online = presence.isDeviceOnline(device),
-                    appVersion = device.clientVersion.takeIf { it.isNotEmpty() },
-                    appVersionCode = device.clientVersionCode,
-                    lastSeenEpochMs = device.lastSeenEpochMs
-                )
-            }
+        combine(
+            repository.observeDevices(),
+            presence.reachabilityEpochMs,
+            presence.onlineDeviceIds,
+            presence.onlineSnapshotEpochMs
+        ) { devices, _, _, _ ->
+            val selfDeviceId = identity.deviceId
+            devices
+                .distinctBy { it.deviceId }
+                .filter { device ->
+                    device.deviceId != LocalIdentity.LOCAL_DEVICE_ID &&
+                        device.deviceId != selfDeviceId
+                }
+                .map { device ->
+                    DeviceListRow(
+                        deviceId = device.deviceId,
+                        deviceName = device.deviceName,
+                        online = presence.isDeviceOnline(device),
+                        appVersion = device.clientVersion.takeIf { it.isNotEmpty() },
+                        appVersionCode = device.clientVersionCode,
+                        lastSeenEpochMs = device.lastSeenEpochMs
+                    )
+                }
+        },
+        FileApexServices.settings.deviceOrderIds,
+        DeviceOrderCoordinator.revisionEpochMs
+    ) { rows, _, _ ->
+        DeviceOrderCoordinator.applySavedOrder(rows)
     }
         .distinctUntilChanged { old, new ->
             if (old.size != new.size) return@distinctUntilChanged false
@@ -637,6 +648,53 @@ class DevicesViewModel : ViewModel() {
     fun saveListScroll(index: Int, offset: Int) {
         listScrollIndex = index
         listScrollOffset = offset
+    }
+
+    fun enterDeviceOrderEditMode() {
+        _uiState.update {
+            it.copy(
+                deviceOrderEditMode = true,
+                editOrderRows = deviceRows.value
+            )
+        }
+    }
+
+    fun exitDeviceOrderEditMode() {
+        _uiState.update {
+            it.copy(deviceOrderEditMode = false, editOrderRows = emptyList())
+        }
+    }
+
+    fun reorderEditDevice(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
+        _uiState.update { state ->
+            if (!state.deviceOrderEditMode) return@update state
+            val rows = state.editOrderRows.toMutableList()
+            if (fromIndex !in rows.indices || toIndex !in rows.indices) return@update state
+            val item = rows.removeAt(fromIndex)
+            rows.add(toIndex, item)
+            state.copy(editOrderRows = rows)
+        }
+    }
+
+    fun revertDeviceOrderInEditMode() {
+        val rows = _uiState.value.editOrderRows
+        if (rows.isEmpty()) return
+        val alphabetical = DeviceOrderCoordinator.applyOrderIds(
+            rows,
+            DeviceOrderCoordinator.alphabeticalOrderIds(rows)
+        )
+        _uiState.update { it.copy(editOrderRows = alphabetical) }
+    }
+
+    fun saveDeviceOrderAndExitEditMode() {
+        val rows = _uiState.value.editOrderRows
+        if (rows.isEmpty()) {
+            exitDeviceOrderEditMode()
+            return
+        }
+        DeviceOrderCoordinator.saveLocalOrder(rows.map { it.deviceId })
+        exitDeviceOrderEditMode()
     }
 }
 

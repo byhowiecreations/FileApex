@@ -120,11 +120,14 @@ enum class CompactHomeTitleStyle {
 }
 
 @Composable
-fun CompactDevicesTitleBand() {
+fun CompactDevicesTitleBand(
+    actions: @Composable RowScope.() -> Unit = {}
+) {
     CompactHomeTitleBand(
         primaryLine = "Paired Devices",
         secondaryLine = "FileApex",
-        style = CompactHomeTitleStyle.Prominent
+        style = CompactHomeTitleStyle.Prominent,
+        actions = actions
     )
 }
 

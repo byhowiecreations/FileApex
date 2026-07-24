@@ -33,6 +33,19 @@ expect object CloudAuthBackend {
     /** Patches the Android FCM token for silent background wake — never touches [deviceName]. */
     suspend fun patchDeviceFcmToken(uid: String, deviceId: String, fcmToken: String)
 
+    /** Writes shared paired-device list order to `users/{uid}/preferences/layout`. */
+    suspend fun patchUserLayout(uid: String, layout: CloudUserLayout)
+
+    /**
+     * Listens for layout order changes when [CloudUserLayout] sync is enabled.
+     * @return a handle that stops the listener when [CloudRegistryHandle.stop] is called.
+     */
+    fun observeUserLayout(
+        uid: String,
+        onLayout: (CloudUserLayout?) -> Unit,
+        onError: (Throwable) -> Unit
+    ): CloudRegistryHandle
+
     /**
      * Start listening / polling the user device collection (includes this device’s document).
      * Remote snapshots seed peer devices into the local repository.
