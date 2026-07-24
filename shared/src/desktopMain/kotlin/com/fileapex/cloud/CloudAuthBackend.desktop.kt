@@ -234,104 +234,6 @@ actual object CloudAuthBackend {
         }
     }
 
-    actual suspend fun patchUserLayout(uid: String, layout: CloudUserLayout) {
-        val token = requireIdToken()
-        val project = firebaseProjectId()
-        val parent =
-            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
-                "users/$uid/preferences"
-        val body = buildJsonObject {
-            put(
-                "fields",
-                buildJsonObject {
-                    put(
-                        "deviceOrderIds",
-                        buildJsonObject {
-                            put(
-                                "arrayValue",
-                                buildJsonObject {
-                                    put(
-                                        "values",
-                                        buildJsonArray {
-                                            layout.deviceOrderIds.forEach { id ->
-                                                add(buildJsonObject { put("stringValue", id) })
-                                            }
-                                        }
-                                    )
-                                }
-                            )
-                        }
-                    )
-                    put(
-                        "updatedAtEpochMs",
-                        buildJsonObject {
-                            put("integerValue", layout.updatedAtEpochMs.toString())
-                        }
-                    )
-                }
-            )
-        }
-        patchOrCreateDocument(
-            token = token,
-            parent = parent,
-            documentId = "layout",
-            body = body,
-            fieldPaths = listOf("deviceOrderIds", "updatedAtEpochMs")
-        )
-    }
-
-    actual fun observeUserLayout(
-        uid: String,
-        onLayout: (CloudUserLayout?) -> Unit,
-        onError: (Throwable) -> Unit
-    ): CloudRegistryHandle {
-        val idle = CompletableDeferred<Unit>()
-        val state = ListenerState()
-        val job = pollScope.launch {
-            try {
-                while (isActive && !state.stopped) {
-                    runCatching {
-                        val token = requireIdToken()
-                        val project = firebaseProjectId()
-                        val url =
-                            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
-                                "users/$uid/preferences/layout"
-                        val response = client.get(url) {
-                            header(HttpHeaders.Authorization, "Bearer $token")
-                        }
-                        if (response.status.value == 404) {
-                            if (!state.stopped) onLayout(null)
-                        } else if (!response.status.isSuccess()) {
-                            error("Firestore layout read failed (${response.status}): ${response.bodyAsText()}")
-                        } else {
-                            val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
-                            val fields = body["fields"]?.jsonObject
-                            val layout = fields?.let { parseCloudUserLayout(it) }
-                            if (!state.stopped) onLayout(layout)
-                        }
-                    }.onFailure { error ->
-                        if (!state.stopped) onError(error)
-                    }
-                    if (state.stopped) break
-                    delay(POLL_MS)
-                }
-            } finally {
-                if (!idle.isCompleted) idle.complete(Unit)
-            }
-        }
-        return object : CloudRegistryHandle {
-            override fun stop() {
-                if (state.stopped) return
-                state.stopped = true
-                job.cancel()
-            }
-
-            override suspend fun awaitIdle() {
-                idle.await()
-            }
-        }
-    }
-
     actual suspend fun patchDeviceFcmToken(uid: String, deviceId: String, fcmToken: String) {
         val token = requireIdToken()
         val project = firebaseProjectId()
@@ -466,18 +368,6 @@ actual object CloudAuthBackend {
         if (!create.status.isSuccess()) {
             error("Firestore write failed (${create.status}): ${create.bodyAsText()}")
         }
-    }
-
-    private fun parseCloudUserLayout(fields: JsonObject): CloudUserLayout? {
-        val values = fields["deviceOrderIds"]?.jsonObject
-            ?.get("arrayValue")?.jsonObject
-            ?.get("values")?.jsonArray
-            ?: return null
-        val ids = values.mapNotNull { element ->
-            element.jsonObject["stringValue"]?.jsonPrimitive?.contentOrNull
-        }
-        val epoch = integerField(fields, "updatedAtEpochMs") ?: return null
-        return CloudUserLayout(deviceOrderIds = ids, updatedAtEpochMs = epoch)
     }
 
     private fun firestoreDocumentBody(

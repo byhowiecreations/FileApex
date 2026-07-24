@@ -8,7 +8,6 @@ import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.update.AppUpdateCoordinator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +31,6 @@ data class SettingsUiState(
     val checkForUpdatesIntervalAmount: Int = 1,
     val checkForUpdatesAmountText: String = "1",
     val enableServiceWatchdog: Boolean = true,
-    val syncLayoutEnabled: Boolean = false,
     val desktopLayoutMode: DesktopLayoutMode = DesktopLayoutMode.Compact,
     val googleAccountError: String? = null
 )
@@ -52,7 +50,6 @@ class SettingsViewModel : ViewModel() {
             checkForUpdatesIntervalAmount = settings.checkForUpdatesIntervalAmount.value,
             checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString(),
             enableServiceWatchdog = settings.enableServiceWatchdog.value,
-            syncLayoutEnabled = settings.syncLayoutEnabled.value,
             desktopLayoutMode = settings.desktopLayoutMode.value
         )
     )
@@ -63,19 +60,6 @@ class SettingsViewModel : ViewModel() {
 
     val googleLinkStatus: StateFlow<String?> = GoogleLinkCoordinator.status
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
-    fun setSyncLayoutEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            runCatching {
-                DeviceOrderCoordinator.onSyncLayoutEnabledChanged(enabled)
-            }.onSuccess {
-                _uiState.update { it.copy(syncLayoutEnabled = enabled) }
-            }.onFailure { error ->
-                _uiState.update { it.copy(syncLayoutEnabled = settings.syncLayoutEnabled.value) }
-                println("SettingsViewModel: sync layout toggle failed — ${error.message}")
-            }
-        }
-    }
 
     fun setEnableServiceWatchdog(enabled: Boolean) {
         settings.setEnableServiceWatchdog(enabled)

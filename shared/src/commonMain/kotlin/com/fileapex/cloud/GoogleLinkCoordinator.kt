@@ -5,7 +5,6 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
@@ -65,7 +64,6 @@ object GoogleLinkCoordinator {
     private var lastPublishedPresence: CloudDevicePresence? = null
 
     private var registryHandle: CloudRegistryHandle? = null
-    private var layoutRegistryHandle: CloudRegistryHandle? = null
 
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
@@ -250,11 +248,6 @@ object GoogleLinkCoordinator {
         previousHandle?.stop()
         previousHandle?.awaitIdle()
 
-        val previousLayoutHandle = layoutRegistryHandle
-        layoutRegistryHandle = null
-        previousLayoutHandle?.stop()
-        previousLayoutHandle?.awaitIdle()
-
         val previousJob = sessionJob
         sessionJob = SupervisorJob()
         sessionScope = CoroutineScope(sessionJob + Dispatchers.Default)
@@ -292,19 +285,6 @@ object GoogleLinkCoordinator {
                 if (isSessionLive(epoch)) {
                     _status.value = error.message ?: "Cloud registry error"
                     println("GoogleLinkCoordinator: observe error — ${error.message}")
-                }
-            }
-        )
-
-        layoutRegistryHandle = CloudAuthBackend.observeUserLayout(
-            uid = uid,
-            onLayout = { layout ->
-                if (!isSessionLive(epoch)) return@observeUserLayout
-                layout?.let { DeviceOrderCoordinator.applyRemoteLayoutIfNewer(it) }
-            },
-            onError = { error ->
-                if (isSessionLive(epoch)) {
-                    println("GoogleLinkCoordinator: layout observe error — ${error.message}")
                 }
             }
         )

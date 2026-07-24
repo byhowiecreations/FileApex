@@ -50,7 +50,6 @@ class BaseAppSettings(
     private val skippedUpdateVersionFlow =
         MutableStateFlow(store.getString(KEY_SKIPPED_UPDATE_VERSION, ""))
     private val serviceWatchdog = MutableStateFlow(store.getBoolean(KEY_SERVICE_WATCHDOG, true))
-    private val syncLayout = MutableStateFlow(store.getBoolean(KEY_SYNC_LAYOUT, false))
     private val deviceOrderIdsFlow = MutableStateFlow(store.getString(KEY_DEVICE_ORDER, ""))
     private val deviceOrderUpdatedAt = MutableStateFlow(store.getLong(KEY_DEVICE_ORDER_UPDATED_AT, 0L))
     private val desktopLayout = MutableStateFlow(
@@ -72,7 +71,6 @@ class BaseAppSettings(
     override val lastUpdateCheckEpochMs: StateFlow<Long> = lastUpdateCheck.asStateFlow()
     override val skippedUpdateVersion: StateFlow<String> = skippedUpdateVersionFlow.asStateFlow()
     override val enableServiceWatchdog: StateFlow<Boolean> = serviceWatchdog.asStateFlow()
-    override val syncLayoutEnabled: StateFlow<Boolean> = syncLayout.asStateFlow()
     override val deviceOrderIds: StateFlow<String> = deviceOrderIdsFlow.asStateFlow()
     override val deviceOrderUpdatedAtEpochMs: StateFlow<Long> = deviceOrderUpdatedAt.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
@@ -154,11 +152,6 @@ class BaseAppSettings(
         serviceWatchdog.value = enabled
     }
 
-    override fun setSyncLayoutEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_SYNC_LAYOUT, enabled)
-        syncLayout.value = enabled
-    }
-
     override fun setDeviceOrderIds(encodedOrder: String) {
         store.putString(KEY_DEVICE_ORDER, encodedOrder)
         deviceOrderIdsFlow.value = encodedOrder
@@ -190,7 +183,6 @@ class BaseAppSettings(
         const val KEY_LAST_UPDATE_CHECK = "last_update_check_epoch_ms"
         const val KEY_SKIPPED_UPDATE_VERSION = "skipped_update_version"
         const val KEY_SERVICE_WATCHDOG = "enable_service_watchdog"
-        const val KEY_SYNC_LAYOUT = "sync_layout_enabled"
         const val KEY_DEVICE_ORDER = "device_order_ids"
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
