@@ -8,13 +8,20 @@ import javax.jmdns.ServiceEvent
 import javax.jmdns.ServiceInfo
 import javax.jmdns.ServiceListener
 
+private fun desktopMdnsBindAddress(): InetAddress? {
+    val host = LanInterfaceBinding.primaryLanIpv4OrNull()
+        ?: LanInterfaceBinding.lanBindCandidates().firstOrNull()
+    if (host.isNullOrBlank()) return null
+    return runCatching { Inet4Address.getByName(host) }.getOrNull()
+}
+
 actual object FileApexMdnsAdvertiser {
     private var jmdns: JmDNS? = null
     private var registeredName: String? = null
 
     actual fun start(port: Int, deviceId: String) {
         stop()
-        val bindAddress = selectBindAddress() ?: return
+        val bindAddress = desktopMdnsBindAddress() ?: return
         runCatching {
             val instance = JmDNS.create(bindAddress)
             val name = FileApexMdns.serviceNameFor(deviceId)
@@ -47,12 +54,6 @@ actual object FileApexMdnsAdvertiser {
         }
     }
 
-    private fun selectBindAddress(): InetAddress? {
-        val host = LanInterfaceBinding.primaryLanIpv4OrNull()
-            ?: LanInterfaceBinding.lanBindCandidates().firstOrNull()
-        if (host.isNullOrBlank()) return null
-        return runCatching { Inet4Address.getByName(host) }.getOrNull()
-    }
 }
 
 actual object FileApexMdnsBrowser {
@@ -79,10 +80,18 @@ actual object FileApexMdnsBrowser {
         stop()
         callback = onPeerDiscovered
         runCatching {
-            val instance = JmDNS.create()
+            val bindAddress = desktopMdnsBindAddress()
+            val instance = if (bindAddress != null) {
+                JmDNS.create(bindAddress)
+            } else {
+                JmDNS.create()
+            }
             instance.addServiceListener(FileApexMdns.SERVICE_TYPE, listener)
             jmdns = instance
-            println("FileApexMdnsBrowser: listening for ${FileApexMdns.SERVICE_TYPE}")
+            println(
+                "FileApexMdnsBrowser: listening for ${FileApexMdns.SERVICE_TYPE}" +
+                    (bindAddress?.hostAddress?.let { " on $it" }.orEmpty())
+            )
         }.onFailure { error ->
             println("FileApexMdnsBrowser: start failed — ${error.message}")
         }

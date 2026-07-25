@@ -131,11 +131,14 @@ class TransferManager(
         require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
         val verifiedSources = sources.verifiedFromDisk()
         val remoteTargets = selectedDevices.filter { !it.isLocal }
-        if (remoteTargets.isNotEmpty()) {
+        val devicesForTransfer = if (remoteTargets.isEmpty()) {
+            selectedDevices
+        } else {
             presenceMonitor().primePeersForTransfer(remoteTargets)
+            refreshRemoteHosts(selectedDevices)
         }
-        val results = transferService.multiCopyToDevices(verifiedSources, selectedDevices)
-        return TransferBatchResult.from(results, verifiedSources, selectedDevices)
+        val results = transferService.multiCopyToDevices(verifiedSources, devicesForTransfer)
+        return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)
     }
 
     fun copyLocalFiles(
@@ -190,6 +193,17 @@ class TransferManager(
         }
         val options = resolveRemoteDeviceOptions(deviceIds)
         return sendToDevices(sources, options)
+    }
+
+    private suspend fun refreshRemoteHosts(
+        options: List<MultiCopyDeviceOption>
+    ): List<MultiCopyDeviceOption> = options.map { option ->
+        if (option.isLocal) return@map option
+        val peer = deviceRepository().getDevice(option.deviceId) ?: return@map option
+        val host = peer.lastKnownIp.trim()
+        if (!NetworkUtils.isUsableLanIpv4(host)) return@map option
+        if (host == option.host.trim() && peer.port == option.port) return@map option
+        option.copy(host = host, port = peer.port)
     }
 
     private suspend fun resolveRemoteOption(

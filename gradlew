@@ -82,6 +82,40 @@ esac
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
+resolve_fileapex_java_home() {
+    gradle_props="$APP_HOME/gradle.properties"
+    if [ ! -f "$gradle_props" ]; then
+        return 1
+    fi
+    if [ "$darwin" = "true" ]; then
+        key="fileapex.java.home.macos"
+    elif [ "$msys" = "true" ] || [ "$cygwin" = "true" ]; then
+        key="fileapex.java.home.windows"
+    else
+        key="fileapex.java.home.linux"
+    fi
+    line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$gradle_props" | tail -1 | sed 's/^[^=]*=//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [ -z "$line" ]; then
+        return 1
+    fi
+    case "$line" in
+        ./*) echo "$APP_HOME/${line#./}" ;;
+        .*) echo "$APP_HOME/$line" ;;
+        *) echo "$line" ;;
+    esac
+}
+
+# Prefer JDK 21 from gradle.properties when JAVA_HOME is unset (Kotlin/AGP do not support JDK 26 yet).
+if [ -z "$JAVA_HOME" ] ; then
+    resolved_home=$(resolve_fileapex_java_home) || true
+    if [ -n "$resolved_home" ] ; then
+        JAVA_HOME="$resolved_home"
+    elif [ -x "$APP_HOME/.build-jdk/jdk-21.0.11+10/Contents/Home/bin/java" ] ; then
+        JAVA_HOME="$APP_HOME/.build-jdk/jdk-21.0.11+10/Contents/Home"
+    elif [ -x "$APP_HOME/.build-jdk/jdk-21.0.11+10/bin/java" ] ; then
+        JAVA_HOME="$APP_HOME/.build-jdk/jdk-21.0.11+10"
+    fi
+fi
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then

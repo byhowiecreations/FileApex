@@ -5,22 +5,12 @@ import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.peer.PeerNodeState
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.client.request.parameter
-import io.ktor.client.request.post
-import io.ktor.client.request.prepareGet
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.ContentType
-import io.ktor.http.content.OutgoingContent
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
+import io.ktor.http.encodeURLParameter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.io.Buffer
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
@@ -28,14 +18,17 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readAtMostTo
 import kotlinx.io.readByteArray
 import kotlinx.io.write
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
 /**
- * Single Ktor client for remote file list/stream/upload against paired nodes.
- * Uses the process-wide [HttpClient] from [com.fileapex.di.FileApexServices].
+ * Wi-Fi/Ethernet-bound HTTP client for paired peer nodes.
+ *
+ * All peer traffic uses [peerHttpGet], [peerHttpPost], [peerHttpUploadFromChannel], and
+ * [peerHttpGetStreaming] so Android never routes RFC1918 peers over cellular.
+ * Cloud traffic uses the process-wide Ktor client from [com.fileapex.di.FileApexServices].
  */
 class FileApexClient(
-    private val client: HttpClient,
     private val json: Json = FileApexHttpClientFactory.defaultJson
 ) {
     /** In-memory PINs for peers that require PIN this session (host:port → pin). */
@@ -59,25 +52,26 @@ class FileApexClient(
 
     private fun endpointKey(host: String, port: Int): String = "$host:$port"
 
-    private fun io.ktor.client.request.HttpRequestBuilder.attachSessionPin(host: String, port: Int) {
-        val pin = synchronized(sessionPinsLock) {
+    private fun sessionPin(host: String, port: Int): String? =
+        synchronized(sessionPinsLock) {
             sessionPins[endpointKey(host, port)]
         }
-        pin?.let { parameter("pin", it) }
-    }
 
     suspend fun listFiles(host: String, port: Int, path: String): List<RemoteFileItem> {
-        val response = client.get("http://$host:$port/api/v1/files/list") {
-            parameter("path", path)
-            attachSessionPin(host, port)
-        }
-        if (response.status.value == 403) {
-            error("PIN required — open the device and enter its PIN")
-        }
-        if (!response.status.isSuccess()) {
-            error("List failed (${response.status}): $host:$port$path")
-        }
-        return response.body()
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/files/list",
+                host = host,
+                port = port,
+                params = mapOf("path" to path)
+            ),
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        rejectPinRequired(response, "PIN required — open the device and enter its PIN")
+        requireSuccess(response, "List failed (${response.statusCode}): $host:$port$path")
+        return json.decodeFromString(ListSerializer(RemoteFileItem.serializer()), response.body)
     }
 
     suspend fun fetchPeerNodeState(
@@ -85,189 +79,146 @@ class FileApexClient(
         port: Int,
         timeoutMs: Long = PEER_STATE_TIMEOUT_MS
     ): PeerNodeState {
-        val ktorState = runCatching {
-            kotlinx.coroutines.withTimeout(timeoutMs) {
-                val response = client.get("http://$host:$port/api/v1/identity")
-                if (!response.status.isSuccess()) {
-                    error("Peer state fetch failed (${response.status})")
-                }
-                response.body<PeerNodeState>()
-            }
-        }.getOrNull()
-        if (ktorState != null) {
-            return ktorState
-        }
-        val bound = peerHttpGet(host, port, "/api/v1/identity", timeoutMs)
-        if (bound != null && bound.statusCode in 200..299) {
-            return json.decodeFromString(PeerNodeState.serializer(), bound.body)
-        }
-        return kotlinx.coroutines.withTimeout(timeoutMs) {
-            val response = client.get("http://$host:$port/api/v1/identity")
-            if (!response.status.isSuccess()) {
-                error("Peer state fetch failed (${response.status})")
-            }
-            response.body()
-        }
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/identity",
+            timeoutMs = timeoutMs
+        )
+        requireSuccess(response, "Peer state fetch failed (${response.statusCode})")
+        return json.decodeFromString(PeerNodeState.serializer(), response.body)
     }
 
-    /** On-demand diagnostic snapshot — never part of periodic LAN heartbeats. */
     suspend fun fetchDeviceDiagnostics(host: String, port: Int): PeerDeviceDiagnostics {
-        return kotlinx.coroutines.withTimeout(DIAGNOSTICS_TIMEOUT_MS) {
-            val response = client.get("http://$host:$port/api/v1/diagnostics") {
-                attachSessionPin(host, port)
-            }
-            if (response.status.value == 403) {
-                error("PIN required — open the device and enter its PIN")
-            }
-            if (!response.status.isSuccess()) {
-                error("Device details failed (${response.status})")
-            }
-            response.body()
-        }
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/diagnostics",
+                host = host,
+                port = port
+            ),
+            timeoutMs = DIAGNOSTICS_TIMEOUT_MS
+        )
+        rejectPinRequired(response, "PIN required — open the device and enter its PIN")
+        requireSuccess(response, "Device details failed (${response.statusCode})")
+        return json.decodeFromString(PeerDeviceDiagnostics.serializer(), response.body)
     }
 
-    /**
-     * Verifies [pin] against a peer that has PIN required.
-     * On success, remembers the PIN for subsequent file API calls this session.
-     */
     suspend fun verifyPin(host: String, port: Int, pin: String) {
         val trimmed = pin.trim()
         require(trimmed.isNotEmpty()) { "PIN is required" }
-        val response = client.post("http://$host:$port/api/v1/auth/verify-pin") {
-            parameter("pin", trimmed)
-        }
-        if (response.status.value == 403) {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/auth/verify-pin",
+                host = host,
+                port = port,
+                params = mapOf("pin" to trimmed)
+            ),
+            body = "",
+            contentType = "text/plain",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        if (response.statusCode == 403) {
             error("Incorrect PIN")
         }
-        if (!response.status.isSuccess()) {
-            error("PIN check failed (${response.status})")
-        }
+        requireSuccess(response, "PIN check failed (${response.statusCode})")
         rememberSessionPin(host, port, trimmed)
     }
 
-    /** On-demand liveness probe for cold-launch sweep, browse, and transfer actions — not idle polling. */
     suspend fun pingHealth(
         host: String,
         port: Int,
         timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS
     ): Boolean {
-        if (pingHealthUnbound(host, port, timeoutMs)) {
+        PeerLanHttpPolicy.ensureRoute(host)
+        val health = peerHttpGet(host, port, "/api/v1/health", timeoutMs)
+        if (health != null && health.statusCode in 200..299) {
             return true
         }
-        val boundHealth = peerHttpGet(host, port, "/api/v1/health", timeoutMs)
-        if (boundHealth != null && boundHealth.statusCode in 200..299) {
-            return true
-        }
-        val boundHeartbeat = peerHttpGet(host, port, "/api/v1/heartbeat", timeoutMs)
-        return boundHeartbeat != null && boundHeartbeat.statusCode in 200..299
+        val heartbeat = peerHttpGet(host, port, "/api/v1/heartbeat", timeoutMs)
+        return heartbeat != null && heartbeat.statusCode in 200..299
     }
 
-    private suspend fun pingHealthUnbound(
-        host: String,
-        port: Int,
-        timeoutMs: Long
-    ): Boolean {
-        return runCatching {
-            kotlinx.coroutines.withTimeout(timeoutMs) {
-                val health = client.get("http://$host:$port/api/v1/health")
-                if (health.status.isSuccess()) {
-                    return@withTimeout true
-                }
-                val heartbeat = client.get("http://$host:$port/api/v1/heartbeat")
-                heartbeat.status.isSuccess()
-            }
-        }.getOrDefault(false)
-    }
-
-    /**
-     * Completes the reverse half of a dual-pairing handshake by registering
-     * this scanner on the broadcaster that showed the QR code.
-     */
     suspend fun postPairingRespond(
         host: String,
         port: Int,
         scannerDevice: PairedDeviceEntity,
         pin: String? = null
     ) {
-        val response = client.post("http://$host:$port/api/v1/pairing/respond") {
-            contentType(ContentType.Application.Json)
+        val params = buildMap {
             if (!pin.isNullOrBlank()) {
-                parameter("pin", pin)
+                put("pin", pin.trim())
             }
-            setBody(scannerDevice)
         }
-        if (response.status.value == 403) {
+        val payload = json.encodeToString(PairedDeviceEntity.serializer(), scannerDevice)
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/pairing/respond",
+                host = host,
+                port = port,
+                params = params
+            ),
+            body = payload,
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        if (response.statusCode == 403) {
             error("Incorrect PIN — pairing rejected")
         }
-        if (!response.status.isSuccess()) {
-            error("Pairing handshake failed (${response.status})")
-        }
+        requireSuccess(response, "Pairing handshake failed (${response.statusCode})")
     }
 
-    /**
-     * Asks a remote node to adopt [newName] as its local display name and broadcast it.
-     */
     suspend fun postRemoteRename(
         host: String,
         port: Int,
         newName: String
     ) {
-        val response = client.post("http://$host:$port/api/v1/identity/rename") {
-            contentType(ContentType.Application.Json)
-            setBody(RenameDeviceRequest(deviceName = newName.trim()))
-        }
-        if (!response.status.isSuccess()) {
-            error("Remote rename failed (${response.status})")
-        }
+        val payload = json.encodeToString(
+            RenameDeviceRequest.serializer(),
+            RenameDeviceRequest(deviceName = newName.trim())
+        )
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/identity/rename",
+            body = payload,
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Remote rename failed (${response.statusCode})")
     }
 
-    /**
-     * One-hop cluster sync: push introducer + device list to a peer for Room upsert.
-     */
     suspend fun postClusterSync(
         host: String,
         port: Int,
         request: ClusterSyncRequest
     ) {
-        val ktorSucceeded = runCatching {
-            val response = client.post("http://$host:$port/api/v1/devices/merge") {
-                contentType(ContentType.Application.Json)
-                setBody(request)
-            }
-            if (!response.status.isSuccess()) {
-                error("Cluster sync failed (${response.status})")
-            }
-        }.isSuccess
-        if (ktorSucceeded) {
-            return
-        }
         val payload = json.encodeToString(ClusterSyncRequest.serializer(), request)
-        val bound = peerHttpPost(
+        val response = boundPost(
             host = host,
             port = port,
-            path = "/api/v1/devices/merge",
+            pathWithQuery = "/api/v1/devices/merge",
             body = payload,
             contentType = "application/json",
             timeoutMs = CLUSTER_SYNC_TIMEOUT_MS
         )
-        if (bound != null && bound.statusCode in 200..299) {
-            return
-        }
-        val response = client.post("http://$host:$port/api/v1/devices/merge") {
-            contentType(ContentType.Application.Json)
-            setBody(request)
-        }
-        if (!response.status.isSuccess()) {
-            error("Cluster sync failed (${response.status})")
-        }
+        requireSuccess(response, "Cluster sync failed (${response.statusCode})")
     }
 
     suspend fun listPairedDevices(host: String, port: Int): List<PairedDeviceEntity> {
-        val response = client.get("http://$host:$port/api/v1/devices")
-        if (!response.status.isSuccess()) {
-            error("Device list failed (${response.status})")
-        }
-        return response.body()
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/devices",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Device list failed (${response.statusCode})")
+        return json.decodeFromString(ListSerializer(PairedDeviceEntity.serializer()), response.body)
     }
 
     suspend fun downloadBytes(
@@ -276,33 +227,16 @@ class FileApexClient(
         remotePath: String,
         maxBytes: Long = 25L * 1024L * 1024L
     ): ByteArray {
-        return client.prepareGet("http://$host:$port/api/v1/files/stream") {
-            parameter("path", remotePath)
-            attachSessionPin(host, port)
-        }.execute { response ->
-            if (response.status.value == 403) {
-                error("PIN required — open the device and enter its PIN")
+        val sink = Buffer()
+        var total = 0L
+        streamRemoteFile(host, port, remotePath) { chunk ->
+            total += chunk.size
+            if (total > maxBytes) {
+                error("File is too large to preview (>${maxBytes / (1024 * 1024)} MB)")
             }
-            if (!response.status.isSuccess()) {
-                error("Download failed (${response.status})")
-            }
-            val channel = response.bodyAsChannel()
-            // Single sink buffer — avoid chunk list + second full-size ByteArray peak.
-            val sink = Buffer()
-            val buffer = ByteArray(8192)
-            var total = 0L
-            while (!channel.isClosedForRead) {
-                val read = channel.readAvailable(buffer, 0, buffer.size)
-                if (read > 0) {
-                    total += read
-                    if (total > maxBytes) {
-                        error("File is too large to preview (>${maxBytes / (1024 * 1024)} MB)")
-                    }
-                    sink.write(buffer, startIndex = 0, endIndex = read)
-                }
-            }
-            sink.readByteArray()
+            sink.write(chunk)
         }
+        return sink.readByteArray()
     }
 
     suspend fun downloadToLocal(
@@ -311,68 +245,47 @@ class FileApexClient(
         remotePath: String,
         localTargetPath: String
     ) {
-        client.prepareGet("http://$host:$port/api/v1/files/stream") {
-            parameter("path", remotePath)
-            attachSessionPin(host, port)
-        }.execute { response ->
-            if (response.status.value == 403) {
-                error("PIN required — open the device and enter its PIN")
+        val target = Path(localTargetPath)
+        target.parent?.let { parent ->
+            if (!SystemFileSystem.exists(parent)) {
+                SystemFileSystem.createDirectories(parent)
             }
-            if (!response.status.isSuccess()) {
-                error("Download failed (${response.status})")
-            }
-            val target = Path(localTargetPath)
-            target.parent?.let { parent ->
-                if (!SystemFileSystem.exists(parent)) {
-                    SystemFileSystem.createDirectories(parent)
-                }
-            }
-            val channel = response.bodyAsChannel()
-            SystemFileSystem.sink(target).buffered().use { sink ->
-                val buffer = ByteArray(8192)
-                while (!channel.isClosedForRead) {
-                    val read = channel.readAvailable(buffer, 0, buffer.size)
-                    if (read > 0) {
-                        sink.write(buffer, 0, read)
-                    }
-                }
+        }
+        SystemFileSystem.sink(target).buffered().use { sink ->
+            streamRemoteFile(host, port, remotePath) { chunk ->
+                sink.write(chunk)
             }
         }
     }
 
-    /**
-     * Streams a remote file and invokes [onChunk] for each buffer without holding the file in memory.
-     */
     suspend fun streamRemoteFile(
         host: String,
         port: Int,
         remotePath: String,
         onChunk: suspend (ByteArray) -> Unit
     ) {
-        client.prepareGet("http://$host:$port/api/v1/files/stream") {
-            parameter("path", remotePath)
-            attachSessionPin(host, port)
-        }.execute { response ->
-            if (response.status.value == 403) {
-                error("PIN required — open the device and enter its PIN")
-            }
-            if (!response.status.isSuccess()) {
-                error("Stream failed (${response.status})")
-            }
-            val channel = response.bodyAsChannel()
-            val buffer = ByteArray(CHUNK_SIZE)
-            while (!channel.isClosedForRead) {
-                val read = channel.readAvailable(buffer, 0, buffer.size)
-                if (read > 0) {
-                    onChunk(buffer.copyOf(read))
-                }
-            }
+        PeerLanHttpPolicy.ensureRoute(host)
+        val result = peerHttpGetStreaming(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/files/stream",
+                host = host,
+                port = port,
+                params = mapOf("path" to remotePath)
+            ),
+            connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+            readIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
+            onChunk = { chunk -> onChunk(chunk) }
+        ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+        if (result.statusCode == 403) {
+            error("PIN required — open the device and enter its PIN")
+        }
+        require(result.statusCode in 200..299) {
+            "Stream failed (${result.statusCode})"
         }
     }
 
-    /**
-     * Streams a local file to a peer via POST /api/v1/files/upload without buffering the whole file.
-     */
     suspend fun uploadFromLocal(
         host: String,
         port: Int,
@@ -381,79 +294,130 @@ class FileApexClient(
     ) {
         val source = Path(localSourcePath)
         check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
-        val size = SystemFileSystem.metadataOrNull(source)?.size
-        val response = client.post("http://$host:$port/api/v1/files/upload") {
-            parameter("targetPath", remoteTargetPath)
-            attachSessionPin(host, port)
-            contentType(ContentType.Application.OctetStream)
-            setBody(
-                object : OutgoingContent.WriteChannelContent() {
-                    override val contentType: ContentType = ContentType.Application.OctetStream
-                    override val contentLength: Long? = size
-
-                    override suspend fun writeTo(channel: ByteWriteChannel) {
-                        SystemFileSystem.source(source).buffered().use { input ->
-                            val buffer = ByteArray(CHUNK_SIZE)
-                            while (!input.exhausted()) {
-                                val read = input.readAtMostTo(buffer)
-                                if (read > 0) {
-                                    channel.writeFully(buffer, 0, read)
-                                }
+        val channel = Channel<ByteArray>(UPLOAD_CHANNEL_CAPACITY)
+        coroutineScope {
+            val producer = launch(Dispatchers.IO) {
+                try {
+                    SystemFileSystem.source(source).buffered().use { input ->
+                        val buffer = ByteArray(CHUNK_SIZE)
+                        while (!input.exhausted()) {
+                            val read = input.readAtMostTo(buffer)
+                            if (read > 0) {
+                                channel.send(buffer.copyOf(read))
                             }
                         }
                     }
+                } finally {
+                    channel.close()
                 }
-            )
-        }
-        if (response.status.value == 403) {
-            error("PIN required — open the device and enter its PIN")
-        }
-        if (!response.status.isSuccess()) {
-            error("Upload failed (${response.status})")
+            }
+            uploadFromChunkChannel(host, port, remoteTargetPath, channel)
+            producer.join()
         }
     }
 
-    /**
-     * Uploads chunk packets from [chunks] to a peer (used by Multi Copy fan-out).
-     * Uses chunked transfer (no Content-Length) so declared sizes cannot deadlock the receiver.
-     */
     suspend fun uploadFromChunkChannel(
         host: String,
         port: Int,
         remoteTargetPath: String,
         chunks: ReceiveChannel<ByteArray>
     ) {
-        val response = client.post("http://$host:$port/api/v1/files/upload") {
-            parameter("targetPath", remoteTargetPath)
-            attachSessionPin(host, port)
-            contentType(ContentType.Application.OctetStream)
-            setBody(
-                object : OutgoingContent.WriteChannelContent() {
-                    override val contentType: ContentType = ContentType.Application.OctetStream
-                    override val contentLength: Long? = null
-
-                    override suspend fun writeTo(channel: ByteWriteChannel) {
-                        for (chunk in chunks) {
-                            channel.writeFully(chunk)
-                        }
-                    }
-                }
-            )
-        }
-        if (response.status.value == 403) {
+        PeerLanHttpPolicy.ensureRoute(host)
+        val response = peerHttpUploadFromChannel(
+            host = host,
+            port = port,
+            pathWithQuery = uploadPathWithQuery(host, port, remoteTargetPath),
+            contentType = "application/octet-stream",
+            chunks = chunks,
+            connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+            uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
+        ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+        if (response.statusCode == 403) {
             error("PIN required — open the device and enter its PIN")
         }
-        if (!response.status.isSuccess()) {
-            error("Upload failed (${response.status})")
+        require(response.statusCode in 200..299) {
+            "Upload failed (${response.statusCode})"
         }
     }
 
-    fun close() {
-        // Shared process HttpClient lifecycle is owned by FileApexServices — do not close here.
+    fun close() = Unit
+
+    private suspend fun boundGet(
+        host: String,
+        port: Int,
+        pathWithQuery: String,
+        timeoutMs: Long
+    ): PeerBoundHttpResponse {
+        PeerLanHttpPolicy.ensureRoute(host)
+        return peerHttpGet(host, port, pathWithQuery, timeoutMs)
+            ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+    }
+
+    private suspend fun boundPost(
+        host: String,
+        port: Int,
+        pathWithQuery: String,
+        body: String,
+        contentType: String,
+        timeoutMs: Long
+    ): PeerBoundHttpResponse {
+        PeerLanHttpPolicy.ensureRoute(host)
+        return peerHttpPost(
+            host = host,
+            port = port,
+            path = pathWithQuery,
+            body = body,
+            contentType = contentType,
+            timeoutMs = timeoutMs
+        ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+    }
+
+    private fun queryPath(
+        basePath: String,
+        host: String,
+        port: Int,
+        params: Map<String, String> = emptyMap()
+    ): String {
+        val queryParts = buildList {
+            for ((key, value) in params) {
+                add("${key.encodeURLParameter()}=${value.encodeURLParameter()}")
+            }
+            sessionPin(host, port)?.let { pin ->
+                add("pin=${pin.encodeURLParameter()}")
+            }
+        }
+        if (queryParts.isEmpty()) {
+            return basePath
+        }
+        return "$basePath?${queryParts.joinToString("&")}"
+    }
+
+    private fun uploadPathWithQuery(host: String, port: Int, remoteTargetPath: String): String =
+        queryPath(
+            basePath = "/api/v1/files/upload",
+            host = host,
+            port = port,
+            params = mapOf("targetPath" to remoteTargetPath)
+        )
+
+    private fun rejectPinRequired(response: PeerBoundHttpResponse, message: String) {
+        if (response.statusCode == 403) {
+            error(message)
+        }
+    }
+
+    private fun requireSuccess(response: PeerBoundHttpResponse, message: String) {
+        if (response.statusCode !in 200..299) {
+            error(message)
+        }
     }
 
     companion object {
         const val CHUNK_SIZE = 64 * 1024
+        private const val UPLOAD_CHANNEL_CAPACITY = 2
+        private const val PEER_CONNECT_TIMEOUT_MS = 5_000L
+        private const val TRANSFER_IDLE_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val PEER_REQUEST_TIMEOUT_MS = 15_000L
         private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
         private const val PEER_STATE_TIMEOUT_MS = 5_000L
         private const val DIAGNOSTICS_TIMEOUT_MS = 15_000L

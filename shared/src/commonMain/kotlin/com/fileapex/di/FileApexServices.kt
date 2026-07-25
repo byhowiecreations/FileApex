@@ -59,10 +59,7 @@ object FileApexServices {
     }
 
     val client: FileApexClient by lazy {
-        FileApexClient(
-            client = httpClient,
-            json = FileApexHttpClientFactory.defaultJson
-        )
+        FileApexClient(json = FileApexHttpClientFactory.defaultJson)
     }
     val settings: AppSettings by lazy { createAppSettings() }
     val localIdentity: LocalIdentity

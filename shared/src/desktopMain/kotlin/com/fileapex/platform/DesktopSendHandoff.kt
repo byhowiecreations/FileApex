@@ -27,7 +27,7 @@ import kotlinx.serialization.json.Json
  * Transfer bytes are never started here. The main app’s [com.fileapex.domain.transfer.TransferManager]
  * runs the same outbound Multi Copy path as in-app send.
  *
- * Job files live under `~/Library/Application Support/com.fileapex/send-jobs/`.
+ * Job files live under [DesktopPlatformPaths.sendJobsDirectory].
  */
 object DesktopSendHandoff {
     private val json = Json {
@@ -45,14 +45,8 @@ object DesktopSendHandoff {
     @Volatile
     private var processorStarted = false
 
-    private val supportDir: File
-        get() = File(
-            System.getProperty("user.home"),
-            "Library/Application Support/com.fileapex"
-        )
-
     private val jobsDir: File
-        get() = File(supportDir, "send-jobs").also { it.mkdirs() }
+        get() = DesktopPlatformPaths.sendJobsDirectory()
 
     /**
      * Canonical deep-link URI for a send job from the Share Extension.
@@ -183,7 +177,7 @@ object DesktopSendHandoff {
     }
 
     private fun cleanupStaging(jobId: String) {
-        val staging = File(supportDir, "send-staging/$jobId")
+        val staging = File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging/$jobId")
         if (staging.isDirectory) {
             staging.deleteRecursively()
         }

@@ -9,6 +9,7 @@ import java.net.MulticastSocket
 import java.net.NetworkInterface
 import java.net.Socket
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.withContext
 
 internal fun directedBroadcastOrNull(localIp: String, networkInterface: NetworkInterface): String? {
@@ -124,6 +125,44 @@ actual suspend fun peerHttpPost(
     )
 }
 
+actual suspend fun peerHttpUploadFromChannel(
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    contentType: String,
+    chunks: ReceiveChannel<ByteArray>,
+    connectTimeoutMs: Long,
+    uploadIdleTimeoutMs: Long
+): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    executeBoundUpload(
+        host = host,
+        port = port,
+        pathWithQuery = pathWithQuery,
+        contentType = contentType,
+        chunks = chunks,
+        connectTimeoutMs = connectTimeoutMs,
+        uploadIdleTimeoutMs = uploadIdleTimeoutMs
+    )
+}
+
+actual suspend fun peerHttpGetStreaming(
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    connectTimeoutMs: Long,
+    readIdleTimeoutMs: Long,
+    onChunk: suspend (ByteArray) -> Unit
+): PeerBoundStreamResult? = withContext(Dispatchers.IO) {
+    executeBoundGetStreaming(
+        host = host,
+        port = port,
+        pathWithQuery = pathWithQuery,
+        connectTimeoutMs = connectTimeoutMs,
+        readIdleTimeoutMs = readIdleTimeoutMs,
+        onChunk = onChunk
+    )
+}
+
 private fun executeBoundHttp(
     host: String,
     port: Int,
@@ -155,6 +194,193 @@ private fun executeBoundHttp(
         }
     }
     return null
+}
+
+private suspend fun executeBoundGetStreaming(
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    connectTimeoutMs: Long,
+    readIdleTimeoutMs: Long,
+    onChunk: suspend (ByteArray) -> Unit
+): PeerBoundStreamResult? {
+    val candidates = LanInterfaceBinding.lanBindCandidates()
+    if (candidates.isEmpty()) {
+        return null
+    }
+    for (localIp in candidates) {
+        val response = runCatching {
+            executeBoundGetStreamingOnLocalIp(
+                localIp = localIp,
+                host = host,
+                port = port,
+                pathWithQuery = pathWithQuery,
+                connectTimeoutMs = connectTimeoutMs,
+                readIdleTimeoutMs = readIdleTimeoutMs,
+                onChunk = onChunk
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) {
+                null
+            } else {
+                throw error
+            }
+        }
+        if (response != null) {
+            return response
+        }
+    }
+    return null
+}
+
+private suspend fun executeBoundGetStreamingOnLocalIp(
+    localIp: String,
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    connectTimeoutMs: Long,
+    readIdleTimeoutMs: Long,
+    onChunk: suspend (ByteArray) -> Unit
+): PeerBoundStreamResult {
+    val connectTimeout = connectTimeoutMs.coerceIn(250L, 60_000L).toInt()
+    val idleTimeout = readIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
+    val socket = Socket()
+    try {
+        socket.bind(InetSocketAddress(localIp, 0))
+        runCatching {
+            socket.connect(InetSocketAddress(host, port), connectTimeout)
+        }.onFailure {
+            socket.close()
+            throw BoundConnectFailed()
+        }
+        socket.soTimeout = idleTimeout
+        val output = socket.getOutputStream()
+        val request = buildString {
+            append("GET ")
+            append(pathWithQuery)
+            append(" HTTP/1.1\r\n")
+            append("Host: ")
+            append(host)
+            append(':')
+            append(port)
+            append("\r\n")
+            append("Connection: close\r\n")
+            append("Accept: application/octet-stream\r\n")
+            append("\r\n")
+        }
+        output.write(request.toByteArray(Charsets.UTF_8))
+        output.flush()
+        val input = socket.getInputStream().buffered()
+        val statusCode = readHttpStatusLine(input)
+        skipHttpHeaders(input)
+        if (statusCode in 200..299) {
+            val buffer = ByteArray(8192)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) {
+                    break
+                }
+                onChunk(buffer.copyOf(read))
+            }
+        } else {
+            drainAvailable(input)
+        }
+        return PeerBoundStreamResult(statusCode = statusCode)
+    } finally {
+        runCatching { socket.close() }
+    }
+}
+
+private class BoundConnectFailed : Exception()
+
+private suspend fun executeBoundUpload(
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    contentType: String,
+    chunks: ReceiveChannel<ByteArray>,
+    connectTimeoutMs: Long,
+    uploadIdleTimeoutMs: Long
+): PeerBoundHttpResponse? {
+    val candidates = LanInterfaceBinding.lanBindCandidates()
+    if (candidates.isEmpty()) {
+        return null
+    }
+    for (localIp in candidates) {
+        val response = runCatching {
+            executeBoundUploadOnLocalIp(
+                localIp = localIp,
+                host = host,
+                port = port,
+                pathWithQuery = pathWithQuery,
+                contentType = contentType,
+                chunks = chunks,
+                connectTimeoutMs = connectTimeoutMs,
+                uploadIdleTimeoutMs = uploadIdleTimeoutMs
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) {
+                null
+            } else {
+                throw error
+            }
+        }
+        if (response != null) {
+            return response
+        }
+    }
+    return null
+}
+
+private suspend fun executeBoundUploadOnLocalIp(
+    localIp: String,
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    contentType: String,
+    chunks: ReceiveChannel<ByteArray>,
+    connectTimeoutMs: Long,
+    uploadIdleTimeoutMs: Long
+): PeerBoundHttpResponse {
+    val connectTimeout = connectTimeoutMs.coerceIn(250L, 60_000L).toInt()
+    val idleTimeout = uploadIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
+    val socket = Socket()
+    try {
+        socket.bind(InetSocketAddress(localIp, 0))
+        runCatching {
+            socket.connect(InetSocketAddress(host, port), connectTimeout)
+        }.onFailure {
+            socket.close()
+            throw BoundConnectFailed()
+        }
+        socket.soTimeout = idleTimeout
+        val output = socket.getOutputStream()
+        val header = buildString {
+            append("POST ")
+            append(pathWithQuery)
+            append(" HTTP/1.1\r\n")
+            append("Host: ")
+            append(host)
+            append(':')
+            append(port)
+            append("\r\n")
+            append("Connection: close\r\n")
+            append("Content-Type: ")
+            append(contentType)
+            append("\r\n")
+            append("\r\n")
+        }
+        output.write(header.toByteArray(Charsets.UTF_8))
+        for (chunk in chunks) {
+            output.write(chunk)
+        }
+        output.flush()
+        socket.shutdownOutput()
+        val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)
+        return parseHttpResponse(raw)
+    } finally {
+        runCatching { socket.close() }
+    }
 }
 
 private fun executeBoundHttpOnLocalIp(
@@ -214,4 +440,42 @@ private fun parseHttpResponse(raw: String): PeerBoundHttpResponse {
     val statusCode = Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull()
         ?: 0
     return PeerBoundHttpResponse(statusCode = statusCode, body = body.trim())
+}
+
+private fun readHttpStatusLine(input: java.io.BufferedInputStream): Int {
+    val statusLine = input.readAsciiLine()
+    return Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+}
+
+private fun skipHttpHeaders(input: java.io.BufferedInputStream) {
+    while (true) {
+        val line = input.readAsciiLine()
+        if (line.isEmpty()) {
+            return
+        }
+    }
+}
+
+private fun drainAvailable(input: java.io.BufferedInputStream) {
+    val buffer = ByteArray(1024)
+    while (input.read(buffer) > 0) {
+        // discard error bodies
+    }
+}
+
+private fun java.io.InputStream.readAsciiLine(): String {
+    val builder = StringBuilder()
+    while (true) {
+        val byte = read()
+        if (byte == -1) {
+            break
+        }
+        if (byte == '\n'.code) {
+            break
+        }
+        if (byte != '\r'.code) {
+            builder.append(byte.toChar())
+        }
+    }
+    return builder.toString()
 }

@@ -22,11 +22,11 @@ import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.DesktopShareServerController
-import com.fileapex.platform.DesktopMacTrayCoordinator
+import com.fileapex.platform.DesktopJvmStartup
 import com.fileapex.platform.DesktopScreenGeometry
+import com.fileapex.platform.DesktopTraySupport
 import com.fileapex.platform.DesktopWindowBoundsStore
 import com.fileapex.platform.DesktopSendHandoff
-import com.fileapex.platform.MacOsExtensionRegistrar
 import com.fileapex.ui.DeviceCardSlotHeight
 import com.fileapex.ui.DeviceListToAddGap
 import com.fileapex.update.AppUpdateCoordinator
@@ -44,8 +44,7 @@ private val DesktopWindowMinHeight = 560.dp
 private val DesktopWindowMaxHeight = 900.dp
 
 fun main() {
-    MacOsExtensionRegistrar.registerOnLaunchDeferred()
-    DesktopSendHandoff.installOpenUriHandler()
+    DesktopJvmStartup.onMainEntry()
     FileApexServices.beginBootstrap { createFileApexDatabase() }
 
     application {
@@ -128,11 +127,12 @@ fun main() {
             }
             com.fileapex.cloud.DesktopAuthCoordinator.cancelPending()
             DesktopShareServerController.shutdownForQuit()
+            DesktopTraySupport.dispose()
         }
 
         Window(
             onCloseRequest = {
-                if (DesktopMacTrayCoordinator.handleCloseRequest()) {
+                if (DesktopTraySupport.handleCloseRequest()) {
                     return@Window
                 }
                 shutdownDesktop()
@@ -152,7 +152,7 @@ fun main() {
             }
 
             LaunchedEffect(window) {
-                DesktopMacTrayCoordinator.attachMainWindow(window) {
+                DesktopTraySupport.attachMainWindow(window) {
                     shutdownDesktop()
                     exitApplication()
                 }

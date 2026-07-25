@@ -542,3 +542,33 @@ tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn("verifyGoogleOAuthProjectAlignment", "verifyFirebaseAndroidOAuthSetup", "verifyMacOAuthRedirect")
 }
 
+tasks.register("verifyDesktopSmokeTestConfig") {
+    group = "verification"
+    description = "Confirm desktop smoke-probe and cross-platform packaging tasks are wired"
+    dependsOn(":composeApp:verifyDesktopPackagingTasks")
+    doLast {
+        check(tasks.findByName("runDesktopNetworkingSmoke") != null) {
+            "Missing :shared:runDesktopNetworkingSmoke"
+        }
+        val smokeDoc = rootProject.layout.projectDirectory.file("docs/v0.4.1a-windows-smoke-test.md").asFile
+        check(smokeDoc.isFile) {
+            "Missing smoke test guide: ${smokeDoc.absolutePath}"
+        }
+        logger.lifecycle(
+            "Desktop smoke test config OK — run :shared:runDesktopNetworkingSmoke on Mac or Windows LAN hosts."
+        )
+    }
+}
+
+tasks.register<JavaExec>("runDesktopNetworkingSmoke") {
+    group = "verification"
+    description = "Headless LAN/mDNS/share-server/database smoke probe (Mac or Windows host)"
+    dependsOn("compileKotlinDesktop", "desktopProcessResources")
+    classpath(
+        kotlin.targets.getByName("desktop").compilations.getByName("main").runtimeDependencyFiles,
+        kotlin.targets.getByName("desktop").compilations.getByName("main").output.allOutputs
+    )
+    mainClass.set("com.fileapex.platform.DesktopNetworkingSmokeProbe")
+    standardInput = System.`in`
+}
+

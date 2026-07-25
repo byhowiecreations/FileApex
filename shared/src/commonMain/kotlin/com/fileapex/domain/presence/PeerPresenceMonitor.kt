@@ -8,6 +8,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.network.FileApexClient
 import com.fileapex.network.ServerLifecycleManager
+import com.fileapex.network.FileApexMdnsBrowser
 import com.fileapex.network.sendWakeBroadcast
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
@@ -226,9 +227,21 @@ class PeerPresenceMonitor(
     suspend fun primePeersForTransfer(targets: List<MultiCopyDeviceOption>) {
         if (targets.isEmpty()) return
         runCatching { sendWakeBroadcast() }
+        val attempts = LanPresenceTiming.ON_DEMAND_PRIME_ATTEMPTS
+        val retryMs = LanPresenceTiming.ON_DEMAND_PRIME_RETRY_MS
+        val timeoutMs = LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
         for (target in targets.filter { !it.isLocal }) {
             val peer = mutex.withLock { repository.getDevice(target.deviceId) } ?: continue
-            primePeer(peer, includeDiscovery = true, allowPassiveWait = true)
+            if (tryStoredEndpoint(peer, attempts, retryMs, timeoutMs)) {
+                continue
+            }
+            runCatching { FileApexMdnsBrowser.requestProbe() }
+            delay(LanPresenceTiming.TRANSFER_MDNS_SETTLE_MS)
+            val refreshed = mutex.withLock { repository.getDevice(target.deviceId) } ?: peer
+            if (tryStoredEndpoint(refreshed, attempts, retryMs, timeoutMs)) {
+                continue
+            }
+            primePeer(refreshed, includeDiscovery = true, allowPassiveWait = false)
         }
         refreshOnlineSnapshot()
     }

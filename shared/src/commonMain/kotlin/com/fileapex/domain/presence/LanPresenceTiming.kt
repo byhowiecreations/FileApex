@@ -46,6 +46,9 @@ object LanPresenceTiming {
     @Deprecated("Use ACTIVE_LAN_POLL_MS", ReplaceWith("ACTIVE_LAN_POLL_MS"))
     const val DESKTOP_LAN_POLL_MS = ACTIVE_LAN_POLL_MS
 
+    /** Brief wait after mDNS probe restart before transfer priming reads refreshed endpoints. */
+    const val TRANSFER_MDNS_SETTLE_MS = 750L
+
     /** Stored-endpoint probe attempts before LAN discovery. */
     const val ON_DEMAND_PRIME_ATTEMPTS = 2
 

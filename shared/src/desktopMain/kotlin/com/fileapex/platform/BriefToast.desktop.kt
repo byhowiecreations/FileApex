@@ -2,10 +2,11 @@ package com.fileapex.platform
 
 actual object BriefToast {
     actual fun show(message: String) {
-        if (DesktopMacTrayBridge.isLoaded) {
-            DesktopMacTrayBridge.showToast(message)
-        } else {
-            println("BriefToast: $message")
+        when {
+            DesktopMacTrayBridge.isLoaded -> DesktopMacTrayBridge.showToast(message)
+            DesktopPlatformPaths.isWindows() && DesktopAwtTrayCoordinator.isInstalled() ->
+                DesktopAwtTrayCoordinator.showBalloon(message)
+            else -> println("BriefToast: $message")
         }
     }
 }

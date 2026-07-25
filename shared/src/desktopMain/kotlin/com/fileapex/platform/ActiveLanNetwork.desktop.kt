@@ -56,8 +56,14 @@ private fun isVirtualLanInterface(iface: NetworkInterface): Boolean {
     return virtualTokens.any { token -> name.contains(token) || display.contains(token) }
 }
 
-private fun desktopInterfaceTier(name: String): Int = when {
-    name.matches(Regex("en\\d+")) -> 0
-    name.startsWith("wlan") -> 1
-    else -> 2
+private fun desktopInterfaceTier(name: String): Int {
+    val lowered = name.lowercase()
+    return when {
+        lowered.matches(Regex("en\\d+")) -> 0
+        lowered.startsWith("eth") -> 0
+        lowered.contains("ethernet") -> 0
+        lowered.startsWith("wlan") -> 1
+        lowered.contains("wi-fi") || lowered.contains("wifi") -> 1
+        else -> 2
+    }
 }

@@ -35,4 +35,11 @@ kotlin.code.style=official
 kotlin.mpp.androidSourceSetLayoutVersion=2
 org.jetbrains.compose.experimental.jscanvas.enabled=false
 
-org.gradle.java.home=.build-jdk/jdk-21.0.11+10/Contents/Home
+# JDK 21 for Gradle (gradlew picks fileapex.java.home.<platform> when JAVA_HOME is unset).
+# Do not set org.gradle.java.home — it is a single global value and breaks cross-platform builds.
+fileapex.java.home.macos=.build-jdk/jdk-21.0.11+10/Contents/Home
+fileapex.java.home.windows=C:/Program Files/Java/jdk-21
+#
+# Android SDK — copy to local.properties (gitignored), one path per platform:
+#   sdk.dir.macos=/Users/<you>/Library/Android/sdk
+#   sdk.dir.windows=C:/Users/<you>/AppData/Local/Android/Sdk

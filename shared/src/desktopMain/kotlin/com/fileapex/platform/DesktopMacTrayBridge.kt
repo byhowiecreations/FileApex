@@ -9,6 +9,7 @@ import kotlin.math.roundToInt
 
 /**
  * JNA loader for `libFileApexTray.dylib` (NSStatusItem + NSPopover + SwiftUI tray).
+ * Loads and invokes native code **only on macOS**; all entry points no-op elsewhere.
  */
 object DesktopMacTrayBridge {
     @Volatile
@@ -33,11 +34,11 @@ object DesktopMacTrayBridge {
     private var prepareDropBoxCallback: VoidTrayCallback? = null
 
     val isLoaded: Boolean
-        get() = native != null
+        get() = DesktopPlatformPaths.isMacOs() && native != null
 
     fun load(): Boolean {
+        if (!DesktopPlatformPaths.isMacOs()) return false
         native?.let { return true }
-        if (!isMacOs()) return false
         val dylib = resolveDylib() ?: run {
             println("DesktopMacTrayBridge: libFileApexTray.dylib not found")
             return false
@@ -61,6 +62,7 @@ object DesktopMacTrayBridge {
         onQuit: () -> Unit,
         onShowMainWindow: () -> Unit
     ) {
+        if (!DesktopPlatformPaths.isMacOs()) return
         val lib = native ?: return
         sendCallback = SendCallback { deviceIdsJson, filePathsJson ->
             val deviceIds = deviceIdsJson?.getString(0).orEmpty()
@@ -98,6 +100,7 @@ object DesktopMacTrayBridge {
     }
 
     fun resyncDropBoxFrame() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         seedDropBoxFrame()
     }
 
@@ -113,6 +116,7 @@ object DesktopMacTrayBridge {
     }
 
     fun setup() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_setup()
         resolveAppIconPath()?.let { path ->
             native?.fileapex_tray_set_app_icon_path(path)
@@ -120,41 +124,44 @@ object DesktopMacTrayBridge {
     }
 
     fun bindMainWindow(nsWindowPtr: Long) {
-        if (nsWindowPtr != 0L) {
-            native?.fileapex_tray_bind_main_window(nsWindowPtr)
-        }
+        if (!DesktopPlatformPaths.isMacOs() || nsWindowPtr == 0L) return
+        native?.fileapex_tray_bind_main_window(nsWindowPtr)
     }
 
     fun hideMainWindow() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_hide_main_window()
     }
 
     fun updateDevices(json: String) {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_update_devices(json)
     }
 
     fun showMainWindow() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_show_main_window()
     }
 
     fun showToast(message: String) {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_show_toast(message)
     }
 
     fun beginBackgroundActivity() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_begin_background_activity()
     }
 
     fun endBackgroundActivity() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_end_background_activity()
     }
 
     fun closeDropBox() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_close_dropbox()
     }
-
-    private fun isMacOs(): Boolean =
-        System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
 
     private fun resolveDylib(): File? {
         val fromBundle = resolveRunningAppBundle()?.let { bundle ->

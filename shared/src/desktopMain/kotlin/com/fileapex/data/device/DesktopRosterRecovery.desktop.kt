@@ -2,7 +2,7 @@ package com.fileapex.data.device
 
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.fileapex.data.db.PairedDeviceEntity
-import com.fileapex.platform.MacOsSharedPaths
+import com.fileapex.platform.DesktopPlatformPaths
 import java.io.File
 
 /**
@@ -13,20 +13,7 @@ internal object DesktopRosterRecovery {
     suspend fun importLegacyRosterIfEmpty(repository: DeviceRepository) {
         if (repository.listDevices().isNotEmpty()) return
 
-        val home = System.getProperty("user.home") ?: return
-        val candidates = listOf(
-            File(home, ".fileapex/${MacOsSharedPaths.DATABASE_FILE_NAME}"),
-            File(
-                home,
-                "Library/Group Containers/group.com.fileapex/Database/${MacOsSharedPaths.DATABASE_FILE_NAME}"
-            ),
-            File(
-                home,
-                "Library/Application Support/${MacOsSharedPaths.BUNDLE_ID}/${MacOsSharedPaths.DATABASE_FILE_NAME}.pre-v3-backup"
-            )
-        )
-
-        for (candidate in candidates) {
+        for (candidate in DesktopPlatformPaths.legacyRosterRecoveryCandidates()) {
             if (!candidate.isFile) continue
             val imported = runCatching { importPairedDevices(candidate, repository) }
                 .getOrElse { error ->

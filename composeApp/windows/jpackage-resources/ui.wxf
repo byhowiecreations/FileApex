@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- jpackage ui.wxf override: finish screen with launch + desktop shortcut (both default on). -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch FileApex when setup closes" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="FILEAPEX_DESKTOP_SHORTCUT" Value="1" />
+
+    <CustomAction
+      Id="FileApexLaunchApp"
+      Directory="INSTALLDIR"
+      ExeCommand="[INSTALLDIR]FileApex.exe"
+      Return="asyncNoWait"
+      Impersonate="yes" />
+
+    <CustomAction
+      Id="FileApexSetDesktopShortcutCmd"
+      Property="FileApexDesktopShortcutCmd"
+      Value="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -WindowStyle Hidden -Command &quot;$s=(New-Object -ComObject WScript.Shell).CreateShortcut('$DesktopFolderFileApex.lnk');$s.TargetPath='[INSTALLDIR]FileApex.exe';$s.WorkingDirectory='[INSTALLDIR]';$s.Save()&quot;" />
+
+    <CustomAction
+      Id="FileApexCreateDesktopShortcut"
+      BinaryKey="WixCA"
+      DllEntry="WixQuietExec"
+      Execute="immediate"
+      Return="ignore"
+      Impersonate="yes" />
+
+    <UI Id="JpUI">
+      <UIRef Id="WixUI_InstallDir" />
+
+      <Dialog Id="ExitDialog">
+        <Control
+          Id="DesktopShortcutCheckBox"
+          Type="CheckBox"
+          X="20"
+          Y="200"
+          Width="330"
+          Height="17"
+          CheckBoxValue="1"
+          Property="FILEAPEX_DESKTOP_SHORTCUT"
+          Text="Create a desktop shortcut" />
+      </Dialog>
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="FileApexLaunchApp">
+        WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1
+      </Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="FileApexSetDesktopShortcutCmd">
+        FILEAPEX_DESKTOP_SHORTCUT = 1
+      </Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="FileApexCreateDesktopShortcut">
+        FILEAPEX_DESKTOP_SHORTCUT = 1
+      </Publish>
+    </UI>
+  </Fragment>
+</Wix>

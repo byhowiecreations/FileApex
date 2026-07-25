@@ -6,7 +6,7 @@ import java.awt.Window
 /** Resolves the AppKit NSWindow pointer for a Compose/AWT desktop window (macOS only). */
 object DesktopMacNativeWindow {
     fun nsWindowPointer(window: Window): Long? {
-        if (!System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)) {
+        if (!DesktopPlatformPaths.isMacOs()) {
             return null
         }
         return runCatching { resolvePointer(window) }

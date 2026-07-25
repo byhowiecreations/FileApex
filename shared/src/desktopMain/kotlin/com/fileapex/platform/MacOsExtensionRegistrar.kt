@@ -22,11 +22,10 @@ object MacOsExtensionRegistrar {
     private const val ShareAppexName = "FileApexShareExtension.appex"
     private const val Pluginkit = "/usr/bin/pluginkit"
     private const val Codesign = "/usr/bin/codesign"
-    private const val StampFileName = "extension-registrar.stamp"
 
     /** Runs pluginkit/codesign off the critical path so the window can appear first. */
     fun registerOnLaunchDeferred() {
-        if (!isMacOs()) return
+        if (!DesktopPlatformPaths.isMacOs()) return
         Thread(
             {
                 runCatching { registerOnLaunch() }
@@ -40,7 +39,7 @@ object MacOsExtensionRegistrar {
     }
 
     fun registerOnLaunch() {
-        if (!isMacOs()) return
+        if (!DesktopPlatformPaths.isMacOs()) return
 
         // Always purge the deprecated Finder Sync extension (any install location).
         removeAllRegistrations(DeprecatedFinderSyncId)
@@ -110,9 +109,6 @@ object MacOsExtensionRegistrar {
         writeStamp(stamp)
     }
 
-    private fun supportDir(): File =
-        File(System.getProperty("user.home"), "Library/Application Support/com.fileapex")
-
     private fun registrationStamp(appsRoot: File, shareAppex: File, shareEnts: File): String =
         listOf(
             appsRoot.lastModified(),
@@ -122,21 +118,19 @@ object MacOsExtensionRegistrar {
         ).joinToString(":")
 
     private fun readStamp(): String? {
-        val file = File(supportDir(), StampFileName)
+        val file = DesktopPlatformPaths.extensionRegistrarStampFile()
         if (!file.isFile) return null
         return runCatching { file.readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     private fun writeStamp(stamp: String) {
         runCatching {
-            val dir = supportDir()
-            if (!dir.exists()) dir.mkdirs()
-            File(dir, StampFileName).writeText(stamp)
+            DesktopPlatformPaths.applicationSupportDirectory()
+            DesktopPlatformPaths.extensionRegistrarStampFile().writeText(stamp)
         }
     }
 
-    private fun isMacOs(): Boolean =
-        System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+    private fun isMacOs(): Boolean = DesktopPlatformPaths.isMacOs()
 
     private fun isApplicationsBundle(bundle: File): Boolean {
         return try {
@@ -225,12 +219,8 @@ object MacOsExtensionRegistrar {
         val line = "MacOsExtensionRegistrar: $message"
         println(line)
         try {
-            val dir = File(
-                System.getProperty("user.home"),
-                "Library/Application Support/com.fileapex"
-            )
-            if (!dir.exists()) dir.mkdirs()
-            File(dir, "extension-registrar.log")
+            DesktopPlatformPaths.applicationSupportDirectory()
+            DesktopPlatformPaths.extensionRegistrarLogFile()
                 .appendText("${Instant.ofEpochMilli(TimeUtils.now())} $line\n")
         } catch (_: Exception) {
             // Best-effort diagnostics only.

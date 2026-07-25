@@ -21,19 +21,18 @@ object NetworkUtils {
             ?: "127.0.0.1"
 
     /**
-     * Ordered bind candidates for force-routed peer TCP/UDP — primary active LAN IP first.
+     * Ordered bind candidates for force-routed peer TCP/UDP — active Wi‑Fi/Ethernet only.
+     * Never falls back to cellular or inactive interfaces.
      */
     fun lanBindCandidates(): List<String> {
         val active = activeLanIpv4Addresses().filter { isUsableLanIpv4(it) }
-        val all = lanIpv4Addresses().filter { isUsableLanIpv4(it) }
-        val merged = (active + all).distinct()
-        if (merged.isEmpty()) {
+        if (active.isEmpty()) {
             return emptyList()
         }
-        val primary = selectBestLanIpv4(active.ifEmpty { merged }) ?: merged.first()
+        val primary = selectBestLanIpv4(active) ?: active.first()
         return buildList {
             add(primary)
-            addAll(merged.filter { it != primary })
+            addAll(active.filter { it != primary })
         }
     }
 
@@ -49,6 +48,17 @@ object NetworkUtils {
             .map { it.trim() }
             .filter { isUsableLanIpv4(it) }
             .minWithOrNull(lanIpv4PreferenceOrder())
+
+    /** True for RFC1918 LAN destinations reached only over Wi‑Fi/Ethernet peer routes. */
+    fun isPrivateLanPeerHost(host: String): Boolean {
+        val cleaned = host.trim()
+        if (!isUsableLanIpv4(cleaned)) {
+            return false
+        }
+        return cleaned.startsWith("192.168.") ||
+            cleaned.startsWith("10.") ||
+            isPrivate172(cleaned)
+    }
 
     /** True for non-loopback, non-link-local IPv4 suitable for LAN reachability probes. */
     fun isUsableLanIpv4(ip: String): Boolean {

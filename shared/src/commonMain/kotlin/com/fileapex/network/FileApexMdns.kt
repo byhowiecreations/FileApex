@@ -14,7 +14,12 @@ object FileApexMdns {
     fun deviceIdFromServiceName(serviceName: String?): String? {
         val trimmed = serviceName?.trim().orEmpty()
         if (!trimmed.startsWith(SERVICE_NAME_PREFIX)) return null
-        val id = trimmed.removePrefix(SERVICE_NAME_PREFIX).trim()
-        return id.takeIf { it.isNotEmpty() }
+        var id = trimmed.removePrefix(SERVICE_NAME_PREFIX).trim()
+        // jmdNS/Bonjour qualified names: FileApex-<id>._fileapex._tcp.local.
+        val suffixStart = id.indexOf('.')
+        if (suffixStart > 0) {
+            id = id.substring(0, suffixStart)
+        }
+        return id.trim().takeIf { it.isNotEmpty() }
     }
 }

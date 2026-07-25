@@ -1,9 +1,26 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 import groovy.json.JsonSlurper
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+
+private fun isMacHost(): Boolean =
+    System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
+
+private fun isWindowsHost(): Boolean =
+    System.getProperty("os.name").orEmpty().contains("windows", ignoreCase = true)
+
+/**
+ * Register only the installer format for the current OS so Gradle never schedules
+ * Mac DMG work on Windows (or MSI work on macOS).
+ */
+private fun desktopInstallerFormats(): Array<TargetFormat> = when {
+    isMacHost() -> arrayOf(TargetFormat.Dmg)
+    isWindowsHost() -> arrayOf(TargetFormat.Msi)
+    else -> emptyArray()
+}
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -284,7 +301,7 @@ afterEvaluate {
             dependsOn("verifyReleaseSigning")
         }
     }
-    listOf("copyReleaseBuilds", "copyAllBuilds").forEach { taskName ->
+    listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsReleaseBuilds").forEach { taskName ->
         tasks.matching { it.name == taskName }.configureEach {
             dependsOn("verifyReleaseSigning")
         }
@@ -303,10 +320,11 @@ compose.desktop {
         )
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(*desktopInstallerFormats())
             packageName = "FileApex"
+            description = "Local-first P2P file explorer"
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
-            // Marketing version stays fileapex.version.name; DMG is renamed on copy.
+            // Marketing version stays fileapex.version.name; installers are renamed on copy.
             packageVersion = "1.0.${providers.gradleProperty("fileapex.version.code").get()}"
 
             macOS {
@@ -338,6 +356,17 @@ compose.desktop {
                     """.trimIndent()
                 }
             }
+
+            windows {
+                menuGroup = "FileApex"
+                menu = true
+                dirChooser = true
+                // Desktop shortcut is offered on the finish dialog (ui.wxf override), not during file copy.
+                shortcut = false
+                // Stable upgrade UUID — required for in-place MSI upgrades across releases.
+                upgradeUuid = "7c4f8a2e-9b1d-4e6a-c3f5-8d2e1a0b9c7f"
+                msiPackageVersion = "1.0.${providers.gradleProperty("fileapex.version.code").get()}"
+            }
         }
     }
 }
@@ -345,6 +374,7 @@ compose.desktop {
 tasks.register("buildMacTrayBridge") {
     group = "distribution"
     description = "Compile libFileApexTray.dylib (NSStatusItem + NSPopover)"
+    onlyIf { isMacHost() }
     doLast {
         val script = rootProject.layout.projectDirectory.file("macos/scripts/build_tray_bridge.sh").asFile
         if (!script.exists()) {
@@ -362,11 +392,17 @@ tasks.register("buildMacTrayBridge") {
     }
 }
 
-tasks.matching { it.name == "createDistributable" }.configureEach {
-    dependsOn("buildMacTrayBridge")
+tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDistributable" }.configureEach {
+    if (isMacHost()) {
+        dependsOn("buildMacTrayBridge")
+    }
 }
 
 private fun Project.embedMacTrayBridgeIn(appBundle: File) {
+    if (!isMacHost()) {
+        logger.lifecycle("Skipping Mac tray dylib embed — not a macOS build host")
+        return
+    }
     val dylib = rootProject.layout.projectDirectory.file("macos/build/Tray/libFileApexTray.dylib").asFile
     if (!dylib.isFile) {
         logger.warn("libFileApexTray.dylib missing — menu bar tray disabled")
@@ -387,6 +423,7 @@ tasks.register("embedMacExtensions") {
     group = "distribution"
     description = "Build Share Extension and embed into FileApex.app"
     dependsOn("createDistributable")
+    onlyIf { isMacHost() }
     doLast {
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/FileApex.app").get().asFile
         embedMacTrayBridgeIn(appBundle)
@@ -406,7 +443,9 @@ tasks.register("embedMacExtensions") {
 }
 
 tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.configureEach {
-    dependsOn("embedMacExtensions")
+    if (isMacHost()) {
+        dependsOn("embedMacExtensions")
+    }
 }
 
 /** After [moveToCurrent], Gradle must rebuild when outputs no longer exist under `build/`. */
@@ -428,7 +467,7 @@ afterEvaluate {
 
     tasks.named("createDistributable").configure {
         outputs.upToDateWhen {
-            distributableAppBundle().exists()
+            distributableDesktopApp().exists()
         }
     }
 
@@ -439,16 +478,32 @@ afterEvaluate {
         }
     }
 
+    tasks.matching { it.name == "packageMsi" || it.name == "packageReleaseMsi" }.configureEach {
+        outputs.upToDateWhen {
+            msiOutputDir().listFiles()?.any { it.isFile && it.extension.equals("msi", ignoreCase = true) } == true
+        }
+    }
+
     tasks.named("assembleDebug").configure {
         finalizedBy("copyCurrentBuilds")
+        dependsOn(":shared:verifyDesktopSmokeTestConfig")
     }
 }
 
 private fun Project.apkOutputDir(variant: String): File =
     layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
 
-private fun Project.distributableAppBundle(): File =
+private fun Project.distributableMacAppBundle(): File =
     layout.buildDirectory.dir("compose/binaries/main/app/FileApex.app").get().asFile
+
+private fun Project.distributableWindowsAppDir(): File =
+    layout.buildDirectory.dir("compose/binaries/main/app/FileApex").get().asFile
+
+private fun Project.distributableDesktopApp(): File =
+    if (isMacHost()) distributableMacAppBundle() else distributableWindowsAppDir()
+
+private fun Project.msiOutputDir(): File =
+    layout.buildDirectory.dir("compose/binaries/main/msi").get().asFile
 
 /**
  * Moves build outputs into project-root `current/` (never copies — avoids duplicating large artifacts).
@@ -469,7 +524,9 @@ private fun moveToCurrent(
         target.toPath(),
         StandardCopyOption.REPLACE_EXISTING
     )
-    ProcessBuilder("xattr", "-cr", target.absolutePath).start().waitFor()
+    if (isMacHost()) {
+        ProcessBuilder("xattr", "-cr", target.absolutePath).start().waitFor()
+    }
     logger.lifecycle("Moved ${source.name} -> current/$destName")
 }
 
@@ -490,7 +547,8 @@ private fun detachFileApexDmgVolumes() {
 
 private fun prepareCurrentDirectory(
     dest: File,
-    preserveDmgFiles: Boolean
+    preserveDmgFiles: Boolean,
+    preserveMsiFiles: Boolean = false
 ) {
     if (!dest.exists()) {
         dest.mkdirs()
@@ -498,6 +556,9 @@ private fun prepareCurrentDirectory(
     }
     dest.listFiles().orEmpty().forEach { entry ->
         if (preserveDmgFiles && entry.isFile && entry.extension.equals("dmg", ignoreCase = true)) {
+            return@forEach
+        }
+        if (preserveMsiFiles && entry.isFile && entry.extension.equals("msi", ignoreCase = true)) {
             return@forEach
         }
         entry.deleteRecursively()
@@ -518,6 +579,10 @@ private fun patchShippedAppMarketingVersion(dest: File, appVersionName: String, 
 }
 
 private fun Project.embedMacExtensionsIn(appBundle: File) {
+    if (!isMacHost()) {
+        logger.lifecycle("Skipping Mac extension embed — not a macOS build host")
+        return
+    }
     embedMacTrayBridgeIn(appBundle)
     val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
     ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
@@ -527,18 +592,41 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         .waitFor()
 }
 
+private fun Project.shipMsiToCurrent(
+    dest: File,
+    appVersionName: String,
+    logger: org.gradle.api.logging.Logger,
+    release: Boolean = false
+) {
+    val msiDir = msiOutputDir()
+    val msis = msiDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("msi", ignoreCase = true) }
+    check(msis.isNotEmpty()) {
+        "No MSI found in ${msiDir.absolutePath}. Run packageMsi on a Windows host with WiX installed."
+    }
+    val preferred = msis.firstOrNull { release && it.name.contains("release", ignoreCase = true) }
+        ?: msis.maxByOrNull { it.lastModified() }
+        ?: msis.first()
+    moveToCurrent(dest, preferred, destName = "FileApex-$appVersionName.msi", logger = logger)
+}
+
 private fun Project.shipToCurrent(
     includeDebugApk: Boolean,
     includeReleaseApk: Boolean,
     includeDmg: Boolean,
+    includeMsi: Boolean,
     mountDmg: Boolean,
-    preserveExistingDmgOnWipe: Boolean
+    preserveExistingDmgOnWipe: Boolean,
+    preserveExistingMsiOnWipe: Boolean = false
 ) {
     if (!preserveExistingDmgOnWipe) {
         detachFileApexDmgVolumes()
     }
     val dest = currentBuildsDest()
-    prepareCurrentDirectory(dest, preserveDmgFiles = preserveExistingDmgOnWipe)
+    prepareCurrentDirectory(
+        dest,
+        preserveDmgFiles = preserveExistingDmgOnWipe,
+        preserveMsiFiles = preserveExistingMsiOnWipe
+    )
 
     val logger = logger
     val appVersionName = providers.gradleProperty("fileapex.version.name").get()
@@ -562,7 +650,7 @@ private fun Project.shipToCurrent(
     if (includeReleaseApk) moveApksFrom("release")
 
     val dmgDestName = "FileApex-$appVersionName.dmg"
-    if (includeDmg) {
+    if (includeDmg && isMacHost()) {
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
         val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension == "dmg" }
         check(dmgs.isNotEmpty()) { "No DMG found in ${dmgDir.absolutePath}" }
@@ -571,22 +659,40 @@ private fun Project.shipToCurrent(
         }
     }
 
-    val buildAppBundle = distributableAppBundle()
-    check(buildAppBundle.exists()) {
-        "Missing build output: ${buildAppBundle.absolutePath}"
-    }
-    embedMacExtensionsIn(buildAppBundle)
-    moveToCurrent(dest, buildAppBundle, logger = logger)
-
-    patchShippedAppMarketingVersion(dest, appVersionName, versionCode)
-    logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$appVersionName")
-
-    val launchedBinary = dest.resolve("FileApex.app/Contents/MacOS/FileApex")
-    check(launchedBinary.exists() && launchedBinary.canExecute()) {
-        "FileApex.app binary missing execute permission after move"
+    if (includeMsi && isWindowsHost()) {
+        shipMsiToCurrent(dest, appVersionName, logger, release = includeReleaseApk)
     }
 
-    if (mountDmg) {
+    if (isMacHost()) {
+        val buildAppBundle = distributableMacAppBundle()
+        check(buildAppBundle.exists()) {
+            "Missing build output: ${buildAppBundle.absolutePath}"
+        }
+        embedMacExtensionsIn(buildAppBundle)
+        moveToCurrent(dest, buildAppBundle, logger = logger)
+
+        patchShippedAppMarketingVersion(dest, appVersionName, versionCode)
+        logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$appVersionName")
+
+        val launchedBinary = dest.resolve("FileApex.app/Contents/MacOS/FileApex")
+        check(launchedBinary.exists() && launchedBinary.canExecute()) {
+            "FileApex.app binary missing execute permission after move"
+        }
+    }
+
+    if (isWindowsHost()) {
+        val buildAppDir = distributableWindowsAppDir()
+        check(buildAppDir.isDirectory) {
+            "Missing build output: ${buildAppDir.absolutePath}. Run createDistributable first."
+        }
+        val launchedBinary = buildAppDir.resolve("FileApex.exe")
+        check(launchedBinary.isFile) {
+            "FileApex.exe missing in ${buildAppDir.absolutePath}"
+        }
+        moveToCurrent(dest, buildAppDir, logger = logger)
+    }
+
+    if (mountDmg && isMacHost()) {
         val shippedDmg = dest.resolve(dmgDestName)
         check(shippedDmg.exists()) { "Missing DMG to mount: ${shippedDmg.absolutePath}" }
         ProcessBuilder("open", shippedDmg.absolutePath).start().waitFor()
@@ -595,40 +701,128 @@ private fun Project.shipToCurrent(
 }
 
 /**
- * Post-[assembleDebug]: debug APK + Mac .app into `current/`.
- * Does **not** build or mount a DMG (avoids hdiutil attach/detach during iteration).
+ * Post-[assembleDebug]: debug APK + desktop app into `current/`.
+ * Mac: .app (no DMG). Windows: MSI + portable FileApex.exe folder.
  */
 tasks.register("copyCurrentBuilds") {
     group = "distribution"
-    description = "Move debug APK and Mac .app into root current/ (no DMG)"
-    dependsOn("assembleDebug", "embedMacExtensions")
+    description = "Move debug APK and desktop app into root current/ (no DMG on Mac)"
+    dependsOn("assembleDebug")
+    if (isMacHost()) {
+        dependsOn("embedMacExtensions")
+    } else if (isWindowsHost()) {
+        dependsOn("createDistributable", "packageMsi")
+    }
 
     doLast {
         shipToCurrent(
             includeDebugApk = true,
             includeReleaseApk = false,
             includeDmg = false,
+            includeMsi = isWindowsHost(),
             mountDmg = false,
-            preserveExistingDmgOnWipe = true
+            preserveExistingDmgOnWipe = true,
+            preserveExistingMsiOnWipe = true
         )
     }
 }
 
 /**
- * Final release ship: release APK, Mac .app, and DMG into `current/` (no auto-mount).
+ * Final release ship into `current/`. Mac: .app + DMG. Windows: MSI + portable app.
  */
 tasks.register("copyReleaseBuilds") {
     group = "distribution"
-    description = "Release APK + Mac .app + DMG into current/"
-    dependsOn("assembleRelease", "embedMacExtensions", "packageDmg")
+    description = "Release APK + desktop ship into current/ (Mac .app+DMG or Windows MSI)"
+    dependsOn("assembleRelease")
+    if (isMacHost()) {
+        dependsOn("embedMacExtensions", "packageDmg")
+    } else if (isWindowsHost()) {
+        dependsOn("createReleaseDistributable", "packageReleaseMsi")
+    }
 
     doLast {
         shipToCurrent(
             includeDebugApk = false,
             includeReleaseApk = true,
-            includeDmg = true,
+            includeDmg = isMacHost(),
+            includeMsi = isWindowsHost(),
             mountDmg = false,
-            preserveExistingDmgOnWipe = false
+            preserveExistingDmgOnWipe = false,
+            preserveExistingMsiOnWipe = false
+        )
+    }
+}
+
+/**
+ * Windows ship: MSI installer + portable FileApex.exe folder into `current/`.
+ */
+tasks.register("copyWindowsBuilds") {
+    group = "distribution"
+    description = "Build MSI + portable app and move to current/ (Windows host only)"
+    dependsOn("createDistributable", "packageMsi")
+    onlyIf { isWindowsHost() }
+
+    doLast {
+        shipToCurrent(
+            includeDebugApk = false,
+            includeReleaseApk = false,
+            includeDmg = false,
+            includeMsi = true,
+            mountDmg = false,
+            preserveExistingDmgOnWipe = true,
+            preserveExistingMsiOnWipe = false
+        )
+    }
+}
+
+/**
+ * Windows release ship: release APK + MSI + portable app into `current/`.
+ */
+tasks.register("copyWindowsReleaseBuilds") {
+    group = "distribution"
+    description = "Release APK + MSI + portable app into current/ (Windows host only)"
+    dependsOn("assembleRelease", "createReleaseDistributable", "packageReleaseMsi")
+    onlyIf { isWindowsHost() }
+
+    doLast {
+        shipToCurrent(
+            includeDebugApk = false,
+            includeReleaseApk = true,
+            includeDmg = false,
+            includeMsi = true,
+            mountDmg = false,
+            preserveExistingDmgOnWipe = true,
+            preserveExistingMsiOnWipe = false
+        )
+    }
+}
+
+tasks.register("verifyDesktopPackagingTasks") {
+    group = "verification"
+    description = "Confirm Compose Desktop packaging tasks are registered for this host OS"
+    doLast {
+        val requiredTasks = buildList {
+            add("createDistributable")
+            add("packageDistributionForCurrentOS")
+            if (isMacHost()) {
+                add("packageDmg")
+                add("packageReleaseDmg")
+            }
+            if (isWindowsHost()) {
+                add("packageMsi")
+                add("packageReleaseMsi")
+            }
+        }
+        requiredTasks.forEach { taskName ->
+            check(tasks.findByName(taskName) != null) { "Missing desktop packaging task: $taskName" }
+        }
+        logger.lifecycle(
+            "Desktop packaging tasks registered (host=${System.getProperty("os.name")}). " +
+                when {
+                    isMacHost() -> "DMG packaging enabled; MSI tasks not registered on macOS."
+                    isWindowsHost() -> "MSI packaging enabled; DMG tasks not registered on Windows."
+                    else -> "No native installer format registered for this host."
+                }
         )
     }
 }
@@ -722,22 +916,70 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
 }
 
 /**
- * Full ship after [assembleDebug] + [assembleRelease]: all APKs, .app, and DMG into `current/`.
- * Does not mount the DMG.
+ * Full ship after [assembleDebug] + [assembleRelease] into `current/`.
+ * Mac: APKs + .app + DMG. Windows: APKs + MSI + portable app.
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Move debug+release APKs, Mac .app, and DMG into current/"
-    dependsOn("assembleDebug", "assembleRelease", "embedMacExtensions", "packageDmg")
+    description = "Move debug+release APKs and desktop ship into current/"
+    dependsOn("assembleDebug", "assembleRelease")
+    if (isMacHost()) {
+        dependsOn("embedMacExtensions", "packageDmg")
+    } else if (isWindowsHost()) {
+        dependsOn("createDistributable", "packageMsi", "createReleaseDistributable", "packageReleaseMsi")
+    }
 
     doLast {
         shipToCurrent(
             includeDebugApk = true,
             includeReleaseApk = true,
-            includeDmg = true,
+            includeDmg = isMacHost(),
+            includeMsi = isWindowsHost(),
             mountDmg = false,
-            preserveExistingDmgOnWipe = false
+            preserveExistingDmgOnWipe = false,
+            preserveExistingMsiOnWipe = false
         )
     }
 }
+
+/**
+ * Inject custom WiX (finish-dialog checkboxes) into jpackage's resource dir after it is cleared.
+ */
+private fun Project.configureWindowsInstallerResources() {
+    if (!isWindowsHost()) return
+    val overlayDir = layout.projectDirectory.dir("windows/jpackage-resources").asFile
+    if (!overlayDir.isDirectory) return
+
+    tasks.withType<AbstractJPackageTask>().configureEach {
+        if (name != "packageMsi" && name != "packageReleaseMsi") return@configureEach
+        val resourcesDir = layout.buildDirectory.dir("compose/tmp/resources").get().asFile
+        doFirst {
+            Thread(
+                {
+                    var spins = 0
+                    while (spins < 120_000) {
+                        if (!resourcesDir.exists()) {
+                            resourcesDir.mkdirs()
+                        }
+                        if (!resourcesDir.resolve("ui.wxf").isFile) {
+                            overlayDir.copyRecursively(resourcesDir, overwrite = true)
+                        }
+                        if (resourcesDir.resolve("ui.wxf").isFile) {
+                            return@Thread
+                        }
+                        spins++
+                        Thread.sleep(1)
+                    }
+                    logger.warn("Windows installer WiX overlay was not injected: ${resourcesDir.resolve("ui.wxf")}")
+                },
+                "fileapex-jpackage-resource-overlay",
+            ).apply {
+                isDaemon = true
+                start()
+            }
+        }
+    }
+}
+
+configureWindowsInstallerResources()
 

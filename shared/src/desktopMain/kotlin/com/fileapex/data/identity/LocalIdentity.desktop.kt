@@ -1,5 +1,6 @@
 package com.fileapex.data.identity
 
+import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.defaultStorageRoot
 import com.fileapex.platform.generateDeviceId
 import com.fileapex.platform.platformDeviceName
@@ -33,20 +34,39 @@ actual fun updateLocalDeviceName(newName: String) {
 }
 
 private fun identityFile(): File {
-    val dir = File(System.getProperty("user.home"), ".fileapex")
-    if (!dir.exists()) dir.mkdirs()
-    return File(dir, "identity.properties")
+    DesktopPlatformPaths.applicationSupportDirectory()
+    return DesktopPlatformPaths.identityPropertiesFile()
 }
 
 private fun loadProps(): Properties {
-    val file = identityFile()
     val props = Properties()
-    if (file.exists()) {
-        file.inputStream().use { props.load(it) }
+    for (candidate in identityLoadCandidates()) {
+        if (!candidate.isFile) continue
+        candidate.inputStream().use { props.load(it) }
+        if (props.getProperty("deviceId") != null) {
+            migrateIdentityIfNeeded(candidate)
+            return props
+        }
     }
     return props
 }
 
+private fun identityLoadCandidates(): List<File> {
+    val primary = identityFile()
+    return (listOf(primary) + DesktopPlatformPaths.legacyIdentityPropertiesCandidates())
+        .distinctBy { it.absolutePath }
+}
+
+private fun migrateIdentityIfNeeded(loadedFrom: File) {
+    val target = identityFile()
+    if (loadedFrom.canonicalPath == target.canonicalPath) return
+    runCatching {
+        DesktopPlatformPaths.applicationSupportDirectory()
+        loadedFrom.copyTo(target, overwrite = true)
+    }
+}
+
 private fun persistProps(props: Properties) {
+    DesktopPlatformPaths.applicationSupportDirectory()
     identityFile().outputStream().use { props.store(it, "FileApex identity") }
 }

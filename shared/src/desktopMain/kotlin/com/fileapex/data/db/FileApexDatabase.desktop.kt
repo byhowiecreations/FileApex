@@ -5,7 +5,7 @@ import androidx.room3.RoomDatabase
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.fileapex.data.db.MIGRATION_2_3
 import com.fileapex.data.db.MIGRATION_3_4
-import com.fileapex.platform.MacOsSharedPaths
+import com.fileapex.platform.DesktopPlatformPaths
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import java.nio.file.Files
@@ -47,30 +47,17 @@ private fun backupDesktopDatabaseIfPresent(dbFile: File) {
 }
 
 /**
- * Roster DB lives at:
- * `~/Library/Application Support/com.fileapex/fileapex.db`
- *
- * Share Extension reads the same path with normal file I/O
- * (no App Group / sandbox). Migrates from older locations when present.
+ * Roster DB path from [DesktopPlatformPaths] (macOS Application Support or Windows LocalAppData).
+ * Share Extension on macOS reads the same path with normal file I/O. Migrates macOS legacy
+ * locations on first launch when [.roster-resolved] is absent.
  */
 internal fun resolveDesktopDatabaseFile(): File {
-    val home = System.getProperty("user.home") ?: "."
-    val supportDir = File(home, "Library/Application Support/${MacOsSharedPaths.BUNDLE_ID}")
-    val supportDb = File(supportDir, MacOsSharedPaths.DATABASE_FILE_NAME)
-    val rosterResolvedMarker = File(supportDir, ".roster-resolved")
-
-    if (!supportDir.exists()) {
-        supportDir.mkdirs()
-    }
+    val supportDir = DesktopPlatformPaths.applicationSupportDirectory()
+    val supportDb = DesktopPlatformPaths.databaseFile()
+    val rosterResolvedMarker = DesktopPlatformPaths.rosterResolvedMarkerFile()
 
     if (!rosterResolvedMarker.exists()) {
-        val legacyCandidates = listOf(
-            File(home, ".fileapex/fileapex.db"),
-            File(
-                home,
-                "Library/Group Containers/group.com.fileapex/Database/fileapex.db"
-            )
-        )
+        val legacyCandidates = DesktopPlatformPaths.legacyDatabaseMigrationCandidates()
 
         if (!supportDb.exists()) {
             val source = legacyCandidates.firstOrNull { it.exists() }
@@ -133,7 +120,7 @@ private fun copyDatabaseTree(source: File, targetDb: File, targetDir: File) {
         }
     }
     println(
-        "FileApexDatabase: migrated roster DB to Application Support " +
+        "FileApexDatabase: migrated roster DB to ${targetDir.absolutePath} " +
             "(from ${source.absolutePath})"
     )
 }

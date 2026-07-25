@@ -93,7 +93,7 @@ class FileApexServer(
                 serverScope = CoroutineScope(Dispatchers.IO + lifecycleJob)
             }
 
-            val bindHost = "0.0.0.0"
+            val bindHost = LanInterfaceBinding.shareServerListenHost()
             val advertiseIp = LanInterfaceBinding.primaryLanIpv4OrNull()
             onLog(
                 "Starting CIO engine on $bindHost:$port" +

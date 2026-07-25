@@ -29,13 +29,10 @@ object DesktopMacTrayCoordinator {
     private var installed = false
     private var nativeMainWindowBound = false
 
-    fun isMacOs(): Boolean =
-        System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
-
     fun isInstalled(): Boolean = installed
 
     fun attachMainWindow(window: Window, onQuit: () -> Unit) {
-        if (!isMacOs() || installed) return
+        if (!DesktopPlatformPaths.isMacOs() || installed) return
         if (!DesktopMacTrayBridge.load()) return
 
         mainWindow = window
@@ -66,12 +63,13 @@ object DesktopMacTrayCoordinator {
 
     /** Returns true when the close request was consumed (hide-to-tray). */
     fun handleCloseRequest(): Boolean {
-        if (!installed) return false
+        if (!DesktopPlatformPaths.isMacOs() || !installed) return false
         hideMainWindow()
         return true
     }
 
     fun hideMainWindow() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         scope.launch(Dispatchers.Swing) {
             mainWindow?.isVisible = false
         }
@@ -113,6 +111,7 @@ object DesktopMacTrayCoordinator {
     }
 
     private fun scheduleMainWindowBinding(window: Window) {
+        if (!DesktopPlatformPaths.isMacOs()) return
         bindJob?.cancel()
         bindJob = scope.launch(Dispatchers.Swing) {
             repeat(30) {
@@ -130,6 +129,7 @@ object DesktopMacTrayCoordinator {
     }
 
     private fun startDeviceSync() {
+        if (!DesktopPlatformPaths.isMacOs()) return
         observeJob?.cancel()
         observeJob = scope.launch {
             combine(
@@ -164,6 +164,7 @@ object DesktopMacTrayCoordinator {
     }
 
     private fun handleSend(deviceIdsJson: String, filePathsJson: String) {
+        if (!DesktopPlatformPaths.isMacOs()) return
         scope.launch {
             val deviceIds = runCatching {
                 json.decodeFromString<List<String>>(deviceIdsJson)

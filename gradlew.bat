@@ -22,7 +22,7 @@
 @rem ##########################################################################
 
 @rem Set local scope for the variables with windows NT shell
-if "%OS%"=="Windows_NT" setlocal
+if "%OS%"=="Windows_NT" setlocal EnableDelayedExpansion
 
 set DIRNAME=%~dp0
 if "%DIRNAME%" == "" set DIRNAME=.
@@ -34,6 +34,25 @@ for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
+
+@rem Prefer JDK 21 from gradle.properties when JAVA_HOME is unset (Kotlin/AGP do not support JDK 26 yet).
+if not defined JAVA_HOME (
+  set "FILEAPEX_JAVA_HOME="
+  if exist "%APP_HOME%gradle.properties" (
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%APP_HOME%gradle.properties") do (
+      if /I "%%~A"=="fileapex.java.home.windows" set "FILEAPEX_JAVA_HOME=%%~B"
+    )
+  )
+  if defined FILEAPEX_JAVA_HOME (
+    set "JAVA_HOME=!FILEAPEX_JAVA_HOME!"
+  ) else if exist "C:\Program Files\Java\jdk-21\bin\java.exe" (
+    set "JAVA_HOME=C:\Program Files\Java\jdk-21"
+  ) else if exist "%APP_HOME%\.build-jdk\jdk-21.0.11+10\bin\java.exe" (
+    set "JAVA_HOME=%APP_HOME%\.build-jdk\jdk-21.0.11+10"
+  ) else if exist "%ProgramFiles%\Android\Android Studio\jbr\bin\java.exe" (
+    set "JAVA_HOME=%ProgramFiles%\Android\Android Studio\jbr"
+  )
+)
 
 @rem Find java.exe
 if defined JAVA_HOME goto findJavaFromJavaHome

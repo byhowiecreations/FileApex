@@ -32,6 +32,9 @@ object BackgroundPresenceServices {
         PresenceNetworkRevalidator.ensureRegistered()
         FcmTokenRegistrar.start()
         CloudPresenceHeartbeat.start()
+        if (FileApexServices.isDatabaseReady()) {
+            FileApexServices.presenceMonitor.ensureLanPollLoop()
+        }
         runCatching { GoogleLinkCoordinator.invalidatePublishedPresenceCache() }
     }
 
