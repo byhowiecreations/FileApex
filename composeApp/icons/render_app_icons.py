@@ -26,8 +26,20 @@ ICO = COMPOSE_ICONS / "FileApex.ico"
 def load_source() -> Image.Image:
     if not SOURCE_PNG.is_file():
         raise FileNotFoundError(f"Missing launcher source: {SOURCE_PNG}")
-    image = Image.open(SOURCE_PNG).convert("RGBA")
-    return image
+    return normalize_source(Image.open(SOURCE_PNG).convert("RGBA"))
+
+
+def normalize_source(image: Image.Image) -> Image.Image:
+    """Crop transparent margins and center on a square canvas."""
+    bbox = image.getbbox()
+    if bbox is None:
+        return image
+    cropped = image.crop(bbox)
+    width, height = cropped.size
+    side = max(width, height)
+    square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    square.paste(cropped, ((side - width) // 2, (side - height) // 2))
+    return square
 
 
 def save_square_png(image: Image.Image, size: int, path: Path) -> None:
@@ -39,48 +51,26 @@ def save_square_png(image: Image.Image, size: int, path: Path) -> None:
 def write_notification_icon(source: Image.Image, path: Path, size: int = 96) -> None:
     """White silhouette on transparent — Android tints only opaque pixels in the status bar."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    width, height = source.size
-    # Drop the launcher tile border (rounded square frame) before extracting the logo.
-    inset = int(min(width, height) * 0.17)
-    cropped = source.crop((inset, inset, width - inset, height - inset))
-    resized = cropped.resize((size, size), Image.Resampling.LANCZOS).convert("RGBA")
+    resized = source.resize((size, size), Image.Resampling.LANCZOS).convert("RGBA")
     pixels = resized.load()
-    corners = [
-        pixels[0, 0],
-        pixels[size - 1, 0],
-        pixels[0, size - 1],
-        pixels[size - 1, size - 1],
-    ]
-    background = tuple(sum(channel[i] for channel in corners) // 4 for i in range(3))
 
     def luminance(rgb: tuple[int, int, int]) -> float:
         return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
 
-    def distance(rgb: tuple[int, int, int]) -> float:
-        return sum((rgb[i] - background[i]) ** 2 for i in range(3)) ** 0.5
-
     silhouette = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     out = silhouette.load()
-    edge_guard = max(2, int(size * 0.04))
     for y in range(size):
         for x in range(size):
-            if (
-                x < edge_guard
-                or y < edge_guard
-                or x >= size - edge_guard
-                or y >= size - edge_guard
-            ):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha <= 32:
                 continue
-            red, green, blue, _ = pixels[x, y]
-            rgb = (red, green, blue)
-            lum = luminance(rgb)
-            dist = distance(rgb)
-            if lum >= 200 or (dist >= 45 and lum >= 120):
-                out[x, y] = (255, 255, 255, 255)
-            elif lum >= 170 and dist >= 30:
-                alpha = min(255, int((lum - 170) * 5))
-                if alpha > 0:
-                    out[x, y] = (255, 255, 255, alpha)
+            lum = luminance((red, green, blue))
+            if lum >= 115:
+                out[x, y] = (255, 255, 255, min(255, alpha))
+            elif lum >= 95:
+                fade = min(255, int((lum - 95) * 8))
+                if fade > 0:
+                    out[x, y] = (255, 255, 255, min(255, alpha, fade))
     silhouette.save(path, format="PNG", optimize=True)
 
 
