@@ -129,9 +129,15 @@ class ShareSendViewModel(
             }
             runCatching {
                 transferManager.awaitReady()
-                transferManager.resolveRemoteDeviceOptions(listOf(deviceId))
+                transferManager.resolveRemoteDeviceOptionsForImmediateSend(listOf(deviceId))
             }.fold(
-                onSuccess = { selected -> runSend(selected, recordDirectShareOnSuccess = deviceId) },
+                onSuccess = { selected ->
+                    runSend(
+                        selected,
+                        recordDirectShareOnSuccess = deviceId,
+                        skipTransferPrepare = true
+                    )
+                },
                 onFailure = { error ->
                     _uiState.update {
                         it.copy(
@@ -147,7 +153,8 @@ class ShareSendViewModel(
 
     private suspend fun runSend(
         selected: List<MultiCopyDeviceOption>,
-        recordDirectShareOnSuccess: String? = null
+        recordDirectShareOnSuccess: String? = null,
+        skipTransferPrepare: Boolean = false
     ) {
         _uiState.update {
             it.copy(isSending = true, errorMessage = null, statusMessage = "Sending…")
@@ -155,7 +162,7 @@ class ShareSendViewModel(
         runCatching {
             transferManager.awaitReady()
             val sources = payload.files.map { it.toSource().verifiedFromDisk() }
-            transferManager.sendToDevices(sources, selected)
+            transferManager.sendToDevices(sources, selected, skipTransferPrepare)
         }.fold(
             onSuccess = { batch ->
                 cleanupStaging()

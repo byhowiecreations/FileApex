@@ -224,6 +224,19 @@ class PeerPresenceMonitor(
         return reached
     }
 
+    /**
+     * Pre-send reachability: skip all probes when peers were verified recently (share picker,
+     * device list). Full prime only when endpoints may be stale.
+     */
+    suspend fun prepareForTransfer(targets: List<MultiCopyDeviceOption>) {
+        val remote = targets.filter { !it.isLocal }
+        if (remote.isEmpty()) return
+        if (remote.all { wasRecentlyReachable(it.deviceId, LanPresenceTiming.TRANSFER_RECENT_REACHABILITY_MS) }) {
+            return
+        }
+        primePeersForTransfer(remote)
+    }
+
     suspend fun primePeersForTransfer(targets: List<MultiCopyDeviceOption>) {
         if (targets.isEmpty()) return
         runCatching { sendWakeBroadcast() }
@@ -232,26 +245,13 @@ class PeerPresenceMonitor(
         val timeoutMs = LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
         for (target in targets.filter { !it.isLocal }) {
             val peer = mutex.withLock { repository.getDevice(target.deviceId) } ?: continue
-            val recentlyReachable = wasRecentlyReachable(
-                target.deviceId,
-                LanPresenceTiming.TRANSFER_RECENT_REACHABILITY_MS
-            )
-            if (recentlyReachable &&
-                tryStoredEndpoint(peer, attempts = 1, retryMs = 0L, timeoutMs = timeoutMs)
-            ) {
-                continue
-            }
-            if (tryStoredEndpoint(peer, attempts, retryMs, timeoutMs)) {
-                continue
-            }
-            if (recentlyReachable) {
-                // Share picker already probed this peer — avoid a 12s stale-IP sweep before send.
+            if (tryStoredEndpoint(peer, attempts, retryMs, timeoutMs, fetchNodeState = false)) {
                 continue
             }
             runCatching { FileApexMdnsBrowser.requestProbe() }
             delay(LanPresenceTiming.TRANSFER_MDNS_SETTLE_MS)
             val refreshed = mutex.withLock { repository.getDevice(target.deviceId) } ?: peer
-            if (tryStoredEndpoint(refreshed, attempts, retryMs, timeoutMs)) {
+            if (tryStoredEndpoint(refreshed, attempts, retryMs, timeoutMs, fetchNodeState = false)) {
                 continue
             }
             primePeer(refreshed, includeDiscovery = true, allowPassiveWait = false)
@@ -315,7 +315,8 @@ class PeerPresenceMonitor(
         peer: PairedDeviceEntity,
         attempts: Int,
         retryMs: Long,
-        timeoutMs: Long
+        timeoutMs: Long,
+        fetchNodeState: Boolean = true
     ): Boolean {
         val host = peer.lastKnownIp.trim()
         if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
@@ -324,15 +325,17 @@ class PeerPresenceMonitor(
         repeat(attempts) { attempt ->
             if (client.pingHealth(host, peer.port, timeoutMs)) {
                 markReachable(peer.deviceId)
-                val state = runCatching {
-                    client.fetchPeerNodeState(host, peer.port, timeoutMs)
-                }.getOrNull()
-                if (state != null) {
-                    mutex.withLock {
-                        repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId)
+                if (fetchNodeState) {
+                    val state = runCatching {
+                        client.fetchPeerNodeState(host, peer.port, timeoutMs)
+                    }.getOrNull()
+                    if (state != null) {
+                        mutex.withLock {
+                            repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId)
+                        }
+                        markReachable(state.deviceId.trim())
+                        return true
                     }
-                    markReachable(state.deviceId.trim())
-                    return true
                 }
                 mutex.withLock {
                     repository.touchPeerLastSeen(peer.deviceId, host, peer.port)

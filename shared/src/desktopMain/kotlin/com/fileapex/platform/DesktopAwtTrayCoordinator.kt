@@ -111,17 +111,17 @@ object DesktopAwtTrayCoordinator {
     }
 
     private fun createTrayImage(): java.awt.Image {
-        val size = 16
-        val buffered = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-        val graphics = buffered.createGraphics()
-        try {
-            graphics.color = java.awt.Color(0, 128, 128)
-            graphics.fillRect(0, 0, size, size)
-            graphics.color = java.awt.Color.WHITE
-            graphics.fillRect(4, 4, 8, 8)
-        } finally {
-            graphics.dispose()
+        return DesktopAppIcon.loadTrayImage() ?: run {
+            val size = 16
+            val buffered = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+            val graphics = buffered.createGraphics()
+            try {
+                graphics.color = java.awt.Color(0x1B, 0x5E, 0x4B)
+                graphics.fillRect(0, 0, size, size)
+            } finally {
+                graphics.dispose()
+            }
+            buffered
         }
-        return buffered
     }
 }

@@ -328,6 +328,7 @@ compose.desktop {
             packageVersion = "1.0.${providers.gradleProperty("fileapex.version.code").get()}"
 
             macOS {
+                iconFile.set(project.file("icons/FileApex.icns"))
                 bundleID = "com.fileapex"
                 // Empty entitlements — no App Sandbox (avoids TCC "access data from other apps").
                 entitlementsFile.set(project.file("macos/FileApex.entitlements"))
@@ -358,6 +359,7 @@ compose.desktop {
             }
 
             windows {
+                iconFile.set(project.file("icons/FileApex.ico"))
                 menuGroup = "FileApex"
                 menu = true
                 dirChooser = true

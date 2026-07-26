@@ -22,6 +22,7 @@ import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.DesktopShareServerController
+import com.fileapex.platform.DesktopAppIcon
 import com.fileapex.platform.DesktopJvmStartup
 import com.fileapex.platform.DesktopScreenGeometry
 import com.fileapex.platform.DesktopTraySupport
@@ -152,6 +153,7 @@ fun main() {
             }
 
             LaunchedEffect(window) {
+                DesktopAppIcon.loadTrayImage()?.let { window.iconImage = it }
                 DesktopTraySupport.attachMainWindow(window) {
                     shutdownDesktop()
                     exitApplication()

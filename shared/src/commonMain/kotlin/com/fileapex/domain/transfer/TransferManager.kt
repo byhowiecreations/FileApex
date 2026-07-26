@@ -97,6 +97,31 @@ class TransferManager(
     }
 
     /**
+     * Direct Share / one-tap send: use roster endpoint only — no pre-send network probe.
+     * Upload starts immediately; [prepareForTransfer] handles stale endpoints only when needed.
+     */
+    suspend fun resolveRemoteDeviceOptionsForImmediateSend(
+        deviceIds: List<String>
+    ): List<MultiCopyDeviceOption> {
+        awaitReady()
+        require(deviceIds.isNotEmpty()) { "Select at least one destination device" }
+        val wanted = deviceIds.toSet()
+        val peers = deviceRepository().listDevices().filter { it.deviceId in wanted }
+        check(peers.isNotEmpty()) { "Selected devices are not in the paired roster" }
+        return peers.map { peer ->
+            resolveRemoteOptionFromRoster(
+                deviceId = peer.deviceId,
+                deviceName = peer.deviceName,
+                host = peer.lastKnownIp,
+                port = peer.port,
+                rootPath = peer.rootPath,
+                peerPlatform = peer.platform,
+                appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
+            )
+        }
+    }
+
+    /**
      * Extension / handoff path: resolve explicit paired device IDs into transfer options
      * (no online filter — caller already chose destinations).
      */
@@ -124,7 +149,8 @@ class TransferManager(
      */
     suspend fun sendToDevices(
         sources: List<MultiCopySource>,
-        selectedDevices: List<MultiCopyDeviceOption>
+        selectedDevices: List<MultiCopyDeviceOption>,
+        skipTransferPrepare: Boolean = false
     ): TransferBatchResult {
         awaitReady()
         require(sources.isNotEmpty()) { "Select at least one file" }
@@ -134,7 +160,9 @@ class TransferManager(
         val devicesForTransfer = if (remoteTargets.isEmpty()) {
             selectedDevices
         } else {
-            presenceMonitor().primePeersForTransfer(remoteTargets)
+            if (!skipTransferPrepare) {
+                presenceMonitor().prepareForTransfer(remoteTargets)
+            }
             refreshRemoteHosts(selectedDevices)
         }
         val results = transferService.multiCopyToDevices(verifiedSources, devicesForTransfer)
@@ -204,6 +232,31 @@ class TransferManager(
         if (!NetworkUtils.isUsableLanIpv4(host)) return@map option
         if (host == option.host.trim() && peer.port == option.port) return@map option
         option.copy(host = host, port = peer.port)
+    }
+
+    private fun resolveRemoteOptionFromRoster(
+        deviceId: String,
+        deviceName: String,
+        host: String,
+        port: Int,
+        rootPath: String,
+        peerPlatform: String,
+        appVersion: String?
+    ): MultiCopyDeviceOption {
+        val downloadsRoot = DownloadsPaths.resolveReceiveRoot(
+            downloadsPath = "",
+            rootPath = rootPath,
+            platform = peerPlatform
+        )
+        return MultiCopyDeviceOption(
+            deviceId = deviceId,
+            deviceName = deviceName,
+            isLocal = false,
+            host = host,
+            port = port,
+            destinationRoot = downloadsRoot,
+            appVersion = appVersion
+        )
     }
 
     private suspend fun resolveRemoteOption(
