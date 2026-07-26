@@ -217,6 +217,7 @@ class TransferManager(
     ): MultiCopyDeviceOption {
         val downloadsRoot = runCatching {
             val remote = client.fetchPeerNodeState(host, port)
+            presenceMonitor().notifyPassiveReachability(deviceId)
             DownloadsPaths.resolveReceiveRoot(
                 downloadsPath = remote.downloadsPath,
                 rootPath = rootPath,

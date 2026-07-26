@@ -16,6 +16,9 @@ import com.fileapex.util.PathUtils
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
@@ -120,34 +123,38 @@ class FileTransferService(
     ): List<MultiCopyResult> = withContext(Dispatchers.IO) {
         require(sources.isNotEmpty()) { "Select at least one file" }
         require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
-        sources.map { source ->
-            val perFileDestinations = selectedDevices.map { option ->
-                if (option.isLocal) {
-                    SystemFileSystem.createDirectories(Path(option.destinationRoot))
+        coroutineScope {
+            sources.map { source ->
+                async {
+                    val perFileDestinations = selectedDevices.map { option ->
+                        if (option.isLocal) {
+                            SystemFileSystem.createDirectories(Path(option.destinationRoot))
+                        }
+                        val fileTarget = if (option.isLocal) {
+                            UniqueFileNames.resolveInDirectory(option.destinationRoot, source.fileName)
+                        } else {
+                            // Remote server also resolves collisions; preferred name is fine here.
+                            PathUtils.join(option.destinationRoot, source.fileName)
+                        }
+                        if (option.isLocal) {
+                            MultiCopyDestination.LocalDevice(
+                                deviceId = option.deviceId,
+                                deviceName = option.deviceName,
+                                absolutePath = fileTarget
+                            )
+                        } else {
+                            MultiCopyDestination.RemoteDevice(
+                                deviceId = option.deviceId,
+                                deviceName = option.deviceName,
+                                host = option.host,
+                                port = option.port,
+                                absolutePath = fileTarget
+                            )
+                        }
+                    }
+                    multiCopyEngine.broadcast(listOf(source), perFileDestinations).first()
                 }
-                val fileTarget = if (option.isLocal) {
-                    UniqueFileNames.resolveInDirectory(option.destinationRoot, source.fileName)
-                } else {
-                    // Remote server also resolves collisions; preferred name is fine here.
-                    PathUtils.join(option.destinationRoot, source.fileName)
-                }
-                if (option.isLocal) {
-                    MultiCopyDestination.LocalDevice(
-                        deviceId = option.deviceId,
-                        deviceName = option.deviceName,
-                        absolutePath = fileTarget
-                    )
-                } else {
-                    MultiCopyDestination.RemoteDevice(
-                        deviceId = option.deviceId,
-                        deviceName = option.deviceName,
-                        host = option.host,
-                        port = option.port,
-                        absolutePath = fileTarget
-                    )
-                }
-            }
-            multiCopyEngine.broadcast(listOf(source), perFileDestinations).first()
+            }.awaitAll()
         }
     }
 

@@ -58,7 +58,8 @@ expect suspend fun peerHttpUploadFromChannel(
     contentType: String,
     chunks: ReceiveChannel<ByteArray>,
     connectTimeoutMs: Long,
-    uploadIdleTimeoutMs: Long
+    uploadIdleTimeoutMs: Long,
+    contentLength: Long? = null
 ): PeerBoundHttpResponse?
 
 /**

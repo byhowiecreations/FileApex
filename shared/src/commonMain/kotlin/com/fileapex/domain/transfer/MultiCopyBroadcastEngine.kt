@@ -62,7 +62,8 @@ class MultiCopyBroadcastEngine(
                                 host = destination.host,
                                 port = destination.port,
                                 remoteTargetPath = destination.absolutePath,
-                                chunks = chunkChannels[index]
+                                chunks = chunkChannels[index],
+                                contentLength = verifiedSource.sizeBytes
                             )
                         }
                     }

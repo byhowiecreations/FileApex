@@ -12,6 +12,9 @@ import com.fileapex.domain.share.IncomingSharePayload
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
@@ -53,8 +56,10 @@ object AndroidShareIntake {
             it.mkdirs()
         }
         val resolver = context.contentResolver
-        val files = uris.mapIndexed { index, uri ->
-            stageOne(resolver, stagingDir, uri, index)
+        val files = coroutineScope {
+            uris.mapIndexed { index, uri ->
+                async { stageOne(resolver, stagingDir, uri, index) }
+            }.awaitAll()
         }
         IncomingSharePayload(sessionId = sessionId, files = files)
     }

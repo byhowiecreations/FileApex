@@ -232,7 +232,20 @@ class PeerPresenceMonitor(
         val timeoutMs = LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
         for (target in targets.filter { !it.isLocal }) {
             val peer = mutex.withLock { repository.getDevice(target.deviceId) } ?: continue
+            val recentlyReachable = wasRecentlyReachable(
+                target.deviceId,
+                LanPresenceTiming.TRANSFER_RECENT_REACHABILITY_MS
+            )
+            if (recentlyReachable &&
+                tryStoredEndpoint(peer, attempts = 1, retryMs = 0L, timeoutMs = timeoutMs)
+            ) {
+                continue
+            }
             if (tryStoredEndpoint(peer, attempts, retryMs, timeoutMs)) {
+                continue
+            }
+            if (recentlyReachable) {
+                // Share picker already probed this peer — avoid a 12s stale-IP sweep before send.
                 continue
             }
             runCatching { FileApexMdnsBrowser.requestProbe() }
@@ -244,6 +257,11 @@ class PeerPresenceMonitor(
             primePeer(refreshed, includeDiscovery = true, allowPassiveWait = false)
         }
         refreshOnlineSnapshot()
+    }
+
+    private fun wasRecentlyReachable(deviceId: String, withinMs: Long): Boolean {
+        val epoch = _reachabilityEpochMs.value[deviceId] ?: return false
+        return TimeUtils.isWithinWindow(epoch, withinMs)
     }
 
     private suspend fun primePeer(

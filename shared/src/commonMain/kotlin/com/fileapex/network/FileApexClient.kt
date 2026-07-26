@@ -320,7 +320,8 @@ class FileApexClient(
         host: String,
         port: Int,
         remoteTargetPath: String,
-        chunks: ReceiveChannel<ByteArray>
+        chunks: ReceiveChannel<ByteArray>,
+        contentLength: Long? = null
     ) {
         PeerLanHttpPolicy.ensureRoute(host)
         val response = peerHttpUploadFromChannel(
@@ -330,7 +331,8 @@ class FileApexClient(
             contentType = "application/octet-stream",
             chunks = chunks,
             connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-            uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
+            uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
+            contentLength = contentLength?.takeIf { it > 0L }
         ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
         if (response.statusCode == 403) {
             error("PIN required — open the device and enter its PIN")

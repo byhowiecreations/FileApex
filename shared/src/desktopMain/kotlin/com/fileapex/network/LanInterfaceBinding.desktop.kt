@@ -132,7 +132,8 @@ actual suspend fun peerHttpUploadFromChannel(
     contentType: String,
     chunks: ReceiveChannel<ByteArray>,
     connectTimeoutMs: Long,
-    uploadIdleTimeoutMs: Long
+    uploadIdleTimeoutMs: Long,
+    contentLength: Long?
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
     executeBoundUpload(
         host = host,
@@ -141,7 +142,8 @@ actual suspend fun peerHttpUploadFromChannel(
         contentType = contentType,
         chunks = chunks,
         connectTimeoutMs = connectTimeoutMs,
-        uploadIdleTimeoutMs = uploadIdleTimeoutMs
+        uploadIdleTimeoutMs = uploadIdleTimeoutMs,
+        contentLength = contentLength
     )
 }
 
@@ -300,7 +302,8 @@ private suspend fun executeBoundUpload(
     contentType: String,
     chunks: ReceiveChannel<ByteArray>,
     connectTimeoutMs: Long,
-    uploadIdleTimeoutMs: Long
+    uploadIdleTimeoutMs: Long,
+    contentLength: Long? = null
 ): PeerBoundHttpResponse? {
     val candidates = LanInterfaceBinding.lanBindCandidates()
     if (candidates.isEmpty()) {
@@ -316,7 +319,8 @@ private suspend fun executeBoundUpload(
                 contentType = contentType,
                 chunks = chunks,
                 connectTimeoutMs = connectTimeoutMs,
-                uploadIdleTimeoutMs = uploadIdleTimeoutMs
+                uploadIdleTimeoutMs = uploadIdleTimeoutMs,
+                contentLength = contentLength
             )
         }.getOrElse { error ->
             if (error is BoundConnectFailed) {
@@ -340,7 +344,8 @@ private suspend fun executeBoundUploadOnLocalIp(
     contentType: String,
     chunks: ReceiveChannel<ByteArray>,
     connectTimeoutMs: Long,
-    uploadIdleTimeoutMs: Long
+    uploadIdleTimeoutMs: Long,
+    contentLength: Long? = null
 ): PeerBoundHttpResponse {
     val connectTimeout = connectTimeoutMs.coerceIn(250L, 60_000L).toInt()
     val idleTimeout = uploadIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
@@ -368,6 +373,11 @@ private suspend fun executeBoundUploadOnLocalIp(
             append("Content-Type: ")
             append(contentType)
             append("\r\n")
+            if (contentLength != null) {
+                append("Content-Length: ")
+                append(contentLength)
+                append("\r\n")
+            }
             append("\r\n")
         }
         output.write(header.toByteArray(Charsets.UTF_8))

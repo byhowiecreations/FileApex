@@ -49,6 +49,12 @@ object LanPresenceTiming {
     /** Brief wait after mDNS probe restart before transfer priming reads refreshed endpoints. */
     const val TRANSFER_MDNS_SETTLE_MS = 750L
 
+    /**
+     * Skip full LAN discovery during transfer priming when the peer was health-checked recently
+     * (e.g. share-sheet device list already probed fetchPeerNodeState).
+     */
+    const val TRANSFER_RECENT_REACHABILITY_MS = 60_000L
+
     /** Stored-endpoint probe attempts before LAN discovery. */
     const val ON_DEMAND_PRIME_ATTEMPTS = 2
 
