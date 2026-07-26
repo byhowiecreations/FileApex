@@ -3,6 +3,7 @@ package com.fileapex.network
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.BackgroundPresenceServices
+import com.fileapex.platform.syncDirectShareTargetsFromPeers
 
 /**
  * Process-wide FileApex share-server lifecycle.
@@ -41,6 +42,7 @@ object ServerLifecycleManager {
             val identity = loadLocalIdentity()
             BackgroundPresenceServices.onShareServerStarted(identity.sharePort, identity.deviceId)
             BackgroundPresenceServices.start()
+            syncDirectShareTargetsFromPeers()
             return
         }
         runCatching { current?.stop() }
@@ -67,6 +69,7 @@ object ServerLifecycleManager {
         serverInstance = server
         BackgroundPresenceServices.onShareServerStarted(identity.sharePort, identity.deviceId)
         BackgroundPresenceServices.start()
+        syncDirectShareTargetsFromPeers()
         FileApexServices.presenceMonitor.scheduleColdLaunchProbeOnce()
         onLog(
             "Share server ensured running on port ${identity.sharePort} " +

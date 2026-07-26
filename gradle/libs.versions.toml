@@ -15,6 +15,7 @@ kotlinx-serialization = "1.9.0"
 kotlinx-io = "0.8.0"
 qrose = "1.1.2"
 androidx-core = "1.16.0"
+androidx-sharetarget = "1.2.0"
 zxing-embedded = "4.3.0"
 android-compileSdk = "36"
 android-minSdk = "26"
@@ -29,6 +30,7 @@ jmdns = "3.6.1"
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-sharetarget = { module = "androidx.sharetarget:sharetarget", version.ref = "androidx-sharetarget" }
 androidx-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }

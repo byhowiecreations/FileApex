@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
-    <share-target android:targetClass="com.fileapex.MainActivity">
+    <share-target
+        android:targetClass="com.fileapex.MainActivity"
+        android:targetPackage="com.fileapex">
         <data android:mimeType="*/*" />
         <data android:mimeType="image/*" />
         <data android:mimeType="video/*" />

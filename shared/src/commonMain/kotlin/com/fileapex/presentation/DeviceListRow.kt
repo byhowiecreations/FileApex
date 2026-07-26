@@ -39,10 +39,7 @@ data class DeviceListRow(
         ): String {
             val status = if (online) "Ready" else "Tap to wake"
             val version = appVersion?.trim()?.takeIf { it.isNotEmpty() }
-            val versionLabel = version?.let { versionText ->
-                val codeSuffix = appVersionCode.takeIf { it > 0 }?.let { " ($it)" }.orEmpty()
-                "v$versionText$codeSuffix"
-            }
+            val versionLabel = version?.let { versionText -> "v$versionText" }
             if (online) {
                 return if (versionLabel != null) "$status · $versionLabel" else status
             }
@@ -56,8 +53,7 @@ data class DeviceListRow(
 
         fun versionLabel(appVersion: String?, appVersionCode: Int = 0): String? {
             val version = appVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-            val codeSuffix = appVersionCode.takeIf { it > 0 }?.let { " ($it)" }.orEmpty()
-            return "v$version$codeSuffix"
+            return "v$version"
         }
     }
 }

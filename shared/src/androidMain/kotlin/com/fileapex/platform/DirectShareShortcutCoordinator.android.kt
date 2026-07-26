@@ -27,6 +27,8 @@ import kotlinx.coroutines.launch
 object DirectShareShortcutCoordinator {
     const val CATEGORY_SHARE_TARGET = "com.fileapex.category.SHARE_TARGET"
     const val EXTRA_TARGET_DEVICE_ID = "com.fileapex.extra.TARGET_DEVICE_ID"
+    /** Matches [android.content.pm.ShortcutManager.EXTRA_SHORTCUT_ID] on API 29+. */
+    const val EXTRA_SHORTCUT_ID = "android.intent.extra.shortcut.ID"
 
     private const val SHORTCUT_PREFIX = "share-device-"
     private const val CAPABILITY_SEND = "actions.intent.SEND"
@@ -45,11 +47,8 @@ object DirectShareShortcutCoordinator {
                 FileApexServices.presenceMonitor.onlineSnapshotEpochMs,
                 FileApexServices.deviceRepository.observeDevices()
             ) { _, _, _, devices ->
-                rankOnlinePeers(
-                    devices.filter { FileApexServices.presenceMonitor.isDeviceOnline(it) }
-                )
-            }
-                .collect { onlinePeers -> publishShortcuts(onlinePeers) }
+                rankPeersForShare(devices)
+            }.collect { peers -> publishShortcuts(peers) }
         }
     }
 
@@ -58,10 +57,7 @@ object DirectShareShortcutCoordinator {
         DirectShareUsageStore.recordShare(appContext, deviceId)
         ShortcutManagerCompat.reportShortcutUsed(appContext, shortcutId(deviceId))
         scope.launch {
-            val peers = rankOnlinePeers(
-                FileApexServices.deviceRepository.listDevices()
-                    .filter { FileApexServices.presenceMonitor.isDeviceOnline(it) }
-            )
+            val peers = rankPeersForShare(FileApexServices.deviceRepository.listDevices())
             publishShortcuts(peers)
             ShortcutManagerCompat.pushDynamicShortcut(
                 appContext,
@@ -85,21 +81,39 @@ object DirectShareShortcutCoordinator {
 
     fun shortcutId(deviceId: String): String = "$SHORTCUT_PREFIX$deviceId"
 
-    private fun rankOnlinePeers(devices: List<PairedDeviceEntity>): List<PairedDeviceEntity> =
-        devices.sortedWith(
+    fun deviceIdFromShortcutId(shortcutId: String?): String? {
+        if (shortcutId.isNullOrBlank() || !shortcutId.startsWith(SHORTCUT_PREFIX)) return null
+        return shortcutId.removePrefix(SHORTCUT_PREFIX).takeIf { it.isNotBlank() }
+    }
+
+    /** Re-publish after peer discovery or roster changes outside the observe flow. */
+    fun refreshFromPeerDiscovery() {
+        if (!::appContext.isInitialized || !FileApexServices.isDatabaseReady()) return
+        scope.launch {
+            publishShortcuts(rankPeersForShare(FileApexServices.deviceRepository.listDevices()))
+        }
+    }
+
+    private fun rankPeersForShare(devices: List<PairedDeviceEntity>): List<PairedDeviceEntity> {
+        val presence = FileApexServices.presenceMonitor
+        return devices.sortedWith(
             compareByDescending<PairedDeviceEntity> {
-                DirectShareUsageStore.shareCount(appContext, it.deviceId)
+                if (presence.isDeviceOnline(it)) 1 else 0
             }
+                .thenByDescending {
+                    DirectShareUsageStore.shareCount(appContext, it.deviceId)
+                }
                 .thenByDescending { if (isMacLike(it.deviceName)) 1 else 0 }
                 .thenBy { it.deviceName.lowercase() }
         )
+    }
 
     private fun isMacLike(name: String): Boolean {
         val lower = name.lowercase()
         return "macbook" in lower || "mac " in lower || lower.startsWith("mac")
     }
 
-    private fun publishShortcuts(onlinePeers: List<PairedDeviceEntity>) {
+    private fun publishShortcuts(peers: List<PairedDeviceEntity>) {
         if (!::appContext.isInitialized) return
         if (ShortcutManagerCompat.isRateLimitingActive(appContext)) {
             println("DirectShareShortcutCoordinator: rate limited — deferring shortcut publish")
@@ -108,7 +122,7 @@ object DirectShareShortcutCoordinator {
 
         val maxCount = ShortcutManagerCompat.getMaxShortcutCountPerActivity(appContext)
             .coerceAtLeast(1)
-        val peersToPublish = rankOnlinePeers(onlinePeers).take(maxCount)
+        val peersToPublish = rankPeersForShare(peers).take(maxCount)
         val targetIds = peersToPublish.map { shortcutId(it.deviceId) }.toSet()
 
         val staleIds = ShortcutManagerCompat.getDynamicShortcuts(appContext)
@@ -147,9 +161,8 @@ object DirectShareShortcutCoordinator {
     }
 
     private fun buildShortcut(peer: PairedDeviceEntity, rank: Int): ShortcutInfoCompat {
-        val launchIntent = Intent(Intent.ACTION_SEND).apply {
+        val launchIntent = Intent(Intent.ACTION_VIEW).apply {
             component = ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS)
-            type = "*/*"
             putExtra(EXTRA_TARGET_DEVICE_ID, peer.deviceId)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
@@ -194,7 +207,7 @@ object DirectShareShortcutCoordinator {
             size / 2f - bounds.exactCenterY(),
             text
         )
-        return IconCompat.createWithAdaptiveBitmap(bitmap)
+        return IconCompat.createWithBitmap(bitmap)
     }
 
     /**

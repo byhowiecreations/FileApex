@@ -203,6 +203,15 @@ class MainActivity : ComponentActivity() {
         val targetDeviceId = shareIntent.getStringExtra(
             com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID
         )?.trim()?.takeIf { it.isNotEmpty() }
+            ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                com.fileapex.platform.DirectShareShortcutCoordinator.deviceIdFromShortcutId(
+                    shareIntent.getStringExtra(
+                        com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID
+                    )
+                )
+            } else {
+                null
+            }
 
         val uris = AndroidShareIntake.extractStreamUris(shareIntent)
         if (uris.isEmpty()) {

@@ -92,6 +92,10 @@
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
+            <!-- Back-compat bridge for Direct Share on pre-Android 10 devices. -->
+            <meta-data
+                android:name="android.service.chooser.chooser_target_service"
+                android:value="androidx.sharetarget.ChooserTargetServiceCompat" />
         </activity>
 
         <activity

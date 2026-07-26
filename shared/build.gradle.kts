@@ -213,6 +213,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.cio)
             implementation(libs.androidx.core.ktx)
+            implementation(libs.androidx.sharetarget)
             implementation(libs.androidx.activity.compose)
             implementation(project.dependencies.platform(libs.firebase.bom))
             implementation(libs.firebase.auth)
