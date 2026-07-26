@@ -38,12 +38,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DevicesViewModel
+import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.DevicesScreenLayoutMode
+import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
+import com.fileapex.ui.devicesNavLabel
+import com.fileapex.ui.isMainHomeScreen
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FileApexTealDark
 
@@ -64,6 +68,8 @@ fun AdaptiveWideHome(
     onClearDetail: () -> Unit,
     appVersionName: String,
     devicesViewModel: DevicesViewModel,
+    explorerViewMode: ExplorerViewMode = ExplorerViewMode.List,
+    onToggleExplorerViewMode: () -> Unit = {},
     batteryOptimizationRestricted: Boolean = false,
     unusedAppRestrictionsActive: Boolean = false,
     showMotorolaSmartUseGuidance: Boolean = false,
@@ -75,11 +81,25 @@ fun AdaptiveWideHome(
     onOpenAppDetailsSettings: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        WideTopBar(onExitClick = onExitApp)
+        WideTopBar(
+            onExitClick = onExitApp,
+            showExplorerViewToggle = selectedTab == HomeTab.Files || selectedTarget != null,
+            explorerViewMode = explorerViewMode,
+            onToggleExplorerViewMode = onToggleExplorerViewMode
+        )
         Row(modifier = Modifier.fillMaxSize()) {
             FileApexNavigationRail(
                 selected = selectedTab,
-                onDevices = { onSelectTab(HomeTab.Devices) },
+                onMainHomeScreen = isMainHomeScreen(
+                    selectedTab = selectedTab,
+                    hasActiveDetail = selectedTarget != null
+                ),
+                onDevices = {
+                    onSelectTab(HomeTab.Devices)
+                    if (selectedTarget != null) {
+                        onClearDetail()
+                    }
+                },
                 onFiles = {
                     onSelectTab(HomeTab.Files)
                     onOpenLocalFiles()
@@ -159,7 +179,12 @@ fun AdaptiveWideHome(
 }
 
 @Composable
-private fun WideTopBar(onExitClick: () -> Unit) {
+private fun WideTopBar(
+    onExitClick: () -> Unit,
+    showExplorerViewToggle: Boolean,
+    explorerViewMode: ExplorerViewMode,
+    onToggleExplorerViewMode: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -173,6 +198,12 @@ private fun WideTopBar(onExitClick: () -> Unit) {
             color = Color.White,
             modifier = Modifier.weight(1f)
         )
+        if (showExplorerViewToggle) {
+            ExplorerViewModeToggle(
+                viewMode = explorerViewMode,
+                onToggle = onToggleExplorerViewMode
+            )
+        }
         IconButton(onClick = onExitClick) {
             Icon(
                 imageVector = Icons.Filled.PowerSettingsNew,
@@ -186,10 +217,12 @@ private fun WideTopBar(onExitClick: () -> Unit) {
 @Composable
 fun FileApexNavigationRail(
     selected: HomeTab,
+    onMainHomeScreen: Boolean = true,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit
 ) {
+    val devicesLabel = devicesNavLabel(onMainHomeScreen)
     NavigationRail(
         modifier = Modifier.fillMaxHeight(),
         containerColor = FileApexTeal,
@@ -200,7 +233,7 @@ fun FileApexNavigationRail(
             selected = selected == HomeTab.Devices,
             onClick = onDevices,
             icon = Icons.Filled.Devices,
-            label = "Devices"
+            label = devicesLabel
         )
         RailItem(
             selected = selected == HomeTab.Files,

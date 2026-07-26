@@ -49,11 +49,13 @@ object CompactHomeChrome {
 @Composable
 fun CompactPrimaryShell(
     selectedTab: HomeTab,
+    onMainHomeScreen: Boolean = true,
     showExitPower: Boolean,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit,
     onExitApp: () -> Unit,
+    tealStripActions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit
 ) {
     Scaffold(
@@ -61,6 +63,7 @@ fun CompactPrimaryShell(
         bottomBar = {
             FileApexBottomBar(
                 selected = selectedTab,
+                onMainHomeScreen = onMainHomeScreen,
                 onDevices = onDevices,
                 onFiles = onFiles,
                 onSettings = onSettings
@@ -75,7 +78,8 @@ fun CompactPrimaryShell(
             // In content — not Scaffold topBar (Compose Desktop collapses an empty topBar slot).
             CompactTealStrip(
                 showExitPower = showExitPower,
-                onExitClick = onExitApp
+                onExitClick = onExitApp,
+                actions = tealStripActions
             )
             content()
         }
@@ -85,7 +89,8 @@ fun CompactPrimaryShell(
 @Composable
 fun CompactTealStrip(
     showExitPower: Boolean,
-    onExitClick: () -> Unit
+    onExitClick: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -96,6 +101,7 @@ fun CompactTealStrip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.End
     ) {
+        actions()
         if (showExitPower) {
             IconButton(onClick = onExitClick) {
                 Icon(

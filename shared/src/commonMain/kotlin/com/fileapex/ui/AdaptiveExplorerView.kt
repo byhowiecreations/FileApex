@@ -13,20 +13,28 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,22 +47,25 @@ import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.platform.usesDesktopFileSelection
+import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.theme.FileApexTeal
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Phone: single list of folders + files with ".." at top.
- * Wide/fold: left = folders at the current parent (siblings), right = contents of the selected folder.
+ * Phone: single list or grid of folders + files with ".." at top.
+ * Wide/fold: left = folder list; right = list or grid for the selected folder contents.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AdaptiveExplorerView(
     isWideDisplay: Boolean,
+    viewMode: ExplorerViewMode,
     paneDirectories: List<RemoteFileItem>,
     contentDirectories: List<RemoteFileItem>,
     contentFiles: List<RemoteFileItem>,
@@ -99,10 +110,13 @@ fun AdaptiveExplorerView(
                 items(paneDirectories, key = { "pane-${it.id}" }) { dir ->
                     val selected = selectedFolderPath != null &&
                         pathsEqual(dir.absolutePath, selectedFolderPath)
-                    ExplorerRow(
+                    ExplorerListRow(
                         title = dir.name,
                         subtitle = "Folder",
                         selected = selected,
+                        leading = {
+                            ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+                        },
                         onClick = { onPaneFolderClick(dir) }
                     )
                 }
@@ -118,56 +132,37 @@ fun AdaptiveExplorerView(
                     .fillMaxHeight()
                     .background(MaterialTheme.colorScheme.outlineVariant)
             )
-            LazyColumn(
+            ExplorerContentPane(
+                viewMode = viewMode,
+                canNavigateUp = canNavigateUp,
+                directories = rightDirs,
+                files = rightFiles,
+                isEmpty = rightEmpty,
+                emptyHint = if (showingPaneRootFiles) {
+                    "Select a folder on the left, or browse files below"
+                } else {
+                    "This folder is empty"
+                },
+                isSelectionMode = isSelectionMode,
+                selectedFileIds = selectedFileIds,
+                desktopSelection = desktopSelection,
+                listPadding = listPadding,
                 modifier = Modifier
                     .weight(0.6f)
                     .fillMaxHeight(),
-                contentPadding = listPadding
-            ) {
-                if (canNavigateUp) {
-                    item(key = "content-parent") {
-                        ParentRow(onClick = onNavigateUp)
-                    }
-                }
-                if (rightEmpty) {
-                    item(key = "content-empty") {
-                        EmptyHint(
-                            if (showingPaneRootFiles) {
-                                "Select a folder on the left, or browse files below"
-                            } else {
-                                "This folder is empty"
-                            }
-                        )
-                    }
-                }
-                items(rightDirs, key = { "cdir-${it.id}" }) { dir ->
-                    ExplorerRow(
-                        title = dir.name,
-                        subtitle = "Folder",
-                        selected = false,
-                        onClick = { onContentDirectoryClick(dir) }
-                    )
-                }
-                items(rightFiles, key = { "cfile-${it.id}" }) { file ->
-                    FileRow(
-                        file = file,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = file.id in selectedFileIds,
-                        desktopSelection = desktopSelection,
-                        onClick = { onFileOpen(file) },
-                        onLongClick = { onFileLongPress(file) },
-                        onSelectExclusive = { onFileSelectExclusive(file) },
-                        onToggleSelect = { onFileToggleSelect(file) },
-                        onExtendSelect = { onFileExtendSelect(file) },
-                        onActivate = { onFileActivate(file) }
-                    )
-                }
-            }
+                onNavigateUp = onNavigateUp,
+                onDirectoryClick = onContentDirectoryClick,
+                onFileOpen = onFileOpen,
+                onFileLongPress = onFileLongPress,
+                onFileSelectExclusive = onFileSelectExclusive,
+                onFileToggleSelect = onFileToggleSelect,
+                onFileExtendSelect = onFileExtendSelect,
+                onFileActivate = onFileActivate
+            )
         }
         return
     }
 
-    // Phone / narrow: unified list.
     val empty = contentDirectories.isEmpty() && contentFiles.isEmpty()
     if (empty && !canNavigateUp) {
         Box(
@@ -183,8 +178,120 @@ fun AdaptiveExplorerView(
         return
     }
 
-    LazyColumn(
+    ExplorerContentPane(
+        viewMode = viewMode,
+        canNavigateUp = canNavigateUp,
+        directories = contentDirectories,
+        files = contentFiles,
+        isEmpty = false,
+        emptyHint = "This folder is empty",
+        isSelectionMode = isSelectionMode,
+        selectedFileIds = selectedFileIds,
+        desktopSelection = desktopSelection,
+        listPadding = listPadding,
         modifier = modifier.fillMaxSize(),
+        onNavigateUp = onNavigateUp,
+        onDirectoryClick = onContentDirectoryClick,
+        onFileOpen = onFileOpen,
+        onFileLongPress = onFileLongPress,
+        onFileSelectExclusive = onFileSelectExclusive,
+        onFileToggleSelect = onFileToggleSelect,
+        onFileExtendSelect = onFileExtendSelect,
+        onFileActivate = onFileActivate
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ExplorerContentPane(
+    viewMode: ExplorerViewMode,
+    canNavigateUp: Boolean,
+    directories: List<RemoteFileItem>,
+    files: List<RemoteFileItem>,
+    isEmpty: Boolean,
+    emptyHint: String,
+    isSelectionMode: Boolean,
+    selectedFileIds: Set<String>,
+    desktopSelection: Boolean,
+    listPadding: PaddingValues,
+    modifier: Modifier,
+    onNavigateUp: () -> Unit,
+    onDirectoryClick: (RemoteFileItem) -> Unit,
+    onFileOpen: (RemoteFileItem) -> Unit,
+    onFileLongPress: (RemoteFileItem) -> Unit,
+    onFileSelectExclusive: (RemoteFileItem) -> Unit,
+    onFileToggleSelect: (RemoteFileItem) -> Unit,
+    onFileExtendSelect: (RemoteFileItem) -> Unit,
+    onFileActivate: (RemoteFileItem) -> Unit
+) {
+    when (viewMode) {
+        ExplorerViewMode.List -> ExplorerListContent(
+            canNavigateUp = canNavigateUp,
+            directories = directories,
+            files = files,
+            isEmpty = isEmpty,
+            emptyHint = emptyHint,
+            isSelectionMode = isSelectionMode,
+            selectedFileIds = selectedFileIds,
+            desktopSelection = desktopSelection,
+            listPadding = listPadding,
+            modifier = modifier,
+            onNavigateUp = onNavigateUp,
+            onDirectoryClick = onDirectoryClick,
+            onFileOpen = onFileOpen,
+            onFileLongPress = onFileLongPress,
+            onFileSelectExclusive = onFileSelectExclusive,
+            onFileToggleSelect = onFileToggleSelect,
+            onFileExtendSelect = onFileExtendSelect,
+            onFileActivate = onFileActivate
+        )
+        ExplorerViewMode.Grid -> ExplorerGridContent(
+            canNavigateUp = canNavigateUp,
+            directories = directories,
+            files = files,
+            isEmpty = isEmpty,
+            emptyHint = emptyHint,
+            isSelectionMode = isSelectionMode,
+            selectedFileIds = selectedFileIds,
+            desktopSelection = desktopSelection,
+            listPadding = listPadding,
+            modifier = modifier,
+            onNavigateUp = onNavigateUp,
+            onDirectoryClick = onDirectoryClick,
+            onFileOpen = onFileOpen,
+            onFileLongPress = onFileLongPress,
+            onFileSelectExclusive = onFileSelectExclusive,
+            onFileToggleSelect = onFileToggleSelect,
+            onFileExtendSelect = onFileExtendSelect,
+            onFileActivate = onFileActivate
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ExplorerListContent(
+    canNavigateUp: Boolean,
+    directories: List<RemoteFileItem>,
+    files: List<RemoteFileItem>,
+    isEmpty: Boolean,
+    emptyHint: String,
+    isSelectionMode: Boolean,
+    selectedFileIds: Set<String>,
+    desktopSelection: Boolean,
+    listPadding: PaddingValues,
+    modifier: Modifier,
+    onNavigateUp: () -> Unit,
+    onDirectoryClick: (RemoteFileItem) -> Unit,
+    onFileOpen: (RemoteFileItem) -> Unit,
+    onFileLongPress: (RemoteFileItem) -> Unit,
+    onFileSelectExclusive: (RemoteFileItem) -> Unit,
+    onFileToggleSelect: (RemoteFileItem) -> Unit,
+    onFileExtendSelect: (RemoteFileItem) -> Unit,
+    onFileActivate: (RemoteFileItem) -> Unit
+) {
+    LazyColumn(
+        modifier = modifier,
         contentPadding = listPadding
     ) {
         if (canNavigateUp) {
@@ -192,17 +299,97 @@ fun AdaptiveExplorerView(
                 ParentRow(onClick = onNavigateUp)
             }
         }
-        items(contentDirectories, key = { it.id }) { dir ->
-            ExplorerRow(
+        if (isEmpty) {
+            item(key = "content-empty") {
+                EmptyHint(emptyHint)
+            }
+        }
+        items(directories, key = { "dir-${it.id}" }) { dir ->
+            ExplorerListRow(
                 title = dir.name,
                 subtitle = "Folder",
                 selected = false,
-                onClick = { onContentDirectoryClick(dir) }
+                leading = {
+                    ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+                },
+                onClick = { onDirectoryClick(dir) }
             )
         }
-        items(contentFiles, key = { "f-${it.id}" }) { file ->
-            FileRow(
+        items(files, key = { "file-${it.id}" }) { file ->
+            FileListRow(
                 file = file,
+                isSelectionMode = isSelectionMode,
+                isSelected = file.id in selectedFileIds,
+                desktopSelection = desktopSelection,
+                onClick = { onFileOpen(file) },
+                onLongClick = { onFileLongPress(file) },
+                onSelectExclusive = { onFileSelectExclusive(file) },
+                onToggleSelect = { onFileToggleSelect(file) },
+                onExtendSelect = { onFileExtendSelect(file) },
+                onActivate = { onFileActivate(file) }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ExplorerGridContent(
+    canNavigateUp: Boolean,
+    directories: List<RemoteFileItem>,
+    files: List<RemoteFileItem>,
+    isEmpty: Boolean,
+    emptyHint: String,
+    isSelectionMode: Boolean,
+    selectedFileIds: Set<String>,
+    desktopSelection: Boolean,
+    listPadding: PaddingValues,
+    modifier: Modifier,
+    onNavigateUp: () -> Unit,
+    onDirectoryClick: (RemoteFileItem) -> Unit,
+    onFileOpen: (RemoteFileItem) -> Unit,
+    onFileLongPress: (RemoteFileItem) -> Unit,
+    onFileSelectExclusive: (RemoteFileItem) -> Unit,
+    onFileToggleSelect: (RemoteFileItem) -> Unit,
+    onFileExtendSelect: (RemoteFileItem) -> Unit,
+    onFileActivate: (RemoteFileItem) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 108.dp),
+        modifier = modifier,
+        contentPadding = listPadding,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (canNavigateUp) {
+            item(key = "parent", span = { GridItemSpan(maxLineSpan) }) {
+                ParentRow(onClick = onNavigateUp)
+            }
+        }
+        if (isEmpty) {
+            item(key = "content-empty", span = { GridItemSpan(maxLineSpan) }) {
+                EmptyHint(emptyHint)
+            }
+        }
+        items(directories, key = { "gdir-${it.id}" }) { dir ->
+            ExplorerGridCell(
+                item = dir,
+                subtitle = "Folder",
+                isSelectionMode = false,
+                isSelected = false,
+                desktopSelection = desktopSelection,
+                onClick = { onDirectoryClick(dir) },
+                onLongClick = {},
+                onSelectExclusive = {},
+                onToggleSelect = {},
+                onExtendSelect = {},
+                onActivate = { onDirectoryClick(dir) }
+            )
+        }
+        items(files, key = { "gfile-${it.id}" }) { file ->
+            ExplorerGridCell(
+                item = file,
+                subtitle = formatBytes(file.sizeBytes),
                 isSelectionMode = isSelectionMode,
                 isSelected = file.id in selectedFileIds,
                 desktopSelection = desktopSelection,
@@ -251,13 +438,14 @@ private fun EmptyHint(text: String) {
 }
 
 @Composable
-private fun ExplorerRow(
+private fun ExplorerListRow(
     title: String,
     subtitle: String,
     selected: Boolean,
+    leading: @Composable () -> Unit,
     onClick: () -> Unit
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
@@ -266,28 +454,35 @@ private fun ExplorerRow(
                 else MaterialTheme.colorScheme.surface.copy(alpha = 0f)
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        leading()
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
     HorizontalDivider()
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FileRow(
+private fun FileListRow(
     file: RemoteFileItem,
     isSelectionMode: Boolean,
     isSelected: Boolean,
@@ -299,23 +494,15 @@ private fun FileRow(
     onExtendSelect: () -> Unit,
     onActivate: () -> Unit
 ) {
-    val rowModifier = if (desktopSelection) {
-        Modifier
-            .fillMaxWidth()
-            .desktopFileSelectionClicks(
-                onSelectExclusive = onSelectExclusive,
-                onToggleSelect = onToggleSelect,
-                onExtendSelect = onExtendSelect,
-                onActivate = onActivate
-            )
-    } else {
-        Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-    }
+    val rowModifier = fileRowModifier(
+        desktopSelection = desktopSelection,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        onSelectExclusive = onSelectExclusive,
+        onToggleSelect = onToggleSelect,
+        onExtendSelect = onExtendSelect,
+        onActivate = onActivate
+    )
     Row(
         modifier = rowModifier
             .background(
@@ -329,6 +516,8 @@ private fun FileRow(
             SelectionIndicator(selected = isSelected)
             Spacer(modifier = Modifier.width(12.dp))
         }
+        ExplorerEntryIcon(item = file, modifier = Modifier.size(28.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -349,6 +538,112 @@ private fun FileRow(
     HorizontalDivider()
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ExplorerGridCell(
+    item: RemoteFileItem,
+    subtitle: String,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    desktopSelection: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onSelectExclusive: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onExtendSelect: () -> Unit,
+    onActivate: () -> Unit
+) {
+    val interactionModifier = when {
+        item.isDirectory -> Modifier.clickable(onClick = onClick)
+        desktopSelection -> Modifier.desktopFileSelectionClicks(
+            onSelectExclusive = onSelectExclusive,
+            onToggleSelect = onToggleSelect,
+            onExtendSelect = onExtendSelect,
+            onActivate = onActivate
+        )
+        else -> Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    }
+    Surface(
+        modifier = interactionModifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(12.dp)),
+        color = if (isSelected) {
+            FileApexTeal.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        },
+        tonalElevation = 0.dp
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                ExplorerEntryIcon(item = item, modifier = Modifier.size(40.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+            }
+            if (isSelectionMode && isSelected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                ) {
+                    SelectionIndicator(selected = true)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+private fun fileRowModifier(
+    desktopSelection: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onSelectExclusive: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onExtendSelect: () -> Unit,
+    onActivate: () -> Unit
+): Modifier = if (desktopSelection) {
+    Modifier
+        .fillMaxWidth()
+        .desktopFileSelectionClicks(
+            onSelectExclusive = onSelectExclusive,
+            onToggleSelect = onToggleSelect,
+            onExtendSelect = onExtendSelect,
+            onActivate = onActivate
+        )
+} else {
+    Modifier
+        .fillMaxWidth()
+        .combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+}
+
 private fun Modifier.desktopFileSelectionClicks(
     onSelectExclusive: () -> Unit,
     onToggleSelect: () -> Unit,
@@ -361,7 +656,6 @@ private fun Modifier.desktopFileSelectionClicks(
     onActivate
 ) {
     awaitEachGesture {
-        // Wait for primary press (ignore hover/move).
         var downEvent = awaitPointerEvent(PointerEventPass.Main)
         while (downEvent.changes.none { it.changedToDown() }) {
             downEvent = awaitPointerEvent(PointerEventPass.Main)
@@ -375,7 +669,6 @@ private fun Modifier.desktopFileSelectionClicks(
         val up = waitForUpOrCancellation() ?: return@awaitEachGesture
         up.consume()
 
-        // Select immediately (Finder-like); double-click also opens.
         when {
             toggleMulti -> onToggleSelect()
             extendRange -> onExtendSelect()

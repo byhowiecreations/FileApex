@@ -37,12 +37,14 @@ import com.fileapex.navigation.AppRoute
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.BrowseTarget
+import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.GenerateQrScreen
+import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
@@ -131,6 +133,7 @@ fun App(
 
     val pendingUpdate by AppUpdateCoordinator.pendingUpdate.collectAsState()
     val showUpdateSheet by AppUpdateCoordinator.showUpdateSheet.collectAsState()
+    val explorerViewMode by FileApexServices.settings.explorerViewMode.collectAsState()
 
     val onNavigateHome: () -> Unit = {
         route = AppRoute.Devices
@@ -267,6 +270,12 @@ fun App(
                                         wideSelectedTarget = devicesViewModel.thisDeviceTarget()
                                         wideHomeTab = HomeTab.Files
                                     },
+                                    explorerViewMode = explorerViewMode,
+                                    onToggleExplorerViewMode = {
+                                        FileApexServices.settings.setExplorerViewMode(
+                                            explorerViewMode.toggled()
+                                        )
+                                    },
                                     onGenerateQr = {
                                         onStartShareServer()
                                         route = AppRoute.GenerateQr
@@ -373,13 +382,27 @@ private fun CompactHomeContent(
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
+    val onMainHomeScreen = route is AppRoute.Devices
+    val explorerViewMode by FileApexServices.settings.explorerViewMode.collectAsState()
+    val showExplorerViewToggle = route is AppRoute.Explorer || selectedTab == HomeTab.Files
     CompactPrimaryShell(
         selectedTab = selectedTab,
+        onMainHomeScreen = onMainHomeScreen,
         showExitPower = selectedTab == HomeTab.Devices,
         onDevices = onNavigateHome,
         onFiles = onOpenLocalFiles,
         onSettings = onOpenSettings,
-        onExitApp = { confirmExit = true }
+        onExitApp = { confirmExit = true },
+        tealStripActions = {
+            if (showExplorerViewToggle) {
+                ExplorerViewModeToggle(
+                    viewMode = explorerViewMode,
+                    onToggle = {
+                        FileApexServices.settings.setExplorerViewMode(explorerViewMode.toggled())
+                    }
+                )
+            }
+        }
     ) {
         when (val current = route) {
             AppRoute.Devices -> DevicesScreen(

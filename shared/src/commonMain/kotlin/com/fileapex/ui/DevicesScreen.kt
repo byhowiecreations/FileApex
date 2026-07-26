@@ -108,6 +108,13 @@ enum class HomeTab {
     Settings
 }
 
+/** True only on the paired-devices root (not explorer, settings, or local-files navigation). */
+fun isMainHomeScreen(selectedTab: HomeTab, hasActiveDetail: Boolean = false): Boolean =
+    selectedTab == HomeTab.Devices && !hasActiveDetail
+
+fun devicesNavLabel(onMainHomeScreen: Boolean): String =
+    if (onMainHomeScreen) "Devices" else "Home"
+
 enum class DevicesScreenLayoutMode {
     /** Phone / folded: full scaffold with bottom bar. */
     FullScreen,
@@ -731,10 +738,12 @@ private fun HomeTopBar(
 @Composable
 fun FileApexBottomBar(
     selected: HomeTab,
+    onMainHomeScreen: Boolean = true,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit
 ) {
+    val devicesLabel = devicesNavLabel(onMainHomeScreen)
     NavigationBar(
         containerColor = FileApexTeal,
         contentColor = Color.White,
@@ -747,12 +756,12 @@ fun FileApexBottomBar(
                 NavIcon(
                     selected = selected == HomeTab.Devices,
                     imageVector = Icons.Filled.Devices,
-                    contentDescription = "Devices"
+                    contentDescription = devicesLabel
                 )
             },
             label = {
                 Text(
-                    "Devices",
+                    devicesLabel,
                     color = if (selected == HomeTab.Devices) Color.White else Color.White.copy(alpha = 0.85f)
                 )
             },

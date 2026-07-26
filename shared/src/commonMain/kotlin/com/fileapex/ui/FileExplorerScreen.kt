@@ -251,6 +251,7 @@ fun FileExplorerScreen(
                             }
                             AdaptiveExplorerView(
                                 isWideDisplay = isWide,
+                                viewMode = state.viewMode,
                                 paneDirectories = state.paneDirectories,
                                 contentDirectories = state.contentDirectories,
                                 contentFiles = state.contentFiles,

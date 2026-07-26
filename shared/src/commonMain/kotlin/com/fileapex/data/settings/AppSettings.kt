@@ -1,5 +1,6 @@
 package com.fileapex.data.settings
 
+import com.fileapex.presentation.ExplorerViewMode
 import kotlinx.coroutines.flow.StateFlow
 
 interface AppSettings {
@@ -35,6 +36,8 @@ interface AppSettings {
     val deviceOrderUpdatedAtEpochMs: StateFlow<Long>
     /** Desktop-only: force compact or expanded adaptive layout regardless of window width. */
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
+    /** File explorer layout (list vs grid). Default [com.fileapex.presentation.ExplorerViewMode.List]. */
+    val explorerViewMode: StateFlow<ExplorerViewMode>
 
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
@@ -57,6 +60,8 @@ interface AppSettings {
     fun setDeviceOrderUpdatedAtEpochMs(epochMs: Long)
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode)
+
+    fun setExplorerViewMode(mode: ExplorerViewMode)
 
     fun checkForUpdatesIntervalMillis(): Long {
         return UpdateCheckFrequency.toMillis(

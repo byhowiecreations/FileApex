@@ -1,5 +1,6 @@
 package com.fileapex.data.settings
 
+import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.util.TimestampDiagnostics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +56,9 @@ class BaseAppSettings(
     private val desktopLayout = MutableStateFlow(
         DesktopLayoutMode.fromStorage(store.getString(KEY_DESKTOP_LAYOUT, DesktopLayoutMode.DEFAULT.name))
     )
+    private val explorerViewModeFlow = MutableStateFlow(
+        ExplorerViewMode.fromStorage(store.getString(KEY_EXPLORER_VIEW_MODE, ExplorerViewMode.List.name))
+    )
 
     override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
@@ -74,6 +78,7 @@ class BaseAppSettings(
     override val deviceOrderIds: StateFlow<String> = deviceOrderIdsFlow.asStateFlow()
     override val deviceOrderUpdatedAtEpochMs: StateFlow<Long> = deviceOrderUpdatedAt.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
+    override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
         store.putBoolean(KEY_GOOGLE, enabled)
@@ -168,6 +173,11 @@ class BaseAppSettings(
         desktopLayout.value = mode
     }
 
+    override fun setExplorerViewMode(mode: ExplorerViewMode) {
+        store.putString(KEY_EXPLORER_VIEW_MODE, mode.name)
+        explorerViewModeFlow.value = mode
+    }
+
     companion object {
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
@@ -186,5 +196,6 @@ class BaseAppSettings(
         const val KEY_DEVICE_ORDER = "device_order_ids"
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
+        const val KEY_EXPLORER_VIEW_MODE = "explorer_view_mode"
     }
 }

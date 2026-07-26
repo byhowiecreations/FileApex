@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 
 data class ExplorerUiState(
     val deviceTitle: String = "",
@@ -62,7 +63,8 @@ data class ExplorerUiState(
     val isMultiCopying: Boolean = false,
     /** When set, explorer must collect PIN before continuing navigation (idle expiry). */
     val pendingPinUnlock: Boolean = false,
-    val pinUnlockError: String? = null
+    val pinUnlockError: String? = null,
+    val viewMode: ExplorerViewMode = ExplorerViewMode.List
 )
 
 class ExplorerViewModel(
@@ -96,6 +98,11 @@ class ExplorerViewModel(
 
     init {
         openPath(browseRoot)
+        viewModelScope.launch {
+            settings.explorerViewMode.collect { mode ->
+                _uiState.update { it.copy(viewMode = mode) }
+            }
+        }
         viewModelScope.launch {
             TransferClipboard.payloads.collect { payloads ->
                 _uiState.update {
@@ -209,13 +216,14 @@ class ExplorerViewModel(
     }
 
     private suspend fun browseWithPinRetry(block: suspend () -> Unit) {
-        runCatching {
+        try {
             block()
-        }.onFailure { error ->
-            if (error is PinSessionRequiredException) {
-                requestPinThen { browseWithPinRetry(block) }
-                return
-            }
+        } catch (error: CancellationException) {
+            // Expected when a newer folder navigation cancels the in-flight browse job.
+            throw error
+        } catch (error: PinSessionRequiredException) {
+            requestPinThen { browseWithPinRetry(block) }
+        } catch (error: Throwable) {
             _uiState.update {
                 it.copy(
                     isLoading = false,
@@ -570,6 +578,10 @@ class ExplorerViewModel(
             return true
         }
         return false
+    }
+
+    fun toggleViewMode() {
+        settings.setExplorerViewMode(_uiState.value.viewMode.toggled())
     }
 
     fun refresh() {
