@@ -5,6 +5,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -36,10 +41,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TabletAndroid
+import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,8 +79,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,13 +90,17 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.diagnostics.DeviceDiagnosticsFormatter
+import com.fileapex.di.FileApexServices
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DeviceDetailsState
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.DevicesViewModel
+import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.adaptive.CompactDevicesTitleBand
 import com.fileapex.ui.adaptive.CompactTealStrip
 import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
+import com.fileapex.ui.adaptive.FileApexWidthSizeClass
+import com.fileapex.ui.adaptive.widthSizeClassFor
 import com.fileapex.ui.dnd.deviceFileDropTarget
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FileApexTealDark
@@ -101,6 +111,76 @@ val DeviceCardSlotHeight = 96.dp
 
 /** Empty space under the last device card (~2 card rows), inside the list section. */
 val DeviceListToAddGap = DeviceCardSlotHeight * 2
+
+/** Responsive paired-devices grid metrics — SSOT across platforms. */
+private data class DeviceGridLayoutSpec(
+    val columnCount: Int,
+    val cellHeight: Dp,
+    val iconSize: Dp,
+    val contentPadding: Dp,
+    val cellSpacing: Dp,
+    val innerPadding: Dp,
+    val menuSize: Dp,
+    val compactTypography: Boolean
+)
+
+private fun resolveDeviceGridLayout(
+    maxWidth: Dp,
+    layoutMode: DevicesScreenLayoutMode
+): DeviceGridLayoutSpec {
+    val widthClass = widthSizeClassFor(maxWidth)
+    val isPhoneGrid =
+        layoutMode == DevicesScreenLayoutMode.FullScreen &&
+            widthClass == FileApexWidthSizeClass.Compact
+
+    if (isPhoneGrid) {
+        return DeviceGridLayoutSpec(
+            columnCount = 2,
+            cellHeight = 118.dp,
+            iconSize = 32.dp,
+            contentPadding = 16.dp,
+            cellSpacing = 10.dp,
+            innerPadding = 10.dp,
+            menuSize = 28.dp,
+            compactTypography = false
+        )
+    }
+
+    val contentPadding = if (layoutMode == DevicesScreenLayoutMode.ListPane) 12.dp else 16.dp
+    val horizontalInset = contentPadding * 2
+    val availableWidth = (maxWidth - horizontalInset).coerceAtLeast(112.dp)
+    val minCellWidth = when (layoutMode) {
+        DevicesScreenLayoutMode.ListPane -> 112.dp
+        DevicesScreenLayoutMode.FullScreen -> 140.dp
+    }
+    val columnCount = (availableWidth / minCellWidth)
+        .toInt()
+        .coerceIn(1, if (layoutMode == DevicesScreenLayoutMode.ListPane) 3 else 6)
+
+    return if (layoutMode == DevicesScreenLayoutMode.ListPane) {
+        DeviceGridLayoutSpec(
+            columnCount = columnCount,
+            cellHeight = 92.dp,
+            iconSize = 22.dp,
+            contentPadding = contentPadding,
+            cellSpacing = 8.dp,
+            innerPadding = 6.dp,
+            menuSize = 20.dp,
+            compactTypography = true
+        )
+    } else {
+        DeviceGridLayoutSpec(
+            columnCount = columnCount.coerceAtLeast(2),
+            cellHeight = 104.dp,
+            iconSize = 28.dp,
+            contentPadding = contentPadding,
+            cellSpacing = 10.dp,
+            innerPadding = 8.dp,
+            menuSize = 24.dp,
+            compactTypography = false
+        )
+    }
+}
 
 enum class HomeTab {
     Devices,
@@ -143,6 +223,7 @@ fun DevicesScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val deviceRows by viewModel.deviceRows.collectAsState()
+    val viewMode by FileApexServices.settings.devicesViewMode.collectAsState()
     val listRows = if (state.deviceOrderEditMode) state.editOrderRows else deviceRows
     val editMode = state.deviceOrderEditMode
     val snackbarHostState = remember { SnackbarHostState() }
@@ -236,6 +317,8 @@ fun DevicesScreen(
             }
             PairedDevicesList(
                 listState = listState,
+                viewMode = viewMode,
+                layoutMode = layoutMode,
                 deviceRows = listRows,
                 editMode = editMode,
                 connectingDeviceId = if (editMode) null else state.connectingDeviceId,
@@ -490,6 +573,8 @@ fun DevicesScreen(
 @Composable
 private fun PairedDevicesList(
     listState: LazyListState,
+    viewMode: ExplorerViewMode,
+    layoutMode: DevicesScreenLayoutMode,
     deviceRows: List<DeviceListRow>,
     editMode: Boolean,
     connectingDeviceId: String?,
@@ -509,8 +594,20 @@ private fun PairedDevicesList(
             onReorder = onReorder,
             modifier = modifier
         )
-    } else {
-        PairedDevicesBrowseList(
+    } else when (viewMode) {
+        ExplorerViewMode.Grid -> PairedDevicesGridBrowseList(
+            deviceRows = deviceRows,
+            layoutMode = layoutMode,
+            connectingDeviceId = connectingDeviceId,
+            selectedDeviceId = selectedDeviceId,
+            onOpenDevice = onOpenDevice,
+            onRenameDevice = onRenameDevice,
+            onDeviceDetails = onDeviceDetails,
+            onRemoveDevice = onRemoveDevice,
+            onFilesDropped = onFilesDropped,
+            modifier = modifier
+        )
+        ExplorerViewMode.List -> PairedDevicesBrowseList(
             listState = listState,
             deviceRows = deviceRows,
             connectingDeviceId = connectingDeviceId,
@@ -614,9 +711,7 @@ private fun PairedDevicesEditReorderList(
                             }
                         )
                     DeviceCard(
-                        title = row.title,
-                        subtitle = row.subtitle,
-                        icon = deviceIconFor(row.deviceName),
+                        row = row,
                         selected = selectedDeviceId == row.deviceId,
                         connecting = false,
                         editMode = true,
@@ -699,9 +794,7 @@ private fun PairedDevicesBrowseList(
                 contentType = { _, _ -> "paired-device" }
             ) { _, row ->
                 DeviceCard(
-                    title = row.title,
-                    subtitle = row.subtitle,
-                    icon = deviceIconFor(row.deviceName),
+                    row = row,
                     selected = selectedDeviceId == row.deviceId,
                     connecting = connectingDeviceId == row.deviceId,
                     editMode = false,
@@ -718,6 +811,230 @@ private fun PairedDevicesBrowseList(
                         fadeOutSpec = null,
                         placementSpec = DeviceOrderItemPlacementSpec
                     )
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PairedDevicesGridBrowseList(
+    deviceRows: List<DeviceListRow>,
+    layoutMode: DevicesScreenLayoutMode,
+    connectingDeviceId: String?,
+    selectedDeviceId: String?,
+    onOpenDevice: (String) -> Unit,
+    onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
+    onDeviceDetails: (deviceId: String) -> Unit,
+    onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
+    onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val grid = resolveDeviceGridLayout(maxWidth = maxWidth, layoutMode = layoutMode)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(grid.columnCount),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = grid.contentPadding,
+                end = grid.contentPadding,
+                top = 8.dp,
+                bottom = DeviceListToAddGap
+            ),
+            horizontalArrangement = Arrangement.spacedBy(grid.cellSpacing),
+            verticalArrangement = Arrangement.spacedBy(grid.cellSpacing)
+        ) {
+            if (deviceRows.isEmpty()) {
+                item(key = "empty", span = { GridItemSpan(grid.columnCount) }) {
+                    Text(
+                        text = "No paired devices yet. Tap Add New Device to generate or scan a QR code.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                    )
+                }
+            } else {
+                itemsIndexed(
+                    items = deviceRows,
+                    key = { _, row -> row.deviceId }
+                ) { _, row ->
+                    DeviceGridCell(
+                        row = row,
+                        grid = grid,
+                        selected = selectedDeviceId == row.deviceId,
+                        connecting = connectingDeviceId == row.deviceId,
+                        onClick = { onOpenDevice(row.deviceId) },
+                        onRename = { onRenameDevice(row.deviceId, row.deviceName) },
+                        onDeviceDetails = { onDeviceDetails(row.deviceId) },
+                        onRemove = { onRemoveDevice(row.deviceId, row.deviceName) },
+                        dropDeviceId = row.deviceId,
+                        onFilesDropped = onFilesDropped
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceGridCell(
+    row: DeviceListRow,
+    grid: DeviceGridLayoutSpec,
+    selected: Boolean,
+    connecting: Boolean,
+    onClick: () -> Unit,
+    onRename: () -> Unit,
+    onDeviceDetails: () -> Unit,
+    onRemove: () -> Unit,
+    dropDeviceId: String,
+    onFilesDropped: (deviceId: String, paths: List<String>) -> Unit
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var dropHover by remember { mutableStateOf(false) }
+    val highlighted = selected || dropHover
+    val titleStyle = if (grid.compactTypography) {
+        MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+    } else {
+        MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+    }
+    val subtitleStyle = if (grid.compactTypography) {
+        MaterialTheme.typography.labelSmall
+    } else {
+        MaterialTheme.typography.bodySmall
+    }
+    val containerColor = when {
+        dropHover -> FileApexTeal.copy(alpha = 0.22f)
+        selected -> FileApexTeal.copy(alpha = 0.12f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(grid.cellHeight)
+            .deviceFileDropTarget(
+                enabled = true,
+                onHoverChange = { dropHover = it },
+                onFilesDropped = { paths -> onFilesDropped(dropDeviceId, paths) }
+            )
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = !connecting, onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor,
+        tonalElevation = 0.dp,
+        shadowElevation = if (highlighted) 0.dp else 1.dp,
+        border = BorderStroke(
+            width = if (highlighted) 1.5.dp else 1.dp,
+            color = if (highlighted) FileApexTeal else FileApexTeal.copy(alpha = 0.35f)
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(grid.innerPadding)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
+                    .padding(horizontal = grid.menuSize / 2),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                DeviceEntryIcon(
+                    row = row,
+                    modifier = Modifier.size(grid.iconSize),
+                    tint = FileApexTealDark
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = row.title,
+                    style = titleStyle.copy(textAlign = TextAlign.Center),
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                if (connecting) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(if (grid.compactTypography) 10.dp else 12.dp),
+                            strokeWidth = 1.5.dp,
+                            color = FileApexTeal
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Connecting…",
+                            style = subtitleStyle.copy(textAlign = TextAlign.Center),
+                            color = FileApexTeal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip
+                        )
+                    }
+                } else {
+                    Text(
+                        text = row.subtitle,
+                        style = subtitleStyle.copy(textAlign = TextAlign.Center),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(grid.menuSize)
+            ) {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.size(grid.menuSize)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreHoriz,
+                        contentDescription = "Device options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(if (grid.compactTypography) 16.dp else 18.dp)
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = {
+                            menuOpen = false
+                            onRename()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Device Details") },
+                        onClick = {
+                            menuOpen = false
+                            onDeviceDetails()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Remove") },
+                        onClick = {
+                            menuOpen = false
+                            onRemove()
+                        }
+                    )
+                }
+            }
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = "Selected",
+                    tint = FileApexTeal,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .size(14.dp)
                 )
             }
         }
@@ -839,9 +1156,7 @@ private fun NavIcon(
 
 @Composable
 private fun DeviceCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
+    row: DeviceListRow,
     onClick: () -> Unit,
     onRename: (() -> Unit)?,
     onDeviceDetails: (() -> Unit)? = null,
@@ -902,17 +1217,16 @@ private fun DeviceCard(
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = FileApexTealDark,
-                    modifier = Modifier.size(24.dp)
+                DeviceEntryIcon(
+                    row = row,
+                    modifier = Modifier.size(24.dp),
+                    tint = FileApexTealDark
                 )
             }
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = title,
+                    text = row.title,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -936,7 +1250,7 @@ private fun DeviceCard(
                     }
                 } else {
                     Text(
-                        text = subtitle,
+                        text = row.subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -997,16 +1311,6 @@ private fun DeviceCard(
                 }
             }
         }
-    }
-}
-
-private fun deviceIconFor(name: String): ImageVector {
-    val lower = name.lowercase()
-    return when {
-        "macbook" in lower || "laptop" in lower || "desktop" in lower || "pc" in lower ->
-            Icons.Filled.Computer
-        "ipad" in lower || "tablet" in lower -> Icons.Filled.TabletAndroid
-        else -> Icons.Filled.PhoneAndroid
     }
 }
 

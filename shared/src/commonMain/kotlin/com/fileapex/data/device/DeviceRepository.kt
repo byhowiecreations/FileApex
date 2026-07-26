@@ -412,6 +412,9 @@ class DeviceRepository(
                 secondary.clientVersionCode
             ),
             platform = firstNonBlank(incoming.platform, primary.platform, secondary.platform),
+            os = firstNonBlank(incoming.os, primary.os, secondary.os),
+            deviceMake = firstNonBlank(incoming.deviceMake, primary.deviceMake, secondary.deviceMake),
+            deviceModel = firstNonBlank(incoming.deviceModel, primary.deviceModel, secondary.deviceModel),
             supportedProtocolsJson = incoming.supportedProtocolsJson.ifBlank {
                 primary.supportedProtocolsJson.ifBlank { secondary.supportedProtocolsJson }
             },
@@ -488,6 +491,9 @@ class DeviceRepository(
             rootPath = device.rootPath.ifBlank { "/" },
             clientVersion = device.clientVersion.trim(),
             platform = device.platform.trim(),
+            os = device.os.trim(),
+            deviceMake = device.deviceMake.trim(),
+            deviceModel = device.deviceModel.trim(),
             supportedProtocolsJson = device.supportedProtocolsJson.ifBlank { "[]" },
             lastSeenEpochMs = device.lastSeenEpochMs.coerceAtLeast(0L)
         )
@@ -496,7 +502,10 @@ class DeviceRepository(
             clientVersionCode = trimmed.clientVersionCode.takeIf { it > 0 }
                 ?: preserveFrom?.clientVersionCode
                 ?: 0,
-            platform = trimmed.platform.ifBlank { preserveFrom?.platform.orEmpty() }
+            platform = trimmed.platform.ifBlank { preserveFrom?.platform.orEmpty() },
+            os = trimmed.os.ifBlank { preserveFrom?.os.orEmpty() },
+            deviceMake = trimmed.deviceMake.ifBlank { preserveFrom?.deviceMake.orEmpty() },
+            deviceModel = trimmed.deviceModel.ifBlank { preserveFrom?.deviceModel.orEmpty() }
         )
     }
 

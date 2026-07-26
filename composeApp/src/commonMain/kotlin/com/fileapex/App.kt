@@ -134,6 +134,7 @@ fun App(
     val pendingUpdate by AppUpdateCoordinator.pendingUpdate.collectAsState()
     val showUpdateSheet by AppUpdateCoordinator.showUpdateSheet.collectAsState()
     val explorerViewMode by FileApexServices.settings.explorerViewMode.collectAsState()
+    val devicesViewMode by FileApexServices.settings.devicesViewMode.collectAsState()
 
     val onNavigateHome: () -> Unit = {
         route = AppRoute.Devices
@@ -270,6 +271,12 @@ fun App(
                                         wideSelectedTarget = devicesViewModel.thisDeviceTarget()
                                         wideHomeTab = HomeTab.Files
                                     },
+                                    devicesViewMode = devicesViewMode,
+                                    onToggleDevicesViewMode = {
+                                        FileApexServices.settings.setDevicesViewMode(
+                                            devicesViewMode.toggled()
+                                        )
+                                    },
                                     explorerViewMode = explorerViewMode,
                                     onToggleExplorerViewMode = {
                                         FileApexServices.settings.setExplorerViewMode(
@@ -383,7 +390,9 @@ private fun CompactHomeContent(
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
     val onMainHomeScreen = route is AppRoute.Devices
+    val devicesViewMode by FileApexServices.settings.devicesViewMode.collectAsState()
     val explorerViewMode by FileApexServices.settings.explorerViewMode.collectAsState()
+    val showDevicesViewToggle = route is AppRoute.Devices
     val showExplorerViewToggle = route is AppRoute.Explorer || selectedTab == HomeTab.Files
     CompactPrimaryShell(
         selectedTab = selectedTab,
@@ -394,13 +403,23 @@ private fun CompactHomeContent(
         onSettings = onOpenSettings,
         onExitApp = { confirmExit = true },
         tealStripActions = {
-            if (showExplorerViewToggle) {
-                ExplorerViewModeToggle(
-                    viewMode = explorerViewMode,
-                    onToggle = {
-                        FileApexServices.settings.setExplorerViewMode(explorerViewMode.toggled())
-                    }
-                )
+            when {
+                showDevicesViewToggle -> {
+                    ExplorerViewModeToggle(
+                        viewMode = devicesViewMode,
+                        onToggle = {
+                            FileApexServices.settings.setDevicesViewMode(devicesViewMode.toggled())
+                        }
+                    )
+                }
+                showExplorerViewToggle -> {
+                    ExplorerViewModeToggle(
+                        viewMode = explorerViewMode,
+                        onToggle = {
+                            FileApexServices.settings.setExplorerViewMode(explorerViewMode.toggled())
+                        }
+                    )
+                }
             }
         }
     ) {

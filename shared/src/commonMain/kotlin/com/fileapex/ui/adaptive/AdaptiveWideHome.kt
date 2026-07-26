@@ -68,6 +68,8 @@ fun AdaptiveWideHome(
     onClearDetail: () -> Unit,
     appVersionName: String,
     devicesViewModel: DevicesViewModel,
+    devicesViewMode: ExplorerViewMode = ExplorerViewMode.List,
+    onToggleDevicesViewMode: () -> Unit = {},
     explorerViewMode: ExplorerViewMode = ExplorerViewMode.List,
     onToggleExplorerViewMode: () -> Unit = {},
     batteryOptimizationRestricted: Boolean = false,
@@ -83,7 +85,10 @@ fun AdaptiveWideHome(
     Column(modifier = Modifier.fillMaxSize()) {
         WideTopBar(
             onExitClick = onExitApp,
-            showExplorerViewToggle = selectedTab == HomeTab.Files || selectedTarget != null,
+            selectedTab = selectedTab,
+            hasActiveDetail = selectedTarget != null,
+            devicesViewMode = devicesViewMode,
+            onToggleDevicesViewMode = onToggleDevicesViewMode,
             explorerViewMode = explorerViewMode,
             onToggleExplorerViewMode = onToggleExplorerViewMode
         )
@@ -181,10 +186,15 @@ fun AdaptiveWideHome(
 @Composable
 private fun WideTopBar(
     onExitClick: () -> Unit,
-    showExplorerViewToggle: Boolean,
+    selectedTab: HomeTab,
+    hasActiveDetail: Boolean,
+    devicesViewMode: ExplorerViewMode,
+    onToggleDevicesViewMode: () -> Unit,
     explorerViewMode: ExplorerViewMode,
     onToggleExplorerViewMode: () -> Unit
 ) {
+    val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail
+    val showExplorerViewToggle = selectedTab == HomeTab.Files || hasActiveDetail
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -198,7 +208,12 @@ private fun WideTopBar(
             color = Color.White,
             modifier = Modifier.weight(1f)
         )
-        if (showExplorerViewToggle) {
+        if (showDevicesViewToggle) {
+            ExplorerViewModeToggle(
+                viewMode = devicesViewMode,
+                onToggle = onToggleDevicesViewMode
+            )
+        } else if (showExplorerViewToggle) {
             ExplorerViewModeToggle(
                 viewMode = explorerViewMode,
                 onToggle = onToggleExplorerViewMode

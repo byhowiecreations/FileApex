@@ -41,3 +41,18 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         }
     }
 }
+
+/** Adds hardware identity columns to [PairedDeviceEntity]. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "ALTER TABLE `paired_devices` ADD COLUMN `os` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `paired_devices` ADD COLUMN `deviceMake` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `paired_devices` ADD COLUMN `deviceModel` TEXT NOT NULL DEFAULT ''"
+        ).forEach { sql ->
+            connection.prepare(sql).use { statement ->
+                statement.step()
+            }
+        }
+    }
+}

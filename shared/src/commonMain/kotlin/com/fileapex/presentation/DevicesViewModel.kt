@@ -118,7 +118,11 @@ class DevicesViewModel : ViewModel() {
                         online = presence.isDeviceOnline(device),
                         appVersion = device.clientVersion.takeIf { it.isNotEmpty() },
                         appVersionCode = device.clientVersionCode,
-                        lastSeenEpochMs = device.lastSeenEpochMs
+                        lastSeenEpochMs = device.lastSeenEpochMs,
+                        os = device.os,
+                        platform = device.platform,
+                        deviceMake = device.deviceMake,
+                        deviceModel = device.deviceModel
                     )
                 }
         },

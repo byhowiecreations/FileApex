@@ -13,7 +13,11 @@ data class DeviceListRow(
     val online: Boolean,
     val appVersion: String?,
     val appVersionCode: Int = 0,
-    val lastSeenEpochMs: Long = 0L
+    val lastSeenEpochMs: Long = 0L,
+    val os: String = "",
+    val platform: String = "",
+    val deviceMake: String = "",
+    val deviceModel: String = ""
 ) {
     val title: String get() = deviceName
 

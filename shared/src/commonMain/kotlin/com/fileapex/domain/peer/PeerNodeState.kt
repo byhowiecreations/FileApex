@@ -23,6 +23,10 @@ data class PeerNodeState(
     /** Legacy wire field — read only for backward compatibility. */
     val appVersionCode: Int = 0,
     val platform: String = "",
+    /** OS slug: android, macos, windows, linux. */
+    val os: String = "",
+    val deviceMake: String = "",
+    val deviceModel: String = "",
     val supportedProtocols: List<String> = PeerNodeProtocols.DEFAULT,
     val lastSeenTimestamp: Long = 0L,
     val rootPath: String = "/",

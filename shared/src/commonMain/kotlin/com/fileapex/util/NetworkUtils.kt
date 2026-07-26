@@ -4,6 +4,7 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.platform.activeLanIpv4Addresses
+import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.platform.localIpv4Addresses
 
 /**
@@ -113,13 +114,18 @@ object NetworkUtils {
         identity: LocalIdentity,
         deviceName: String = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
     ): PairedDeviceEntity {
+        val hardware = localDeviceHardwareProfile()
         return PairedDeviceEntity(
             deviceId = identity.deviceId,
             deviceName = deviceName,
             lastKnownIp = preferredLanIpv4(),
             port = identity.sharePort,
             publicKeyHash = "",
-            rootPath = identity.rootPath
+            rootPath = identity.rootPath,
+            platform = hardware.platform,
+            os = hardware.os,
+            deviceMake = hardware.deviceMake,
+            deviceModel = hardware.deviceModel
         )
     }
 }

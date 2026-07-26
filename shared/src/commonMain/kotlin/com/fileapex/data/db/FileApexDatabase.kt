@@ -36,6 +36,10 @@ data class PairedDeviceEntity(
     val clientVersion: String = "",
     val clientVersionCode: Int = 0,
     val platform: String = "",
+    /** OS slug: android, macos, windows, linux. */
+    val os: String = "",
+    val deviceMake: String = "",
+    val deviceModel: String = "",
     val supportedProtocolsJson: String = "[]",
     /** Epoch millis when this peer was last observed online (UTC). */
     val lastSeenEpochMs: Long = 0L
@@ -92,7 +96,7 @@ interface DeviceDao {
     suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String)
 }
 
-@Database(entities = [PairedDeviceEntity::class, RemovedDeviceEntity::class], version = 4)
+@Database(entities = [PairedDeviceEntity::class, RemovedDeviceEntity::class], version = 5)
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {
     abstract fun deviceDao(): DeviceDao

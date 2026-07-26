@@ -38,6 +38,8 @@ interface AppSettings {
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
     /** File explorer layout (list vs grid). Default [com.fileapex.presentation.ExplorerViewMode.List]. */
     val explorerViewMode: StateFlow<ExplorerViewMode>
+    /** Paired-devices layout (list vs grid). Default [com.fileapex.presentation.ExplorerViewMode.List]. */
+    val devicesViewMode: StateFlow<ExplorerViewMode>
 
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
@@ -62,6 +64,8 @@ interface AppSettings {
     fun setDesktopLayoutMode(mode: DesktopLayoutMode)
 
     fun setExplorerViewMode(mode: ExplorerViewMode)
+
+    fun setDevicesViewMode(mode: ExplorerViewMode)
 
     fun checkForUpdatesIntervalMillis(): Long {
         return UpdateCheckFrequency.toMillis(

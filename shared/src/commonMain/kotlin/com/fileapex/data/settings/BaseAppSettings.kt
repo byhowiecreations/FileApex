@@ -59,6 +59,9 @@ class BaseAppSettings(
     private val explorerViewModeFlow = MutableStateFlow(
         ExplorerViewMode.fromStorage(store.getString(KEY_EXPLORER_VIEW_MODE, ExplorerViewMode.List.name))
     )
+    private val devicesViewModeFlow = MutableStateFlow(
+        ExplorerViewMode.fromStorage(store.getString(KEY_DEVICES_VIEW_MODE, ExplorerViewMode.List.name))
+    )
 
     override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
@@ -79,6 +82,7 @@ class BaseAppSettings(
     override val deviceOrderUpdatedAtEpochMs: StateFlow<Long> = deviceOrderUpdatedAt.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
     override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
+    override val devicesViewMode: StateFlow<ExplorerViewMode> = devicesViewModeFlow.asStateFlow()
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
         store.putBoolean(KEY_GOOGLE, enabled)
@@ -178,6 +182,11 @@ class BaseAppSettings(
         explorerViewModeFlow.value = mode
     }
 
+    override fun setDevicesViewMode(mode: ExplorerViewMode) {
+        store.putString(KEY_DEVICES_VIEW_MODE, mode.name)
+        devicesViewModeFlow.value = mode
+    }
+
     companion object {
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
@@ -197,5 +206,6 @@ class BaseAppSettings(
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
         const val KEY_EXPLORER_VIEW_MODE = "explorer_view_mode"
+        const val KEY_DEVICES_VIEW_MODE = "devices_view_mode"
     }
 }

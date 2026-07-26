@@ -5,6 +5,7 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.platform.defaultDownloadsDir
+import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.update.currentAppVersionCode
 import com.fileapex.update.currentAppVersionName
 import com.fileapex.util.DeviceIdentityMarkers
@@ -27,6 +28,7 @@ object PeerNodeStateMapper {
     ): PeerNodeState {
         val advertiseIp = NetworkUtils.lanBindCandidates().firstOrNull()
             ?: NetworkUtils.preferredLanIpv4()
+        val hardware = localDeviceHardwareProfile()
         return PeerNodeState(
             deviceId = identity.deviceId,
             deviceName = deviceName.trim(),
@@ -34,7 +36,10 @@ object PeerNodeStateMapper {
             port = identity.sharePort,
             clientVersion = currentAppVersionName(),
             clientVersionCode = currentAppVersionCode(),
-            platform = currentPlatformLabel(),
+            platform = hardware.platform.ifBlank { currentPlatformLabel() },
+            os = hardware.os,
+            deviceMake = hardware.deviceMake,
+            deviceModel = hardware.deviceModel,
             supportedProtocols = PeerNodeProtocols.DEFAULT,
             lastSeenTimestamp = lastSeenTimestamp,
             rootPath = identity.rootPath,
@@ -60,6 +65,9 @@ object PeerNodeStateMapper {
                 ?: existing?.clientVersionCode
                 ?: 0,
             platform = state.platform.trim().ifBlank { existing?.platform.orEmpty() },
+            os = state.os.trim().ifBlank { existing?.os.orEmpty() },
+            deviceMake = state.deviceMake.trim().ifBlank { existing?.deviceMake.orEmpty() },
+            deviceModel = state.deviceModel.trim().ifBlank { existing?.deviceModel.orEmpty() },
             supportedProtocolsJson = encodeProtocols(
                 state.supportedProtocols.ifEmpty { PeerNodeProtocols.DEFAULT }
             ),
@@ -78,6 +86,9 @@ object PeerNodeStateMapper {
             clientVersion = entity.clientVersion,
             clientVersionCode = entity.clientVersionCode,
             platform = entity.platform,
+            os = entity.os,
+            deviceMake = entity.deviceMake,
+            deviceModel = entity.deviceModel,
             supportedProtocols = decodeProtocols(entity.supportedProtocolsJson),
             lastSeenTimestamp = entity.lastSeenEpochMs,
             rootPath = entity.rootPath,
