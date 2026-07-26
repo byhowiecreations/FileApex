@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.fileapex.domain.presence.PresenceBackgroundWake
+import com.fileapex.network.RemoteAccessRoutingGuard
 import com.fileapex.network.ServerLifecycleManager
 
 /**
@@ -12,6 +13,7 @@ import com.fileapex.network.ServerLifecycleManager
  */
 class FileApexFcmMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
+        if (!RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) return
         val data = message.data
         if (!FcmWakeCoordinator.isPresenceWake(data[FcmWakeProtocol.KEY_TYPE])) {
             return

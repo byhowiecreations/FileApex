@@ -10,6 +10,8 @@ interface AppSettings {
     /** Firebase Auth UID for Firestore path users/{uid}/devices. Empty when unlinked. */
     val googleAccountUid: StateFlow<String>
     val multiCopyIntroAcknowledged: StateFlow<Boolean>
+    /** When true, allow remote peer discovery and P2P over cellular via Firebase signaling and STUN/WebRTC. Default off. */
+    val cellularRemoteAccessEnabled: StateFlow<Boolean>
     /** When true, this device shows a notification after successfully receiving files. Default off. */
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
     /** When true, scanners must supply this device's PIN to pair. Default off. */
@@ -45,6 +47,7 @@ interface AppSettings {
     fun setGoogleAccountEmail(email: String)
     fun setGoogleAccountUid(uid: String)
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
+    fun setCellularRemoteAccessEnabled(enabled: Boolean)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
     fun setPinRequiredEnabled(enabled: Boolean)
     fun setDevicePin(pinValue: String)

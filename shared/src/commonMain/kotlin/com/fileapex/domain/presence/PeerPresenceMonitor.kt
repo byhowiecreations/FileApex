@@ -7,6 +7,7 @@ import com.fileapex.data.device.DeviceRepository
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.network.FileApexClient
+import com.fileapex.network.RemoteAccessRoutingGuard
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.network.FileApexMdnsBrowser
 import com.fileapex.network.sendWakeBroadcast
@@ -120,6 +121,7 @@ class PeerPresenceMonitor(
 
     /** FCM silent data wake — targeted health probe without full discovery budget. */
     fun onBackgroundWakeSignal(sourceDeviceId: String?) {
+        if (!RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) return
         if (!FileApexServices.isDatabaseReady()) return
         scope.launch {
             runCatching {
@@ -190,8 +192,10 @@ class PeerPresenceMonitor(
         // Push Mac/phone self metadata after discovery refreshed stale peer IPs.
         runCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity() }
         refreshOnlineSnapshot()
-        runCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
-        if (!skipFcmDispatch) {
+        if (RemoteAccessRoutingGuard.ensureRemoteSignalingAllowed()) {
+            runCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
+        }
+        if (!skipFcmDispatch && RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) {
             FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
         }
     }

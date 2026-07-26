@@ -1,6 +1,3 @@
-# Cursor IDE — local/editor only (also in ~/.gitignore_global)
-.cursor/
-
 # Built artifacts
 /.gradle/
 /gradle.properties

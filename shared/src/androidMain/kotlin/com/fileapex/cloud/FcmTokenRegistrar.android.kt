@@ -2,6 +2,7 @@ package com.fileapex.cloud
 
 import com.google.firebase.messaging.FirebaseMessaging
 import com.fileapex.di.FileApexServices
+import com.fileapex.network.RemoteAccessRoutingGuard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +18,7 @@ actual object FcmTokenRegistrar {
     actual fun start() {
         if (started) return
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) return
         started = true
         scope.launch {
             runCatching {
@@ -36,6 +38,7 @@ actual object FcmTokenRegistrar {
 
     fun onTokenRefreshed(token: String) {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) return
         scope.launch {
             runCatching {
                 GoogleLinkCoordinator.patchSelfFcmToken(token)

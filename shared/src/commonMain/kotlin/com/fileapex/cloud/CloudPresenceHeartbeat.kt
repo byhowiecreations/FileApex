@@ -1,6 +1,7 @@
 package com.fileapex.cloud
 
 import com.fileapex.domain.presence.LanPresenceTiming
+import com.fileapex.network.RemoteAccessRoutingGuard
 import com.fileapex.network.ServerLifecycleManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,7 @@ object CloudPresenceHeartbeat {
         if (heartbeatJob?.isActive == true) return
         heartbeatJob = scope.launch {
             while (isActive) {
-                if (ServerLifecycleManager.isRunning) {
+                if (ServerLifecycleManager.isRunning && RemoteAccessRoutingGuard.ensureRemoteSignalingAllowed()) {
                     runCatching { GoogleLinkCoordinator.publishScheduledPresenceHeartbeat() }
                         .onFailure { error ->
                             println("CloudPresenceHeartbeat: publish failed — ${error.message}")

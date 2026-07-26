@@ -2,6 +2,7 @@ package com.fileapex.cloud
 
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.network.RemoteAccessRoutingGuard
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ object FcmWakeCoordinator {
 
     fun dispatchPresenceWakeToLinkedPeers() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) return
         if (!FcmWakeBackend.isConfigured()) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {

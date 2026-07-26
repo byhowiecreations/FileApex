@@ -30,6 +30,8 @@ class BaseAppSettings(
     private val googleEmail = MutableStateFlow(store.getString(KEY_GOOGLE_EMAIL, ""))
     private val googleUid = MutableStateFlow(store.getString(KEY_GOOGLE_UID, ""))
     private val multiCopyIntro = MutableStateFlow(store.getBoolean(KEY_MULTI_COPY_INTRO, false))
+    private val cellularRemoteAccess =
+        MutableStateFlow(store.getBoolean(KEY_CELLULAR_REMOTE_ACCESS, false))
     private val transferNotifications =
         MutableStateFlow(store.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
     private val pinRequired = MutableStateFlow(store.getBoolean(KEY_PIN_REQUIRED, false))
@@ -67,6 +69,7 @@ class BaseAppSettings(
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
     override val googleAccountUid: StateFlow<String> = googleUid.asStateFlow()
     override val multiCopyIntroAcknowledged: StateFlow<Boolean> = multiCopyIntro.asStateFlow()
+    override val cellularRemoteAccessEnabled: StateFlow<Boolean> = cellularRemoteAccess.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
@@ -108,6 +111,11 @@ class BaseAppSettings(
     override fun setMultiCopyIntroAcknowledged(acknowledged: Boolean) {
         store.putBoolean(KEY_MULTI_COPY_INTRO, acknowledged)
         multiCopyIntro.value = acknowledged
+    }
+
+    override fun setCellularRemoteAccessEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CELLULAR_REMOTE_ACCESS, enabled)
+        cellularRemoteAccess.value = enabled
     }
 
     override fun setFileTransferNotificationsEnabled(enabled: Boolean) {
@@ -192,6 +200,7 @@ class BaseAppSettings(
         const val KEY_GOOGLE_EMAIL = "google_account_email"
         const val KEY_GOOGLE_UID = "google_account_uid"
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
+        const val KEY_CELLULAR_REMOTE_ACCESS = "cellular_remote_access"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
         const val KEY_PIN_REQUIRED = "pin_required"
         const val KEY_DEVICE_PIN = "device_pin"

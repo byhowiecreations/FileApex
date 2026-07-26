@@ -1,6 +1,7 @@
 package com.fileapex.domain.presence
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.network.RemoteAccessRoutingGuard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -11,6 +12,7 @@ object PresenceBackgroundWake {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun onRemoteWakeSignal(sourceDeviceId: String?) {
+        if (!RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) return
         if (!FileApexServices.isDatabaseReady()) return
         scope.launch {
             runCatching {

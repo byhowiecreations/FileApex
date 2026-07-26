@@ -8,6 +8,7 @@ import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.di.FileApexServices
+import com.fileapex.network.RemoteAccessRoutingGuard
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.update.AppUpdateCoordinator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val googleAccountLinkEnabled: Boolean = false,
     val googleAccountEmail: String = "",
+    val cellularRemoteAccessEnabled: Boolean = false,
     val fileTransferNotificationsEnabled: Boolean = false,
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
@@ -41,6 +43,7 @@ class SettingsViewModel : ViewModel() {
         SettingsUiState(
             googleAccountLinkEnabled = settings.googleAccountLinkEnabled.value,
             googleAccountEmail = settings.googleAccountEmail.value,
+            cellularRemoteAccessEnabled = settings.cellularRemoteAccessEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
@@ -65,6 +68,12 @@ class SettingsViewModel : ViewModel() {
         settings.setEnableServiceWatchdog(enabled)
         ServiceWatchdog.onPreferenceChanged(enabled)
         _uiState.update { it.copy(enableServiceWatchdog = enabled) }
+    }
+
+    fun setCellularRemoteAccess(enabled: Boolean) {
+        settings.setCellularRemoteAccessEnabled(enabled)
+        RemoteAccessRoutingGuard.onPreferenceChanged(enabled)
+        _uiState.update { it.copy(cellularRemoteAccessEnabled = enabled) }
     }
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode) {

@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -69,6 +70,7 @@ private enum class SettingsPage {
     BackgroundPersistence,
     FileTransferNotifications,
     GoogleAccount,
+    Cellular,
     DesktopLayout
 }
 
@@ -133,6 +135,7 @@ fun SettingsScreen(
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
+            onOpenCellular = { page = SettingsPage.Cellular },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             batteryOptimizationRestricted = batteryOptimizationRestricted,
@@ -187,6 +190,12 @@ fun SettingsScreen(
             onDisable = viewModel::disableGoogleAccountLink,
             onIdToken = viewModel::onGoogleIdToken
         )
+        SettingsPage.Cellular -> CellularRemoteAccessSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onToggle = viewModel::setCellularRemoteAccess
+        )
         SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
             state = state,
             layoutMode = layoutMode,
@@ -213,6 +222,7 @@ private fun SettingsRootPage(
     onOpenBackgroundPersistence: () -> Unit,
     onOpenFileTransferNotifications: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
+    onOpenCellular: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     batteryOptimizationRestricted: Boolean,
@@ -229,12 +239,12 @@ private fun SettingsRootPage(
         layoutMode = layoutMode,
         onBack = onBack.takeIf { showBackNavigation }
     ) { contentModifier ->
-        Box(modifier = contentModifier.fillMaxSize()) {
+        Column(modifier = contentModifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(bottom = 48.dp)
             ) {
                 SettingsNavItem(
                     title = "Check for Updates",
@@ -281,6 +291,11 @@ private fun SettingsRootPage(
                     },
                     onClick = onOpenGoogleAccount
                 )
+                SettingsNavItem(
+                    title = "Cellular",
+                    subtitle = if (state.cellularRemoteAccessEnabled) "On" else "Off",
+                    onClick = onOpenCellular
+                )
                 if (usesDesktopFileSelection()) {
                     SettingsNavItem(
                         title = "Desktop Layout",
@@ -289,36 +304,24 @@ private fun SettingsRootPage(
                     )
                 }
             }
-            Text(
-                text = "FileApex v$appVersionName",
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 20.dp)
-                    .clickable(
-                        interactionSource = versionTapInteraction,
-                        indication = null,
-                        onClick = {
-                            if (!TimeUtils.isWithinWindow(
-                                    lastVersionTapEpochMs,
-                                    VERSION_EASTER_EGG_TAP_WINDOW_MS
-                                )
-                            ) {
-                                versionTapCount = 0
-                            }
-                            lastVersionTapEpochMs = TimeUtils.now()
-                            versionTapCount += 1
-                            if (versionTapCount >= VERSION_EASTER_EGG_TAP_COUNT) {
-                                versionTapCount = 0
-                                onVersionNumberEasterEgg()
-                            }
-                        }
-                    ),
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.6.sp,
-                    fontSize = 12.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+            SettingsVersionLabel(
+                appVersionName = appVersionName,
+                versionTapInteraction = versionTapInteraction,
+                onVersionTap = {
+                    if (!TimeUtils.isWithinWindow(
+                            lastVersionTapEpochMs,
+                            VERSION_EASTER_EGG_TAP_WINDOW_MS
+                        )
+                    ) {
+                        versionTapCount = 0
+                    }
+                    lastVersionTapEpochMs = TimeUtils.now()
+                    versionTapCount += 1
+                    if (versionTapCount >= VERSION_EASTER_EGG_TAP_COUNT) {
+                        versionTapCount = 0
+                        onVersionNumberEasterEgg()
+                    }
+                }
             )
         }
     }
@@ -713,6 +716,57 @@ private fun PinRequiredSettingsPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun CellularRemoteAccessSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onToggle: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Cellular",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Cellular & Remote Access") },
+                supportingContent = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "When on: uses cellular data and the internet for remote peer " +
+                                "discovery and P2P handshakes via Firebase signaling and " +
+                                "STUN/WebRTC data channels."
+                        )
+                        Text(
+                            "When off: discovery and file transfers stay on local Wi-Fi and " +
+                                "mDNS only. Default is off."
+                        )
+                    }
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.cellularRemoteAccessEnabled,
+                        onCheckedChange = onToggle
+                    )
+                }
+            )
+            Text(
+                text = "File and folder contents are never stored on any servers — transfers " +
+                    "are strictly P2P (peer-to-peer) between your devices.",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun GoogleAccountSettingsPage(
     state: SettingsUiState,
     linkStatus: String?,
@@ -844,6 +898,32 @@ private fun SettingsTopBar(title: String, onBack: (() -> Unit)?) {
             titleContentColor = MaterialTheme.colorScheme.onPrimary,
             navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
         )
+    )
+}
+
+@Composable
+private fun SettingsVersionLabel(
+    appVersionName: String,
+    versionTapInteraction: MutableInteractionSource,
+    onVersionTap: () -> Unit
+) {
+    Text(
+        text = "FileApex v$appVersionName",
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 20.dp)
+            .clickable(
+                interactionSource = versionTapInteraction,
+                indication = null,
+                onClick = onVersionTap
+            ),
+        textAlign = TextAlign.Center,
+        style = MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.6.sp,
+            fontSize = 12.sp
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
     )
 }
 

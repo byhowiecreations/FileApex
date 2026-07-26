@@ -6,6 +6,7 @@ import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.pairing.RemovedDeviceRecord
+import com.fileapex.network.RemoteAccessRoutingGuard
 import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimestampDiagnostics
@@ -70,6 +71,7 @@ object GoogleLinkCoordinator {
 
     fun onAppLaunch() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!RemoteAccessRoutingGuard.ensureRemoteSignalingAllowed()) return
         bootstrapScope.launch {
             runCatching { restoreSessionAndListen() }
                 .onFailure { error ->
@@ -82,6 +84,7 @@ object GoogleLinkCoordinator {
     /** One-shot cloud presence publish on cold launch or foreground refresh. */
     suspend fun publishSelfPresenceIfLinked() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!RemoteAccessRoutingGuard.ensureRemoteSignalingAllowed()) return
         if (!cloudOpsActive) return
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
@@ -97,6 +100,7 @@ object GoogleLinkCoordinator {
      */
     suspend fun publishScheduledPresenceHeartbeat() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!RemoteAccessRoutingGuard.ensureRemoteSignalingAllowed()) return
         if (!cloudOpsActive) return
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
@@ -131,6 +135,7 @@ object GoogleLinkCoordinator {
         val trimmed = fcmToken.trim()
         if (trimmed.isEmpty()) return
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!RemoteAccessRoutingGuard.ensureFcmWakeAllowed()) return
         if (!cloudOpsActive) return
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
@@ -159,9 +164,30 @@ object GoogleLinkCoordinator {
             settings.setGoogleAccountUid(session.firebaseUid)
             settings.setGoogleAccountLinkEnabled(true)
             registerSelf(session.firebaseUid)
-            startCloudSessionLocked(session.firebaseUid)
+            if (RemoteAccessRoutingGuard.ensureRemoteSignalingAllowed()) {
+                startCloudSessionLocked(session.firebaseUid)
+            }
             _status.value = "Linked as ${email.ifBlank { session.firebaseUid }}"
             return session.copy(email = email)
+        }
+    }
+
+    fun onRemoteAccessEnabled() {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        bootstrapScope.launch {
+            runCatching { restoreSessionAndListen() }
+                .onFailure { error ->
+                    _status.value = error.message ?: "Cloud link restore failed"
+                    println("GoogleLinkCoordinator: remote access enable failed — ${error.message}")
+                }
+        }
+    }
+
+    fun onRemoteAccessDisabled() {
+        bootstrapScope.launch {
+            gate.withLock {
+                shutdownCloudSessionLocked()
+            }
         }
     }
 
@@ -291,7 +317,10 @@ object GoogleLinkCoordinator {
     }
 
     private fun isSessionLive(epoch: Long): Boolean =
-        cloudOpsActive && epoch == sessionEpoch && FileApexServices.isDatabaseReady()
+        cloudOpsActive &&
+            epoch == sessionEpoch &&
+            RemoteAccessRoutingGuard.isRemoteAccessAllowed() &&
+            FileApexServices.isDatabaseReady()
 
     private suspend fun registerSelf(uid: String) {
         val record = buildSelfRecord()

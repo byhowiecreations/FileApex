@@ -7,6 +7,7 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexMdnsAdvertiser
 import com.fileapex.network.FileApexMdnsBrowser
+import com.fileapex.network.RemoteAccessRoutingGuard
 import com.fileapex.network.ServerLifecycleManager
 
 /**
@@ -30,8 +31,10 @@ object BackgroundPresenceServices {
             }
         }
         PresenceNetworkRevalidator.ensureRegistered()
-        FcmTokenRegistrar.start()
-        CloudPresenceHeartbeat.start()
+        if (RemoteAccessRoutingGuard.isRemoteAccessAllowed()) {
+            FcmTokenRegistrar.start()
+            CloudPresenceHeartbeat.start()
+        }
         if (FileApexServices.isDatabaseReady()) {
             FileApexServices.presenceMonitor.ensureLanPollLoop()
         }
