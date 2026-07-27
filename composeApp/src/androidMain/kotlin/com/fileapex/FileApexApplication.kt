@@ -11,6 +11,7 @@ import com.fileapex.platform.initAndroidBriefToast
 import com.fileapex.platform.initAndroidDirectShareShortcuts
 import com.fileapex.platform.initAndroidTransferReceiveNotifier
 import com.fileapex.platform.initAndroidUpdateAvailableNotifier
+import com.fileapex.platform.AndroidNotificationChannels
 import com.fileapex.platform.ServiceWatchdogScheduler
 import com.fileapex.update.AppUpdateCoordinator
 
@@ -18,6 +19,8 @@ class FileApexApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         initAndroidAppSettings(this)
+        AndroidNotificationChannels.migrateLegacyShareServerChannels(this)
+        AndroidNotificationChannels.ensureShareServerChannel(this)
         initAndroidLocalIdentity(this)
         initAndroidLanConnectivity(this)
         initAndroidTransferReceiveNotifier(this)

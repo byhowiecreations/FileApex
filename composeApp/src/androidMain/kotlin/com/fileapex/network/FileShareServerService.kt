@@ -37,17 +37,20 @@ class FileShareServerService : Service() {
     override fun onCreate() {
         super.onCreate()
         ShareServerForegroundNotification.resetPostedState()
+        // Strict OEMs (Motorola): startForeground within ~5s of startForegroundService — before
+        // onStartCommand and before any server / UDP setup work.
+        isForegroundPromoted = ShareServerForegroundNotification.promoteImmediately(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val fromForeground = isForegroundStart(intent)
         val reassert = intent?.action == ShareServerKeepAliveCoordinator.ACTION_REASSERT
         val stickyRestart = intent == null
-        if (reassert && isForegroundPromoted) {
+        if (reassert && isForegroundPromoted && ShareServerForegroundNotification.isPosted()) {
             runBackgroundHousekeeping()
             return START_STICKY
         }
-        if (!isForegroundPromoted) {
+        if (!isForegroundPromoted || !ShareServerForegroundNotification.isPosted()) {
             val promoted = if (fromForeground) {
                 promoteToForegroundFromUi()
             } else {
@@ -58,15 +61,10 @@ class FileShareServerService : Service() {
                 return START_NOT_STICKY
             }
             isForegroundPromoted = true
+        }
+        if (isForegroundPromoted && ShareServerForegroundNotification.isPosted()) {
             ShareServerPendingStart.clear(this)
             ShareServerKeepAliveCoordinator.onForegroundServiceActive(this)
-        } else if (fromForeground && !ShareServerForegroundNotification.isPosted()) {
-            // POST_NOTIFICATIONS may have been denied on first promote — one UI retry only.
-            runCatching { postStaticNotificationOnce() }
-                .onFailure { error ->
-                    Log.w(TAG, "Foreground notification retry failed :: ${error.message}")
-                }
-            ShareServerPendingStart.clear(this)
         }
         runBackgroundHousekeeping()
         return START_STICKY

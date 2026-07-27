@@ -19,6 +19,9 @@ import android.app.PendingIntent
  * Posted **once** per FGS lifetime — never re-issued on AlarmManager re-asserts, heartbeat
  * housekeeping, or routine [com.fileapex.network.FileShareServerService] restarts while promoted.
  *
+ * Strict OEMs (Motorola): [promoteImmediately] must run in [Service.onCreate] within ~5s of
+ * [android.content.Context.startForegroundService] — no bitmap decode or channel migration.
+ *
  * File transfer alerts use [AndroidNotificationChannels.TRANSFER_RECEIVE] / transfer receive
  * notifier with separate notification ids — they must not touch this pipeline.
  */
@@ -30,6 +33,24 @@ object ShareServerForegroundNotification {
     @Volatile
     private var posted = false
 
+    /**
+     * Minimal FGS promotion for [Service.onCreate] — channel must already exist
+     * ([AndroidNotificationChannels.ensureShareServerChannel] in Application.onCreate).
+     */
+    fun promoteImmediately(service: Service): Boolean {
+        if (posted) return true
+        return runCatching {
+            AndroidNotificationChannels.ensureShareServerChannel(service)
+            invokeStartForeground(service, buildStaticNotification(service, includeLargeIcon = false))
+            posted = true
+            Log.i(TAG, "Immediate foreground promotion (onCreate)")
+            true
+        }.getOrElse { error ->
+            Log.w(TAG, "Immediate foreground promotion failed :: ${error.message}")
+            false
+        }
+    }
+
     /** @return true when [Service.startForeground] ran for the first time this service instance. */
     fun postOnce(service: Service): Boolean {
         if (posted) {
@@ -37,7 +58,19 @@ object ShareServerForegroundNotification {
             return false
         }
         AndroidNotificationChannels.ensureShareServerChannel(service)
-        val notification = buildStaticNotification(service)
+        invokeStartForeground(service, buildStaticNotification(service, includeLargeIcon = true))
+        posted = true
+        Log.i(TAG, "Static server notification posted (one-time)")
+        return true
+    }
+
+    fun resetPostedState() {
+        posted = false
+    }
+
+    fun isPosted(): Boolean = posted
+
+    private fun invokeStartForeground(service: Service, notification: Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val preferred = preferredForegroundServiceType()
             try {
@@ -61,18 +94,9 @@ object ShareServerForegroundNotification {
             @Suppress("DEPRECATION")
             service.startForeground(NOTIFICATION_ID, notification)
         }
-        posted = true
-        Log.i(TAG, "Static server notification posted (one-time)")
-        return true
     }
 
-    fun resetPostedState() {
-        posted = false
-    }
-
-    fun isPosted(): Boolean = posted
-
-    private fun buildStaticNotification(context: Context): Notification {
+    private fun buildStaticNotification(context: Context, includeLargeIcon: Boolean): Notification {
         val launch = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -80,11 +104,10 @@ object ShareServerForegroundNotification {
         val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
         val contentIntent = PendingIntent.getActivity(context, CONTENT_REQUEST_CODE, launch, pendingFlags)
-        return NotificationCompat.Builder(context, AndroidNotificationChannels.SHARE_SERVER_ACTIVE)
+        val builder = NotificationCompat.Builder(context, AndroidNotificationChannels.SHARE_SERVER_ACTIVE)
             .setContentTitle("FileApex Server Active")
             .setContentText("Local WiFi secure ecosystem running...")
             .setSmallIcon(R.drawable.ic_notification)
-            .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.ic_launcher))
             .setContentIntent(contentIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -93,7 +116,10 @@ object ShareServerForegroundNotification {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+        if (includeLargeIcon) {
+            builder.setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.ic_launcher))
+        }
+        return builder.build()
     }
 
     private fun preferredForegroundServiceType(): Int {

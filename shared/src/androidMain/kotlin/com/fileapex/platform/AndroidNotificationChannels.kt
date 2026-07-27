@@ -45,25 +45,37 @@ object AndroidNotificationChannels {
     fun ensureShareServerChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java)
+        val existing = manager.getNotificationChannel(SHARE_SERVER_ACTIVE)
+        if (existing != null && existing.importance == NotificationManager.IMPORTANCE_LOW) {
+            return
+        }
+        migrateLegacyShareServerChannels(manager)
+        val channel = NotificationChannel(
+            SHARE_SERVER_ACTIVE,
+            "FileApex Server",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Persistent alert while the FileApex share server is running"
+            setShowBadge(false)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            enableVibration(false)
+            setSound(null, null)
+        }
+        manager.createNotificationChannel(channel)
+    }
+
+    /** One-time legacy cleanup — not on the FGS [startForeground] critical path. */
+    fun migrateLegacyShareServerChannels(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        migrateLegacyShareServerChannels(context.getSystemService(NotificationManager::class.java))
+    }
+
+    private fun migrateLegacyShareServerChannels(manager: NotificationManager) {
         manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL_V1)
         manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL)
         val existing = manager.getNotificationChannel(SHARE_SERVER_ACTIVE)
-        if (existing == null || existing.importance != NotificationManager.IMPORTANCE_LOW) {
-            if (existing != null) {
-                manager.deleteNotificationChannel(SHARE_SERVER_ACTIVE)
-            }
-            val channel = NotificationChannel(
-                SHARE_SERVER_ACTIVE,
-                "FileApex Server",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Persistent alert while the FileApex share server is running"
-                setShowBadge(false)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-                enableVibration(false)
-                setSound(null, null)
-            }
-            manager.createNotificationChannel(channel)
+        if (existing != null && existing.importance != NotificationManager.IMPORTANCE_LOW) {
+            manager.deleteNotificationChannel(SHARE_SERVER_ACTIVE)
         }
     }
 }
