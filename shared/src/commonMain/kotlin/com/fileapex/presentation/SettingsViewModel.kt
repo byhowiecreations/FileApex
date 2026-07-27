@@ -8,6 +8,7 @@ import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.di.FileApexServices
+import com.fileapex.platform.BootLaunchPreference
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.update.AppUpdateCoordinator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,7 @@ data class SettingsUiState(
     val checkForUpdatesIntervalAmount: Int = 1,
     val checkForUpdatesAmountText: String = "1",
     val enableServiceWatchdog: Boolean = true,
+    val autoLaunchOnReboot: Boolean = true,
     val desktopLayoutMode: DesktopLayoutMode = DesktopLayoutMode.Compact,
     val googleAccountError: String? = null
 )
@@ -50,6 +52,7 @@ class SettingsViewModel : ViewModel() {
             checkForUpdatesIntervalAmount = settings.checkForUpdatesIntervalAmount.value,
             checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString(),
             enableServiceWatchdog = settings.enableServiceWatchdog.value,
+            autoLaunchOnReboot = settings.autoLaunchOnReboot.value,
             desktopLayoutMode = settings.desktopLayoutMode.value
         )
     )
@@ -65,6 +68,12 @@ class SettingsViewModel : ViewModel() {
         settings.setEnableServiceWatchdog(enabled)
         ServiceWatchdog.onPreferenceChanged(enabled)
         _uiState.update { it.copy(enableServiceWatchdog = enabled) }
+    }
+
+    fun setAutoLaunchOnReboot(enabled: Boolean) {
+        settings.setAutoLaunchOnReboot(enabled)
+        BootLaunchPreference.onPreferenceChanged(enabled)
+        _uiState.update { it.copy(autoLaunchOnReboot = enabled) }
     }
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode) {

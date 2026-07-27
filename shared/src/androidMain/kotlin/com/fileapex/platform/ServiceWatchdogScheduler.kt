@@ -25,6 +25,7 @@ object ServiceWatchdogScheduler {
     private const val REQUEST_CODE = 42_024
     private const val DIRECT_BOOT_PREFS = "fileapex_watchdog_direct_boot"
     private const val KEY_ENABLED_MIRROR = "watchdog_enabled"
+    private const val KEY_AUTO_LAUNCH_MIRROR = "auto_launch_on_reboot"
     private const val KEY_EXACT_ALARM_WARNING = "exact_alarm_unavailable"
     private const val KEY_BATTERY_OPTIMIZATION_WARNING = "battery_optimization_active"
     private const val KEY_SHARE_SERVER_HEARTBEAT_EPOCH_MS = "share_server_heartbeat_epoch_ms"
@@ -128,6 +129,13 @@ object ServiceWatchdogScheduler {
         return directBootPrefs(context).getBoolean(KEY_ENABLED_MIRROR, true)
     }
 
+    /**
+     * Boot-safe auto-launch toggle — reads device-protected mirror only (no credential storage).
+     */
+    fun isAutoLaunchOnRebootEnabled(context: Context): Boolean {
+        return directBootPrefs(context).getBoolean(KEY_AUTO_LAUNCH_MIRROR, true)
+    }
+
     fun isExactAlarmWarningActive(context: Context): Boolean {
         return directBootPrefs(context).getBoolean(KEY_EXACT_ALARM_WARNING, false)
     }
@@ -164,6 +172,20 @@ object ServiceWatchdogScheduler {
     fun syncWatchdogEnabledMirror(context: Context, enabled: Boolean) {
         directBootPrefs(context).edit()
             .putBoolean(KEY_ENABLED_MIRROR, enabled)
+            .commit()
+    }
+
+    /** Mirror settings into device-protected storage for [LOCKED_BOOT_COMPLETED]. */
+    fun syncAutoLaunchOnRebootFromSettings(context: Context) {
+        val enabled = runCatching {
+            FileApexServices.settings.autoLaunchOnReboot.value
+        }.getOrDefault(true)
+        syncAutoLaunchOnRebootMirror(context, enabled)
+    }
+
+    fun syncAutoLaunchOnRebootMirror(context: Context, enabled: Boolean) {
+        directBootPrefs(context).edit()
+            .putBoolean(KEY_AUTO_LAUNCH_MIRROR, enabled)
             .commit()
     }
 

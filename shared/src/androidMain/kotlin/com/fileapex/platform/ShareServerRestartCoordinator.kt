@@ -53,6 +53,7 @@ object ShareServerRestartCoordinator {
         ServiceWatchdogScheduler.clearShareServerHeartbeat(appContext)
         ShareServerPendingStart.mark(appContext)
         ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
+        ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
     }
 
     /**

@@ -12,7 +12,9 @@ import com.fileapex.platform.initAndroidDirectShareShortcuts
 import com.fileapex.platform.initAndroidTransferReceiveNotifier
 import com.fileapex.platform.initAndroidUpdateAvailableNotifier
 import com.fileapex.platform.AndroidNotificationChannels
+import com.fileapex.platform.BootLaunchPreference
 import com.fileapex.platform.ServiceWatchdogScheduler
+import com.fileapex.platform.ShareServerKeepAliveCoordinator
 import com.fileapex.update.AppUpdateCoordinator
 
 class FileApexApplication : Application() {
@@ -29,6 +31,11 @@ class FileApexApplication : Application() {
         FileApexServices.init(createFileApexDatabase(this))
         initAndroidDirectShareShortcuts(this)
         ServiceWatchdogScheduler.syncWatchdogEnabledFromSettings(this)
+        BootLaunchPreference.syncFromSettings()
+        if (FileApexServices.settings.enableServiceWatchdog.value) {
+            ShareServerKeepAliveCoordinator.registerFreezeGuardIfNeeded(this)
+            ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(this)
+        }
         AppUpdateCoordinator.onAppLaunch()
         GoogleLinkCoordinator.onAppLaunch()
         // UDP wake + share server run inside FileShareServerService (typed foreground service).

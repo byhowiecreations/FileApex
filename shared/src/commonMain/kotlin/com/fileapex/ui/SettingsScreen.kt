@@ -68,6 +68,7 @@ private enum class SettingsPage {
     CheckForUpdates,
     PinRequired,
     BackgroundPersistence,
+    AutoLaunchOnReboot,
     FileTransferNotifications,
     GoogleAccount,
     DesktopLayout
@@ -131,6 +132,7 @@ fun SettingsScreen(
             onOpenCheckForUpdates = { page = SettingsPage.CheckForUpdates },
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
+            onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
             onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
@@ -170,6 +172,12 @@ fun SettingsScreen(
             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
             onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
+        SettingsPage.AutoLaunchOnReboot -> AutoLaunchOnRebootSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onToggle = viewModel::setAutoLaunchOnReboot
+        )
         SettingsPage.FileTransferNotifications -> FileTransferNotificationsSettingsPage(
             state = state,
             layoutMode = layoutMode,
@@ -208,6 +216,7 @@ private fun SettingsRootPage(
     onOpenCheckForUpdates: () -> Unit,
     onOpenPinRequired: () -> Unit,
     onOpenBackgroundPersistence: () -> Unit,
+    onOpenAutoLaunchOnReboot: () -> Unit,
     onOpenFileTransferNotifications: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
@@ -261,6 +270,13 @@ private fun SettingsRootPage(
                     ),
                     onClick = onOpenBackgroundPersistence
                 )
+                if (!usesDesktopFileSelection()) {
+                    SettingsNavItem(
+                        title = "Auto launch on reboot",
+                        subtitle = if (state.autoLaunchOnReboot) "On" else "Off",
+                        onClick = onOpenAutoLaunchOnReboot
+                    )
+                }
                 SettingsNavItem(
                     title = "File Transfer Notifications",
                     subtitle = if (state.fileTransferNotificationsEnabled) "On" else "Off",
@@ -468,6 +484,44 @@ private fun BackgroundPersistenceSettingsPage(
                     )
                 },
                 modifier = Modifier.clickable { onOpenAppDetailsSettings() }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AutoLaunchOnRebootSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onToggle: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Auto launch on reboot",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Start share server after reboot") },
+                supportingContent = {
+                    Text(
+                        "When on, FileApex starts its share server automatically after your " +
+                            "device finishes rebooting. Off leaves the server stopped until you " +
+                            "open the app."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.autoLaunchOnReboot,
+                        onCheckedChange = onToggle
+                    )
+                }
             )
         }
     }

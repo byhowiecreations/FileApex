@@ -155,18 +155,23 @@ class TransferManager(
         awaitReady()
         require(sources.isNotEmpty()) { "Select at least one file" }
         require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
-        val verifiedSources = sources.verifiedFromDisk()
-        val remoteTargets = selectedDevices.filter { !it.isLocal }
-        val devicesForTransfer = if (remoteTargets.isEmpty()) {
-            selectedDevices
-        } else {
-            if (!skipTransferPrepare) {
-                presenceMonitor().prepareForTransfer(remoteTargets)
+        TransferActivityGuard.beginTransfer()
+        try {
+            val verifiedSources = sources.verifiedFromDisk()
+            val remoteTargets = selectedDevices.filter { !it.isLocal }
+            val devicesForTransfer = if (remoteTargets.isEmpty()) {
+                selectedDevices
+            } else {
+                if (!skipTransferPrepare) {
+                    presenceMonitor().prepareForTransfer(remoteTargets)
+                }
+                refreshRemoteHosts(selectedDevices)
             }
-            refreshRemoteHosts(selectedDevices)
+            val results = transferService.multiCopyToDevices(verifiedSources, devicesForTransfer)
+            return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)
+        } finally {
+            TransferActivityGuard.endTransfer()
         }
-        val results = transferService.multiCopyToDevices(verifiedSources, devicesForTransfer)
-        return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)
     }
 
     fun copyLocalFiles(

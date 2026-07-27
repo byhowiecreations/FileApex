@@ -3,8 +3,8 @@ package com.fileapex.domain.presence
 /**
  * Single source of truth for intent-driven presence probe timing.
  *
- * No idle background polling — reachability refreshes on cold launch, app foreground,
- * user taps/transfers, and inbound merge payloads.
+ * Background FGS work is battery-first (5 min light sweeps). Foreground UI uses shorter
+ * intervals for responsive discovery. Transfers and fresh peer state skip redundant work.
  */
 object LanPresenceTiming {
     /** Ready badge threshold — peer last_seen within this window shows "Ready". */
@@ -34,17 +34,39 @@ object LanPresenceTiming {
     /** Brief wait after on-demand UDP wake for inbound merge payloads. */
     const val PASSIVE_ENDPOINT_WAIT_MS = 1_500L
 
-    /** Upper bound for LAN identity sweep when stored endpoint is stale. */
-    const val LAN_DISCOVERY_BUDGET_MS = 4_000L
+    /** Quick mDNS-only follow-up when stored endpoint fails during a light sweep. */
+    const val LIGHT_SWEEP_DISCOVERY_BUDGET_MS = 4_000L
 
-    /** Extended sweep for peers that appear offline (stale IP / cross-platform). */
+    /** Full subnet sweep when stored endpoint is stale (foreground / transfer / network change). */
     const val STALE_PEER_LAN_DISCOVERY_BUDGET_MS = 12_000L
 
-    /** Active LAN poll interval while the app process is running (desktop + Android). */
-    const val ACTIVE_LAN_POLL_MS = 30_000L
+    /** @deprecated Use [LIGHT_SWEEP_DISCOVERY_BUDGET_MS] */
+    @Deprecated("Use LIGHT_SWEEP_DISCOVERY_BUDGET_MS", ReplaceWith("LIGHT_SWEEP_DISCOVERY_BUDGET_MS"))
+    const val LAN_DISCOVERY_BUDGET_MS = LIGHT_SWEEP_DISCOVERY_BUDGET_MS
 
-    @Deprecated("Use ACTIVE_LAN_POLL_MS", ReplaceWith("ACTIVE_LAN_POLL_MS"))
-    const val DESKTOP_LAN_POLL_MS = ACTIVE_LAN_POLL_MS
+    /** Poll interval while app UI is in foreground. */
+    const val FOREGROUND_LAN_POLL_MS = 60_000L
+
+    /** Poll interval while share server runs with UI in background — battery-first. */
+    const val BACKGROUND_LAN_POLL_MS = 5 * 60 * 1000L
+
+    /** Re-check cadence while a file transfer is active (defer heavy sweeps). */
+    const val TRANSFER_DEFER_POLL_MS = 15_000L
+
+    /** Skip background sweep when every peer was health-checked within this window. */
+    const val PEER_FRESH_SKIP_SWEEP_MS = 5 * 60 * 1000L
+
+    /** Minimum spacing between FCM wake dispatches triggered by poll sweeps. */
+    const val FCM_WAKE_MIN_INTERVAL_MS = 10 * 60 * 1000L
+
+    /** Minimum spacing between self-metadata LAN broadcasts from poll sweeps. */
+    const val SELF_BROADCAST_MIN_INTERVAL_MS = 10 * 60 * 1000L
+
+    @Deprecated("Use FOREGROUND_LAN_POLL_MS", ReplaceWith("FOREGROUND_LAN_POLL_MS"))
+    const val ACTIVE_LAN_POLL_MS = FOREGROUND_LAN_POLL_MS
+
+    @Deprecated("Use FOREGROUND_LAN_POLL_MS", ReplaceWith("FOREGROUND_LAN_POLL_MS"))
+    const val DESKTOP_LAN_POLL_MS = FOREGROUND_LAN_POLL_MS
 
     /** Brief wait after mDNS probe restart before transfer priming reads refreshed endpoints. */
     const val TRANSFER_MDNS_SETTLE_MS = 750L

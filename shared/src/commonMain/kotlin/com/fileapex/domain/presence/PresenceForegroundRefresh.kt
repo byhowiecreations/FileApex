@@ -6,6 +6,12 @@ import com.fileapex.di.FileApexServices
 object PresenceForegroundRefresh {
     fun onAppForegrounded() {
         if (!FileApexServices.isDatabaseReady()) return
+        FileApexServices.presenceMonitor.setAppInForeground(true)
         FileApexServices.presenceMonitor.refreshPeersOnForeground()
+    }
+
+    fun onAppBackgrounded() {
+        if (!FileApexServices.isDatabaseReady()) return
+        FileApexServices.presenceMonitor.setAppInForeground(false)
     }
 }

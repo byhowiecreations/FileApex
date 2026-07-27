@@ -22,7 +22,7 @@ internal object PeerLanDiscovery {
     suspend fun discoverPeerState(
         peer: PairedDeviceEntity,
         client: FileApexClient,
-        budgetMs: Long = LanPresenceTiming.LAN_DISCOVERY_BUDGET_MS
+        budgetMs: Long = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
     ): PeerNodeState? {
         val port = peer.port.takeIf { it > 0 } ?: return null
         val scanRoots = subnetScanRoots()

@@ -41,17 +41,28 @@ object ShareServerKeepAliveCoordinator {
 
     fun onForegroundServiceActive(context: Context) {
         val appContext = context.applicationContext
-        registerFreezeGuard(appContext)
         registerNetworkCallback(appContext)
         scheduleJobIfNeeded(appContext)
         ServiceWatchdog.scheduleNextAlarmIfEnabled()
     }
 
-    fun onForegroundServiceInactive(context: Context) {
+    fun onForegroundServiceInactive(context: Context, retainRecoveryJob: Boolean = false) {
         val appContext = context.applicationContext
-        unregisterFreezeGuard(appContext)
         unregisterNetworkCallback(appContext)
-        cancelJob(appContext)
+        if (retainRecoveryJob) {
+            scheduleJobIfNeeded(appContext)
+        } else {
+            cancelJob(appContext)
+        }
+    }
+
+    /** Register freeze-guard at app launch — survives FGS death for OEM recovery. */
+    fun registerFreezeGuardIfNeeded(context: Context) {
+        registerFreezeGuard(context.applicationContext)
+    }
+
+    fun unregisterFreezeGuardIfNeeded(context: Context) {
+        unregisterFreezeGuard(context.applicationContext)
     }
 
     /**

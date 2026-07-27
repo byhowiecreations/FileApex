@@ -87,9 +87,12 @@ class MultiCopyBroadcastEngine(
         val producer = launch(Dispatchers.IO) {
             try {
                 streamSource(verifiedSource) { chunk ->
-                    // Same immutable array ref to every channel — no per-destination copyOf().
-                    for (channel in chunkChannels) {
-                        runCatching { channel.send(chunk) }
+                    coroutineScope {
+                        chunkChannels.map { channel ->
+                            async(Dispatchers.IO) {
+                                channel.send(chunk)
+                            }
+                        }.awaitAll()
                     }
                 }
                 chunkChannels.forEach { channel ->

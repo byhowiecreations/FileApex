@@ -17,18 +17,28 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
 
         when (action) {
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
-            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_BOOT_COMPLETED -> {
+                if (!ServiceWatchdogScheduler.isAutoLaunchOnRebootEnabled(appContext)) {
+                    Log.i(TAG, "Auto launch on reboot disabled — skipping boot restart")
+                    return
+                }
+                ShareServerRestartCoordinator.attemptWatchdogRestart(
+                    appContext,
+                    ShareServerRestartCoordinator.RestartTrigger.BOOT_COMPLETED
+                )
+                if (ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
+                    ServiceWatchdogScheduler.scheduleNext(appContext)
+                }
+            }
             ServiceWatchdogScheduler.ACTION_SERVICE_WATCHDOG -> {
                 if (!ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
                     ServiceWatchdogScheduler.cancel(appContext)
                     return
                 }
-                val trigger = when (action) {
-                    Intent.ACTION_LOCKED_BOOT_COMPLETED,
-                    Intent.ACTION_BOOT_COMPLETED -> ShareServerRestartCoordinator.RestartTrigger.BOOT_COMPLETED
-                    else -> ShareServerRestartCoordinator.RestartTrigger.WATCHDOG_ALARM
-                }
-                ShareServerRestartCoordinator.attemptWatchdogRestart(appContext, trigger)
+                ShareServerRestartCoordinator.attemptWatchdogRestart(
+                    appContext,
+                    ShareServerRestartCoordinator.RestartTrigger.WATCHDOG_ALARM
+                )
                 ServiceWatchdogScheduler.scheduleNext(appContext)
             }
         }

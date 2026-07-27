@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * Platform-agnostic key/value persistence for [BaseAppSettings].
  */
 interface SettingsKvStore {
+    fun contains(key: String): Boolean
     fun getBoolean(key: String, default: Boolean): Boolean
     fun putBoolean(key: String, value: Boolean)
     fun getString(key: String, default: String): String
@@ -51,6 +52,7 @@ class BaseAppSettings(
     private val skippedUpdateVersionFlow =
         MutableStateFlow(store.getString(KEY_SKIPPED_UPDATE_VERSION, ""))
     private val serviceWatchdog = MutableStateFlow(store.getBoolean(KEY_SERVICE_WATCHDOG, true))
+    private val autoLaunchOnRebootFlow = MutableStateFlow(loadAutoLaunchOnReboot())
     private val deviceOrderIdsFlow = MutableStateFlow(store.getString(KEY_DEVICE_ORDER, ""))
     private val deviceOrderUpdatedAt = MutableStateFlow(store.getLong(KEY_DEVICE_ORDER_UPDATED_AT, 0L))
     private val desktopLayout = MutableStateFlow(
@@ -78,6 +80,7 @@ class BaseAppSettings(
     override val lastUpdateCheckEpochMs: StateFlow<Long> = lastUpdateCheck.asStateFlow()
     override val skippedUpdateVersion: StateFlow<String> = skippedUpdateVersionFlow.asStateFlow()
     override val enableServiceWatchdog: StateFlow<Boolean> = serviceWatchdog.asStateFlow()
+    override val autoLaunchOnReboot: StateFlow<Boolean> = autoLaunchOnRebootFlow.asStateFlow()
     override val deviceOrderIds: StateFlow<String> = deviceOrderIdsFlow.asStateFlow()
     override val deviceOrderUpdatedAtEpochMs: StateFlow<Long> = deviceOrderUpdatedAt.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
@@ -161,6 +164,11 @@ class BaseAppSettings(
         serviceWatchdog.value = enabled
     }
 
+    override fun setAutoLaunchOnReboot(enabled: Boolean) {
+        store.putBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, enabled)
+        autoLaunchOnRebootFlow.value = enabled
+    }
+
     override fun setDeviceOrderIds(encodedOrder: String) {
         store.putString(KEY_DEVICE_ORDER, encodedOrder)
         deviceOrderIdsFlow.value = encodedOrder
@@ -187,6 +195,18 @@ class BaseAppSettings(
         devicesViewModeFlow.value = mode
     }
 
+    /**
+     * Pre-0.6.1a boot restart followed the service watchdog toggle; migrate once on first read.
+     */
+    private fun loadAutoLaunchOnReboot(): Boolean {
+        if (!store.contains(KEY_AUTO_LAUNCH_ON_REBOOT)) {
+            val migrated = store.getBoolean(KEY_SERVICE_WATCHDOG, true)
+            store.putBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, migrated)
+            return migrated
+        }
+        return store.getBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, true)
+    }
+
     companion object {
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
@@ -202,6 +222,7 @@ class BaseAppSettings(
         const val KEY_LAST_UPDATE_CHECK = "last_update_check_epoch_ms"
         const val KEY_SKIPPED_UPDATE_VERSION = "skipped_update_version"
         const val KEY_SERVICE_WATCHDOG = "enable_service_watchdog"
+        const val KEY_AUTO_LAUNCH_ON_REBOOT = "auto_launch_on_reboot"
         const val KEY_DEVICE_ORDER = "device_order_ids"
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"

@@ -6,6 +6,7 @@ import java.util.prefs.Preferences
 private class DesktopSettingsKvStore(
     private val prefs: Preferences
 ) : SettingsKvStore {
+    override fun contains(key: String): Boolean = prefs.get(key, null) != null
     override fun getBoolean(key: String, default: Boolean): Boolean = prefs.getBoolean(key, default)
     override fun putBoolean(key: String, value: Boolean) {
         prefs.putBoolean(key, value)

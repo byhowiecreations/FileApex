@@ -30,6 +30,8 @@ interface AppSettings {
     val skippedUpdateVersion: StateFlow<String>
     /** When true, AlarmManager may restart the Android share-server FGS after OEM kills. */
     val enableServiceWatchdog: StateFlow<Boolean>
+    /** When true, Android starts the share server after device reboot. Default on. */
+    val autoLaunchOnReboot: StateFlow<Boolean>
     /** Encoded paired-device order (see DeviceOrderCoordinator). */
     val deviceOrderIds: StateFlow<String>
     /** Epoch millis when [deviceOrderIds] last changed locally. */
@@ -56,6 +58,8 @@ interface AppSettings {
     fun setSkippedUpdateVersion(version: String)
 
     fun setEnableServiceWatchdog(enabled: Boolean)
+
+    fun setAutoLaunchOnReboot(enabled: Boolean)
 
     fun setDeviceOrderIds(encodedOrder: String)
 

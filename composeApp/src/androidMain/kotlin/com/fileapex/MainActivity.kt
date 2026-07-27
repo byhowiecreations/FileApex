@@ -176,6 +176,11 @@ class MainActivity : ComponentActivity() {
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppForegrounded()
     }
 
+    override fun onStop() {
+        com.fileapex.domain.presence.PresenceForegroundRefresh.onAppBackgrounded()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         stageJob?.cancel()
         super.onDestroy()

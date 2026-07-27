@@ -3,12 +3,6 @@ package com.fileapex.platform
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Rect
-import android.graphics.Typeface
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -19,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
@@ -48,7 +43,11 @@ object DirectShareShortcutCoordinator {
                 FileApexServices.deviceRepository.observeDevices()
             ) { _, _, _, devices ->
                 rankPeersForShare(devices)
-            }.collect { peers -> publishShortcuts(peers) }
+            }
+                .distinctUntilChanged { old, new ->
+                    old.map { it.deviceId } == new.map { it.deviceId }
+                }
+                .collect { peers -> publishShortcuts(peers) }
         }
     }
 
@@ -145,6 +144,10 @@ object DirectShareShortcutCoordinator {
         val shortcuts = peersToPublish.mapIndexed { index, peer ->
             buildShortcut(peer, rank = index)
         }
+        DirectShareShortcutIconStore.pruneStaleIcons(
+            appContext,
+            peersToPublish.map { it.deviceId }.toSet()
+        )
         ShortcutManagerCompat.setDynamicShortcuts(appContext, shortcuts)
 
         peersToPublish.take(SHARE_SHEET_VISIBLE_HINT).forEach { peer ->
@@ -169,7 +172,7 @@ object DirectShareShortcutCoordinator {
         return ShortcutInfoCompat.Builder(appContext, shortcutId(peer.deviceId))
             .setShortLabel(peer.deviceName)
             .setLongLabel("Send to ${peer.deviceName}")
-            .setIcon(deviceIcon(peer.deviceName))
+            .setIcon(deviceIcon(peer))
             .setIntent(launchIntent)
             .setCategories(setOf(CATEGORY_SHARE_TARGET))
             .addCapabilityBinding(CAPABILITY_SEND)
@@ -180,35 +183,8 @@ object DirectShareShortcutCoordinator {
             .build()
     }
 
-    private fun deviceIcon(deviceName: String): IconCompat {
-        val label = deviceName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "O"
-        val size = 128
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val background = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (isMacLike(deviceName)) {
-                Color.parseColor("#546E7A")
-            } else {
-                Color.parseColor("#00897B")
-            }
-        }
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, background)
-        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = size * 0.45f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-        val bounds = Rect()
-        text.getTextBounds(label, 0, label.length, bounds)
-        canvas.drawText(
-            label,
-            size / 2f,
-            size / 2f - bounds.exactCenterY(),
-            text
-        )
-        return IconCompat.createWithBitmap(bitmap)
-    }
+    private fun deviceIcon(peer: PairedDeviceEntity): IconCompat =
+        DirectShareShortcutIconStore.icon(appContext, peer.deviceId, peer.deviceName)
 
     /**
      * Android typically renders up to four Direct Share bubbles in portrait; keep the

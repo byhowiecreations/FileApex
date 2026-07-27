@@ -90,10 +90,15 @@ class FileShareServerService : Service() {
     }
 
     override fun onDestroy() {
-        ShareServerKeepAliveCoordinator.onForegroundServiceInactive(this)
-        ShareServerForegroundNotification.resetPostedState()
         val cleanStop = ServiceWatchdogState.consumeCleanStop(this)
         val timeoutStop = ServiceWatchdogState.consumeTimeoutStop(this)
+        val watchdogEnabled = ServiceWatchdogScheduler.isWatchdogEnabled(this)
+        val retainRecoveryJob = watchdogEnabled && !cleanStop
+        ShareServerKeepAliveCoordinator.onForegroundServiceInactive(
+            this,
+            retainRecoveryJob = retainRecoveryJob
+        )
+        ShareServerForegroundNotification.resetPostedState()
         when {
             cleanStop || !ServiceWatchdogScheduler.isWatchdogEnabled(this) -> {
                 ServiceWatchdog.cancelAlarm()
