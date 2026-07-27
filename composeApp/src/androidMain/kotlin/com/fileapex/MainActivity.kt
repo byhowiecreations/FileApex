@@ -31,6 +31,7 @@ import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.network.FileShareServerService
 import com.fileapex.platform.AndroidShareIntake
 import com.fileapex.platform.BackgroundPersistenceGuidance
+import com.fileapex.platform.toUiState
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.platform.ServiceWatchdogScheduler
 import com.fileapex.platform.ShareServerPendingStart
@@ -50,9 +51,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private var hasStoragePermission by mutableStateOf(false)
-    private var hasUnrestrictedBattery by mutableStateOf(false)
-    private var unusedAppRestrictionsActive by mutableStateOf(false)
-    private var showMotorolaSmartUseGuidance by mutableStateOf(false)
+    private var persistenceSnapshot by mutableStateOf(
+        BackgroundPersistenceGuidance.Snapshot(
+            batteryOptimizationRestricted = false,
+            backgroundRestricted = false,
+            unusedAppRestrictionsActive = false,
+            oemGuidance = null
+        )
+    )
     private var exactAlarmWarningActive by mutableStateOf(false)
     private var scannedPayload by mutableStateOf<PairingPayload?>(null)
     private var qrScanError by mutableStateOf<String?>(null)
@@ -118,14 +124,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(
                 hasStoragePermission = hasStoragePermission,
-                hasUnrestrictedBattery = hasUnrestrictedBattery,
-                unusedAppRestrictionsActive = unusedAppRestrictionsActive,
-                showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
+                hasUnrestrictedBattery = !persistenceSnapshot.persistenceRestricted,
+                backgroundPersistence = persistenceSnapshot.toUiState(),
                 onRequestStoragePermission = ::requestStoragePermission,
                 onOpenStorageSettings = ::openStorageSettings,
                 onRequestBatteryUnrestricted = ::requestBatteryUnrestricted,
+                onOpenBackgroundPersistenceSettings = ::openBackgroundPersistenceSettings,
                 onOpenUnusedAppRestrictionsSettings = ::openUnusedAppRestrictionsSettings,
-                onOpenMotorolaBackgroundAppsSettings = ::openMotorolaBackgroundAppsSettings,
+                onOpenAppBatteryUsageSettings = ::openAppBatteryUsageSettings,
                 onOpenExactAlarmSettings = ::openExactAlarmSettings,
                 onOpenAppDetailsSettings = ::openAppDetailsSettings,
                 exactAlarmWarningActive = exactAlarmWarningActive,
@@ -293,12 +299,10 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshPermissions() {
         hasStoragePermission = hasFullStorageAccess()
-        hasUnrestrictedBattery = !BackgroundPersistenceGuidance.isBatteryOptimizationRestricted(this)
-        unusedAppRestrictionsActive = BackgroundPersistenceGuidance.isUnusedAppRestrictionsActive(this)
-        showMotorolaSmartUseGuidance = BackgroundPersistenceGuidance.isMotorolaDevice()
+        persistenceSnapshot = BackgroundPersistenceGuidance.evaluate(this)
         ServiceWatchdogScheduler.syncBatteryOptimizationWarning(
             this,
-            restricted = !hasUnrestrictedBattery
+            restricted = persistenceSnapshot.persistenceRestricted
         )
         val exactAvailable = ServiceWatchdogScheduler.refreshExactAlarmAvailability(this)
         exactAlarmWarningActive = !exactAvailable
@@ -325,12 +329,16 @@ class MainActivity : ComponentActivity() {
         BackgroundPersistenceGuidance.launchBatteryOptimizationRequest(this)
     }
 
-    private fun openUnusedAppRestrictionsSettings() {
-        BackgroundPersistenceGuidance.launchUnusedAppRestrictionsSettings(this)
+    private fun openBackgroundPersistenceSettings() {
+        BackgroundPersistenceGuidance.launchBackgroundPersistenceSettings(this, persistenceSnapshot)
     }
 
-    private fun openMotorolaBackgroundAppsSettings() {
-        BackgroundPersistenceGuidance.launchMotorolaBackgroundAppsSettings(this)
+    private fun openAppBatteryUsageSettings() {
+        BackgroundPersistenceGuidance.launchAppBatteryUsageSettings(this)
+    }
+
+    private fun openUnusedAppRestrictionsSettings() {
+        BackgroundPersistenceGuidance.launchUnusedAppRestrictionsSettings(this)
     }
 
     private fun requestStoragePermission() {
@@ -423,7 +431,7 @@ class MainActivity : ComponentActivity() {
                     "(pending=$wasPending, stale=$heartbeatStale)"
             )
         }
-        if (!hasUnrestrictedBattery) {
+        if (persistenceSnapshot.persistenceRestricted) {
             Log.w(TAG, "Starting share server without battery exemption — background survival may be limited")
         }
         val intent = Intent(this, FileShareServerService::class.java).apply {

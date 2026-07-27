@@ -46,6 +46,7 @@ import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
+import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.isMainHomeScreen
 import com.fileapex.ui.theme.FileApexTeal
@@ -72,12 +73,11 @@ fun AdaptiveWideHome(
     onToggleDevicesViewMode: () -> Unit = {},
     explorerViewMode: ExplorerViewMode = ExplorerViewMode.List,
     onToggleExplorerViewMode: () -> Unit = {},
-    batteryOptimizationRestricted: Boolean = false,
-    unusedAppRestrictionsActive: Boolean = false,
-    showMotorolaSmartUseGuidance: Boolean = false,
+    backgroundPersistence: BackgroundPersistenceUiState = BackgroundPersistenceUiState(),
     onRequestBatteryUnrestricted: () -> Unit = {},
+    onOpenBackgroundPersistenceSettings: () -> Unit = {},
     onOpenUnusedAppRestrictionsSettings: () -> Unit = {},
-    onOpenMotorolaBackgroundAppsSettings: () -> Unit = {},
+    onOpenAppBatteryUsageSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {}
@@ -125,12 +125,11 @@ fun AdaptiveWideHome(
                             // Rail is top-level nav; no redundant up/back on Settings root.
                             showRootBackNavigation = false,
                             layoutMode = SettingsScreenLayoutMode.ListPane,
-                            batteryOptimizationRestricted = batteryOptimizationRestricted,
-                            unusedAppRestrictionsActive = unusedAppRestrictionsActive,
-                            showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
+                            backgroundPersistence = backgroundPersistence,
                             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                            onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
                             onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-                            onOpenMotorolaBackgroundAppsSettings = onOpenMotorolaBackgroundAppsSettings,
+                            onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                             exactAlarmWarningActive = exactAlarmWarningActive,
                             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                             onOpenAppDetailsSettings = onOpenAppDetailsSettings

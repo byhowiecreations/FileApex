@@ -50,6 +50,7 @@ import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
+import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.util.TimeUtils
@@ -92,12 +93,11 @@ fun SettingsScreen(
      */
     showRootBackNavigation: Boolean = true,
     layoutMode: SettingsScreenLayoutMode = SettingsScreenLayoutMode.FullScreen,
-    batteryOptimizationRestricted: Boolean = false,
-    unusedAppRestrictionsActive: Boolean = false,
-    showMotorolaSmartUseGuidance: Boolean = false,
+    backgroundPersistence: BackgroundPersistenceUiState = BackgroundPersistenceUiState(),
     onRequestBatteryUnrestricted: () -> Unit = {},
+    onOpenBackgroundPersistenceSettings: () -> Unit = {},
     onOpenUnusedAppRestrictionsSettings: () -> Unit = {},
-    onOpenMotorolaBackgroundAppsSettings: () -> Unit = {},
+    onOpenAppBatteryUsageSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
@@ -135,9 +135,7 @@ fun SettingsScreen(
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
-            batteryOptimizationRestricted = batteryOptimizationRestricted,
-            unusedAppRestrictionsActive = unusedAppRestrictionsActive,
-            showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
+            backgroundPersistence = backgroundPersistence,
             exactAlarmWarningActive = exactAlarmWarningActive
         )
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
@@ -163,12 +161,11 @@ fun SettingsScreen(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
-            batteryOptimizationRestricted = batteryOptimizationRestricted,
-            unusedAppRestrictionsActive = unusedAppRestrictionsActive,
-            showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
+            backgroundPersistence = backgroundPersistence,
             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+            onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
             onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-            onOpenMotorolaBackgroundAppsSettings = onOpenMotorolaBackgroundAppsSettings,
+            onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
             exactAlarmWarningActive = exactAlarmWarningActive,
             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
             onOpenAppDetailsSettings = onOpenAppDetailsSettings
@@ -215,9 +212,7 @@ private fun SettingsRootPage(
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
-    batteryOptimizationRestricted: Boolean,
-    unusedAppRestrictionsActive: Boolean,
-    showMotorolaSmartUseGuidance: Boolean,
+    backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
@@ -261,8 +256,7 @@ private fun SettingsRootPage(
                     title = "Background Persistence",
                     subtitle = backgroundPersistenceSubtitle(
                         watchdogEnabled = state.enableServiceWatchdog,
-                        batteryOptimizationRestricted = batteryOptimizationRestricted,
-                        unusedAppRestrictionsActive = unusedAppRestrictionsActive,
+                        backgroundPersistence = backgroundPersistence,
                         exactAlarmWarningActive = exactAlarmWarningActive
                     ),
                     onClick = onOpenBackgroundPersistence
@@ -326,14 +320,14 @@ private fun SettingsRootPage(
 
 private fun backgroundPersistenceSubtitle(
     watchdogEnabled: Boolean,
-    batteryOptimizationRestricted: Boolean,
-    unusedAppRestrictionsActive: Boolean,
+    backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean
 ): String {
     val status = if (watchdogEnabled) "On" else "Off"
     val warnings = buildList {
-        if (batteryOptimizationRestricted) add("battery restricted")
-        if (unusedAppRestrictionsActive) add("hibernation on")
+        if (backgroundPersistence.backgroundRestricted) add("background restricted")
+        if (backgroundPersistence.batteryOptimizationRestricted) add("battery optimized")
+        if (backgroundPersistence.unusedAppRestrictionsActive) add("hibernation on")
         if (exactAlarmWarningActive) add("alarms off")
     }
     return if (warnings.isEmpty()) {
@@ -350,12 +344,11 @@ private fun BackgroundPersistenceSettingsPage(
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onEnableServiceWatchdog: (Boolean) -> Unit,
-    batteryOptimizationRestricted: Boolean,
-    unusedAppRestrictionsActive: Boolean,
-    showMotorolaSmartUseGuidance: Boolean,
+    backgroundPersistence: BackgroundPersistenceUiState,
     onRequestBatteryUnrestricted: () -> Unit,
+    onOpenBackgroundPersistenceSettings: () -> Unit,
     onOpenUnusedAppRestrictionsSettings: () -> Unit,
-    onOpenMotorolaBackgroundAppsSettings: () -> Unit,
+    onOpenAppBatteryUsageSettings: () -> Unit,
     exactAlarmWarningActive: Boolean,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenAppDetailsSettings: () -> Unit
@@ -387,26 +380,38 @@ private fun BackgroundPersistenceSettingsPage(
                     )
                 }
             )
-            if (batteryOptimizationRestricted) {
+            if (backgroundPersistence.backgroundRestricted) {
+                ListItem(
+                    headlineContent = { Text("Background running restricted") },
+                    supportingContent = {
+                        Text(
+                            backgroundPersistence.oemGuidance?.appBatteryUsageSteps?.let { steps ->
+                                "Android is blocking FileApex from running in the background. " +
+                                    "Tap to open system settings, then choose: $steps"
+                            } ?: (
+                                "Android is blocking FileApex from running in the background. " +
+                                    "Tap to open App battery usage and set FileApex to " +
+                                    "Unrestricted or Always allow."
+                                )
+                        )
+                    },
+                    modifier = Modifier.clickable { onOpenAppBatteryUsageSettings() }
+                )
+            }
+            if (backgroundPersistence.batteryOptimizationRestricted) {
                 ListItem(
                     headlineContent = { Text("Battery optimization active") },
                     supportingContent = {
                         Text(
-                            if (showMotorolaSmartUseGuidance) {
-                                "FileApex is not exempt from battery optimization. Tap to " +
-                                    "request unrestricted battery, then set Smart use to " +
-                                    "Always allow under Manage background apps."
-                            } else {
-                                "FileApex is not exempt from battery restrictions. Background " +
-                                    "file sharing may stop until you open the app again. Tap to " +
-                                    "request unrestricted battery for best reliability."
-                            }
+                            "FileApex is not exempt from classic battery optimization. Tap to " +
+                                "request unrestricted battery. On many phones you must also set " +
+                                "App battery usage to Unrestricted or Always allow."
                         )
                     },
                     modifier = Modifier.clickable { onRequestBatteryUnrestricted() }
                 )
             }
-            if (unusedAppRestrictionsActive) {
+            if (backgroundPersistence.unusedAppRestrictionsActive) {
                 ListItem(
                     headlineContent = { Text("Pause app activity if unused") },
                     supportingContent = {
@@ -419,19 +424,27 @@ private fun BackgroundPersistenceSettingsPage(
                     modifier = Modifier.clickable { onOpenUnusedAppRestrictionsSettings() }
                 )
             }
-            if (showMotorolaSmartUseGuidance &&
-                (batteryOptimizationRestricted || unusedAppRestrictionsActive)
-            ) {
-                ListItem(
-                    headlineContent = { Text("Motorola Smart use") },
-                    supportingContent = {
-                        Text(
-                            "On Motorola phones, open Settings → Battery → Manage background " +
-                                "apps, select FileApex, and change Smart use to Always allow."
-                        )
-                    },
-                    modifier = Modifier.clickable { onOpenMotorolaBackgroundAppsSettings() }
-                )
+            backgroundPersistence.oemGuidance?.let { guidance ->
+                if (backgroundPersistence.persistenceRestricted ||
+                    backgroundPersistence.unusedAppRestrictionsActive
+                ) {
+                    ListItem(
+                        headlineContent = { Text("${guidance.vendorLabel} setup") },
+                        supportingContent = {
+                            Text(
+                                buildString {
+                                    append(guidance.appBatteryUsageSteps)
+                                    append('.')
+                                    guidance.autoStartHint?.let { hint ->
+                                        append(' ')
+                                        append(hint)
+                                    }
+                                }
+                            )
+                        },
+                        modifier = Modifier.clickable { onOpenBackgroundPersistenceSettings() }
+                    )
+                }
             }
             if (exactAlarmWarningActive) {
                 ListItem(
@@ -447,14 +460,11 @@ private fun BackgroundPersistenceSettingsPage(
                 )
             }
             ListItem(
-                headlineContent = { Text("OEM auto-start & updates") },
+                headlineContent = { Text("System app settings") },
                 supportingContent = {
                     Text(
-                        "On Motorola, Oppo, Xiaomi, and similar phones, also enable " +
-                            "auto-launch / background activity for FileApex in the system " +
-                            "battery or app-management screens. After an app update, open " +
-                            "FileApex once so the share server can restart. Tap to open " +
-                            "FileApex’s system app settings."
+                        "Opens FileApex in Android app settings. After an app update, open " +
+                            "FileApex once so the share server can restart."
                     )
                 },
                 modifier = Modifier.clickable { onOpenAppDetailsSettings() }

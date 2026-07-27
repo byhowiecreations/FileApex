@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -15,20 +16,48 @@ import androidx.core.content.PackageManagerCompat
 import androidx.core.content.UnusedAppRestrictionsConstants
 
 /**
- * SSOT for battery exemption, unused-app hibernation, and OEM background-app guidance.
+ * SSOT for battery exemption, background restriction, unused-app hibernation, and OEM guidance.
  */
 object BackgroundPersistenceGuidance {
     private const val TAG = "BackgroundPersistence"
+    private const val APP_BATTERY_USAGE_ACTIVITY =
+        "com.android.settings.Settings\$AppBatteryUsageActivity"
+    private const val EXTRA_PACKAGE = "package"
+
+    data class Snapshot(
+        val batteryOptimizationRestricted: Boolean,
+        val backgroundRestricted: Boolean,
+        val unusedAppRestrictionsActive: Boolean,
+        val oemGuidance: OemBackgroundGuidance?
+    ) {
+        val persistenceRestricted: Boolean
+            get() = batteryOptimizationRestricted || backgroundRestricted
+    }
+
+    fun evaluate(context: Context): Snapshot {
+        val vendor = detectOemVendor()
+        return Snapshot(
+            batteryOptimizationRestricted = isBatteryOptimizationRestricted(context),
+            backgroundRestricted = isBackgroundRestricted(context),
+            unusedAppRestrictionsActive = isUnusedAppRestrictionsActive(context),
+            oemGuidance = OemBackgroundGuidance.forVendor(vendor)
+        )
+    }
 
     fun isBatteryOptimizationRestricted(context: Context): Boolean {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         return !powerManager.isIgnoringBatteryOptimizations(context.packageName)
     }
 
+    /** Android "App battery usage" / background restriction (API 28+). */
+    fun isBackgroundRestricted(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return activityManager.isBackgroundRestricted
+    }
+
     /**
      * True when unused-app restrictions (permission auto-reset and/or app hibernation) are active.
-     * Uses [PackageManagerCompat.getUnusedAppRestrictionsStatus] via reflection so Kotlin does not
-     * need Guava [com.google.common.util.concurrent.ListenableFuture] on its compile classpath.
      */
     fun isUnusedAppRestrictionsActive(context: Context): Boolean {
         val status = runCatching { queryUnusedAppRestrictionsStatus(context) }
@@ -49,8 +78,27 @@ object BackgroundPersistenceGuidance {
         return future.javaClass.getMethod("get").invoke(future) as Int
     }
 
-    fun isMotorolaDevice(): Boolean =
-        Build.MANUFACTURER.equals("motorola", ignoreCase = true)
+    fun detectOemVendor(): OemVendor {
+        val manufacturer = Build.MANUFACTURER.orEmpty()
+        val brand = Build.BRAND.orEmpty()
+        return when {
+            manufacturer.equals("motorola", ignoreCase = true) -> OemVendor.Motorola
+            manufacturer.equals("samsung", ignoreCase = true) -> OemVendor.Samsung
+            manufacturer.equals("google", ignoreCase = true) -> OemVendor.Pixel
+            manufacturer.equals("oneplus", ignoreCase = true) ||
+                brand.equals("oneplus", ignoreCase = true) -> OemVendor.OnePlus
+            manufacturer.equals("oppo", ignoreCase = true) ||
+                brand.equals("oppo", ignoreCase = true) ||
+                manufacturer.equals("realme", ignoreCase = true) -> OemVendor.Oppo
+            brand.equals("poco", ignoreCase = true) -> OemVendor.Poco
+            manufacturer.equals("xiaomi", ignoreCase = true) ||
+                brand.equals("redmi", ignoreCase = true) ||
+                brand.equals("xiaomi", ignoreCase = true) -> OemVendor.Xiaomi
+            manufacturer.equals("vivo", ignoreCase = true) ||
+                brand.equals("iqoo", ignoreCase = true) -> OemVendor.Vivo
+            else -> OemVendor.Other
+        }
+    }
 
     @SuppressLint("BatteryLife")
     fun createBatteryOptimizationIntent(context: Context): Intent =
@@ -61,9 +109,36 @@ object BackgroundPersistenceGuidance {
     fun createUnusedAppRestrictionsIntent(context: Context): Intent =
         IntentCompat.createManageUnusedAppRestrictionsIntent(context, context.packageName)
 
-    /** Best-effort deep link into Motorola background-app / Smart use management. */
-    fun createMotorolaBackgroundAppsIntent(context: Context): Intent? {
+    /** Best-effort per-app App battery usage screen (Android 14+ on most OEMs). */
+    fun createAppBatteryUsageIntent(context: Context): Intent? {
+        val packageName = context.packageName
         val candidates = listOf(
+            Intent().setComponent(
+                ComponentName("com.android.settings", APP_BATTERY_USAGE_ACTIVITY)
+            ).putExtra(EXTRA_PACKAGE, packageName),
+            Intent().setComponent(
+                ComponentName("com.android.settings", APP_BATTERY_USAGE_ACTIVITY)
+            ).putExtra(Intent.EXTRA_PACKAGE_NAME, packageName)
+        )
+        val packageManager = context.packageManager
+        return candidates.firstOrNull { intent -> intent.resolveActivity(packageManager) != null }
+    }
+
+    /** Best-effort OEM-specific battery / auto-start screens. */
+    fun createOemBackgroundIntent(context: Context, vendor: OemVendor): Intent? {
+        val packageManager = context.packageManager
+        val components = oemBackgroundComponents(vendor)
+        for (component in components) {
+            val intent = Intent().setComponent(component)
+            if (intent.resolveActivity(packageManager) != null) {
+                return intent
+            }
+        }
+        return null
+    }
+
+    private fun oemBackgroundComponents(vendor: OemVendor): List<ComponentName> = when (vendor) {
+        OemVendor.Motorola -> listOf(
             ComponentName(
                 "com.motorola.batterycare",
                 "com.motorola.batterycare.ui.activity.MainActivity"
@@ -71,20 +146,45 @@ object BackgroundPersistenceGuidance {
             ComponentName(
                 "com.motorola.batterycare",
                 "com.motorola.batterycare.ui.activity.BatteryCareActivity"
-            ),
-            ComponentName(
-                "com.motorola.ccc",
-                "com.motorola.ccc.mainactivity.MainActivity"
             )
         )
-        val packageManager = context.packageManager
-        for (component in candidates) {
-            val intent = Intent().setComponent(component)
-            if (intent.resolveActivity(packageManager) != null) {
-                return intent
-            }
-        }
-        return null
+        OemVendor.Samsung -> listOf(
+            ComponentName(
+                "com.samsung.android.lool",
+                "com.samsung.android.sm.battery.ui.BatteryActivity"
+            ),
+            ComponentName(
+                "com.samsung.android.lool",
+                "com.samsung.android.sm.ui.battery.BatteryActivity"
+            )
+        )
+        OemVendor.Xiaomi, OemVendor.Poco -> listOf(
+            ComponentName(
+                "com.miui.securitycenter",
+                "com.miui.permcenter.autostart.AutoStartManagementActivity"
+            )
+        )
+        OemVendor.Oppo, OemVendor.OnePlus -> listOf(
+            ComponentName(
+                "com.coloros.safecenter",
+                "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+            ),
+            ComponentName(
+                "com.oplus.safecenter",
+                "com.oplus.safecenter.permission.startup.StartupAppListActivity"
+            )
+        )
+        OemVendor.Vivo -> listOf(
+            ComponentName(
+                "com.iqoo.secure",
+                "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"
+            ),
+            ComponentName(
+                "com.vivo.permissionmanager",
+                "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"
+            )
+        )
+        OemVendor.Pixel, OemVendor.Other -> emptyList()
     }
 
     @SuppressLint("BatteryLife")
@@ -111,22 +211,40 @@ object BackgroundPersistenceGuidance {
         }
     }
 
-    fun launchMotorolaBackgroundAppsSettings(activity: Activity) {
-        val motorolaIntent = createMotorolaBackgroundAppsIntent(activity)
-        if (motorolaIntent != null) {
-            runCatching { activity.startActivity(motorolaIntent) }
+    /**
+     * Opens the best available screen for OEM background / app battery usage setup.
+     * Order: OEM deep link → App battery usage → battery optimization dialog → app details.
+     */
+    fun launchBackgroundPersistenceSettings(activity: Activity, snapshot: Snapshot = evaluate(activity)) {
+        snapshot.oemGuidance?.vendor?.let { vendor ->
+            createOemBackgroundIntent(activity, vendor)?.let { oemIntent ->
+                if (runCatching { activity.startActivity(oemIntent); true }.getOrDefault(false)) {
+                    return
+                }
+            }
+        }
+        createAppBatteryUsageIntent(activity)?.let { batteryUsageIntent ->
+            if (runCatching { activity.startActivity(batteryUsageIntent); true }.getOrDefault(false)) {
+                return
+            }
+        }
+        if (snapshot.batteryOptimizationRestricted) {
+            launchBatteryOptimizationRequest(activity)
+            return
+        }
+        launchAppDetailsSettings(activity)
+    }
+
+    fun launchAppBatteryUsageSettings(activity: Activity) {
+        createAppBatteryUsageIntent(activity)?.let { intent ->
+            runCatching { activity.startActivity(intent) }
                 .onFailure { error ->
-                    Log.w(TAG, "Motorola background-apps intent failed :: ${error.message}")
-                    launchBatteryOptimizationRequest(activity)
+                    Log.w(TAG, "App battery usage intent failed :: ${error.message}")
+                    launchAppDetailsSettings(activity)
                 }
             return
         }
-        Log.i(TAG, "Motorola background-apps deep link unavailable — opening battery settings")
-        runCatching {
-            activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-        }.onFailure {
-            launchAppDetailsSettings(activity)
-        }
+        launchAppDetailsSettings(activity)
     }
 
     fun launchAppDetailsSettings(activity: Activity) {
@@ -140,3 +258,11 @@ object BackgroundPersistenceGuidance {
             }
     }
 }
+
+fun BackgroundPersistenceGuidance.Snapshot.toUiState(): BackgroundPersistenceUiState =
+    BackgroundPersistenceUiState(
+        batteryOptimizationRestricted = batteryOptimizationRestricted,
+        backgroundRestricted = backgroundRestricted,
+        unusedAppRestrictionsActive = unusedAppRestrictionsActive,
+        oemGuidance = oemGuidance
+    )

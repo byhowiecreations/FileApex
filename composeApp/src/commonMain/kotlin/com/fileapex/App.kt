@@ -34,6 +34,7 @@ import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.navigation.AppRoute
+import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.BrowseTarget
@@ -62,13 +63,13 @@ import com.fileapex.ui.theme.FileApexTeal
 fun App(
     hasStoragePermission: Boolean,
     hasUnrestrictedBattery: Boolean = true,
-    unusedAppRestrictionsActive: Boolean = false,
-    showMotorolaSmartUseGuidance: Boolean = false,
+    backgroundPersistence: BackgroundPersistenceUiState = BackgroundPersistenceUiState(),
     onRequestStoragePermission: () -> Unit,
     onOpenStorageSettings: () -> Unit,
     onRequestBatteryUnrestricted: () -> Unit = {},
+    onOpenBackgroundPersistenceSettings: () -> Unit = {},
     onOpenUnusedAppRestrictionsSettings: () -> Unit = {},
-    onOpenMotorolaBackgroundAppsSettings: () -> Unit = {},
+    onOpenAppBatteryUsageSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
@@ -175,9 +176,11 @@ fun App(
                     StoragePermissionScreen(
                         hasStoragePermission = hasStoragePermission,
                         hasUnrestrictedBattery = hasUnrestrictedBattery,
+                        oemBackgroundGuidance = backgroundPersistence.oemGuidance,
                         onRequestStoragePermission = onRequestStoragePermission,
                         onOpenStorageSettings = onOpenStorageSettings,
-                        onRequestBatteryUnrestricted = onRequestBatteryUnrestricted
+                        onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                        onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings
                     )
                 } else if (isPreparingShare) {
                     Column(
@@ -298,12 +301,11 @@ fun App(
                                     },
                                     appVersionName = appVersionName,
                                     devicesViewModel = devicesViewModel,
-                                    batteryOptimizationRestricted = !hasUnrestrictedBattery,
-                                    unusedAppRestrictionsActive = unusedAppRestrictionsActive,
-                                    showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
+                                    backgroundPersistence = backgroundPersistence,
                                     onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                    onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
                                     onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-                                    onOpenMotorolaBackgroundAppsSettings = onOpenMotorolaBackgroundAppsSettings,
+                                    onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                                     exactAlarmWarningActive = exactAlarmWarningActive,
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings
@@ -325,12 +327,11 @@ fun App(
                                     onOpenSettings = { route = AppRoute.Settings },
                                     onNavigateHome = onNavigateHome,
                                     onExitApp = exitFileApex,
-                                    batteryOptimizationRestricted = !hasUnrestrictedBattery,
-                                    unusedAppRestrictionsActive = unusedAppRestrictionsActive,
-                                    showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
+                                    backgroundPersistence = backgroundPersistence,
                                     onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                    onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
                                     onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-                                    onOpenMotorolaBackgroundAppsSettings = onOpenMotorolaBackgroundAppsSettings,
+                                    onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                                     exactAlarmWarningActive = exactAlarmWarningActive,
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings
@@ -377,12 +378,11 @@ private fun CompactHomeContent(
     onOpenSettings: () -> Unit,
     onNavigateHome: () -> Unit,
     onExitApp: () -> Unit,
-    batteryOptimizationRestricted: Boolean = false,
-    unusedAppRestrictionsActive: Boolean = false,
-    showMotorolaSmartUseGuidance: Boolean = false,
+    backgroundPersistence: BackgroundPersistenceUiState = BackgroundPersistenceUiState(),
     onRequestBatteryUnrestricted: () -> Unit = {},
+    onOpenBackgroundPersistenceSettings: () -> Unit = {},
     onOpenUnusedAppRestrictionsSettings: () -> Unit = {},
-    onOpenMotorolaBackgroundAppsSettings: () -> Unit = {},
+    onOpenAppBatteryUsageSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {}
@@ -439,12 +439,11 @@ private fun CompactHomeContent(
                 onBack = onNavigateHome,
                 showRootBackNavigation = false,
                 layoutMode = SettingsScreenLayoutMode.CompactShell,
-                batteryOptimizationRestricted = batteryOptimizationRestricted,
-                unusedAppRestrictionsActive = unusedAppRestrictionsActive,
-                showMotorolaSmartUseGuidance = showMotorolaSmartUseGuidance,
+                backgroundPersistence = backgroundPersistence,
                 onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
                 onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-                onOpenMotorolaBackgroundAppsSettings = onOpenMotorolaBackgroundAppsSettings,
+                onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                 exactAlarmWarningActive = exactAlarmWarningActive,
                 onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                 onOpenAppDetailsSettings = onOpenAppDetailsSettings

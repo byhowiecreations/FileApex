@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.fileapex.platform.OemBackgroundGuidance
 
 /**
  * First-run setup: all-files access (required) + unrestricted battery (recommended on Android).
@@ -24,9 +25,11 @@ import androidx.compose.ui.unit.dp
 fun StoragePermissionScreen(
     hasStoragePermission: Boolean,
     hasUnrestrictedBattery: Boolean,
+    oemBackgroundGuidance: OemBackgroundGuidance? = null,
     onRequestStoragePermission: () -> Unit,
     onOpenStorageSettings: () -> Unit,
     onRequestBatteryUnrestricted: () -> Unit,
+    onOpenBackgroundPersistenceSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -81,17 +84,21 @@ fun StoragePermissionScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "2. Unrestricted battery (recommended)",
+            text = "2. Background battery (recommended)",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = if (hasUnrestrictedBattery) {
-                "Granted"
-            } else {
-                "Recommended so background file sharing is not killed by battery optimization. " +
-                    "You can grant this later in Settings if you skip it now."
+            text = when {
+                hasUnrestrictedBattery -> "Granted"
+                oemBackgroundGuidance != null ->
+                    "Recommended so background file sharing is not killed. On your " +
+                        "${oemBackgroundGuidance.vendorLabel} phone set: " +
+                        "${oemBackgroundGuidance.appBatteryUsageSteps}."
+                else ->
+                    "Recommended so background file sharing is not killed by battery " +
+                        "optimization. Set App battery usage to Unrestricted or Always allow."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -100,10 +107,13 @@ fun StoragePermissionScreen(
         if (hasStoragePermission && !hasUnrestrictedBattery) {
             Spacer(modifier = Modifier.height(12.dp))
             Button(
-                onClick = onRequestBatteryUnrestricted,
+                onClick = onOpenBackgroundPersistenceSettings,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Allow unrestricted battery")
+                Text("Open battery settings")
+            }
+            TextButton(onClick = onRequestBatteryUnrestricted) {
+                Text("Request battery exemption")
             }
         }
     }
