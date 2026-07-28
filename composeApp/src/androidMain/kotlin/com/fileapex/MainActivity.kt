@@ -188,11 +188,21 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(
-                com.fileapex.platform.UpdateNotificationReceiver.EXTRA_SHOW_UPDATE_SHEET,
+                com.fileapex.platform.EXTRA_DOWNLOAD_UPDATE,
                 false
             ) == true
         ) {
             requestShowUpdateSheet = true
+            com.fileapex.update.AppUpdateCoordinator.downloadPendingUpdate()
+            intent.removeExtra(com.fileapex.platform.EXTRA_DOWNLOAD_UPDATE)
+        }
+        if (intent?.getBooleanExtra(
+                com.fileapex.platform.EXTRA_SHOW_UPDATE_SHEET,
+                false
+            ) == true
+        ) {
+            requestShowUpdateSheet = true
+            intent.removeExtra(com.fileapex.platform.EXTRA_SHOW_UPDATE_SHEET)
         }
 
         intent?.data?.let { uri ->

@@ -40,6 +40,7 @@ object AppUpdateCoordinator {
 
     /** Call once after [FileApexServices.init] when the process starts. */
     fun onAppLaunch() {
+        restorePendingOffer()
         ensureSchedulerRunning()
         if (FileApexServices.settings.checkForUpdatesEnabled.value) {
             scheduleCheck(
@@ -83,9 +84,18 @@ object AppUpdateCoordinator {
     }
 
     fun requestShowUpdateSheet() {
+        restorePendingOffer()
         if (_pendingUpdate.value != null) {
             _showUpdateSheet.value = true
+            return
         }
+        // Process may have been killed after the notification was posted — re-probe.
+        scheduleCheck(
+            reason = "notification_open",
+            force = true,
+            requireEnabled = false,
+            toastFeedback = true
+        )
     }
 
     fun dismissUpdateSheet() {
@@ -93,23 +103,35 @@ object AppUpdateCoordinator {
     }
 
     fun skipPendingUpdate() {
+        restorePendingOffer()
         val offer = _pendingUpdate.value ?: return
         FileApexServices.settings.setSkippedUpdateVersion(offer.remoteVersion)
-        _pendingUpdate.value = null
+        setPendingOffer(null)
         _showUpdateSheet.value = false
         _statusMessage.value = "Skipped FileApex ${offer.remoteVersion}"
         dismissAppUpdateNotification()
     }
 
     fun downloadPendingUpdate() {
-        val offer = _pendingUpdate.value ?: return
+        restorePendingOffer()
+        val offer = _pendingUpdate.value
+        if (offer == null) {
+            BriefToast.show("Update details missing — checking again…")
+            scheduleCheck(
+                reason = "notification_install",
+                force = true,
+                requireEnabled = false,
+                toastFeedback = true
+            )
+            return
+        }
         scope.launch {
             runCatching {
                 _statusMessage.value = "Downloading FileApex ${offer.remoteVersion}…"
                 dismissAppUpdateNotification()
                 AppUpdater.downloadAndInstall(offer)
                 FileApexServices.settings.setLastUpdateCheckEpochMs(TimeUtils.now())
-                _pendingUpdate.value = null
+                setPendingOffer(null)
                 _showUpdateSheet.value = false
                 _statusMessage.value = "Installing FileApex ${offer.remoteVersion}…"
             }.onFailure { error ->
@@ -227,7 +249,7 @@ object AppUpdateCoordinator {
 
     private suspend fun handleAvailableUpdate(offer: PendingUpdateOffer, toastFeedback: Boolean) {
         if (shouldDeferUpdateInstallToUser()) {
-            _pendingUpdate.value = offer
+            setPendingOffer(offer)
             notifyAppUpdateAvailable(offer)
             _statusMessage.value = "FileApex ${offer.remoteVersion} available"
             if (toastFeedback) {
@@ -238,6 +260,18 @@ object AppUpdateCoordinator {
         _statusMessage.value = "FileApex ${offer.remoteVersion} available — installing…"
         notifyAppUpdateAvailable(offer)
         AppUpdater.downloadAndInstall(offer)
+        setPendingOffer(null)
+    }
+
+    private fun setPendingOffer(offer: PendingUpdateOffer?) {
+        _pendingUpdate.value = offer
+        PendingUpdateStore.save(offer)
+    }
+
+    private fun restorePendingOffer() {
+        if (_pendingUpdate.value != null) return
+        val stored = PendingUpdateStore.load() ?: return
+        _pendingUpdate.value = stored
     }
 
     private fun isOfferSkipped(offer: PendingUpdateOffer): Boolean {

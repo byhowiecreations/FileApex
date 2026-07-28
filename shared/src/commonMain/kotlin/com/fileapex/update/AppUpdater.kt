@@ -99,7 +99,11 @@ object AppUpdater {
             SystemFileSystem.createDirectories(Path(cacheDir))
             val targetPath = Path("$cacheDir/${offer.assetName}")
             downloadToFile(offer.assetDownloadUrl, targetPath)
-            println("AppUpdater: download complete → $targetPath; installing…")
+            validateDownloadedAsset(targetPath, offer.assetSizeBytes)
+            println(
+                "AppUpdater: download complete → $targetPath " +
+                    "(${SystemFileSystem.metadataOrNull(targetPath)?.size ?: -1} bytes); installing…"
+            )
             PlatformUpdateInstaller.installAndRelaunch(
                 localFilePath = targetPath.toString(),
                 remoteVersion = offer.remoteVersion
@@ -134,10 +138,18 @@ object AppUpdater {
         }
         client.prepareGet(url) {
             header(HttpHeaders.UserAgent, "FileApex/${currentAppVersionName()}")
-            header(HttpHeaders.Accept, "application/octet-stream")
+            // browser_download_url redirects to CDN; avoid negotiating JSON/HTML bodies.
+            header(HttpHeaders.Accept, "*/*")
         }.execute { response ->
             if (!response.status.isSuccess()) {
                 error("Download failed (${response.status}) for $url")
+            }
+            val contentType = response.headers[HttpHeaders.ContentType].orEmpty()
+            if (contentType.contains("text/html", ignoreCase = true)) {
+                error(
+                    "Update download returned HTML instead of an APK " +
+                        "(content-type=$contentType). Check the release asset link."
+                )
             }
             val channel = response.bodyAsChannel()
             SystemFileSystem.sink(target).buffered().use { sink ->
@@ -149,6 +161,21 @@ object AppUpdater {
                     }
                 }
             }
+        }
+    }
+
+    private fun validateDownloadedAsset(target: Path, expectedSizeBytes: Long) {
+        val metadata = SystemFileSystem.metadataOrNull(target)
+            ?: error("Downloaded update file missing at $target")
+        val size = metadata.size
+        check(size > 1_024L) {
+            "Downloaded update is too small ($size bytes) — likely a failed download"
+        }
+        if (expectedSizeBytes > 0L && size != expectedSizeBytes) {
+            error(
+                "Downloaded update size mismatch " +
+                    "(got $size bytes, expected $expectedSizeBytes) — incomplete download"
+            )
         }
     }
 

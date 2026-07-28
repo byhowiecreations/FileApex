@@ -1,10 +1,13 @@
 package com.fileapex.update
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.FileProvider
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.platform.FileApexFileProvider
 import java.io.File
+import java.io.RandomAccessFile
 
 actual object PlatformUpdateInstaller {
     actual fun updateCacheDirectory(): String {
@@ -17,13 +20,17 @@ actual object PlatformUpdateInstaller {
     }
 
     actual fun selectAsset(assets: List<GitHubReleaseAsset>): GitHubReleaseAsset? {
-        return assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
+        val apks = assets.filter { it.name.endsWith(".apk", ignoreCase = true) }
+        return apks.firstOrNull { it.name.contains("release", ignoreCase = true) }
+            ?: apks.firstOrNull { !it.name.contains("debug", ignoreCase = true) }
+            ?: apks.firstOrNull()
     }
 
     actual fun installAndRelaunch(localFilePath: String, remoteVersion: String) {
         val context = requireContext()
         val apkFile = File(localFilePath)
         check(apkFile.isFile) { "APK missing at $localFilePath" }
+        validateApkFile(apkFile)
 
         // Never launch system Settings from install/update paths (BAL). Read-only check only.
         if (!PlatformInstallPermission.canRequestPackageInstalls()) {
@@ -38,16 +45,79 @@ actual object PlatformUpdateInstaller {
             FileApexFileProvider.authority(context),
             apkFile
         )
-        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+
+        @Suppress("DEPRECATION")
+        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+            putExtra(Intent.EXTRA_RETURN_RESULT, false)
+        }
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+
+        grantUriToResolvers(installIntent, uri)
+        grantUriToResolvers(viewIntent, uri)
+
         println(
             "PlatformUpdateInstaller: launching system installer for $remoteVersion " +
-                "(${apkFile.name})"
+                "(${apkFile.name}, ${apkFile.length()} bytes)"
         )
-        context.startActivity(installIntent)
+        val launched = runCatching {
+            context.startActivity(installIntent)
+            true
+        }.getOrElse { error ->
+            println(
+                "PlatformUpdateInstaller: ACTION_INSTALL_PACKAGE failed — ${error.message}; " +
+                    "falling back to ACTION_VIEW"
+            )
+            false
+        }
+        if (!launched) {
+            context.startActivity(viewIntent)
+        }
+    }
+
+    private fun grantUriToResolvers(intent: Intent, uri: android.net.Uri) {
+        val context = requireContext()
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PackageManager.MATCH_DEFAULT_ONLY
+        } else {
+            0
+        }
+        val matches = context.packageManager.queryIntentActivities(intent, flags)
+        for (resolve in matches) {
+            val packageName = resolve.activityInfo?.packageName ?: continue
+            runCatching {
+                context.grantUriPermission(
+                    packageName,
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+        }
+    }
+
+    private fun validateApkFile(apkFile: File) {
+        check(apkFile.length() > 1_024L) {
+            "Downloaded APK is too small (${apkFile.length()} bytes) — download may be corrupt"
+        }
+        RandomAccessFile(apkFile, "r").use { raf ->
+            val magic = ByteArray(4)
+            check(raf.read(magic) == 4) { "Unable to read APK header" }
+            val isZip =
+                magic[0] == 0x50.toByte() &&
+                    magic[1] == 0x4B.toByte() &&
+                    (magic[2] == 0x03.toByte() || magic[2] == 0x05.toByte() || magic[2] == 0x07.toByte())
+            check(isZip) {
+                "Downloaded file is not a valid APK (bad magic). " +
+                    "The update link may have returned an HTML error page."
+            }
+        }
     }
 
     private fun requireContext() =

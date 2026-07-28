@@ -79,7 +79,7 @@ object ShareServerKeepAliveCoordinator {
             Log.i(TAG, "Pending foreground start — attempting watchdog restart ($reason)")
             ShareServerRestartCoordinator.attemptWatchdogRestart(
                 appContext,
-                ShareServerRestartCoordinator.RestartTrigger.WATCHDOG_ALARM
+                restartTriggerForReason(reason)
             )
             return
         }
@@ -87,11 +87,19 @@ object ShareServerKeepAliveCoordinator {
             Log.i(TAG, "Stale share-server heartbeat — attempting watchdog restart ($reason)")
             ShareServerRestartCoordinator.attemptWatchdogRestart(
                 appContext,
-                ShareServerRestartCoordinator.RestartTrigger.WATCHDOG_ALARM
+                restartTriggerForReason(reason)
             )
             return
         }
         reassertForegroundService(appContext, reason)
+    }
+
+    private fun restartTriggerForReason(reason: String): ShareServerRestartCoordinator.RestartTrigger {
+        return if (reason.startsWith("freeze_guard:")) {
+            ShareServerRestartCoordinator.RestartTrigger.SCREEN_WAKE
+        } else {
+            ShareServerRestartCoordinator.RestartTrigger.WATCHDOG_ALARM
+        }
     }
 
     fun scheduleJobIfNeeded(context: Context) {

@@ -20,7 +20,9 @@ object ShareServerRestartCoordinator {
         WATCHDOG_ALARM,
         BOOT_COMPLETED,
         STICKY_RESTART,
-        UI_FOREGROUND
+        UI_FOREGROUND,
+        /** Screen-on / user-present freeze-guard — attempt FGS without visible-process preflight. */
+        SCREEN_WAKE
     }
 
     /** True when the OS has restricted background work for this app (API 28+). */
@@ -94,7 +96,8 @@ object ShareServerRestartCoordinator {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         return when (trigger) {
             RestartTrigger.BOOT_COMPLETED,
-            RestartTrigger.STICKY_RESTART -> false
+            RestartTrigger.STICKY_RESTART,
+            RestartTrigger.SCREEN_WAKE -> false
             RestartTrigger.WATCHDOG_ALARM,
             RestartTrigger.UI_FOREGROUND -> !isProcessEligibleForBackgroundFgs(context)
         }
