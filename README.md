@@ -10,16 +10,22 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 
 ## Features
 
-* **Multi-Target File Broadcasting:** Push files to multiple online devices simultaneously from a single view.
-* **Smart Ingestion Paths:** Incoming files are automatically routed to a designated fallback directory (`Download/FileApex`) to keep file systems clean.
-* **macOS Finder Integration:** Right-click files directly inside native macOS Finder to broadcast across your local cluster via the Share Extension. 
-* **Check for Updates:** Keep your network deployment current with integrated, platform-native updating directly from GitHub releases.
+* **Local-first P2P explorer:** Browse and move files between paired Android, macOS, and Windows devices on the same LAN.
+* **Multi-Target File Broadcasting:** Push files to multiple online devices at once.
+* **Smart receive folder:** Incoming files land in `Download/FileApex` (Android) or `~/Downloads/FileApex` (desktop).
+* **QR / link pairing:** Pair devices without typing IPs.
+* **PIN lock (optional):** Require a PIN before others can pair or browse.
+* **macOS Finder / Share Extension:** Send from Finder or the system Share sheet.
+* **Android Direct Share:** Share sheet targets for paired devices.
+* **Background Persistence (Android):** Keep the share server alive with battery guidance, watchdog, and optional auto-launch after reboot.
+* **Check for Updates:** Install newer builds from GitHub Releases (opt-in).
+* **Google Account (opt-in):** Cloud presence / wake helpers only — files stay on your LAN.
 
 
 ## Local Configuration
 
 Files broadcasted across devices route automatically to the local device storage paths:
-* **Android:** `/storage/emulated/0/Download/FileApex/`
+* **Android:** `Download/FileApex/`
 * **macOS:** `~/Downloads/FileApex/`
 
 ## Privacy & Permissions Disclosures

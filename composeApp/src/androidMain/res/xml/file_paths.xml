@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="updates" path="updates/" />
-    <cache-path name="share_shortcut_icons" path="share_shortcut_icons/" />
 </paths>
