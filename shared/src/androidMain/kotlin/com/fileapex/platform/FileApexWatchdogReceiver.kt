@@ -18,6 +18,14 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
         when (action) {
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
             Intent.ACTION_BOOT_COMPLETED -> {
+                if (!isUserStorageUnlocked(appContext)) {
+                    // Direct-boot window: FileApexServices (Room DB, settings) isn't safe to touch
+                    // yet, and starting the real share-server FGS needs it. Do nothing here — the
+                    // platform redelivers ACTION_BOOT_COMPLETED once the user unlocks, and that
+                    // retry runs this same branch with full storage available.
+                    Log.i(TAG, "Storage still locked — skip restart, waiting for unlocked retry")
+                    return
+                }
                 if (!ServiceWatchdogScheduler.isAutoLaunchOnRebootEnabled(appContext)) {
                     Log.i(TAG, "Auto launch on reboot disabled — skipping boot restart")
                     return

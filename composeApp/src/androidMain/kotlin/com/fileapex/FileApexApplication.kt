@@ -15,11 +15,22 @@ import com.fileapex.platform.AndroidNotificationChannels
 import com.fileapex.platform.BootLaunchPreference
 import com.fileapex.platform.ServiceWatchdogScheduler
 import com.fileapex.platform.ShareServerKeepAliveCoordinator
+import com.fileapex.platform.isUserStorageUnlocked
 import com.fileapex.update.AppUpdateCoordinator
+import android.util.Log
 
 class FileApexApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        if (!isUserStorageUnlocked(this)) {
+            // A direct-boot-aware broadcast (LOCKED_BOOT_COMPLETED) spun up this process before
+            // the user's first unlock this boot. Credential-encrypted storage — SharedPreferences,
+            // Room, getFilesDir() — throws IllegalStateException until unlock, so skip full init
+            // rather than crash. The platform redelivers ACTION_BOOT_COMPLETED to
+            // FileApexWatchdogReceiver once the user unlocks, which retries this safely.
+            Log.i(TAG, "onCreate: user storage still locked — deferring full init")
+            return
+        }
         initAndroidAppSettings(this)
         AndroidNotificationChannels.migrateLegacyShareServerChannels(this)
         AndroidNotificationChannels.ensureShareServerChannel(this)
@@ -39,5 +50,9 @@ class FileApexApplication : Application() {
         AppUpdateCoordinator.onAppLaunch()
         GoogleLinkCoordinator.onAppLaunch()
         // UDP wake + share server run inside FileShareServerService (typed foreground service).
+    }
+
+    private companion object {
+        private const val TAG = "FileApexApplication"
     }
 }

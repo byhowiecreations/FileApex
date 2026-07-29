@@ -450,6 +450,71 @@ tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.con
     }
 }
 
+/**
+ * Runs a command, failing the build with its combined output if it exits non-zero.
+ * Kept minimal (no plist parsing) by always driving hdiutil with an explicit `-mountpoint`.
+ */
+private fun runOrFail(vararg command: String) {
+    val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+    val output = process.inputStream.bufferedReader().readText()
+    val code = process.waitFor()
+    check(code == 0) { "Command failed (${command.joinToString(" ")}), exit $code:\n$output" }
+}
+
+/**
+ * Compose Desktop's DMG task (hdiutil create + osascript Finder styling) never sets a custom
+ * volume icon. hdiutil then leaves whatever `.VolumeIcon.icns` happens to already be attached to
+ * the source folder's Finder metadata, which resolves to the JDK's own generic `JavaApp.icns`
+ * (jpackage's placeholder "Duke" icon) — so every mounted FileApex.dmg showed that instead of the
+ * app icon. Fix: decompress the finished DMG to a writable image, drop our own icon in as
+ * `.VolumeIcon.icns`, flag the volume as having a custom icon, then recompress in place.
+ */
+private fun Project.setDmgVolumeIcon(dmg: File) {
+    val iconFile = project.file("icons/FileApex.icns")
+    check(iconFile.isFile) { "Missing ${iconFile.absolutePath}" }
+
+    val rwDmg = File(dmg.parentFile, "${dmg.nameWithoutExtension}-rw.dmg")
+    rwDmg.delete()
+    runOrFail("hdiutil", "convert", dmg.absolutePath, "-format", "UDRW", "-o", rwDmg.absolutePath)
+
+    val mountPoint = Files.createTempDirectory("fileapex-dmg-icon-").toFile()
+    mountPoint.delete()
+    try {
+        runOrFail("hdiutil", "attach", rwDmg.absolutePath, "-nobrowse", "-noautoopen", "-mountpoint", mountPoint.absolutePath)
+        try {
+            Files.copy(
+                iconFile.toPath(),
+                File(mountPoint, ".VolumeIcon.icns").toPath(),
+                StandardCopyOption.REPLACE_EXISTING
+            )
+            runOrFail("/usr/bin/SetFile", "-a", "C", mountPoint.absolutePath)
+        } finally {
+            runOrFail("hdiutil", "detach", mountPoint.absolutePath, "-quiet")
+        }
+    } finally {
+        mountPoint.deleteRecursively()
+    }
+
+    check(dmg.delete()) { "Could not remove pre-icon-fix DMG at ${dmg.absolutePath}" }
+    runOrFail("hdiutil", "convert", rwDmg.absolutePath, "-format", "UDZO", "-imagekey", "zlib-level=9", "-o", dmg.absolutePath)
+    rwDmg.delete()
+    logger.lifecycle("Set FileApex volume icon on ${dmg.name}")
+}
+
+/** Runs after [packageDmg] so `current/`-bound DMGs mount with the real FileApex icon, not jpackage's generic one. */
+tasks.register("fixDmgVolumeIcon") {
+    group = "distribution"
+    description = "Replace the default JDK volume icon in packaged DMGs with FileApex's icon"
+    dependsOn("packageDmg")
+    onlyIf { isMacHost() }
+    doLast {
+        val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
+        val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
+        check(dmgs.isNotEmpty()) { "No DMG found in ${dmgDir.absolutePath}" }
+        dmgs.forEach { dmg -> setDmgVolumeIcon(dmg) }
+    }
+}
+
 /** After [moveToCurrent], Gradle must rebuild when outputs no longer exist under `build/`. */
 afterEvaluate {
     fun Project.apkOutputsPresent(variant: String): Boolean =
@@ -737,7 +802,7 @@ tasks.register("copyReleaseBuilds") {
     description = "Release APK + desktop ship into current/ (Mac .app+DMG or Windows MSI)"
     dependsOn("assembleRelease")
     if (isMacHost()) {
-        dependsOn("embedMacExtensions", "packageDmg")
+        dependsOn("embedMacExtensions", "fixDmgVolumeIcon")
     } else if (isWindowsHost()) {
         dependsOn("createReleaseDistributable", "packageReleaseMsi")
     }
@@ -926,7 +991,7 @@ tasks.register("copyAllBuilds") {
     description = "Move debug+release APKs and desktop ship into current/"
     dependsOn("assembleDebug", "assembleRelease")
     if (isMacHost()) {
-        dependsOn("embedMacExtensions", "packageDmg")
+        dependsOn("embedMacExtensions", "fixDmgVolumeIcon")
     } else if (isWindowsHost()) {
         dependsOn("createDistributable", "packageMsi", "createReleaseDistributable", "packageReleaseMsi")
     }
