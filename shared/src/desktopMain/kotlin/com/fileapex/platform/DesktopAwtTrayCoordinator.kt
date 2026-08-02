@@ -17,12 +17,21 @@ object DesktopAwtTrayCoordinator {
     private var trayIcon: TrayIcon? = null
     private var installed = false
     private var minimizeToTrayOnClose = false
+    private var onShowWindow: (() -> Unit)? = null
+    private var onHideWindow: (() -> Unit)? = null
 
     fun isInstalled(): Boolean = installed
 
-    fun attachMainWindow(window: Window, onQuit: () -> Unit) {
+    fun attachMainWindow(
+        window: Window,
+        onShowWindow: () -> Unit,
+        onHideWindow: () -> Unit,
+        onQuit: () -> Unit,
+    ) {
         if (!DesktopPlatformPaths.isWindows() || installed) return
         mainWindow = window
+        this.onShowWindow = onShowWindow
+        this.onHideWindow = onHideWindow
 
         if (!SystemTray.isSupported()) {
             println("DesktopAwtTrayCoordinator: SystemTray unavailable — close will exit app")
@@ -50,16 +59,25 @@ object DesktopAwtTrayCoordinator {
     }
 
     fun hideMainWindow() {
-        SwingUtilities.invokeLater {
-            mainWindow?.isVisible = false
-        }
+        // Compose Window must use the `visible` parameter — raw isVisible breaks show (CMP #2928).
+        onHideWindow?.invoke()
     }
 
     fun showMainWindow() {
+        onShowWindow?.invoke()
         SwingUtilities.invokeLater {
-            mainWindow?.isVisible = true
+            requestForeground()
             mainWindow?.toFront()
             mainWindow?.requestFocus()
+        }
+    }
+
+    private fun requestForeground() {
+        runCatching {
+            val desktop = java.awt.Desktop.getDesktop()
+            if (desktop.isSupported(java.awt.Desktop.Action.APP_REQUEST_FOREGROUND)) {
+                desktop.requestForeground(true)
+            }
         }
     }
 
@@ -84,6 +102,8 @@ object DesktopAwtTrayCoordinator {
         trayIcon = null
         installed = false
         minimizeToTrayOnClose = false
+        onShowWindow = null
+        onHideWindow = null
     }
 
     private fun installTrayIcon(onQuit: () -> Unit) {

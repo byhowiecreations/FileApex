@@ -28,14 +28,23 @@ object DesktopMacTrayCoordinator {
     private var bindJob: Job? = null
     private var installed = false
     private var nativeMainWindowBound = false
+    private var onShowWindow: (() -> Unit)? = null
+    private var onHideWindow: (() -> Unit)? = null
 
     fun isInstalled(): Boolean = installed
 
-    fun attachMainWindow(window: Window, onQuit: () -> Unit) {
+    fun attachMainWindow(
+        window: Window,
+        onShowWindow: () -> Unit,
+        onHideWindow: () -> Unit,
+        onQuit: () -> Unit,
+    ) {
         if (!DesktopPlatformPaths.isMacOs() || installed) return
         if (!DesktopMacTrayBridge.load()) return
 
         mainWindow = window
+        this.onShowWindow = onShowWindow
+        this.onHideWindow = onHideWindow
         DesktopMacTrayBridge.registerCallbacks(
             onSend = { deviceIdsJson, filePathsJson -> handleSend(deviceIdsJson, filePathsJson) },
             onPopoverVisible = { visible ->
@@ -70,9 +79,7 @@ object DesktopMacTrayCoordinator {
 
     fun hideMainWindow() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        scope.launch(Dispatchers.Swing) {
-            mainWindow?.isVisible = false
-        }
+        onHideWindow?.invoke()
         if (nativeMainWindowBound) {
             DesktopMacTrayBridge.hideMainWindow()
         }
@@ -94,8 +101,8 @@ object DesktopMacTrayCoordinator {
     }
 
     private fun syncMainWindowOnSwing() {
+        onShowWindow?.invoke()
         scope.launch(Dispatchers.Swing) {
-            mainWindow?.isVisible = true
             mainWindow?.toFront()
             mainWindow?.requestFocus()
         }

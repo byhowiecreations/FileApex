@@ -213,7 +213,9 @@ fun App(
                     }
                 } else {
                     LaunchedEffect(Unit) {
-                        onStartShareServer()
+                        if (!usesDesktopFileSelection()) {
+                            onStartShareServer()
+                        }
                     }
 
                     // Overlay routes stay full-screen on every size class.
@@ -347,7 +349,7 @@ fun App(
     LaunchedEffect(hasStoragePermission) {
         if (!hasStoragePermission) {
             onPermissionRecheck()
-        } else {
+        } else if (!usesDesktopFileSelection()) {
             onStartShareServer()
             PresenceForegroundRefresh.onAppForegrounded()
         }

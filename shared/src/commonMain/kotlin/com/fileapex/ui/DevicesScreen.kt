@@ -67,6 +67,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -594,31 +595,38 @@ private fun PairedDevicesList(
             onReorder = onReorder,
             modifier = modifier
         )
-    } else when (viewMode) {
-        ExplorerViewMode.Grid -> PairedDevicesGridBrowseList(
-            deviceRows = deviceRows,
-            layoutMode = layoutMode,
-            connectingDeviceId = connectingDeviceId,
-            selectedDeviceId = selectedDeviceId,
-            onOpenDevice = onOpenDevice,
-            onRenameDevice = onRenameDevice,
-            onDeviceDetails = onDeviceDetails,
-            onRemoveDevice = onRemoveDevice,
-            onFilesDropped = onFilesDropped,
-            modifier = modifier
-        )
-        ExplorerViewMode.List -> PairedDevicesBrowseList(
-            listState = listState,
-            deviceRows = deviceRows,
-            connectingDeviceId = connectingDeviceId,
-            selectedDeviceId = selectedDeviceId,
-            onOpenDevice = onOpenDevice,
-            onRenameDevice = onRenameDevice,
-            onDeviceDetails = onDeviceDetails,
-            onRemoveDevice = onRemoveDevice,
-            onFilesDropped = onFilesDropped,
-            modifier = modifier
-        )
+    } else {
+        // key(viewMode): LazyColumn → LazyVerticalGrid must remount. Without it, Windows/Skiko
+        // can keep the list subtree after devicesViewMode flips to Grid until a parent remount
+        // (e.g. Compact ↔ Expanded). Local Files avoids this via a different content tree.
+        key(viewMode) {
+            when (viewMode) {
+                ExplorerViewMode.Grid -> PairedDevicesGridBrowseList(
+                    deviceRows = deviceRows,
+                    layoutMode = layoutMode,
+                    connectingDeviceId = connectingDeviceId,
+                    selectedDeviceId = selectedDeviceId,
+                    onOpenDevice = onOpenDevice,
+                    onRenameDevice = onRenameDevice,
+                    onDeviceDetails = onDeviceDetails,
+                    onRemoveDevice = onRemoveDevice,
+                    onFilesDropped = onFilesDropped,
+                    modifier = modifier
+                )
+                ExplorerViewMode.List -> PairedDevicesBrowseList(
+                    listState = listState,
+                    deviceRows = deviceRows,
+                    connectingDeviceId = connectingDeviceId,
+                    selectedDeviceId = selectedDeviceId,
+                    onOpenDevice = onOpenDevice,
+                    onRenameDevice = onRenameDevice,
+                    onDeviceDetails = onDeviceDetails,
+                    onRemoveDevice = onRemoveDevice,
+                    onFilesDropped = onFilesDropped,
+                    modifier = modifier
+                )
+            }
+        }
     }
 }
 
@@ -832,6 +840,8 @@ private fun PairedDevicesGridBrowseList(
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        // Skip first frame(s) with unset constraints so Fixed column count is not computed wrong.
+        if (!maxWidth.value.isFinite() || maxWidth <= 0.dp) return@BoxWithConstraints
         val grid = resolveDeviceGridLayout(maxWidth = maxWidth, layoutMode = layoutMode)
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columnCount),

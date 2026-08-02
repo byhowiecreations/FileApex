@@ -16,12 +16,17 @@ object DesktopTraySupport {
             else -> false
         }
 
-    fun attachMainWindow(window: Window, onQuit: () -> Unit) {
+    fun attachMainWindow(
+        window: Window,
+        onShowWindow: () -> Unit,
+        onHideWindow: () -> Unit,
+        onQuit: () -> Unit,
+    ) {
         when {
             DesktopPlatformPaths.isMacOs() ->
-                DesktopMacTrayCoordinator.attachMainWindow(window, onQuit)
+                DesktopMacTrayCoordinator.attachMainWindow(window, onShowWindow, onHideWindow, onQuit)
             DesktopPlatformPaths.isWindows() ->
-                DesktopAwtTrayCoordinator.attachMainWindow(window, onQuit)
+                DesktopAwtTrayCoordinator.attachMainWindow(window, onShowWindow, onHideWindow, onQuit)
         }
     }
 

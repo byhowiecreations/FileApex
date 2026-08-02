@@ -25,3 +25,7 @@
 -keepclassmembers class * extends androidx.room3.RoomDatabase {
     <init>(...);
 }
+
+# sqlite-bundled JNI — native methods are registered by exact name; obfuscation breaks load.
+-keepclasseswithmembers class androidx.sqlite.driver.bundled.** { native <methods>; }
+-keep class androidx.sqlite.driver.bundled.** { *; }

@@ -15,15 +15,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import java.awt.Desktop
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.DesktopShareServerController
+import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.platform.DesktopAppIcon
 import com.fileapex.platform.DesktopJvmStartup
+import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.DesktopScreenGeometry
 import com.fileapex.platform.DesktopTraySupport
 import com.fileapex.platform.DesktopWindowBoundsStore
@@ -50,6 +54,7 @@ fun main() {
 
     application {
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
+        var mainWindowVisible by remember { mutableStateOf(true) }
 
         LaunchedEffect(Unit) {
             if (!servicesReady) {
@@ -64,6 +69,24 @@ fun main() {
                 AppUpdateCoordinator.onAppLaunch()
                 GoogleLinkCoordinator.onAppLaunch()
                 DesktopSendHandoff.startJobProcessor()
+            }
+        }
+
+        // Defer share-server bind until the window is on screen (avoids Windows Firewall
+        // "Java Platform SE binary" prompt before the user sees FileApex).
+        LaunchedEffect(servicesReady, mainWindowVisible) {
+            if (!servicesReady || !mainWindowVisible) return@LaunchedEffect
+            DesktopShareServerController.start()
+            PresenceForegroundRefresh.onAppForegrounded()
+        }
+
+        LaunchedEffect(mainWindowVisible) {
+            if (!mainWindowVisible || !DesktopPlatformPaths.isWindows()) return@LaunchedEffect
+            runCatching {
+                val desktop = Desktop.getDesktop()
+                if (desktop.isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) {
+                    desktop.requestForeground(true)
+                }
             }
         }
 
@@ -90,7 +113,11 @@ fun main() {
         )
         val initialSize = savedBounds?.toDpSize() ?: defaultBootstrapSize
         val initialPosition = savedBounds?.toWindowPosition()
-            ?: DesktopScreenGeometry.primaryTopLeftPosition()
+            ?: if (DesktopPlatformPaths.isWindows()) {
+                WindowPosition(Alignment.Center)
+            } else {
+                DesktopScreenGeometry.primaryTopLeftPosition()
+            }
 
         val windowState = rememberWindowState(
             width = initialSize.width,
@@ -133,14 +160,13 @@ fun main() {
 
         Window(
             onCloseRequest = {
-                if (DesktopTraySupport.handleCloseRequest()) {
-                    return@Window
-                }
+                if (DesktopTraySupport.handleCloseRequest()) return@Window
                 shutdownDesktop()
                 exitApplication()
             },
             title = "FileApex",
-            state = windowState
+            state = windowState,
+            visible = mainWindowVisible,
         ) {
             if (!servicesReady) {
                 Box(
@@ -154,7 +180,11 @@ fun main() {
 
             LaunchedEffect(window) {
                 DesktopAppIcon.loadTrayImage()?.let { window.iconImage = it }
-                DesktopTraySupport.attachMainWindow(window) {
+                DesktopTraySupport.attachMainWindow(
+                    window = window,
+                    onShowWindow = { mainWindowVisible = true },
+                    onHideWindow = { mainWindowVisible = false },
+                ) {
                     shutdownDesktop()
                     exitApplication()
                 }
@@ -176,6 +206,7 @@ fun main() {
                 appVersionName = FileApexAppVersion.NAME
             )
         }
+
     }
 }
 
