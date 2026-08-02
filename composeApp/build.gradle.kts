@@ -318,6 +318,15 @@ compose.desktop {
             "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED"
         )
+        if (isWindowsHost()) {
+            // Belt-and-suspenders for packaged/run launches; [DesktopJvmStartup] also sets this in main().
+            jvmArgs += listOf("-Dskiko.renderApi=OPENGL")
+        }
+
+        buildTypes.release.proguard {
+            obfuscate.set(false)
+            configurationFiles.from(project.file("proguard-desktop.pro"))
+        }
 
         nativeDistributions {
             targetFormats(*desktopInstallerFormats())
@@ -547,13 +556,46 @@ afterEvaluate {
 
     tasks.matching { it.name == "packageMsi" || it.name == "packageReleaseMsi" }.configureEach {
         outputs.upToDateWhen {
-            msiOutputDir().listFiles()?.any { it.isFile && it.extension.equals("msi", ignoreCase = true) } == true
+            val release = name == "packageReleaseMsi"
+            msiOutputDir(release).listFiles()?.any { it.isFile && it.extension.equals("msi", ignoreCase = true) } == true
         }
+    }
+
+    if (isWindowsHost()) {
+        // Windows ships release MSI only — no debug app-image or debug MSI.
+        tasks.named("createDistributable").configure { enabled = false }
+        tasks.named("packageMsi").configure { enabled = false }
     }
 
     tasks.named("assembleDebug").configure {
         finalizedBy("copyCurrentBuilds")
         dependsOn(":shared:verifyDesktopSmokeTestConfig")
+    }
+}
+
+/**
+ * Release MSI embeds the app-image; delete staging folders afterward so they are not left on disk.
+ */
+tasks.register("pruneWindowsAppImageStaging") {
+    group = "distribution"
+    description = "Remove Windows app-image staging dirs after MSI packaging (Windows host only)"
+    onlyIf { isWindowsHost() }
+    doLast {
+        listOf(
+            layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile,
+            layout.buildDirectory.dir("compose/binaries/main/app").get().asFile,
+        ).forEach { dir ->
+            if (dir.exists()) {
+                dir.deleteRecursively()
+                logger.lifecycle("Pruned app-image staging dir ${dir.absolutePath}")
+            }
+        }
+    }
+}
+
+tasks.matching { it.name == "packageReleaseMsi" }.configureEach {
+    if (isWindowsHost()) {
+        finalizedBy("pruneWindowsAppImageStaging")
     }
 }
 
@@ -569,8 +611,25 @@ private fun Project.distributableWindowsAppDir(): File =
 private fun Project.distributableDesktopApp(): File =
     if (isMacHost()) distributableMacAppBundle() else distributableWindowsAppDir()
 
-private fun Project.msiOutputDir(): File =
-    layout.buildDirectory.dir("compose/binaries/main/msi").get().asFile
+private fun Project.msiOutputDir(release: Boolean = false): File =
+    layout.buildDirectory.dir(
+        if (release) "compose/binaries/main-release/msi" else "compose/binaries/main/msi"
+    ).get().asFile
+
+private fun Project.shipMsiToCurrent(
+    dest: File,
+    appVersionName: String,
+    logger: org.gradle.api.logging.Logger,
+    release: Boolean = false
+) {
+    val msiDir = msiOutputDir(release)
+    val msis = msiDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("msi", ignoreCase = true) }
+    check(msis.isNotEmpty()) {
+        "No MSI found in ${msiDir.absolutePath}. Run ${if (release) "packageReleaseMsi" else "packageMsi"} on a Windows host with WiX installed."
+    }
+    val preferred = msis.maxByOrNull { it.lastModified() } ?: msis.first()
+    moveToCurrent(dest, preferred, destName = "FileApex-$appVersionName.msi", logger = logger)
+}
 
 /**
  * Moves build outputs into project-root `current/` (never copies — avoids duplicating large artifacts).
@@ -599,6 +658,7 @@ private fun moveToCurrent(
 
 /** Detach FileApex installer volumes so `current/` can be replaced safely. */
 private fun detachFileApexDmgVolumes() {
+    if (!isMacHost()) return
     val d = "$"
     ProcessBuilder(
         "bash",
@@ -659,23 +719,6 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         .waitFor()
 }
 
-private fun Project.shipMsiToCurrent(
-    dest: File,
-    appVersionName: String,
-    logger: org.gradle.api.logging.Logger,
-    release: Boolean = false
-) {
-    val msiDir = msiOutputDir()
-    val msis = msiDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("msi", ignoreCase = true) }
-    check(msis.isNotEmpty()) {
-        "No MSI found in ${msiDir.absolutePath}. Run packageMsi on a Windows host with WiX installed."
-    }
-    val preferred = msis.firstOrNull { release && it.name.contains("release", ignoreCase = true) }
-        ?: msis.maxByOrNull { it.lastModified() }
-        ?: msis.first()
-    moveToCurrent(dest, preferred, destName = "FileApex-$appVersionName.msi", logger = logger)
-}
-
 private fun Project.shipToCurrent(
     includeDebugApk: Boolean,
     includeReleaseApk: Boolean,
@@ -727,7 +770,7 @@ private fun Project.shipToCurrent(
     }
 
     if (includeMsi && isWindowsHost()) {
-        shipMsiToCurrent(dest, appVersionName, logger, release = includeReleaseApk)
+        shipMsiToCurrent(dest, appVersionName, logger, release = true)
     }
 
     if (isMacHost()) {
@@ -747,18 +790,6 @@ private fun Project.shipToCurrent(
         }
     }
 
-    if (isWindowsHost()) {
-        val buildAppDir = distributableWindowsAppDir()
-        check(buildAppDir.isDirectory) {
-            "Missing build output: ${buildAppDir.absolutePath}. Run createDistributable first."
-        }
-        val launchedBinary = buildAppDir.resolve("FileApex.exe")
-        check(launchedBinary.isFile) {
-            "FileApex.exe missing in ${buildAppDir.absolutePath}"
-        }
-        moveToCurrent(dest, buildAppDir, logger = logger)
-    }
-
     if (mountDmg && isMacHost()) {
         val shippedDmg = dest.resolve(dmgDestName)
         check(shippedDmg.exists()) { "Missing DMG to mount: ${shippedDmg.absolutePath}" }
@@ -768,25 +799,20 @@ private fun Project.shipToCurrent(
 }
 
 /**
- * Post-[assembleDebug]: debug APK + desktop app into `current/`.
- * Mac: .app (no DMG). Windows: MSI + portable FileApex.exe folder.
+ * Post-[assembleDebug]: debug APK + desktop app into `current/` (Mac only).
  */
 tasks.register("copyCurrentBuilds") {
     group = "distribution"
-    description = "Move debug APK and desktop app into root current/ (no DMG on Mac)"
-    dependsOn("assembleDebug")
-    if (isMacHost()) {
-        dependsOn("embedMacExtensions")
-    } else if (isWindowsHost()) {
-        dependsOn("createDistributable", "packageMsi")
-    }
+    description = "Move debug APK and Mac .app into root current/ (Mac host only)"
+    onlyIf { isMacHost() }
+    dependsOn("assembleDebug", "embedMacExtensions")
 
     doLast {
         shipToCurrent(
             includeDebugApk = true,
             includeReleaseApk = false,
             includeDmg = false,
-            includeMsi = isWindowsHost(),
+            includeMsi = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = true,
             preserveExistingMsiOnWipe = true
@@ -795,7 +821,7 @@ tasks.register("copyCurrentBuilds") {
 }
 
 /**
- * Final release ship into `current/`. Mac: .app + DMG. Windows: MSI + portable app.
+ * Final release ship into `current/`. Mac: .app + DMG. Windows: release MSI only.
  */
 tasks.register("copyReleaseBuilds") {
     group = "distribution"
@@ -821,12 +847,12 @@ tasks.register("copyReleaseBuilds") {
 }
 
 /**
- * Windows ship: MSI installer + portable FileApex.exe folder into `current/`.
+ * Windows ship: release MSI into `current/` (no APK, no portable folder).
  */
 tasks.register("copyWindowsBuilds") {
     group = "distribution"
-    description = "Build MSI + portable app and move to current/ (Windows host only)"
-    dependsOn("createDistributable", "packageMsi")
+    description = "Build release MSI and move to current/ (Windows host only)"
+    dependsOn("createReleaseDistributable", "packageReleaseMsi")
     onlyIf { isWindowsHost() }
 
     doLast {
@@ -843,11 +869,11 @@ tasks.register("copyWindowsBuilds") {
 }
 
 /**
- * Windows release ship: release APK + MSI + portable app into `current/`.
+ * Windows release ship: release APK + release MSI into `current/`.
  */
 tasks.register("copyWindowsReleaseBuilds") {
     group = "distribution"
-    description = "Release APK + MSI + portable app into current/ (Windows host only)"
+    description = "Release APK + release MSI into current/ (Windows host only)"
     dependsOn("assembleRelease", "createReleaseDistributable", "packageReleaseMsi")
     onlyIf { isWindowsHost() }
 
@@ -869,14 +895,14 @@ tasks.register("verifyDesktopPackagingTasks") {
     description = "Confirm Compose Desktop packaging tasks are registered for this host OS"
     doLast {
         val requiredTasks = buildList {
-            add("createDistributable")
             add("packageDistributionForCurrentOS")
             if (isMacHost()) {
+                add("createDistributable")
                 add("packageDmg")
                 add("packageReleaseDmg")
             }
             if (isWindowsHost()) {
-                add("packageMsi")
+                add("createReleaseDistributable")
                 add("packageReleaseMsi")
             }
         }
@@ -983,22 +1009,23 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
 }
 
 /**
- * Full ship after [assembleDebug] + [assembleRelease] into `current/`.
- * Mac: APKs + .app + DMG. Windows: APKs + MSI + portable app.
+ * Full ship into `current/`.
+ * Mac: debug+release APKs + .app + DMG. Windows: release APK + release MSI only.
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Move debug+release APKs and desktop ship into current/"
-    dependsOn("assembleDebug", "assembleRelease")
+    description = "Ship into current/ (Mac full set; Windows release APK + MSI)"
     if (isMacHost()) {
-        dependsOn("embedMacExtensions", "fixDmgVolumeIcon")
+        dependsOn("assembleDebug", "assembleRelease", "embedMacExtensions", "fixDmgVolumeIcon")
     } else if (isWindowsHost()) {
-        dependsOn("createDistributable", "packageMsi", "createReleaseDistributable", "packageReleaseMsi")
+        dependsOn("assembleRelease", "createReleaseDistributable", "packageReleaseMsi")
+    } else {
+        dependsOn("assembleDebug", "assembleRelease")
     }
 
     doLast {
         shipToCurrent(
-            includeDebugApk = true,
+            includeDebugApk = isMacHost(),
             includeReleaseApk = true,
             includeDmg = isMacHost(),
             includeMsi = isWindowsHost(),

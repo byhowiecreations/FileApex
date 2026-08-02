@@ -1,0 +1,17 @@
+# Compose Desktop release shrinker — supplemental rules (default CMP rules still apply).
+
+# qrose QR draws via Compose/Skia shader APIs; signatures drift across Compose/Skiko versions.
+-dontwarn io.github.alexzhirkevich.qrose.**
+-keep class io.github.alexzhirkevich.qrose.** { *; }
+
+# Optional Skiko IntelliJ bridge not present on the packaged classpath.
+-dontwarn com.jetbrains.SharedTextures
+-dontwarn org.jetbrains.skiko.swing.JbrSharedTexturesAdapter
+
+# Skia/Compose graphics interop referenced from libraries.
+-dontwarn org.jetbrains.skia.**
+-keep class org.jetbrains.skia.** { *; }
+-keep class androidx.compose.ui.graphics.** { *; }
+
+# Avoid over-aggressive optimization breaking kotlinx/Compose runtime (CMP #4391).
+-dontoptimize
