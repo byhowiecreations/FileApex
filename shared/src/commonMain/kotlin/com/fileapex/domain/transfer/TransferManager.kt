@@ -12,8 +12,6 @@ import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.domain.transfer.verifiedFromDisk
 import kotlinx.coroutines.delay
-import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
 
 /**
  * Single source of truth for outbound Multi Copy and explorer transfer actions.
@@ -205,7 +203,8 @@ class TransferManager(
     ): List<String> = transferService.downloadRemoteToDownloads(host, port, items)
 
     /**
-     * Share Extension job consumer: local absolute paths + paired device IDs.
+     * Share Extension / desktop drop consumer: local absolute files **or folders** + paired device IDs.
+     * Folders are expanded via [LocalTransferTree] so nested structure is preserved on the peer.
      */
     suspend fun sendLocalPathsToDeviceIds(
         absolutePaths: List<String>,
@@ -213,16 +212,9 @@ class TransferManager(
     ): TransferBatchResult {
         awaitReady()
         require(absolutePaths.isNotEmpty()) { "Nothing to send" }
-        val sources = absolutePaths.map { path ->
-            val local = Path(path)
-            check(SystemFileSystem.exists(local)) { "Missing file: $path" }
-            val metadata = SystemFileSystem.metadataOrNull(local)
-            check(metadata != null && !metadata.isDirectory) { "Missing file: $path" }
-            MultiCopySource.Local(
-                fileName = local.name,
-                sizeBytes = metadata.size,
-                absolutePath = path
-            )
+        val sources = LocalTransferTree.expandAbsolutePaths(absolutePaths)
+        check(sources.isNotEmpty()) {
+            "Nothing to send — empty folder or missing files"
         }
         val options = resolveRemoteDeviceOptions(deviceIds)
         return sendToDevices(sources, options)

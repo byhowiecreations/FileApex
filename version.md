@@ -1,2 +1,2 @@
-name=0.6.6a
-code=81
+name=0.6.7a
+code=82

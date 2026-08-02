@@ -130,11 +130,16 @@ class FileTransferService(
                         if (option.isLocal) {
                             SystemFileSystem.createDirectories(Path(option.destinationRoot))
                         }
+                        val preferred = PathUtils.join(option.destinationRoot, source.relativeDestPath)
                         val fileTarget = if (option.isLocal) {
-                            UniqueFileNames.resolveInDirectory(option.destinationRoot, source.fileName)
+                            UniqueFileNames.resolve(preferred).also { resolved ->
+                                Path(resolved).parent?.let { parent ->
+                                    SystemFileSystem.createDirectories(parent)
+                                }
+                            }
                         } else {
-                            // Remote server also resolves collisions; preferred name is fine here.
-                            PathUtils.join(option.destinationRoot, source.fileName)
+                            // Remote server creates parents and resolves collisions.
+                            preferred
                         }
                         if (option.isLocal) {
                             MultiCopyDestination.LocalDevice(

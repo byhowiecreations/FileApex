@@ -73,6 +73,6 @@ private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
             is String -> File(entry)
             else -> null
         } ?: return@mapNotNull null
-        if (file.isFile) file.absolutePath else null
+        if (file.isFile || file.isDirectory) file.absolutePath else null
     }
 }

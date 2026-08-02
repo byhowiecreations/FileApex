@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 /**
- * Desktop: accept Finder/OS file drops. Android: no-op (returns [this]).
+ * Desktop: accept Finder/Explorer file **and folder** drops. Android: no-op (returns [this]).
  */
 @Composable
 expect fun Modifier.deviceFileDropTarget(

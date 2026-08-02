@@ -478,7 +478,8 @@ class DevicesViewModel : ViewModel() {
     }
 
     /**
-     * Finder / OS drop onto a device tile → outbound send via [transferManager] (SSOT).
+     * Finder / Explorer drop onto a device tile → outbound send via [transferManager] (SSOT).
+     * Accepts files and folders; folders keep their nested structure on the peer.
      * Local "This device" drops are refused (no same-device remote transfer).
      */
     fun sendDroppedLocalFiles(deviceId: String, absolutePaths: List<String>) {
@@ -492,20 +493,19 @@ class DevicesViewModel : ViewModel() {
                 }
                 return@launch
             }
-            val files = withContext(Dispatchers.IO) {
+            val roots = withContext(Dispatchers.IO) {
                 absolutePaths.filter { path ->
                     runCatching {
                         val file = kotlinx.io.files.Path(path)
-                        val meta = kotlinx.io.files.SystemFileSystem.metadataOrNull(file)
-                        meta != null && !meta.isDirectory
+                        kotlinx.io.files.SystemFileSystem.exists(file)
                     }.getOrDefault(false)
                 }
             }
-            if (files.isEmpty()) {
+            if (roots.isEmpty()) {
                 _uiState.update {
                     it.copy(
                         statusMessage = null,
-                        errorMessage = "Drop one or more files (folders are not sent)"
+                        errorMessage = "Drop one or more files or folders"
                     )
                 }
                 return@launch
@@ -519,13 +519,13 @@ class DevicesViewModel : ViewModel() {
             }
             _uiState.update {
                 it.copy(
-                    statusMessage = "Sending ${files.size} file(s) to ${target.deviceName}…",
+                    statusMessage = "Sending to ${target.deviceName}…",
                     errorMessage = null
                 )
             }
             runCatching {
                 withContext(Dispatchers.IO) {
-                    transferManager.sendLocalPathsToDeviceIds(files, listOf(deviceId))
+                    transferManager.sendLocalPathsToDeviceIds(roots, listOf(deviceId))
                 }
             }.fold(
                 onSuccess = { batch ->

@@ -18,11 +18,17 @@ sealed interface MultiCopySource {
     val fileName: String
     val sizeBytes: Long
     val absolutePath: String
+    /**
+     * Destination path relative to the peer receive root, preserving folder structure.
+     * Flat files use [fileName]; folder drops use `FolderName/sub/file.ext`.
+     */
+    val relativeDestPath: String
 
     data class Local(
         override val fileName: String,
         override val sizeBytes: Long,
-        override val absolutePath: String
+        override val absolutePath: String,
+        override val relativeDestPath: String = fileName
     ) : MultiCopySource
 
     data class Remote(
@@ -30,7 +36,8 @@ sealed interface MultiCopySource {
         override val sizeBytes: Long,
         override val absolutePath: String,
         val host: String,
-        val port: Int
+        val port: Int,
+        override val relativeDestPath: String = fileName
     ) : MultiCopySource
 }
 
