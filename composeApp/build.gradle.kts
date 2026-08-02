@@ -315,9 +315,13 @@ compose.desktop {
         jvmArgs += listOf(
             "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
-            "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
-            "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED"
         )
+        if (isMacHost()) {
+            jvmArgs += listOf(
+                "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
+                "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+            )
+        }
         if (isWindowsHost()) {
             // Belt-and-suspenders for packaged/run launches; [DesktopJvmStartup] also sets this in main().
             jvmArgs += listOf("-Dskiko.renderApi=OPENGL")
@@ -375,6 +379,7 @@ compose.desktop {
                 // Desktop shortcut is offered on the finish dialog (ui.wxf override), not during file copy.
                 shortcut = false
                 // Stable upgrade UUID — required for in-place MSI upgrades across releases.
+                // msiPackageVersion (1.0.${code}) must increase each Windows MSI ship; marketing name stays separate.
                 upgradeUuid = "7c4f8a2e-9b1d-4e6a-c3f5-8d2e1a0b9c7f"
                 msiPackageVersion = "1.0.${providers.gradleProperty("fileapex.version.code").get()}"
             }

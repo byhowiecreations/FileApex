@@ -15,3 +15,13 @@
 
 # Avoid over-aggressive optimization breaking kotlinx/Compose runtime (CMP #4391).
 -dontoptimize
+
+# Room KSP output — shrinker drops *_Impl unless kept; @ConstructedBy resolves at runtime.
+-keep class com.fileapex.data.db.** { *; }
+-keep @androidx.room3.Database class * { *; }
+-keep @androidx.room3.Dao interface * { *; }
+-keep class * extends androidx.room3.RoomDatabase { *; }
+-keep class * implements androidx.room3.RoomDatabaseConstructor { *; }
+-keepclassmembers class * extends androidx.room3.RoomDatabase {
+    <init>(...);
+}
