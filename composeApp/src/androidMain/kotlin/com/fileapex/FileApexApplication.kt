@@ -23,11 +23,9 @@ class FileApexApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (!isUserStorageUnlocked(this)) {
-            // A direct-boot-aware broadcast (LOCKED_BOOT_COMPLETED) spun up this process before
-            // the user's first unlock this boot. Credential-encrypted storage — SharedPreferences,
-            // Room, getFilesDir() — throws IllegalStateException until unlock, so skip full init
-            // rather than crash. The platform redelivers ACTION_BOOT_COMPLETED to
-            // FileApexWatchdogReceiver once the user unlocks, which retries this safely.
+            // Pre-unlock process start (should be rare now that LOCKED_BOOT_COMPLETED is not
+            // registered). Credential-encrypted storage throws until unlock — skip full init.
+            // [FileApexWatchdogReceiver] handles auto-launch on USER_UNLOCKED / BOOT_COMPLETED.
             Log.i(TAG, "onCreate: user storage still locked — deferring full init")
             return
         }

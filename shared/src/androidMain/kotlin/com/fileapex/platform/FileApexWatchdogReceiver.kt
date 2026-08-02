@@ -7,7 +7,12 @@ import android.util.Log
 
 /**
  * AlarmManager / boot heartbeat — restarts [FileShareServerService] only (never the UI).
- * [android.content.Intent.ACTION_LOCKED_BOOT_COMPLETED] uses device-protected prefs only.
+ *
+ * Listens for [Intent.ACTION_USER_UNLOCKED] and [Intent.ACTION_BOOT_COMPLETED] after credential
+ * storage is available. We intentionally do **not** register for
+ * [Intent.ACTION_LOCKED_BOOT_COMPLETED]: that broadcast spins up an empty process (Application
+ * defers init, receiver skips work), which the system kills before the unlocked boot broadcast
+ * queue reaches this app — so auto-launch never runs.
  */
 class FileApexWatchdogReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
@@ -16,28 +21,8 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
         Log.i(TAG, "Watchdog received action=$action")
 
         when (action) {
-            Intent.ACTION_LOCKED_BOOT_COMPLETED,
-            Intent.ACTION_BOOT_COMPLETED -> {
-                if (!isUserStorageUnlocked(appContext)) {
-                    // Direct-boot window: FileApexServices (Room DB, settings) isn't safe to touch
-                    // yet, and starting the real share-server FGS needs it. Do nothing here — the
-                    // platform redelivers ACTION_BOOT_COMPLETED once the user unlocks, and that
-                    // retry runs this same branch with full storage available.
-                    Log.i(TAG, "Storage still locked — skip restart, waiting for unlocked retry")
-                    return
-                }
-                if (!ServiceWatchdogScheduler.isAutoLaunchOnRebootEnabled(appContext)) {
-                    Log.i(TAG, "Auto launch on reboot disabled — skipping boot restart")
-                    return
-                }
-                ShareServerRestartCoordinator.attemptWatchdogRestart(
-                    appContext,
-                    ShareServerRestartCoordinator.RestartTrigger.BOOT_COMPLETED
-                )
-                if (ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
-                    ServiceWatchdogScheduler.scheduleNext(appContext)
-                }
-            }
+            Intent.ACTION_USER_UNLOCKED,
+            Intent.ACTION_BOOT_COMPLETED -> handleBootAutoLaunch(appContext)
             ServiceWatchdogScheduler.ACTION_SERVICE_WATCHDOG -> {
                 if (!ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
                     ServiceWatchdogScheduler.cancel(appContext)
@@ -49,6 +34,25 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
                 )
                 ServiceWatchdogScheduler.scheduleNext(appContext)
             }
+        }
+    }
+
+    private fun handleBootAutoLaunch(appContext: Context) {
+        if (!isUserStorageUnlocked(appContext)) {
+            Log.i(TAG, "Storage still locked — skip restart")
+            return
+        }
+        if (!ServiceWatchdogScheduler.isAutoLaunchOnRebootEnabled(appContext)) {
+            Log.i(TAG, "Auto launch on reboot disabled — skipping boot restart")
+            return
+        }
+        ShareServerRestartCoordinator.attemptWatchdogRestart(
+            appContext,
+            ShareServerRestartCoordinator.RestartTrigger.BOOT_COMPLETED
+        )
+        if (ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
+            ServiceWatchdogScheduler.scheduleNext(appContext)
+            ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
         }
     }
 

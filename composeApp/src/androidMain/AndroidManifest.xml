@@ -124,10 +124,9 @@
 
         <receiver
             android:name="com.fileapex.platform.FileApexWatchdogReceiver"
-            android:exported="false"
-            android:directBootAware="true">
+            android:exported="false">
             <intent-filter>
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
