@@ -21,11 +21,26 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
         Log.i(TAG, "Watchdog received action=$action")
 
         when (action) {
-            Intent.ACTION_USER_UNLOCKED,
+            Intent.ACTION_USER_UNLOCKED -> {
+                // Finish deferred Application init as soon as CE storage is available. Do not rely
+                // on FGS start here — Pixel/API 31+ often denies background FGS until the
+                // BOOT_COMPLETED temp-allowlist window (next branch).
+                if (FileApexAndroidBootstrap.ensureInitialized(appContext) &&
+                    ServiceWatchdogScheduler.isWatchdogEnabled(appContext)
+                ) {
+                    ServiceWatchdogScheduler.scheduleNext(appContext)
+                    ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
+                }
+            }
             Intent.ACTION_BOOT_COMPLETED -> handleBootAutoLaunch(appContext)
             ServiceWatchdogScheduler.ACTION_SERVICE_WATCHDOG -> {
                 if (!ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
                     ServiceWatchdogScheduler.cancel(appContext)
+                    return
+                }
+                if (!FileApexAndroidBootstrap.ensureInitialized(appContext)) {
+                    Log.w(TAG, "Watchdog alarm skipped — process init not ready")
+                    ServiceWatchdogScheduler.scheduleNext(appContext)
                     return
                 }
                 ShareServerRestartCoordinator.attemptWatchdogRestart(
@@ -40,6 +55,12 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
     private fun handleBootAutoLaunch(appContext: Context) {
         if (!isUserStorageUnlocked(appContext)) {
             Log.i(TAG, "Storage still locked — skip restart")
+            return
+        }
+        // Application.onCreate may have deferred init on an earlier Direct Boot spawn of this
+        // same process — finish bootstrap before touching settings / starting the FGS.
+        if (!FileApexAndroidBootstrap.ensureInitialized(appContext)) {
+            Log.w(TAG, "Boot auto-launch skipped — process init not ready")
             return
         }
         if (!ServiceWatchdogScheduler.isAutoLaunchOnRebootEnabled(appContext)) {

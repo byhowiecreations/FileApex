@@ -7,6 +7,7 @@ import android.os.IBinder
 import android.util.Log
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.presence.PresenceBackgroundWake
+import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.platform.ServiceWatchdogScheduler
 import com.fileapex.platform.ServiceWatchdogState
@@ -36,6 +37,9 @@ class FileShareServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Finish deferred Application init before promotion / identity use. Pixel can reuse a
+        // process that skipped Application.onCreate during Direct Boot.
+        FileApexAndroidBootstrap.ensureInitialized(this)
         ShareServerForegroundNotification.resetPostedState()
         // Strict OEMs (Motorola): startForeground within ~5s of startForegroundService — before
         // onStartCommand and before any server / UDP setup work.
@@ -46,6 +50,11 @@ class FileShareServerService : Service() {
         val fromForeground = isForegroundStart(intent)
         val reassert = intent?.action == ShareServerKeepAliveCoordinator.ACTION_REASSERT
         val stickyRestart = intent == null
+        if (!FileApexAndroidBootstrap.ensureInitialized(this)) {
+            Log.w(TAG, "Process init not ready — deferring share-server start")
+            handlePromotionFailure(fromForeground = fromForeground, stickyRestart = stickyRestart)
+            return START_NOT_STICKY
+        }
         if (reassert && isForegroundPromoted && ShareServerForegroundNotification.isPosted()) {
             runBackgroundHousekeeping()
             return START_STICKY

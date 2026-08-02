@@ -158,6 +158,10 @@ plugins {
     alias(libs.plugins.room3)
 }
 
+// Loaded from committed version.md via settings.gradle.kts (beforeProject).
+val fileapexVersionName = extra["fileapex.version.name"] as String
+val fileapexVersionCode = extra["fileapex.version.code"] as String
+
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -378,14 +382,14 @@ val generateFcmCredentials = tasks.register("generateFcmCredentials") {
 
 val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
     val outDir = layout.buildDirectory.dir("generated/fileapexAppVersion/kotlin")
-    val versionName = providers.gradleProperty("fileapex.version.name")
-    val versionCode = providers.gradleProperty("fileapex.version.code")
+    val versionFile = rootProject.file("version.md")
+    val versionName = fileapexVersionName
+    val versionCode = fileapexVersionCode
+    inputs.file(versionFile)
     inputs.property("versionName", versionName)
     inputs.property("versionCode", versionCode)
     outputs.dir(outDir)
     doLast {
-        val name = versionName.get()
-        val code = versionCode.get()
         val dir = outDir.get().asFile.resolve("com/fileapex/update")
         dir.mkdirs()
         dir.resolve("GeneratedAppVersion.kt").writeText(
@@ -393,13 +397,13 @@ val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
             |package com.fileapex.update
             |
             |/**
-            | * Generated from gradle.properties — do not edit.
-            | *   fileapex.version.name → [NAME]
-            | *   fileapex.version.code → [CODE]
+            | * Generated from version.md — do not edit.
+            | *   name= → [NAME]
+            | *   code= → [CODE]
             | */
             |internal object GeneratedAppVersion {
-            |    const val NAME = "$name"
-            |    const val CODE = $code
+            |    const val NAME = "$versionName"
+            |    const val CODE = $versionCode
             |}
             """.trimMargin()
         )

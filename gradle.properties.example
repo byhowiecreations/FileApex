@@ -1,8 +1,7 @@
 # Copy to gradle.properties (gitignored) and fill in real values.
 # NEVER commit gradle.properties — it contains secrets.
-
-fileapex.version.name=0.0.0
-fileapex.version.code=1
+#
+# App version lives in committed version.md at the project root (name= / code=).
 
 # Google OAuth — two GCC client types, different roles:
 #

@@ -31,6 +31,7 @@ import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.network.FileShareServerService
 import com.fileapex.platform.AndroidShareIntake
 import com.fileapex.platform.BackgroundPersistenceGuidance
+import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.toUiState
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.platform.ServiceWatchdogScheduler
@@ -112,6 +113,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(barColor)
         )
         super.onCreate(savedInstanceState)
+        // Complete init if this process deferred Application.onCreate during Direct Boot.
+        FileApexAndroidBootstrap.ensureInitialized(this)
         configureVisibleSystemBars()
         refreshPermissions()
         requestNotificationPermissionIfNeeded()

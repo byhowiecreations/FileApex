@@ -3,9 +3,8 @@ package com.fileapex.update
 /**
  * Marketing version string (Android + Desktop UI).
  *
- * [NAME] is generated at build time from `fileapex.version.name` in gradle.properties
- * (see [GeneratedAppVersion]). Android APK [versionName] and jpackage [packageVersion]
- * use the same gradle.properties keys.
+ * [NAME] / [CODE] are generated at build time from committed `version.md`
+ * (`name=` / `code=`; see [GeneratedAppVersion]).
  */
 object FileApexAppVersion {
     const val NAME: String = GeneratedAppVersion.NAME

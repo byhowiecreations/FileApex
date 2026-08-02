@@ -24,7 +24,33 @@ fun syncPlatformSdkDir() {
     }
 }
 
+fun loadFileApexVersion(settingsDir: java.io.File): Pair<String, String> {
+    val versionFile = settingsDir.resolve("version.md")
+    check(versionFile.isFile) { "Missing version.md at ${versionFile.absolutePath}" }
+    val map = versionFile.readLines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .associate { line ->
+            val parts = line.split("=", limit = 2)
+            check(parts.size == 2) { "Invalid version.md line (expected key=value): $line" }
+            parts[0].trim() to parts[1].trim()
+        }
+    val name = map["name"]?.takeIf { it.isNotEmpty() }
+        ?: error("version.md missing name=")
+    val code = map["code"]?.takeIf { it.isNotEmpty() }
+        ?: error("version.md missing code=")
+    check(code.toIntOrNull() != null) { "version.md code must be an integer, was: $code" }
+    return name to code
+}
+
 syncPlatformSdkDir()
+
+val (fileapexVersionName, fileapexVersionCode) = loadFileApexVersion(settingsDir)
+
+gradle.beforeProject {
+    extensions.extraProperties.set("fileapex.version.name", fileapexVersionName)
+    extensions.extraProperties.set("fileapex.version.code", fileapexVersionCode)
+}
 
 pluginManagement {
     repositories {

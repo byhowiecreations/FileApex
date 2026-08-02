@@ -31,6 +31,10 @@ plugins {
     alias(libs.plugins.googleServices)
 }
 
+// Loaded from committed version.md via settings.gradle.kts (beforeProject).
+val fileapexVersionName = extra["fileapex.version.name"] as String
+val fileapexVersionCode = extra["fileapex.version.code"] as String
+
 kotlin {
     androidTarget {
         compilerOptions {
@@ -73,18 +77,16 @@ android {
     namespace = "com.fileapex"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    val appVersionName = providers.gradleProperty("fileapex.version.name").get()
-
     defaultConfig {
         applicationId = "com.fileapex"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = providers.gradleProperty("fileapex.version.code").get().toInt()
-        versionName = appVersionName
+        versionCode = fileapexVersionCode.toInt()
+        versionName = fileapexVersionName
     }
 
     base {
-        archivesName.set("FileApex-$appVersionName")
+        archivesName.set("FileApex-v$fileapexVersionName")
     }
 
     compileOptions {
@@ -337,8 +339,8 @@ compose.desktop {
             packageName = "FileApex"
             description = "Local-first P2P file explorer"
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
-            // Marketing version stays fileapex.version.name; installers are renamed on copy.
-            packageVersion = "1.0.${providers.gradleProperty("fileapex.version.code").get()}"
+            // Marketing version stays version.md name=; installers are renamed on copy.
+            packageVersion = "1.0.$fileapexVersionCode"
 
             macOS {
                 iconFile.set(project.file("icons/FileApex.icns"))
@@ -381,7 +383,7 @@ compose.desktop {
                 // Stable upgrade UUID — required for in-place MSI upgrades across releases.
                 // msiPackageVersion (1.0.${code}) must increase each Windows MSI ship; marketing name stays separate.
                 upgradeUuid = "7c4f8a2e-9b1d-4e6a-c3f5-8d2e1a0b9c7f"
-                msiPackageVersion = "1.0.${providers.gradleProperty("fileapex.version.code").get()}"
+                msiPackageVersion = "1.0.$fileapexVersionCode"
             }
         }
     }
@@ -633,7 +635,7 @@ private fun Project.shipMsiToCurrent(
         "No MSI found in ${msiDir.absolutePath}. Run ${if (release) "packageReleaseMsi" else "packageMsi"} on a Windows host with WiX installed."
     }
     val preferred = msis.maxByOrNull { it.lastModified() } ?: msis.first()
-    moveToCurrent(dest, preferred, destName = "FileApex-$appVersionName.msi", logger = logger)
+    moveToCurrent(dest, preferred, destName = "FileApex-v$appVersionName.msi", logger = logger)
 }
 
 /**
@@ -744,8 +746,8 @@ private fun Project.shipToCurrent(
     )
 
     val logger = logger
-    val appVersionName = providers.gradleProperty("fileapex.version.name").get()
-    val versionCode = providers.gradleProperty("fileapex.version.code").get()
+    val appVersionName = fileapexVersionName
+    val versionCode = fileapexVersionCode
 
     fun moveApksFrom(variant: String) {
         val apks = apkOutputDir(variant).listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
@@ -764,7 +766,7 @@ private fun Project.shipToCurrent(
     if (includeDebugApk) moveApksFrom("debug")
     if (includeReleaseApk) moveApksFrom("release")
 
-    val dmgDestName = "FileApex-$appVersionName.dmg"
+    val dmgDestName = "FileApex-v$appVersionName.dmg"
     if (includeDmg && isMacHost()) {
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
         val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension == "dmg" }
