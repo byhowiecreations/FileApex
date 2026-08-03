@@ -56,7 +56,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -105,6 +104,16 @@ import com.fileapex.ui.adaptive.widthSizeClassFor
 import com.fileapex.ui.dnd.deviceFileDropTarget
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.LocalFileApexUiStyle
+import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.ui.theme.fileApexChromeContainerColor
+import com.fileapex.ui.theme.fileApexChromeTopEdge
+import com.fileapex.ui.theme.fileApexNavigationBarItemColors
+import com.fileapex.ui.theme.fileApexNavSelectedBackgroundColor
+import com.fileapex.ui.theme.fileApexNavSelectedIconColor
+import com.fileapex.ui.theme.fileApexNavSelectedTextColor
+import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
+import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Approximate device card row height used for desktop window sizing. */
@@ -361,12 +370,25 @@ fun DevicesScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(40.dp),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
+                        MaterialTheme.shapes.medium
+                    } else {
+                        RoundedCornerShape(20.dp)
+                    },
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = FileApexTeal,
                         contentColor = Color.White
-                    )
+                    ),
+                    elevation = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
+                        ButtonDefaults.buttonElevation(
+                            defaultElevation = 0.dp,
+                            pressedElevation = 0.dp,
+                            hoveredElevation = 0.dp
+                        )
+                    } else {
+                        ButtonDefaults.buttonElevation()
+                    }
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Add,
@@ -903,6 +925,8 @@ private fun DeviceGridCell(
     var menuOpen by remember { mutableStateOf(false) }
     var dropHover by remember { mutableStateOf(false) }
     val highlighted = selected || dropHover
+    val fluent = LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
+    val cellShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(12.dp)
     val titleStyle = if (grid.compactTypography) {
         MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
     } else {
@@ -916,7 +940,11 @@ private fun DeviceGridCell(
     val containerColor = when {
         dropHover -> FileApexTeal.copy(alpha = 0.22f)
         selected -> FileApexTeal.copy(alpha = 0.12f)
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        else -> if (fluent) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        }
     }
 
     Surface(
@@ -928,15 +956,19 @@ private fun DeviceGridCell(
                 onHoverChange = { dropHover = it },
                 onFilesDropped = { paths -> onFilesDropped(dropDeviceId, paths) }
             )
-            .clip(RoundedCornerShape(12.dp))
+            .clip(cellShape)
             .clickable(enabled = !connecting, onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = cellShape,
         color = containerColor,
         tonalElevation = 0.dp,
-        shadowElevation = if (highlighted) 0.dp else 1.dp,
+        shadowElevation = if (fluent || highlighted) 0.dp else 1.dp,
         border = BorderStroke(
-            width = if (highlighted) 1.5.dp else 1.dp,
-            color = if (highlighted) FileApexTeal else FileApexTeal.copy(alpha = 0.35f)
+            width = 1.dp,
+            color = when {
+                highlighted -> FileApexTeal
+                fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                else -> FileApexTeal.copy(alpha = 0.35f)
+            }
         )
     ) {
         Box(
@@ -1072,8 +1104,9 @@ fun FileApexBottomBar(
 ) {
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
     NavigationBar(
-        containerColor = FileApexTeal,
-        contentColor = Color.White,
+        modifier = Modifier.fileApexChromeTopEdge(),
+        containerColor = fileApexChromeContainerColor(),
+        contentColor = fileApexNavSelectedTextColor(),
         tonalElevation = 0.dp
     ) {
         NavigationBarItem(
@@ -1089,10 +1122,14 @@ fun FileApexBottomBar(
             label = {
                 Text(
                     devicesLabel,
-                    color = if (selected == HomeTab.Devices) Color.White else Color.White.copy(alpha = 0.85f)
+                    color = if (selected == HomeTab.Devices) {
+                        fileApexNavSelectedTextColor()
+                    } else {
+                        fileApexNavUnselectedTextColor()
+                    }
                 )
             },
-            colors = navItemColors()
+            colors = fileApexNavigationBarItemColors()
         )
         NavigationBarItem(
             selected = selected == HomeTab.Files,
@@ -1107,10 +1144,14 @@ fun FileApexBottomBar(
             label = {
                 Text(
                     "Local Files",
-                    color = if (selected == HomeTab.Files) Color.White else Color.White.copy(alpha = 0.85f)
+                    color = if (selected == HomeTab.Files) {
+                        fileApexNavSelectedTextColor()
+                    } else {
+                        fileApexNavUnselectedTextColor()
+                    }
                 )
             },
-            colors = navItemColors()
+            colors = fileApexNavigationBarItemColors()
         )
         NavigationBarItem(
             selected = selected == HomeTab.Settings,
@@ -1125,22 +1166,17 @@ fun FileApexBottomBar(
             label = {
                 Text(
                     "Settings",
-                    color = if (selected == HomeTab.Settings) Color.White else Color.White.copy(alpha = 0.85f)
+                    color = if (selected == HomeTab.Settings) {
+                        fileApexNavSelectedTextColor()
+                    } else {
+                        fileApexNavUnselectedTextColor()
+                    }
                 )
             },
-            colors = navItemColors()
+            colors = fileApexNavigationBarItemColors()
         )
     }
 }
-
-@Composable
-private fun navItemColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = FileApexTealDark,
-    unselectedIconColor = Color.White,
-    selectedTextColor = Color.White,
-    unselectedTextColor = Color.White.copy(alpha = 0.85f),
-    indicatorColor = Color.White
-)
 
 @Composable
 private fun NavIcon(
@@ -1152,13 +1188,17 @@ private fun NavIcon(
         modifier = Modifier
             .size(40.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) Color.White else Color.Transparent),
+            .background(if (selected) fileApexNavSelectedBackgroundColor() else Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = imageVector,
             contentDescription = contentDescription,
-            tint = if (selected) FileApexTealDark else Color.White,
+            tint = if (selected) {
+                fileApexNavSelectedIconColor()
+            } else {
+                fileApexNavUnselectedIconColor()
+            },
             modifier = Modifier.size(24.dp)
         )
     }
@@ -1194,24 +1234,36 @@ private fun DeviceCard(
         Modifier
     }
     val highlighted = selected || dropHover || dragging
+    val fluent = LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
     val containerColor = when {
         dragging -> FileApexTeal.copy(alpha = 0.14f)
         dropHover -> FileApexTeal.copy(alpha = 0.22f)
         selected -> FileApexTeal.copy(alpha = 0.12f)
         else -> MaterialTheme.colorScheme.surface
     }
+    val cardShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .then(dropModifier)
             .clickable(enabled = !connecting && !editMode, onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (highlighted) 0.dp else 3.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = when {
+                fluent -> 0.dp
+                highlighted -> 0.dp
+                else -> 3.dp
+            }
+        ),
         border = BorderStroke(
-            width = if (highlighted) 2.dp else 1.5.dp,
-            color = if (highlighted) FileApexTeal else FileApexTeal.copy(alpha = 0.55f)
+            width = 1.dp,
+            color = when {
+                highlighted -> FileApexTeal
+                fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                else -> FileApexTeal.copy(alpha = 0.55f)
+            }
         )
     ) {
         Row(

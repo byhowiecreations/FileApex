@@ -11,7 +11,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.swing.Swing
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -146,7 +145,7 @@ object DesktopMacTrayCoordinator {
                 FileApexServices.presenceMonitor.onlineSnapshotEpochMs
             ) { devices, _, _, _ ->
                 devices.map { device ->
-                    TrayDeviceSnapshot(
+                    DesktopTrayDeviceSnapshot(
                         id = device.deviceId,
                         name = device.deviceName,
                         isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
@@ -161,7 +160,7 @@ object DesktopMacTrayCoordinator {
     private suspend fun pushDeviceSnapshot() {
         val devices = FileApexServices.deviceRepository.listDevices()
         val snapshots = devices.map { device ->
-            TrayDeviceSnapshot(
+            DesktopTrayDeviceSnapshot(
                 id = device.deviceId,
                 name = device.deviceName,
                 isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
@@ -204,10 +203,3 @@ object DesktopMacTrayCoordinator {
         }
     }
 }
-
-@Serializable
-private data class TrayDeviceSnapshot(
-    val id: String,
-    val name: String,
-    val isOnline: Boolean
-)

@@ -38,6 +38,11 @@ interface AppSettings {
     val deviceOrderUpdatedAtEpochMs: StateFlow<Long>
     /** Desktop-only: force compact or expanded adaptive layout regardless of window width. */
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
+    /**
+     * Windows desktop visual style ([DesktopUiStyle.Standard] vs Fluent / Windows 11 Modern).
+     * Ignored on Android and non-Windows desktops.
+     */
+    val desktopUiStyle: StateFlow<DesktopUiStyle>
     /** File explorer layout (list vs grid). Default [com.fileapex.presentation.ExplorerViewMode.List]. */
     val explorerViewMode: StateFlow<ExplorerViewMode>
     /** Paired-devices layout (list vs grid). Default [com.fileapex.presentation.ExplorerViewMode.List]. */
@@ -66,6 +71,8 @@ interface AppSettings {
     fun setDeviceOrderUpdatedAtEpochMs(epochMs: Long)
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode)
+
+    fun setDesktopUiStyle(style: DesktopUiStyle)
 
     fun setExplorerViewMode(mode: ExplorerViewMode)
 

@@ -44,6 +44,8 @@ import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ShareSendViewModel
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.fileApexTopAppBarColors
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,14 +87,10 @@ fun ShareSendScreen(
                         },
                         enabled = !state.isSending
                     ) {
-                        Text("Cancel", color = Color.White)
+                        Text("Cancel", color = fileApexChromeContentColor())
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = FileApexTeal,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
-                )
+                colors = fileApexTopAppBarColors()
             )
         }
     ) { padding ->

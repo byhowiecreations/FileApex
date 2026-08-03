@@ -22,6 +22,7 @@ import java.awt.Desktop
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.data.settings.DesktopLayoutMode
+import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.DesktopShareServerController
 import com.fileapex.domain.presence.PresenceForegroundRefresh
@@ -32,6 +33,7 @@ import com.fileapex.platform.DesktopScreenGeometry
 import com.fileapex.platform.DesktopTraySupport
 import com.fileapex.platform.DesktopWindowBoundsStore
 import com.fileapex.platform.DesktopSendHandoff
+import com.fileapex.platform.DesktopWindowsBackdrop
 import com.fileapex.ui.DeviceCardSlotHeight
 import com.fileapex.ui.DeviceListToAddGap
 import com.fileapex.update.AppUpdateCoordinator
@@ -107,6 +109,14 @@ fun main() {
             }
         }
         val desktopLayoutMode by layoutModeFlow.collectAsState(initial = DesktopLayoutMode.Compact)
+        val uiStyleFlow = remember(servicesReady) {
+            if (servicesReady) {
+                FileApexServices.settings.desktopUiStyle
+            } else {
+                flowOf(DesktopUiStyle.Standard)
+            }
+        }
+        val desktopUiStyle by uiStyleFlow.collectAsState(initial = DesktopUiStyle.Standard)
         val defaultBootstrapSize = DpSize(
             width = DesktopWindowCompactWidth,
             height = DesktopWindowMinHeight
@@ -188,6 +198,12 @@ fun main() {
                     shutdownDesktop()
                     exitApplication()
                 }
+            }
+
+            LaunchedEffect(window, desktopUiStyle) {
+                if (!DesktopPlatformPaths.isWindows()) return@LaunchedEffect
+                val fluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
+                DesktopWindowsBackdrop.applyMica(window, fluent)
             }
 
             App(

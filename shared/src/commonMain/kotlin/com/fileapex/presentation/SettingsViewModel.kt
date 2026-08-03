@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
+import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.di.FileApexServices
@@ -34,6 +35,7 @@ data class SettingsUiState(
     val enableServiceWatchdog: Boolean = true,
     val autoLaunchOnReboot: Boolean = true,
     val desktopLayoutMode: DesktopLayoutMode = DesktopLayoutMode.Compact,
+    val desktopUiStyle: DesktopUiStyle = DesktopUiStyle.Standard,
     val googleAccountError: String? = null
 )
 
@@ -53,7 +55,8 @@ class SettingsViewModel : ViewModel() {
             checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString(),
             enableServiceWatchdog = settings.enableServiceWatchdog.value,
             autoLaunchOnReboot = settings.autoLaunchOnReboot.value,
-            desktopLayoutMode = settings.desktopLayoutMode.value
+            desktopLayoutMode = settings.desktopLayoutMode.value,
+            desktopUiStyle = settings.desktopUiStyle.value
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -79,6 +82,11 @@ class SettingsViewModel : ViewModel() {
     fun setDesktopLayoutMode(mode: DesktopLayoutMode) {
         settings.setDesktopLayoutMode(mode)
         _uiState.update { it.copy(desktopLayoutMode = mode) }
+    }
+
+    fun setDesktopUiStyle(style: DesktopUiStyle) {
+        settings.setDesktopUiStyle(style)
+        _uiState.update { it.copy(desktopUiStyle = style) }
     }
 
     fun setFileTransferNotifications(enabled: Boolean) {

@@ -337,7 +337,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*desktopInstallerFormats())
             packageName = "FileApex"
-            description = "Local-first P2P file explorer"
+            description = "Sync and manage files across your devices"
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
             // Marketing version stays version.md name=; installers are renamed on copy.
             packageVersion = "1.0.$fileapexVersionCode"

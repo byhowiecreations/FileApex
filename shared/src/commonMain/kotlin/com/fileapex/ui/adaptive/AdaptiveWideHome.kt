@@ -24,7 +24,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -50,7 +49,15 @@ import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.isMainHomeScreen
 import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.fileApexChromeBottomEdge
+import com.fileapex.ui.theme.fileApexChromeContainerColor
+import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.fileApexNavSelectedBackgroundColor
+import com.fileapex.ui.theme.fileApexNavSelectedIconColor
+import com.fileapex.ui.theme.fileApexNavSelectedTextColor
+import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
+import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
+import com.fileapex.ui.theme.fileApexNavigationRailItemColors
 
 /**
  * Medium / Expanded home: teal navigation rail + list-detail (devices | explorer).
@@ -197,32 +204,35 @@ private fun WideTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(FileApexTeal)
+            .fileApexChromeBottomEdge()
+            .background(fileApexChromeContainerColor())
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = "FileApex",
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-            color = Color.White,
+            color = fileApexChromeContentColor(),
             modifier = Modifier.weight(1f)
         )
         if (showDevicesViewToggle) {
             ExplorerViewModeToggle(
                 viewMode = devicesViewMode,
-                onToggle = onToggleDevicesViewMode
+                onToggle = onToggleDevicesViewMode,
+                iconTint = fileApexChromeContentColor()
             )
         } else if (showExplorerViewToggle) {
             ExplorerViewModeToggle(
                 viewMode = explorerViewMode,
-                onToggle = onToggleExplorerViewMode
+                onToggle = onToggleExplorerViewMode,
+                iconTint = fileApexChromeContentColor()
             )
         }
         IconButton(onClick = onExitClick) {
             Icon(
                 imageVector = Icons.Filled.PowerSettingsNew,
                 contentDescription = "Exit FileApex",
-                tint = Color.White
+                tint = fileApexChromeContentColor()
             )
         }
     }
@@ -239,8 +249,8 @@ fun FileApexNavigationRail(
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
     NavigationRail(
         modifier = Modifier.fillMaxHeight(),
-        containerColor = FileApexTeal,
-        contentColor = Color.White,
+        containerColor = fileApexChromeContainerColor(),
+        contentColor = fileApexChromeContentColor(),
         header = { Spacer(modifier = Modifier.height(8.dp)) }
     ) {
         RailItem(
@@ -279,24 +289,31 @@ private fun RailItem(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (selected) Color.White else Color.Transparent),
+                    .background(if (selected) fileApexNavSelectedBackgroundColor() else Color.Transparent),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
-                    tint = if (selected) FileApexTealDark else Color.White
+                    tint = if (selected) {
+                        fileApexNavSelectedIconColor()
+                    } else {
+                        fileApexNavUnselectedIconColor()
+                    }
                 )
             }
         },
-        label = { Text(label, color = Color.White) },
-        colors = NavigationRailItemDefaults.colors(
-            indicatorColor = Color.Transparent,
-            selectedIconColor = FileApexTealDark,
-            unselectedIconColor = Color.White,
-            selectedTextColor = Color.White,
-            unselectedTextColor = Color.White.copy(alpha = 0.85f)
-        )
+        label = {
+            Text(
+                label,
+                color = if (selected) {
+                    fileApexNavSelectedTextColor()
+                } else {
+                    fileApexNavUnselectedTextColor()
+                }
+            )
+        },
+        colors = fileApexNavigationRailItemColors()
     )
 }
 

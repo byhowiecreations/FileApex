@@ -48,10 +48,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
+import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.platform.FileApexBackHandler
+import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.util.TimeUtils
 import com.fileapex.platform.rememberGoogleSignInLauncher
@@ -60,7 +62,7 @@ import com.fileapex.presentation.SettingsViewModel
 import com.fileapex.ui.adaptive.CompactHomeTitleBand
 import com.fileapex.ui.adaptive.CompactHomeTitleStyle
 import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexTopAppBarColors
 import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
 
 private enum class SettingsPage {
@@ -71,7 +73,8 @@ private enum class SettingsPage {
     AutoLaunchOnReboot,
     FileTransferNotifications,
     GoogleAccount,
-    DesktopLayout
+    DesktopLayout,
+    WindowsDesign
 }
 
 enum class SettingsScreenLayoutMode {
@@ -136,6 +139,7 @@ fun SettingsScreen(
             onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
+            onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             backgroundPersistence = backgroundPersistence,
             exactAlarmWarningActive = exactAlarmWarningActive
@@ -202,6 +206,16 @@ fun SettingsScreen(
                 )
             }
         )
+        SettingsPage.WindowsDesign -> WindowsDesignSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onFluent = { enabled ->
+                viewModel.setDesktopUiStyle(
+                    if (enabled) DesktopUiStyle.WindowsFluent else DesktopUiStyle.Standard
+                )
+            }
+        )
     }
 }
 
@@ -220,6 +234,7 @@ private fun SettingsRootPage(
     onOpenFileTransferNotifications: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
+    onOpenWindowsDesign: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean
@@ -296,6 +311,13 @@ private fun SettingsRootPage(
                         title = "Desktop Layout",
                         subtitle = state.desktopLayoutMode.label,
                         onClick = onOpenDesktopLayout
+                    )
+                }
+                if (supportsWindowsFluentDesign()) {
+                    SettingsNavItem(
+                        title = "Windows Design",
+                        subtitle = state.desktopUiStyle.label,
+                        onClick = onOpenWindowsDesign
                     )
                 }
             }
@@ -605,6 +627,44 @@ private fun DesktopLayoutSettingsPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun WindowsDesignSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onFluent: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Windows Design",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Windows 11 Modern") },
+                supportingContent = {
+                    Text(
+                        "Standard keeps the cross-platform look (same as Android). " +
+                            "Modern uses native Windows styling and a Mica title bar. " +
+                            "Saved on this PC; applies immediately."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.desktopUiStyle == DesktopUiStyle.WindowsFluent,
+                        onCheckedChange = onFluent
+                    )
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun CheckForUpdatesSettingsPage(
     state: SettingsUiState,
     updateStatus: String?,
@@ -903,11 +963,7 @@ private fun SettingsTopBar(title: String, onBack: (() -> Unit)?) {
                 }
             }
         },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = FileApexTeal,
-            titleContentColor = MaterialTheme.colorScheme.onPrimary,
-            navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
-        )
+        colors = fileApexTopAppBarColors()
     )
 }
 

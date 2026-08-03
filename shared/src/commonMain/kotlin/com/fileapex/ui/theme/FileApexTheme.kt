@@ -1,9 +1,25 @@
 package com.fileapex.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ripple.RippleAlpha
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RippleConfiguration
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.platform.fluentUiFontFamily
 
 val FileApexTeal = Color(0xFF0F766E)
 val FileApexTealDark = Color(0xFF0A5C56)
@@ -14,7 +30,14 @@ val FileApexSurface = Color(0xFFFFFFFF)
 val FileApexCanvas = Color(0xFFF8FAFB)
 val FileApexBorder = Color(0xFF0F766E)
 
-private val FileApexColorScheme = lightColorScheme(
+private val FluentCanvas = Color(0xFFEFEFEF)
+private val FluentSurfaceBright = Color(0xFFFAFAFA)
+private val FluentOutline = Color(0xFF8A8A8A)
+private val FluentPrimaryContainer = Color(0xFFDFF0EE)
+
+val LocalFileApexUiStyle = staticCompositionLocalOf { DesktopUiStyle.Standard }
+
+private val StandardColorScheme = lightColorScheme(
     primary = FileApexTeal,
     onPrimary = Color.White,
     primaryContainer = FileApexTealSoft,
@@ -31,10 +54,91 @@ private val FileApexColorScheme = lightColorScheme(
     onError = Color.White
 )
 
-@Composable
-fun FileApexTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = FileApexColorScheme,
-        content = content
+private val FluentColorScheme = lightColorScheme(
+    primary = FileApexTeal,
+    onPrimary = Color.White,
+    primaryContainer = FluentPrimaryContainer,
+    onPrimaryContainer = FileApexTealDark,
+    secondary = FileApexTealDark,
+    onSecondary = Color.White,
+    background = FluentCanvas,
+    onBackground = FileApexInk,
+    surface = FluentSurfaceBright,
+    surfaceVariant = Color(0xFFF7F7F7),
+    onSurface = FileApexInk,
+    onSurfaceVariant = Color(0xFF5C5C5C),
+    outline = FluentOutline,
+    outlineVariant = Color(0x1A000000),
+    error = Color(0xFFC42B1C),
+    onError = Color.White
+)
+
+private val StandardShapes = Shapes()
+
+private val FluentShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(10.dp),
+    large = RoundedCornerShape(12.dp),
+    extraLarge = RoundedCornerShape(16.dp)
+)
+
+private fun fluentTypography(fontFamily: FontFamily): Typography {
+    val base = Typography()
+    fun TextStyle.withFluentFont(): TextStyle = copy(fontFamily = fontFamily)
+    return Typography(
+        displayLarge = base.displayLarge.withFluentFont(),
+        displayMedium = base.displayMedium.withFluentFont(),
+        displaySmall = base.displaySmall.withFluentFont(),
+        headlineLarge = base.headlineLarge.withFluentFont(),
+        headlineMedium = base.headlineMedium.withFluentFont(),
+        headlineSmall = base.headlineSmall.withFluentFont(),
+        titleLarge = base.titleLarge.copy(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold),
+        titleMedium = base.titleMedium.copy(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold),
+        titleSmall = base.titleSmall.withFluentFont(),
+        bodyLarge = base.bodyLarge.copy(fontFamily = fontFamily, lineHeight = 22.sp),
+        bodyMedium = base.bodyMedium.withFluentFont(),
+        bodySmall = base.bodySmall.withFluentFont(),
+        labelLarge = base.labelLarge.withFluentFont(),
+        labelMedium = base.labelMedium.withFluentFont(),
+        labelSmall = base.labelSmall.withFluentFont()
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FileApexTheme(
+    uiStyle: DesktopUiStyle = DesktopUiStyle.Standard,
+    content: @Composable () -> Unit
+) {
+    val fluent = uiStyle == DesktopUiStyle.WindowsFluent
+    val fontFamily = if (fluent) fluentUiFontFamily() else FontFamily.Default
+    val colorScheme = if (fluent) FluentColorScheme else StandardColorScheme
+    val shapes = if (fluent) FluentShapes else StandardShapes
+    val typography = if (fluent) fluentTypography(fontFamily) else Typography()
+    val fluentRipple = RippleConfiguration(
+        color = Color(0xFF000000),
+        rippleAlpha = RippleAlpha(
+            draggedAlpha = 0.08f,
+            focusedAlpha = 0.06f,
+            hoveredAlpha = 0.04f,
+            pressedAlpha = 0.08f
+        )
+    )
+
+    CompositionLocalProvider(LocalFileApexUiStyle provides uiStyle) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            shapes = shapes,
+            typography = typography
+        ) {
+            if (fluent) {
+                CompositionLocalProvider(LocalRippleConfiguration provides fluentRipple) {
+                    content()
+                }
+            } else {
+                content()
+            }
+        }
+    }
 }

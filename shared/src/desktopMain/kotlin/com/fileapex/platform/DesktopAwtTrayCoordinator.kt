@@ -1,24 +1,46 @@
 package com.fileapex.platform
 
+import com.fileapex.di.FileApexServices
+import com.fileapex.domain.presence.PresenceForegroundRefresh
 import java.awt.MenuItem
+import java.awt.Point
 import java.awt.PopupMenu
 import java.awt.SystemTray
 import java.awt.TrayIcon
 import java.awt.Window
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import javax.swing.SwingUtilities
+import javax.swing.UIManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.swing.Swing
+import kotlinx.coroutines.withContext
 
 /**
- * Windows (and generic JVM) system-tray fallback using AWT [SystemTray].
- * Provides hide-to-tray on close when supported; otherwise close exits normally.
+ * Windows system-tray using AWT [SystemTray].
+ *
+ * Left-click: Mac-parity device popover (Ctrl multi-select → Drop Files panel).
+ * Right-click: Show FileApex + Exit.
  */
 object DesktopAwtTrayCoordinator {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     private var mainWindow: Window? = null
     private var trayIcon: TrayIcon? = null
+    private var observeJob: Job? = null
     private var installed = false
     private var minimizeToTrayOnClose = false
     private var onShowWindow: (() -> Unit)? = null
     private var onHideWindow: (() -> Unit)? = null
+    private var onQuitApp: (() -> Unit)? = null
+    private var devices: List<DesktopTrayDeviceSnapshot> = emptyList()
+    private var trayPopover: DesktopWindowsTrayPopover? = null
 
     fun isInstalled(): Boolean = installed
 
@@ -32,6 +54,7 @@ object DesktopAwtTrayCoordinator {
         mainWindow = window
         this.onShowWindow = onShowWindow
         this.onHideWindow = onHideWindow
+        this.onQuitApp = onQuit
 
         if (!SystemTray.isSupported()) {
             println("DesktopAwtTrayCoordinator: SystemTray unavailable — close will exit app")
@@ -39,7 +62,8 @@ object DesktopAwtTrayCoordinator {
         }
 
         runCatching {
-            installTrayIcon(onQuit)
+            installTrayIcon()
+            startDeviceSync()
             installed = true
             minimizeToTrayOnClose = true
             println("DesktopAwtTrayCoordinator: AWT tray installed")
@@ -64,12 +88,14 @@ object DesktopAwtTrayCoordinator {
     }
 
     fun showMainWindow() {
+        trayPopover?.hide()
         onShowWindow?.invoke()
         SwingUtilities.invokeLater {
             requestForeground()
             mainWindow?.toFront()
             mainWindow?.requestFocus()
         }
+        PresenceForegroundRefresh.onAppForegrounded()
     }
 
     private fun requestForeground() {
@@ -93,6 +119,11 @@ object DesktopAwtTrayCoordinator {
 
     fun dispose() {
         if (!installed) return
+        observeJob?.cancel()
+        observeJob = null
+        trayPopover?.dispose()
+        trayPopover = null
+        DesktopWindowsDropBox.dispose()
         runCatching {
             val tray = SystemTray.getSystemTray()
             trayIcon?.let { tray.remove(it) }
@@ -104,9 +135,22 @@ object DesktopAwtTrayCoordinator {
         minimizeToTrayOnClose = false
         onShowWindow = null
         onHideWindow = null
+        onQuitApp = null
+        devices = emptyList()
     }
 
-    private fun installTrayIcon(onQuit: () -> Unit) {
+    private fun installTrayIcon() {
+        runCatching {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+        }
+
+        trayPopover = DesktopWindowsTrayPopover(
+            onLaunchApp = { showMainWindow() },
+            onQuitApp = { quitFromTray() },
+            onOpenDropBox = { deviceIds -> openDropBox(deviceIds) },
+            onRefreshDevices = { refreshDevicesFromTray() }
+        )
+
         val popup = PopupMenu()
         popup.add(
             MenuItem("Show FileApex").apply {
@@ -115,19 +159,119 @@ object DesktopAwtTrayCoordinator {
         )
         popup.add(
             MenuItem("Exit").apply {
-                addActionListener {
-                    dispose()
-                    onQuit()
-                }
+                addActionListener { quitFromTray() }
             }
         )
 
         val icon = TrayIcon(createTrayImage(), "FileApex", popup).apply {
             isImageAutoSize = true
+            // Windows: ActionEvent is typically double-click; single left-click is MouseListener.
             addActionListener { showMainWindow() }
+            addMouseListener(
+                object : MouseAdapter() {
+                    override fun mouseReleased(event: MouseEvent) {
+                        if (!SwingUtilities.isLeftMouseButton(event) || event.isPopupTrigger) {
+                            return
+                        }
+                        showLeftClickPopover(event.xOnScreen, event.yOnScreen)
+                    }
+                }
+            )
         }
         SystemTray.getSystemTray().add(icon)
         trayIcon = icon
+    }
+
+    private fun startDeviceSync() {
+        observeJob?.cancel()
+        observeJob = scope.launch {
+            if (!FileApexServices.isDatabaseReady()) return@launch
+            combine(
+                FileApexServices.deviceRepository.observeDevices(),
+                FileApexServices.presenceMonitor.reachabilityEpochMs,
+                FileApexServices.presenceMonitor.onlineDeviceIds,
+                FileApexServices.presenceMonitor.onlineSnapshotEpochMs
+            ) { roster, _, _, _ ->
+                roster.map { device ->
+                    DesktopTrayDeviceSnapshot(
+                        id = device.deviceId,
+                        name = device.deviceName,
+                        isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
+                    )
+                }
+            }.collect { snapshots ->
+                devices = snapshots
+                withContext(Dispatchers.Swing) {
+                    trayPopover?.updateDevices(snapshots)
+                }
+            }
+        }
+    }
+
+    private fun refreshDevicesFromTray() {
+        scope.launch {
+            if (!FileApexServices.isDatabaseReady()) return@launch
+            FileApexServices.presenceMonitor.refreshOnlineSnapshot()
+            devices = FileApexServices.deviceRepository.listDevices().map { device ->
+                DesktopTrayDeviceSnapshot(
+                    id = device.deviceId,
+                    name = device.deviceName,
+                    isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
+                )
+            }
+            withContext(Dispatchers.Swing) {
+                trayPopover?.updateDevices(devices)
+            }
+        }
+    }
+
+    private fun showLeftClickPopover(screenX: Int, screenY: Int) {
+        scope.launch {
+            if (FileApexServices.isDatabaseReady()) {
+                FileApexServices.presenceMonitor.refreshOnlineSnapshot()
+                devices = FileApexServices.deviceRepository.listDevices().map { device ->
+                    DesktopTrayDeviceSnapshot(
+                        id = device.deviceId,
+                        name = device.deviceName,
+                        isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
+                    )
+                }
+            }
+            withContext(Dispatchers.Swing) {
+                trayPopover?.toggleOrShow(Point(screenX, screenY), devices)
+            }
+        }
+    }
+
+    private fun openDropBox(deviceIds: List<String>) {
+        DesktopWindowsDropBox.show(deviceIds) { ids, paths ->
+            scope.launch(Dispatchers.Default) {
+                try {
+                    val batch = FileApexServices.transferManager.sendLocalPathsToDeviceIds(
+                        absolutePaths = paths,
+                        deviceIds = ids
+                    )
+                    val message = if (batch.allFailed) {
+                        batch.summaryMessage
+                    } else if (paths.size > 1) {
+                        "${paths.size} Files Sent"
+                    } else {
+                        "File Sent"
+                    }
+                    showBalloon(message)
+                } catch (error: Exception) {
+                    showBalloon(error.message ?: "Send failed")
+                } finally {
+                    DesktopWindowsDropBox.onSendFinished()
+                }
+            }
+        }
+    }
+
+    private fun quitFromTray() {
+        val quit = onQuitApp
+        dispose()
+        quit?.invoke()
     }
 
     private fun createTrayImage(): java.awt.Image {

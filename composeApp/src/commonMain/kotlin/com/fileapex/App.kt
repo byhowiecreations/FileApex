@@ -31,11 +31,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.data.settings.DesktopLayoutMode
+import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.navigation.AppRoute
 import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.platform.FileApexBackHandler
+import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerViewMode
@@ -58,6 +60,7 @@ import com.fileapex.ui.adaptive.widthSizeClassFor
 import com.fileapex.ui.adaptive.isWide
 import com.fileapex.ui.theme.FileApexTheme
 import com.fileapex.ui.theme.FileApexTeal
+import kotlinx.coroutines.flow.MutableStateFlow
 
 @Composable
 fun App(
@@ -160,17 +163,35 @@ fun App(
         onNavigateHome()
     }
 
-    FileApexTheme {
+    val desktopUiStyleFlow = remember {
+        if (supportsWindowsFluentDesign()) {
+            FileApexServices.settings.desktopUiStyle
+        } else {
+            MutableStateFlow(DesktopUiStyle.Standard)
+        }
+    }
+    val desktopUiStyle by desktopUiStyleFlow.collectAsState()
+    val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
+
+    FileApexTheme(uiStyle = desktopUiStyle) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(FileApexTeal)
+                .background(
+                    if (windowsFluent) MaterialTheme.colorScheme.background
+                    else FileApexTeal
+                )
         ) {
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
                     .safeDrawingPadding(),
-                color = Color.White
+                color = if (windowsFluent) {
+                    MaterialTheme.colorScheme.background
+                } else {
+                    Color.White
+                },
+                tonalElevation = if (windowsFluent) 0.dp else 0.dp
             ) {
                 if (!setupComplete) {
                     StoragePermissionScreen(

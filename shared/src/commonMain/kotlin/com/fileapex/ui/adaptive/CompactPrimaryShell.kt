@@ -29,7 +29,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.FileApexBottomBar
-import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.fileApexChromeBottomEdge
+import com.fileapex.ui.theme.fileApexChromeContainerColor
+import com.fileapex.ui.theme.fileApexChromeContentColor
 
 /** Shared compact home header metrics — keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
@@ -96,7 +98,8 @@ fun CompactTealStrip(
         modifier = Modifier
             .fillMaxWidth()
             .height(CompactHomeChrome.tealStripHeight)
-            .background(FileApexTeal)
+            .fileApexChromeBottomEdge()
+            .background(fileApexChromeContainerColor())
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.End
@@ -107,7 +110,7 @@ fun CompactTealStrip(
                 Icon(
                     imageVector = Icons.Filled.PowerSettingsNew,
                     contentDescription = "Exit FileApex",
-                    tint = Color.White
+                    tint = fileApexChromeContentColor()
                 )
             }
         } else {

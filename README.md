@@ -1,6 +1,6 @@
 # FileApex
 
-FileApex is an ecosystem file manager designed to seamlessly sync, manage, and broadcast files across multiple Android devices and macOS. 
+FileApex is an ecosystem file manager designed to seamlessly sync, manage, and broadcast files across multiple Android devices, Mac and now Windows. 
 
 
 <img width="439" height="988" alt="home" src="https://github.com/user-attachments/assets/c423486d-6691-44ed-8d22-d437067d5c15" />
@@ -26,7 +26,7 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 
 Files broadcasted across devices route automatically to the local device storage paths:
 * **Android:** `Download/FileApex/`
-* **macOS:** `~/Downloads/FileApex/`
+* **macOS/Windows:** `~/Downloads/FileApex/`
 
 ## Privacy & Permissions Disclosures
 

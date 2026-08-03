@@ -58,6 +58,9 @@ class BaseAppSettings(
     private val desktopLayout = MutableStateFlow(
         DesktopLayoutMode.fromStorage(store.getString(KEY_DESKTOP_LAYOUT, DesktopLayoutMode.DEFAULT.name))
     )
+    private val desktopUiStyleFlow = MutableStateFlow(
+        DesktopUiStyle.fromStorage(store.getString(KEY_DESKTOP_UI_STYLE, DesktopUiStyle.DEFAULT.name))
+    )
     private val explorerViewModeFlow = MutableStateFlow(
         ExplorerViewMode.fromStorage(store.getString(KEY_EXPLORER_VIEW_MODE, ExplorerViewMode.List.name))
     )
@@ -84,6 +87,7 @@ class BaseAppSettings(
     override val deviceOrderIds: StateFlow<String> = deviceOrderIdsFlow.asStateFlow()
     override val deviceOrderUpdatedAtEpochMs: StateFlow<Long> = deviceOrderUpdatedAt.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
+    override val desktopUiStyle: StateFlow<DesktopUiStyle> = desktopUiStyleFlow.asStateFlow()
     override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
     override val devicesViewMode: StateFlow<ExplorerViewMode> = devicesViewModeFlow.asStateFlow()
 
@@ -185,6 +189,11 @@ class BaseAppSettings(
         desktopLayout.value = mode
     }
 
+    override fun setDesktopUiStyle(style: DesktopUiStyle) {
+        store.putString(KEY_DESKTOP_UI_STYLE, style.name)
+        desktopUiStyleFlow.value = style
+    }
+
     override fun setExplorerViewMode(mode: ExplorerViewMode) {
         store.putString(KEY_EXPLORER_VIEW_MODE, mode.name)
         explorerViewModeFlow.value = mode
@@ -226,6 +235,7 @@ class BaseAppSettings(
         const val KEY_DEVICE_ORDER = "device_order_ids"
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
+        const val KEY_DESKTOP_UI_STYLE = "desktop_ui_style"
         const val KEY_EXPLORER_VIEW_MODE = "explorer_view_mode"
         const val KEY_DEVICES_VIEW_MODE = "devices_view_mode"
     }
