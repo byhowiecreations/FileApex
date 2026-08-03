@@ -174,7 +174,8 @@ class FileTransferService(
                     host = payload.sourceHost,
                     port = payload.sourcePort,
                     remotePath = payload.remoteAbsolutePath,
-                    localTargetPath = targetPath
+                    localTargetPath = targetPath,
+                    expectedSizeBytes = payload.sizeBytes.takeIf { it > 0L }
                 )
             }
             targetPath
@@ -201,7 +202,8 @@ class FileTransferService(
                             host = payload.sourceHost,
                             port = payload.sourcePort,
                             remotePath = payload.remoteAbsolutePath,
-                            localTargetPath = tempLocal
+                            localTargetPath = tempLocal,
+                            expectedSizeBytes = payload.sizeBytes.takeIf { it > 0L }
                         )
                         client.uploadFromLocal(host, port, tempLocal, remoteTarget)
                     }
@@ -236,7 +238,8 @@ class FileTransferService(
                 host = host,
                 port = port,
                 remotePath = item.absolutePath,
-                localTargetPath = targetPath
+                localTargetPath = targetPath,
+                expectedSizeBytes = item.sizeBytes.takeIf { it > 0L }
             )
             targetPath
         }

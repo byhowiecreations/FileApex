@@ -243,7 +243,8 @@ class FileApexClient(
         host: String,
         port: Int,
         remotePath: String,
-        localTargetPath: String
+        localTargetPath: String,
+        expectedSizeBytes: Long? = null
     ) {
         val target = Path(localTargetPath)
         target.parent?.let { parent ->
@@ -251,10 +252,23 @@ class FileApexClient(
                 SystemFileSystem.createDirectories(parent)
             }
         }
+        var bytesWritten = 0L
         SystemFileSystem.sink(target).buffered().use { sink ->
             streamRemoteFile(host, port, remotePath) { chunk ->
                 sink.write(chunk)
+                bytesWritten += chunk.size
             }
+        }
+        if (expectedSizeBytes != null && expectedSizeBytes > 0L && bytesWritten != expectedSizeBytes) {
+            runCatching {
+                if (SystemFileSystem.exists(target)) {
+                    SystemFileSystem.delete(target)
+                }
+            }
+            error(
+                "Download incomplete for ${target.name} " +
+                    "(got $bytesWritten bytes, expected $expectedSizeBytes)"
+            )
         }
     }
 
@@ -294,6 +308,7 @@ class FileApexClient(
     ) {
         val source = Path(localSourcePath)
         check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
+        val contentLength = SystemFileSystem.metadataOrNull(source)?.size?.takeIf { it > 0L }
         val channel = Channel<ByteArray>(UPLOAD_CHANNEL_CAPACITY)
         coroutineScope {
             val producer = launch(Dispatchers.IO) {
@@ -311,7 +326,13 @@ class FileApexClient(
                     channel.close()
                 }
             }
-            uploadFromChunkChannel(host, port, remoteTargetPath, channel)
+            uploadFromChunkChannel(
+                host = host,
+                port = port,
+                remoteTargetPath = remoteTargetPath,
+                chunks = channel,
+                contentLength = contentLength
+            )
             producer.join()
         }
     }

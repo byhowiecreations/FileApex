@@ -39,7 +39,6 @@ actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
     val downloadIntent = activityPendingIntent(
         requestCode = REQUEST_DOWNLOAD_UPDATE,
         extras = mapOf(
-            EXTRA_SHOW_UPDATE_SHEET to true,
             EXTRA_DOWNLOAD_UPDATE to true
         )
     )

@@ -195,9 +195,12 @@ class MainActivity : ComponentActivity() {
                 false
             ) == true
         ) {
-            requestShowUpdateSheet = true
-            com.fileapex.update.AppUpdateCoordinator.downloadPendingUpdate()
             intent.removeExtra(com.fileapex.platform.EXTRA_DOWNLOAD_UPDATE)
+            if (com.fileapex.update.PlatformInstallPermission.canRequestPackageInstalls()) {
+                com.fileapex.update.AppUpdateCoordinator.downloadPendingUpdate()
+            } else {
+                requestShowUpdateSheet = true
+            }
         }
         if (intent?.getBooleanExtra(
                 com.fileapex.platform.EXTRA_SHOW_UPDATE_SHEET,

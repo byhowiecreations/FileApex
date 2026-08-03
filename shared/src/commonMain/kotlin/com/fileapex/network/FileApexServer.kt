@@ -27,7 +27,7 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondBytesWriter
+import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -311,19 +311,22 @@ class FileApexServer(
                         }
                         val filePath = Path(pathStr)
 
+                        val fileMetadata = SystemFileSystem.metadataOrNull(filePath)
                         if (SystemFileSystem.exists(filePath) &&
-                            SystemFileSystem.metadataOrNull(filePath)?.isDirectory != true
+                            fileMetadata?.isDirectory != true
                         ) {
-                            call.respondBytesWriter(
+                            val fileSize = fileMetadata?.size?.coerceAtLeast(0L) ?: 0L
+                            call.respondOutputStream(
                                 contentType = ContentType.Application.OctetStream,
-                                status = HttpStatusCode.OK
+                                status = HttpStatusCode.OK,
+                                contentLength = fileSize
                             ) {
                                 SystemFileSystem.source(filePath).buffered().use { source ->
                                     val buffer = ByteArray(8192)
                                     while (!source.exhausted()) {
                                         val read = source.readAtMostTo(buffer)
                                         if (read > 0) {
-                                            writeFully(buffer, 0, read)
+                                            write(buffer, 0, read)
                                         }
                                     }
                                 }

@@ -27,6 +27,7 @@ object AppUpdateCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gate = Mutex()
     private var inFlight = false
+    private var downloadInFlight = false
     private var schedulerJob: Job? = null
 
     private val _statusMessage = MutableStateFlow<String?>(null)
@@ -125,8 +126,13 @@ object AppUpdateCoordinator {
             )
             return
         }
+        if (downloadInFlight) {
+            BriefToast.show("Update download already in progress…")
+            return
+        }
         scope.launch {
-            runCatching {
+            downloadInFlight = true
+            try {
                 _statusMessage.value = "Downloading FileApex ${offer.remoteVersion}…"
                 dismissAppUpdateNotification()
                 AppUpdater.downloadAndInstall(offer)
@@ -134,12 +140,14 @@ object AppUpdateCoordinator {
                 setPendingOffer(null)
                 _showUpdateSheet.value = false
                 _statusMessage.value = "Installing FileApex ${offer.remoteVersion}…"
-            }.onFailure { error ->
+            } catch (error: Throwable) {
                 val message = error.message ?: "Update download failed"
                 _statusMessage.value = message
                 BriefToast.show(message)
                 println("AppUpdateCoordinator: download failed — $message")
                 error.printStackTrace()
+            } finally {
+                downloadInFlight = false
             }
         }
     }

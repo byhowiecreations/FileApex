@@ -118,6 +118,16 @@ actual object PlatformUpdateInstaller {
                     "The update link may have returned an HTML error page."
             }
         }
+        val context = androidAppContextOrNull()
+        if (context != null) {
+            val archiveInfo = context.packageManager.getPackageArchiveInfo(
+                apkFile.absolutePath,
+                PackageManager.GET_ACTIVITIES
+            )
+            check(archiveInfo != null) {
+                "Downloaded APK could not be parsed — the file may be incomplete or corrupt"
+            }
+        }
     }
 
     private fun requireContext() =

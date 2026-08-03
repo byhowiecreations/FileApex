@@ -274,16 +274,23 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
         output.flush()
         val input = socket.getInputStream().buffered()
         val statusCode = readHttpStatusLine(input)
-        skipHttpHeaders(input)
+        val headerLines = readHttpHeaderLines(input)
+        val bodyHeaders = HttpTransferBodyReader.parseHeaders(headerLines)
         if (statusCode in 200..299) {
-            val buffer = ByteArray(8192)
-            while (true) {
-                val read = input.read(buffer)
-                if (read <= 0) {
-                    break
-                }
-                onChunk(buffer.copyOf(read))
-            }
+            HttpTransferBodyReader.readBody(
+                readAsciiLine = { input.readAsciiLine() },
+                readAtLeast = { buffer, offset, length ->
+                    var total = 0
+                    while (total < length) {
+                        val read = input.read(buffer, offset + total, length - total)
+                        if (read <= 0) break
+                        total += read
+                    }
+                    total
+                },
+                headers = bodyHeaders,
+                onChunk = onChunk
+            )
         } else {
             drainAvailable(input)
         }
@@ -457,13 +464,19 @@ private fun readHttpStatusLine(input: java.io.BufferedInputStream): Int {
     return Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
 }
 
-private fun skipHttpHeaders(input: java.io.BufferedInputStream) {
+private fun readHttpHeaderLines(input: java.io.BufferedInputStream): List<String> {
+    val lines = ArrayList<String>()
     while (true) {
         val line = input.readAsciiLine()
         if (line.isEmpty()) {
-            return
+            return lines
         }
+        lines += line
     }
+}
+
+private fun skipHttpHeaders(input: java.io.BufferedInputStream) {
+    readHttpHeaderLines(input)
 }
 
 private fun drainAvailable(input: java.io.BufferedInputStream) {

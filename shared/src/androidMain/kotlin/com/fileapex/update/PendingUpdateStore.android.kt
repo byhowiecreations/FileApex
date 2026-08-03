@@ -26,7 +26,7 @@ actual object PendingUpdateStore {
             .putString(KEY_ASSET_NAME, offer.assetName)
             .putString(KEY_ASSET_URL, offer.assetDownloadUrl)
             .putLong(KEY_ASSET_SIZE, offer.assetSizeBytes)
-            .apply()
+            .commit()
     }
 
     actual fun load(): PendingUpdateOffer? {

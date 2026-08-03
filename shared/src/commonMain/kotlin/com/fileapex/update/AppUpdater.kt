@@ -9,11 +9,13 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.readAtMostTo
 import kotlinx.io.write
 
 /**
@@ -97,8 +99,12 @@ object AppUpdater {
             )
             val cacheDir = PlatformUpdateInstaller.updateCacheDirectory()
             SystemFileSystem.createDirectories(Path(cacheDir))
-            val targetPath = Path("$cacheDir/${offer.assetName}")
-            downloadToFile(offer.assetDownloadUrl, targetPath)
+            val safeVersion = offer.remoteVersion.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val targetPath = Path("$cacheDir/$safeVersion-${offer.assetName}")
+            val partPath = Path("$targetPath.part")
+            downloadToFile(offer.assetDownloadUrl, partPath)
+            validateDownloadedAsset(partPath, offer.assetSizeBytes)
+            replaceDownloadedFile(partPath, targetPath)
             validateDownloadedAsset(targetPath, offer.assetSizeBytes)
             println(
                 "AppUpdater: download complete → $targetPath " +
@@ -108,6 +114,7 @@ object AppUpdater {
                 localFilePath = targetPath.toString(),
                 remoteVersion = offer.remoteVersion
             )
+            delay(INSTALL_GRACE_MS)
             return UpdateCheckOutcome.Installing(
                 remoteVersion = offer.remoteVersion,
                 releaseTitle = offer.offerTitleOrNull(),
@@ -164,6 +171,24 @@ object AppUpdater {
         }
     }
 
+    private fun replaceDownloadedFile(source: Path, destination: Path) {
+        if (SystemFileSystem.exists(destination)) {
+            SystemFileSystem.delete(destination)
+        }
+        SystemFileSystem.source(source).buffered().use { input ->
+            SystemFileSystem.sink(destination).buffered().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (!input.exhausted()) {
+                    val read = input.readAtMostTo(buffer)
+                    if (read > 0) {
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+        }
+        SystemFileSystem.delete(source)
+    }
+
     private fun validateDownloadedAsset(target: Path, expectedSizeBytes: Long) {
         val metadata = SystemFileSystem.metadataOrNull(target)
             ?: error("Downloaded update file missing at $target")
@@ -181,4 +206,6 @@ object AppUpdater {
 
     private fun PendingUpdateOffer.offerTitleOrNull(): String? =
         releaseTitle?.trim()?.takeIf { it.isNotEmpty() }
+
+    private const val INSTALL_GRACE_MS = 15_000L
 }
