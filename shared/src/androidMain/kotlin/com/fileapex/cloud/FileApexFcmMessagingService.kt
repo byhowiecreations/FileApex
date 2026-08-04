@@ -3,6 +3,7 @@ package com.fileapex.cloud
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.domain.presence.PresenceBackgroundWake
 import com.fileapex.network.ServerLifecycleManager
 
@@ -13,9 +14,14 @@ import com.fileapex.network.ServerLifecycleManager
 class FileApexFcmMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
-        if (!FcmWakeCoordinator.isPresenceWake(data[FcmWakeProtocol.KEY_TYPE])) {
-            return
+        val type = data[FcmWakeProtocol.KEY_TYPE]
+        when {
+            FcmWakeCoordinator.isPresenceWake(type) -> handlePresenceWake(data)
+            FcmWakeCoordinator.isDiagnosticsWake(type) -> handleDiagnosticsWake(data)
         }
+    }
+
+    private fun handlePresenceWake(data: Map<String, String>) {
         Log.i(TAG, "Presence wake received from ${data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID]}")
         ServerLifecycleManager.ensureRunning { logMessage, error ->
             if (error != null) {
@@ -25,6 +31,22 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
             }
         }
         PresenceBackgroundWake.onRemoteWakeSignal(data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID])
+    }
+
+    private fun handleDiagnosticsWake(data: Map<String, String>) {
+        val sessionId = data[FcmWakeProtocol.KEY_SESSION_ID].orEmpty()
+        Log.i(
+            TAG,
+            "Diagnostics wake session=$sessionId from ${data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID]}"
+        )
+        ServerLifecycleManager.ensureRunning { logMessage, error ->
+            if (error != null) {
+                Log.e(TAG, logMessage, error)
+            } else {
+                Log.i(TAG, logMessage)
+            }
+        }
+        DiagnosticsCloudRelay.onDiagnosticsWake(sessionId)
     }
 
     override fun onNewToken(token: String) {

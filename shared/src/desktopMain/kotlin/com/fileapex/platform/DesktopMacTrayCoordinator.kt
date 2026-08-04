@@ -182,16 +182,17 @@ object DesktopMacTrayCoordinator {
 
             DesktopMacTrayBridge.beginBackgroundActivity()
             try {
-                val batch = FileApexServices.transferManager.sendLocalPathsToDeviceIds(
+                val outcome = FileApexServices.transferQueue.sendLocalPathsOrQueue(
                     absolutePaths = filePaths,
                     deviceIds = deviceIds
                 )
-                val toastMessage = if (batch.allFailed) {
-                    batch.summaryMessage
-                } else if (filePaths.size > 1) {
-                    "${filePaths.size} Files Sent"
-                } else {
-                    "File Sent"
+                val batch = outcome.batch
+                val toastMessage = when {
+                    outcome.hadQueue && (batch == null || batch.allFailed) -> outcome.message
+                    batch?.allFailed == true -> outcome.message
+                    outcome.hadQueue -> outcome.message
+                    filePaths.size > 1 -> "${filePaths.size} Files Sent"
+                    else -> "File Sent"
                 }
                 DesktopMacTrayBridge.showToast(toastMessage)
             } catch (error: Exception) {

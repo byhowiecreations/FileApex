@@ -13,4 +13,5 @@ sealed interface AppRoute {
         val payload: IncomingSharePayload,
         val directTargetDeviceId: String? = null
     ) : AppRoute
+    data object TransferQueue : AppRoute
 }

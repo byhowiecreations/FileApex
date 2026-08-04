@@ -181,6 +181,18 @@ kotlin {
             kotlin.srcDir(layout.buildDirectory.dir("generated/fcmCredentials/kotlin"))
         }
 
+        val jvmCommon by creating {
+            dependsOn(commonMain)
+        }
+
+        val androidMain by getting {
+            dependsOn(jvmCommon)
+        }
+
+        jvmCommon.dependencies {
+            implementation(libs.bouncycastle.provider)
+        }
+
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -230,6 +242,7 @@ kotlin {
         }
 
         val desktopMain by getting {
+            dependsOn(jvmCommon)
             kotlin.srcDir(layout.buildDirectory.dir("generated/desktopCloud/kotlin"))
             dependencies {
                 implementation(compose.desktop.currentOs)

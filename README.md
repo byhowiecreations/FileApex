@@ -30,14 +30,25 @@ Files broadcasted across devices route automatically to the local device storage
 
 ## Privacy & Permissions Disclosures
 
-To provide cross-platform file access and seamless system integration, the app requests the following system permissions and capabilities:
+To provide cross-platform file access and seamless system integration, the app may request the following:
 
-* **File System Access:** Core functionality. Allows the app to navigate, list, and read the user's local directory structure to facilitate remote file management.
-* **Unrestricted Battery Usage (Android):** Prevents the OS from aggressively putting the background service to sleep, ensuring the device does not unexpectedly appear "Offline" to connected clients.
-* **Internet & External Network Access:** This is strictly **Opt-In**. Used solely to validate Google Account authentication and to safely query for software updates directly from Github.
-    * **Strict Privacy Boundary:** No actual files, folders, or personal user data will ever touch Firebase. Firestore will be used strictly as a serverless "virtual registry" to exchange public keys, random device IDs, and local network connection strings. Using Firebase (Google Account) is entirely **Opt-In**.
-* **Local Network (LAN) Sockets:** Initiates local network traffic to discover peer devices and stream file data securely between your machines. No personal file data ever leaves your local network.
-* **Finder & Share Menu Extensions (macOS):** Integrates directly with the native macOS file manager to provide quick-access context menus and enables sending files to your device pipeline using the system Share menu.
+* **File system access:** Core functionality. Browse, list, and share files and folders on your device with paired machines on your local network.
+* **Local network (LAN):** Discover paired devices and transfer files over Wi‑Fi or Ethernet. File data stays on your network; it is not uploaded to the cloud.
+* **Background operation (Android):** Keeps the share server available so paired devices do not see you as unexpectedly offline. Includes foreground service, boot restart (when enabled in Settings), and recommended battery settings so the OS does not kill background sharing.
+* **Notifications (Android):** Shows share-server status and, if you turn it on, alerts when files are received.
+* **Nearby Wi‑Fi devices (Android):** Reads Wi‑Fi name and wireless connection details for the Device Details screen. Not used for location.
+* **Phone state (Android):** Reads cellular network type, signal, and band for the Device Details screen when you are on mobile data.
+* **Camera (Android):** Scan a pairing QR code when you choose Scan to add a device.
+* **Finder & Share menu extensions (macOS):** Context menus in Finder and the system Share sheet to send files into FileApex.
+
+**Optional features (only if you enable them):**
+
+* **Google Account linking:** Uses the internet to sign in with Google and register your device for cloud-assisted pairing. No file contents are sent to Firebase — only device IDs and connection metadata needed to find peers.
+* **Check for Updates:** Uses the internet to check GitHub Releases for newer builds. Nothing is ever sent to any other servers.
+* **Install updates (Android):** Lets you install a downloaded APK from within the app.
+* **Exact alarms (Android):** Supports the service watchdog when background persistence is enabled in Settings.
+
+FileApex does not request location access.
 
 
 

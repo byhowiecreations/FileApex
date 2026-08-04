@@ -9,7 +9,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
+import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
+import kotlin.math.roundToInt
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -72,6 +82,7 @@ private enum class SettingsPage {
     BackgroundPersistence,
     AutoLaunchOnReboot,
     FileTransferNotifications,
+    DeviceDetails,
     GoogleAccount,
     DesktopLayout,
     WindowsDesign
@@ -137,6 +148,7 @@ fun SettingsScreen(
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
             onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
+            onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
@@ -188,6 +200,16 @@ fun SettingsScreen(
             onBack = { page = SettingsPage.Root },
             onToggle = viewModel::setFileTransferNotifications
         )
+        SettingsPage.DeviceDetails -> DeviceDetailsSettingsPage(
+            preferences = state.deviceDetailsDisplayPreferences,
+            allowOverCellular = state.deviceDetailsAllowOverCellular,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onAllowOverCellularChange = viewModel::setDeviceDetailsAllowOverCellular,
+            onFieldVisibleChange = viewModel::setDeviceDetailsFieldVisible,
+            onReorderFields = viewModel::reorderDeviceDetailsFields,
+            onReset = viewModel::resetDeviceDetailsDisplayPreferences
+        )
         SettingsPage.GoogleAccount -> GoogleAccountSettingsPage(
             state = state,
             linkStatus = googleLinkStatus,
@@ -232,6 +254,7 @@ private fun SettingsRootPage(
     onOpenBackgroundPersistence: () -> Unit,
     onOpenAutoLaunchOnReboot: () -> Unit,
     onOpenFileTransferNotifications: () -> Unit,
+    onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
@@ -296,6 +319,11 @@ private fun SettingsRootPage(
                     title = "File Transfer Notifications",
                     subtitle = if (state.fileTransferNotificationsEnabled) "On" else "Off",
                     onClick = onOpenFileTransferNotifications
+                )
+                SettingsNavItem(
+                    title = "Device Details",
+                    subtitle = "Peer telemetry fields",
+                    onClick = onOpenDeviceDetails
                 )
                 SettingsNavItem(
                     title = "Google Account",
@@ -583,6 +611,125 @@ private fun FileTransferNotificationsSettingsPage(
                     )
                 }
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeviceDetailsSettingsPage(
+    preferences: DeviceDetailsDisplayPreferences,
+    allowOverCellular: Boolean,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onAllowOverCellularChange: (Boolean) -> Unit,
+    onFieldVisibleChange: (DeviceDetailsFieldId, Boolean) -> Unit,
+    onReorderFields: (fromIndex: Int, toIndex: Int) -> Unit,
+    onReset: () -> Unit
+) {
+    val normalized = preferences.normalized()
+    val fieldEntries = normalized.fields.mapNotNull { pref ->
+        DeviceDetailsFieldId.entries.find { it.name == pref.id }?.let { id -> id to pref.visible }
+    }
+    val dragState = rememberDeviceOrderDragState()
+    val density = LocalDensity.current
+    val itemStridePx = with(density) { 72.dp.toPx() }
+    val scrollState = rememberScrollState()
+    val fieldIds = fieldEntries.map { it.first.name }
+
+    DeviceOrderEdgeAutoScrollEffect(
+        dragState = dragState,
+        scrollState = scrollState,
+        deviceIds = fieldIds,
+        itemStridePx = itemStridePx,
+        viewportHeightPx = 480,
+        listOverflowsViewport = fieldEntries.size > 6
+    )
+
+    SettingsPageShell(
+        title = "Device Details",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+        ) {
+            Text(
+                text = "Configure which telemetry fields appear when you open Device Details " +
+                    "for a paired device. Wi-Fi and cellular rows are shown only when the peer " +
+                    "is on that network type.",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            ListItem(
+                headlineContent = { Text("Allow over cellular") },
+                supportingContent = {
+                    Text(
+                        "When off-LAN, fetch or share encrypted Device Details via Firebase. " +
+                            "Both devices must enable this and link a Google Account. " +
+                            "Same Wi-Fi still uses local network (not encrypted)."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = allowOverCellular,
+                        onCheckedChange = onAllowOverCellularChange
+                    )
+                }
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            fieldEntries.forEachIndexed { index, (fieldId, visible) ->
+                val visualOffsetPx = deviceOrderItemVisualOffsetPx(
+                    index = index,
+                    dragState = dragState,
+                    itemCount = fieldEntries.size,
+                    itemStridePx = itemStridePx
+                )
+                ListItem(
+                    modifier = Modifier.offset { IntOffset(0, visualOffsetPx.roundToInt()) },
+                    headlineContent = { Text(fieldId.label) },
+                    supportingContent = when {
+                        fieldId.wifiOnly -> {
+                            {
+                                Text("Shown when peer is on Wi-Fi")
+                            }
+                        }
+                        fieldId.cellularOnly -> {
+                            {
+                                Text("Shown when peer is on cellular")
+                            }
+                        }
+                        else -> null
+                    },
+                    leadingContent = {
+                        DeviceOrderDragHandle(
+                            deviceId = fieldId.name,
+                            startIndex = index,
+                            itemCount = fieldEntries.size,
+                            dragState = dragState,
+                            itemStridePx = itemStridePx,
+                            onReorder = onReorderFields
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = visible,
+                            onCheckedChange = { enabled -> onFieldVisibleChange(fieldId, enabled) }
+                        )
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = onReset,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            ) {
+                Text("Reset to defaults")
+            }
+            Spacer(modifier = Modifier.height(48.dp))
         }
     }
 }

@@ -32,6 +32,8 @@ data class PairedDeviceEntity(
     val lastKnownIp: String,
     val port: Int,
     val publicKeyHash: String,
+    val publicKey: String = "",
+    val e2eeEnabled: Boolean = false,
     val rootPath: String,
     val clientVersion: String = "",
     val clientVersionCode: Int = 0,
@@ -96,10 +98,29 @@ interface DeviceDao {
     suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String)
 }
 
-@Database(entities = [PairedDeviceEntity::class, RemovedDeviceEntity::class], version = 5)
+@Dao
+interface ControlDeliveryDao {
+    @Query("SELECT COUNT(*) FROM pending_control_deliveries")
+    suspend fun countPending(): Int
+
+    @Query("DELETE FROM pending_control_deliveries")
+    suspend fun deleteAll()
+}
+
+@Database(
+    entities = [
+        PairedDeviceEntity::class,
+        RemovedDeviceEntity::class,
+        PendingControlDeliveryEntity::class,
+        PendingTransferEntity::class
+    ],
+    version = 8
+)
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {
     abstract fun deviceDao(): DeviceDao
+    abstract fun controlDeliveryDao(): ControlDeliveryDao
+    abstract fun pendingTransferDao(): PendingTransferDao
 }
 
 @Suppress("NO_ACTUAL_FOR_EXPECT")

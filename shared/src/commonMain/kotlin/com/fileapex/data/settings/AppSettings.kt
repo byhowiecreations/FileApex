@@ -1,6 +1,7 @@
 package com.fileapex.data.settings
 
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import kotlinx.coroutines.flow.StateFlow
 
 interface AppSettings {
@@ -47,6 +48,10 @@ interface AppSettings {
     val explorerViewMode: StateFlow<ExplorerViewMode>
     /** Paired-devices layout (list vs grid). Default [com.fileapex.presentation.ExplorerViewMode.List]. */
     val devicesViewMode: StateFlow<ExplorerViewMode>
+    /** Device Details popup field order and visibility. */
+    val deviceDetailsDisplayPreferences: StateFlow<DeviceDetailsDisplayPreferences>
+    /** When true, participate in encrypted cloud Device Details when LAN is unavailable. Default off. */
+    val deviceDetailsAllowOverCellular: StateFlow<Boolean>
 
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
@@ -77,6 +82,14 @@ interface AppSettings {
     fun setExplorerViewMode(mode: ExplorerViewMode)
 
     fun setDevicesViewMode(mode: ExplorerViewMode)
+
+    fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences)
+
+    fun setDeviceDetailsAllowOverCellular(enabled: Boolean)
+
+    fun diagnosticsPrivateKeyBase64(): String
+
+    fun setDiagnosticsPrivateKeyBase64(value: String)
 
     fun checkForUpdatesIntervalMillis(): Long {
         return UpdateCheckFrequency.toMillis(

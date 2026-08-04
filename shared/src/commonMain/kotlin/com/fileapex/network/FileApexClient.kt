@@ -133,7 +133,7 @@ class FileApexClient(
         port: Int,
         timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS
     ): Boolean {
-        PeerLanHttpPolicy.ensureRoute(host)
+        if (!PeerLanHttpPolicy.canRoute(host)) return false
         val health = peerHttpGet(host, port, "/api/v1/health", timeoutMs)
         if (health != null && health.statusCode in 200..299) {
             return true

@@ -162,20 +162,22 @@ class ShareSendViewModel(
         runCatching {
             transferManager.awaitReady()
             val sources = payload.files.map { it.toSource().verifiedFromDisk() }
-            transferManager.sendToDevices(sources, selected, skipTransferPrepare)
+            FileApexServices.transferQueue.sendOrQueue(sources, selected, skipTransferPrepare)
         }.fold(
-            onSuccess = { batch ->
+            onSuccess = { outcome ->
                 cleanupStaging()
-                if (!batch.allFailed) {
+                val batch = outcome.batch
+                if (batch != null && !batch.allFailed) {
                     recordDirectShareOnSuccess?.let { recordDirectShareTargetUsed(it) }
                 }
+                val allFailed = batch?.allFailed != false && !outcome.hadQueue
                 _uiState.update {
                     it.copy(
                         isPreparing = false,
                         isSending = false,
-                        sendCompleted = !batch.allFailed,
-                        statusMessage = batch.summaryMessage,
-                        errorMessage = batch.summaryMessage.takeIf { batch.allFailed }
+                        sendCompleted = !allFailed,
+                        statusMessage = outcome.message,
+                        errorMessage = outcome.message.takeIf { allFailed }
                     )
                 }
             },

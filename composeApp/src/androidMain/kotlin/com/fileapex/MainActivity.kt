@@ -30,6 +30,7 @@ import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.network.FileShareServerService
 import com.fileapex.platform.AndroidShareIntake
+import com.fileapex.platform.AndroidRuntimePermissions
 import com.fileapex.platform.BackgroundPersistenceGuidance
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.toUiState
@@ -75,20 +76,20 @@ class MainActivity : ComponentActivity() {
 
     private var stageJob: Job? = null
 
+    private val runtimePermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        refreshPermissions()
+        val notificationsGranted = results[Manifest.permission.POST_NOTIFICATIONS] == true
+        if (notificationsGranted && hasStoragePermission) {
+            startShareServer()
+        }
+    }
+
     private val legacyStoragePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         refreshPermissions()
-    }
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        refreshPermissions()
-        if (granted && hasStoragePermission) {
-            // Force FGS notification re-post now that POST_NOTIFICATIONS is allowed.
-            startShareServer()
-        }
     }
 
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -117,7 +118,7 @@ class MainActivity : ComponentActivity() {
         FileApexAndroidBootstrap.ensureInitialized(this)
         configureVisibleSystemBars()
         refreshPermissions()
-        requestNotificationPermissionIfNeeded()
+        requestRuntimePermissionsIfNeeded()
         if (hasStoragePermission) {
             startShareServer()
         }
@@ -173,6 +174,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         configureVisibleSystemBars()
         refreshPermissions()
+        requestRuntimePermissionsIfNeeded()
         if (hasStoragePermission) {
             startShareServer()
         }
@@ -406,15 +408,10 @@ class MainActivity : ComponentActivity() {
         BackgroundPersistenceGuidance.launchAppDetailsSettings(this)
     }
 
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
+    private fun requestRuntimePermissionsIfNeeded() {
+        val missing = AndroidRuntimePermissions.missingPermissions(this)
+        if (missing.isNotEmpty()) {
+            runtimePermissionsLauncher.launch(missing)
         }
     }
 

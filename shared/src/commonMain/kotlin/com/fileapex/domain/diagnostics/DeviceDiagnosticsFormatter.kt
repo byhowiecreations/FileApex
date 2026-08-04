@@ -31,6 +31,9 @@ object DeviceDiagnosticsFormatter {
     fun formatDbm(value: Int?): String =
         value?.let { "$it dBm" } ?: "—"
 
+    fun formatFrequencyMhz(value: Int?): String =
+        value?.takeIf { it > 0 }?.let { "$it MHz" } ?: "—"
+
     fun formatUptime(uptimeMs: Long?): String {
         if (uptimeMs == null || uptimeMs < 0L) return "—"
         val totalMinutes = uptimeMs / 60_000L
@@ -84,44 +87,68 @@ object DeviceDiagnosticsFormatter {
         return "$arch · $hardware · $cores · $freq"
     }
 
-    fun detailRows(snapshot: PeerDeviceDiagnostics): List<Pair<String, String>> {
-        return listOf(
-            "Platform" to snapshot.platform.ifBlank { "—" },
-            "Collected" to formatBootEpoch(snapshot.collectedAtEpochMs),
-            "Make" to snapshot.device.make.ifBlank { "—" },
-            "Model" to snapshot.device.model.ifBlank { "—" },
-            "Kernel" to snapshot.device.kernelVersion.ifBlank { "—" },
-            "OS build" to snapshot.device.osBuildVersion.ifBlank { "—" },
-            "Processor" to processorSummary(snapshot.processor),
-            "CPU architecture" to snapshot.processor.architecture.ifBlank { "—" },
-            "CPU hardware" to snapshot.processor.hardware.ifBlank { "—" },
-            "CPU cores" to when {
+    fun detailRows(
+        snapshot: PeerDeviceDiagnostics,
+        preferences: DeviceDetailsDisplayPreferences = DeviceDetailsDisplayPreferences.defaults()
+    ): List<Pair<String, String>> {
+        val networkType = snapshot.network.interfaceType.trim()
+        val isWifi = networkType.equals("Wi-Fi", ignoreCase = true)
+        val isCellular = networkType.equals("Cellular", ignoreCase = true)
+
+        fun valueFor(field: DeviceDetailsFieldId): String = when (field) {
+            DeviceDetailsFieldId.Platform -> snapshot.platform.ifBlank { "—" }
+            DeviceDetailsFieldId.Collected -> formatBootEpoch(snapshot.collectedAtEpochMs)
+            DeviceDetailsFieldId.Make -> snapshot.device.make.ifBlank { "—" }
+            DeviceDetailsFieldId.Model -> snapshot.device.model.ifBlank { "—" }
+            DeviceDetailsFieldId.Kernel -> snapshot.device.kernelVersion.ifBlank { "—" }
+            DeviceDetailsFieldId.OsBuild -> snapshot.device.osBuildVersion.ifBlank { "—" }
+            DeviceDetailsFieldId.Processor -> processorSummary(snapshot.processor)
+            DeviceDetailsFieldId.CpuArchitecture -> snapshot.processor.architecture.ifBlank { "—" }
+            DeviceDetailsFieldId.CpuHardware -> snapshot.processor.hardware.ifBlank { "—" }
+            DeviceDetailsFieldId.CpuCores -> when {
                 snapshot.processor.activeCoreCount != null &&
                     snapshot.processor.totalCoreCount != null ->
                     "${snapshot.processor.activeCoreCount} active / ${snapshot.processor.totalCoreCount} total"
                 snapshot.processor.totalCoreCount != null ->
                     "${snapshot.processor.totalCoreCount} total"
                 else -> "—"
-            },
-            "CPU frequency" to snapshot.processor.frequencyScaling.ifBlank { "—" },
-            "Display resolution" to snapshot.display.resolution.ifBlank { "—" },
-            "Refresh rate" to formatRefreshRate(snapshot.display.refreshRateHz),
-            "Brightness" to formatPercent(snapshot.display.brightnessPercent),
-            "Battery level" to formatPercent(snapshot.battery.levelPercent),
-            "Charging" to snapshot.battery.chargingState.ifBlank { "—" },
-            "Battery temp" to formatTemperature(snapshot.battery.temperatureCelsius),
-            "Storage" to storageSummary(snapshot.storage),
-            "Network type" to snapshot.network.interfaceType.ifBlank { "—" },
-            "SSID" to snapshot.network.ssid.ifBlank { "—" },
-            "Signal" to formatDbm(snapshot.network.signalDbm),
-            "Link speed" to (snapshot.network.linkSpeedMbps?.let { "$it Mbps" } ?: "—"),
-            "Frequency band" to snapshot.network.frequencyBand.ifBlank { "—" },
-            "Channel" to (snapshot.network.channel?.toString() ?: "—"),
-            "Uptime" to formatUptime(snapshot.uptime.uptimeMs),
-            "Last boot" to formatBootEpoch(snapshot.uptime.bootEpochMs),
-            "Thermal state" to snapshot.thermal.state.ifBlank { "—" },
-            "Thermal temp" to formatTemperature(snapshot.thermal.temperatureCelsius),
-            "Memory" to memorySummary(snapshot.memory)
-        )
+            }
+            DeviceDetailsFieldId.CpuFrequency -> snapshot.processor.frequencyScaling.ifBlank { "—" }
+            DeviceDetailsFieldId.DisplayResolution -> snapshot.display.resolution.ifBlank { "—" }
+            DeviceDetailsFieldId.RefreshRate -> formatRefreshRate(snapshot.display.refreshRateHz)
+            DeviceDetailsFieldId.Brightness -> formatPercent(snapshot.display.brightnessPercent)
+            DeviceDetailsFieldId.BatteryLevel -> formatPercent(snapshot.battery.levelPercent)
+            DeviceDetailsFieldId.Charging -> snapshot.battery.chargingState.ifBlank { "—" }
+            DeviceDetailsFieldId.BatteryTemp -> formatTemperature(snapshot.battery.temperatureCelsius)
+            DeviceDetailsFieldId.Storage -> storageSummary(snapshot.storage)
+            DeviceDetailsFieldId.NetworkType -> networkType.ifBlank { "—" }
+            DeviceDetailsFieldId.Ssid -> snapshot.network.ssid.ifBlank { "—" }
+            DeviceDetailsFieldId.Signal -> formatDbm(snapshot.network.signalDbm)
+            DeviceDetailsFieldId.LinkSpeed ->
+                snapshot.network.linkSpeedMbps?.let { "$it Mbps" } ?: "—"
+            DeviceDetailsFieldId.FrequencyBand -> snapshot.network.frequencyBand.ifBlank { "—" }
+            DeviceDetailsFieldId.Channel -> snapshot.network.channel?.toString() ?: "—"
+            DeviceDetailsFieldId.CellularGeneration ->
+                snapshot.network.networkGeneration.ifBlank { "—" }
+            DeviceDetailsFieldId.CellularCarrier -> snapshot.network.carrier.ifBlank { "—" }
+            DeviceDetailsFieldId.CellularSignal -> formatDbm(snapshot.network.signalDbm)
+            DeviceDetailsFieldId.CellularFrequency -> formatFrequencyMhz(snapshot.network.frequencyMhz)
+            DeviceDetailsFieldId.CellularBand -> snapshot.network.cellBand.ifBlank { "—" }
+            DeviceDetailsFieldId.Uptime -> formatUptime(snapshot.uptime.uptimeMs)
+            DeviceDetailsFieldId.LastBoot -> formatBootEpoch(snapshot.uptime.bootEpochMs)
+            DeviceDetailsFieldId.ThermalState -> snapshot.thermal.state.ifBlank { "—" }
+            DeviceDetailsFieldId.ThermalTemp -> formatTemperature(snapshot.thermal.temperatureCelsius)
+            DeviceDetailsFieldId.Memory -> memorySummary(snapshot.memory)
+        }
+
+        return preferences.visibleFieldIds()
+            .filter { field ->
+                when {
+                    field.wifiOnly -> isWifi
+                    field.cellularOnly -> isCellular
+                    else -> true
+                }
+            }
+            .map { field -> field.label to valueFor(field) }
     }
 }

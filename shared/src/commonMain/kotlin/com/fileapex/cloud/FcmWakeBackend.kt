@@ -20,19 +20,42 @@ object FcmWakeBackend {
     suspend fun sendPresenceWake(targetFcmToken: String, sourceDeviceId: String): Boolean {
         val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
         if (targetFcmToken.isBlank()) return false
-        return FcmHttpV1Client.sendPresenceWake(
+        return FcmHttpV1Client.sendDataWake(
             config = config,
             targetToken = targetFcmToken,
-            sourceDeviceId = sourceDeviceId
+            data = buildJsonObject {
+                put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_PRESENCE_WAKE)
+                put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
+                put(FcmWakeProtocol.KEY_EPOCH_MS, TimeUtils.now().toString())
+            }
+        )
+    }
+
+    suspend fun sendDiagnosticsWake(
+        targetFcmToken: String,
+        sourceDeviceId: String,
+        sessionId: String
+    ): Boolean {
+        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (targetFcmToken.isBlank() || sessionId.isBlank()) return false
+        return FcmHttpV1Client.sendDataWake(
+            config = config,
+            targetToken = targetFcmToken,
+            data = buildJsonObject {
+                put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_DIAGNOSTICS_REQUEST)
+                put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
+                put(FcmWakeProtocol.KEY_SESSION_ID, sessionId)
+                put(FcmWakeProtocol.KEY_EPOCH_MS, TimeUtils.now().toString())
+            }
         )
     }
 }
 
 internal object FcmHttpV1Client {
-    suspend fun sendPresenceWake(
+    suspend fun sendDataWake(
         config: FcmServiceAccountConfig,
         targetToken: String,
-        sourceDeviceId: String
+        data: kotlinx.serialization.json.JsonObject
     ): Boolean {
         val accessToken = FcmGoogleOAuth.accessToken(config) ?: return false
         val url = "https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send"
@@ -41,14 +64,7 @@ internal object FcmHttpV1Client {
                 "message",
                 buildJsonObject {
                     put("token", targetToken)
-                    put(
-                        "data",
-                        buildJsonObject {
-                            put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_PRESENCE_WAKE)
-                            put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
-                            put(FcmWakeProtocol.KEY_EPOCH_MS, TimeUtils.now().toString())
-                        }
-                    )
+                    put("data", data)
                     put(
                         "android",
                         buildJsonObject {

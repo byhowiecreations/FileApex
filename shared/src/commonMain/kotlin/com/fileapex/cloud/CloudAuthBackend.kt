@@ -1,5 +1,7 @@
 package com.fileapex.cloud
 
+import com.fileapex.cloud.diagnostics.DiagnosticsRelaySession
+
 /**
  * Platform Firebase/Auth + Firestore registry (virtual device directory only).
  */
@@ -32,6 +34,43 @@ expect object CloudAuthBackend {
 
     /** Patches the Android FCM token for silent background wake — never touches [deviceName]. */
     suspend fun patchDeviceFcmToken(uid: String, deviceId: String, fcmToken: String)
+
+    /**
+     * Patches diagnostics relay opt-in + public key — never part of presence heartbeats.
+     */
+    suspend fun patchDeviceDiagnosticsCloud(
+        uid: String,
+        deviceId: String,
+        diagnosticsPublicKey: String,
+        deviceDetailsCloudEnabled: Boolean
+    )
+
+    suspend fun upsertDiagnosticsRelaySession(uid: String, session: DiagnosticsRelaySession)
+
+    suspend fun fetchDiagnosticsRelaySession(uid: String, sessionId: String): DiagnosticsRelaySession?
+
+    suspend fun completeDiagnosticsRelaySession(
+        uid: String,
+        sessionId: String,
+        responseEncPayload: String
+    )
+
+    suspend fun deleteDiagnosticsRelaySession(uid: String, sessionId: String)
+
+    suspend fun failDiagnosticsRelaySession(uid: String, sessionId: String)
+
+    /** Fresh read of a cloud registry device row (bypasses in-memory cache). */
+    suspend fun fetchCloudDeviceRecord(uid: String, deviceId: String): CloudDeviceRecord?
+
+    /**
+     * Observes pending diagnostics relay requests targeting [responderDeviceId].
+     */
+    fun observeDiagnosticsRelayInbox(
+        uid: String,
+        responderDeviceId: String,
+        onSession: (DiagnosticsRelaySession) -> Unit,
+        onError: (Throwable) -> Unit
+    ): CloudRegistryHandle
 
     /**
      * Start listening / polling the user device collection (includes this device’s document).

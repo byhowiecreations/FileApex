@@ -1,6 +1,7 @@
 package com.fileapex.data.settings
 
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.util.TimestampDiagnostics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,6 +68,17 @@ class BaseAppSettings(
     private val devicesViewModeFlow = MutableStateFlow(
         ExplorerViewMode.fromStorage(store.getString(KEY_DEVICES_VIEW_MODE, ExplorerViewMode.List.name))
     )
+    private val deviceDetailsDisplayPreferencesFlow = MutableStateFlow(
+        DeviceDetailsDisplayPreferences.decode(
+            store.getString(KEY_DEVICE_DETAILS_DISPLAY, "")
+        )
+    )
+    private val deviceDetailsAllowOverCellularFlow = MutableStateFlow(
+        store.getBoolean(KEY_DEVICE_DETAILS_ALLOW_CELLULAR, false)
+    )
+    private val diagnosticsPrivateKeyBase64Stored = MutableStateFlow(
+        store.getString(KEY_DIAGNOSTICS_PRIVATE_KEY, "")
+    )
 
     override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
@@ -90,6 +102,10 @@ class BaseAppSettings(
     override val desktopUiStyle: StateFlow<DesktopUiStyle> = desktopUiStyleFlow.asStateFlow()
     override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
     override val devicesViewMode: StateFlow<ExplorerViewMode> = devicesViewModeFlow.asStateFlow()
+    override val deviceDetailsDisplayPreferences: StateFlow<DeviceDetailsDisplayPreferences> =
+        deviceDetailsDisplayPreferencesFlow.asStateFlow()
+    override val deviceDetailsAllowOverCellular: StateFlow<Boolean> =
+        deviceDetailsAllowOverCellularFlow.asStateFlow()
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
         store.putBoolean(KEY_GOOGLE, enabled)
@@ -204,6 +220,25 @@ class BaseAppSettings(
         devicesViewModeFlow.value = mode
     }
 
+    override fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences) {
+        val normalized = preferences.normalized()
+        store.putString(KEY_DEVICE_DETAILS_DISPLAY, DeviceDetailsDisplayPreferences.encode(normalized))
+        deviceDetailsDisplayPreferencesFlow.value = normalized
+    }
+
+    override fun setDeviceDetailsAllowOverCellular(enabled: Boolean) {
+        store.putBoolean(KEY_DEVICE_DETAILS_ALLOW_CELLULAR, enabled)
+        deviceDetailsAllowOverCellularFlow.value = enabled
+    }
+
+    override fun diagnosticsPrivateKeyBase64(): String = diagnosticsPrivateKeyBase64Stored.value
+
+    override fun setDiagnosticsPrivateKeyBase64(value: String) {
+        val cleaned = value.trim()
+        store.putString(KEY_DIAGNOSTICS_PRIVATE_KEY, cleaned)
+        diagnosticsPrivateKeyBase64Stored.value = cleaned
+    }
+
     /**
      * Pre-0.6.1a boot restart followed the service watchdog toggle; migrate once on first read.
      */
@@ -238,5 +273,8 @@ class BaseAppSettings(
         const val KEY_DESKTOP_UI_STYLE = "desktop_ui_style"
         const val KEY_EXPLORER_VIEW_MODE = "explorer_view_mode"
         const val KEY_DEVICES_VIEW_MODE = "devices_view_mode"
+        const val KEY_DEVICE_DETAILS_DISPLAY = "device_details_display"
+        const val KEY_DEVICE_DETAILS_ALLOW_CELLULAR = "device_details_allow_cellular"
+        const val KEY_DIAGNOSTICS_PRIVATE_KEY = "diagnostics_private_key_b64"
     }
 }

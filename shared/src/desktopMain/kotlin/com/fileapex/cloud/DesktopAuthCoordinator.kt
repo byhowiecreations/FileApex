@@ -166,4 +166,12 @@ actual fun firebaseProjectId(): String =
         System.getProperty("fileapex.firebase.project.id").orEmpty()
     }
 
-actual fun currentPlatformLabel(): String = "desktop"
+actual fun currentPlatformLabel(): String {
+    val osName = System.getProperty("os.name").orEmpty()
+    return when {
+        osName.contains("Mac", ignoreCase = true) -> "Mac"
+        osName.contains("Windows", ignoreCase = true) -> "Windows"
+        osName.contains("Linux", ignoreCase = true) -> "Linux"
+        else -> "Desktop"
+    }
+}

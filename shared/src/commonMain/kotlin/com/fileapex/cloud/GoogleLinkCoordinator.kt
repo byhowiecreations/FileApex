@@ -1,5 +1,6 @@
 package com.fileapex.cloud
 
+import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
@@ -58,6 +59,10 @@ object GoogleLinkCoordinator {
     /** Cached cloud device rows for FCM wake target resolution. */
     @Volatile
     private var cachedCloudRecords: List<CloudDeviceRecord> = emptyList()
+
+    /** Lookup a peer's latest cloud registry row (diagnostics relay, FCM wake). */
+    fun cloudRecordFor(deviceId: String): CloudDeviceRecord? =
+        cachedCloudRecords.find { it.deviceId == deviceId }
 
     /** Last presence successfully published (network fields only; ignores updatedAt). */
     @Volatile
@@ -173,6 +178,9 @@ object GoogleLinkCoordinator {
             // Drain listeners/workers before any Auth/Firestore mutation or sign-out.
             shutdownCloudSessionLocked()
             if (uid.isNotBlank()) {
+                runCatching {
+                    DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled = false)
+                }
                 runCatching { CloudAuthBackend.deleteDevice(uid, deviceId) }
             }
             runCatching { CloudAuthBackend.signOut() }
@@ -248,6 +256,8 @@ object GoogleLinkCoordinator {
         previousHandle?.stop()
         previousHandle?.awaitIdle()
 
+        DiagnosticsCloudRelay.stopInbox()
+
         val previousJob = sessionJob
         sessionJob = SupervisorJob()
         sessionScope = CoroutineScope(sessionJob + Dispatchers.Default)
@@ -288,6 +298,30 @@ object GoogleLinkCoordinator {
                 }
             }
         )
+
+        scope.launch {
+            if (!isSessionLive(epoch)) return@launch
+            refreshDiagnosticsCloudRelay(uid, selfId)
+        }
+    }
+
+    /** Sync diagnostics relay opt-in + inbox when cloud session is active. */
+    suspend fun refreshDiagnosticsCloudRelay(uid: String, selfDeviceId: String? = null) {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!cloudOpsActive) return
+        if (uid.isBlank()) return
+        val deviceId = selfDeviceId ?: loadLocalIdentity().deviceId
+        val enabled = FileApexServices.settings.deviceDetailsAllowOverCellular.value
+        runCatching {
+            DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled)
+        }.onFailure { error ->
+            println("GoogleLinkCoordinator: diagnostics cloud sync failed — ${error.message}")
+        }
+        if (enabled) {
+            DiagnosticsCloudRelay.startInbox(uid, deviceId)
+        } else {
+            DiagnosticsCloudRelay.stopInbox()
+        }
     }
 
     private fun isSessionLive(epoch: Long): Boolean =

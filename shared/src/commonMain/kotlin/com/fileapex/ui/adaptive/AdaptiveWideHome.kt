@@ -41,6 +41,7 @@ import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.DevicesScreenLayoutMode
 import com.fileapex.ui.ExplorerViewModeToggle
+import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.SettingsScreen
@@ -87,7 +88,9 @@ fun AdaptiveWideHome(
     onOpenAppBatteryUsageSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
-    onOpenAppDetailsSettings: () -> Unit = {}
+    onOpenAppDetailsSettings: () -> Unit = {},
+    onOpenTransferQueue: () -> Unit = {},
+    onQueueFilesDropped: (List<String>) -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         WideTopBar(
@@ -97,7 +100,9 @@ fun AdaptiveWideHome(
             devicesViewMode = devicesViewMode,
             onToggleDevicesViewMode = onToggleDevicesViewMode,
             explorerViewMode = explorerViewMode,
-            onToggleExplorerViewMode = onToggleExplorerViewMode
+            onToggleExplorerViewMode = onToggleExplorerViewMode,
+            onOpenTransferQueue = onOpenTransferQueue,
+            onQueueFilesDropped = onQueueFilesDropped
         )
         Row(modifier = Modifier.fillMaxSize()) {
             FileApexNavigationRail(
@@ -197,7 +202,9 @@ private fun WideTopBar(
     devicesViewMode: ExplorerViewMode,
     onToggleDevicesViewMode: () -> Unit,
     explorerViewMode: ExplorerViewMode,
-    onToggleExplorerViewMode: () -> Unit
+    onToggleExplorerViewMode: () -> Unit,
+    onOpenTransferQueue: () -> Unit = {},
+    onQueueFilesDropped: (List<String>) -> Unit = {}
 ) {
     val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail
     val showExplorerViewToggle = selectedTab == HomeTab.Files || hasActiveDetail
@@ -214,6 +221,11 @@ private fun WideTopBar(
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
             color = fileApexChromeContentColor(),
             modifier = Modifier.weight(1f)
+        )
+        QueuedFilesButton(
+            onClick = onOpenTransferQueue,
+            onDesktopFilesDropped = onQueueFilesDropped,
+            iconTint = fileApexChromeContentColor()
         )
         if (showDevicesViewToggle) {
             ExplorerViewModeToggle(

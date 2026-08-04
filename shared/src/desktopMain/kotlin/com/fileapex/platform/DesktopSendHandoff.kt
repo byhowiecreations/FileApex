@@ -159,16 +159,18 @@ object DesktopSendHandoff {
 
         writeJob(job.copy(status = STATUS_RUNNING, message = "Sending…"))
         runCatching {
-            val batch = transferManager.sendLocalPathsToDeviceIds(
+            val outcome = FileApexServices.transferQueue.sendLocalPathsOrQueue(
                 absolutePaths = job.filePaths,
                 deviceIds = job.deviceIds
             )
-            val status = if (batch.allFailed) STATUS_FAILED else STATUS_DONE
-            writeJob(job.copy(status = status, message = batch.summaryMessage))
-            if (!batch.allFailed) {
+            val batch = outcome.batch
+            val failed = batch?.allFailed != false && !outcome.hadQueue
+            val status = if (failed) STATUS_FAILED else STATUS_DONE
+            writeJob(job.copy(status = status, message = outcome.message))
+            if (!failed) {
                 cleanupStaging(jobId)
             }
-            println("DesktopSendHandoff: $status — ${batch.summaryMessage}")
+            println("DesktopSendHandoff: $status — ${outcome.message}")
         }.onFailure { error ->
             val message = error.message ?: "Send failed"
             writeJob(job.copy(status = STATUS_FAILED, message = message))

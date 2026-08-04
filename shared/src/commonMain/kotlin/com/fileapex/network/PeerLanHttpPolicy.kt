@@ -8,18 +8,30 @@ import com.fileapex.util.NetworkUtils
  * Peer traffic is Wi‑Fi/Ethernet only — never cellular or OS default-route Ktor.
  */
 object PeerLanHttpPolicy {
+    /** Non-throwing check used by background probes (presence sweep, health ping). */
+    fun canRoute(host: String): Boolean {
+        if (!NetworkUtils.isPrivateLanPeerHost(host)) return false
+        if (!isActiveLanConnectivity()) return false
+        if (LanInterfaceBinding.lanBindCandidates().isEmpty()) return false
+        return true
+    }
+
     fun ensureRoute(host: String) {
         require(NetworkUtils.isPrivateLanPeerHost(host)) {
             "Peer host must be a private LAN address: $host"
         }
-        require(isActiveLanConnectivity()) {
-            "Wi-Fi or Ethernet is required for peer connections"
+        if (LanInterfaceBinding.lanBindCandidates().isEmpty()) {
+            error(deviceDetailsWifiRequiredMessage())
         }
-        require(LanInterfaceBinding.lanBindCandidates().isNotEmpty()) {
-            "No Wi-Fi or Ethernet interface is available for peer traffic"
+        require(isActiveLanConnectivity()) {
+            deviceDetailsWifiRequiredMessage()
         }
     }
 
+    fun deviceDetailsWifiRequiredMessage(): String =
+        PeerReachabilityMessages.localWifiRequired()
+
     fun unreachableMessage(host: String, port: Int): String =
-        "Peer unreachable over Wi-Fi at $host:$port"
+        "Peer unreachable over Wi-Fi at $host:$port. " +
+            "Confirm both devices are on the same local network."
 }

@@ -67,7 +67,13 @@ data class NetworkDiagnostics(
     val linkSpeedMbps: Int? = null,
     /** 2.4 GHz, 5 GHz, 6 GHz, Unknown */
     val frequencyBand: String = "",
-    val channel: Int? = null
+    val channel: Int? = null,
+    /** LTE, 5G NR, HSPA, etc. — populated when [interfaceType] is Cellular. */
+    val networkGeneration: String = "",
+    val carrier: String = "",
+    /** Downlink/uplink frequency in MHz when available on cellular. */
+    val frequencyMhz: Int? = null,
+    val cellBand: String = ""
 )
 
 @Serializable

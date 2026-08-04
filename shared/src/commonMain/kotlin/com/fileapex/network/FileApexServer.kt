@@ -12,6 +12,7 @@ import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.collectDeviceDiagnostics
+import com.fileapex.platform.collectDeviceDiagnosticsFallback
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.notifyFilesReceived
 import com.fileapex.util.PathUtils
@@ -405,20 +406,24 @@ class FileApexServer(
                 }
 
                 get("/api/v1/diagnostics") {
+                    if (!isPeerPinAccepted(providedPin(call))) {
+                        call.respond(HttpStatusCode.Forbidden, "pin_required")
+                        return@get
+                    }
+                    val snapshot = withContext(Dispatchers.IO) {
+                        runCatching { collectDeviceDiagnostics() }
+                            .getOrElse { error ->
+                                onLog("GET /api/v1/diagnostics collector failed — returning partial snapshot", error)
+                                collectDeviceDiagnosticsFallback()
+                            }
+                    }
                     runCatching {
-                        if (!isPeerPinAccepted(providedPin(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pin_required")
-                            return@runCatching
-                        }
-                        val snapshot = withContext(Dispatchers.IO) {
-                            collectDeviceDiagnostics()
-                        }
                         call.respondText(
                             text = json.encodeToString(PeerDeviceDiagnostics.serializer(), snapshot),
                             contentType = ContentType.Application.Json
                         )
                     }.onFailure { error ->
-                        onLog("GET /api/v1/diagnostics failed", error)
+                        onLog("GET /api/v1/diagnostics encode failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "diagnostics_failed")
                     }
                 }

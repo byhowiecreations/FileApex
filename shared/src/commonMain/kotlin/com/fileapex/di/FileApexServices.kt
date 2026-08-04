@@ -13,6 +13,7 @@ import com.fileapex.data.transfer.FileTransferService
 import com.fileapex.domain.pairing.PairingCoordinator
 import com.fileapex.domain.presence.PeerPresenceMonitor
 import com.fileapex.domain.transfer.TransferManager
+import com.fileapex.domain.transfer.TransferQueueCoordinator
 import com.fileapex.network.FileApexHttpClientFactory
 import com.fileapex.network.FileApexClient
 import com.fileapex.util.NetworkUtils
@@ -55,6 +56,16 @@ object FileApexServices {
             identityProvider = { loadLocalIdentity() },
             onlineDeviceIds = { presenceMonitor.onlineDeviceIds.value },
             presenceMonitor = { presenceMonitor }
+        )
+    }
+
+    val transferQueue: TransferQueueCoordinator by lazy {
+        TransferQueueCoordinator(
+            dao = database!!.pendingTransferDao(),
+            deviceRepository = deviceRepository,
+            transferManager = transferManager,
+            presenceMonitor = presenceMonitor,
+            scope = bootstrapScope
         )
     }
 
@@ -101,6 +112,7 @@ object FileApexServices {
         }
         LocalDeviceNameStore.ensureLoaded()
         presenceMonitor.ensureOnlineSnapshotWatcher()
+        transferQueue.ensureDrainWatcher()
         bootstrapScope.launch {
             runCatching {
                 recoverEmptyRosterIfNeeded(deviceRepository)

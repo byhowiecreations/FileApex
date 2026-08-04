@@ -51,7 +51,11 @@ import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
+import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.ShareSendScreen
+import com.fileapex.ui.TransferQueueDropHost
+import com.fileapex.ui.TransferQueueScreen
+import com.fileapex.presentation.TransferQueueViewModel
 import com.fileapex.ui.StoragePermissionScreen
 import com.fileapex.ui.UpdateAvailableSheet
 import com.fileapex.ui.adaptive.AdaptiveWideHome
@@ -98,6 +102,7 @@ fun App(
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
+    val transferQueueViewModel: TransferQueueViewModel = viewModel { TransferQueueViewModel() }
     val setupComplete = hasStoragePermission
 
     // Wide-layout detail state (list-detail). Survives compact/wide transitions.
@@ -158,6 +163,7 @@ fun App(
         enabled = route !is AppRoute.Devices &&
             route !is AppRoute.Explorer &&
             route !is AppRoute.ShareSend &&
+            route !is AppRoute.TransferQueue &&
             setupComplete
     ) {
         onNavigateHome()
@@ -247,6 +253,9 @@ fun App(
                             directTargetDeviceId = overlay.directTargetDeviceId,
                             onFinished = finishShareFlow
                         )
+                        AppRoute.TransferQueue -> TransferQueueScreen(
+                            onBack = onNavigateHome
+                        )
                         AppRoute.ScanQr -> {
                             route = AppRoute.Devices
                         }
@@ -331,7 +340,9 @@ fun App(
                                     onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                                     exactAlarmWarningActive = exactAlarmWarningActive,
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings
+                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                    onQueueFilesDropped = transferQueueViewModel::onDesktopFilesDropped
                                 )
                             } else {
                                 CompactHomeContent(
@@ -357,7 +368,9 @@ fun App(
                                     onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                                     exactAlarmWarningActive = exactAlarmWarningActive,
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings
+                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                    onQueueFilesDropped = transferQueueViewModel::onDesktopFilesDropped
                                 )
                             }
                         }
@@ -366,6 +379,8 @@ fun App(
             }
         }
     }
+
+    TransferQueueDropHost(transferQueueViewModel)
 
     LaunchedEffect(hasStoragePermission) {
         if (!hasStoragePermission) {
@@ -408,7 +423,9 @@ private fun CompactHomeContent(
     onOpenAppBatteryUsageSettings: () -> Unit = {},
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
-    onOpenAppDetailsSettings: () -> Unit = {}
+    onOpenAppDetailsSettings: () -> Unit = {},
+    onOpenTransferQueue: () -> Unit = {},
+    onQueueFilesDropped: (List<String>) -> Unit = {}
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
@@ -426,6 +443,10 @@ private fun CompactHomeContent(
         onSettings = onOpenSettings,
         onExitApp = { confirmExit = true },
         tealStripActions = {
+            QueuedFilesButton(
+                onClick = onOpenTransferQueue,
+                onDesktopFilesDropped = onQueueFilesDropped
+            )
             when {
                 showDevicesViewToggle -> {
                     ExplorerViewModeToggle(

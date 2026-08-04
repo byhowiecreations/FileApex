@@ -3,6 +3,8 @@ package com.fileapex.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
+import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
+import com.fileapex.cloud.diagnostics.DiagnosticsRelayErrors
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
@@ -11,6 +13,8 @@ import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.presence.LanPresenceTiming
+import com.fileapex.domain.presence.PeerLanReachabilityVerdict
+import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.platform.purgeDirectShareTarget
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
@@ -72,7 +76,11 @@ private sealed interface DeviceConnectOutcome {
         val device: PairedDeviceEntity,
         val displayName: String
     ) : DeviceConnectOutcome
-    data class Unreachable(val detail: String) : DeviceConnectOutcome
+    data class Unreachable(
+        val detail: String,
+        /** Skip the minimum "Connecting…" delay — used for fast off-LAN privacy blocks. */
+        val quickFail: Boolean = false
+    ) : DeviceConnectOutcome
 }
 
 class DevicesViewModel : ViewModel() {
@@ -194,7 +202,12 @@ class DevicesViewModel : ViewModel() {
         }.getOrElse { error ->
             DeviceConnectOutcome.Unreachable(error.message ?: "Unable to reach device")
         }
-        val remainingMs = LanPresenceTiming.DEVICE_CONNECT_HANDSHAKE_MS - TimeUtils.millisSince(startedAt)
+        val skipMinDelay = outcome is DeviceConnectOutcome.Unreachable && outcome.quickFail
+        val remainingMs = if (skipMinDelay) {
+            0L
+        } else {
+            LanPresenceTiming.DEVICE_CONNECT_HANDSHAKE_MS - TimeUtils.millisSince(startedAt)
+        }
         if (remainingMs > 0L) {
             delay(remainingMs)
         }
@@ -215,7 +228,7 @@ class DevicesViewModel : ViewModel() {
             }
             is DeviceConnectOutcome.Unreachable -> {
                 _uiState.update {
-                    it.copy(errorMessage = "Unable to reach device")
+                    it.copy(errorMessage = outcome.detail)
                 }
             }
         }
@@ -223,31 +236,51 @@ class DevicesViewModel : ViewModel() {
 
     private suspend fun performDeviceConnectHandshake(device: PairedDeviceEntity): DeviceConnectOutcome {
         val peer = repository.getDevice(device.deviceId) ?: device
-        presence.validatePeerOnDemand(peer)
-        val refreshed = repository.getDevice(device.deviceId) ?: peer
-        val host = refreshed.lastKnownIp.trim()
-        if (host.isEmpty() || host == "127.0.0.1" || host == "0.0.0.0") {
-            return DeviceConnectOutcome.Unreachable("No reachable endpoint")
+        when (val verdict = presence.quickAssessLanReachability(peer)) {
+            is PeerLanReachabilityVerdict.Direct -> {
+                val refreshed = repository.getDevice(device.deviceId) ?: peer
+                if (DeviceSessionManager.isSessionValid(refreshed.deviceId)) {
+                    DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
+                    return DeviceConnectOutcome.Open(browseTargetFor(refreshed, pinRequired = true))
+                }
+                val remote = runCatching {
+                    FileApexServices.client.fetchPeerNodeState(
+                        verdict.host,
+                        verdict.port,
+                        LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
+                    )
+                }.getOrElse { error ->
+                    return DeviceConnectOutcome.Unreachable(
+                        detail = error.message ?: PeerReachabilityMessages.peerOffline(),
+                        quickFail = true
+                    )
+                }
+                if (remote.pinRequired) {
+                    val name = remote.deviceName.ifBlank { refreshed.deviceName }
+                    return DeviceConnectOutcome.NeedsPin(refreshed, name)
+                }
+                DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
+                return DeviceConnectOutcome.Open(browseTargetFor(refreshed, pinRequired = false))
+            }
+            PeerLanReachabilityVerdict.PeerOffLocalWifi -> {
+                return DeviceConnectOutcome.Unreachable(
+                    detail = PeerReachabilityMessages.fileNavigationOffWifi(),
+                    quickFail = true
+                )
+            }
+            PeerLanReachabilityVerdict.LocalOffLocalWifi -> {
+                return DeviceConnectOutcome.Unreachable(
+                    detail = PeerReachabilityMessages.localWifiRequired(),
+                    quickFail = true
+                )
+            }
+            PeerLanReachabilityVerdict.PeerOffline -> {
+                return DeviceConnectOutcome.Unreachable(
+                    detail = PeerReachabilityMessages.peerOffline(),
+                    quickFail = true
+                )
+            }
         }
-        if (DeviceSessionManager.isSessionValid(refreshed.deviceId)) {
-            DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
-            return DeviceConnectOutcome.Open(browseTargetFor(refreshed, pinRequired = true))
-        }
-        val remote = runCatching {
-            FileApexServices.client.fetchPeerNodeState(
-                host,
-                refreshed.port,
-                LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
-            )
-        }.getOrElse { error ->
-            return DeviceConnectOutcome.Unreachable(error.message ?: "Connection refused")
-        }
-        if (remote.pinRequired) {
-            val name = remote.deviceName.ifBlank { refreshed.deviceName }
-            return DeviceConnectOutcome.NeedsPin(refreshed, name)
-        }
-        DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
-        return DeviceConnectOutcome.Open(browseTargetFor(refreshed, pinRequired = false))
     }
 
     fun pairFromQrPayload(payload: PairingPayload) {
@@ -525,19 +558,21 @@ class DevicesViewModel : ViewModel() {
             }
             runCatching {
                 withContext(Dispatchers.IO) {
-                    transferManager.sendLocalPathsToDeviceIds(roots, listOf(deviceId))
+                    FileApexServices.transferQueue.sendLocalPathsOrQueue(roots, listOf(deviceId))
                 }
             }.fold(
-                onSuccess = { batch ->
+                onSuccess = { outcome ->
                     _uiState.update {
-                        if (batch.allFailed) {
+                        val batch = outcome.batch
+                        val failed = batch?.allFailed != false && !outcome.hadQueue
+                        if (failed) {
                             it.copy(
                                 statusMessage = null,
-                                errorMessage = batch.summaryMessage
+                                errorMessage = outcome.message
                             )
                         } else {
                             it.copy(
-                                statusMessage = batch.summaryMessage,
+                                statusMessage = outcome.message,
                                 errorMessage = null
                             )
                         }
@@ -609,8 +644,7 @@ class DevicesViewModel : ViewModel() {
             }
             runCatching {
                 withContext(Dispatchers.IO) {
-                    presence.validatePeerOnDemand(device)
-                    FileApexServices.client.fetchDeviceDiagnostics(device.lastKnownIp, device.port)
+                    fetchDeviceDetailsSnapshot(device)
                 }
             }.fold(
                 onSuccess = { snapshot ->
@@ -632,13 +666,25 @@ class DevicesViewModel : ViewModel() {
                                 deviceId = device.deviceId,
                                 deviceName = device.deviceName,
                                 loading = false,
-                                errorMessage = error.message ?: "Could not load device details"
+                                errorMessage = DiagnosticsRelayErrors.fromThrowable(error)
                             )
                         )
                     }
                 }
             )
         }
+    }
+
+    private suspend fun fetchDeviceDetailsSnapshot(device: PairedDeviceEntity): PeerDeviceDiagnostics {
+        when (val verdict = presence.quickAssessLanReachability(device)) {
+            is PeerLanReachabilityVerdict.Direct -> {
+                runCatching {
+                    FileApexServices.client.fetchDeviceDiagnostics(verdict.host, verdict.port)
+                }.onSuccess { return it }
+            }
+            else -> Unit
+        }
+        return DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId)
     }
 
     fun dismissDeviceDetails() {

@@ -13,8 +13,10 @@ import android.os.PowerManager
 import android.os.StatFs
 import android.os.SystemClock
 import android.provider.Settings
-import android.util.DisplayMetrics
-import android.view.WindowManager
+import android.content.pm.PackageManager
+import android.hardware.display.DisplayManager
+import android.net.wifi.WifiManager
+import android.view.Display
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.DeviceIdentityDiagnostics
@@ -31,19 +33,28 @@ import kotlin.math.roundToInt
 
 actual fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics {
     val context = androidAppContextOrNull()
-    return PeerDeviceDiagnostics(
-        collectedAtEpochMs = 0L,
-        platform = "",
-        device = readDeviceIdentity(),
-        processor = readProcessor(),
-        display = readDisplay(context),
-        battery = readBattery(context),
-        storage = readStorage(),
-        network = readNetwork(context),
-        uptime = readUptime(),
-        thermal = readThermal(context),
-        memory = readMemory(context)
-    )
+    return runCatching {
+        PeerDeviceDiagnostics(
+            collectedAtEpochMs = 0L,
+            platform = "",
+            device = runCatching { readDeviceIdentity() }.getOrDefault(DeviceIdentityDiagnostics()),
+            processor = runCatching { readProcessor() }.getOrDefault(ProcessorDiagnostics()),
+            display = readDisplay(context),
+            battery = runCatching { readBattery(context) }
+                .getOrDefault(BatteryDiagnostics(chargingState = "Not available")),
+            storage = runCatching { readStorage() }.getOrDefault(StorageDiagnostics()),
+            network = readNetwork(context),
+            uptime = runCatching { readUptime() }.getOrDefault(UptimeDiagnostics()),
+            thermal = runCatching { readThermal(context) }.getOrDefault(ThermalDiagnostics()),
+            memory = runCatching { readMemory(context) }.getOrDefault(MemoryDiagnostics())
+        )
+    }.getOrElse {
+        PeerDeviceDiagnostics(
+            collectedAtEpochMs = 0L,
+            device = runCatching { readDeviceIdentity() }.getOrDefault(DeviceIdentityDiagnostics()),
+            uptime = runCatching { readUptime() }.getOrDefault(UptimeDiagnostics())
+        )
+    }
 }
 
 private fun readDeviceIdentity(): DeviceIdentityDiagnostics {
@@ -90,30 +101,63 @@ private fun readProcessor(): ProcessorDiagnostics {
 private fun readDisplay(context: Context?): DisplayDiagnostics {
     if (context == null) return DisplayDiagnostics()
     return runCatching {
-        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.getRealMetrics(metrics)
-        val refreshRate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.display?.refreshRate
-        } else {
-            @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.refreshRate
-        }
-        val brightnessRaw = Settings.System.getInt(
-            context.contentResolver,
-            Settings.System.SCREEN_BRIGHTNESS,
-            -1
-        )
-        val brightnessPercent = brightnessRaw.takeIf { it in 0..255 }?.let {
-            ((it * 100f) / 255f).roundToInt().coerceIn(0, 100)
-        }
+        val appContext = context.applicationContext
+        val (width, height) = readDisplayPixelSize(appContext) ?: return@runCatching DisplayDiagnostics()
+        val refreshRate = readDisplayRefreshRate(appContext)
+        val brightnessPercent = runCatching {
+            val brightnessRaw = Settings.System.getInt(
+                appContext.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                -1
+            )
+            brightnessRaw.takeIf { it in 0..255 }?.let {
+                ((it * 100f) / 255f).roundToInt().coerceIn(0, 100)
+            }
+        }.getOrNull()
         DisplayDiagnostics(
-            resolution = "${metrics.widthPixels} x ${metrics.heightPixels}",
-            refreshRateHz = refreshRate?.takeIf { it > 0f },
+            resolution = "$width x $height",
+            refreshRateHz = refreshRate,
             brightnessPercent = brightnessPercent
         )
     }.getOrDefault(DisplayDiagnostics())
+}
+
+private fun readDisplayPixelSize(context: Context): Pair<Int, Int>? {
+    return runCatching {
+        readDisplayPixelSizeUnsafe(context)
+    }.getOrNull()
+}
+
+private fun readDisplayPixelSizeUnsafe(context: Context): Pair<Int, Int>? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+        val bounds = windowManager?.currentWindowMetrics?.bounds
+        if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
+            return bounds.width() to bounds.height()
+        }
+    }
+    val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+    val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
+    if (display != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val mode = display.mode
+        if (mode.physicalWidth > 0 && mode.physicalHeight > 0) {
+            return mode.physicalWidth to mode.physicalHeight
+        }
+    }
+    val metrics = context.resources.displayMetrics
+    return if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+        metrics.widthPixels to metrics.heightPixels
+    } else {
+        null
+    }
+}
+
+private fun readDisplayRefreshRate(context: Context): Float? {
+    return runCatching {
+        val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+        val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
+        display?.refreshRate?.takeIf { it.isFinite() && it > 0f }
+    }.getOrNull()
 }
 
 private fun readBattery(context: Context?): BatteryDiagnostics {
@@ -163,43 +207,208 @@ private fun readStorage(): StorageDiagnostics {
 
 private fun readNetwork(context: Context?): NetworkDiagnostics {
     if (context == null) return NetworkDiagnostics()
-    val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        ?: return NetworkDiagnostics()
-    val network = connectivity.activeNetwork
-    val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
-        ?: return NetworkDiagnostics(interfaceType = "Unknown")
+    return runCatching {
+        val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return@runCatching NetworkDiagnostics()
+        val network = connectivity.activeNetwork
+        val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
+            ?: return@runCatching NetworkDiagnostics(interfaceType = "Unknown")
 
-    val interfaceType = when {
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular"
-        else -> "Unknown"
-    }
+        val interfaceType = when {
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular"
+            else -> "Unknown"
+        }
 
-    if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-        return NetworkDiagnostics(interfaceType = interfaceType)
-    }
+        when (interfaceType) {
+            "Wi-Fi" -> readWifiNetwork(context, capabilities)
+            "Cellular" -> readCellularNetwork(context)
+            else -> NetworkDiagnostics(interfaceType = interfaceType)
+        }
+    }.getOrDefault(NetworkDiagnostics())
+}
 
-    @Suppress("DEPRECATION")
-    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE)
-        as? android.net.wifi.WifiManager
-    @Suppress("DEPRECATION")
-    val info = wifiManager?.connectionInfo ?: return NetworkDiagnostics(interfaceType = interfaceType)
+private fun readWifiNetwork(
+    context: Context,
+    capabilities: NetworkCapabilities
+): NetworkDiagnostics {
+    val appContext = context.applicationContext
+    val wifiInfo = readWifiInfo(appContext, capabilities)
+    val ssid = normalizeAndroidSsid(wifiInfo?.ssid)
+        .ifBlank { readAndroidSsidFallback(appContext) }
 
-    val ssid = info.ssid
-        ?.trim('"')
-        ?.takeUnless { it.isBlank() || it == "<unknown ssid>" }
-        .orEmpty()
-    val frequency = info.frequency.takeIf { it > 0 }
+    val frequency = wifiInfo?.frequency?.takeIf { it > 0 }
     return NetworkDiagnostics(
-        interfaceType = interfaceType,
+        interfaceType = "Wi-Fi",
         ssid = ssid,
-        signalDbm = info.rssi.takeIf { it != Int.MIN_VALUE },
-        linkSpeedMbps = info.linkSpeed.takeIf { it > 0 },
+        signalDbm = wifiInfo?.rssi?.takeIf { it != Int.MIN_VALUE && it != 0 },
+        linkSpeedMbps = wifiInfo?.linkSpeed?.takeIf { it > 0 },
         frequencyBand = frequencyBandLabel(frequency),
         channel = wifiChannel(frequency)
     )
 }
+
+private fun readWifiInfo(
+    context: Context,
+    capabilities: NetworkCapabilities
+): android.net.wifi.WifiInfo? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        !AndroidRuntimePermissions.hasNearbyWifiDevices(context)
+    ) {
+        return null
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        (capabilities.transportInfo as? android.net.wifi.WifiInfo)?.let { return it }
+    }
+    @Suppress("DEPRECATION")
+    val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+    @Suppress("DEPRECATION")
+    return wifiManager?.connectionInfo
+}
+
+private fun readAndroidSsidFallback(context: Context): String {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        context.checkSelfPermission(android.Manifest.permission.NEARBY_WIFI_DEVICES) !=
+        PackageManager.PERMISSION_GRANTED
+    ) {
+        return ""
+    }
+    @Suppress("DEPRECATION")
+    val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return ""
+    @Suppress("DEPRECATION")
+    return normalizeAndroidSsid(wifiManager.connectionInfo?.ssid)
+}
+
+private fun readCellularNetwork(context: Context): NetworkDiagnostics {
+    return runCatching {
+        readCellularNetworkUnsafe(context)
+    }.getOrDefault(NetworkDiagnostics(interfaceType = "Cellular"))
+}
+
+private fun readCellularNetworkUnsafe(context: Context): NetworkDiagnostics {
+    val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+        ?: return NetworkDiagnostics(interfaceType = "Cellular")
+
+    val carrier = telephony.networkOperatorName.trim().ifBlank {
+        telephony.simOperatorName.trim()
+    }
+
+    @Suppress("DEPRECATION")
+    val networkType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        telephony.dataNetworkType
+    } else {
+        telephony.networkType
+    }
+    val generation = cellularGenerationLabel(networkType)
+
+    val signalDbm = readCellularSignalDbm(context, telephony)
+    val (frequencyMhz, cellBand) = readCellularBandInfo(context, telephony)
+
+    return NetworkDiagnostics(
+        interfaceType = "Cellular",
+        networkGeneration = generation,
+        carrier = carrier,
+        signalDbm = signalDbm,
+        frequencyMhz = frequencyMhz,
+        cellBand = cellBand
+    )
+}
+
+private fun normalizeAndroidSsid(raw: String?): String {
+    return raw
+        ?.trim('"')
+        ?.takeUnless { it.isBlank() || it.equals("<unknown ssid>", ignoreCase = true) }
+        .orEmpty()
+}
+
+private fun readCellularSignalDbm(
+    context: Context,
+    telephony: android.telephony.TelephonyManager
+): Int? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+    if (context.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
+        != android.content.pm.PackageManager.PERMISSION_GRANTED
+    ) {
+        return null
+    }
+    return runCatching {
+        telephony.signalStrength?.cellSignalStrengths
+            ?.mapNotNull { it.dbm.takeIf { dbm -> dbm != Int.MAX_VALUE && dbm != 0 } }
+            ?.maxOrNull()
+    }.getOrNull()
+}
+
+private fun readCellularBandInfo(
+    context: Context,
+    telephony: android.telephony.TelephonyManager
+): Pair<Int?, String> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
+        return null to ""
+    }
+    if (context.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
+        != android.content.pm.PackageManager.PERMISSION_GRANTED
+    ) {
+        return null to ""
+    }
+    return runCatching {
+        @Suppress("DEPRECATION")
+        val cellInfoList = telephony.allCellInfo.orEmpty()
+        val serving = cellInfoList.firstOrNull { it.isRegistered } ?: cellInfoList.firstOrNull()
+        when (val info = serving) {
+            is android.telephony.CellInfoLte -> {
+                val identity = info.cellIdentity as android.telephony.CellIdentityLte
+                val band = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    identity.bands.firstOrNull()?.let { lteBandLabel(it) }.orEmpty()
+                } else {
+                    ""
+                }
+                @Suppress("DEPRECATION")
+                val freq = identity.earfcn.takeIf { it != Int.MAX_VALUE && it > 0 }
+                Pair(freq, band)
+            }
+            is android.telephony.CellInfoNr -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val identity = info.cellIdentity as android.telephony.CellIdentityNr
+                    val band = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        identity.bands.firstOrNull()?.let { nrBandLabel(it) }.orEmpty()
+                    } else {
+                        ""
+                    }
+                    val freq = identity.nrarfcn.takeIf { it != Int.MAX_VALUE && it > 0 }
+                    Pair(freq, band)
+                } else {
+                    Pair(null, "")
+                }
+            }
+            else -> Pair(null, "")
+        }
+    }.getOrDefault(null to "")
+}
+
+private fun cellularGenerationLabel(networkType: Int): String {
+    return when (networkType) {
+        android.telephony.TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
+        android.telephony.TelephonyManager.NETWORK_TYPE_HSPAP,
+        android.telephony.TelephonyManager.NETWORK_TYPE_HSPA,
+        android.telephony.TelephonyManager.NETWORK_TYPE_HSDPA,
+        android.telephony.TelephonyManager.NETWORK_TYPE_HSUPA,
+        android.telephony.TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
+        android.telephony.TelephonyManager.NETWORK_TYPE_EDGE,
+        android.telephony.TelephonyManager.NETWORK_TYPE_GPRS -> "2G"
+        else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            networkType == android.telephony.TelephonyManager.NETWORK_TYPE_NR
+        ) {
+            "5G NR"
+        } else {
+            "Unknown"
+        }
+    }
+}
+
+private fun lteBandLabel(band: Int): String = "Band $band"
+
+private fun nrBandLabel(band: Int): String = "n$band"
 
 private fun readUptime(): UptimeDiagnostics {
     val uptimeMs = SystemClock.elapsedRealtime()

@@ -56,3 +56,63 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         }
     }
 }
+
+/** Adds E2EE public key columns to [PairedDeviceEntity]. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "ALTER TABLE `paired_devices` ADD COLUMN `publicKey` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `paired_devices` ADD COLUMN `e2eeEnabled` INTEGER NOT NULL DEFAULT 0"
+        ).forEach { sql ->
+            connection.prepare(sql).use { statement ->
+                statement.step()
+            }
+        }
+    }
+}
+
+/** Queues deferred LAN control-plane deliveries (schema retained for in-place upgrades). */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            """
+            CREATE TABLE IF NOT EXISTS `pending_control_deliveries` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `targetDeviceId` TEXT NOT NULL,
+                `payloadJson` TEXT NOT NULL,
+                `preferPlaintextFirst` INTEGER NOT NULL,
+                `createdAtEpochMs` INTEGER NOT NULL,
+                `lastAttemptEpochMs` INTEGER NOT NULL,
+                `attemptCount` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        ).use { statement ->
+            statement.step()
+        }
+    }
+}
+
+/** Deferred outbound file transfers — source paths only, drained when peer is LAN-reachable. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            """
+            CREATE TABLE IF NOT EXISTS `pending_transfers` (
+                `id` TEXT NOT NULL,
+                `createdAtEpochMs` INTEGER NOT NULL,
+                `status` TEXT NOT NULL,
+                `sourceKind` TEXT NOT NULL,
+                `sourceJson` TEXT NOT NULL,
+                `pendingDeviceIdsJson` TEXT NOT NULL,
+                `displayLabel` TEXT NOT NULL,
+                `lastAttemptEpochMs` INTEGER NOT NULL,
+                `attemptCount` INTEGER NOT NULL,
+                `lastError` TEXT,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        ).use { statement ->
+            statement.step()
+        }
+    }
+}

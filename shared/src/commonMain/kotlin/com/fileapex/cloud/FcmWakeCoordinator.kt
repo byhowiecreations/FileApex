@@ -36,6 +36,8 @@ object FcmWakeCoordinator {
 
     /** Called from FCM receiver after parsing [FcmWakeProtocol]. */
     fun isPresenceWake(type: String?): Boolean = type == FcmWakeProtocol.TYPE_PRESENCE_WAKE
+
+    fun isDiagnosticsWake(type: String?): Boolean = type == FcmWakeProtocol.TYPE_DIAGNOSTICS_REQUEST
 }
 
 data class FcmWakeTarget(

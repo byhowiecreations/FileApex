@@ -31,6 +31,18 @@ object LanPresenceTiming {
     /** Fast on-demand health probe timeout (tap-to-browse / wake). */
     const val ON_DEMAND_HEALTH_TIMEOUT_MS = 1_500L
 
+    /** Device Details: quick reachability ping before live diagnostics fetch. */
+    const val DEVICE_DETAILS_PING_TIMEOUT_MS = 800L
+
+    /**
+     * Retry schedule after WiFi/Ethernet transition until [com.fileapex.platform.isActiveLanConnectivity]
+     * reports a bindable LAN address (DHCP often lags NetworkCallback).
+     */
+    val NETWORK_TRANSITION_RETRY_DELAYS_MS = longArrayOf(0L, 2_000L, 5_000L, 10_000L, 20_000L)
+
+    /** Skip full LAN discovery when the peer was health-checked within this window. */
+    const val DEVICE_DETAILS_RECENT_REACHABILITY_MS = 120_000L
+
     /** Brief wait after on-demand UDP wake for inbound merge payloads. */
     const val PASSIVE_ENDPOINT_WAIT_MS = 1_500L
 

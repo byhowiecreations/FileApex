@@ -5,6 +5,8 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import com.fileapex.cloud.diagnostics.DiagnosticsRelaySession
+import com.fileapex.cloud.diagnostics.DiagnosticsRelayStatus
 import com.fileapex.shared.BuildConfig
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -109,6 +111,105 @@ actual object CloudAuthBackend {
         }
     }
 
+    actual suspend fun patchDeviceDiagnosticsCloud(
+        uid: String,
+        deviceId: String,
+        diagnosticsPublicKey: String,
+        deviceDetailsCloudEnabled: Boolean
+    ) {
+        val fields = mapOf(
+            "diagnosticsPublicKey" to diagnosticsPublicKey.trim(),
+            "deviceDetailsCloudEnabled" to deviceDetailsCloudEnabled
+        )
+        val ref = deviceDoc(uid, deviceId)
+        runCatching {
+            ref.update(fields).await()
+        }.onFailure {
+            ref.set(fields, SetOptions.merge()).await()
+        }
+    }
+
+    actual suspend fun upsertDiagnosticsRelaySession(uid: String, session: DiagnosticsRelaySession) {
+        relayDoc(uid, session.sessionId)
+            .set(session.toFirestoreFields(), SetOptions.merge())
+            .await()
+    }
+
+    actual suspend fun fetchDiagnosticsRelaySession(
+        uid: String,
+        sessionId: String
+    ): DiagnosticsRelaySession? {
+        val snapshot = relayDoc(uid, sessionId).get().await()
+        if (!snapshot.exists()) return null
+        @Suppress("UNCHECKED_CAST")
+        val data = snapshot.data as? Map<String, Any?> ?: return null
+        return DiagnosticsRelaySession.fromFirestore(data)
+    }
+
+    actual suspend fun completeDiagnosticsRelaySession(
+        uid: String,
+        sessionId: String,
+        responseEncPayload: String
+    ) {
+        relayDoc(uid, sessionId).update(
+            mapOf(
+                "responseEncPayload" to responseEncPayload,
+                "status" to DiagnosticsRelayStatus.COMPLETE
+            )
+        ).await()
+    }
+
+    actual suspend fun deleteDiagnosticsRelaySession(uid: String, sessionId: String) {
+        relayDoc(uid, sessionId).delete().await()
+    }
+
+    actual suspend fun failDiagnosticsRelaySession(uid: String, sessionId: String) {
+        relayDoc(uid, sessionId).update("status", DiagnosticsRelayStatus.FAILED).await()
+    }
+
+    actual suspend fun fetchCloudDeviceRecord(uid: String, deviceId: String): CloudDeviceRecord? {
+        val snapshot = deviceDoc(uid, deviceId).get().await()
+        if (!snapshot.exists()) return null
+        @Suppress("UNCHECKED_CAST")
+        val data = snapshot.data as? Map<String, Any?> ?: return null
+        return CloudDeviceRecordParsing.fromFirestoreMap(data, snapshot.id)
+    }
+
+    actual fun observeDiagnosticsRelayInbox(
+        uid: String,
+        responderDeviceId: String,
+        onSession: (DiagnosticsRelaySession) -> Unit,
+        onError: (Throwable) -> Unit
+    ): CloudRegistryHandle {
+        val idle = CompletableDeferred<Unit>()
+        val state = ListenerState()
+        val registration = FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection("diagnosticsRelay")
+            .whereEqualTo("responderDeviceId", responderDeviceId)
+            .whereEqualTo("status", DiagnosticsRelayStatus.PENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (state.stopped) return@addSnapshotListener
+                if (error != null) {
+                    if (!state.stopped) onError(error)
+                    return@addSnapshotListener
+                }
+                if (state.stopped) return@addSnapshotListener
+                snapshot?.documents.orEmpty().forEach { doc ->
+                    @Suppress("UNCHECKED_CAST")
+                    val data = doc.data as? Map<String, Any?> ?: return@forEach
+                    val session = DiagnosticsRelaySession.fromFirestore(data) ?: return@forEach
+                    if (!state.stopped) onSession(session)
+                }
+            }
+        return registryHandle(state, registration, idle)
+    }
+
+    private fun relayDoc(uid: String, sessionId: String) =
+        FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection("diagnosticsRelay").document(sessionId)
+
     private fun registryHandle(
         state: ListenerState,
         registration: ListenerRegistration,
@@ -150,20 +251,9 @@ actual object CloudAuthBackend {
                 }
                 if (state.stopped) return@addSnapshotListener
                 val records = snapshot?.documents.orEmpty().map { doc ->
-                    val id = doc.getString("deviceId") ?: doc.id
-                    CloudDeviceRecord(
-                        deviceId = id,
-                        deviceName = doc.getString("deviceName").orEmpty(),
-                        lastKnownIp = doc.getString("lastKnownIp").orEmpty(),
-                        port = (doc.getLong("port") ?: 8080L).toInt(),
-                        publicKeyHash = doc.getString("publicKeyHash").orEmpty(),
-                        rootPath = doc.getString("rootPath").orEmpty(),
-                        platform = doc.getString("platform").orEmpty(),
-                        clientVersion = doc.getString("clientVersion").orEmpty(),
-                        clientVersionCode = (doc.getLong("clientVersionCode") ?: 0L).toInt(),
-                        updatedAtEpochMs = doc.getLong("updatedAtEpochMs") ?: 0L,
-                        fcmToken = doc.getString("fcmToken").orEmpty()
-                    )
+                    @Suppress("UNCHECKED_CAST")
+                    val data = doc.data as? Map<String, Any?> ?: emptyMap()
+                    CloudDeviceRecordParsing.fromFirestoreMap(data, doc.id)
                 }
                 if (!state.stopped) onDevices(records)
             }
@@ -186,4 +276,4 @@ actual fun firebaseApiKey(): String =
 actual fun firebaseProjectId(): String =
     com.google.firebase.FirebaseApp.getInstance().options.projectId.orEmpty()
 
-actual fun currentPlatformLabel(): String = "android"
+actual fun currentPlatformLabel(): String = "Android"

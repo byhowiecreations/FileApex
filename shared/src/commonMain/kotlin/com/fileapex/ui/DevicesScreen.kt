@@ -90,6 +90,7 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.diagnostics.DeviceDiagnosticsFormatter
+import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.di.FileApexServices
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DeviceDetailsState
@@ -1381,6 +1382,9 @@ private fun DeviceDetailsDialog(
     details: DeviceDetailsState,
     onDismiss: () -> Unit
 ) {
+    val displayPreferences by FileApexServices.settings.deviceDetailsDisplayPreferences
+        .collectAsState(DeviceDetailsDisplayPreferences.defaults())
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Device Details — ${details.deviceName}") },
@@ -1412,7 +1416,10 @@ private fun DeviceDetailsDialog(
                             .verticalScroll(scrollState),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        DeviceDiagnosticsFormatter.detailRows(details.snapshot).forEach { (label, value) ->
+                        DeviceDiagnosticsFormatter.detailRows(
+                            snapshot = details.snapshot,
+                            preferences = displayPreferences
+                        ).forEach { (label, value) ->
                             Column {
                                 Text(
                                     text = label,

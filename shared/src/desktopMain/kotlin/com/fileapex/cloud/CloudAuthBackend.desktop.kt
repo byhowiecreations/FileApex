@@ -1,5 +1,7 @@
 package com.fileapex.cloud
 
+import com.fileapex.cloud.diagnostics.DiagnosticsRelaySession
+import com.fileapex.cloud.diagnostics.DiagnosticsRelayStatus
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexHttpClientFactory
 import io.ktor.client.call.body
@@ -257,6 +259,227 @@ actual object CloudAuthBackend {
         )
     }
 
+    actual suspend fun patchDeviceDiagnosticsCloud(
+        uid: String,
+        deviceId: String,
+        diagnosticsPublicKey: String,
+        deviceDetailsCloudEnabled: Boolean
+    ) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val parent =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/devices"
+        val body = buildJsonObject {
+            put(
+                "fields",
+                buildJsonObject {
+                    put(
+                        "diagnosticsPublicKey",
+                        buildJsonObject { put("stringValue", diagnosticsPublicKey.trim()) }
+                    )
+                    put(
+                        "deviceDetailsCloudEnabled",
+                        buildJsonObject { put("booleanValue", deviceDetailsCloudEnabled) }
+                    )
+                }
+            )
+        }
+        patchOrCreateDocument(
+            token = token,
+            parent = parent,
+            documentId = deviceId,
+            body = body,
+            fieldPaths = listOf("diagnosticsPublicKey", "deviceDetailsCloudEnabled")
+        )
+    }
+
+    actual suspend fun upsertDiagnosticsRelaySession(uid: String, session: DiagnosticsRelaySession) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val parent =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/diagnosticsRelay"
+        val body = relaySessionDocumentBody(session)
+        patchOrCreateDocument(
+            token = token,
+            parent = parent,
+            documentId = session.sessionId,
+            body = body,
+            fieldPaths = relaySessionFieldPaths()
+        )
+    }
+
+    actual suspend fun fetchDiagnosticsRelaySession(
+        uid: String,
+        sessionId: String
+    ): DiagnosticsRelaySession? {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val url =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/diagnosticsRelay/$sessionId"
+        val response = client.get(url) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        if (response.status.value == 404) return null
+        if (!response.status.isSuccess()) {
+            error("Firestore relay fetch failed (${response.status}): ${response.bodyAsText()}")
+        }
+        val doc = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
+        return parseRelaySessionDocument(doc)
+    }
+
+    actual suspend fun completeDiagnosticsRelaySession(
+        uid: String,
+        sessionId: String,
+        responseEncPayload: String
+    ) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val url =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/diagnosticsRelay/$sessionId"
+        val body = buildJsonObject {
+            put(
+                "fields",
+                buildJsonObject {
+                    put(
+                        "responseEncPayload",
+                        buildJsonObject { put("stringValue", responseEncPayload) }
+                    )
+                    put(
+                        "status",
+                        buildJsonObject { put("stringValue", DiagnosticsRelayStatus.COMPLETE) }
+                    )
+                }
+            )
+        }
+        val patch = client.patch(url) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            parameter("currentDocument.exists", "true")
+            parameter("updateMask.fieldPaths", "responseEncPayload")
+            parameter("updateMask.fieldPaths", "status")
+            setBody(body)
+        }
+        if (!patch.status.isSuccess()) {
+            error("Firestore relay complete failed (${patch.status}): ${patch.bodyAsText()}")
+        }
+    }
+
+    actual suspend fun deleteDiagnosticsRelaySession(uid: String, sessionId: String) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val url =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/diagnosticsRelay/$sessionId"
+        client.delete(url) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+    }
+
+    actual suspend fun failDiagnosticsRelaySession(uid: String, sessionId: String) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val url =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/diagnosticsRelay/$sessionId"
+        val body = buildJsonObject {
+            put(
+                "fields",
+                buildJsonObject {
+                    put(
+                        "status",
+                        buildJsonObject { put("stringValue", DiagnosticsRelayStatus.FAILED) }
+                    )
+                }
+            )
+        }
+        val patch = client.patch(url) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            parameter("currentDocument.exists", "true")
+            parameter("updateMask.fieldPaths", "status")
+            setBody(body)
+        }
+        if (!patch.status.isSuccess()) {
+            error("Firestore relay fail mark failed (${patch.status}): ${patch.bodyAsText()}")
+        }
+    }
+
+    actual suspend fun fetchCloudDeviceRecord(uid: String, deviceId: String): CloudDeviceRecord? {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val url =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/devices/$deviceId"
+        val response = client.get(url) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        if (response.status.value == 404) return null
+        if (!response.status.isSuccess()) {
+            error("Firestore device fetch failed (${response.status}): ${response.bodyAsText()}")
+        }
+        val doc = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
+        return parseCloudDeviceDocument(doc)
+    }
+
+    actual fun observeDiagnosticsRelayInbox(
+        uid: String,
+        responderDeviceId: String,
+        onSession: (DiagnosticsRelaySession) -> Unit,
+        onError: (Throwable) -> Unit
+    ): CloudRegistryHandle {
+        val idle = CompletableDeferred<Unit>()
+        val state = ListenerState()
+        val job = pollScope.launch {
+            try {
+                while (isActive && !state.stopped) {
+                    runCatching {
+                        val token = requireIdToken()
+                        val project = firebaseProjectId()
+                        val url =
+                            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                                "users/$uid/diagnosticsRelay"
+                        val response = client.get(url) {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                        }
+                        if (!response.status.isSuccess()) {
+                            error("Firestore relay list failed (${response.status}): ${response.bodyAsText()}")
+                        }
+                        val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
+                        val docsEl = body["documents"]
+                        val arr = docsEl as? JsonArray
+                        arr?.forEach { el ->
+                            val session = parseRelaySessionDocument(el.jsonObject) ?: return@forEach
+                            if (session.responderDeviceId != responderDeviceId) return@forEach
+                            if (session.status != DiagnosticsRelayStatus.PENDING) return@forEach
+                            if (!state.stopped) onSession(session)
+                        }
+                    }.onFailure { error ->
+                        if (!state.stopped) onError(error)
+                    }
+                    if (state.stopped) break
+                    delay(RELAY_POLL_MS)
+                }
+            } finally {
+                if (!idle.isCompleted) idle.complete(Unit)
+            }
+        }
+        return object : CloudRegistryHandle {
+            override fun stop() {
+                if (state.stopped) return
+                state.stopped = true
+                job.cancel()
+            }
+
+            override suspend fun awaitIdle() {
+                idle.await()
+            }
+        }
+    }
+
     actual fun observeUserDevices(
         uid: String,
         onDevices: (List<CloudDeviceRecord>) -> Unit,
@@ -284,25 +507,8 @@ actual object CloudAuthBackend {
                         val list = mutableListOf<CloudDeviceRecord>()
                         val arr = docsEl as? kotlinx.serialization.json.JsonArray
                         arr?.forEach { el ->
-                            val doc = el.jsonObject
-                            val fields = doc["fields"]?.jsonObject ?: return@forEach
-                            val id = stringField(fields, "deviceId")
-                                ?: doc["name"]?.jsonPrimitive?.contentOrNull
-                                    ?.substringAfterLast('/')
-                                ?: return@forEach
-                            list += CloudDeviceRecord(
-                                deviceId = id,
-                                deviceName = stringField(fields, "deviceName").orEmpty(),
-                                lastKnownIp = stringField(fields, "lastKnownIp").orEmpty(),
-                                port = integerField(fields, "port")?.toInt() ?: 8080,
-                                publicKeyHash = stringField(fields, "publicKeyHash").orEmpty(),
-                                rootPath = stringField(fields, "rootPath").orEmpty(),
-                                platform = stringField(fields, "platform").orEmpty(),
-                                clientVersion = stringField(fields, "clientVersion").orEmpty(),
-                                clientVersionCode = integerField(fields, "clientVersionCode")?.toInt() ?: 0,
-                                updatedAtEpochMs = integerField(fields, "updatedAtEpochMs") ?: 0L,
-                                fcmToken = stringField(fields, "fcmToken").orEmpty()
-                            )
+                            val record = parseCloudDeviceDocument(el.jsonObject) ?: return@forEach
+                            list += record
                         }
                         if (!state.stopped) {
                             onDevices(list)
@@ -439,12 +645,85 @@ actual object CloudAuthBackend {
     private fun integerField(fields: JsonObject, name: String): Long? =
         fields[name]?.jsonObject?.get("integerValue")?.jsonPrimitive?.contentOrNull?.toLongOrNull()
 
+    private fun booleanField(fields: JsonObject, name: String): Boolean? =
+        fields[name]?.jsonObject?.get("booleanValue")?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+
+    private fun relaySessionFieldPaths(): List<String> = listOf(
+        "sessionId",
+        "requesterDeviceId",
+        "responderDeviceId",
+        "requestEncPayload",
+        "responseEncPayload",
+        "status",
+        "createdAtEpochMs",
+        "ttlEpochMs"
+    )
+
+    private fun relaySessionDocumentBody(session: DiagnosticsRelaySession): JsonObject = buildJsonObject {
+        put(
+            "fields",
+            buildJsonObject {
+                put("sessionId", buildJsonObject { put("stringValue", session.sessionId) })
+                put("requesterDeviceId", buildJsonObject { put("stringValue", session.requesterDeviceId) })
+                put("responderDeviceId", buildJsonObject { put("stringValue", session.responderDeviceId) })
+                put("requestEncPayload", buildJsonObject { put("stringValue", session.requestEncPayload) })
+                put("responseEncPayload", buildJsonObject { put("stringValue", session.responseEncPayload) })
+                put("status", buildJsonObject { put("stringValue", session.status) })
+                put(
+                    "createdAtEpochMs",
+                    buildJsonObject { put("integerValue", session.createdAtEpochMs.toString()) }
+                )
+                put(
+                    "ttlEpochMs",
+                    buildJsonObject { put("integerValue", session.ttlEpochMs.toString()) }
+                )
+            }
+        )
+    }
+
+    private fun parseCloudDeviceDocument(doc: JsonObject): CloudDeviceRecord? {
+        val fields = doc["fields"]?.jsonObject ?: return null
+        val documentId = doc["name"]?.jsonPrimitive?.contentOrNull?.substringAfterLast('/').orEmpty()
+        val data = buildMap<String, Any?> {
+            put("deviceId", stringField(fields, "deviceId"))
+            put("deviceName", stringField(fields, "deviceName"))
+            put("lastKnownIp", stringField(fields, "lastKnownIp"))
+            put("port", integerField(fields, "port")?.toInt())
+            put("publicKeyHash", stringField(fields, "publicKeyHash"))
+            put("rootPath", stringField(fields, "rootPath"))
+            put("platform", stringField(fields, "platform"))
+            put("clientVersion", stringField(fields, "clientVersion"))
+            put("clientVersionCode", integerField(fields, "clientVersionCode")?.toInt())
+            put("updatedAtEpochMs", integerField(fields, "updatedAtEpochMs"))
+            put("fcmToken", stringField(fields, "fcmToken"))
+            put("diagnosticsPublicKey", stringField(fields, "diagnosticsPublicKey"))
+            put("deviceDetailsCloudEnabled", booleanField(fields, "deviceDetailsCloudEnabled"))
+        }
+        return CloudDeviceRecordParsing.fromFirestoreMap(data, documentId)
+    }
+
+    private fun parseRelaySessionDocument(doc: JsonObject): DiagnosticsRelaySession? {
+        val fields = doc["fields"]?.jsonObject ?: return null
+        val data = buildMap<String, Any?> {
+            put("sessionId", stringField(fields, "sessionId"))
+            put("requesterDeviceId", stringField(fields, "requesterDeviceId"))
+            put("responderDeviceId", stringField(fields, "responderDeviceId"))
+            put("requestEncPayload", stringField(fields, "requestEncPayload"))
+            put("responseEncPayload", stringField(fields, "responseEncPayload"))
+            put("status", stringField(fields, "status"))
+            put("createdAtEpochMs", integerField(fields, "createdAtEpochMs"))
+            put("ttlEpochMs", integerField(fields, "ttlEpochMs"))
+        }
+        return DiagnosticsRelaySession.fromFirestore(data)
+    }
+
     private const val KEY_ID_TOKEN = "id_token"
     private const val KEY_REFRESH_TOKEN = "refresh_token"
     private const val KEY_UID = "uid"
     private const val KEY_EMAIL = "email"
     private const val KEY_DISPLAY_NAME = "display_name"
     private const val POLL_MS = 12_000L
+    private const val RELAY_POLL_MS = 2_000L
 }
 
 @Serializable

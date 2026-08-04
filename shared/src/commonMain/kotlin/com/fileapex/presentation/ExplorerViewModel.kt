@@ -697,12 +697,14 @@ class ExplorerViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isMultiCopying = true, errorMessage = null) }
             runCatching {
-                transfers.sendToDevices(sources, selectedDevices)
+                transfers.sendOrQueue(sources, selectedDevices)
             }.fold(
-                onSuccess = { batch ->
-                    val failCount = batch.results.sumOf { it.failures.size }
+                onSuccess = { outcome ->
+                    val batch = outcome.batch
+                    val failCount = batch?.results?.sumOf { it.failures.size } ?: 0
                     val message = when {
-                        failCount == 0 -> {
+                        outcome.hadQueue && (batch == null || failCount == 0) -> outcome.message
+                        failCount == 0 && batch != null -> {
                             val deviceLabel = if (selectedDevices.size == 1) {
                                 selectedDevices.first().deviceName
                             } else {
@@ -712,10 +714,14 @@ class ExplorerViewModel(
                                 "Multi Copied ${items.first().name} to $deviceLabel"
                             } else {
                                 "Multi Copied ${items.size} files to $deviceLabel"
+                            }.let { base ->
+                                if (outcome.hadQueue) "$base ${outcome.message}" else base
                             }
                         }
-                        batch.allFailed -> ExplorerActionCopy.ERROR_SEND_FAILED
-                        else -> ExplorerActionCopy.sendFinishedWithErrors(failCount)
+                        batch?.allFailed == true && !outcome.hadQueue -> ExplorerActionCopy.ERROR_SEND_FAILED
+                        else -> outcome.message.ifBlank {
+                            ExplorerActionCopy.sendFinishedWithErrors(failCount)
+                        }
                     }
                     _uiState.update {
                         it.copy(
@@ -728,10 +734,10 @@ class ExplorerViewModel(
                             canDownloadSelection = false,
                             canPaste = TransferClipboard.hasContent(),
                             statusMessage = message,
-                            errorMessage = batch.results
-                                .flatMap { it.failures.values }
-                                .firstOrNull()
-                                ?.takeIf { batch.allFailed }
+                            errorMessage = batch?.results
+                                ?.flatMap { it.failures.values }
+                                ?.firstOrNull()
+                                ?.takeIf { batch.allFailed && !outcome.hadQueue }
                         )
                     }
                 },

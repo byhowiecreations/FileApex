@@ -9,8 +9,10 @@ import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.network.FileApexClient
 import com.fileapex.network.FileApexMdnsBrowser
+import com.fileapex.network.PeerLanHttpPolicy
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.network.sendWakeBroadcast
+import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
@@ -246,10 +248,17 @@ class PeerPresenceMonitor(
 
     private suspend fun runPeerRefreshSweep(mode: SweepMode, skipFcmDispatch: Boolean) {
         if (TransferActivityGuard.isTransferActive()) return
+        if (!isActiveLanConnectivity()) {
+            refreshOnlineSnapshot()
+            return
+        }
         awaitShareServerReady()
         val peers = mutex.withLock { repository.listDevices() }
         if (peers.isEmpty()) {
             refreshOnlineSnapshot()
+            if (mode == SweepMode.FULL) {
+                runCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
+            }
             return
         }
         runCatching { sendWakeBroadcast() }
@@ -336,13 +345,64 @@ class PeerPresenceMonitor(
         return reached
     }
 
+    /**
+     * Single quick LAN assessment for transfer, file navigation, and Device Details.
+     * Uses an ~800ms health ping only — never runs the full discovery sweep.
+     */
+    suspend fun quickAssessLanReachability(peer: PairedDeviceEntity): PeerLanReachabilityVerdict {
+        if (!isActiveLanConnectivity()) {
+            return PeerLanReachabilityVerdict.LocalOffLocalWifi
+        }
+        val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
+        val host = refreshed.lastKnownIp.trim()
+        val port = refreshed.port
+        if (host.isNotEmpty() &&
+            NetworkUtils.isPrivateLanPeerHost(host) &&
+            PeerLanHttpPolicy.canRoute(host)
+        ) {
+            if (wasRecentlyReachable(
+                    refreshed.deviceId,
+                    LanPresenceTiming.DEVICE_DETAILS_RECENT_REACHABILITY_MS
+                )
+            ) {
+                return PeerLanReachabilityVerdict.Direct(host, port)
+            }
+            val pingOk = client.pingHealth(
+                host,
+                port,
+                LanPresenceTiming.DEVICE_DETAILS_PING_TIMEOUT_MS
+            )
+            if (pingOk) {
+                markReachable(refreshed.deviceId)
+                mutex.withLock {
+                    repository.touchPeerLastSeen(refreshed.deviceId, host, port)
+                }
+                return PeerLanReachabilityVerdict.Direct(host, port)
+            }
+        }
+        return if (isDeviceOnline(refreshed)) {
+            PeerLanReachabilityVerdict.PeerOffLocalWifi
+        } else {
+            PeerLanReachabilityVerdict.PeerOffline
+        }
+    }
+
     suspend fun prepareForTransfer(targets: List<MultiCopyDeviceOption>) {
         val remote = targets.filter { !it.isLocal }
         if (remote.isEmpty()) return
-        if (remote.all { wasRecentlyReachable(it.deviceId, LanPresenceTiming.TRANSFER_RECENT_REACHABILITY_MS) }) {
-            return
+        val needsPrime = remote.filter { target ->
+            val peer = mutex.withLock { repository.getDevice(target.deviceId) } ?: return@filter true
+            if (!wasRecentlyReachable(peer.deviceId, LanPresenceTiming.TRANSFER_RECENT_REACHABILITY_MS)) {
+                return@filter true
+            }
+            val host = peer.lastKnownIp.trim()
+            if (host.isEmpty() || !PeerLanHttpPolicy.canRoute(host)) {
+                return@filter true
+            }
+            !client.pingHealth(host, peer.port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
         }
-        primePeersForTransfer(remote)
+        if (needsPrime.isEmpty()) return
+        primePeersForTransfer(needsPrime)
     }
 
     suspend fun primePeersForTransfer(targets: List<MultiCopyDeviceOption>) {

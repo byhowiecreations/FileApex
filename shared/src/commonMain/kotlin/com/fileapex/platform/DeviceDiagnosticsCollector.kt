@@ -7,8 +7,28 @@ import com.fileapex.util.TimeUtils
 expect fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics
 
 fun collectDeviceDiagnostics(): PeerDeviceDiagnostics {
-    return collectPlatformDeviceDiagnostics().copy(
+    return collectPlatformDeviceDiagnostics()
+        .copy(
+            collectedAtEpochMs = TimeUtils.now(),
+            platform = currentPlatformLabel()
+        )
+        .normalizedForTransport()
+}
+
+/** Minimal snapshot when live collection throws — avoids HTTP 500 on the diagnostics endpoint. */
+fun collectDeviceDiagnosticsFallback(): PeerDeviceDiagnostics =
+    PeerDeviceDiagnostics(
         collectedAtEpochMs = TimeUtils.now(),
         platform = currentPlatformLabel()
     )
+
+/** Ensures kotlinx JSON transport never fails on NaN refresh rates, etc. */
+private fun PeerDeviceDiagnostics.normalizedForTransport(): PeerDeviceDiagnostics {
+    val refresh = display.refreshRateHz
+    val safeRefresh = refresh?.takeIf { it.isFinite() && it > 0f }
+    return if (safeRefresh == refresh) {
+        this
+    } else {
+        copy(display = display.copy(refreshRateHz = safeRefresh))
+    }
 }

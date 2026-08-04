@@ -247,16 +247,17 @@ object DesktopAwtTrayCoordinator {
         DesktopWindowsDropBox.show(deviceIds) { ids, paths ->
             scope.launch(Dispatchers.Default) {
                 try {
-                    val batch = FileApexServices.transferManager.sendLocalPathsToDeviceIds(
+                    val outcome = FileApexServices.transferQueue.sendLocalPathsOrQueue(
                         absolutePaths = paths,
                         deviceIds = ids
                     )
-                    val message = if (batch.allFailed) {
-                        batch.summaryMessage
-                    } else if (paths.size > 1) {
-                        "${paths.size} Files Sent"
-                    } else {
-                        "File Sent"
+                    val batch = outcome.batch
+                    val message = when {
+                        outcome.hadQueue && (batch == null || batch.allFailed) -> outcome.message
+                        batch?.allFailed == true -> outcome.message
+                        outcome.hadQueue -> outcome.message
+                        paths.size > 1 -> "${paths.size} Files Sent"
+                        else -> "File Sent"
                     }
                     showBalloon(message)
                 } catch (error: Exception) {

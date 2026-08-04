@@ -3,12 +3,16 @@ package com.fileapex.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
+import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
+import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
+import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
 import com.fileapex.platform.BootLaunchPreference
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.update.AppUpdateCoordinator
@@ -36,7 +40,10 @@ data class SettingsUiState(
     val autoLaunchOnReboot: Boolean = true,
     val desktopLayoutMode: DesktopLayoutMode = DesktopLayoutMode.Compact,
     val desktopUiStyle: DesktopUiStyle = DesktopUiStyle.Standard,
-    val googleAccountError: String? = null
+    val googleAccountError: String? = null,
+    val deviceDetailsDisplayPreferences: DeviceDetailsDisplayPreferences =
+        DeviceDetailsDisplayPreferences.defaults(),
+    val deviceDetailsAllowOverCellular: Boolean = false
 )
 
 class SettingsViewModel : ViewModel() {
@@ -56,7 +63,9 @@ class SettingsViewModel : ViewModel() {
             enableServiceWatchdog = settings.enableServiceWatchdog.value,
             autoLaunchOnReboot = settings.autoLaunchOnReboot.value,
             desktopLayoutMode = settings.desktopLayoutMode.value,
-            desktopUiStyle = settings.desktopUiStyle.value
+            desktopUiStyle = settings.desktopUiStyle.value,
+            deviceDetailsDisplayPreferences = settings.deviceDetailsDisplayPreferences.value,
+            deviceDetailsAllowOverCellular = settings.deviceDetailsAllowOverCellular.value
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -246,5 +255,57 @@ class SettingsViewModel : ViewModel() {
 
     fun dismissPinError() {
         _uiState.update { it.copy(pinError = null) }
+    }
+
+    fun setDeviceDetailsFieldVisible(fieldId: DeviceDetailsFieldId, visible: Boolean) {
+        val current = _uiState.value.deviceDetailsDisplayPreferences.normalized()
+        val updated = current.copy(
+            fields = current.fields.map { pref ->
+                if (pref.id == fieldId.name) pref.copy(visible = visible) else pref
+            }
+        )
+        settings.setDeviceDetailsDisplayPreferences(updated)
+        _uiState.update { it.copy(deviceDetailsDisplayPreferences = updated) }
+    }
+
+    fun reorderDeviceDetailsFields(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
+        val current = _uiState.value.deviceDetailsDisplayPreferences.normalized()
+        val mutable = current.fields.toMutableList()
+        if (fromIndex !in mutable.indices || toIndex !in mutable.indices) return
+        val moved = mutable.removeAt(fromIndex)
+        mutable.add(toIndex, moved)
+        val updated = current.copy(fields = mutable)
+        settings.setDeviceDetailsDisplayPreferences(updated)
+        _uiState.update { it.copy(deviceDetailsDisplayPreferences = updated) }
+    }
+
+    fun resetDeviceDetailsDisplayPreferences() {
+        val defaults = DeviceDetailsDisplayPreferences.defaults()
+        settings.setDeviceDetailsDisplayPreferences(defaults)
+        _uiState.update { it.copy(deviceDetailsDisplayPreferences = defaults) }
+    }
+
+    fun setDeviceDetailsAllowOverCellular(enabled: Boolean) {
+        settings.setDeviceDetailsAllowOverCellular(enabled)
+        _uiState.update { it.copy(deviceDetailsAllowOverCellular = enabled) }
+        viewModelScope.launch {
+            if (!settings.googleAccountLinkEnabled.value) {
+                if (!enabled) DiagnosticsCloudRelay.stopInbox()
+                return@launch
+            }
+            val uid = settings.googleAccountUid.value
+            val deviceId = loadLocalIdentity().deviceId
+            runCatching {
+                DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled)
+            }.onFailure { error ->
+                println("SettingsViewModel: diagnostics cloud sync failed — ${error.message}")
+            }
+            if (enabled) {
+                DiagnosticsCloudRelay.startInbox(uid, deviceId)
+            } else {
+                DiagnosticsCloudRelay.stopInbox()
+            }
+        }
     }
 }

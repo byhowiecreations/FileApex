@@ -9,6 +9,9 @@
 signing.local.env
 # Firebase / Google cloud config — local only, never commit
 /json/
+/firebase.json
+/firebase/firestore.rules
+/firebase/firestore.rules.live
 **/.DS_Store
 composeApp/google-services.json
 *-firebase-adminsdk-*.json

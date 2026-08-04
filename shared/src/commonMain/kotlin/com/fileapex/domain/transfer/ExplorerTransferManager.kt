@@ -88,6 +88,12 @@ class ExplorerTransferManager(
         destinations: List<MultiCopyDeviceOption>
     ): TransferBatchResult = transferManager.sendToDevices(sources, destinations)
 
+    suspend fun sendOrQueue(
+        sources: List<MultiCopySource>,
+        destinations: List<MultiCopyDeviceOption>
+    ): QueueAwareSendResult =
+        com.fileapex.di.FileApexServices.transferQueue.sendOrQueue(sources, destinations)
+
     fun clipboardLabel(): String? = TransferClipboard.label()
 
     fun clipboardHasContent(): Boolean = TransferClipboard.hasContent()
