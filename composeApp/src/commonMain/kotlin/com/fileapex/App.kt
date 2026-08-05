@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,6 +38,7 @@ import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.navigation.AppRoute
 import com.fileapex.platform.BackgroundPersistenceUiState
 import com.fileapex.platform.FileApexBackHandler
+import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.BrowseTarget
@@ -56,7 +58,7 @@ import com.fileapex.ui.ShareSendScreen
 import com.fileapex.ui.TransferQueueDropHost
 import com.fileapex.ui.TransferQueueScreen
 import com.fileapex.presentation.TransferQueueViewModel
-import com.fileapex.ui.StoragePermissionScreen
+import com.fileapex.ui.OnboardingScreen
 import com.fileapex.ui.UpdateAvailableSheet
 import com.fileapex.ui.adaptive.AdaptiveWideHome
 import com.fileapex.ui.adaptive.CompactPrimaryShell
@@ -69,6 +71,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 @Composable
 fun App(
     hasStoragePermission: Boolean,
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
+    onboardingComplete: Boolean = hasStoragePermission,
+    deniedOnboardingStepIds: Set<String> = emptySet(),
+    onGrantOnboardingStep: (String) -> Unit = {},
     hasUnrestrictedBattery: Boolean = true,
     backgroundPersistence: BackgroundPersistenceUiState = BackgroundPersistenceUiState(),
     onRequestStoragePermission: () -> Unit,
@@ -80,6 +86,7 @@ fun App(
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
+    onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     onStartShareServer: () -> Unit,
     onStopShareServer: () -> Unit,
     onExitApp: () -> Unit,
@@ -103,7 +110,7 @@ fun App(
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
     val transferQueueViewModel: TransferQueueViewModel = viewModel { TransferQueueViewModel() }
-    val setupComplete = hasStoragePermission
+    val setupComplete = onboardingComplete
 
     // Wide-layout detail state (list-detail). Survives compact/wide transitions.
     var wideSelectedTarget by remember { mutableStateOf<BrowseTarget?>(null) }
@@ -199,16 +206,35 @@ fun App(
                 },
                 tonalElevation = if (windowsFluent) 0.dp else 0.dp
             ) {
-                if (!setupComplete) {
-                    StoragePermissionScreen(
-                        hasStoragePermission = hasStoragePermission,
-                        hasUnrestrictedBattery = hasUnrestrictedBattery,
-                        oemBackgroundGuidance = backgroundPersistence.oemGuidance,
-                        onRequestStoragePermission = onRequestStoragePermission,
-                        onOpenStorageSettings = onOpenStorageSettings,
-                        onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-                        onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings
+                if (!setupComplete && onboardingSteps.isNotEmpty()) {
+                    OnboardingScreen(
+                        steps = onboardingSteps,
+                        deniedStepIds = deniedOnboardingStepIds,
+                        onGrantStep = onGrantOnboardingStep
                     )
+                } else if (!setupComplete) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "FileApex setup",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Grant storage access to continue.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = onRequestStoragePermission) {
+                            Text("Grant file access")
+                        }
+                    }
                 } else if (isPreparingShare) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
@@ -341,6 +367,7 @@ fun App(
                                     exactAlarmWarningActive = exactAlarmWarningActive,
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                    onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
                                     onOpenTransferQueue = { route = AppRoute.TransferQueue },
                                     onQueueFilesDropped = transferQueueViewModel::onDesktopFilesDropped
                                 )
@@ -369,6 +396,7 @@ fun App(
                                     exactAlarmWarningActive = exactAlarmWarningActive,
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                    onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
                                     onOpenTransferQueue = { route = AppRoute.TransferQueue },
                                     onQueueFilesDropped = transferQueueViewModel::onDesktopFilesDropped
                                 )
@@ -382,8 +410,8 @@ fun App(
 
     TransferQueueDropHost(transferQueueViewModel)
 
-    LaunchedEffect(hasStoragePermission) {
-        if (!hasStoragePermission) {
+    LaunchedEffect(onboardingComplete) {
+        if (!onboardingComplete) {
             onPermissionRecheck()
         } else if (!usesDesktopFileSelection()) {
             onStartShareServer()
@@ -424,6 +452,7 @@ private fun CompactHomeContent(
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
+    onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     onOpenTransferQueue: () -> Unit = {},
     onQueueFilesDropped: (List<String>) -> Unit = {}
 ) {
@@ -490,7 +519,8 @@ private fun CompactHomeContent(
                 onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                 exactAlarmWarningActive = exactAlarmWarningActive,
                 onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                onOpenAppDetailsSettings = onOpenAppDetailsSettings
+                onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled
             )
             is AppRoute.Explorer -> FileExplorerScreen(
                 target = current.target,

@@ -116,6 +116,8 @@ fun SettingsScreen(
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
+    /** Android: gate cellular opt-in behind READ_PHONE_STATE; other platforms invoke [onProceed] immediately. */
+    onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     viewModel: SettingsViewModel = viewModel { SettingsViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -205,6 +207,7 @@ fun SettingsScreen(
             allowOverCellular = state.deviceDetailsAllowOverCellular,
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
+            onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
             onAllowOverCellularChange = viewModel::setDeviceDetailsAllowOverCellular,
             onFieldVisibleChange = viewModel::setDeviceDetailsFieldVisible,
             onReorderFields = viewModel::reorderDeviceDetailsFields,
@@ -622,6 +625,7 @@ private fun DeviceDetailsSettingsPage(
     allowOverCellular: Boolean,
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
+    onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit,
     onAllowOverCellularChange: (Boolean) -> Unit,
     onFieldVisibleChange: (DeviceDetailsFieldId, Boolean) -> Unit,
     onReorderFields: (fromIndex: Int, toIndex: Int) -> Unit,
@@ -676,7 +680,15 @@ private fun DeviceDetailsSettingsPage(
                 trailingContent = {
                     Switch(
                         checked = allowOverCellular,
-                        onCheckedChange = onAllowOverCellularChange
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                onBeforeAllowOverCellularEnabled {
+                                    onAllowOverCellularChange(true)
+                                }
+                            } else {
+                                onAllowOverCellularChange(false)
+                            }
+                        }
                     )
                 }
             )

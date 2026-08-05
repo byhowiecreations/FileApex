@@ -30,9 +30,11 @@ import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.network.FileShareServerService
 import com.fileapex.platform.AndroidShareIntake
+import com.fileapex.platform.AndroidOnboardingPermissions
 import com.fileapex.platform.AndroidRuntimePermissions
 import com.fileapex.platform.BackgroundPersistenceGuidance
 import com.fileapex.platform.FileApexAndroidBootstrap
+import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.platform.toUiState
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.platform.ServiceWatchdogScheduler
@@ -55,6 +57,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private var hasStoragePermission by mutableStateOf(false)
+    private var onboardingSteps by mutableStateOf<List<OnboardingPermissionStep>>(emptyList())
+    private var onboardingComplete by mutableStateOf(false)
+    private var deniedOnboardingStepIds by mutableStateOf(setOf<String>())
     private var persistenceSnapshot by mutableStateOf(
         BackgroundPersistenceGuidance.Snapshot(
             batteryOptimizationRestricted = false,
@@ -77,20 +82,28 @@ class MainActivity : ComponentActivity() {
     private var openedFromShareSheet = false
 
     private var stageJob: Job? = null
-
-    private val runtimePermissionsLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        refreshPermissions()
-        val notificationsGranted = results[Manifest.permission.POST_NOTIFICATIONS] == true
-        if (notificationsGranted && hasStoragePermission) {
-            startShareServer()
-        }
-    }
+    private var pendingCellularOptInProceed: (() -> Unit)? = null
+    private var pendingOnboardingStepId: String? = null
+    private var pendingStorageOnboardingReturn = false
+    private var pendingBatteryOnboardingReturn = false
 
     private val legacyStoragePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
+    ) { results ->
+        refreshOnboardingAfterExternalReturn(
+            stepId = AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE,
+            granted = results.values.all { it }
+        )
+    }
+
+    private val onboardingRuntimePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val stepId = pendingOnboardingStepId
+        pendingOnboardingStepId = null
+        if (stepId != null) {
+            updateOnboardingDenial(stepId, granted)
+        }
         refreshPermissions()
     }
 
@@ -98,6 +111,15 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) launchQrScanner()
+    }
+
+    private val phoneStatePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingCellularOptInProceed?.invoke()
+        }
+        pendingCellularOptInProceed = null
     }
 
     private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -124,8 +146,7 @@ class MainActivity : ComponentActivity() {
         FileApexAndroidBootstrap.ensureInitialized(this)
         configureVisibleSystemBars()
         refreshPermissions()
-        requestRuntimePermissionsIfNeeded()
-        if (hasStoragePermission) {
+        if (onboardingComplete) {
             startShareServer()
         }
 
@@ -134,6 +155,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(
                 hasStoragePermission = hasStoragePermission,
+                onboardingSteps = onboardingSteps,
+                onboardingComplete = onboardingComplete,
+                deniedOnboardingStepIds = deniedOnboardingStepIds,
+                onGrantOnboardingStep = ::grantOnboardingStep,
                 hasUnrestrictedBattery = !persistenceSnapshot.persistenceRestricted,
                 backgroundPersistence = persistenceSnapshot.toUiState(),
                 onRequestStoragePermission = ::requestStoragePermission,
@@ -144,6 +169,7 @@ class MainActivity : ComponentActivity() {
                 onOpenAppBatteryUsageSettings = ::openAppBatteryUsageSettings,
                 onOpenExactAlarmSettings = ::openExactAlarmSettings,
                 onOpenAppDetailsSettings = ::openAppDetailsSettings,
+                onBeforeAllowOverCellularEnabled = ::requestPhoneStateForCellularOptIn,
                 exactAlarmWarningActive = exactAlarmWarningActive,
                 onStartShareServer = ::startShareServer,
                 onStopShareServer = ::stopShareServer,
@@ -180,8 +206,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         configureVisibleSystemBars()
         refreshPermissions()
-        requestRuntimePermissionsIfNeeded()
-        if (hasStoragePermission) {
+        completePendingOnboardingReturns()
+        if (onboardingComplete) {
             startShareServer()
         }
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppForegrounded()
@@ -334,7 +360,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshPermissions() {
-        hasStoragePermission = hasFullStorageAccess()
+        onboardingSteps = AndroidOnboardingPermissions.buildSteps(this)
+        onboardingComplete = AndroidOnboardingPermissions.isComplete(onboardingSteps)
+        hasStoragePermission = onboardingSteps
+            .firstOrNull { it.id == AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE }
+            ?.granted
+            ?: hasFullStorageAccess()
         persistenceSnapshot = BackgroundPersistenceGuidance.evaluate(this)
         ServiceWatchdogScheduler.syncBatteryOptimizationWarning(
             this,
@@ -342,6 +373,57 @@ class MainActivity : ComponentActivity() {
         )
         val exactAvailable = ServiceWatchdogScheduler.refreshExactAlarmAvailability(this)
         exactAlarmWarningActive = !exactAvailable
+    }
+
+    private fun completePendingOnboardingReturns() {
+        if (pendingStorageOnboardingReturn) {
+            pendingStorageOnboardingReturn = false
+            refreshOnboardingAfterExternalReturn(
+                stepId = AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE,
+                granted = hasFullStorageAccess()
+            )
+        }
+        if (pendingBatteryOnboardingReturn) {
+            pendingBatteryOnboardingReturn = false
+            refreshOnboardingAfterExternalReturn(
+                stepId = AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS,
+                granted = !BackgroundPersistenceGuidance.isBatteryOptimizationRestricted(this)
+            )
+        }
+    }
+
+    private fun refreshOnboardingAfterExternalReturn(stepId: String, granted: Boolean) {
+        updateOnboardingDenial(stepId, granted)
+        refreshPermissions()
+    }
+
+    private fun updateOnboardingDenial(stepId: String, granted: Boolean) {
+        deniedOnboardingStepIds = if (granted) {
+            deniedOnboardingStepIds - stepId
+        } else {
+            deniedOnboardingStepIds + stepId
+        }
+    }
+
+    private fun grantOnboardingStep(stepId: String) {
+        when (stepId) {
+            AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE -> {
+                pendingStorageOnboardingReturn = true
+                requestStoragePermission()
+            }
+            AndroidOnboardingPermissions.ID_NEARBY_WIFI_DEVICES -> {
+                pendingOnboardingStepId = stepId
+                onboardingRuntimePermissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+            }
+            AndroidOnboardingPermissions.ID_POST_NOTIFICATIONS -> {
+                pendingOnboardingStepId = stepId
+                onboardingRuntimePermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS -> {
+                pendingBatteryOnboardingReturn = true
+                requestBatteryUnrestricted()
+            }
+        }
     }
 
     private fun hasFullStorageAccess(): Boolean {
@@ -421,11 +503,13 @@ class MainActivity : ComponentActivity() {
         BackgroundPersistenceGuidance.launchAppDetailsSettings(this)
     }
 
-    private fun requestRuntimePermissionsIfNeeded() {
-        val missing = AndroidRuntimePermissions.missingPermissions(this)
-        if (missing.isNotEmpty()) {
-            runtimePermissionsLauncher.launch(missing)
+    private fun requestPhoneStateForCellularOptIn(onProceed: () -> Unit) {
+        if (AndroidRuntimePermissions.hasReadPhoneState(this)) {
+            onProceed()
+            return
         }
+        pendingCellularOptInProceed = onProceed
+        phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
     }
 
     private fun requestScanQr() {
@@ -509,7 +593,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startShareServer() {
-        if (!hasStoragePermission) {
+        if (!onboardingComplete) {
             return
         }
         val wasPending = ShareServerPendingStart.consume(this)

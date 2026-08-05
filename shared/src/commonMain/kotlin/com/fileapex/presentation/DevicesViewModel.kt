@@ -430,10 +430,20 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun confirmRename(deviceId: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Name cannot be empty") }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                renameTargetId = null,
+                statusMessage = "Updating device name…",
+                errorMessage = null
+            )
+        }
         viewModelScope.launch {
             runCatching {
-                val trimmed = newName.trim()
-                require(trimmed.isNotEmpty()) { "Name cannot be empty" }
                 if (deviceId == LocalIdentity.LOCAL_DEVICE_ID) {
                     LocalDeviceNameStore.apply(trimmed)
                     // Cloud first so peer firestore views update; LAN fan-out next.
@@ -445,7 +455,6 @@ class DevicesViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             localDeviceName = trimmed,
-                            renameTargetId = null,
                             statusMessage = "Renamed to $trimmed — synced to cluster"
                         )
                     }
@@ -453,30 +462,20 @@ class DevicesViewModel : ViewModel() {
                     val peer = repository.getDevice(deviceId)
                         ?: error("Device not found")
                     val updated = peer.copy(deviceName = trimmed)
-                    // Prefer direct rename API when the peer supports it (0.0.2b+).
-                    val remoteOk = runCatching {
+                    runCatching {
                         FileApexServices.client.postRemoteRename(
                             host = peer.lastKnownIp,
                             port = peer.port,
                             newName = trimmed
                         )
-                    }.isSuccess
+                    }
                     repository.upsertReplacingAliases(updated)
-                    // Remote rename API triggers self-metadata broadcast on the peer; no proxy fan-out.
                     runCatching {
                         GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
                     }
                     presence.refreshOnlineSnapshot()
                     _uiState.update {
-                        it.copy(
-                            renameTargetId = null,
-                            statusMessage = if (remoteOk) {
-                                "Renamed to $trimmed — synced to cluster"
-                            } else {
-                                "Renamed to $trimmed — synced via cluster " +
-                                    "(update the other device to 0.0.2b if its own name didn't change)"
-                            }
-                        )
+                        it.copy(statusMessage = "Renamed to $trimmed — synced to cluster")
                     }
                 }
             }.onFailure { error ->

@@ -188,6 +188,30 @@ tasks.register("verifyReleaseSigning") {
     }
 }
 
+tasks.register("verifyReleaseApkSigned") {
+    group = "verification"
+    description = "Fail if assembleRelease produced an unsigned APK (unsigned artifacts are deleted)"
+    dependsOn("assembleRelease")
+    doLast {
+        val dir = apkOutputDir("release")
+        val apks = dir.listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
+        check(apks.isNotEmpty()) { "No release APK found in ${dir.absolutePath}" }
+        val unsigned = apks.filter { it.name.contains("unsigned", ignoreCase = true) }
+        if (unsigned.isNotEmpty()) {
+            unsigned.forEach { artifact ->
+                if (artifact.delete()) {
+                    logger.lifecycle("Removed unsigned release artifact: ${artifact.name}")
+                }
+            }
+            throw org.gradle.api.GradleException(
+                "Release APK signing failed — unsigned artifact(s) removed. " +
+                    "Configure ~/AndroidStudioProjects/signed_files/FileApex/*.jks and " +
+                    "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then rebuild."
+            )
+        }
+    }
+}
+
 tasks.register("printReleaseSha1") {
     group = "verification"
     description = "Print SHA-1 for fileapex-release.jks using KEY_ALIAS and KEYSTORE_PASSWORD"
@@ -306,7 +330,7 @@ afterEvaluate {
     }
     listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsReleaseBuilds").forEach { taskName ->
         tasks.matching { it.name == taskName }.configureEach {
-            dependsOn("verifyReleaseSigning")
+            dependsOn("verifyReleaseSigning", "verifyReleaseApkSigned")
         }
     }
 }
@@ -607,6 +631,12 @@ tasks.matching { it.name == "packageReleaseMsi" }.configureEach {
     }
 }
 
+private fun releaseApkDestName(appVersionName: String): String =
+    "FileApex-v$appVersionName.apk"
+
+private fun debugApkDestName(appVersionName: String): String =
+    "FileApex-v$appVersionName-debug.apk"
+
 private fun Project.apkOutputDir(variant: String): File =
     layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
 
@@ -761,7 +791,12 @@ private fun Project.shipToCurrent(
                         "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then run assembleRelease."
                 )
             }
-            moveToCurrent(dest, apk, logger = logger)
+            val destName = when (variant) {
+                "debug" -> debugApkDestName(appVersionName)
+                "release" -> releaseApkDestName(appVersionName)
+                else -> apk.name
+            }
+            moveToCurrent(dest, apk, destName = destName, logger = logger)
         }
     }
     if (includeDebugApk) moveApksFrom("debug")
@@ -834,7 +869,7 @@ tasks.register("copyCurrentBuilds") {
 tasks.register("copyReleaseBuilds") {
     group = "distribution"
     description = "Release APK + desktop ship into current/ (Mac .app+DMG or Windows MSI)"
-    dependsOn("assembleRelease")
+    dependsOn("verifyReleaseApkSigned")
     if (isMacHost()) {
         dependsOn("embedMacExtensions", "fixDmgVolumeIcon")
     } else if (isWindowsHost()) {
@@ -882,7 +917,7 @@ tasks.register("copyWindowsBuilds") {
 tasks.register("copyWindowsReleaseBuilds") {
     group = "distribution"
     description = "Release APK + release MSI into current/ (Windows host only)"
-    dependsOn("assembleRelease", "createReleaseDistributable", "packageReleaseMsi")
+    dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageReleaseMsi")
     onlyIf { isWindowsHost() }
 
     doLast {
@@ -1019,16 +1054,17 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
 /**
  * Full ship into `current/`.
  * Mac: debug+release APKs + .app + DMG. Windows: release APK + release MSI only.
+ * Release APK ships as FileApex-v<version>.apk (no -release suffix); debug keeps -debug.
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
     description = "Ship into current/ (Mac full set; Windows release APK + MSI)"
     if (isMacHost()) {
-        dependsOn("assembleDebug", "assembleRelease", "embedMacExtensions", "fixDmgVolumeIcon")
+        dependsOn("assembleDebug", "verifyReleaseApkSigned", "embedMacExtensions", "fixDmgVolumeIcon")
     } else if (isWindowsHost()) {
-        dependsOn("assembleRelease", "createReleaseDistributable", "packageReleaseMsi")
+        dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageReleaseMsi")
     } else {
-        dependsOn("assembleDebug", "assembleRelease")
+        dependsOn("assembleDebug", "verifyReleaseApkSigned")
     }
 
     doLast {

@@ -89,6 +89,7 @@ fun AdaptiveWideHome(
     exactAlarmWarningActive: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
+    onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     onOpenTransferQueue: () -> Unit = {},
     onQueueFilesDropped: (List<String>) -> Unit = {}
 ) {
@@ -144,7 +145,8 @@ fun AdaptiveWideHome(
                             onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
                             exactAlarmWarningActive = exactAlarmWarningActive,
                             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                            onOpenAppDetailsSettings = onOpenAppDetailsSettings
+                            onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                            onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled
                         )
                     }
                 }
