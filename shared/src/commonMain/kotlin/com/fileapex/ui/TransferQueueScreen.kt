@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,11 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.fileapex.domain.transfer.PendingTransferItem
 import com.fileapex.platform.FileApexBackHandler
-import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.TransferQueueViewModel
-import com.fileapex.ui.dnd.deviceFileDropTarget
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.fileApexTopAppBarColors
 
@@ -40,23 +37,11 @@ import com.fileapex.ui.theme.fileApexTopAppBarColors
 @Composable
 fun TransferQueueScreen(
     onBack: () -> Unit,
-    viewModel: TransferQueueViewModel = viewModel { TransferQueueViewModel() }
+    viewModel: TransferQueueViewModel
 ) {
     val state by viewModel.uiState.collectAsState()
-    val desktopDrop = usesDesktopFileSelection()
 
     FileApexBackHandler { onBack() }
-
-    if (state.showDevicePicker) {
-        QueueAddDevicePickerDialog(
-            deviceOptions = state.deviceOptions,
-            selectedDeviceIds = state.selectedDeviceIds,
-            isLoading = state.isLoadingDevices,
-            onToggleDevice = viewModel::toggleDevice,
-            onDismiss = viewModel::dismissDevicePicker,
-            onConfirm = viewModel::confirmEnqueueDropped
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -77,21 +62,13 @@ fun TransferQueueScreen(
                 .padding(padding)
                 .padding(horizontal = 20.dp)
         ) {
-            if (desktopDrop) {
-                Text(
-                    text = "Drop files here to queue for a device when it returns to local Wi‑Fi.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
-            } else {
-                Text(
-                    text = "Files send automatically when the destination is back on local Wi‑Fi.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
-            }
+            Text(
+                text = "Files send automatically when the destination is back on local Wi‑Fi. " +
+                    "Tap remove to cancel a queued send.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
 
             state.statusMessage?.let { message ->
                 Text(
@@ -110,38 +87,24 @@ fun TransferQueueScreen(
                 )
             }
 
-            val listModifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .then(
-                    if (desktopDrop) {
-                        Modifier.deviceFileDropTarget(
-                            onHoverChange = {},
-                            onFilesDropped = viewModel::onDesktopFilesDropped
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
-
             if (state.items.isEmpty()) {
                 Box(
-                    modifier = listModifier,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (desktopDrop) {
-                            "No queued files. Drop files here to add."
-                        } else {
-                            "No queued files."
-                        },
+                        text = "No queued files.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
                 LazyColumn(
-                    modifier = listModifier,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     contentPadding = PaddingValues(bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -159,7 +122,7 @@ fun TransferQueueScreen(
 
 @Composable
 private fun QueuedTransferRow(
-    item: com.fileapex.domain.transfer.PendingTransferItem,
+    item: PendingTransferItem,
     onRemove: () -> Unit
 ) {
     Row(
@@ -175,7 +138,11 @@ private fun QueuedTransferRow(
                 fontWeight = FontWeight.Medium
             )
             Text(
-                text = "Waiting for: ${item.pendingDeviceNames.joinToString(", ")}",
+                text = if (item.isSending) {
+                    "Sending now…"
+                } else {
+                    "Waiting for: ${item.pendingDeviceNames.joinToString(", ")}"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

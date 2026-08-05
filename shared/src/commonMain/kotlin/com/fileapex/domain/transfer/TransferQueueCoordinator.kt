@@ -3,16 +3,18 @@ package com.fileapex.domain.transfer
 import com.fileapex.data.db.PendingTransferDao
 import com.fileapex.data.db.PendingTransferEntity
 import com.fileapex.data.db.PendingTransferStatus
+import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.QueuedSourceSnapshot
 import com.fileapex.data.db.QueuedTransferSourceKind
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.domain.presence.PeerPresenceMonitor
-import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -30,7 +32,8 @@ data class PendingTransferItem(
     val pendingDeviceIds: List<String>,
     val pendingDeviceNames: List<String>,
     val sourceSummary: String,
-    val lastError: String?
+    val lastError: String?,
+    val isSending: Boolean = false
 )
 
 /**
@@ -62,21 +65,34 @@ class TransferQueueCoordinator(
     }
     private val drainMutex = Mutex()
     private var drainWatcherStarted = false
+    private var pendingDrainJob: Job? = null
 
     val pendingItems: Flow<List<PendingTransferItem>> =
         dao.observeAll().map { rows -> rows.mapNotNull { it.toUiItem() } }
 
-    val pendingCount: Flow<Int> =
-        dao.observeCountByStatus(PendingTransferStatus.Queued.name)
+    /** Queued + in-flight drain attempts — keeps the header badge stable while sending. */
+    val pendingCount: Flow<Int> = dao.observeAll().map { it.size }
 
     fun ensureDrainWatcher() {
         if (drainWatcherStarted) return
         drainWatcherStarted = true
         scope.launch {
-            presenceMonitor.reachabilityEpochMs.collect { drainEligible() }
+            presenceMonitor.reachabilityEpochMs.collect { requestDrain() }
         }
         scope.launch {
-            presenceMonitor.onlineSnapshotEpochMs.collect { drainEligible() }
+            presenceMonitor.onlineSnapshotEpochMs.collect { requestDrain() }
+        }
+    }
+
+    fun scheduleDrain() {
+        requestDrain()
+    }
+
+    private fun requestDrain() {
+        pendingDrainJob?.cancel()
+        pendingDrainJob = scope.launch {
+            delay(DRAIN_TRIGGER_DEBOUNCE_MS)
+            drainEligible()
         }
     }
 
@@ -103,7 +119,7 @@ class TransferQueueCoordinator(
         val (routable, blocked) = partitionByLanReachability(remoteDevices)
         val sendNow = localDevices + routable
         val batch = if (sendNow.isNotEmpty()) {
-            transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = true)
+            transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = false)
         } else {
             null
         }
@@ -144,13 +160,15 @@ class TransferQueueCoordinator(
     }
 
     suspend fun remove(id: String) {
-        dao.deleteById(id)
+        val entity = dao.getById(id) ?: return
+        deleteQueueItem(entity)
     }
 
     suspend fun drainEligible() {
         if (!isActiveLanConnectivity()) return
         if (TransferActivityGuard.isTransferActive()) return
         drainMutex.withLock {
+            recoverStaleSendingRows()
             val queued = dao.listByStatus(PendingTransferStatus.Queued.name)
             for (entity in queued) {
                 drainOne(entity)
@@ -158,24 +176,62 @@ class TransferQueueCoordinator(
         }
     }
 
+    private suspend fun recoverStaleSendingRows() {
+        if (TransferActivityGuard.isTransferActive()) return
+        val sending = dao.listByStatus(PendingTransferStatus.Sending.name)
+        for (entity in sending) {
+            dao.upsert(
+                entity.copy(
+                    status = PendingTransferStatus.Queued.name,
+                    lastError = entity.lastError ?: "Send did not finish — retrying"
+                )
+            )
+        }
+    }
+
+    private suspend fun resolveDrainTargets(
+        pendingIds: List<String>
+    ): List<Pair<String, MultiCopyDeviceOption>> = buildList {
+        for (deviceId in pendingIds) {
+            val peer = deviceRepository.getDevice(deviceId) ?: continue
+            val endpoint = resolveTransferEndpoint(peer) ?: continue
+            deviceRepository.touchPeerLastSeen(deviceId, endpoint.first, endpoint.second)
+            val option = runCatching {
+                transferManager.resolveRemoteDeviceOptionsAtEndpoint(
+                    deviceIds = listOf(deviceId),
+                    host = endpoint.first,
+                    port = endpoint.second
+                ).firstOrNull()
+            }.getOrNull() ?: continue
+            add(deviceId to option)
+        }
+    }
+
     private suspend fun drainOne(entity: PendingTransferEntity) {
+        val now = TimeUtils.now()
         val pendingIds = decodeDeviceIds(entity.pendingDeviceIdsJson)
-        if (pendingIds.isEmpty()) {
-            dao.deleteById(entity.id)
+        val pendingOnline = pendingIds.any { id ->
+            deviceRepository.getDevice(id)?.let { presenceMonitor.isDeviceOnline(it) } == true
+        }
+        if (entity.lastAttemptEpochMs > 0L &&
+            now - entity.lastAttemptEpochMs < DRAIN_RETRY_BACKOFF_MS &&
+            !pendingOnline
+        ) {
             return
         }
-        val routableIds = pendingIds.filter { deviceId ->
-            val peer = deviceRepository.getDevice(deviceId) ?: return@filter false
-            presenceMonitor.quickAssessLanReachability(peer).isDirect
+        if (pendingIds.isEmpty()) {
+            deleteQueueItem(entity)
+            return
         }
-        if (routableIds.isEmpty()) return
+        val routableTargets = resolveDrainTargets(pendingIds)
+        if (routableTargets.isEmpty()) return
 
         val sources = decodeSources(entity) ?: run {
-            dao.deleteById(entity.id)
+            deleteQueueItem(entity)
             return
         }
         if (sources.isEmpty()) {
-            dao.deleteById(entity.id)
+            deleteQueueItem(entity)
             return
         }
 
@@ -187,15 +243,17 @@ class TransferQueueCoordinator(
             )
         )
 
-        val options = transferManager.resolveRemoteDeviceOptions(routableIds)
+        val routableIds = routableTargets.map { it.first }
+        val options = routableTargets.map { it.second }
         val batch = runCatching {
-            transferManager.sendToDevices(sources, options, skipTransferPrepare = true)
+            transferManager.sendToDevices(sources, options, skipTransferPrepare = false)
         }.getOrElse { error ->
             dao.upsert(
                 entity.copy(
                     status = PendingTransferStatus.Queued.name,
                     lastError = error.message,
-                    lastAttemptEpochMs = TimeUtils.now()
+                    lastAttemptEpochMs = now,
+                    attemptCount = entity.attemptCount + 1
                 )
             )
             return
@@ -208,7 +266,7 @@ class TransferQueueCoordinator(
         val stillPending = (pendingIds - routableIds.toSet()) + failedIds
 
         if (stillPending.isEmpty()) {
-            dao.deleteById(entity.id)
+            deleteQueueItem(entity)
         } else {
             val names = deviceNames(stillPending)
             dao.upsert(
@@ -233,15 +291,18 @@ class TransferQueueCoordinator(
                 blocked += device
                 continue
             }
-            when (val verdict = presenceMonitor.quickAssessLanReachability(peer)) {
-                is PeerLanReachabilityVerdict.Direct -> {
-                    routable += device.copy(host = verdict.host, port = verdict.port)
-                }
-                else -> blocked += device
+            val endpoint = resolveTransferEndpoint(peer)
+            if (endpoint != null) {
+                routable += device.copy(host = endpoint.first, port = endpoint.second)
+            } else {
+                blocked += device
             }
         }
         return routable to blocked
     }
+
+    private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? =
+        presenceMonitor.resolveOutboundEndpoint(peer)?.let { it.host to it.port }
 
     private suspend fun enqueueSourcesInternal(
         sources: List<MultiCopySource>,
@@ -277,6 +338,7 @@ class TransferQueueCoordinator(
                 displayLabel = displayLabel
             )
         )
+        scheduleDrain()
     }
 
     private suspend fun deviceNames(deviceIds: List<String>): List<String> =
@@ -305,7 +367,11 @@ class TransferQueueCoordinator(
         PeerReachabilityMessages.fileTransferOffWifiQueuedMultiple(deviceNames)
 
     private fun PendingTransferEntity.toUiItem(): PendingTransferItem? {
-        if (status != PendingTransferStatus.Queued.name) return null
+        val statusEnum = runCatching { PendingTransferStatus.valueOf(status) }.getOrNull()
+            ?: return null
+        if (statusEnum != PendingTransferStatus.Queued && statusEnum != PendingTransferStatus.Sending) {
+            return null
+        }
         val pendingIds = decodeDeviceIds(pendingDeviceIdsJson)
         val targetLabel = displayLabel.substringAfter(" → ", "devices")
         return PendingTransferItem(
@@ -315,7 +381,8 @@ class TransferQueueCoordinator(
             pendingDeviceIds = pendingIds,
             pendingDeviceNames = listOf(targetLabel),
             sourceSummary = sourceSummaryFromEntity(this),
-            lastError = lastError
+            lastError = lastError,
+            isSending = statusEnum == PendingTransferStatus.Sending
         )
     }
 
@@ -379,6 +446,34 @@ class TransferQueueCoordinator(
             else -> "${deviceNames.size} devices"
         }
         return "$sourcePart → $targetPart"
+    }
+
+    private suspend fun deleteQueueItem(entity: PendingTransferEntity) {
+        ShareStagingCleanup.deleteSessionRootsForPaths(absolutePathsFromEntity(entity))
+        dao.deleteById(entity.id)
+    }
+
+    private fun absolutePathsFromEntity(entity: PendingTransferEntity): List<String> =
+        when (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
+            QueuedTransferSourceKind.LocalRoots -> {
+                runCatching {
+                    json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
+                }.getOrDefault(emptyList())
+            }
+            QueuedTransferSourceKind.Sources -> {
+                runCatching {
+                    json.decodeFromString(
+                        ListSerializer(QueuedSourceSnapshot.serializer()),
+                        entity.sourceJson
+                    )
+                }.getOrDefault(emptyList()).map { it.absolutePath }
+            }
+            null -> emptyList()
+        }
+
+    companion object {
+        private const val DRAIN_TRIGGER_DEBOUNCE_MS = 750L
+        private const val DRAIN_RETRY_BACKOFF_MS = 30_000L
     }
 }
 

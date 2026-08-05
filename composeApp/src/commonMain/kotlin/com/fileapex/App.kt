@@ -55,7 +55,6 @@ import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.ShareSendScreen
-import com.fileapex.ui.TransferQueueDropHost
 import com.fileapex.ui.TransferQueueScreen
 import com.fileapex.presentation.TransferQueueViewModel
 import com.fileapex.ui.OnboardingScreen
@@ -280,7 +279,8 @@ fun App(
                             onFinished = finishShareFlow
                         )
                         AppRoute.TransferQueue -> TransferQueueScreen(
-                            onBack = onNavigateHome
+                            onBack = onNavigateHome,
+                            viewModel = transferQueueViewModel
                         )
                         AppRoute.ScanQr -> {
                             route = AppRoute.Devices
@@ -368,8 +368,7 @@ fun App(
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
                                     onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                    onQueueFilesDropped = transferQueueViewModel::onDesktopFilesDropped
+                                    onOpenTransferQueue = { route = AppRoute.TransferQueue }
                                 )
                             } else {
                                 CompactHomeContent(
@@ -397,8 +396,7 @@ fun App(
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
                                     onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                    onQueueFilesDropped = transferQueueViewModel::onDesktopFilesDropped
+                                    onOpenTransferQueue = { route = AppRoute.TransferQueue }
                                 )
                             }
                         }
@@ -407,8 +405,6 @@ fun App(
             }
         }
     }
-
-    TransferQueueDropHost(transferQueueViewModel)
 
     LaunchedEffect(onboardingComplete) {
         if (!onboardingComplete) {
@@ -453,8 +449,7 @@ private fun CompactHomeContent(
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
-    onOpenTransferQueue: () -> Unit = {},
-    onQueueFilesDropped: (List<String>) -> Unit = {}
+    onOpenTransferQueue: () -> Unit = {}
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
@@ -472,10 +467,7 @@ private fun CompactHomeContent(
         onSettings = onOpenSettings,
         onExitApp = { confirmExit = true },
         tealStripActions = {
-            QueuedFilesButton(
-                onClick = onOpenTransferQueue,
-                onDesktopFilesDropped = onQueueFilesDropped
-            )
+            QueuedFilesButton(onClick = onOpenTransferQueue)
             when {
                 showDevicesViewToggle -> {
                     ExplorerViewModeToggle(

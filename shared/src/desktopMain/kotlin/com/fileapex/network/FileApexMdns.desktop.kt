@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.NetworkUtils
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -13,6 +14,28 @@ private fun desktopMdnsBindAddress(): InetAddress? {
         ?: LanInterfaceBinding.lanBindCandidates().firstOrNull()
     if (host.isNullOrBlank()) return null
     return runCatching { Inet4Address.getByName(host) }.getOrNull()
+}
+
+private fun resolveMdnsIpv4(info: ServiceInfo): String? {
+    info.inet4Addresses.firstOrNull()?.hostAddress?.trim()
+        ?.takeIf { NetworkUtils.isUsableLanIpv4(it) }
+        ?.let { return it }
+    info.hostAddresses?.forEach { raw ->
+        val host = raw.trim()
+        if (NetworkUtils.isUsableLanIpv4(host)) {
+            return host
+        }
+    }
+    val server = info.server?.trim().orEmpty().removeSuffix(".")
+    if (server.isNotEmpty()) {
+        return runCatching { InetAddress.getByName(server) }
+            .getOrNull()
+            ?.takeIf { it is Inet4Address }
+            ?.hostAddress
+            ?.trim()
+            ?.takeIf { NetworkUtils.isUsableLanIpv4(it) }
+    }
+    return null
 }
 
 actual object FileApexMdnsAdvertiser {
@@ -69,9 +92,8 @@ actual object FileApexMdnsBrowser {
         override fun serviceResolved(event: ServiceEvent) {
             val info = event.info ?: return
             if (!info.name.startsWith(FileApexMdns.SERVICE_NAME_PREFIX)) return
-            val addresses = info.inet4Addresses
-            val host = addresses.firstOrNull()?.hostAddress?.trim().orEmpty()
-            if (host.isEmpty() || info.port <= 0) return
+            val host = resolveMdnsIpv4(info) ?: return
+            if (info.port <= 0) return
             callback?.invoke(host, info.port, FileApexMdns.deviceIdFromServiceName(info.name))
         }
     }
@@ -80,18 +102,15 @@ actual object FileApexMdnsBrowser {
         stop()
         callback = onPeerDiscovered
         runCatching {
-            val bindAddress = desktopMdnsBindAddress()
-            val instance = if (bindAddress != null) {
-                JmDNS.create(bindAddress)
-            } else {
-                JmDNS.create()
-            }
+            // Browse on the default JVM mDNS socket — interface-bound instances miss some
+            // Android/Bonjour advertisers that resolve only via .local hostnames.
+            val instance = JmDNS.create()
             instance.addServiceListener(FileApexMdns.SERVICE_TYPE, listener)
             jmdns = instance
-            println(
-                "FileApexMdnsBrowser: listening for ${FileApexMdns.SERVICE_TYPE}" +
-                    (bindAddress?.hostAddress?.let { " on $it" }.orEmpty())
-            )
+            runCatching {
+                instance.requestServiceInfo(FileApexMdns.SERVICE_TYPE, null, 3_000L)
+            }
+            println("FileApexMdnsBrowser: listening for ${FileApexMdns.SERVICE_TYPE}")
         }.onFailure { error ->
             println("FileApexMdnsBrowser: start failed — ${error.message}")
         }

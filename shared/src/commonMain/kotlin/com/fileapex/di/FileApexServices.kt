@@ -112,6 +112,8 @@ object FileApexServices {
         }
         LocalDeviceNameStore.ensureLoaded()
         presenceMonitor.ensureOnlineSnapshotWatcher()
+        presenceMonitor.ensureLanPollLoop()
+        presenceMonitor.scheduleColdLaunchProbeOnce()
         transferQueue.ensureDrainWatcher()
         bootstrapScope.launch {
             runCatching {

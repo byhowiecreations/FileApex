@@ -32,6 +32,7 @@ out/
 .cxx/
 *.log
 *.hprof
+BUGS/*
 
 # Kotlin
 .kotlin/

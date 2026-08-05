@@ -498,6 +498,8 @@ class DeviceRepository(
             lastSeenEpochMs = device.lastSeenEpochMs.coerceAtLeast(0L)
         )
         return trimmed.copy(
+            lastKnownIp = trimmed.lastKnownIp.ifBlank { preserveFrom?.lastKnownIp.orEmpty() },
+            port = trimmed.port.takeIf { it > 0 } ?: preserveFrom?.port ?: 0,
             clientVersion = trimmed.clientVersion.ifBlank { preserveFrom?.clientVersion.orEmpty() },
             clientVersionCode = trimmed.clientVersionCode.takeIf { it > 0 }
                 ?: preserveFrom?.clientVersionCode

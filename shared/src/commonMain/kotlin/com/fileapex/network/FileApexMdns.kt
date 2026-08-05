@@ -15,6 +15,8 @@ object FileApexMdns {
         val trimmed = serviceName?.trim().orEmpty()
         if (!trimmed.startsWith(SERVICE_NAME_PREFIX)) return null
         var id = trimmed.removePrefix(SERVICE_NAME_PREFIX).trim()
+        // Bonjour/NSD conflict renames: FileApex-<id> (2)
+        id = id.replace(BONJOUR_CONFLICT_SUFFIX, "")
         // jmdNS/Bonjour qualified names: FileApex-<id>._fileapex._tcp.local.
         val suffixStart = id.indexOf('.')
         if (suffixStart > 0) {
@@ -22,4 +24,7 @@ object FileApexMdns {
         }
         return id.trim().takeIf { it.isNotEmpty() }
     }
+
+    /** Bonjour auto-suffix when multiple services share the same instance name. */
+    private val BONJOUR_CONFLICT_SUFFIX = Regex(" \\(\\d+\\)$")
 }

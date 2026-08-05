@@ -81,6 +81,7 @@ class PeerPresenceMonitor(
     }
 
     fun isDeviceOnline(device: PairedDeviceEntity): Boolean {
+        if (!hasUsableEndpoint(device)) return false
         val probeEpoch = _reachabilityEpochMs.value[device.deviceId] ?: 0L
         val lastSeen = maxOf(probeEpoch, device.lastSeenEpochMs)
         return TimeUtils.isWithinWindow(lastSeen, LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS)
@@ -223,18 +224,12 @@ class PeerPresenceMonitor(
     }
 
     private suspend fun handleMdnsPeerDiscovered(host: String, port: Int, hintedDeviceId: String?) {
-        val hint = hintedDeviceId?.trim().orEmpty()
-        val peer = when {
-            hint.isNotEmpty() -> mutex.withLock { repository.getDevice(hint) }
-            else -> mutex.withLock {
-                repository.listDevices().firstOrNull { device ->
-                    device.lastKnownIp.trim() == host.trim()
-                }
-            }
-        } ?: return
+        val cleanedHost = host.trim()
+        if (cleanedHost.isEmpty() || port <= 0) return
+        val peer = resolveMdnsPeer(cleanedHost, port, hintedDeviceId) ?: return
 
         mutex.withLock {
-            repository.touchPeerLastSeen(peer.deviceId, host, port)
+            repository.touchPeerLastSeen(peer.deviceId, cleanedHost, port)
         }
         val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
         primePeer(
@@ -244,6 +239,43 @@ class PeerPresenceMonitor(
             discoveryBudgetMs = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
         )
         refreshOnlineSnapshot()
+    }
+
+    /**
+     * Map an mDNS-resolved endpoint to a roster row. Hinted ids can carry Bonjour conflict
+     * suffixes; blank-IP rows are matched by probing /identity at the resolved host.
+     */
+    private suspend fun resolveMdnsPeer(
+        host: String,
+        port: Int,
+        hintedDeviceId: String?
+    ): PairedDeviceEntity? {
+        val hint = hintedDeviceId?.trim().orEmpty()
+        if (hint.isNotEmpty()) {
+            mutex.withLock { repository.getDevice(hint) }?.let { return it }
+        }
+        mutex.withLock {
+            repository.listDevices().firstOrNull { device ->
+                device.lastKnownIp.trim() == host
+            }
+        }?.let { return it }
+
+        val state = runCatching {
+            client.fetchPeerNodeState(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
+        }.getOrNull() ?: return null
+        val stateId = state.deviceId.trim()
+        val stateHash = state.publicKeyHash.trim()
+        val matched = mutex.withLock {
+            repository.getDevice(stateId)
+                ?: repository.listDevices().firstOrNull { device ->
+                    val hash = device.publicKeyHash.trim()
+                    hash.isNotEmpty() && hash == stateHash
+                }
+        } ?: return null
+        mutex.withLock {
+            repository.applyPeerNodeState(state, rosterDeviceId = matched.deviceId)
+        }
+        return mutex.withLock { repository.getDevice(matched.deviceId) } ?: matched
     }
 
     private suspend fun runPeerRefreshSweep(mode: SweepMode, skipFcmDispatch: Boolean) {
@@ -261,21 +293,26 @@ class PeerPresenceMonitor(
             }
             return
         }
+        val orderedPeers = peers.sortedWith(
+            compareBy<PairedDeviceEntity> { peer ->
+                if (hasUsableEndpoint(peer)) 1 else 0
+            }.thenBy { it.deviceName.lowercase() }
+        )
         runCatching { sendWakeBroadcast() }
         val includeDiscovery = mode == SweepMode.FULL
         val allowPassiveWait = mode == SweepMode.FULL
-        val discoveryBudget = if (mode == SweepMode.FULL) {
+        val staleDiscoveryBudget = if (mode == SweepMode.FULL) {
             LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS
         } else {
             LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
         }
-        for (peer in peers) {
+        for (peer in orderedPeers) {
             if (TransferActivityGuard.isTransferActive()) return
             primePeer(
                 peer,
                 includeDiscovery = includeDiscovery,
                 allowPassiveWait = allowPassiveWait,
-                discoveryBudgetMs = discoveryBudget
+                discoveryBudgetMs = staleDiscoveryBudget
             )
         }
         if (mode == SweepMode.FULL) {
@@ -348,43 +385,89 @@ class PeerPresenceMonitor(
     /**
      * Single quick LAN assessment for transfer, file navigation, and Device Details.
      * Uses an ~800ms health ping only — never runs the full discovery sweep.
+     * Prefer [resolveOutboundEndpoint] for tap-to-browse and sends when the roster IP may be blank.
      */
     suspend fun quickAssessLanReachability(peer: PairedDeviceEntity): PeerLanReachabilityVerdict {
         if (!isActiveLanConnectivity()) {
             return PeerLanReachabilityVerdict.LocalOffLocalWifi
         }
         val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
-        val host = refreshed.lastKnownIp.trim()
-        val port = refreshed.port
+        assessStoredEndpoint(refreshed)?.let { return it }
+        return PeerLanReachabilityVerdict.PeerOffline
+    }
+
+    /**
+     * Outbound LAN host:port for navigation, transfer, and queue drain.
+     * Runs mDNS + discovery when the roster row lacks a usable IP (QR cluster seed).
+     */
+    suspend fun resolveOutboundEndpoint(peer: PairedDeviceEntity): PeerLanReachabilityVerdict.Direct? {
+        if (!isActiveLanConnectivity()) return null
+        var live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
+        assessStoredEndpoint(live)?.let { return it }
+        if (!validatePeerOnDemand(live)) {
+            live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: live
+            if (!hasUsableEndpoint(live)) {
+                val discovered = PeerLanDiscovery.discoverPeerState(
+                    peer = live,
+                    client = client,
+                    budgetMs = LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS
+                )
+                if (discovered != null) {
+                    val host = discovered.resolvedIpAddress.trim()
+                    if (host.isNotEmpty()) {
+                        mutex.withLock {
+                            repository.applyPeerNodeState(discovered, rosterDeviceId = peer.deviceId)
+                        }
+                        markReachable(peer.deviceId)
+                        live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: live
+                    }
+                }
+            }
+            assessStoredEndpoint(live)?.let { return it }
+            return null
+        }
+        live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: live
+        assessStoredEndpoint(live)?.let { return it }
+        val host = live.lastKnownIp.trim()
+        val port = live.port
         if (host.isNotEmpty() &&
             NetworkUtils.isPrivateLanPeerHost(host) &&
-            PeerLanHttpPolicy.canRoute(host)
+            port > 0 &&
+            PeerLanHttpPolicy.canRoute(host) &&
+            client.pingHealth(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
         ) {
-            if (wasRecentlyReachable(
-                    refreshed.deviceId,
-                    LanPresenceTiming.DEVICE_DETAILS_RECENT_REACHABILITY_MS
-                )
-            ) {
-                return PeerLanReachabilityVerdict.Direct(host, port)
+            markReachable(live.deviceId)
+            mutex.withLock {
+                repository.touchPeerLastSeen(live.deviceId, host, port)
             }
-            val pingOk = client.pingHealth(
-                host,
-                port,
-                LanPresenceTiming.DEVICE_DETAILS_PING_TIMEOUT_MS
+            return PeerLanReachabilityVerdict.Direct(host, port)
+        }
+        return null
+    }
+
+    private suspend fun assessStoredEndpoint(
+        peer: PairedDeviceEntity
+    ): PeerLanReachabilityVerdict.Direct? {
+        val host = peer.lastKnownIp.trim()
+        val port = peer.port
+        if (host.isEmpty() || !NetworkUtils.isPrivateLanPeerHost(host) || !PeerLanHttpPolicy.canRoute(host)) {
+            return null
+        }
+        if (wasRecentlyReachable(
+                peer.deviceId,
+                LanPresenceTiming.DEVICE_DETAILS_RECENT_REACHABILITY_MS
             )
-            if (pingOk) {
-                markReachable(refreshed.deviceId)
-                mutex.withLock {
-                    repository.touchPeerLastSeen(refreshed.deviceId, host, port)
-                }
-                return PeerLanReachabilityVerdict.Direct(host, port)
+        ) {
+            return PeerLanReachabilityVerdict.Direct(host, port)
+        }
+        if (client.pingHealth(host, port, LanPresenceTiming.DEVICE_DETAILS_PING_TIMEOUT_MS)) {
+            markReachable(peer.deviceId)
+            mutex.withLock {
+                repository.touchPeerLastSeen(peer.deviceId, host, port)
             }
+            return PeerLanReachabilityVerdict.Direct(host, port)
         }
-        return if (isDeviceOnline(refreshed)) {
-            PeerLanReachabilityVerdict.PeerOffLocalWifi
-        } else {
-            PeerLanReachabilityVerdict.PeerOffline
-        }
+        return null
     }
 
     suspend fun prepareForTransfer(targets: List<MultiCopyDeviceOption>) {
@@ -447,26 +530,40 @@ class PeerPresenceMonitor(
         val retryMs = LanPresenceTiming.ON_DEMAND_PRIME_RETRY_MS
         val timeoutMs = LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
 
-        if (tryStoredEndpoint(peer, attempts, retryMs, timeoutMs)) {
+        var current = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
+        if (!hasUsableEndpoint(current)) {
+            runCatching { FileApexMdnsBrowser.requestProbe() }
+            delay(LanPresenceTiming.TRANSFER_MDNS_SETTLE_MS)
+            current = mutex.withLock { repository.getDevice(peer.deviceId) } ?: current
+        }
+
+        if (tryStoredEndpoint(current, attempts, retryMs, timeoutMs)) {
             return true
         }
 
         if (allowPassiveWait) {
             delay(LanPresenceTiming.PASSIVE_ENDPOINT_WAIT_MS)
-            val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
-            if (refreshed.lastKnownIp != peer.lastKnownIp || refreshed.port != peer.port) {
+            val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: current
+            if (refreshed.lastKnownIp != current.lastKnownIp || refreshed.port != current.port) {
                 if (tryStoredEndpoint(refreshed, attempts, retryMs, timeoutMs)) {
                     return true
                 }
             }
+            current = refreshed
         }
 
-        if (includeDiscovery) {
-            val target = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
+        val shouldDiscover = includeDiscovery || !hasUsableEndpoint(current)
+        if (shouldDiscover) {
+            val target = mutex.withLock { repository.getDevice(peer.deviceId) } ?: current
+            val discoveryBudget = if (hasUsableEndpoint(target)) {
+                LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
+            } else {
+                discoveryBudgetMs
+            }
             val discovered = PeerLanDiscovery.discoverPeerState(
                 peer = target,
                 client = client,
-                budgetMs = discoveryBudgetMs
+                budgetMs = discoveryBudget
             )
             if (discovered != null) {
                 mutex.withLock {
@@ -477,7 +574,17 @@ class PeerPresenceMonitor(
             }
         }
 
-        return isDeviceOnline(mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer)
+        val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: current
+        return hasUsableEndpoint(refreshed)
+    }
+
+    internal fun hasUsableEndpoint(peer: PairedDeviceEntity): Boolean {
+        val host = peer.lastKnownIp.trim()
+        return host.isNotEmpty() &&
+            host != "127.0.0.1" &&
+            host != "0.0.0.0" &&
+            NetworkUtils.isPrivateLanPeerHost(host) &&
+            peer.port > 0
     }
 
     private suspend fun tryStoredEndpoint(

@@ -167,7 +167,7 @@ object DesktopSendHandoff {
             val failed = batch?.allFailed != false && !outcome.hadQueue
             val status = if (failed) STATUS_FAILED else STATUS_DONE
             writeJob(job.copy(status = status, message = outcome.message))
-            if (!failed) {
+            if (!outcome.hadQueue && !failed) {
                 cleanupStaging(jobId)
             }
             println("DesktopSendHandoff: $status — ${outcome.message}")

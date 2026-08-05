@@ -1,5 +1,6 @@
 package com.fileapex.domain.transfer
 
+import com.fileapex.di.FileApexServices
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.transfer.FileTransferService
@@ -143,6 +144,33 @@ class TransferManager(
     }
 
     /**
+     * Queue drain / post-probe sends: use the LAN endpoint that just passed reachability,
+     * not a stale roster IP (common when a new phone joins the cluster).
+     */
+    suspend fun resolveRemoteDeviceOptionsAtEndpoint(
+        deviceIds: List<String>,
+        host: String,
+        port: Int
+    ): List<MultiCopyDeviceOption> {
+        awaitReady()
+        require(deviceIds.isNotEmpty()) { "Select at least one destination device" }
+        val wanted = deviceIds.toSet()
+        val peers = deviceRepository().listDevices().filter { it.deviceId in wanted }
+        check(peers.isNotEmpty()) { "Selected devices are not in the paired roster" }
+        return peers.map { peer ->
+            resolveRemoteOption(
+                deviceId = peer.deviceId,
+                deviceName = peer.deviceName,
+                host = host,
+                port = port,
+                rootPath = peer.rootPath,
+                peerPlatform = peer.platform,
+                appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
+            )
+        }
+    }
+
+    /**
      * Canonical outbound send: sources + fully resolved device options → stream broadcast.
      */
     suspend fun sendToDevices(
@@ -169,6 +197,7 @@ class TransferManager(
             return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)
         } finally {
             TransferActivityGuard.endTransfer()
+            runCatching { FileApexServices.transferQueue.scheduleDrain() }
         }
     }
 
@@ -225,6 +254,9 @@ class TransferManager(
     ): List<MultiCopyDeviceOption> = options.map { option ->
         if (option.isLocal) return@map option
         val peer = deviceRepository().getDevice(option.deviceId) ?: return@map option
+        presenceMonitor().resolveOutboundEndpoint(peer)?.let { direct ->
+            return@map option.copy(host = direct.host, port = direct.port)
+        }
         val host = peer.lastKnownIp.trim()
         if (!NetworkUtils.isUsableLanIpv4(host)) return@map option
         if (host == option.host.trim() && peer.port == option.port) return@map option

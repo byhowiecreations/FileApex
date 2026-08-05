@@ -90,8 +90,7 @@ fun AdaptiveWideHome(
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
-    onOpenTransferQueue: () -> Unit = {},
-    onQueueFilesDropped: (List<String>) -> Unit = {}
+    onOpenTransferQueue: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         WideTopBar(
@@ -102,8 +101,7 @@ fun AdaptiveWideHome(
             onToggleDevicesViewMode = onToggleDevicesViewMode,
             explorerViewMode = explorerViewMode,
             onToggleExplorerViewMode = onToggleExplorerViewMode,
-            onOpenTransferQueue = onOpenTransferQueue,
-            onQueueFilesDropped = onQueueFilesDropped
+            onOpenTransferQueue = onOpenTransferQueue
         )
         Row(modifier = Modifier.fillMaxSize()) {
             FileApexNavigationRail(
@@ -205,8 +203,7 @@ private fun WideTopBar(
     onToggleDevicesViewMode: () -> Unit,
     explorerViewMode: ExplorerViewMode,
     onToggleExplorerViewMode: () -> Unit,
-    onOpenTransferQueue: () -> Unit = {},
-    onQueueFilesDropped: (List<String>) -> Unit = {}
+    onOpenTransferQueue: () -> Unit = {}
 ) {
     val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail
     val showExplorerViewToggle = selectedTab == HomeTab.Files || hasActiveDetail
@@ -226,7 +223,6 @@ private fun WideTopBar(
         )
         QueuedFilesButton(
             onClick = onOpenTransferQueue,
-            onDesktopFilesDropped = onQueueFilesDropped,
             iconTint = fileApexChromeContentColor()
         )
         if (showDevicesViewToggle) {

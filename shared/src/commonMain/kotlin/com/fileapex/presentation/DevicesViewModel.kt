@@ -15,6 +15,7 @@ import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.network.PeerReachabilityMessages
+import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.platform.purgeDirectShareTarget
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
@@ -235,52 +236,45 @@ class DevicesViewModel : ViewModel() {
     }
 
     private suspend fun performDeviceConnectHandshake(device: PairedDeviceEntity): DeviceConnectOutcome {
-        val peer = repository.getDevice(device.deviceId) ?: device
-        when (val verdict = presence.quickAssessLanReachability(peer)) {
-            is PeerLanReachabilityVerdict.Direct -> {
-                val refreshed = repository.getDevice(device.deviceId) ?: peer
-                if (DeviceSessionManager.isSessionValid(refreshed.deviceId)) {
-                    DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
-                    return DeviceConnectOutcome.Open(browseTargetFor(refreshed, pinRequired = true))
-                }
-                val remote = runCatching {
-                    FileApexServices.client.fetchPeerNodeState(
-                        verdict.host,
-                        verdict.port,
-                        LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
-                    )
-                }.getOrElse { error ->
-                    return DeviceConnectOutcome.Unreachable(
-                        detail = error.message ?: PeerReachabilityMessages.peerOffline(),
-                        quickFail = true
-                    )
-                }
-                if (remote.pinRequired) {
-                    val name = remote.deviceName.ifBlank { refreshed.deviceName }
-                    return DeviceConnectOutcome.NeedsPin(refreshed, name)
-                }
-                DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
-                return DeviceConnectOutcome.Open(browseTargetFor(refreshed, pinRequired = false))
-            }
-            PeerLanReachabilityVerdict.PeerOffLocalWifi -> {
-                return DeviceConnectOutcome.Unreachable(
-                    detail = PeerReachabilityMessages.fileNavigationOffWifi(),
-                    quickFail = true
-                )
-            }
-            PeerLanReachabilityVerdict.LocalOffLocalWifi -> {
-                return DeviceConnectOutcome.Unreachable(
-                    detail = PeerReachabilityMessages.localWifiRequired(),
-                    quickFail = true
-                )
-            }
-            PeerLanReachabilityVerdict.PeerOffline -> {
-                return DeviceConnectOutcome.Unreachable(
-                    detail = PeerReachabilityMessages.peerOffline(),
-                    quickFail = true
-                )
-            }
+        if (!isActiveLanConnectivity()) {
+            return DeviceConnectOutcome.Unreachable(
+                detail = PeerReachabilityMessages.localWifiRequired(),
+                quickFail = true
+            )
         }
+        val peer = repository.getDevice(device.deviceId) ?: device
+        val direct = presence.resolveOutboundEndpoint(peer)
+            ?: return DeviceConnectOutcome.Unreachable(
+                detail = PeerReachabilityMessages.peerOffline(),
+                quickFail = true
+            )
+        val refreshed = repository.getDevice(device.deviceId) ?: peer
+        if (DeviceSessionManager.isSessionValid(refreshed.deviceId)) {
+            DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
+            return DeviceConnectOutcome.Open(
+                browseTargetFor(refreshed, direct.host, direct.port, pinRequired = true)
+            )
+        }
+        val remote = runCatching {
+            FileApexServices.client.fetchPeerNodeState(
+                direct.host,
+                direct.port,
+                LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
+            )
+        }.getOrElse { error ->
+            return DeviceConnectOutcome.Unreachable(
+                detail = error.message ?: PeerReachabilityMessages.peerOffline(),
+                quickFail = true
+            )
+        }
+        if (remote.pinRequired) {
+            val name = remote.deviceName.ifBlank { refreshed.deviceName }
+            return DeviceConnectOutcome.NeedsPin(refreshed, name)
+        }
+        DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
+        return DeviceConnectOutcome.Open(
+            browseTargetFor(refreshed, direct.host, direct.port, pinRequired = false)
+        )
     }
 
     fun pairFromQrPayload(payload: PairingPayload) {
@@ -615,12 +609,17 @@ class DevicesViewModel : ViewModel() {
         )
     }
 
-    fun browseTargetFor(device: PairedDeviceEntity, pinRequired: Boolean = false): BrowseTarget {
+    fun browseTargetFor(
+        device: PairedDeviceEntity,
+        host: String = device.lastKnownIp,
+        port: Int = device.port,
+        pinRequired: Boolean = false
+    ): BrowseTarget {
         return BrowseTarget.Remote(
             deviceId = device.deviceId,
             displayName = device.deviceName,
-            host = device.lastKnownIp,
-            port = device.port,
+            host = host,
+            port = port,
             rootPath = device.rootPath,
             pinRequired = pinRequired
         )
@@ -687,13 +686,10 @@ class DevicesViewModel : ViewModel() {
     }
 
     private suspend fun fetchDeviceDetailsSnapshot(device: PairedDeviceEntity): PeerDeviceDiagnostics {
-        when (val verdict = presence.quickAssessLanReachability(device)) {
-            is PeerLanReachabilityVerdict.Direct -> {
-                runCatching {
-                    FileApexServices.client.fetchDeviceDiagnostics(verdict.host, verdict.port)
-                }.onSuccess { return it }
-            }
-            else -> Unit
+        presence.resolveOutboundEndpoint(device)?.let { direct ->
+            runCatching {
+                FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port)
+            }.onSuccess { return it }
         }
         return DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId)
     }

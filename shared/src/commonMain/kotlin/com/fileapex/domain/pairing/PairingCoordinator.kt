@@ -331,7 +331,10 @@ class PairingCoordinator(
     private suspend fun resolvePeerState(peer: PairedDeviceEntity): PeerNodeState {
         val host = peer.lastKnownIp.trim()
         if (host.isNotEmpty()) {
-            runCatching { client.fetchPeerNodeState(host, peer.port) }.getOrNull()?.let { return it }
+            runCatching { client.fetchPeerNodeState(host, peer.port) }.getOrNull()?.let { state ->
+                val resolvedIp = state.resolvedIpAddress.ifBlank { host }
+                return if (resolvedIp == state.ipAddress) state else state.copy(ipAddress = resolvedIp)
+            }
         }
         return PeerNodeStateMapper.fromEntity(peer)
     }

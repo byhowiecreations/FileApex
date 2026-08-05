@@ -8,14 +8,13 @@ import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.MultiCopySource
 import com.fileapex.domain.transfer.verifiedFromDisk
+import com.fileapex.domain.transfer.ShareStagingCleanup
 import com.fileapex.platform.recordDirectShareTargetUsed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
 
 data class ShareSendUiState(
     val fileNames: List<String> = emptyList(),
@@ -165,7 +164,9 @@ class ShareSendViewModel(
             FileApexServices.transferQueue.sendOrQueue(sources, selected, skipTransferPrepare)
         }.fold(
             onSuccess = { outcome ->
-                cleanupStaging()
+                if (!outcome.hadQueue) {
+                    cleanupStaging()
+                }
                 val batch = outcome.batch
                 if (batch != null && !batch.allFailed) {
                     recordDirectShareOnSuccess?.let { recordDirectShareTargetUsed(it) }
@@ -201,15 +202,8 @@ class ShareSendViewModel(
         )
 
     private fun cleanupStaging() {
-        runCatching {
-            val first = payload.files.firstOrNull()?.absolutePath ?: return
-            val parent = Path(first).parent ?: return
-            if (SystemFileSystem.exists(parent)) {
-                SystemFileSystem.list(parent).forEach { child ->
-                    runCatching { SystemFileSystem.delete(child) }
-                }
-                runCatching { SystemFileSystem.delete(parent) }
-            }
-        }
+        ShareStagingCleanup.deleteSessionRootsForPaths(
+            payload.files.map { it.absolutePath }
+        )
     }
 }

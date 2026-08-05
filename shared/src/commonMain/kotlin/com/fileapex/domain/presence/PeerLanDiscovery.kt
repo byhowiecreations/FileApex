@@ -18,6 +18,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 internal object PeerLanDiscovery {
     private const val BATCH_SIZE = 32
+    /** Wider parallel probes when the roster row has no stored IP (full /24 within sweep budget). */
+    private const val BLANK_ENDPOINT_BATCH_SIZE = 64
 
     suspend fun discoverPeerState(
         peer: PairedDeviceEntity,
@@ -28,6 +30,11 @@ internal object PeerLanDiscovery {
         val scanRoots = subnetScanRoots()
         if (scanRoots.isEmpty()) return null
 
+        val batchSize = if (peer.lastKnownIp.trim().isEmpty()) {
+            BLANK_ENDPOINT_BATCH_SIZE
+        } else {
+            BATCH_SIZE
+        }
         val deadlineEpochMs = TimeUtils.now() + budgetMs
         val perRootBudgetMs = (budgetMs / scanRoots.size).coerceAtLeast(1_000L)
         for (root in scanRoots) {
@@ -39,7 +46,8 @@ internal object PeerLanDiscovery {
                 client = client,
                 localIp = root,
                 port = port,
-                budgetMs = rootBudgetMs
+                budgetMs = rootBudgetMs,
+                batchSize = batchSize
             )
             if (match != null) return match
         }
@@ -51,11 +59,12 @@ internal object PeerLanDiscovery {
         client: FileApexClient,
         localIp: String,
         port: Int,
-        budgetMs: Long
+        budgetMs: Long,
+        batchSize: Int
     ): PeerNodeState? {
         val deadlineEpochMs = TimeUtils.now() + budgetMs
         val candidates = orderedSubnetCandidates(localIp)
-        for (batch in candidates.chunked(BATCH_SIZE)) {
+        for (batch in candidates.chunked(batchSize)) {
             if (TimeUtils.now() >= deadlineEpochMs) break
             val remainingMs = (deadlineEpochMs - TimeUtils.now()).coerceAtLeast(250L)
             val match = withTimeoutOrNull(remainingMs) {
@@ -104,7 +113,9 @@ internal object PeerLanDiscovery {
         val state = runCatching {
             client.fetchPeerNodeState(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
         }.getOrNull() ?: return null
-        return state.takeIf { matchesPeer(peer, it) }
+        return state.takeIf { matchesPeer(peer, it) }?.let { matched ->
+            matched.copy(ipAddress = matched.resolvedIpAddress.ifBlank { host })
+        }
     }
 
     private fun matchesPeer(peer: PairedDeviceEntity, state: PeerNodeState): Boolean {

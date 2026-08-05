@@ -438,14 +438,16 @@ object GoogleLinkCoordinator {
                         return@forEach
                     }
                     val local = repo.getDevice(remote.deviceId)
+                    val mergedIp = remote.lastKnownIp.trim().ifBlank { local?.lastKnownIp.orEmpty() }
+                    val mergedPort = remote.port.takeIf { it > 0 } ?: local?.port ?: 0
                     runCatching {
                         if (!isSessionLive(epoch)) return@runCatching
                         repo.upsertReplacingAliases(
                             PairedDeviceEntity(
                                 deviceId = remote.deviceId,
                                 deviceName = remote.deviceName.ifBlank { "Cloud device" },
-                                lastKnownIp = remote.lastKnownIp,
-                                port = remote.port,
+                                lastKnownIp = mergedIp,
+                                port = mergedPort,
                                 publicKeyHash = remote.publicKeyHash,
                                 rootPath = remote.rootPath.ifBlank { "/" },
                                 clientVersion = remote.clientVersion.ifBlank {
@@ -458,7 +460,13 @@ object GoogleLinkCoordinator {
                                 lastSeenEpochMs = remote.updatedAtEpochMs.coerceAtLeast(0L)
                             )
                         )
-                        if (remote.updatedAtEpochMs > 0L && FileApexServices.isDatabaseReady()) {
+                        val hasLanEndpoint = mergedIp.isNotEmpty() &&
+                            mergedIp != "127.0.0.1" &&
+                            mergedPort > 0
+                        if (hasLanEndpoint &&
+                            remote.updatedAtEpochMs > 0L &&
+                            FileApexServices.isDatabaseReady()
+                        ) {
                             FileApexServices.presenceMonitor.notifyPassiveReachability(
                                 remote.deviceId,
                                 epochMs = remote.updatedAtEpochMs
