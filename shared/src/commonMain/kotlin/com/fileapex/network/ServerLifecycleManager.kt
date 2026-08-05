@@ -53,6 +53,9 @@ object ServerLifecycleManager {
             onPairingRespond = { scanningDevice ->
                 FileApexServices.pairingCoordinator.handleInboundScanner(scanningDevice)
             },
+            onPairingRespondComplete = { scanningDevice ->
+                FileApexServices.pairingCoordinator.propagatePairingComplete(scanningDevice)
+            },
             onClusterMerge = { request ->
                 FileApexServices.pairingCoordinator.mergeIncoming(request)
             },

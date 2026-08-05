@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 enum class PeerSyncEventKind {
     /** Local node publishes its own identity/metadata (heartbeat or rename). */
     SELF_METADATA,
-    /** One-time authoritative delta introducing a newly paired peer. */
+    /** One-time delta: introduce a newly paired peer, or seed a newcomer with a direct roster snapshot. */
     PAIRING_INTRO,
     /** Explicit peer removal blocklist propagation. */
     REMOVAL

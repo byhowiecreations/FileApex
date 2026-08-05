@@ -40,7 +40,9 @@ import com.fileapex.platform.ShareServerPendingStart
 import com.fileapex.platform.ShareServerRestartCoordinator
 import android.util.Log
 import com.fileapex.ui.theme.FileApexTeal
+import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanIntentResult
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -99,12 +101,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
-        val text = result.contents ?: return@registerForActivityResult
-        runCatching {
-            scannedPayload = PairingPayload.parse(text)
-        }.onFailure { error ->
-            qrScanError = error.message ?: "Invalid pairing QR code"
+        val candidates = extractQrScanCandidates(result)
+        if (candidates.isEmpty()) return@registerForActivityResult
+        val payload = PairingPayload.parseFirstOrNull(candidates)
+        if (payload != null) {
+            qrScanError = null
+            scannedPayload = payload
+            return@registerForActivityResult
         }
+        scannedPayload = null
+        qrScanError = PairingPayload.parseFailureMessage(candidates)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -217,10 +223,17 @@ class MainActivity : ComponentActivity() {
             val scheme = uri.scheme?.lowercase()
             val host = uri.host?.lowercase()
             if (host == "pair" && scheme in PAIRING_URI_SCHEMES) {
-                runCatching {
-                    scannedPayload = PairingPayload.parse(uri.toString())
-                }.onFailure { error ->
-                    qrScanError = error.message ?: "Invalid pairing link"
+                val candidates = listOf(
+                    pairingTextFromDeepLink(uri),
+                    uri.toString()
+                ).distinct()
+                val payload = PairingPayload.parseFirstOrNull(candidates)
+                if (payload != null) {
+                    qrScanError = null
+                    scannedPayload = payload
+                } else {
+                    scannedPayload = null
+                    qrScanError = PairingPayload.parseFailureMessage(candidates.first())
                 }
                 return
             }
@@ -434,6 +447,65 @@ class MainActivity : ComponentActivity() {
             .setBeepEnabled(false)
             .setOrientationLocked(true)
         qrScannerLauncher.launch(options)
+    }
+
+    private fun extractQrScanCandidates(result: ScanIntentResult): List<String> {
+        val collected = linkedSetOf<String>()
+        result.getContents()?.let { collected.add(it) }
+        result.originalIntent?.let { intent ->
+            intent.getStringExtra(Intents.Scan.RESULT)?.let { collected.add(it) }
+            collected.addAll(reassembleByteSegmentExtras(intent))
+        }
+        result.rawBytes?.let { bytes -> collected.addAll(decodeRawScanBytes(bytes)) }
+        val normalized = collected
+            .map { it.replace("\u0000", "").trim().trimStart('\uFEFF') }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        if (normalized.size > 1) {
+            val joined = normalized.joinToString("")
+            if (joined.isNotBlank()) {
+                return (normalized + joined).distinct()
+            }
+        }
+        return normalized
+    }
+
+    private fun reassembleByteSegmentExtras(intent: android.content.Intent): List<String> {
+        val segments = mutableListOf<ByteArray>()
+        var index = 0
+        while (true) {
+            val chunk = intent.getByteArrayExtra("${Intents.Scan.RESULT_BYTE_SEGMENTS_PREFIX}$index")
+                ?: break
+            if (chunk.isNotEmpty()) segments.add(chunk)
+            index++
+        }
+        if (segments.isEmpty()) return emptyList()
+        val combined = segments.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
+        return decodeRawScanBytes(combined)
+    }
+
+    private fun decodeRawScanBytes(bytes: ByteArray): List<String> {
+        if (bytes.isEmpty()) return emptyList()
+        return buildList {
+            add(bytes.decodeToString())
+            if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
+                runCatching { String(bytes, Charsets.UTF_16LE) }.getOrNull()?.let { add(it) }
+            } else if (bytes.size % 2 == 0 && bytes.any { it == 0.toByte() }) {
+                runCatching { String(bytes, Charsets.UTF_16LE) }.getOrNull()?.let { add(it) }
+            }
+        }
+    }
+
+    /** Rebuild pairing URI text without Android Uri.toString() path-style drift (`fileapex:///pair`). */
+    private fun pairingTextFromDeepLink(uri: Uri): String = buildString {
+        append(uri.scheme?.lowercase().orEmpty())
+        append("://")
+        append(uri.host?.lowercase().orEmpty())
+        val query = uri.encodedQuery?.takeIf { it.isNotBlank() } ?: uri.query?.takeIf { it.isNotBlank() }
+        if (query != null) {
+            append('?')
+            append(query)
+        }
     }
 
     private fun startShareServer() {

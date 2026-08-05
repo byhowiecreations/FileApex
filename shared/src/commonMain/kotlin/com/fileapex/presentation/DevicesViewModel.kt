@@ -392,6 +392,7 @@ class DevicesViewModel : ViewModel() {
             publicKeyHash = "",
             rootPath = identity.rootPath
         )
+        FileApexServices.pairingCoordinator.awaitShareServerReady()
         FileApexServices.client.postPairingRespond(
             host = payload.host,
             port = payload.port,
@@ -402,10 +403,21 @@ class DevicesViewModel : ViewModel() {
             FileApexServices.client.rememberSessionPin(payload.host, payload.port, pin)
             DeviceSessionManager.markDeviceAccessed(broadcasterId)
         }
+        val importedCount = FileApexServices.pairingCoordinator.importDirectPeerRoster(
+            host = payload.host,
+            port = payload.port,
+            excludeDeviceIds = setOf(broadcasterId)
+        )
+        FileApexServices.pairingCoordinator.announceSelfToCluster(excludeDeviceIds = setOf(broadcasterId))
         FileApexServices.pairingCoordinator.afterOutboundPair(broadcasterEntity)
 
+        val statusMessage = if (importedCount > 0) {
+            "Paired with $broadcasterName (+$importedCount cluster ${if (importedCount == 1) "device" else "devices"})"
+        } else {
+            "Paired with $broadcasterName (cluster updated)"
+        }
         _uiState.update {
-            it.copy(statusMessage = "Paired with $broadcasterName (cluster updated)")
+            it.copy(statusMessage = statusMessage)
         }
     }
 

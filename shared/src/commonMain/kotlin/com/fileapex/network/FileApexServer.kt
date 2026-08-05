@@ -48,6 +48,7 @@ import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readAtMostTo
 import kotlinx.io.write
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -59,6 +60,7 @@ class FileApexServer(
     private val port: Int,
     private val identityProvider: () -> LocalIdentity = { loadLocalIdentity() },
     private val onPairingRespond: suspend (PairedDeviceEntity) -> Unit = {},
+    private val onPairingRespondComplete: suspend (PairedDeviceEntity) -> Unit = {},
     private val onClusterMerge: suspend (ClusterSyncRequest) -> Unit = {},
     private val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
     private val onLog: (String, Throwable?) -> Unit = { message, error ->
@@ -217,6 +219,18 @@ class FileApexServer(
                             null
                         )
                         call.respond(HttpStatusCode.Created)
+                        serverScope.launch {
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    onPairingRespondComplete(scanningDevice)
+                                }
+                            }.onFailure { error ->
+                                onLog(
+                                    "Pairing roster seed failed for ${scanningDevice.deviceName}",
+                                    error
+                                )
+                            }
+                        }
                     }.onFailure { error ->
                         onLog("POST /api/v1/pairing/respond failed", error)
                         runCatching {
@@ -229,7 +243,10 @@ class FileApexServer(
                     runCatching {
                         val devices = withContext(Dispatchers.IO) { onListDevices() }
                         call.respondText(
-                            text = json.encodeToString(devices),
+                            text = json.encodeToString(
+                                ListSerializer(PairedDeviceEntity.serializer()),
+                                devices
+                            ),
                             contentType = ContentType.Application.Json
                         )
                     }.onFailure { error ->
