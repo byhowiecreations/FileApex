@@ -11,6 +11,8 @@ interface AppSettings {
     /** Firebase Auth UID for Firestore path users/{uid}/devices. Empty when unlinked. */
     val googleAccountUid: StateFlow<String>
     val multiCopyIntroAcknowledged: StateFlow<Boolean>
+    /** When true, this device allows cross-device clipboard reading and writing. Default off. */
+    val clipboardSharingEnabled: StateFlow<Boolean>
     /** When true, this device shows a notification after successfully receiving files. Default off. */
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
     /** When true, scanners must supply this device's PIN to pair. Default off. */
@@ -23,7 +25,7 @@ interface AppSettings {
     val checkForUpdatesEnabled: StateFlow<Boolean>
     /** Unit for [checkForUpdatesIntervalAmount]. Default [UpdateCheckUnit.Days]. */
     val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit>
-    /** Amount paired with [checkForUpdatesIntervalUnit]. Default 1. */
+    /** Amount paired with [checkForUpdatesIntervalAmount]. Default 1. */
     val checkForUpdatesIntervalAmount: StateFlow<Int>
     /** Epoch millis of the last completed update check (0 = never). */
     val lastUpdateCheckEpochMs: StateFlow<Long>
@@ -57,6 +59,7 @@ interface AppSettings {
     fun setGoogleAccountEmail(email: String)
     fun setGoogleAccountUid(uid: String)
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
+    fun setClipboardSharingEnabled(enabled: Boolean)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
     fun setPinRequiredEnabled(enabled: Boolean)
     fun setDevicePin(pinValue: String)

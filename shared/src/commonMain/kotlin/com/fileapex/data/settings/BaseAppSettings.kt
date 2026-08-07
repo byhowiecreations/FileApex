@@ -32,6 +32,7 @@ class BaseAppSettings(
     private val googleEmail = MutableStateFlow(store.getString(KEY_GOOGLE_EMAIL, ""))
     private val googleUid = MutableStateFlow(store.getString(KEY_GOOGLE_UID, ""))
     private val multiCopyIntro = MutableStateFlow(store.getBoolean(KEY_MULTI_COPY_INTRO, false))
+    private val clipboardSharing = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHARING, false))
     private val transferNotifications =
         MutableStateFlow(store.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
     private val pinRequired = MutableStateFlow(store.getBoolean(KEY_PIN_REQUIRED, false))
@@ -84,6 +85,7 @@ class BaseAppSettings(
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
     override val googleAccountUid: StateFlow<String> = googleUid.asStateFlow()
     override val multiCopyIntroAcknowledged: StateFlow<Boolean> = multiCopyIntro.asStateFlow()
+    override val clipboardSharingEnabled: StateFlow<Boolean> = clipboardSharing.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
@@ -131,6 +133,11 @@ class BaseAppSettings(
     override fun setMultiCopyIntroAcknowledged(acknowledged: Boolean) {
         store.putBoolean(KEY_MULTI_COPY_INTRO, acknowledged)
         multiCopyIntro.value = acknowledged
+    }
+
+    override fun setClipboardSharingEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_SHARING, enabled)
+        clipboardSharing.value = enabled
     }
 
     override fun setFileTransferNotificationsEnabled(enabled: Boolean) {
@@ -256,6 +263,7 @@ class BaseAppSettings(
         const val KEY_GOOGLE_EMAIL = "google_account_email"
         const val KEY_GOOGLE_UID = "google_account_uid"
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
+        const val KEY_CLIPBOARD_SHARING = "clipboard_sharing_enabled"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
         const val KEY_PIN_REQUIRED = "pin_required"
         const val KEY_DEVICE_PIN = "device_pin"

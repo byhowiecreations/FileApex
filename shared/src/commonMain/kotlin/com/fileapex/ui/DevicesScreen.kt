@@ -346,6 +346,9 @@ fun DevicesScreen(
                 onDeviceDetails = { deviceId ->
                     viewModel.requestDeviceDetails(deviceId)
                 },
+                onSendClipboardDevice = { deviceId ->
+                    viewModel.sendClipboardToDevice(deviceId)
+                },
                 onRemoveDevice = { deviceId, deviceName ->
                     pendingDelete = PendingDelete(deviceId, deviceName)
                 },
@@ -606,6 +609,7 @@ private fun PairedDevicesList(
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onDeviceDetails: (deviceId: String) -> Unit,
+    onSendClipboardDevice: (deviceId: String) -> Unit,
     onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
@@ -632,6 +636,7 @@ private fun PairedDevicesList(
                     onOpenDevice = onOpenDevice,
                     onRenameDevice = onRenameDevice,
                     onDeviceDetails = onDeviceDetails,
+                    onSendClipboardDevice = onSendClipboardDevice,
                     onRemoveDevice = onRemoveDevice,
                     onFilesDropped = onFilesDropped,
                     modifier = modifier
@@ -644,6 +649,7 @@ private fun PairedDevicesList(
                     onOpenDevice = onOpenDevice,
                     onRenameDevice = onRenameDevice,
                     onDeviceDetails = onDeviceDetails,
+                    onSendClipboardDevice = onSendClipboardDevice,
                     onRemoveDevice = onRemoveDevice,
                     onFilesDropped = onFilesDropped,
                     modifier = modifier
@@ -782,6 +788,7 @@ private fun PairedDevicesBrowseList(
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onDeviceDetails: (deviceId: String) -> Unit,
+    onSendClipboardDevice: (deviceId: String) -> Unit,
     onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     modifier: Modifier = Modifier
@@ -834,6 +841,7 @@ private fun PairedDevicesBrowseList(
                     onClick = { onOpenDevice(row.deviceId) },
                     onRename = { onRenameDevice(row.deviceId, row.deviceName) },
                     onDeviceDetails = { onDeviceDetails(row.deviceId) },
+                    onSendClipboard = { onSendClipboardDevice(row.deviceId) },
                     onRemove = { onRemoveDevice(row.deviceId, row.deviceName) },
                     dropDeviceId = row.deviceId,
                     onFilesDropped = onFilesDropped,
@@ -858,6 +866,7 @@ private fun PairedDevicesGridBrowseList(
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onDeviceDetails: (deviceId: String) -> Unit,
+    onSendClipboardDevice: (deviceId: String) -> Unit,
     onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     modifier: Modifier = Modifier
@@ -900,6 +909,7 @@ private fun PairedDevicesGridBrowseList(
                         onClick = { onOpenDevice(row.deviceId) },
                         onRename = { onRenameDevice(row.deviceId, row.deviceName) },
                         onDeviceDetails = { onDeviceDetails(row.deviceId) },
+                        onSendClipboard = { onSendClipboardDevice(row.deviceId) },
                         onRemove = { onRemoveDevice(row.deviceId, row.deviceName) },
                         dropDeviceId = row.deviceId,
                         onFilesDropped = onFilesDropped
@@ -919,6 +929,7 @@ private fun DeviceGridCell(
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDeviceDetails: () -> Unit,
+    onSendClipboard: () -> Unit,
     onRemove: () -> Unit,
     dropDeviceId: String,
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit
@@ -1059,6 +1070,13 @@ private fun DeviceGridCell(
                         onClick = {
                             menuOpen = false
                             onDeviceDetails()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Send Clipboard") },
+                        onClick = {
+                            menuOpen = false
+                            onSendClipboard()
                         }
                     )
                     DropdownMenuItem(
@@ -1211,6 +1229,7 @@ private fun DeviceCard(
     onClick: () -> Unit,
     onRename: (() -> Unit)?,
     onDeviceDetails: (() -> Unit)? = null,
+    onSendClipboard: (() -> Unit)? = null,
     onRemove: (() -> Unit)?,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
@@ -1333,7 +1352,7 @@ private fun DeviceCard(
             }
             if (editMode && dragHandle != null) {
                 dragHandle()
-            } else if (onRename != null || onDeviceDetails != null || onRemove != null) {
+            } else if (onRename != null || onDeviceDetails != null || onSendClipboard != null || onRemove != null) {
                 Box {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
@@ -1358,6 +1377,15 @@ private fun DeviceCard(
                                 onClick = {
                                     menuOpen = false
                                     onDeviceDetails()
+                                }
+                            )
+                        }
+                        if (onSendClipboard != null) {
+                            DropdownMenuItem(
+                                text = { Text("Send Clipboard") },
+                                onClick = {
+                                    menuOpen = false
+                                    onSendClipboard()
                                 }
                             )
                         }

@@ -283,6 +283,19 @@ class MainActivity : ComponentActivity() {
 
         val uris = AndroidShareIntake.extractStreamUris(shareIntent)
         if (uris.isEmpty()) {
+            val sharedText = AndroidShareIntake.extractSharedText(shareIntent)
+            if (!sharedText.isNullOrBlank()) {
+                com.fileapex.platform.PlatformClipboard.setSystemClipboardText(sharedText)
+                if (targetDeviceId != null) {
+                    com.fileapex.platform.BriefToast.show("Sending shared clipboard…")
+                } else {
+                    com.fileapex.platform.BriefToast.show("Text copied to clipboard — select a device to send")
+                }
+                openedFromShareSheet = true
+                isPreparingShare = false
+                sharePrepareError = null
+                return
+            }
             sharePrepareError = "No shared file was provided"
             isPreparingShare = false
             openedFromShareSheet = true

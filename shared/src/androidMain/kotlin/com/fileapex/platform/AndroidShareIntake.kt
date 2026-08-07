@@ -23,7 +23,23 @@ import kotlinx.coroutines.withContext
 object AndroidShareIntake {
     fun isShareAction(intent: Intent?): Boolean {
         val action = intent?.action ?: return false
-        return action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
+        return action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE || action == Intent.ACTION_PROCESS_TEXT
+    }
+
+    fun extractSharedText(intent: Intent?): String? {
+        if (intent == null) return null
+        val action = intent.action ?: return null
+        if (action == Intent.ACTION_SEND) {
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (!text.isNullOrBlank()) return text.trim()
+            val clipItem = intent.clipData?.getItemAt(0)
+            val clipText = clipItem?.text?.toString()
+            if (!clipText.isNullOrBlank() && !clipText.startsWith("content://")) return clipText.trim()
+        } else if (action == Intent.ACTION_PROCESS_TEXT) {
+            val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            if (!text.isNullOrBlank()) return text.trim()
+        }
+        return null
     }
 
     fun extractStreamUris(intent: Intent?): List<Uri> {

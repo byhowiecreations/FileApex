@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val googleAccountLinkEnabled: Boolean = false,
     val googleAccountEmail: String = "",
+    val clipboardSharingEnabled: Boolean = false,
     val fileTransferNotificationsEnabled: Boolean = false,
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
@@ -52,6 +53,7 @@ class SettingsViewModel : ViewModel() {
         SettingsUiState(
             googleAccountLinkEnabled = settings.googleAccountLinkEnabled.value,
             googleAccountEmail = settings.googleAccountEmail.value,
+            clipboardSharingEnabled = settings.clipboardSharingEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
@@ -96,6 +98,11 @@ class SettingsViewModel : ViewModel() {
     fun setDesktopUiStyle(style: DesktopUiStyle) {
         settings.setDesktopUiStyle(style)
         _uiState.update { it.copy(desktopUiStyle = style) }
+    }
+
+    fun setClipboardSharing(enabled: Boolean) {
+        settings.setClipboardSharingEnabled(enabled)
+        _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
     }
 
     fun setFileTransferNotifications(enabled: Boolean) {

@@ -82,6 +82,7 @@ private enum class SettingsPage {
     BackgroundPersistence,
     AutoLaunchOnReboot,
     FileTransferNotifications,
+    Clipboard,
     DeviceDetails,
     GoogleAccount,
     DesktopLayout,
@@ -150,6 +151,7 @@ fun SettingsScreen(
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
             onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
+            onOpenClipboard = { page = SettingsPage.Clipboard },
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
@@ -201,6 +203,12 @@ fun SettingsScreen(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onToggle = viewModel::setFileTransferNotifications
+        )
+        SettingsPage.Clipboard -> ClipboardSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onToggle = viewModel::setClipboardSharing
         )
         SettingsPage.DeviceDetails -> DeviceDetailsSettingsPage(
             preferences = state.deviceDetailsDisplayPreferences,
@@ -257,6 +265,7 @@ private fun SettingsRootPage(
     onOpenBackgroundPersistence: () -> Unit,
     onOpenAutoLaunchOnReboot: () -> Unit,
     onOpenFileTransferNotifications: () -> Unit,
+    onOpenClipboard: () -> Unit,
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
@@ -322,6 +331,11 @@ private fun SettingsRootPage(
                     title = "File Transfer Notifications",
                     subtitle = if (state.fileTransferNotificationsEnabled) "On" else "Off",
                     onClick = onOpenFileTransferNotifications
+                )
+                SettingsNavItem(
+                    title = "Clipboard",
+                    subtitle = if (state.clipboardSharingEnabled) "On" else "Off",
+                    onClick = onOpenClipboard
                 )
                 SettingsNavItem(
                     title = "Device Details",
@@ -610,6 +624,42 @@ private fun FileTransferNotificationsSettingsPage(
                 trailingContent = {
                     Switch(
                         checked = state.fileTransferNotificationsEnabled,
+                        onCheckedChange = onToggle
+                    )
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClipboardSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onToggle: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Clipboard",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Clipboard Sharing") },
+                supportingContent = {
+                    Text(
+                        "Opting in would allow FileApex to read from or write to the clipboard of any devices with that setting enabled."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.clipboardSharingEnabled,
                         onCheckedChange = onToggle
                     )
                 }

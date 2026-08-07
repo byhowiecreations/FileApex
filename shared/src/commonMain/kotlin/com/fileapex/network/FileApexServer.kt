@@ -10,6 +10,10 @@ import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
+import com.fileapex.domain.clipboard.ClipboardSendRequest
+import com.fileapex.domain.clipboard.ClipboardSendResponse
+import com.fileapex.platform.PlatformClipboard
+import com.fileapex.platform.isWebUrl
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.collectDeviceDiagnostics
 import com.fileapex.platform.collectDeviceDiagnosticsFallback
@@ -418,6 +422,106 @@ class FileApexServer(
                     }
                 }
 
+                post("/api/v1/clipboard/send") {
+                    runCatching {
+                        val settings = FileApexServices.settings
+                        if (!settings.clipboardSharingEnabled.value) {
+                            call.respondText(
+                                text = "clipboard_disabled",
+                                status = HttpStatusCode.Forbidden
+                            )
+                            return@runCatching
+                        }
+                        if (!isPeerPinAccepted(providedPin(call))) {
+                            call.respond(HttpStatusCode.Forbidden, "pin_required")
+                            return@runCatching
+                        }
+                        val body = call.receiveText()
+                        val request = json.decodeFromString(ClipboardSendRequest.serializer(), body)
+                        if (request.text.isBlank()) {
+                            call.respond(HttpStatusCode.BadRequest, "empty_text")
+                            return@runCatching
+                        }
+                        withContext(Dispatchers.Main) {
+                            PlatformClipboard.setSystemClipboardText(request.text)
+                            if (isWebUrl(request.text)) {
+                                PlatformClipboard.openUrlInDefaultBrowser(request.text)
+                            }
+                        }
+                        val response = ClipboardSendResponse(
+                            status = "ok",
+                            recipientDeviceName = identityProvider().deviceName
+                        )
+                        call.respondText(
+                            text = json.encodeToString(ClipboardSendResponse.serializer(), response),
+                            contentType = ContentType.Application.Json
+                        )
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/clipboard/send failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "clipboard_failed")
+                    }
+                }
+
+                get("/") {
+                    call.respondText(WEB_SHARE_HTML, ContentType.Text.Html)
+                }
+
+                get("/share") {
+                    call.respondText(WEB_SHARE_HTML, ContentType.Text.Html)
+                }
+
+                post("/api/v1/web/send-clipboard") {
+                    runCatching {
+                        val body = call.receiveText()
+                        val jsonObj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
+                        val targetDeviceId = jsonObj?.get("targetDeviceId")?.let {
+                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        }.orEmpty()
+                        val text = jsonObj?.get("text")?.let {
+                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        }.orEmpty()
+
+                        if (targetDeviceId.isBlank() || text.isBlank()) {
+                            call.respond(
+                                HttpStatusCode.BadRequest,
+                                """{"status":"error","message":"Target device and text are required"}"""
+                            )
+                            return@runCatching
+                        }
+
+                        val devices = withContext(Dispatchers.IO) { onListDevices() }
+                        val targetDevice = devices.firstOrNull { it.deviceId == targetDeviceId }
+                        if (targetDevice == null) {
+                            call.respond(
+                                HttpStatusCode.NotFound,
+                                """{"status":"error","message":"Target device not found"}"""
+                            )
+                            return@runCatching
+                        }
+
+                        val client = FileApexServices.client
+                        val identity = identityProvider()
+                        val result = client.sendClipboard(
+                            host = targetDevice.lastKnownIp,
+                            port = targetDevice.port,
+                            senderDeviceId = identity.deviceId,
+                            senderDeviceName = identity.deviceName,
+                            text = text
+                        )
+                        val respJson = json.encodeToString(ClipboardSendResponse.serializer(), result)
+                        call.respondText(respJson, ContentType.Application.Json)
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/web/send-clipboard failed", error)
+                        val errMsg = error.message ?: "Failed to send clipboard"
+                        val safeMsg = json.encodeToString(errMsg)
+                        call.respondText(
+                            """{"status":"error","message":$safeMsg}""",
+                            ContentType.Application.Json,
+                            HttpStatusCode.InternalServerError
+                        )
+                    }
+                }
+
                 get("/api/v1/health") {
                     call.respondText("ok", ContentType.Text.Plain)
                 }
@@ -529,5 +633,94 @@ class FileApexServer(
 
     companion object {
         private const val UPLOAD_IDLE_TIMEOUT_MS = 60_000L
+        private val WEB_SHARE_HTML = """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>FileApex Web Share</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+              .card { background: #1e293b; border-radius: 16px; padding: 24px; max-width: 480px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
+              h1 { font-size: 1.5rem; margin-top: 0; color: #38bdf8; text-align: center; }
+              label { font-size: 0.9rem; color: #94a3b8; margin-top: 16px; display: block; }
+              select, textarea, button { width: 100%; border-radius: 8px; border: 1px solid #475569; padding: 12px; margin-top: 6px; box-sizing: border-box; font-size: 1rem; background: #0f172a; color: #f8fafc; }
+              textarea { height: 120px; resize: vertical; }
+              button { background: #0284c7; border: none; font-weight: 600; cursor: pointer; margin-top: 20px; transition: background 0.2s; }
+              button:hover { background: #0369a1; }
+              .snackbar { visibility: hidden; min-width: 250px; background-color: #334155; color: #fff; text-align: center; border-radius: 8px; padding: 14px; position: fixed; z-index: 100; left: 50%; bottom: 30px; transform: translateX(-50%); font-size: 1rem; border: 1px solid #0284c7; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+              .snackbar.show { visibility: visible; animation: fadein 0.3s, fadeout 0.3s 2.7s; }
+              @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
+              @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
+            </style>
+            </head>
+            <body>
+            <div class="card">
+              <h1>FileApex Web Share</h1>
+              <label for="deviceSelect">Select Destination Device:</label>
+              <select id="deviceSelect"><option value="">Loading devices...</option></select>
+              <label for="shareText">Text or Link to Share:</label>
+              <textarea id="shareText" placeholder="Paste link or text here..."></textarea>
+              <button id="sendBtn" onclick="sendClipboard()">Send Clipboard</button>
+            </div>
+            <div id="snackbar" class="snackbar"></div>
+            <script>
+              let snackbarTimer;
+              function showSnackbar(msg) {
+                const sb = document.getElementById("snackbar");
+                sb.innerText = msg;
+                sb.className = "snackbar show";
+                clearTimeout(snackbarTimer);
+                snackbarTimer = setTimeout(() => { sb.className = "snackbar"; }, 3000);
+              }
+              async function loadDevices() {
+                try {
+                  const res = await fetch('/api/v1/devices');
+                  const devices = await res.json();
+                  const select = document.getElementById('deviceSelect');
+                  select.innerHTML = '';
+                  if (!devices || devices.length === 0) {
+                    select.innerHTML = '<option value="">No paired devices found</option>';
+                    return;
+                  }
+                  devices.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.deviceId;
+                    opt.innerText = d.deviceName + ' (' + d.ipAddress + ')';
+                    select.appendChild(opt);
+                  });
+                } catch (e) {
+                  document.getElementById('deviceSelect').innerHTML = '<option value="">Error loading devices</option>';
+                }
+              }
+              async function sendClipboard() {
+                const deviceId = document.getElementById('deviceSelect').value;
+                const text = document.getElementById('shareText').value;
+                if (!deviceId) { alert('Please select a destination device.'); return; }
+                if (!text.trim()) { alert('Please enter text or link to send.'); return; }
+                showSnackbar("Sending Clipboard…");
+                try {
+                  const res = await fetch('/api/v1/web/send-clipboard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetDeviceId: deviceId, text: text })
+                  });
+                  const data = await res.json();
+                  if (res.ok && data.status === 'ok') {
+                    showSnackbar("Successfully received by " + data.recipientDeviceName);
+                    document.getElementById('shareText').value = '';
+                  } else {
+                    showSnackbar(data.message || "Failed to send clipboard");
+                  }
+                } catch (e) {
+                  showSnackbar("Error sending clipboard: " + e.message);
+                }
+              }
+              loadDevices();
+            </script>
+            </body>
+            </html>
+        """.trimIndent()
     }
 }

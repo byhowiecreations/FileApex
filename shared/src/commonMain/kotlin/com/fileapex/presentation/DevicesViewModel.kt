@@ -15,6 +15,7 @@ import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.network.PeerReachabilityMessages
+import com.fileapex.platform.PlatformClipboard
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.platform.purgeDirectShareTarget
 import com.fileapex.util.NetworkUtils
@@ -169,6 +170,50 @@ class DevicesViewModel : ViewModel() {
     fun isDeviceOnline(deviceId: String): Boolean {
         val row = deviceRows.value.firstOrNull { it.deviceId == deviceId } ?: return false
         return row.online
+    }
+
+    fun sendClipboardToDevice(deviceId: String) {
+        viewModelScope.launch {
+            val settings = FileApexServices.settings
+            if (!settings.clipboardSharingEnabled.value) {
+                _uiState.update { it.copy(errorMessage = "Clipboard sharing is disabled in Settings.") }
+                return@launch
+            }
+            val text = PlatformClipboard.getSystemClipboardText()
+            if (text.isNullOrBlank()) {
+                _uiState.update { it.copy(errorMessage = "Clipboard is empty.") }
+                return@launch
+            }
+            val device = repository.getDevice(deviceId)
+            if (device == null) {
+                _uiState.update { it.copy(errorMessage = "Device not found.") }
+                return@launch
+            }
+            _uiState.update { it.copy(statusMessage = "Sending Clipboard…") }
+            val client = FileApexServices.client
+            val localId = identity
+            try {
+                val response = client.sendClipboard(
+                    host = device.lastKnownIp,
+                    port = device.port,
+                    senderDeviceId = localId.deviceId,
+                    senderDeviceName = localId.deviceName,
+                    text = text
+                )
+                val targetName = if (response.recipientDeviceName.isNotBlank()) response.recipientDeviceName else device.deviceName
+                _uiState.update {
+                    it.copy(
+                        statusMessage = "Successfully received by $targetName"
+                    )
+                }
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        errorMessage = error.message ?: "Failed to send clipboard to ${device.deviceName}"
+                    )
+                }
+            }
+        }
     }
 
     fun openDeviceOrExplain(deviceId: String, open: (BrowseTarget) -> Unit) {

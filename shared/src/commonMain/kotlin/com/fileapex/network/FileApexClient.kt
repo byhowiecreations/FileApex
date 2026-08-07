@@ -105,6 +105,45 @@ class FileApexClient(
         return json.decodeFromString(PeerDeviceDiagnostics.serializer(), response.body)
     }
 
+    suspend fun sendClipboard(
+        host: String,
+        port: Int,
+        senderDeviceId: String,
+        senderDeviceName: String,
+        text: String
+    ): com.fileapex.domain.clipboard.ClipboardSendResponse {
+        val request = com.fileapex.domain.clipboard.ClipboardSendRequest(
+            senderDeviceId = senderDeviceId,
+            senderDeviceName = senderDeviceName,
+            text = text
+        )
+        val bodyStr = json.encodeToString(com.fileapex.domain.clipboard.ClipboardSendRequest.serializer(), request)
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/clipboard/send",
+                host = host,
+                port = port
+            ),
+            body = bodyStr,
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        if (response.statusCode == 403) {
+            val message = if (response.body.contains("clipboard_disabled")) {
+                "Clipboard sharing is disabled on destination device"
+            } else if (response.body.contains("pin_required")) {
+                "PIN required — open the device and enter its PIN"
+            } else {
+                response.body.ifBlank { "Clipboard sharing is disabled on destination device" }
+            }
+            error(message)
+        }
+        requireSuccess(response, "Clipboard transfer failed (${response.statusCode})")
+        return json.decodeFromString(com.fileapex.domain.clipboard.ClipboardSendResponse.serializer(), response.body)
+    }
+
     suspend fun verifyPin(host: String, port: Int, pin: String) {
         val trimmed = pin.trim()
         require(trimmed.isNotEmpty()) { "PIN is required" }
