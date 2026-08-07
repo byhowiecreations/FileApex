@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Include xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <DirectoryRef Id="TARGETDIR">
+        <Directory Id="SendToFolder" Name="SendTo" />
+        <Component Id="FileApexSendToShortcut" Guid="4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d">
+            <Shortcut Id="SendToLnk" Directory="SendToFolder" Name="FileApex" Target="[INSTALLDIR]FileApex.exe" Icon="JpARPPRODUCTICON" WorkingDirectory="INSTALLDIR" />
+            <RegistryValue Root="HKCU" Key="Software\FileApex" Name="SendToInstalled" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+        <Component Id="FileApexContextMenuReg" Guid="8d4e2f1a-3c5b-4e6f-9a7b-1c2d3e4f5a6b">
+            <!-- 1. Direct Context Menu for All Files -->
+            <RegistryKey Root="HKCU" Key="Software\Classes\*\shell\FileApex">
+                <RegistryValue Type="string" Value="Send with FileApex" />
+                <RegistryValue Type="string" Name="Icon" Value="[INSTALLDIR]FileApex.exe" />
+                <RegistryKey Key="command">
+                    <RegistryValue Type="string" Value="&quot;[INSTALLDIR]FileApex.exe&quot; &quot;%1&quot;" />
+                </RegistryKey>
+            </RegistryKey>
+            <!-- 2. Direct Context Menu for Directories -->
+            <RegistryKey Root="HKCU" Key="Software\Classes\Directory\shell\FileApex">
+                <RegistryValue Type="string" Value="Send with FileApex" />
+                <RegistryValue Type="string" Name="Icon" Value="[INSTALLDIR]FileApex.exe" />
+                <RegistryKey Key="command">
+                    <RegistryValue Type="string" Value="&quot;[INSTALLDIR]FileApex.exe&quot; &quot;%1&quot;" />
+                </RegistryKey>
+            </RegistryKey>
+            <!-- 3. System File Associations for Windows 11 System Share Sheet -->
+            <RegistryKey Root="HKCU" Key="Software\Classes\SystemFileAssociations\*\shell\FileApex">
+                <RegistryValue Type="string" Value="FileApex" />
+                <RegistryValue Type="string" Name="Icon" Value="[INSTALLDIR]FileApex.exe" />
+                <RegistryKey Key="command">
+                    <RegistryValue Type="string" Value="&quot;[INSTALLDIR]FileApex.exe&quot; &quot;%1&quot;" />
+                </RegistryKey>
+            </RegistryKey>
+            <!-- 4. Windows Applications Registration -->
+            <RegistryKey Root="HKCU" Key="Software\Classes\Applications\FileApex.exe">
+                <RegistryValue Type="string" Name="FriendlyAppName" Value="FileApex" />
+                <RegistryKey Key="SupportedTypes">
+                    <RegistryValue Type="string" Name=".*" Value="" />
+                </RegistryKey>
+                <RegistryKey Key="shell\open\command">
+                    <RegistryValue Type="string" Value="&quot;[INSTALLDIR]FileApex.exe&quot; &quot;%1&quot;" />
+                </RegistryKey>
+            </RegistryKey>
+        </Component>
+    </DirectoryRef>
+</Include>

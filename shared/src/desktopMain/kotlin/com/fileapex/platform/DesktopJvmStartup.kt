@@ -10,6 +10,9 @@ object DesktopJvmStartup {
         if (DesktopPlatformPaths.isMacOs()) {
             MacOsExtensionRegistrar.registerOnLaunchDeferred()
         }
+        if (DesktopPlatformPaths.isWindows()) {
+            DesktopWindowsRegistration.registerWindowsContextMenuAndSendTo()
+        }
         DesktopSendHandoff.installOpenUriHandler()
     }
 

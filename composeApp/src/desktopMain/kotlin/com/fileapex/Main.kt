@@ -45,18 +45,37 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
 
+import com.fileapex.domain.share.IncomingShareFile
+import com.fileapex.domain.share.IncomingSharePayload
+import com.fileapex.platform.DesktopSingleInstance
+import java.io.File
+import java.util.UUID
+
 private val DesktopWindowCompactWidth = 440.dp
 private val DesktopWindowExpandedWidth = 1200.dp
 private val DesktopWindowMinHeight = 560.dp
 private val DesktopWindowMaxHeight = 900.dp
 
-fun main() {
+fun main(args: Array<String>) {
+    if (DesktopSingleInstance.handleSingleInstanceOrHandoff(args)) {
+        return
+    }
     DesktopJvmStartup.onMainEntry()
     FileApexServices.beginBootstrap { createFileApexDatabase() }
+
+    val initialCliSharePayload = parseCliSharePayload(args)
 
     application {
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
         var mainWindowVisible by remember { mutableStateOf(true) }
+        var desktopIncomingShare by remember { mutableStateOf(initialCliSharePayload) }
+
+        LaunchedEffect(Unit) {
+            DesktopSingleInstance.incomingCliShares.collect { payload ->
+                desktopIncomingShare = payload
+                mainWindowVisible = true
+            }
+        }
 
         LaunchedEffect(Unit) {
             if (!servicesReady) {
@@ -219,11 +238,32 @@ fun main() {
                     exitApplication()
                 },
                 onScanQr = {},
-                appVersionName = FileApexAppVersion.NAME
+                appVersionName = FileApexAppVersion.NAME,
+                incomingShare = desktopIncomingShare,
+                onIncomingShareConsumed = { desktopIncomingShare = null }
             )
         }
 
     }
+}
+
+private fun parseCliSharePayload(args: Array<String>): IncomingSharePayload? {
+    if (args.isEmpty()) return null
+    val files = args.mapNotNull { pathStr ->
+        val file = File(pathStr)
+        if (file.exists()) {
+            IncomingShareFile(
+                fileName = file.name,
+                absolutePath = file.absolutePath,
+                sizeBytes = if (file.isFile) file.length() else 0L
+            )
+        } else null
+    }
+    if (files.isEmpty()) return null
+    return IncomingSharePayload(
+        sessionId = UUID.randomUUID().toString(),
+        files = files
+    )
 }
 
 private fun preferredWindowSize(deviceCount: Int, layoutMode: DesktopLayoutMode): DpSize {

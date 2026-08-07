@@ -18,7 +18,7 @@ private fun isWindowsHost(): Boolean =
  */
 private fun desktopInstallerFormats(): Array<TargetFormat> = when {
     isMacHost() -> arrayOf(TargetFormat.Dmg)
-    isWindowsHost() -> arrayOf(TargetFormat.Msi)
+    isWindowsHost() -> arrayOf(TargetFormat.Exe)
     else -> emptyArray()
 }
 
@@ -362,7 +362,9 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*desktopInstallerFormats())
             packageName = "FileApex"
-            description = "Sync and manage files across your devices"
+            vendor = "ByHowieCreations"
+            description = "A local-first P2P file sharing app"
+            appResourcesRootDir.set(project.file("windows/jpackage-resources"))
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
             // Marketing version stays version.md name=; installers are renamed on copy.
             packageVersion = "1.0.$fileapexVersionCode"
@@ -403,7 +405,6 @@ compose.desktop {
                 menuGroup = "FileApex"
                 menu = true
                 dirChooser = true
-                // Desktop shortcut is offered on the finish dialog (ui.wxf override), not during file copy.
                 shortcut = false
                 // Stable upgrade UUID — required for in-place MSI upgrades across releases.
                 // msiPackageVersion (1.0.${code}) must increase each Windows MSI ship; marketing name stays separate.
@@ -666,7 +667,50 @@ private fun Project.shipMsiToCurrent(
         "No MSI found in ${msiDir.absolutePath}. Run ${if (release) "packageReleaseMsi" else "packageMsi"} on a Windows host with WiX installed."
     }
     val preferred = msis.maxByOrNull { it.lastModified() } ?: msis.first()
+    patchMsiMetadata(preferred)
+    val shippedFile = dest.resolve("FileApex-v$appVersionName.msi")
     moveToCurrent(dest, preferred, destName = "FileApex-v$appVersionName.msi", logger = logger)
+    patchMsiMetadata(shippedFile)
+}
+
+private fun Project.exeOutputDir(release: Boolean = false): File =
+    layout.buildDirectory.dir(
+        if (release) "compose/binaries/main-release/exe" else "compose/binaries/main/exe"
+    ).get().asFile
+
+private fun Project.shipExeToCurrent(
+    dest: File,
+    appVersionName: String,
+    logger: org.gradle.api.logging.Logger,
+    release: Boolean = false
+) {
+    val exeDir = exeOutputDir(release)
+    val exes = exeDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("exe", ignoreCase = true) }
+    if (exes.isEmpty()) return
+    val preferred = exes.maxByOrNull { it.lastModified() } ?: exes.first()
+    moveToCurrent(dest, preferred, destName = "FileApex-v$appVersionName.exe", logger = logger)
+}
+
+private fun patchMsiMetadata(msiFile: File) {
+    if (!isWindowsHost() || !msiFile.isFile) return
+    runCatching {
+        val path = msiFile.absolutePath.replace("\\", "/")
+        val psScript = """
+            ${'$'}msiPath = "$path"
+            ${'$'}comObj = New-Object -ComObject WindowsInstaller.Installer
+            ${'$'}database = ${'$'}comObj.GetType().InvokeMember("OpenDatabase", "InvokeMethod", ${'$'}null, ${'$'}comObj, @(${'$'}msiPath, 1))
+            ${'$'}sumInfo = ${'$'}database.GetType().InvokeMember("SummaryInformation", "GetProperty", ${'$'}null, ${'$'}database, @(20))
+            ${'$'}sumInfo.GetType().InvokeMember("Property", "SetProperty", ${'$'}null, ${'$'}sumInfo, @(2, "FileApex"))
+            ${'$'}sumInfo.GetType().InvokeMember("Property", "SetProperty", ${'$'}null, ${'$'}sumInfo, @(4, "ByHowieCreations"))
+            ${'$'}sumInfo.GetType().InvokeMember("Property", "SetProperty", ${'$'}null, ${'$'}sumInfo, @(6, "A local-first P2P file sharing app"))
+            ${'$'}sumInfo.GetType().InvokeMember("Persist", "InvokeMethod", ${'$'}null, ${'$'}sumInfo, ${'$'}null)
+            ${'$'}database.GetType().InvokeMember("Commit", "InvokeMethod", ${'$'}null, ${'$'}database, ${'$'}null)
+        """.trimIndent()
+        ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+            .redirectErrorStream(true)
+            .start()
+            .waitFor()
+    }
 }
 
 /**
@@ -814,6 +858,7 @@ private fun Project.shipToCurrent(
 
     if (includeMsi && isWindowsHost()) {
         shipMsiToCurrent(dest, appVersionName, logger, release = true)
+        shipExeToCurrent(dest, appVersionName, logger, release = true)
     }
 
     if (isMacHost()) {
@@ -868,12 +913,12 @@ tasks.register("copyCurrentBuilds") {
  */
 tasks.register("copyReleaseBuilds") {
     group = "distribution"
-    description = "Release APK + desktop ship into current/ (Mac .app+DMG or Windows MSI)"
+    description = "Release APK + desktop ship into current/ (Mac .app+DMG or Windows EXE)"
     dependsOn("verifyReleaseApkSigned")
     if (isMacHost()) {
         dependsOn("embedMacExtensions", "fixDmgVolumeIcon")
     } else if (isWindowsHost()) {
-        dependsOn("createReleaseDistributable", "packageReleaseMsi")
+        dependsOn("createReleaseDistributable", "packageInnoExe")
     }
 
     doLast {
@@ -881,7 +926,7 @@ tasks.register("copyReleaseBuilds") {
             includeDebugApk = false,
             includeReleaseApk = true,
             includeDmg = isMacHost(),
-            includeMsi = isWindowsHost(),
+            includeMsi = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = false,
             preserveExistingMsiOnWipe = false
@@ -890,12 +935,12 @@ tasks.register("copyReleaseBuilds") {
 }
 
 /**
- * Windows ship: release MSI into `current/` (no APK, no portable folder).
+ * Windows ship: release EXE into `current/` (no APK, no portable folder).
  */
 tasks.register("copyWindowsBuilds") {
     group = "distribution"
-    description = "Build release MSI and move to current/ (Windows host only)"
-    dependsOn("createReleaseDistributable", "packageReleaseMsi")
+    description = "Build release EXE and move to current/ (Windows host only)"
+    dependsOn("createReleaseDistributable", "packageInnoExe")
     onlyIf { isWindowsHost() }
 
     doLast {
@@ -903,7 +948,7 @@ tasks.register("copyWindowsBuilds") {
             includeDebugApk = false,
             includeReleaseApk = false,
             includeDmg = false,
-            includeMsi = true,
+            includeMsi = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = true,
             preserveExistingMsiOnWipe = false
@@ -912,12 +957,32 @@ tasks.register("copyWindowsBuilds") {
 }
 
 /**
- * Windows release ship: release APK + release MSI into `current/`.
+ * Windows release ship: release APK + release EXE into `current/`.
  */
+tasks.register("packageInnoExe") {
+    group = "distribution"
+    description = "Compile Inno Setup EXE installer using ISCC"
+    dependsOn("createReleaseDistributable")
+    onlyIf { isWindowsHost() }
+
+    doLast {
+        val userHome = System.getProperty("user.home")
+        val isccExe = File(userHome, "AppData/Local/Programs/Inno Setup 6/ISCC.exe")
+        val issFile = rootProject.file("windows/FileApex.iss")
+        check(isccExe.exists()) { "ISCC.exe not found at ${isccExe.absolutePath}" }
+        check(issFile.exists()) { "FileApex.iss not found at ${issFile.absolutePath}" }
+
+        exec {
+            commandLine(isccExe.absolutePath, issFile.absolutePath)
+        }
+        logger.lifecycle("Successfully compiled Inno Setup installer into current/FileApex-v$fileapexVersionName.exe")
+    }
+}
+
 tasks.register("copyWindowsReleaseBuilds") {
     group = "distribution"
-    description = "Release APK + release MSI into current/ (Windows host only)"
-    dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageReleaseMsi")
+    description = "Release APK + release EXE into current/ (Windows host only)"
+    dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageInnoExe")
     onlyIf { isWindowsHost() }
 
     doLast {
@@ -925,7 +990,7 @@ tasks.register("copyWindowsReleaseBuilds") {
             includeDebugApk = false,
             includeReleaseApk = true,
             includeDmg = false,
-            includeMsi = true,
+            includeMsi = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = true,
             preserveExistingMsiOnWipe = false
@@ -1092,29 +1157,9 @@ private fun Project.configureWindowsInstallerResources() {
         if (name != "packageMsi" && name != "packageReleaseMsi") return@configureEach
         val resourcesDir = layout.buildDirectory.dir("compose/tmp/resources").get().asFile
         doFirst {
-            Thread(
-                {
-                    var spins = 0
-                    while (spins < 120_000) {
-                        if (!resourcesDir.exists()) {
-                            resourcesDir.mkdirs()
-                        }
-                        if (!resourcesDir.resolve("ui.wxf").isFile) {
-                            overlayDir.copyRecursively(resourcesDir, overwrite = true)
-                        }
-                        if (resourcesDir.resolve("ui.wxf").isFile) {
-                            return@Thread
-                        }
-                        spins++
-                        Thread.sleep(1)
-                    }
-                    logger.warn("Windows installer WiX overlay was not injected: ${resourcesDir.resolve("ui.wxf")}")
-                },
-                "fileapex-jpackage-resource-overlay",
-            ).apply {
-                isDaemon = true
-                start()
-            }
+            resourcesDir.mkdirs()
+            overlayDir.copyRecursively(resourcesDir, overwrite = true)
+            logger.lifecycle("Synchronously copied WiX overlay resources to ${resourcesDir.absolutePath}")
         }
     }
 }
