@@ -19,7 +19,7 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 * **Windows Share / Send To:** Can send files from right-click menu in Windows using Share or the Send To.
 * **Android Direct Share:** Share sheet targets for paired devices.
 * **Clipboard Sharing:** Added the ability to share your device clipboard content or URL with any other device. Works across Android/Mac/Windows in any direction (**opt-in** on all devices you wish to allow). URLs should automatically open in default browser.
-* **Device Details:** You can view details of any device you are paired with, such as battery leve, charging status, processor, storage, RAM, etc.
+* **Device Details:** You can view details of any device you are paired with, such as battery level, charging status, processor, storage, RAM, etc.
 * **Background Persistence (Android):** Keep the share server alive with battery guidance, watchdog, and optional auto-launch after reboot.
 * **Check for Updates:** Install newer builds from GitHub Releases (**opt-in**).
 * **Google Account (opt-in):** Cloud presence / wake helpers only — files stay on your LAN.
