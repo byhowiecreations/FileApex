@@ -16,9 +16,12 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 * **QR / link pairing:** Pair devices without typing IPs.
 * **PIN lock (optional):** Require a PIN before others can pair or browse.
 * **macOS Finder / Share Extension:** Send from Finder or the system Share sheet.
+* **Windows Share / Send To:** Can send files from right-click menu in Windows using Share or the Send To.
 * **Android Direct Share:** Share sheet targets for paired devices.
+* **Clipboard Sharing:** Added the ability to share your device clipboard content or URL with any other device. Works across Android/Mac/Windows in any direction (**opt-in** on all devices you wish to allow). URLs should automatically open in default browser.
+* **Device Details:** You can view details of any device you are paired with, such as battery leve, charging status, processor, storage, RAM, etc.
 * **Background Persistence (Android):** Keep the share server alive with battery guidance, watchdog, and optional auto-launch after reboot.
-* **Check for Updates:** Install newer builds from GitHub Releases (opt-in).
+* **Check for Updates:** Install newer builds from GitHub Releases (**opt-in**).
 * **Google Account (opt-in):** Cloud presence / wake helpers only — files stay on your LAN.
 
 
@@ -37,9 +40,7 @@ To provide cross-platform file access and seamless system integration, the app m
 * **Background operation (Android):** Keeps the share server available so paired devices do not see you as unexpectedly offline. Includes foreground service, boot restart (when enabled in Settings), and recommended battery settings so the OS does not kill background sharing.
 * **Notifications (Android):** Shows share-server status and, if you turn it on, alerts when files are received.
 * **Nearby Wi‑Fi devices (Android):** Reads Wi‑Fi name and wireless connection details for the Device Details screen. Not used for location.
-* **Phone state (Android):** Reads cellular network type, signal, and band for the Device Details screen when you are on mobile data.
 * **Camera (Android):** Scan a pairing QR code when you choose Scan to add a device.
-* **Finder & Share menu extensions (macOS):** Context menus in Finder and the system Share sheet to send files into FileApex.
 
 **Optional features (only if you enable them):**
 
@@ -47,6 +48,8 @@ To provide cross-platform file access and seamless system integration, the app m
 * **Check for Updates:** Uses the internet to check GitHub Releases for newer builds. Nothing is ever sent to any other servers.
 * **Install updates (Android):** Lets you install a downloaded APK from within the app.
 * **Exact alarms (Android):** Supports the service watchdog when background persistence is enabled in Settings.
+* **Phone state (Android):** Reads cellular network type, signal, and band for the Device Details screen when you are on mobile data (**opt-in**).
+
 
 FileApex does not request location access.
 
