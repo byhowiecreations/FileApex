@@ -246,7 +246,7 @@ fun ShareSendScreen(
                                             "Save to ${DownloadsPaths.displayLabel()}"
                                         } else {
                                             DeviceListRow.peerStatusSubtitle(
-                                                online = true,
+                                                online = option.deviceId in state.onlineDeviceIds,
                                                 appVersion = option.appVersion
                                             )
                                         },

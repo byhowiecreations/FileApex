@@ -210,6 +210,10 @@ object ShareServerKeepAliveCoordinator {
     private fun onNetworkEvent(event: String) {
         val context = ServiceWatchdogScheduler.contextOrNull() ?: return
         reassertOrRestart(context, reason = "network:$event")
+        if (com.fileapex.di.FileApexServices.isDatabaseReady()) {
+            com.fileapex.di.FileApexServices.presenceMonitor.refreshPeersOnForeground()
+            com.fileapex.di.FileApexServices.transferQueue.scheduleDrain()
+        }
     }
 
     private fun reassertForegroundService(context: Context, reason: String) {

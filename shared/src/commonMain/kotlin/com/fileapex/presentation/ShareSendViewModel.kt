@@ -21,6 +21,7 @@ data class ShareSendUiState(
     val isPreparing: Boolean = true,
     val options: List<MultiCopyDeviceOption> = emptyList(),
     val selectedDeviceIds: Set<String> = emptySet(),
+    val onlineDeviceIds: Set<String> = emptySet(),
     val isSending: Boolean = false,
     val statusMessage: String? = null,
     val errorMessage: String? = null,
@@ -88,18 +89,21 @@ class ShareSendViewModel(
             }
             runCatching {
                 transferManager.awaitReady()
-                transferManager.buildShareSheetDeviceOptions()
+                val onlineIds = FileApexServices.presenceMonitor.onlineDeviceIds.value
+                val options = transferManager.buildShareSheetDeviceOptions()
+                onlineIds to options
             }.fold(
-                onSuccess = { options ->
+                onSuccess = { (onlineIds, options) ->
                     _uiState.update {
                         it.copy(
                             isPreparing = false,
                             options = options,
+                            onlineDeviceIds = onlineIds,
                             statusMessage = when {
                                 options.isEmpty() ->
-                                    "No online destination devices. Pair a device in FileApex first."
+                                    "No paired destination devices. Pair a device in FileApex first."
                                 else ->
-                                    "${payload.files.size} file(s) · ${options.size} online device(s)"
+                                    "${payload.files.size} file(s) · ${options.size} paired device(s)"
                             }
                         )
                     }

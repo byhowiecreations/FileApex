@@ -68,7 +68,7 @@ object AndroidShareIntake {
     ): IncomingSharePayload = withContext(Dispatchers.IO) {
         require(uris.isNotEmpty()) { "No shared files" }
         val sessionId = UUID.randomUUID().toString()
-        val stagingDir = File(context.cacheDir, "share-staging/$sessionId").also {
+        val stagingDir = File(context.filesDir, "share-staging/$sessionId").also {
             it.mkdirs()
         }
         val resolver = context.contentResolver

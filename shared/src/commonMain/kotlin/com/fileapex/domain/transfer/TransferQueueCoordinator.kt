@@ -210,12 +210,16 @@ class TransferQueueCoordinator(
     private suspend fun drainOne(entity: PendingTransferEntity) {
         val now = TimeUtils.now()
         val pendingIds = decodeDeviceIds(entity.pendingDeviceIdsJson)
-        val pendingOnline = pendingIds.any { id ->
+        val reachabilityMap = presenceMonitor.reachabilityEpochMs.value
+        val hasFreshSignal = pendingIds.any { id ->
+            (reachabilityMap[id] ?: 0L) > entity.lastAttemptEpochMs
+        }
+        val pendingOnlineOrFresh = hasFreshSignal || pendingIds.any { id ->
             deviceRepository.getDevice(id)?.let { presenceMonitor.isDeviceOnline(it) } == true
         }
         if (entity.lastAttemptEpochMs > 0L &&
             now - entity.lastAttemptEpochMs < DRAIN_RETRY_BACKOFF_MS &&
-            !pendingOnline
+            !pendingOnlineOrFresh
         ) {
             return
         }

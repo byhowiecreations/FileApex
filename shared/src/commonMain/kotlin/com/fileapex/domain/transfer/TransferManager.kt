@@ -69,7 +69,6 @@ class TransferManager(
         )
         val peers = deviceRepository().listDevices()
             .filter { it.deviceId != sourceDeviceId }
-            .filter { it.deviceId in onlineIds }
             .sortedBy { it.deviceName.lowercase() }
         for (peer in peers) {
             options += resolveRemoteOption(

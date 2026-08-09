@@ -8,6 +8,7 @@ object PresenceForegroundRefresh {
         if (!FileApexServices.isDatabaseReady()) return
         FileApexServices.presenceMonitor.setAppInForeground(true)
         FileApexServices.presenceMonitor.refreshPeersOnForeground()
+        FileApexServices.transferQueue.scheduleDrain()
     }
 
     fun onAppBackgrounded() {
