@@ -941,7 +941,7 @@ tasks.register("copyReleaseBuilds") {
     doLast {
         shipToCurrent(
             includeDebugApk = false,
-            includeReleaseApk = true,
+            includeReleaseApk = apkOutputDir("release").listFiles()?.any { it.isFile && it.extension == "apk" } == true,
             includeDmg = isMacHost(),
             includeMsi = false,
             mountDmg = false,
@@ -1136,9 +1136,28 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
 tasks.register("packageIntelDmg") {
     group = "distribution"
     description = "Package Intel x86_64 Mac DMG using x64 JDK under Rosetta"
-    onlyIf { false }
+    onlyIf { isMacHost() }
     doLast {
-        logger.lifecycle("Intel DMG compilation disabled per user directive — skipping packageIntelDmg")
+        val x64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
+        check(x64Jdk.isDirectory) { "x86_64 JDK not found at ${x64Jdk.absolutePath}" }
+        val stagingApp = layout.buildDirectory.dir("compose/binaries/main/app").get().asFile
+        val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
+        if (stagingApp.exists()) stagingApp.deleteRecursively()
+        if (stagingRuntime.exists()) stagingRuntime.deleteRecursively()
+        val process = ProcessBuilder(
+            "arch", "-x86_64", "bash", "-c", "source signing.local.env && export JAVA_HOME='${x64Jdk.absolutePath}' && ./gradlew --no-daemon packageDmg fixDmgVolumeIcon -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+        )
+        .directory(rootProject.projectDir)
+        .inheritIO()
+        val exit = process.start().waitFor()
+        check(exit == 0) { "Intel DMG packaging failed with exit code $exit" }
+        val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
+        val x64Dmg = dmgDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
+        if (x64Dmg != null) {
+            val dest = currentBuildsDest()
+            val destName = "FileApex-v$fileapexVersionName-Intel.dmg"
+            moveToCurrent(dest, x64Dmg, destName = destName, logger = logger)
+        }
     }
 }
 
