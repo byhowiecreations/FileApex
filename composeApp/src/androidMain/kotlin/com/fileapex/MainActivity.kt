@@ -16,9 +16,13 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -153,47 +157,52 @@ class MainActivity : ComponentActivity() {
         handleIncomingIntent(intent)
 
         setContent {
-            App(
-                hasStoragePermission = hasStoragePermission,
-                onboardingSteps = onboardingSteps,
-                onboardingComplete = onboardingComplete,
-                deniedOnboardingStepIds = deniedOnboardingStepIds,
-                onGrantOnboardingStep = ::grantOnboardingStep,
-                hasUnrestrictedBattery = !persistenceSnapshot.persistenceRestricted,
-                backgroundPersistence = persistenceSnapshot.toUiState(),
-                onRequestStoragePermission = ::requestStoragePermission,
-                onOpenStorageSettings = ::openStorageSettings,
-                onRequestBatteryUnrestricted = ::requestBatteryUnrestricted,
-                onOpenBackgroundPersistenceSettings = ::openBackgroundPersistenceSettings,
-                onOpenUnusedAppRestrictionsSettings = ::openUnusedAppRestrictionsSettings,
-                onOpenAppBatteryUsageSettings = ::openAppBatteryUsageSettings,
-                onOpenExactAlarmSettings = ::openExactAlarmSettings,
-                onOpenAppDetailsSettings = ::openAppDetailsSettings,
-                onBeforeAllowOverCellularEnabled = ::requestPhoneStateForCellularOptIn,
-                exactAlarmWarningActive = exactAlarmWarningActive,
-                onStartShareServer = ::startShareServer,
-                onStopShareServer = ::stopShareServer,
-                onExitApp = ::exitFileApex,
-                onScanQr = ::requestScanQr,
-                appVersionName = runCatching {
-                    packageManager.getPackageInfo(packageName, 0).versionName
-                }.getOrNull().orEmpty().ifBlank { com.fileapex.update.FileApexAppVersion.NAME },
-                scannedPayload = scannedPayload,
-                onScannedPayloadConsumed = { scannedPayload = null },
-                qrScanError = qrScanError,
-                onQrScanErrorConsumed = { qrScanError = null },
-                onPermissionRecheck = ::refreshPermissions,
-                incomingShare = incomingShare,
-                isPreparingShare = isPreparingShare,
-                sharePrepareError = sharePrepareError,
-                onIncomingShareConsumed = { incomingShare = null },
-                onShareFlowFinished = ::onShareFlowFinished,
-                onDismissShareError = ::onDismissShareError,
-                directShareDeviceId = directShareDeviceId,
-                requestShowUpdateSheet = requestShowUpdateSheet,
-                onUpdateSheetRequestConsumed = { requestShowUpdateSheet = false }
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+
+                App(
+                    hasStoragePermission = hasStoragePermission,
+                    onboardingSteps = onboardingSteps,
+                    onboardingComplete = onboardingComplete,
+                    deniedOnboardingStepIds = deniedOnboardingStepIds,
+                    onGrantOnboardingStep = ::grantOnboardingStep,
+                    hasUnrestrictedBattery = !persistenceSnapshot.persistenceRestricted,
+                    backgroundPersistence = persistenceSnapshot.toUiState(),
+                    onRequestStoragePermission = ::requestStoragePermission,
+                    onOpenStorageSettings = ::openStorageSettings,
+                    onRequestBatteryUnrestricted = ::requestBatteryUnrestricted,
+                    onOpenBackgroundPersistenceSettings = ::openBackgroundPersistenceSettings,
+                    onOpenUnusedAppRestrictionsSettings = ::openUnusedAppRestrictionsSettings,
+                    onOpenAppBatteryUsageSettings = ::openAppBatteryUsageSettings,
+                    onOpenExactAlarmSettings = ::openExactAlarmSettings,
+                    onOpenAppDetailsSettings = ::openAppDetailsSettings,
+                    onBeforeAllowOverCellularEnabled = ::requestPhoneStateForCellularOptIn,
+                    exactAlarmWarningActive = exactAlarmWarningActive,
+                    onStartShareServer = ::startShareServer,
+                    onStopShareServer = ::stopShareServer,
+                    onExitApp = ::exitFileApex,
+                    onScanQr = ::requestScanQr,
+                    appVersionName = runCatching {
+                        packageManager.getPackageInfo(packageName, 0).versionName
+                    }.getOrNull().orEmpty().ifBlank { com.fileapex.update.FileApexAppVersion.NAME },
+                    scannedPayload = scannedPayload,
+                    onScannedPayloadConsumed = { scannedPayload = null },
+                    qrScanError = qrScanError,
+                    onQrScanErrorConsumed = { qrScanError = null },
+                    onPermissionRecheck = ::refreshPermissions,
+                    incomingShare = incomingShare,
+                    isPreparingShare = isPreparingShare,
+                    sharePrepareError = sharePrepareError,
+                    onIncomingShareConsumed = { incomingShare = null },
+                    onShareFlowFinished = ::onShareFlowFinished,
+                    onDismissShareError = ::onDismissShareError,
+                    directShareDeviceId = directShareDeviceId,
+                    requestShowUpdateSheet = requestShowUpdateSheet,
+                    onUpdateSheetRequestConsumed = { requestShowUpdateSheet = false }
+                )
+                com.fileapex.platform.LiveTransferCapsuleOverlay()
+            }
         }
+
     }
 
     override fun onNewIntent(intent: Intent) {

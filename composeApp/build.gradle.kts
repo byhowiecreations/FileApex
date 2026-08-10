@@ -371,6 +371,8 @@ compose.desktop {
 
             macOS {
                 iconFile.set(project.file("icons/FileApex.icns"))
+
+
                 bundleID = "com.fileapex"
                 // Empty entitlements — no App Sandbox (avoids TCC "access data from other apps").
                 entitlementsFile.set(project.file("macos/FileApex.entitlements"))
@@ -846,15 +848,20 @@ private fun Project.shipToCurrent(
     if (includeDebugApk) moveApksFrom("debug")
     if (includeReleaseApk) moveApksFrom("release")
 
-    val dmgDestName = "FileApex-v$appVersionName.dmg"
     if (includeDmg && isMacHost()) {
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
-        val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension == "dmg" }
+        val dmgs = dmgDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
         check(dmgs.isNotEmpty()) { "No DMG found in ${dmgDir.absolutePath}" }
         dmgs.forEach { dmg ->
-            moveToCurrent(dest, dmg, destName = dmgDestName, logger = logger)
+            val destName = when {
+                dmg.name.contains("x86") || dmg.name.contains("x64") -> "FileApex-v$appVersionName-x64.dmg"
+                dmg.name.contains("arm") || dmg.name.contains("aarch") -> "FileApex-v$appVersionName-arm64.dmg"
+                else -> "FileApex-v$appVersionName.dmg"
+            }
+            moveToCurrent(dest, dmg, destName = destName, logger = logger)
         }
     }
+
 
     if (includeMsi && isWindowsHost()) {
         shipMsiToCurrent(dest, appVersionName, logger, release = true)
@@ -879,11 +886,13 @@ private fun Project.shipToCurrent(
     }
 
     if (mountDmg && isMacHost()) {
-        val shippedDmg = dest.resolve(dmgDestName)
-        check(shippedDmg.exists()) { "Missing DMG to mount: ${shippedDmg.absolutePath}" }
-        ProcessBuilder("open", shippedDmg.absolutePath).start().waitFor()
-        logger.lifecycle("Mounted $dmgDestName for manual install (left attached)")
+        val dmgs = dest.listFiles().orEmpty().filter { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
+        dmgs.forEach { shippedDmg ->
+            ProcessBuilder("open", shippedDmg.absolutePath).start().waitFor()
+            logger.lifecycle("Mounted ${shippedDmg.name} for manual install (left attached)")
+        }
     }
+
 }
 
 /**
@@ -1116,16 +1125,46 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
     dependsOn(generateGoogleServicesJson)
 }
 
+tasks.register("packageIntelDmg") {
+    group = "distribution"
+    description = "Package Intel x86_64 Mac DMG using x64 JDK under Rosetta"
+    onlyIf { isMacHost() }
+    doLast {
+        val x64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
+        if (!x64Jdk.isDirectory) {
+            logger.warn("x86_64 JDK not found at ${x64Jdk.absolutePath} — skipping Intel DMG packaging")
+            return@doLast
+        }
+        val process = ProcessBuilder(
+            "arch", "-x86_64", "sh", "./gradlew", "packageDmg"
+        )
+        .directory(rootProject.projectDir)
+        .inheritIO()
+        val procEnv = process.environment()
+        procEnv["JAVA_HOME"] = x64Jdk.absolutePath
+        val exit = process.start().waitFor()
+        check(exit == 0) { "Intel DMG packaging failed with exit code $exit" }
+        val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
+        val x64Dmg = dmgDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
+        if (x64Dmg != null) {
+            val dest = currentBuildsDest()
+            val destName = "FileApex-v$fileapexVersionName-x64.dmg"
+            moveToCurrent(dest, x64Dmg, destName = destName, logger = logger)
+        }
+    }
+}
+
 /**
  * Full ship into `current/`.
- * Mac: debug+release APKs + .app + DMG. Windows: release APK + release MSI only.
+ * Mac: debug+release APKs + .app + ARM64 DMG + Intel x64 DMG. Windows: release APK + release MSI only.
  * Release APK ships as FileApex-v<version>.apk (no -release suffix); debug keeps -debug.
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Ship into current/ (Mac full set; Windows release APK + MSI)"
+    description = "Ship into current/ (Mac full set with ARM64 + x64 DMGs; Windows release APK + MSI)"
     if (isMacHost()) {
         dependsOn("assembleDebug", "verifyReleaseApkSigned", "embedMacExtensions", "fixDmgVolumeIcon")
+        finalizedBy("packageIntelDmg")
     } else if (isWindowsHost()) {
         dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageReleaseMsi")
     } else {
@@ -1144,6 +1183,8 @@ tasks.register("copyAllBuilds") {
         )
     }
 }
+
+
 
 /**
  * Inject custom WiX (finish-dialog checkboxes) into jpackage's resource dir after it is cleared.

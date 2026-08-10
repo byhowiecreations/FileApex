@@ -35,7 +35,12 @@ class BaseAppSettings(
     private val clipboardSharing = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHARING, false))
     private val transferNotifications =
         MutableStateFlow(store.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
+    private val liveTransferCapsuleFlow =
+        MutableStateFlow(store.getBoolean(KEY_LIVE_TRANSFER_CAPSULE, false))
+    private val liveTransferShowQueueFlow =
+        MutableStateFlow(store.getBoolean(KEY_LIVE_TRANSFER_SHOW_QUEUE, false))
     private val pinRequired = MutableStateFlow(store.getBoolean(KEY_PIN_REQUIRED, false))
+
     private val pin = MutableStateFlow(store.getString(KEY_DEVICE_PIN, ""))
     private val pinIdle = MutableStateFlow(
         PinIdleTimeout.fromStorage(store.getString(KEY_PIN_IDLE_TIMEOUT, PinIdleTimeout.DEFAULT.name))
@@ -88,7 +93,12 @@ class BaseAppSettings(
     override val clipboardSharingEnabled: StateFlow<Boolean> = clipboardSharing.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
+    override val liveTransferCapsuleEnabled: StateFlow<Boolean> =
+        liveTransferCapsuleFlow.asStateFlow()
+    override val liveTransferShowQueueEnabled: StateFlow<Boolean> =
+        liveTransferShowQueueFlow.asStateFlow()
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
+
     override val devicePin: StateFlow<String> = pin.asStateFlow()
     override val pinIdleTimeout: StateFlow<PinIdleTimeout> = pinIdle.asStateFlow()
     override val checkForUpdatesEnabled: StateFlow<Boolean> = checkForUpdates.asStateFlow()
@@ -144,6 +154,17 @@ class BaseAppSettings(
         store.putBoolean(KEY_TRANSFER_NOTIFICATIONS, enabled)
         transferNotifications.value = enabled
     }
+
+    override fun setLiveTransferCapsuleEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_LIVE_TRANSFER_CAPSULE, enabled)
+        liveTransferCapsuleFlow.value = enabled
+    }
+
+    override fun setLiveTransferShowQueueEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_LIVE_TRANSFER_SHOW_QUEUE, enabled)
+        liveTransferShowQueueFlow.value = enabled
+    }
+
 
     override fun setPinRequiredEnabled(enabled: Boolean) {
         store.putBoolean(KEY_PIN_REQUIRED, enabled)
@@ -265,6 +286,9 @@ class BaseAppSettings(
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
         const val KEY_CLIPBOARD_SHARING = "clipboard_sharing_enabled"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
+        const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
+        const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
+
         const val KEY_PIN_REQUIRED = "pin_required"
         const val KEY_DEVICE_PIN = "device_pin"
         const val KEY_PIN_IDLE_TIMEOUT = "pin_idle_timeout"

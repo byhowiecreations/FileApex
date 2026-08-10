@@ -29,6 +29,8 @@ data class SettingsUiState(
     val googleAccountEmail: String = "",
     val clipboardSharingEnabled: Boolean = false,
     val fileTransferNotificationsEnabled: Boolean = false,
+    val liveTransferCapsuleEnabled: Boolean = false,
+    val liveTransferShowQueueEnabled: Boolean = false,
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
     val pinError: String? = null,
@@ -55,6 +57,8 @@ class SettingsViewModel : ViewModel() {
             googleAccountEmail = settings.googleAccountEmail.value,
             clipboardSharingEnabled = settings.clipboardSharingEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
+            liveTransferCapsuleEnabled = settings.liveTransferCapsuleEnabled.value,
+            liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
             pinIdleTimeout = settings.pinIdleTimeout.value,
@@ -109,6 +113,17 @@ class SettingsViewModel : ViewModel() {
         settings.setFileTransferNotificationsEnabled(enabled)
         _uiState.update { it.copy(fileTransferNotificationsEnabled = enabled) }
     }
+
+    fun setLiveTransferCapsule(enabled: Boolean) {
+        settings.setLiveTransferCapsuleEnabled(enabled)
+        _uiState.update { it.copy(liveTransferCapsuleEnabled = enabled) }
+    }
+
+    fun setLiveTransferShowQueue(enabled: Boolean) {
+        settings.setLiveTransferShowQueueEnabled(enabled)
+        _uiState.update { it.copy(liveTransferShowQueueEnabled = enabled) }
+    }
+
 
     fun setPinRequired(enabled: Boolean) {
         settings.setPinRequiredEnabled(enabled)

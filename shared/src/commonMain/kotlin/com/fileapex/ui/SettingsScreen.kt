@@ -81,6 +81,7 @@ private enum class SettingsPage {
     PinRequired,
     BackgroundPersistence,
     AutoLaunchOnReboot,
+    Notifications,
     FileTransferNotifications,
     Clipboard,
     DeviceDetails,
@@ -88,6 +89,7 @@ private enum class SettingsPage {
     DesktopLayout,
     WindowsDesign
 }
+
 
 enum class SettingsScreenLayoutMode {
     /** Phone / compact: teal top bar scaffold. */
@@ -150,7 +152,7 @@ fun SettingsScreen(
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
-            onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
+            onOpenNotifications = { page = SettingsPage.Notifications },
             onOpenClipboard = { page = SettingsPage.Clipboard },
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
@@ -159,6 +161,14 @@ fun SettingsScreen(
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             backgroundPersistence = backgroundPersistence,
             exactAlarmWarningActive = exactAlarmWarningActive
+        )
+        SettingsPage.Notifications -> NotificationsSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
+            onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule,
+            onToggleLiveTransferShowQueue = viewModel::setLiveTransferShowQueue
         )
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
             state = state,
@@ -201,9 +211,10 @@ fun SettingsScreen(
         SettingsPage.FileTransferNotifications -> FileTransferNotificationsSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = { page = SettingsPage.Notifications },
             onToggle = viewModel::setFileTransferNotifications
         )
+
         SettingsPage.Clipboard -> ClipboardSettingsPage(
             state = state,
             layoutMode = layoutMode,
@@ -264,7 +275,7 @@ private fun SettingsRootPage(
     onOpenPinRequired: () -> Unit,
     onOpenBackgroundPersistence: () -> Unit,
     onOpenAutoLaunchOnReboot: () -> Unit,
-    onOpenFileTransferNotifications: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenClipboard: () -> Unit,
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
@@ -328,10 +339,11 @@ private fun SettingsRootPage(
                     )
                 }
                 SettingsNavItem(
-                    title = "File Transfer Notifications",
-                    subtitle = if (state.fileTransferNotificationsEnabled) "On" else "Off",
-                    onClick = onOpenFileTransferNotifications
+                    title = "Notifications",
+                    subtitle = if (state.fileTransferNotificationsEnabled || state.liveTransferCapsuleEnabled) "On" else "Off",
+                    onClick = onOpenNotifications
                 )
+
                 SettingsNavItem(
                     title = "Clipboard",
                     subtitle = if (state.clipboardSharingEnabled) "On" else "Off",
@@ -596,7 +608,70 @@ private fun AutoLaunchOnRebootSettingsPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun NotificationsSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onOpenFileTransferNotifications: () -> Unit,
+    onToggleLiveTransferCapsule: (Boolean) -> Unit,
+    onToggleLiveTransferShowQueue: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Notifications",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            SettingsNavItem(
+                title = "File Transfer Notifications",
+                subtitle = if (state.fileTransferNotificationsEnabled) "On" else "Off",
+                onClick = onOpenFileTransferNotifications
+            )
+
+            HorizontalDivider()
+
+            FileApexPaneSectionHeader(title = "Live Transfer")
+
+            ListItem(
+                headlineContent = { Text("Live Activity") },
+                supportingContent = {
+                    Text("Shows progress of active transfers in a floating capsule.")
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.liveTransferCapsuleEnabled,
+                        onCheckedChange = onToggleLiveTransferCapsule
+                    )
+                }
+            )
+
+            if (state.liveTransferCapsuleEnabled) {
+                ListItem(
+                    modifier = Modifier.padding(start = 16.dp),
+                    headlineContent = { Text("Show Queue in Live Activity") },
+                    supportingContent = {
+                        Text("Persist capsule while items remain in pending queue.")
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = state.liveTransferShowQueueEnabled,
+                            onCheckedChange = onToggleLiveTransferShowQueue
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun FileTransferNotificationsSettingsPage(
+
     state: SettingsUiState,
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,

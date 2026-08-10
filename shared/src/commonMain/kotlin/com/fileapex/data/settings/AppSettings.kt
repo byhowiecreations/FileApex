@@ -55,12 +55,20 @@ interface AppSettings {
     /** When true, participate in encrypted cloud Device Details when LAN is unavailable. Default off. */
     val deviceDetailsAllowOverCellular: StateFlow<Boolean>
 
+    /** Android: When true, shows floating Dynamic Island Live Transfer capsule during transfers. Default off. */
+    val liveTransferCapsuleEnabled: StateFlow<Boolean>
+    /** Android: When true, persists Dynamic Island capsule for queued/pending items. Default off. */
+    val liveTransferShowQueueEnabled: StateFlow<Boolean>
+
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
     fun setGoogleAccountUid(uid: String)
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
     fun setClipboardSharingEnabled(enabled: Boolean)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
+    fun setLiveTransferCapsuleEnabled(enabled: Boolean)
+    fun setLiveTransferShowQueueEnabled(enabled: Boolean)
+
     fun setPinRequiredEnabled(enabled: Boolean)
     fun setDevicePin(pinValue: String)
     fun setPinIdleTimeout(timeout: PinIdleTimeout)
