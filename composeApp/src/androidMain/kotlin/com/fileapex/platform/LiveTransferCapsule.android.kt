@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,14 +15,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -74,12 +79,13 @@ fun LiveTransferCapsuleOverlay(
     val capsuleEnabled by settings.liveTransferCapsuleEnabled.collectAsState()
     val showQueueEnabled by settings.liveTransferShowQueueEnabled.collectAsState()
     val isTransferActive by TransferActivityGuard.isTransferActiveFlow.collectAsState()
+    val liveProgress by TransferActivityGuard.transferProgressFlow.collectAsState()
     val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
 
     var capsuleData by remember { mutableStateOf(CapsuleDisplayData()) }
     var expanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(capsuleEnabled, showQueueEnabled, isTransferActive, pendingItems) {
+    LaunchedEffect(capsuleEnabled, showQueueEnabled, isTransferActive, liveProgress, pendingItems) {
         if (!capsuleEnabled) {
             capsuleData = CapsuleDisplayData(CapsuleState.Hidden)
             return@LaunchedEffect
@@ -90,16 +96,19 @@ fun LiveTransferCapsuleOverlay(
 
         when {
             isTransferActive || activeSendingItem != null -> {
-                val title = activeSendingItem?.displayLabel?.ifBlank { "Transferring files..." } ?: "Streaming files..."
+                val isSingle = (activeSendingItem?.sourceSummary?.contains(",") != true) && pendingCount <= 1
+                val title = if (isSingle) "Sending File" else "Sending Files"
                 val subtitle = if (pendingCount > 1) "$pendingCount items in queue" else "Active transfer"
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Transferring,
                     title = title,
                     subtitle = subtitle,
-                    progress = 0.5f,
+                    progress = liveProgress,
                     pendingCount = pendingCount
                 )
             }
+
+
             capsuleData.state == CapsuleState.Transferring && !isTransferActive -> {
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Completed,
@@ -132,12 +141,13 @@ fun LiveTransferCapsuleOverlay(
 
     if (capsuleData.state == CapsuleState.Hidden) return
 
-    val topMargin = if (cutoutPaddingTop > 0) cutoutPaddingTop.dp else 12.dp
+    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val topMargin = (statusBarPadding + 8.dp).coerceAtLeast(44.dp)
 
     Box(
         modifier = modifier
-            .padding(top = topMargin)
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .padding(top = topMargin, start = 16.dp, end = 16.dp),
         contentAlignment = if (isCornerCutout) Alignment.TopEnd else Alignment.TopCenter
     ) {
         AnimatedVisibility(
@@ -147,15 +157,16 @@ fun LiveTransferCapsuleOverlay(
         ) {
             Surface(
                 modifier = Modifier
-                    .widthIn(min = 180.dp, max = 340.dp)
-                    .clip(RoundedCornerShape(24.dp))
+                    .widthIn(min = 200.dp, max = 340.dp)
+                    .clip(RoundedCornerShape(28.dp))
                     .clickable { expanded = !expanded },
-                color = Color.Black.copy(alpha = 0.90f),
+                color = Color(0xFF181818).copy(alpha = 0.96f),
                 contentColor = Color.White,
-                shadowElevation = 8.dp
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                shadowElevation = 10.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(
@@ -163,10 +174,13 @@ fun LiveTransferCapsuleOverlay(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(24.dp)
+                                    .size(26.dp)
                                     .clip(CircleShape)
                                     .background(FileApexTeal),
                                 contentAlignment = Alignment.Center
@@ -179,14 +193,12 @@ fun LiveTransferCapsuleOverlay(
                                         else -> "⇄"
                                     },
                                     color = Color.Black,
-                                    fontSize = 12.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-
-
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Text(
                                     text = capsuleData.title,
                                     style = MaterialTheme.typography.labelLarge.copy(
@@ -202,7 +214,7 @@ fun LiveTransferCapsuleOverlay(
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontSize = 11.sp
                                         ),
-                                        color = Color.White.copy(alpha = 0.70f),
+                                        color = Color.White.copy(alpha = 0.72f),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -212,7 +224,7 @@ fun LiveTransferCapsuleOverlay(
                     }
 
                     if (capsuleData.state == CapsuleState.Transferring) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         LinearProgressIndicator(
                             progress = { capsuleData.progress },
                             modifier = Modifier
@@ -228,3 +240,4 @@ fun LiveTransferCapsuleOverlay(
         }
     }
 }
+

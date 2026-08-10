@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import com.fileapex.data.settings.AppTheme
+
 data class SettingsUiState(
     val googleAccountLinkEnabled: Boolean = false,
     val googleAccountEmail: String = "",
@@ -31,6 +33,7 @@ data class SettingsUiState(
     val fileTransferNotificationsEnabled: Boolean = false,
     val liveTransferCapsuleEnabled: Boolean = false,
     val liveTransferShowQueueEnabled: Boolean = false,
+    val appTheme: AppTheme = AppTheme.CLEAN,
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
     val pinError: String? = null,
@@ -59,6 +62,7 @@ class SettingsViewModel : ViewModel() {
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             liveTransferCapsuleEnabled = settings.liveTransferCapsuleEnabled.value,
             liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
+            appTheme = settings.appTheme.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
             pinIdleTimeout = settings.pinIdleTimeout.value,
@@ -123,6 +127,12 @@ class SettingsViewModel : ViewModel() {
         settings.setLiveTransferShowQueueEnabled(enabled)
         _uiState.update { it.copy(liveTransferShowQueueEnabled = enabled) }
     }
+
+    fun setAppTheme(theme: AppTheme) {
+        settings.setAppTheme(theme)
+        _uiState.update { it.copy(appTheme = theme) }
+    }
+
 
 
     fun setPinRequired(enabled: Boolean) {

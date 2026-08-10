@@ -1,6 +1,11 @@
 package com.fileapex.ui
 
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.Image
+
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -104,7 +109,12 @@ fun FileExplorerScreen(
     }
 
     Scaffold(
+        containerColor = if (LocalAppTheme.current == AppTheme.FLUX_GLASS) Color.Transparent else MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+
+
+
+
         topBar = {
             if (!embeddedInCompactShell) {
                 TopAppBar(
@@ -548,6 +558,10 @@ private fun ExplorerTopBarActions(
             }
         }
         else -> {
+            ExplorerViewModeToggle(
+                viewMode = state.viewMode,
+                onToggle = viewModel::toggleViewMode
+            )
             TextButton(onClick = { viewModel.enterSelectionMode() }) {
                 Text("Select")
             }
@@ -555,5 +569,6 @@ private fun ExplorerTopBarActions(
                 TextButton(onClick = viewModel::pasteHere) { Text("Paste") }
             }
         }
+
     }
 }

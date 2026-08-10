@@ -84,9 +84,14 @@ class MultiCopyBroadcastEngine(
             }
         }
 
+        var sentBytes = 0L
+        val totalBytes = verifiedSource.sizeBytes
+
         val producer = launch(Dispatchers.IO) {
             try {
                 streamSource(verifiedSource) { chunk ->
+                    sentBytes += chunk.size
+                    TransferActivityGuard.updateProgress(sentBytes, totalBytes)
                     coroutineScope {
                         chunkChannels.map { channel ->
                             async(Dispatchers.IO) {
@@ -95,6 +100,7 @@ class MultiCopyBroadcastEngine(
                         }.awaitAll()
                     }
                 }
+
                 chunkChannels.forEach { channel ->
                     runCatching { channel.close() }
                 }

@@ -16,43 +16,76 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.DesktopUiStyle
 
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
+
 @Composable
 fun isFileApexFluentUi(): Boolean =
     LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
 
-/** Top/bottom nav and title-strip background. Teal on Standard; light surface on Fluent. */
 @Composable
-fun fileApexChromeContainerColor(): Color =
-    if (isFileApexFluentUi()) MaterialTheme.colorScheme.surface else FileApexTeal
+fun isFileApexFluxGlass(): Boolean =
+    LocalAppTheme.current == AppTheme.FLUX_GLASS
+
+@Composable
+fun isFileApexKineticSphere(): Boolean =
+    LocalAppTheme.current == AppTheme.KINETIC_SPHERE
+
+@Composable
+fun isFileApexCustomGlassTheme(): Boolean =
+    isFileApexFluxGlass() || isFileApexKineticSphere()
+
+/** Top/bottom nav and title-strip background. Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent; Teal on Standard. */
+@Composable
+fun fileApexChromeContainerColor(): Color = when {
+    isFileApexCustomGlassTheme() -> Color.Transparent
+    isFileApexFluentUi() -> MaterialTheme.colorScheme.surface
+    else -> FileApexTeal
+}
 
 /** Icons and titles on chrome bars. */
 @Composable
-fun fileApexChromeContentColor(): Color =
-    if (isFileApexFluentUi()) MaterialTheme.colorScheme.onSurface else Color.White
+fun fileApexChromeContentColor(): Color = when {
+    isFileApexCustomGlassTheme() -> Color.White
+    isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurface
+    else -> Color.White
+}
 
 @Composable
-fun fileApexNavSelectedBackgroundColor(): Color =
-    if (isFileApexFluentUi()) MaterialTheme.colorScheme.primaryContainer else Color.White
+fun fileApexNavSelectedBackgroundColor(): Color = when {
+    isFileApexCustomGlassTheme() -> Color.White
+    isFileApexFluentUi() -> MaterialTheme.colorScheme.primaryContainer
+    else -> Color.White
+}
 
 @Composable
-fun fileApexNavSelectedIconColor(): Color =
-    if (isFileApexFluentUi()) FileApexTeal else FileApexTealDark
+fun fileApexNavSelectedIconColor(): Color = when {
+    isFileApexCustomGlassTheme() -> Color(0xFF00E676)
+    isFileApexFluentUi() -> FileApexTeal
+    else -> FileApexTealDark
+}
 
 @Composable
-fun fileApexNavUnselectedIconColor(): Color =
-    if (isFileApexFluentUi()) MaterialTheme.colorScheme.onSurfaceVariant else Color.White
+fun fileApexNavUnselectedIconColor(): Color = when {
+    isFileApexCustomGlassTheme() -> Color.White.copy(alpha = 0.72f)
+    isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurfaceVariant
+    else -> Color.White
+}
 
 @Composable
-fun fileApexNavSelectedTextColor(): Color =
-    if (isFileApexFluentUi()) FileApexTeal else Color.White
+fun fileApexNavSelectedTextColor(): Color = when {
+    isFileApexCustomGlassTheme() -> Color.White
+    isFileApexFluentUi() -> FileApexTeal
+    else -> Color.White
+}
 
 @Composable
-fun fileApexNavUnselectedTextColor(): Color =
-    if (isFileApexFluentUi()) {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    } else {
-        Color.White.copy(alpha = 0.85f)
-    }
+fun fileApexNavUnselectedTextColor(): Color = when {
+    isFileApexCustomGlassTheme() -> Color.White.copy(alpha = 0.72f)
+    isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurfaceVariant
+    else -> Color.White.copy(alpha = 0.85f)
+}
+
 
 @Composable
 fun Modifier.fileApexChromeBottomEdge(): Modifier {
@@ -89,8 +122,10 @@ fun fileApexNavigationBarItemColors(): NavigationBarItemColors =
         unselectedIconColor = fileApexNavUnselectedIconColor(),
         selectedTextColor = fileApexNavSelectedTextColor(),
         unselectedTextColor = fileApexNavUnselectedTextColor(),
-        indicatorColor = fileApexNavSelectedBackgroundColor()
+        indicatorColor = if (isFileApexCustomGlassTheme()) Color.Transparent else fileApexNavSelectedBackgroundColor()
     )
+
+
 
 @Composable
 fun fileApexNavigationRailItemColors(): NavigationRailItemColors =

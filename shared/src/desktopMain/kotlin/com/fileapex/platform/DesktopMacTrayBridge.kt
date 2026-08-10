@@ -178,30 +178,52 @@ object DesktopMacTrayBridge {
         return parentDev
     }
 
-    private fun resolveAppIconPath(): String? =
-        resolveRunningAppBundle()?.let { bundle ->
+    private fun resolveAppIconPath(): String? {
+        val fromBundle = resolveRunningAppBundle()?.let { bundle ->
             File(bundle, "Contents/Resources/FileApex.icns")
                 .takeIf { it.isFile }
                 ?.absolutePath
         }
+        if (fromBundle != null) return fromBundle
+
+        val userDir = File(System.getProperty("user.dir"))
+        val candidatePaths = listOf(
+            File(userDir, "composeApp/icons/FileApex.icns"),
+            File(userDir, "icons/FileApex.icns"),
+            File(userDir.parentFile, "composeApp/icons/FileApex.icns")
+        )
+        return candidatePaths.firstOrNull { it.isFile }?.absolutePath
+    }
 
     private fun resolveRunningAppBundle(): File? {
         val resourcesDir = System.getProperty("compose.application.resources.dir")
         if (!resourcesDir.isNullOrBlank()) {
-            val fromResources = File(resourcesDir).parentFile?.parentFile
-            if (fromResources != null && fromResources.name.endsWith(".app")) {
-                return fromResources
+            var resCursor: File? = File(resourcesDir)
+            repeat(6) {
+                val current = resCursor ?: return@repeat
+                if (current.name.endsWith(".app")) return current
+                resCursor = current.parentFile
             }
         }
-        val command = ProcessHandle.current().info().command().orElse(null) ?: return null
-        var cursor: File? = File(command).canonicalFile.parentFile
-        repeat(6) {
-            val current = cursor ?: return null
+        val command = ProcessHandle.current().info().command().orElse(null)
+        if (!command.isNullOrBlank()) {
+            var cursor: File? = File(command).canonicalFile.parentFile
+            repeat(10) {
+                val current = cursor ?: return@repeat
+                if (current.name.endsWith(".app")) return current
+                cursor = current.parentFile
+            }
+        }
+        val userDir = File(System.getProperty("user.dir"))
+        var dirCursor: File? = userDir
+        repeat(10) {
+            val current = dirCursor ?: return@repeat
             if (current.name.endsWith(".app")) return current
-            cursor = current.parentFile
+            dirCursor = current.parentFile
         }
         return null
     }
+
 
     private interface FileApexTrayNative : Library {
         fun fileapex_tray_setup()

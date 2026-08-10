@@ -711,12 +711,13 @@ class ExplorerViewModel(
                                 "${selectedDevices.size} devices"
                             }
                             if (items.size == 1) {
-                                "Multi Copied ${items.first().name} to $deviceLabel"
+                                "File sent to $deviceLabel"
                             } else {
-                                "Multi Copied ${items.size} files to $deviceLabel"
+                                "Files sent to $deviceLabel"
                             }.let { base ->
                                 if (outcome.hadQueue) "$base ${outcome.message}" else base
                             }
+
                         }
                         batch?.allFailed == true && !outcome.hadQueue -> ExplorerActionCopy.ERROR_SEND_FAILED
                         else -> outcome.message.ifBlank {
@@ -754,23 +755,20 @@ class ExplorerViewModel(
     }
 
     private fun openMultiCopyPicker() {
-        viewModelScope.launch {
+        _uiState.update {
+            it.copy(
+                showMultiCopyPicker = true,
+                selectedMultiCopyDeviceIds = emptySet()
+            )
+        }
+        viewModelScope.launch(Dispatchers.IO) {
             val options = transfers.buildMultiCopyOptions()
-            if (options.isEmpty()) {
-                _uiState.update {
-                    it.copy(errorMessage = "No online destination devices available")
-                }
-                return@launch
-            }
             _uiState.update {
-                it.copy(
-                    showMultiCopyPicker = true,
-                    multiCopyOptions = options,
-                    selectedMultiCopyDeviceIds = emptySet()
-                )
+                it.copy(multiCopyOptions = options)
             }
         }
     }
+
 
     fun downloadSelected() {
         val items = selectedFiles()

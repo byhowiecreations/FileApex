@@ -33,6 +33,12 @@ import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
 
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.ui.text.style.TextAlign
+
 /** Shared compact home header metrics — keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
     /** Fixed teal strip height on every tab (IconButton row — same as Devices power affordance). */
@@ -60,8 +66,10 @@ fun CompactPrimaryShell(
     tealStripActions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit
 ) {
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background,
         bottomBar = {
             FileApexBottomBar(
                 selected = selectedTab,
@@ -78,11 +86,13 @@ fun CompactPrimaryShell(
                 .padding(padding)
         ) {
             // In content — not Scaffold topBar (Compose Desktop collapses an empty topBar slot).
-            CompactTealStrip(
-                showExitPower = showExitPower,
-                onExitClick = onExitApp,
-                actions = tealStripActions
-            )
+            if (!isCustomGlass) {
+                CompactTealStrip(
+                    showExitPower = showExitPower,
+                    onExitClick = onExitApp,
+                    actions = tealStripActions
+                )
+            }
             content()
         }
     }
@@ -94,6 +104,11 @@ fun CompactTealStrip(
     onExitClick: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    if (isCustomGlass) return
+
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -129,15 +144,136 @@ enum class CompactHomeTitleStyle {
 }
 
 @Composable
-fun CompactDevicesTitleBand(
+fun FluxGlassHeader(
+    primaryTitle: String = "FileApex",
+    secondaryTitle: String? = "Paired Devices",
+    showLayoutView: Boolean = false,
+    onToggleLayoutView: (() -> Unit)? = null,
+    showCloseService: Boolean = false,
+    onCloseService: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    CompactHomeTitleBand(
-        primaryLine = "Paired Devices",
-        secondaryLine = "FileApex",
-        style = CompactHomeTitleStyle.Prominent,
-        actions = actions
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Transparent)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = primaryTitle,
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 34.sp,
+                    letterSpacing = (-0.5).sp
+                ),
+                color = Color.White
+            )
+            if (!secondaryTitle.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = secondaryTitle,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 18.sp
+                    ),
+                    color = Color.White.copy(alpha = 0.72f)
+                )
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            actions()
+
+            if (showLayoutView && onToggleLayoutView != null) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clickable(onClick = onToggleLayoutView)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.GridView,
+                        contentDescription = "Layout View",
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Layout\nView",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp,
+                            textAlign = TextAlign.Center
+                        ),
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
+                }
+            }
+
+            if (showCloseService && onCloseService != null) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clickable(onClick = onCloseService)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PowerSettingsNew,
+                        contentDescription = "Close Service",
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Close\nService",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp,
+                            textAlign = TextAlign.Center
+                        ),
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CompactDevicesTitleBand(
+    actions: @Composable RowScope.() -> Unit = {},
+    showLayoutView: Boolean = false,
+    onToggleLayoutView: (() -> Unit)? = null,
+    showCloseService: Boolean = false,
+    onCloseService: (() -> Unit)? = null
+) {
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val allowLayoutView = showLayoutView && currentTheme != AppTheme.KINETIC_SPHERE
+    if (isCustomGlass) {
+        FluxGlassHeader(
+            primaryTitle = "FileApex",
+            secondaryTitle = "Paired Devices",
+            showLayoutView = allowLayoutView,
+            onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
+            showCloseService = showCloseService,
+            onCloseService = onCloseService,
+            actions = actions
+        )
+    } else {
+        CompactHomeTitleBand(
+            primaryLine = "FileApex",
+            secondaryLine = "Paired Devices",
+            style = CompactHomeTitleStyle.Prominent,
+            actions = actions
+        )
+    }
 }
 
 @Composable
@@ -148,41 +284,53 @@ fun CompactHomeTitleBand(
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    CompactHomeTitleBandRow(modifier = modifier, actions = actions) {
-        when (style) {
-            CompactHomeTitleStyle.Prominent -> {
-                Text(
-                    text = primaryLine,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(CompactHomeChrome.eyebrowHeadlineGap))
-                Text(
-                    text = secondaryLine.orEmpty(),
-                    modifier = Modifier.fillMaxWidth(),
-                    style = compactHomeHeadlineStyle(),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            CompactHomeTitleStyle.Detail -> {
-                Text(
-                    text = primaryLine,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (!secondaryLine.isNullOrBlank()) {
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    if (isCustomGlass && style == CompactHomeTitleStyle.Prominent) {
+        FluxGlassHeader(
+            primaryTitle = "FileApex",
+            secondaryTitle = if (primaryLine == "FileApex") secondaryLine ?: "Paired Devices" else primaryLine,
+            actions = actions
+        )
+    } else {
+        CompactHomeTitleBandRow(modifier = modifier, actions = actions) {
+            when (style) {
+                CompactHomeTitleStyle.Prominent -> {
+                    Text(
+                        text = "FileApex",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
                     Spacer(modifier = Modifier.height(CompactHomeChrome.eyebrowHeadlineGap))
                     Text(
-                        text = secondaryLine,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        text = if (primaryLine == "FileApex") secondaryLine ?: "Paired Devices" else primaryLine,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                        color = if (isCustomGlass) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                CompactHomeTitleStyle.Detail -> {
+                    Text(
+                        text = primaryLine,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!secondaryLine.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(CompactHomeChrome.eyebrowHeadlineGap))
+                        Text(
+                            text = secondaryLine,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isCustomGlass) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
             }
         }
     }
@@ -194,11 +342,12 @@ private fun CompactHomeTitleBandRow(
     actions: @Composable RowScope.() -> Unit = {},
     titleContent: @Composable () -> Unit
 ) {
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
     Row(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = CompactHomeChrome.titleBandMinHeight)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(if (isFluxGlass) Color.Transparent else MaterialTheme.colorScheme.surface)
             .padding(
                 horizontal = CompactHomeChrome.titleBandHorizontalPadding,
                 vertical = CompactHomeChrome.titleBandVerticalPadding
@@ -211,6 +360,7 @@ private fun CompactHomeTitleBandRow(
         actions()
     }
 }
+
 
 @Composable
 private fun compactHomeHeadlineStyle() =

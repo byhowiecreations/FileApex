@@ -59,6 +59,9 @@ interface AppSettings {
     val liveTransferCapsuleEnabled: StateFlow<Boolean>
     /** Android: When true, persists Dynamic Island capsule for queued/pending items. Default off. */
     val liveTransferShowQueueEnabled: StateFlow<Boolean>
+    /** Android & Mac Desktop UI theme ([AppTheme.CLEAN] vs [AppTheme.FLUX_GLASS]). Default [AppTheme.CLEAN]. */
+    val appTheme: StateFlow<AppTheme>
+
 
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
@@ -68,6 +71,8 @@ interface AppSettings {
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
     fun setLiveTransferCapsuleEnabled(enabled: Boolean)
     fun setLiveTransferShowQueueEnabled(enabled: Boolean)
+    fun setAppTheme(theme: AppTheme)
+
 
     fun setPinRequiredEnabled(enabled: Boolean)
     fun setDevicePin(pinValue: String)

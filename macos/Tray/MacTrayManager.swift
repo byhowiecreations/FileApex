@@ -119,19 +119,31 @@ import SwiftUI
         if let url = bundle.url(forResource: "FileApex", withExtension: "icns") {
             return url
         }
-        let resourceCandidate = bundle.resourceURL?.appendingPathComponent("FileApex.icns")
-        if let resourceCandidate, FileManager.default.fileExists(atPath: resourceCandidate.path) {
+        if let resourceCandidate = bundle.resourceURL?.appendingPathComponent("FileApex.icns"),
+           FileManager.default.fileExists(atPath: resourceCandidate.path) {
             return resourceCandidate
         }
-        if let executable = bundle.executableURL?
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Resources/FileApex.icns"),
-           FileManager.default.fileExists(atPath: executable.path) {
-            return executable
+        if let bundlePath = bundle.bundlePath as String?, bundlePath.hasSuffix(".app") {
+            let path = (bundlePath as NSString).appendingPathComponent("Contents/Resources/FileApex.icns")
+            if FileManager.default.fileExists(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+        }
+        if let executable = bundle.executableURL {
+            var cursor = executable.deletingLastPathComponent()
+            for _ in 0..<10 {
+                if cursor.pathExtension == "app" {
+                    let icns = cursor.appendingPathComponent("Contents/Resources/FileApex.icns")
+                    if FileManager.default.fileExists(atPath: icns.path) {
+                        return icns
+                    }
+                }
+                cursor = cursor.deletingLastPathComponent()
+            }
         }
         return nil
     }
+
 
     private func resizedStatusBarIcon(_ image: NSImage) -> NSImage {
         let side = max(16, NSStatusBar.system.thickness - 4)

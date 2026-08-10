@@ -1,6 +1,10 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Row
+
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,11 +28,13 @@ object FileApexPaneLayout {
 
 @Composable
 fun FileApexPaneSectionHeader(
+
     title: String,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -42,7 +48,8 @@ fun FileApexPaneSectionHeader(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back"
+                    contentDescription = "Back",
+                    tint = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -50,8 +57,10 @@ fun FileApexPaneSectionHeader(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
+            color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         actions()
     }
 }
+

@@ -13,16 +13,29 @@ object TransferActivityGuard {
     private val _isTransferActiveFlow = MutableStateFlow(false)
     val isTransferActiveFlow: StateFlow<Boolean> = _isTransferActiveFlow.asStateFlow()
 
+    private val _transferProgressFlow = MutableStateFlow(0.0f)
+    val transferProgressFlow: StateFlow<Float> = _transferProgressFlow.asStateFlow()
+
     fun beginTransfer() {
         val count = activeTransfers.incrementAndGet()
+        _transferProgressFlow.value = 0.0f
         _isTransferActiveFlow.value = count > 0
+    }
+
+    fun updateProgress(sentBytes: Long, totalBytes: Long) {
+        if (totalBytes > 0L) {
+            val frac = (sentBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+            _transferProgressFlow.value = frac
+        }
     }
 
     fun endTransfer() {
         val count = activeTransfers.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+        _transferProgressFlow.value = 1.0f
         _isTransferActiveFlow.value = count > 0
     }
 
     fun isTransferActive(): Boolean = activeTransfers.get() > 0
 }
+
 

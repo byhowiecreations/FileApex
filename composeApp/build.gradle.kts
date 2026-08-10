@@ -729,6 +729,9 @@ private fun moveToCurrent(
 ) {
     check(source.exists()) { "Missing build output: ${source.absolutePath}" }
     val target = dest.resolve(destName)
+    if (target.exists()) {
+        target.deleteRecursively()
+    }
     Files.move(
         source.toPath(),
         target.toPath(),
@@ -736,9 +739,14 @@ private fun moveToCurrent(
     )
     if (isMacHost()) {
         ProcessBuilder("xattr", "-cr", target.absolutePath).start().waitFor()
+        if (target.name.endsWith(".app")) {
+            ProcessBuilder("codesign", "--force", "--deep", "--sign", "-", target.absolutePath).start().waitFor()
+        }
     }
     logger.lifecycle("Moved ${source.name} -> current/$destName")
 }
+
+
 
 /** Detach FileApex installer volumes so `current/` can be replaced safely. */
 private fun detachFileApexDmgVolumes() {
@@ -854,13 +862,13 @@ private fun Project.shipToCurrent(
         check(dmgs.isNotEmpty()) { "No DMG found in ${dmgDir.absolutePath}" }
         dmgs.forEach { dmg ->
             val destName = when {
-                dmg.name.contains("x86") || dmg.name.contains("x64") -> "FileApex-v$appVersionName-x64.dmg"
-                dmg.name.contains("arm") || dmg.name.contains("aarch") -> "FileApex-v$appVersionName-arm64.dmg"
-                else -> "FileApex-v$appVersionName.dmg"
+                dmg.name.contains("x86") || dmg.name.contains("x64") || dmg.name.contains("Intel") -> "FileApex-v$appVersionName-Intel.dmg"
+                else -> "FileApex-v$appVersionName-Silicon.dmg"
             }
             moveToCurrent(dest, dmg, destName = destName, logger = logger)
         }
     }
+
 
 
     if (includeMsi && isWindowsHost()) {
@@ -1128,52 +1136,36 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
 tasks.register("packageIntelDmg") {
     group = "distribution"
     description = "Package Intel x86_64 Mac DMG using x64 JDK under Rosetta"
-    onlyIf { isMacHost() }
+    onlyIf { false }
     doLast {
-        val x64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
-        if (!x64Jdk.isDirectory) {
-            logger.warn("x86_64 JDK not found at ${x64Jdk.absolutePath} — skipping Intel DMG packaging")
-            return@doLast
-        }
-        val process = ProcessBuilder(
-            "arch", "-x86_64", "sh", "./gradlew", "packageDmg"
-        )
-        .directory(rootProject.projectDir)
-        .inheritIO()
-        val procEnv = process.environment()
-        procEnv["JAVA_HOME"] = x64Jdk.absolutePath
-        val exit = process.start().waitFor()
-        check(exit == 0) { "Intel DMG packaging failed with exit code $exit" }
-        val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
-        val x64Dmg = dmgDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
-        if (x64Dmg != null) {
-            val dest = currentBuildsDest()
-            val destName = "FileApex-v$fileapexVersionName-x64.dmg"
-            moveToCurrent(dest, x64Dmg, destName = destName, logger = logger)
-        }
+        logger.lifecycle("Intel DMG compilation disabled per user directive — skipping packageIntelDmg")
     }
 }
 
+
+
+
+
 /**
  * Full ship into `current/`.
- * Mac: debug+release APKs + .app + ARM64 DMG + Intel x64 DMG. Windows: release APK + release MSI only.
- * Release APK ships as FileApex-v<version>.apk (no -release suffix); debug keeps -debug.
+ * Mac: release APK + .app + Silicon DMG + Intel DMG. Windows: release APK + release MSI/EXE.
+ * Release APK ships as FileApex-v<version>.apk.
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Ship into current/ (Mac full set with ARM64 + x64 DMGs; Windows release APK + MSI)"
+    description = "Ship into current/ (Mac full set with Silicon + Intel DMGs; Windows release APK + MSI)"
     if (isMacHost()) {
-        dependsOn("assembleDebug", "verifyReleaseApkSigned", "embedMacExtensions", "fixDmgVolumeIcon")
+        dependsOn("assembleRelease", "verifyReleaseApkSigned", "embedMacExtensions", "fixDmgVolumeIcon")
         finalizedBy("packageIntelDmg")
     } else if (isWindowsHost()) {
         dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageReleaseMsi")
     } else {
-        dependsOn("assembleDebug", "verifyReleaseApkSigned")
+        dependsOn("assembleRelease", "verifyReleaseApkSigned")
     }
 
     doLast {
         shipToCurrent(
-            includeDebugApk = isMacHost(),
+            includeDebugApk = false,
             includeReleaseApk = true,
             includeDmg = isMacHost(),
             includeMsi = isWindowsHost(),
@@ -1183,6 +1175,7 @@ tasks.register("copyAllBuilds") {
         )
     }
 }
+
 
 
 

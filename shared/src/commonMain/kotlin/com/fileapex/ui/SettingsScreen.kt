@@ -16,7 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.ui.theme.isFileApexCustomGlassTheme
+import androidx.compose.ui.graphics.Color
+
+import androidx.compose.material3.RadioButtonDefaults
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
+
+
 import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
 import kotlin.math.roundToInt
 import androidx.compose.foundation.rememberScrollState
@@ -35,8 +43,14 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -83,12 +97,14 @@ private enum class SettingsPage {
     AutoLaunchOnReboot,
     Notifications,
     FileTransferNotifications,
+    Themes,
     Clipboard,
     DeviceDetails,
     GoogleAccount,
     DesktopLayout,
     WindowsDesign
 }
+
 
 
 enum class SettingsScreenLayoutMode {
@@ -153,7 +169,9 @@ fun SettingsScreen(
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
             onOpenNotifications = { page = SettingsPage.Notifications },
+            onOpenThemes = { page = SettingsPage.Themes },
             onOpenClipboard = { page = SettingsPage.Clipboard },
+
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
@@ -215,7 +233,15 @@ fun SettingsScreen(
             onToggle = viewModel::setFileTransferNotifications
         )
 
+        SettingsPage.Themes -> ThemesSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onSelectTheme = viewModel::setAppTheme
+        )
+
         SettingsPage.Clipboard -> ClipboardSettingsPage(
+
             state = state,
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
@@ -276,7 +302,9 @@ private fun SettingsRootPage(
     onOpenBackgroundPersistence: () -> Unit,
     onOpenAutoLaunchOnReboot: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenThemes: () -> Unit,
     onOpenClipboard: () -> Unit,
+
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
@@ -343,12 +371,19 @@ private fun SettingsRootPage(
                     subtitle = if (state.fileTransferNotificationsEnabled || state.liveTransferCapsuleEnabled) "On" else "Off",
                     onClick = onOpenNotifications
                 )
+                SettingsNavItem(
+                    title = "Themes",
+                    subtitle = state.appTheme.displayName,
+                    onClick = onOpenThemes
+                )
+
 
                 SettingsNavItem(
                     title = "Clipboard",
                     subtitle = if (state.clipboardSharingEnabled) "On" else "Off",
                     onClick = onOpenClipboard
                 )
+
                 SettingsNavItem(
                     title = "Device Details",
                     subtitle = "Peer telemetry fields",
@@ -1200,15 +1235,20 @@ private fun SettingsPageShell(
     onBack: (() -> Unit)?,
     content: @Composable (Modifier) -> Unit
 ) {
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background
+
     when (layoutMode) {
         SettingsScreenLayoutMode.FullScreen -> {
             Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
+                containerColor = containerColor,
                 topBar = { SettingsTopBar(title = title, onBack = onBack) }
             ) { padding ->
                 content(Modifier.fillMaxSize().padding(padding))
             }
         }
+
         SettingsScreenLayoutMode.ListPane -> {
             Column(modifier = Modifier.fillMaxSize()) {
                 FileApexPaneSectionHeader(title = title, onBack = onBack)
@@ -1369,6 +1409,117 @@ private fun UpdateFrequencyRow(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemesSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onSelectTheme: (AppTheme) -> Unit
+) {
+    SettingsPageShell(
+        title = "Themes",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
+        ) {
+            FileApexPaneSectionHeader(title = "App Theme")
+
+            Text(
+                text = "Select your preferred visual style for FileApex. Changes apply immediately across all screens and windows.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val isCustomTheme = isFileApexCustomGlassTheme()
+            AppTheme.entries.forEach { theme ->
+                val selected = state.appTheme == theme
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelectTheme(theme) },
+                    color = if (isCustomTheme) {
+                        if (selected) Color(0x3300E676) else Color(0x221E2D34)
+                    } else {
+                        if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    },
+                    border = BorderStroke(
+                        width = if (selected) 2.dp else 1.dp,
+                        color = if (isCustomTheme) {
+                            if (selected) Color(0xFF00E676) else Color.White.copy(alpha = 0.2f)
+                        } else {
+                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        }
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = theme.displayName,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (theme == AppTheme.CLEAN) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        color = if (isCustomTheme) Color(0x44FFFFFF) else MaterialTheme.colorScheme.secondaryContainer,
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "DEFAULT",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = theme.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isCustomTheme) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        RadioButton(
+                            selected = selected,
+                            onClick = { onSelectTheme(theme) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = if (isCustomTheme) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                                unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
+                }
+            }
+
+        }
+    }
+}
+
 
 private const val VERSION_EASTER_EGG_TAP_COUNT = 5
 private const val VERSION_EASTER_EGG_TAP_WINDOW_MS = 2_000L

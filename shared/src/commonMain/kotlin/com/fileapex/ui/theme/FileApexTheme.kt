@@ -8,7 +8,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RippleConfiguration
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -18,8 +20,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.platform.fluentUiFontFamily
+
 
 val FileApexTeal = Color(0xFF0F766E)
 val FileApexTealDark = Color(0xFF0A5C56)
@@ -73,6 +78,27 @@ private val FluentColorScheme = lightColorScheme(
     onError = Color.White
 )
 
+private val FluxGlassColorScheme = darkColorScheme(
+    primary = Color(0xFF00E676),
+    onPrimary = Color(0xFF050B0E),
+    primaryContainer = Color(0x3300E676),
+    onPrimaryContainer = Color(0xFF00E676),
+    secondary = Color(0xFF00B0FF),
+    onSecondary = Color.Black,
+    secondaryContainer = Color(0x3300B0FF),
+    onSecondaryContainer = Color(0xFF80D8FF),
+    background = Color(0xFF070B0E),
+    onBackground = Color(0xFFF8FAFC),
+    surface = Color(0x331E2D34),
+    onSurface = Color(0xFFF8FAFC),
+    surfaceVariant = Color(0x2828383F),
+    onSurfaceVariant = Color(0xFFCBD5E1),
+    outline = Color(0x33FFFFFF),
+    outlineVariant = Color(0x1FFFFFFF),
+    error = Color(0xFFFF5252),
+    onError = Color.White
+)
+
 private val StandardShapes = Shapes()
 
 private val FluentShapes = Shapes(
@@ -109,11 +135,17 @@ private fun fluentTypography(fontFamily: FontFamily): Typography {
 @Composable
 fun FileApexTheme(
     uiStyle: DesktopUiStyle = DesktopUiStyle.Standard,
+    appTheme: AppTheme = AppTheme.CLEAN,
     content: @Composable () -> Unit
 ) {
     val fluent = uiStyle == DesktopUiStyle.WindowsFluent
     val fontFamily = if (fluent) fluentUiFontFamily() else FontFamily.Default
-    val colorScheme = if (fluent) FluentColorScheme else StandardColorScheme
+    val colorScheme = when {
+        appTheme == AppTheme.FLUX_GLASS || appTheme == AppTheme.KINETIC_SPHERE -> FluxGlassColorScheme
+        fluent -> FluentColorScheme
+        else -> StandardColorScheme
+    }
+
     val shapes = if (fluent) FluentShapes else StandardShapes
     val typography = if (fluent) fluentTypography(fontFamily) else Typography()
     val fluentRipple = RippleConfiguration(
@@ -126,7 +158,10 @@ fun FileApexTheme(
         )
     )
 
-    CompositionLocalProvider(LocalFileApexUiStyle provides uiStyle) {
+    CompositionLocalProvider(
+        LocalFileApexUiStyle provides uiStyle,
+        LocalAppTheme provides appTheme
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             shapes = shapes,
@@ -142,3 +177,4 @@ fun FileApexTheme(
         }
     }
 }
+

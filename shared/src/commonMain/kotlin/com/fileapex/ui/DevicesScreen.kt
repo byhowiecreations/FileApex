@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -97,7 +99,12 @@ import com.fileapex.presentation.DeviceDetailsState
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
+
+import com.fileapex.ui.adaptive.FluxGlassHeader
 import com.fileapex.ui.adaptive.CompactDevicesTitleBand
+
 import com.fileapex.ui.adaptive.CompactTealStrip
 import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
 import com.fileapex.ui.adaptive.FileApexWidthSizeClass
@@ -312,13 +319,21 @@ fun DevicesScreen(
             }
         }
     ) { padding ->
+        val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
             if (embeddedInCompactShell && !isListPane) {
-                CompactDevicesTitleBand(actions = deviceOrderHeaderActions)
+                CompactDevicesTitleBand(
+                    actions = if (isKineticSphere) { {} } else deviceOrderHeaderActions,
+                    showLayoutView = !isKineticSphere,
+                    onToggleLayoutView = { FileApexServices.settings.setDevicesViewMode(viewMode.toggled()) },
+                    showCloseService = true,
+                    onCloseService = { confirmExit = true }
+                )
+
             }
             if (isListPane) {
                 FileApexPaneSectionHeader(
@@ -326,43 +341,79 @@ fun DevicesScreen(
                     actions = deviceOrderHeaderActions
                 )
             }
-            PairedDevicesList(
-                listState = listState,
-                viewMode = viewMode,
-                layoutMode = layoutMode,
-                deviceRows = listRows,
-                editMode = editMode,
-                connectingDeviceId = if (editMode) null else state.connectingDeviceId,
-                selectedDeviceId = selectedDeviceId,
-                onOpenDevice = { deviceId ->
-                    viewModel.openDeviceOrExplain(deviceId) { target ->
-                        currentOnOpenDevice(target)
-                    }
-                },
-                onRenameDevice = { deviceId, deviceName ->
-                    renameText = deviceName
-                    viewModel.beginRename(deviceId)
-                },
-                onDeviceDetails = { deviceId ->
-                    viewModel.requestDeviceDetails(deviceId)
-                },
-                onSendClipboardDevice = { deviceId ->
-                    viewModel.sendClipboardToDevice(deviceId)
-                },
-                onRemoveDevice = { deviceId, deviceName ->
-                    pendingDelete = PendingDelete(deviceId, deviceName)
-                },
-                onFilesDropped = { deviceId, paths ->
-                    viewModel.sendDroppedLocalFiles(deviceId, paths)
-                },
-                onReorder = viewModel::reorderEditDevice,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            )
+            if (isKineticSphere && !editMode) {
+                KineticSphereDevicesView(
+                    deviceRows = listRows,
+                    connectingDeviceId = state.connectingDeviceId,
+                    selectedDeviceId = selectedDeviceId,
+                    onOpenDevice = { deviceId ->
+                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                            currentOnOpenDevice(target)
+                        }
+                    },
+                    onRenameDevice = { deviceId, deviceName ->
+                        renameText = deviceName
+                        viewModel.beginRename(deviceId)
+                    },
+                    onDeviceDetails = { deviceId ->
+                        viewModel.requestDeviceDetails(deviceId)
+                    },
+                    onSendClipboardDevice = { deviceId ->
+                        viewModel.sendClipboardToDevice(deviceId)
+                    },
+                    onRemoveDevice = { deviceId, deviceName ->
+                        pendingDelete = PendingDelete(deviceId, deviceName)
+                    },
+                    onFilesDropped = { deviceId, paths ->
+                        viewModel.sendDroppedLocalFiles(deviceId, paths)
+                    },
+                    onGenerateQr = { addMenuOpen = true },
+                    onScanQr = { addMenuOpen = true },
+
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+            } else {
+                PairedDevicesList(
+                    listState = listState,
+                    viewMode = viewMode,
+                    layoutMode = layoutMode,
+                    deviceRows = listRows,
+                    editMode = editMode,
+                    connectingDeviceId = if (editMode) null else state.connectingDeviceId,
+                    selectedDeviceId = selectedDeviceId,
+                    onOpenDevice = { deviceId ->
+                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                            currentOnOpenDevice(target)
+                        }
+                    },
+                    onRenameDevice = { deviceId, deviceName ->
+                        renameText = deviceName
+                        viewModel.beginRename(deviceId)
+                    },
+                    onDeviceDetails = { deviceId ->
+                        viewModel.requestDeviceDetails(deviceId)
+                    },
+                    onSendClipboardDevice = { deviceId ->
+                        viewModel.sendClipboardToDevice(deviceId)
+                    },
+                    onRemoveDevice = { deviceId, deviceName ->
+                        pendingDelete = PendingDelete(deviceId, deviceName)
+                    },
+                    onFilesDropped = { deviceId, paths ->
+                        viewModel.sendDroppedLocalFiles(deviceId, paths)
+                    },
+                    onReorder = viewModel::reorderEditDevice,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+            }
 
             // Always pinned above bottom navigation — not overlapping the list.
-            if (!editMode) {
+            if (!editMode && !isKineticSphere) {
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1105,11 +1156,27 @@ private fun DeviceGridCell(
 @Composable
 private fun HomeTopBar(
     onExitClick: () -> Unit,
-    headerActions: @Composable RowScope.() -> Unit = {}
+    headerActions: @Composable RowScope.() -> Unit = {},
+    onToggleLayoutView: (() -> Unit)? = null
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
-        CompactDevicesTitleBand(actions = headerActions)
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val allowLayoutView = onToggleLayoutView != null && currentTheme != AppTheme.KINETIC_SPHERE
+    if (isCustomGlass) {
+        FluxGlassHeader(
+            primaryTitle = "FileApex",
+            secondaryTitle = "Paired Devices",
+            showLayoutView = allowLayoutView,
+            onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
+            showCloseService = true,
+            onCloseService = onExitClick,
+            actions = headerActions
+        )
+    } else {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
+            CompactDevicesTitleBand(actions = headerActions)
+        }
     }
 }
 
@@ -1122,80 +1189,177 @@ fun FileApexBottomBar(
     onSettings: () -> Unit
 ) {
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
-    NavigationBar(
-        modifier = Modifier.fileApexChromeTopEdge(),
-        containerColor = fileApexChromeContainerColor(),
-        contentColor = fileApexNavSelectedTextColor(),
-        tonalElevation = 0.dp
-    ) {
-        NavigationBarItem(
-            selected = selected == HomeTab.Devices,
-            onClick = onDevices,
-            icon = {
-                NavIcon(
-                    selected = selected == HomeTab.Devices,
-                    imageVector = Icons.Filled.Devices,
-                    contentDescription = devicesLabel
-                )
-            },
-            label = {
-                Text(
-                    devicesLabel,
-                    color = if (selected == HomeTab.Devices) {
-                        fileApexNavSelectedTextColor()
-                    } else {
-                        fileApexNavUnselectedTextColor()
-                    }
-                )
-            },
-            colors = fileApexNavigationBarItemColors()
-        )
-        NavigationBarItem(
-            selected = selected == HomeTab.Files,
-            onClick = onFiles,
-            icon = {
-                NavIcon(
-                    selected = selected == HomeTab.Files,
-                    imageVector = Icons.Filled.Folder,
-                    contentDescription = "Local Files"
-                )
-            },
-            label = {
-                Text(
-                    "Local Files",
-                    color = if (selected == HomeTab.Files) {
-                        fileApexNavSelectedTextColor()
-                    } else {
-                        fileApexNavUnselectedTextColor()
-                    }
-                )
-            },
-            colors = fileApexNavigationBarItemColors()
-        )
-        NavigationBarItem(
-            selected = selected == HomeTab.Settings,
-            onClick = onSettings,
-            icon = {
-                NavIcon(
-                    selected = selected == HomeTab.Settings,
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = "Settings"
-                )
-            },
-            label = {
-                Text(
-                    "Settings",
-                    color = if (selected == HomeTab.Settings) {
-                        fileApexNavSelectedTextColor()
-                    } else {
-                        fileApexNavUnselectedTextColor()
-                    }
-                )
-            },
-            colors = fileApexNavigationBarItemColors()
-        )
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+
+    if (isCustomGlass) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val maxPillWidth = maxWidth * 0.333f
+            val pillWidth = maxOf(280.dp, minOf(420.dp, maxPillWidth))
+            Surface(
+                modifier = Modifier.width(pillWidth),
+                shape = RoundedCornerShape(32.dp),
+                color = Color(0xEE0D1C22),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                shadowElevation = 8.dp
+            ) {
+                NavigationBar(
+                    containerColor = Color.Transparent,
+                    contentColor = fileApexNavSelectedTextColor(),
+                    tonalElevation = 0.dp,
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                ) {
+                    NavigationBarItem(
+                        selected = selected == HomeTab.Devices,
+                        onClick = onDevices,
+                        icon = {
+                            NavIcon(
+                                selected = selected == HomeTab.Devices,
+                                imageVector = Icons.Filled.Devices,
+                                contentDescription = devicesLabel
+                            )
+                        },
+                        label = {
+                            Text(
+                                devicesLabel,
+                                color = if (selected == HomeTab.Devices) {
+                                    fileApexNavSelectedTextColor()
+                                } else {
+                                    fileApexNavUnselectedTextColor()
+                                }
+                            )
+                        },
+                        colors = fileApexNavigationBarItemColors()
+                    )
+                    NavigationBarItem(
+                        selected = selected == HomeTab.Files,
+                        onClick = onFiles,
+                        icon = {
+                            NavIcon(
+                                selected = selected == HomeTab.Files,
+                                imageVector = Icons.Filled.Folder,
+                                contentDescription = "Local Files"
+                            )
+                        },
+                        label = {
+                            Text(
+                                "Local Files",
+                                color = if (selected == HomeTab.Files) {
+                                    fileApexNavSelectedTextColor()
+                                } else {
+                                    fileApexNavUnselectedTextColor()
+                                }
+                            )
+                        },
+                        colors = fileApexNavigationBarItemColors()
+                    )
+                    NavigationBarItem(
+                        selected = selected == HomeTab.Settings,
+                        onClick = onSettings,
+                        icon = {
+                            NavIcon(
+                                selected = selected == HomeTab.Settings,
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings"
+                            )
+                        },
+                        label = {
+                            Text(
+                                "Settings",
+                                color = if (selected == HomeTab.Settings) {
+                                    fileApexNavSelectedTextColor()
+                                } else {
+                                    fileApexNavUnselectedTextColor()
+                                }
+                            )
+                        },
+                        colors = fileApexNavigationBarItemColors()
+                    )
+                }
+            }
+        }
+    } else {
+        NavigationBar(
+            modifier = Modifier.fileApexChromeTopEdge(),
+            containerColor = fileApexChromeContainerColor(),
+            contentColor = fileApexNavSelectedTextColor(),
+            tonalElevation = 0.dp
+        ) {
+            NavigationBarItem(
+                selected = selected == HomeTab.Devices,
+                onClick = onDevices,
+                icon = {
+                    NavIcon(
+                        selected = selected == HomeTab.Devices,
+                        imageVector = Icons.Filled.Devices,
+                        contentDescription = devicesLabel
+                    )
+                },
+                label = {
+                    Text(
+                        devicesLabel,
+                        color = if (selected == HomeTab.Devices) {
+                            fileApexNavSelectedTextColor()
+                        } else {
+                            fileApexNavUnselectedTextColor()
+                        }
+                    )
+                },
+                colors = fileApexNavigationBarItemColors()
+            )
+            NavigationBarItem(
+                selected = selected == HomeTab.Files,
+                onClick = onFiles,
+                icon = {
+                    NavIcon(
+                        selected = selected == HomeTab.Files,
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = "Local Files"
+                    )
+                },
+                label = {
+                    Text(
+                        "Local Files",
+                        color = if (selected == HomeTab.Files) {
+                            fileApexNavSelectedTextColor()
+                        } else {
+                            fileApexNavUnselectedTextColor()
+                        }
+                    )
+                },
+                colors = fileApexNavigationBarItemColors()
+            )
+            NavigationBarItem(
+                selected = selected == HomeTab.Settings,
+                onClick = onSettings,
+                icon = {
+                    NavIcon(
+                        selected = selected == HomeTab.Settings,
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Settings"
+                    )
+                },
+                label = {
+                    Text(
+                        "Settings",
+                        color = if (selected == HomeTab.Settings) {
+                            fileApexNavSelectedTextColor()
+                        } else {
+                            fileApexNavUnselectedTextColor()
+                        }
+                    )
+                },
+                colors = fileApexNavigationBarItemColors()
+            )
+        }
     }
 }
+
 
 @Composable
 private fun NavIcon(

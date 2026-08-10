@@ -12,7 +12,12 @@ import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.domain.transfer.verifiedFromDisk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+
 
 /**
  * Single source of truth for outbound Multi Copy and explorer transfer actions.
@@ -70,19 +75,25 @@ class TransferManager(
         val peers = deviceRepository().listDevices()
             .filter { it.deviceId != sourceDeviceId }
             .sortedBy { it.deviceName.lowercase() }
-        for (peer in peers) {
-            options += resolveRemoteOption(
-                deviceId = peer.deviceId,
-                deviceName = peer.deviceName,
-                host = peer.lastKnownIp,
-                port = peer.port,
-                rootPath = peer.rootPath,
-                peerPlatform = peer.platform,
-                appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
-            )
+        val peerOptions = coroutineScope {
+            peers.map { peer ->
+                async(Dispatchers.IO) {
+                    resolveRemoteOption(
+                        deviceId = peer.deviceId,
+                        deviceName = peer.deviceName,
+                        host = peer.lastKnownIp,
+                        port = peer.port,
+                        rootPath = peer.rootPath,
+                        peerPlatform = peer.platform,
+                        appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
+                    )
+                }
+            }.awaitAll()
         }
+        options.addAll(peerOptions)
         return options
     }
+
 
     /**
      * Android system Share sheet picker: online paired peers only (no "This device").

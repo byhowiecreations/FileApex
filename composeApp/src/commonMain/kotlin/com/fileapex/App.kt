@@ -31,8 +31,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
+import androidx.compose.ui.graphics.Brush
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.backgroundBrush
 import com.fileapex.data.settings.DesktopLayoutMode
+
 import com.fileapex.data.settings.DesktopUiStyle
+
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.navigation.AppRoute
@@ -176,6 +181,8 @@ fun App(
     }
 
     val desktopUiStyleFlow = remember {
+
+
         if (supportsWindowsFluentDesign()) {
             FileApexServices.settings.desktopUiStyle
         } else {
@@ -183,28 +190,43 @@ fun App(
         }
     }
     val desktopUiStyle by desktopUiStyleFlow.collectAsState()
+    val appTheme by FileApexServices.settings.appTheme.collectAsState()
     val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
+    val bgBrush = appTheme.backgroundBrush()
 
-    FileApexTheme(uiStyle = desktopUiStyle) {
+    FileApexTheme(
+        uiStyle = desktopUiStyle,
+        appTheme = appTheme
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    if (windowsFluent) MaterialTheme.colorScheme.background
-                    else FileApexTeal
+                .then(
+                    if (bgBrush != null) {
+                        Modifier.background(bgBrush)
+                    } else {
+                        Modifier.background(
+                            if (windowsFluent) MaterialTheme.colorScheme.background
+                            else FileApexTeal
+                        )
+                    }
                 )
         ) {
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
                     .safeDrawingPadding(),
-                color = if (windowsFluent) {
+                color = if (bgBrush != null) {
+                    Color.Transparent
+                } else if (windowsFluent) {
                     MaterialTheme.colorScheme.background
                 } else {
                     Color.White
                 },
-                tonalElevation = if (windowsFluent) 0.dp else 0.dp
+                tonalElevation = 0.dp
             ) {
+
+
                 if (!setupComplete && onboardingSteps.isNotEmpty()) {
                     OnboardingScreen(
                         steps = onboardingSteps,

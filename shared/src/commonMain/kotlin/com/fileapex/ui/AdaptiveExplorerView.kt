@@ -1,6 +1,14 @@
 package com.fileapex.ui
 
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.material.icons.filled.Folder
+
+
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -406,34 +414,49 @@ private fun ExplorerGridContent(
 
 @Composable
 private fun ParentRow(onClick: () -> Unit) {
-    Column(
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "..",
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            maxLines = 1
+        Icon(
+            imageVector = Icons.Filled.Folder,
+            contentDescription = "Up",
+            tint = if (isFluxGlass) Color(0xFF00E676) else FileApexTeal,
+            modifier = Modifier.size(28.dp)
         )
-        Text(
-            text = "Up one folder",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "..",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+            Text(
+                text = "Up one folder",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
-    HorizontalDivider()
+    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
 private fun EmptyHint(text: String) {
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
     Text(
         text = text,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
 
@@ -445,13 +468,15 @@ private fun ExplorerListRow(
     leading: @Composable () -> Unit,
     onClick: () -> Unit
 ) {
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .background(
-                if (selected) FileApexTeal.copy(alpha = 0.14f)
-                else MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                if (selected) {
+                    if (isFluxGlass) Color(0x4400E676) else FileApexTeal.copy(alpha = 0.14f)
+                } else Color.Transparent
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -467,17 +492,18 @@ private fun ExplorerListRow(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
                 ),
+                color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
-    HorizontalDivider()
+    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -503,15 +529,21 @@ private fun FileListRow(
         onExtendSelect = onExtendSelect,
         onActivate = onActivate
     )
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+
     Row(
         modifier = rowModifier
             .background(
-                if (isSelected) FileApexTeal.copy(alpha = 0.10f)
-                else MaterialTheme.colorScheme.surface
+                if (isFluxGlass) {
+                    if (isSelected) Color(0x4400E676) else Color.Transparent
+                } else {
+                    if (isSelected) FileApexTeal.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface
+                }
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+
         if (isSelectionMode) {
             SelectionIndicator(selected = isSelected)
             Spacer(modifier = Modifier.width(12.dp))
@@ -525,17 +557,18 @@ private fun FileListRow(
             Text(
                 text = file.name,
                 style = MaterialTheme.typography.bodyLarge,
+                color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = formatBytes(file.sizeBytes),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
-    HorizontalDivider()
+    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -553,6 +586,7 @@ private fun ExplorerGridCell(
     onExtendSelect: () -> Unit,
     onActivate: () -> Unit
 ) {
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
     val interactionModifier = when {
         item.isDirectory -> Modifier.clickable(onClick = onClick)
         desktopSelection -> Modifier.desktopFileSelectionClicks(
@@ -570,11 +604,12 @@ private fun ExplorerGridCell(
         modifier = interactionModifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp)),
-        color = if (isSelected) {
-            FileApexTeal.copy(alpha = 0.12f)
+        color = if (isFluxGlass) {
+            if (isSelected) Color(0x4400E676) else Color(0x221E2D34)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            if (isSelected) FileApexTeal.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         },
+        border = if (isFluxGlass) BorderStroke(1.dp, if (isSelected) Color(0xFF00E676) else Color.White.copy(alpha = 0.15f)) else null,
         tonalElevation = 0.dp
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -590,6 +625,7 @@ private fun ExplorerGridCell(
                 Text(
                     text = item.name,
                     style = MaterialTheme.typography.labelMedium,
+                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
@@ -598,7 +634,7 @@ private fun ExplorerGridCell(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center

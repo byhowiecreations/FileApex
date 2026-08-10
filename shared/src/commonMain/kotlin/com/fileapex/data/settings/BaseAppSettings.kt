@@ -82,9 +82,13 @@ class BaseAppSettings(
     private val deviceDetailsAllowOverCellularFlow = MutableStateFlow(
         store.getBoolean(KEY_DEVICE_DETAILS_ALLOW_CELLULAR, false)
     )
+    private val appThemeFlow = MutableStateFlow(
+        AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
+    )
     private val diagnosticsPrivateKeyBase64Stored = MutableStateFlow(
         store.getString(KEY_DIAGNOSTICS_PRIVATE_KEY, "")
     )
+
 
     override val googleAccountLinkEnabled: StateFlow<Boolean> = google.asStateFlow()
     override val googleAccountEmail: StateFlow<String> = googleEmail.asStateFlow()
@@ -97,8 +101,9 @@ class BaseAppSettings(
         liveTransferCapsuleFlow.asStateFlow()
     override val liveTransferShowQueueEnabled: StateFlow<Boolean> =
         liveTransferShowQueueFlow.asStateFlow()
-    override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
+    override val appTheme: StateFlow<AppTheme> = appThemeFlow.asStateFlow()
 
+    override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
     override val devicePin: StateFlow<String> = pin.asStateFlow()
     override val pinIdleTimeout: StateFlow<PinIdleTimeout> = pinIdle.asStateFlow()
     override val checkForUpdatesEnabled: StateFlow<Boolean> = checkForUpdates.asStateFlow()
@@ -118,6 +123,7 @@ class BaseAppSettings(
         deviceDetailsDisplayPreferencesFlow.asStateFlow()
     override val deviceDetailsAllowOverCellular: StateFlow<Boolean> =
         deviceDetailsAllowOverCellularFlow.asStateFlow()
+
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
         store.putBoolean(KEY_GOOGLE, enabled)
@@ -164,6 +170,12 @@ class BaseAppSettings(
         store.putBoolean(KEY_LIVE_TRANSFER_SHOW_QUEUE, enabled)
         liveTransferShowQueueFlow.value = enabled
     }
+
+    override fun setAppTheme(theme: AppTheme) {
+        store.putString(KEY_APP_THEME, theme.name)
+        appThemeFlow.value = theme
+    }
+
 
 
     override fun setPinRequiredEnabled(enabled: Boolean) {
@@ -288,6 +300,8 @@ class BaseAppSettings(
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
         const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
+        const val KEY_APP_THEME = "app_theme"
+
 
         const val KEY_PIN_REQUIRED = "pin_required"
         const val KEY_DEVICE_PIN = "device_pin"
