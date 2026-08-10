@@ -444,6 +444,42 @@ tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDi
     }
 }
 
+tasks.matching { it.name == "createRuntimeImage" }.configureEach {
+    doFirst {
+        val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
+        val markerFile = stagingRuntime.resolve(".jdk_arch_marker")
+        val currentJavaExecutable = File(System.getProperty("java.home"), "bin/java")
+        val currentArch = if (currentJavaExecutable.exists()) {
+            val process = ProcessBuilder("file", currentJavaExecutable.absolutePath).start()
+            val out = process.inputStream.bufferedReader().readText()
+            process.waitFor()
+            if (out.contains("x86_64")) "x86_64" else "arm64"
+        } else "unknown"
+
+        if (stagingRuntime.exists()) {
+            val previousArch = if (markerFile.exists()) markerFile.readText().trim() else ""
+            if (previousArch != currentArch) {
+                logger.lifecycle("Purging cached runtime image (previous arch '$previousArch' != current '$currentArch')")
+                stagingRuntime.deleteRecursively()
+            }
+        }
+    }
+    doLast {
+        val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
+        val markerFile = stagingRuntime.resolve(".jdk_arch_marker")
+        val currentJavaExecutable = File(System.getProperty("java.home"), "bin/java")
+        val currentArch = if (currentJavaExecutable.exists()) {
+            val process = ProcessBuilder("file", currentJavaExecutable.absolutePath).start()
+            val out = process.inputStream.bufferedReader().readText()
+            process.waitFor()
+            if (out.contains("x86_64")) "x86_64" else "arm64"
+        } else "unknown"
+        if (stagingRuntime.exists()) {
+            markerFile.writeText(currentArch)
+        }
+    }
+}
+
 private fun Project.embedMacTrayBridgeIn(appBundle: File) {
     if (!isMacHost()) {
         logger.lifecycle("Skipping Mac tray dylib embed — not a macOS build host")

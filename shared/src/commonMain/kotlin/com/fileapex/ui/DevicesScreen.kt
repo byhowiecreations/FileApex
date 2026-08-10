@@ -367,8 +367,8 @@ fun DevicesScreen(
                     onFilesDropped = { deviceId, paths ->
                         viewModel.sendDroppedLocalFiles(deviceId, paths)
                     },
-                    onGenerateQr = { addMenuOpen = true },
-                    onScanQr = { addMenuOpen = true },
+                    onGenerateQr = onGenerateQr,
+                    onScanQr = onScanQr,
 
                     modifier = Modifier
                         .weight(1f)
