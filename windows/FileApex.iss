@@ -1,16 +1,21 @@
+#ifndef AppVersion
+#define AppVersion "0.6.24a"
+#endif
+
 [Setup]
 AppId={{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}
 AppName=FileApex
-AppVersion=0.6.16a
+AppVersion={#AppVersion}
 AppPublisher=ByHowieCreations
 AppComments=A local-first P2P file sharing app
+AppMutex=FileApex
 DefaultDirName={autopf}\FileApex
 DefaultGroupName=FileApex
 UninstallDisplayIcon={app}\FileApex.exe
 Compression=lzma2/ultra64
 SolidCompression=yes
-OutputDir=..\current
-OutputBaseFilename=FileApex-v0.6.16a
+OutputDir=..\composeApp\build\compose\binaries\main-release\exe
+OutputBaseFilename=FileApex-v{#AppVersion}
 SetupIconFile=..\composeApp\icons\FileApex.ico
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog

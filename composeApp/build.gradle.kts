@@ -363,7 +363,7 @@ compose.desktop {
             targetFormats(*desktopInstallerFormats())
             packageName = "FileApex"
             vendor = "ByHowieCreations"
-            description = "A local-first P2P file sharing app"
+            description = "FileApex"
             appResourcesRootDir.set(project.file("windows/jpackage-resources"))
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
             // Marketing version stays version.md name=; installers are renamed on copy.
@@ -633,9 +633,10 @@ afterEvaluate {
     }
 
     if (isWindowsHost()) {
-        // Windows ships release MSI only — no debug app-image or debug MSI.
-        tasks.named("createDistributable").configure { enabled = false }
-        tasks.named("packageMsi").configure { enabled = false }
+        // Windows ships release EXE only — no debug app-image or debug installer.
+        tasks.matching { it.name == "createDistributable" || it.name == "packageMsi" || it.name == "packageExe" }.configureEach {
+            enabled = false
+        }
     }
 
     tasks.named("assembleDebug").configure {
@@ -907,8 +908,8 @@ private fun Project.shipToCurrent(
 
 
 
-    if (includeMsi && isWindowsHost()) {
-        shipMsiToCurrent(dest, appVersionName, logger, release = true)
+    if (isWindowsHost()) {
+        if (includeMsi) shipMsiToCurrent(dest, appVersionName, logger, release = true)
         shipExeToCurrent(dest, appVersionName, logger, release = true)
     }
 
@@ -1026,9 +1027,20 @@ tasks.register("packageInnoExe") {
         check(issFile.exists()) { "FileApex.iss not found at ${issFile.absolutePath}" }
 
         exec {
-            commandLine(isccExe.absolutePath, issFile.absolutePath)
+            commandLine(isccExe.absolutePath, "/DAppVersion=$fileapexVersionName", issFile.absolutePath)
         }
         logger.lifecycle("Successfully compiled Inno Setup installer into current/FileApex-v$fileapexVersionName.exe")
+
+        // Prune app-image staging dirs so files are not left on disk
+        listOf(
+            layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile,
+            layout.buildDirectory.dir("compose/binaries/main/app").get().asFile,
+        ).forEach { dir ->
+            if (dir.exists()) {
+                dir.deleteRecursively()
+                logger.lifecycle("Pruned app-image staging dir ${dir.absolutePath}")
+            }
+        }
     }
 }
 
