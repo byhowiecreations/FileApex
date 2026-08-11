@@ -237,7 +237,9 @@ fun SettingsScreen(
             state = state,
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
-            onSelectTheme = viewModel::setAppTheme
+            onSelectTheme = viewModel::setAppTheme,
+            onToggleConnectedLines = viewModel::setKineticSphereConnectedLinesEnabled,
+            onToggleOrbitalRings = viewModel::setKineticSphereOrbitalRingsEnabled
         )
 
         SettingsPage.Clipboard -> ClipboardSettingsPage(
@@ -1416,7 +1418,9 @@ private fun ThemesSettingsPage(
     state: SettingsUiState,
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
-    onSelectTheme: (AppTheme) -> Unit
+    onSelectTheme: (AppTheme) -> Unit,
+    onToggleConnectedLines: (Boolean) -> Unit,
+    onToggleOrbitalRings: (Boolean) -> Unit
 ) {
     SettingsPageShell(
         title = "Themes",
@@ -1516,6 +1520,41 @@ private fun ThemesSettingsPage(
                 }
             }
 
+            if (state.appTheme == AppTheme.KINETIC_SPHERE) {
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                FileApexPaneSectionHeader(title = "Kinetic Sphere Elements")
+
+                ListItem(
+                    headlineContent = { Text("Connected Device Lines") },
+                    supportingContent = {
+                        Text(
+                            "Draw dashed spoke connector lines from the central hub to each device node."
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = state.kineticSphereConnectedLinesEnabled,
+                            onCheckedChange = onToggleConnectedLines
+                        )
+                    }
+                )
+
+                ListItem(
+                    headlineContent = { Text("Orbital Background Rings") },
+                    supportingContent = {
+                        Text(
+                            "Draw 3D elliptical orbital rings in deep space around the central hub."
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = state.kineticSphereOrbitalRingsEnabled,
+                            onCheckedChange = onToggleOrbitalRings
+                        )
+                    }
+                )
+            }
         }
     }
 }

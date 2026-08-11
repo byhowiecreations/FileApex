@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.layout
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Add
@@ -55,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -86,6 +88,12 @@ private data class EllipticalOrbitConfig(
  * Selected devices enlarge smoothly to indicate selection without shifting position on screen.
  * Tapping a device opens Option 1: Floating Glass Action Capsule on top Z-index layer with 100% opaque coverage.
  */
+/**
+ * Set to true for smooth 'ellipses connected' orbital curves matching design mockup.
+ * Set to false to revert to straight 'connected device lines' (spokes).
+ */
+const val USE_ELLIPSES_CONNECTED = false
+
 @Composable
 fun KineticSphereDevicesView(
     deviceRows: List<DeviceListRow>,
@@ -99,6 +107,7 @@ fun KineticSphereDevicesView(
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     onGenerateQr: () -> Unit,
     onScanQr: () -> Unit,
+    onCheckBatteries: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var addMenuOpen by remember { mutableStateOf(false) }
@@ -238,34 +247,39 @@ fun KineticSphereDevicesView(
             }
         }
 
+        val showConnectedLines by FileApexServices.settings.kineticSphereConnectedLinesEnabled.collectAsState()
+        val showOrbitalRings by FileApexServices.settings.kineticSphereOrbitalRingsEnabled.collectAsState()
+
         // 1. Spatial Deep-Space Canvas with Continuous Glowing Elliptical Orbits & Dynamic Beams
         Canvas(modifier = Modifier.fillMaxSize()) {
             val solidGlowStroke = Stroke(width = 4f.dp.toPx())
             val solidCoreStroke = Stroke(width = 1.8f.dp.toPx())
 
-            // Render continuous glowing curved elliptical pathways matching design mockup
-            orbitConfigs.forEach { config ->
-                withTransform({
-                    translate(centerX, centerY)
-                    rotate(config.rotationDeg)
-                }) {
-                    val rx = baseRadiusPx * config.scaleX
-                    val ry = baseRadiusPx * config.scaleY
+            // 1a. Background Static Deep-Space Orbital Rings
+            if (showOrbitalRings) {
+                orbitConfigs.forEach { config ->
+                    withTransform({
+                        translate(centerX, centerY)
+                        rotate(config.rotationDeg)
+                    }) {
+                        val rx = baseRadiusPx * config.scaleX
+                        val ry = baseRadiusPx * config.scaleY
 
-                    // Outer neon glow track
-                    drawOval(
-                        color = Color(0xFF00E5FF).copy(alpha = 0.14f),
-                        topLeft = Offset(-rx, -ry),
-                        size = Size(rx * 2f, ry * 2f),
-                        style = solidGlowStroke
-                    )
-                    // Core luminous continuous track
-                    drawOval(
-                        color = Color(0xFF00E5FF).copy(alpha = 0.40f),
-                        topLeft = Offset(-rx, -ry),
-                        size = Size(rx * 2f, ry * 2f),
-                        style = solidCoreStroke
-                    )
+                        // Outer neon glow track
+                        drawOval(
+                            color = Color(0xFF00E5FF).copy(alpha = 0.14f),
+                            topLeft = Offset(-rx, -ry),
+                            size = Size(rx * 2f, ry * 2f),
+                            style = solidGlowStroke
+                        )
+                        // Core luminous continuous track
+                        drawOval(
+                            color = Color(0xFF00E5FF).copy(alpha = 0.40f),
+                            topLeft = Offset(-rx, -ry),
+                            size = Size(rx * 2f, ry * 2f),
+                            style = solidCoreStroke
+                        )
+                    }
                 }
             }
 
@@ -282,17 +296,21 @@ fun KineticSphereDevicesView(
                 drawCircle(color = Color.White.copy(alpha = 0.4f), radius = 2f, center = star)
             }
 
-            // Connecting Dynamic Beams from Hub to Nodes
-            effectiveNodePositions.forEachIndexed { index, pos ->
-                val row = deviceRows.getOrNull(index) ?: return@forEachIndexed
-                val beamColor = if (row.online) Color(0x5500E676) else Color(0x44FFC107)
-                drawLine(
-                    color = beamColor,
-                    start = Offset(centerX, centerY),
-                    end = pos,
-                    strokeWidth = 1.5f.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
-                )
+            // 1b. Connected Device Spoke Lines from Hub to Nodes
+            if (showConnectedLines) {
+                effectiveNodePositions.forEachIndexed { index, pos ->
+                    val row = deviceRows.getOrNull(index) ?: return@forEachIndexed
+                    val online = row.online
+                    val statusGlow = if (online) Color(0xFF00E676) else Color(0xFFFFC107)
+
+                    drawLine(
+                        color = statusGlow.copy(alpha = 0.50f),
+                        start = Offset(centerX, centerY),
+                        end = pos,
+                        strokeWidth = 1.5f.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                    )
+                }
             }
         }
 
@@ -407,6 +425,55 @@ fun KineticSphereDevicesView(
                             FileApexServices.settings.resetKineticNodeOffsets()
                         }
                     )
+                }
+            }
+        }
+
+        // 2b. Dynamic "Check Battery / Check Batteries" Micro-Action Button
+        if (deviceRows.isNotEmpty() && onCheckBatteries != null) {
+            val batteryText = if (deviceRows.size <= 1) "Check Battery" else "Check Batteries"
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            centerX.roundToInt(),
+                            (centerY + hubPx / 2f + 16.dp.toPx()).roundToInt()
+                        )
+                    }
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, placeable.height) {
+                            placeable.placeRelative(-placeable.width / 2, 0)
+                        }
+                    }
+            ) {
+                Surface(
+                    onClick = onCheckBatteries,
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xDD0D1C22),
+                    border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.50f)),
+                    shadowElevation = 8.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        BatteryIcon(
+                            modifier = Modifier.size(15.dp),
+                            tint = Color(0xFF00E676)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = batteryText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.5.sp
+                            ),
+                            color = Color.White,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -763,6 +830,36 @@ private fun CapsuleActionButton(
             ),
             color = Color.White,
             maxLines = 1
+        )
+    }
+}
+
+@Composable
+fun BatteryIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = Color(0xFF00E676)
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(0f, h * 0.15f),
+            size = Size(w * 0.80f, h * 0.70f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.1f, w * 0.1f),
+            style = Stroke(width = 1.5f.dp.toPx())
+        )
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.84f, h * 0.32f),
+            size = Size(w * 0.16f, h * 0.36f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.05f, w * 0.05f)
+        )
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.12f, h * 0.28f),
+            size = Size(w * 0.56f, h * 0.44f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.05f, w * 0.05f)
         )
     }
 }

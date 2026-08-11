@@ -49,7 +49,10 @@ data class SettingsUiState(
     val googleAccountError: String? = null,
     val deviceDetailsDisplayPreferences: DeviceDetailsDisplayPreferences =
         DeviceDetailsDisplayPreferences.defaults(),
-    val deviceDetailsAllowOverCellular: Boolean = false
+    val deviceDetailsAllowOverCellular: Boolean = false,
+    val kineticSphereCleanMode: Boolean = false,
+    val kineticSphereConnectedLinesEnabled: Boolean = true,
+    val kineticSphereOrbitalRingsEnabled: Boolean = true
 )
 
 class SettingsViewModel : ViewModel() {
@@ -75,10 +78,52 @@ class SettingsViewModel : ViewModel() {
             desktopLayoutMode = settings.desktopLayoutMode.value,
             desktopUiStyle = settings.desktopUiStyle.value,
             deviceDetailsDisplayPreferences = settings.deviceDetailsDisplayPreferences.value,
-            deviceDetailsAllowOverCellular = settings.deviceDetailsAllowOverCellular.value
+            deviceDetailsAllowOverCellular = settings.deviceDetailsAllowOverCellular.value,
+            kineticSphereCleanMode = settings.kineticSphereCleanMode.value,
+            kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
+            kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            settings.kineticSphereCleanMode.collect { mode ->
+                _uiState.update { it.copy(kineticSphereCleanMode = mode) }
+            }
+        }
+        viewModelScope.launch {
+            settings.kineticSphereConnectedLinesEnabled.collect { enabled ->
+                _uiState.update { it.copy(kineticSphereConnectedLinesEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.kineticSphereOrbitalRingsEnabled.collect { enabled ->
+                _uiState.update { it.copy(kineticSphereOrbitalRingsEnabled = enabled) }
+            }
+        }
+    }
+
+    fun setKineticSphereCleanMode(enabled: Boolean) {
+        settings.setKineticSphereCleanMode(enabled)
+        _uiState.update { 
+            it.copy(
+                kineticSphereCleanMode = enabled,
+                kineticSphereConnectedLinesEnabled = !enabled,
+                kineticSphereOrbitalRingsEnabled = !enabled
+            )
+        }
+    }
+
+    fun setKineticSphereConnectedLinesEnabled(enabled: Boolean) {
+        settings.setKineticSphereConnectedLinesEnabled(enabled)
+        _uiState.update { it.copy(kineticSphereConnectedLinesEnabled = enabled) }
+    }
+
+    fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean) {
+        settings.setKineticSphereOrbitalRingsEnabled(enabled)
+        _uiState.update { it.copy(kineticSphereOrbitalRingsEnabled = enabled) }
+    }
 
     val updateStatusMessage: StateFlow<String?> = AppUpdateCoordinator.statusMessage
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

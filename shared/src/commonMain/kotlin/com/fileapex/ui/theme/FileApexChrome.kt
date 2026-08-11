@@ -53,7 +53,7 @@ fun fileApexChromeContentColor(): Color = when {
 
 @Composable
 fun fileApexNavSelectedBackgroundColor(): Color = when {
-    isFileApexCustomGlassTheme() -> Color.White
+    isFileApexCustomGlassTheme() -> Color(0xFF00E676).copy(alpha = 0.22f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.primaryContainer
     else -> Color.White
 }

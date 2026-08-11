@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -344,6 +347,7 @@ fun DevicesScreen(
                     },
                     onGenerateQr = onGenerateQr,
                     onScanQr = onScanQr,
+                    onCheckBatteries = viewModel::checkBatteries,
 
                     modifier = Modifier
                         .weight(1f)
@@ -595,6 +599,14 @@ fun DevicesScreen(
         DeviceDetailsDialog(
             details = details,
             onDismiss = viewModel::dismissDeviceDetails
+        )
+    }
+
+    state.batteryOverlayState?.let { overlay ->
+        BatteryStatusOverlay(
+            loading = overlay.loading,
+            items = overlay.items,
+            onDismiss = viewModel::dismissBatteryOverlay
         )
     }
 
@@ -1171,96 +1183,61 @@ fun FileApexBottomBar(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp, top = 4.dp),
             contentAlignment = Alignment.Center
         ) {
-            val maxPillWidth = maxWidth * 0.333f
-            val pillWidth = maxOf(280.dp, minOf(420.dp, maxPillWidth))
+            val pillWidth = if (maxWidth < 480.dp) {
+                (maxWidth * 0.76f).coerceIn(285.dp, 360.dp)
+            } else {
+                (maxWidth * 0.333f).coerceIn(320.dp, 440.dp)
+            }
+
             Surface(
-                modifier = Modifier.width(pillWidth),
+                modifier = Modifier
+                    .width(pillWidth)
+                    .height(64.dp),
                 shape = RoundedCornerShape(32.dp),
                 color = Color(0xEE0D1C22),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                shadowElevation = 8.dp
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f)),
+                shadowElevation = 10.dp
             ) {
-                NavigationBar(
-                    containerColor = Color.Transparent,
-                    contentColor = fileApexNavSelectedTextColor(),
-                    tonalElevation = 0.dp,
-                    windowInsets = WindowInsets(0, 0, 0, 0)
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    NavigationBarItem(
+                    CustomGlassNavItem(
                         selected = selected == HomeTab.Devices,
                         onClick = onDevices,
-                        icon = {
-                            NavIcon(
-                                selected = selected == HomeTab.Devices,
-                                imageVector = Icons.Filled.Devices,
-                                contentDescription = devicesLabel
-                            )
-                        },
-                        label = {
-                            Text(
-                                devicesLabel,
-                                color = if (selected == HomeTab.Devices) {
-                                    fileApexNavSelectedTextColor()
-                                } else {
-                                    fileApexNavUnselectedTextColor()
-                                }
-                            )
-                        },
-                        colors = fileApexNavigationBarItemColors()
+                        icon = Icons.Filled.Devices,
+                        label = devicesLabel,
+                        modifier = Modifier.weight(1f)
                     )
-                    NavigationBarItem(
+                    CustomGlassNavItem(
                         selected = selected == HomeTab.Files,
                         onClick = onFiles,
-                        icon = {
-                            NavIcon(
-                                selected = selected == HomeTab.Files,
-                                imageVector = Icons.Filled.Folder,
-                                contentDescription = "Local Files"
-                            )
-                        },
-                        label = {
-                            Text(
-                                "Local Files",
-                                color = if (selected == HomeTab.Files) {
-                                    fileApexNavSelectedTextColor()
-                                } else {
-                                    fileApexNavUnselectedTextColor()
-                                }
-                            )
-                        },
-                        colors = fileApexNavigationBarItemColors()
+                        icon = Icons.Filled.Folder,
+                        label = "Local Files",
+                        modifier = Modifier.weight(1f)
                     )
-                    NavigationBarItem(
+                    CustomGlassNavItem(
                         selected = selected == HomeTab.Settings,
                         onClick = onSettings,
-                        icon = {
-                            NavIcon(
-                                selected = selected == HomeTab.Settings,
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = "Settings"
-                            )
-                        },
-                        label = {
-                            Text(
-                                "Settings",
-                                color = if (selected == HomeTab.Settings) {
-                                    fileApexNavSelectedTextColor()
-                                } else {
-                                    fileApexNavUnselectedTextColor()
-                                }
-                            )
-                        },
-                        colors = fileApexNavigationBarItemColors()
+                        icon = Icons.Filled.Settings,
+                        label = "Settings",
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
     } else {
         NavigationBar(
-            modifier = Modifier.fileApexChromeTopEdge(),
+            modifier = Modifier
+                .fileApexChromeTopEdge()
+                .navigationBarsPadding(),
             containerColor = fileApexChromeContainerColor(),
             contentColor = fileApexNavSelectedTextColor(),
             tonalElevation = 0.dp
@@ -1335,6 +1312,58 @@ fun FileApexBottomBar(
     }
 }
 
+@Composable
+private fun CustomGlassNavItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    val activeBg = Color(0xFF00E676).copy(alpha = 0.22f)
+    val activeTint = Color(0xFF00E676)
+    val inactiveTint = Color.White.copy(alpha = 0.72f)
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Icon inside compact green accent pill indicator
+        Box(
+            modifier = Modifier
+                .size(width = 52.dp, height = 30.dp)
+                .clip(RoundedCornerShape(15.dp))
+                .background(if (selected) activeBg else Color.Transparent),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (selected) activeTint else inactiveTint,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(3.dp))
+        // Text label OUTSIDE the green pill, cleanly aligned under icon
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 11.sp,
+                lineHeight = 13.sp
+            ),
+            color = if (selected) Color.White else inactiveTint,
+            maxLines = 1,
+            softWrap = false,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
 
 @Composable
 private fun NavIcon(
@@ -1342,10 +1371,13 @@ private fun NavIcon(
     imageVector: ImageVector,
     contentDescription: String
 ) {
+    val isGlass = isFileApexCustomGlassTheme()
+    val pillShape = if (isGlass) RoundedCornerShape(14.dp) else RoundedCornerShape(12.dp)
+    val pillSizeModifier = if (isGlass) Modifier.size(width = 48.dp, height = 26.dp) else Modifier.size(40.dp)
+
     Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
+        modifier = pillSizeModifier
+            .clip(pillShape)
             .background(if (selected) fileApexNavSelectedBackgroundColor() else Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
@@ -1607,4 +1639,144 @@ private fun DeviceDetailsDialog(
             TextButton(onClick = onDismiss) { Text("Close") }
         }
     )
+}
+
+@Composable
+private fun BatteryStatusOverlay(
+    loading: Boolean,
+    items: List<com.fileapex.presentation.BatteryStatusItem>,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xEE0D1C22),
+            border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.5f)),
+            shadowElevation = 16.dp,
+            modifier = Modifier
+                .widthIn(max = 380.dp)
+                .fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    BatteryIcon(
+                        modifier = Modifier.size(24.dp),
+                        tint = Color(0xFF00E676)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Device Battery Levels",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp
+                        ),
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (loading) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 20.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF00E5FF),
+                            strokeWidth = 2.5.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Polling battery levels...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+                } else if (items.isEmpty()) {
+                    Text(
+                        text = "No paired devices found.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items.forEach { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0x33FFFFFF))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = item.deviceName,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val batteryText = when {
+                                    !item.online -> "Offline"
+                                    item.levelPercent != null -> {
+                                        val stateLower = item.chargingState.trim().lowercase()
+                                        val isCharging = when {
+                                            stateLower.contains("discharging") || stateLower.contains("not charging") -> false
+                                            stateLower == "ac" || stateLower == "usb" || stateLower == "wireless" -> true
+                                            stateLower.contains("charging") -> true
+                                            else -> false
+                                        }
+                                        if (isCharging) "⚡ ${item.levelPercent}%" else "${item.levelPercent}%"
+                                    }
+                                    else -> "Unknown"
+                                }
+                                val textColor = when {
+                                    !item.online -> Color.White.copy(alpha = 0.5f)
+                                    item.levelPercent != null && item.levelPercent <= 20 -> Color(0xFFFF5252)
+                                    else -> Color(0xFF00E676)
+                                }
+                                Text(
+                                    text = batteryText,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = textColor
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF00E5FF),
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(0.5f)
+                ) {
+                    Text(
+                        text = "OK",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
 }

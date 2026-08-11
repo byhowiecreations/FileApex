@@ -40,6 +40,19 @@ import kotlinx.coroutines.withContext
  * Paired-device list rows live in [DevicesViewModel.deviceRows] so snackbars, dialogs,
  * and scroll bookmarks cannot force a structural list invalidation.
  */
+data class BatteryStatusItem(
+    val deviceId: String,
+    val deviceName: String,
+    val levelPercent: Int?,
+    val chargingState: String = "",
+    val online: Boolean
+)
+
+data class BatteryCheckOverlayState(
+    val loading: Boolean = false,
+    val items: List<BatteryStatusItem> = emptyList()
+)
+
 data class DevicesUiState(
     val localDeviceName: String = "",
     val renameTargetId: String? = null,
@@ -56,7 +69,9 @@ data class DevicesUiState(
     /** Draft order while [deviceOrderEditMode] is active. */
     val editOrderRows: List<DeviceListRow> = emptyList(),
     /** When set, UI shows on-demand peer diagnostics. */
-    val deviceDetails: DeviceDetailsState? = null
+    val deviceDetails: DeviceDetailsState? = null,
+    /** When set, UI shows dynamic Check Batteries overlay popup. */
+    val batteryOverlayState: BatteryCheckOverlayState? = null
 )
 
 data class DeviceDetailsState(
@@ -741,6 +756,67 @@ class DevicesViewModel : ViewModel() {
 
     fun dismissDeviceDetails() {
         _uiState.update { it.copy(deviceDetails = null) }
+    }
+
+    fun checkBatteries() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    batteryOverlayState = BatteryCheckOverlayState(loading = true, items = emptyList())
+                )
+            }
+
+            val results = withContext(Dispatchers.IO) {
+                val localDiag = runCatching {
+                    com.fileapex.platform.collectDeviceDiagnostics()
+                }.getOrNull()
+
+                val thisDeviceItem = BatteryStatusItem(
+                    deviceId = "this_device_local",
+                    deviceName = "This Device",
+                    levelPercent = localDiag?.battery?.levelPercent,
+                    chargingState = localDiag?.battery?.chargingState ?: "",
+                    online = true
+                )
+
+                val rows = deviceRows.value
+                val remoteItems = rows.map { row ->
+                    val deviceEntity = repository.getDevice(row.deviceId)
+                    if (deviceEntity != null && row.online) {
+                        val diagnostics = runCatching {
+                            fetchDeviceDetailsSnapshot(deviceEntity)
+                        }.getOrNull()
+                        BatteryStatusItem(
+                            deviceId = row.deviceId,
+                            deviceName = row.deviceName,
+                            levelPercent = diagnostics?.battery?.levelPercent,
+                            chargingState = diagnostics?.battery?.chargingState ?: "",
+                            online = true
+                        )
+                    } else {
+                        BatteryStatusItem(
+                            deviceId = row.deviceId,
+                            deviceName = row.deviceName,
+                            levelPercent = null,
+                            chargingState = "",
+                            online = false
+                        )
+                    }
+                }
+
+                listOf(thisDeviceItem) + remoteItems
+            }
+
+            _uiState.update {
+                it.copy(
+                    batteryOverlayState = BatteryCheckOverlayState(loading = false, items = results)
+                )
+            }
+        }
+    }
+
+    fun dismissBatteryOverlay() {
+        _uiState.update { it.copy(batteryOverlayState = null) }
     }
 
     fun initialListScrollIndex(): Int = listScrollIndex

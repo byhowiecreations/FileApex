@@ -106,8 +106,8 @@ fun CompactTealStrip(
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
-    if (isCustomGlass) return
-
+    val isDesktopTarget = com.fileapex.cloud.currentPlatformLabel() != "Android"
+    if (isCustomGlass || !isDesktopTarget) return
 
     Row(
         modifier = Modifier
@@ -216,7 +216,8 @@ fun FluxGlassHeader(
                 }
             }
 
-            if (showCloseService && onCloseService != null) {
+            val allowPowerOnDesktop = showCloseService && com.fileapex.cloud.currentPlatformLabel() != "Android"
+            if (allowPowerOnDesktop && onCloseService != null) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier

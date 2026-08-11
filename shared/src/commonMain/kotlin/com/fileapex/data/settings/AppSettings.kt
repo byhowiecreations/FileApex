@@ -65,6 +65,13 @@ interface AppSettings {
     val appTheme: StateFlow<AppTheme>
 
 
+    /** Kinetic Sphere sub-style toggle: false = Connected Lines (default), true = Clean (Free Floating). */
+    val kineticSphereCleanMode: StateFlow<Boolean>
+    /** Kinetic Sphere sub-style toggle: show/hide dashed spoke lines connecting hub to nodes. Default true. */
+    val kineticSphereConnectedLinesEnabled: StateFlow<Boolean>
+    /** Kinetic Sphere sub-style toggle: show/hide 3D elliptical orbital rings in background. Default true. */
+    val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean>
+
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
     fun setGoogleAccountUid(uid: String)
@@ -74,6 +81,9 @@ interface AppSettings {
     fun setLiveTransferCapsuleEnabled(enabled: Boolean)
     fun setLiveTransferShowQueueEnabled(enabled: Boolean)
     fun setAppTheme(theme: AppTheme)
+    fun setKineticSphereCleanMode(enabled: Boolean)
+    fun setKineticSphereConnectedLinesEnabled(enabled: Boolean)
+    fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean)
 
 
     fun setPinRequiredEnabled(enabled: Boolean)

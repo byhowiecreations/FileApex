@@ -88,6 +88,15 @@ class BaseAppSettings(
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
+    private val kineticSphereCleanModeFlow = MutableStateFlow(
+        store.getBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, false)
+    )
+    private val kineticSphereConnectedLinesFlow = MutableStateFlow(
+        store.getBoolean(KEY_KINETIC_SPHERE_CONNECTED_LINES, !store.getBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, false))
+    )
+    private val kineticSphereOrbitalRingsFlow = MutableStateFlow(
+        store.getBoolean(KEY_KINETIC_SPHERE_ORBITAL_RINGS, !store.getBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, false))
+    )
     private val diagnosticsPrivateKeyBase64Stored = MutableStateFlow(
         store.getString(KEY_DIAGNOSTICS_PRIVATE_KEY, "")
     )
@@ -105,6 +114,9 @@ class BaseAppSettings(
     override val liveTransferShowQueueEnabled: StateFlow<Boolean> =
         liveTransferShowQueueFlow.asStateFlow()
     override val appTheme: StateFlow<AppTheme> = appThemeFlow.asStateFlow()
+    override val kineticSphereCleanMode: StateFlow<Boolean> = kineticSphereCleanModeFlow.asStateFlow()
+    override val kineticSphereConnectedLinesEnabled: StateFlow<Boolean> = kineticSphereConnectedLinesFlow.asStateFlow()
+    override val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean> = kineticSphereOrbitalRingsFlow.asStateFlow()
 
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
     override val devicePin: StateFlow<String> = pin.asStateFlow()
@@ -179,6 +191,28 @@ class BaseAppSettings(
     override fun setAppTheme(theme: AppTheme) {
         store.putString(KEY_APP_THEME, theme.name)
         appThemeFlow.value = theme
+    }
+
+    override fun setKineticSphereCleanMode(enabled: Boolean) {
+        store.putBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, enabled)
+        kineticSphereCleanModeFlow.value = enabled
+        if (enabled) {
+            setKineticSphereConnectedLinesEnabled(false)
+            setKineticSphereOrbitalRingsEnabled(false)
+        } else {
+            setKineticSphereConnectedLinesEnabled(true)
+            setKineticSphereOrbitalRingsEnabled(true)
+        }
+    }
+
+    override fun setKineticSphereConnectedLinesEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_KINETIC_SPHERE_CONNECTED_LINES, enabled)
+        kineticSphereConnectedLinesFlow.value = enabled
+    }
+
+    override fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_KINETIC_SPHERE_ORBITAL_RINGS, enabled)
+        kineticSphereOrbitalRingsFlow.value = enabled
     }
 
 
@@ -317,6 +351,9 @@ class BaseAppSettings(
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
         const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
         const val KEY_APP_THEME = "app_theme"
+        const val KEY_KINETIC_SPHERE_CLEAN_MODE = "kinetic_sphere_clean_mode"
+        const val KEY_KINETIC_SPHERE_CONNECTED_LINES = "kinetic_sphere_connected_lines"
+        const val KEY_KINETIC_SPHERE_ORBITAL_RINGS = "kinetic_sphere_orbital_rings"
 
 
         const val KEY_PIN_REQUIRED = "pin_required"
@@ -344,22 +381,39 @@ class BaseAppSettings(
 
 private fun encodeKineticOffsets(offsets: Map<String, Pair<Float, Float>>): String {
     return offsets.entries.joinToString(";") { (id, pair) ->
-        val cleanId = id.replace(";", "_").replace(":", "_")
-        "$cleanId:${pair.first}:${pair.second}"
+        val cleanId = id.replace(";", "_").replace("|", "_")
+        "$cleanId|${pair.first}|${pair.second}"
     }
 }
 
 private fun decodeKineticOffsets(encoded: String): Map<String, Pair<Float, Float>> {
     if (encoded.isBlank()) return emptyMap()
-    return encoded.split(";").mapNotNull { token ->
-        val parts = token.split(":")
-        if (parts.size == 3) {
-            val id = parts[0]
-            val dx = parts[1].toFloatOrNull()
-            val dy = parts[2].toFloatOrNull()
+    val map = mutableMapOf<String, Pair<Float, Float>>()
+    encoded.split(";").forEach { token ->
+        if (token.isBlank()) return@forEach
+        val pipeParts = token.split("|")
+        if (pipeParts.size == 3) {
+            val id = pipeParts[0]
+            val dx = pipeParts[1].toFloatOrNull()
+            val dy = pipeParts[2].toFloatOrNull()
             if (id.isNotBlank() && dx != null && dy != null) {
-                id to Pair(dx, dy)
-            } else null
-        } else null
-    }.toMap()
+                map[id] = Pair(dx, dy)
+                if (id.startsWith("cmp_")) map["cmp:" + id.removePrefix("cmp_")] = Pair(dx, dy)
+                if (id.startsWith("exp_")) map["exp:" + id.removePrefix("exp_")] = Pair(dx, dy)
+            }
+        } else {
+            val colonParts = token.split(":")
+            if (colonParts.size == 3) {
+                val id = colonParts[0]
+                val dx = colonParts[1].toFloatOrNull()
+                val dy = colonParts[2].toFloatOrNull()
+                if (id.isNotBlank() && dx != null && dy != null) {
+                    map[id] = Pair(dx, dy)
+                    if (id.startsWith("cmp_")) map["cmp:" + id.removePrefix("cmp_")] = Pair(dx, dy)
+                    if (id.startsWith("exp_")) map["exp:" + id.removePrefix("exp_")] = Pair(dx, dy)
+                }
+            }
+        }
+    }
+    return map
 }

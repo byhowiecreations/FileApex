@@ -309,23 +309,25 @@ private fun WideTopBar(
                 iconTint = fileApexChromeContentColor()
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Surface(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .clickable(onClick = onExitClick),
-            shape = CircleShape,
-            color = Color(0x3300E676),
-            border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Filled.PowerSettingsNew,
-                    contentDescription = "Exit FileApex",
-                    tint = Color(0xFF00E676),
-                    modifier = Modifier.size(20.dp)
-                )
+        if (com.fileapex.cloud.currentPlatformLabel() != "Android") {
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onExitClick),
+                shape = CircleShape,
+                color = Color(0x3300E676),
+                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.PowerSettingsNew,
+                        contentDescription = "Exit FileApex",
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
