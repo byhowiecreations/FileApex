@@ -25,10 +25,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.FileApexBottomBar
+import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
@@ -85,14 +91,7 @@ fun CompactPrimaryShell(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // In content — not Scaffold topBar (Compose Desktop collapses an empty topBar slot).
-            if (!isCustomGlass) {
-                CompactTealStrip(
-                    showExitPower = showExitPower,
-                    onExitClick = onExitApp,
-                    actions = tealStripActions
-                )
-            }
+            // Omit separate top teal strip so Default theme matches Flux Glass unified header structure.
             content()
         }
     }
@@ -104,35 +103,8 @@ fun CompactTealStrip(
     onExitClick: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
-    val isDesktopTarget = com.fileapex.cloud.currentPlatformLabel() != "Android"
-    if (isCustomGlass || !isDesktopTarget) return
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(CompactHomeChrome.tealStripHeight)
-            .fileApexChromeBottomEdge()
-            .background(fileApexChromeContainerColor())
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End
-    ) {
-        actions()
-        if (showExitPower) {
-            IconButton(onClick = onExitClick) {
-                Icon(
-                    imageVector = Icons.Filled.PowerSettingsNew,
-                    contentDescription = "Exit FileApex",
-                    tint = fileApexChromeContentColor()
-                )
-            }
-        } else {
-            // Reserve the same trailing space as the Devices power button row.
-            Spacer(modifier = Modifier.size(48.dp))
-        }
-    }
+    // Disabled to unify header band across themes.
+    return
 }
 
 /** Layout style for [CompactHomeTitleBand]. */
@@ -153,10 +125,16 @@ fun FluxGlassHeader(
     onCloseService: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val titleColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
+    val subtitleColor = if (isCustomGlass) Color.White.copy(alpha = 0.72f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val accentTint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.Transparent)
+            .background(if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -169,7 +147,7 @@ fun FluxGlassHeader(
                     fontSize = 34.sp,
                     letterSpacing = (-0.5).sp
                 ),
-                color = Color.White
+                color = titleColor
             )
             if (!secondaryTitle.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -179,7 +157,7 @@ fun FluxGlassHeader(
                         fontWeight = FontWeight.Medium,
                         fontSize = 18.sp
                     ),
-                    color = Color.White.copy(alpha = 0.72f)
+                    color = subtitleColor
                 )
             }
         }
@@ -200,7 +178,7 @@ fun FluxGlassHeader(
                     Icon(
                         imageVector = Icons.Filled.GridView,
                         contentDescription = "Layout View",
-                        tint = Color(0xFF00E676),
+                        tint = accentTint,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
@@ -211,35 +189,30 @@ fun FluxGlassHeader(
                             lineHeight = 13.sp,
                             textAlign = TextAlign.Center
                         ),
-                        color = Color.White.copy(alpha = 0.85f)
+                        color = titleColor.copy(alpha = 0.85f)
                     )
                 }
             }
 
             val allowPowerOnDesktop = showCloseService && com.fileapex.cloud.currentPlatformLabel() != "Android"
             if (allowPowerOnDesktop && onCloseService != null) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Surface(
                     modifier = Modifier
-                        .clickable(onClick = onCloseService)
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onCloseService),
+                    shape = CircleShape,
+                    color = Color(0x3300E676),
+                    border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.PowerSettingsNew,
-                        contentDescription = "Close Service",
-                        tint = Color(0xFF00E676),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Close\nService",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
-                            textAlign = TextAlign.Center
-                        ),
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.PowerSettingsNew,
+                            contentDescription = "Exit FileApex",
+                            tint = Color(0xFF00E676),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -255,26 +228,16 @@ fun CompactDevicesTitleBand(
     onCloseService: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
     val allowLayoutView = showLayoutView && currentTheme != AppTheme.KINETIC_SPHERE
-    if (isCustomGlass) {
-        FluxGlassHeader(
-            primaryTitle = "FileApex",
-            secondaryTitle = "Paired Devices",
-            showLayoutView = allowLayoutView,
-            onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
-            showCloseService = showCloseService,
-            onCloseService = onCloseService,
-            actions = actions
-        )
-    } else {
-        CompactHomeTitleBand(
-            primaryLine = "FileApex",
-            secondaryLine = "Paired Devices",
-            style = CompactHomeTitleStyle.Prominent,
-            actions = actions
-        )
-    }
+    FluxGlassHeader(
+        primaryTitle = "FileApex",
+        secondaryTitle = "Paired Devices",
+        showLayoutView = allowLayoutView,
+        onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
+        showCloseService = showCloseService,
+        onCloseService = onCloseService,
+        actions = actions
+    )
 }
 
 @Composable

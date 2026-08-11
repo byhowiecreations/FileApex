@@ -315,8 +315,8 @@ fun DevicesScreen(
                     actions = deviceOrderHeaderActions,
                     showLayoutView = true,
                     onToggleLayoutView = { FileApexServices.settings.setDevicesViewMode(viewMode.toggled()) },
-                    showCloseService = false,
-                    onCloseService = {}
+                    showCloseService = true,
+                    onCloseService = onExitApp
                 )
             }
             if (isKineticSphere && !editMode) {

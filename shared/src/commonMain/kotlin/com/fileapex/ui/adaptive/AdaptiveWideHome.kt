@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -26,8 +28,11 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,6 +105,29 @@ fun AdaptiveWideHome(
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     onOpenTransferQueue: () -> Unit = {}
 ) {
+    val state by devicesViewModel.uiState.collectAsState()
+    val deviceRows by devicesViewModel.deviceRows.collectAsState()
+    val editMode = state.deviceOrderEditMode
+
+    val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
+        if (editMode) {
+            TextButton(onClick = devicesViewModel::revertDeviceOrderInEditMode) {
+                Text("Revert", color = fileApexChromeContentColor())
+            }
+            TextButton(onClick = devicesViewModel::saveDeviceOrderAndExitEditMode) {
+                Text("Done", color = fileApexChromeContentColor())
+            }
+        } else if (deviceRows.isNotEmpty()) {
+            IconButton(onClick = devicesViewModel::enterDeviceOrderEditMode) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = "Reorder devices",
+                    tint = fileApexChromeContentColor()
+                )
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         WideTopBar(
             onExitClick = onExitApp,
@@ -109,7 +137,8 @@ fun AdaptiveWideHome(
             onToggleDevicesViewMode = onToggleDevicesViewMode,
             explorerViewMode = explorerViewMode,
             onToggleExplorerViewMode = onToggleExplorerViewMode,
-            onOpenTransferQueue = onOpenTransferQueue
+            onOpenTransferQueue = onOpenTransferQueue,
+            deviceOrderHeaderActions = deviceOrderHeaderActions
         )
         Row(modifier = Modifier.fillMaxSize()) {
             FileApexNavigationRail(
@@ -261,7 +290,8 @@ private fun WideTopBar(
     onToggleDevicesViewMode: () -> Unit,
     explorerViewMode: ExplorerViewMode,
     onToggleExplorerViewMode: () -> Unit,
-    onOpenTransferQueue: () -> Unit = {}
+    onOpenTransferQueue: () -> Unit = {},
+    deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {}
 ) {
     val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
     val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail && !isKineticSphere
@@ -297,6 +327,8 @@ private fun WideTopBar(
             iconTint = fileApexChromeContentColor()
         )
         if (showDevicesViewToggle) {
+            deviceOrderHeaderActions()
+            Spacer(modifier = Modifier.width(4.dp))
             ExplorerViewModeToggle(
                 viewMode = devicesViewMode,
                 onToggle = onToggleDevicesViewMode,
