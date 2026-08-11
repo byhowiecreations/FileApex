@@ -276,6 +276,7 @@ object GoogleLinkCoordinator {
         scope.launch {
             if (!isSessionLive(epoch)) return@launch
             runCatching {
+                reconcileAndSyncDevices(uid)
                 FileApexServices.deviceRepositoryOrNull()?.reconcileDuplicateEndpoints()
             }.onFailure { error ->
                 println("GoogleLinkCoordinator: reconcile failed — ${error.message}")
@@ -302,6 +303,103 @@ object GoogleLinkCoordinator {
         scope.launch {
             if (!isSessionLive(epoch)) return@launch
             refreshDiagnosticsCloudRelay(uid, selfId)
+        }
+    }
+
+    /**
+     * Executes 14-day automated stale device pruning and device reconciliation:
+     * 1. Primary Match: Matches existing Firestore records via static hardwareFingerprint.
+     * 2. Fallback Migration Match: One-time legacy match via deviceName.
+     * 3. Consolidation & Cleanup: Keeps the most recently active record, updates with local deviceId,
+     *    fcmToken, and fingerprint as SSOT, and deletes all duplicate/orphaned documents.
+     */
+    suspend fun reconcileAndSyncDevices(uid: String) {
+        if (uid.isBlank()) return
+        val selfId = loadLocalIdentity().deviceId
+        val selfFingerprint = com.fileapex.platform.localHardwareFingerprint()
+        val selfName = LocalDeviceNameStore.current().ifBlank { loadLocalIdentity().deviceName }
+        val now = System.currentTimeMillis()
+        val fourteenDaysMs = 14L * 24 * 3600 * 1000L
+        val staleCutoffMs = now - fourteenDaysMs
+
+        runCatching {
+            val allRecords = CloudAuthBackend.fetchAllUserDevices(uid)
+            if (allRecords.isEmpty()) {
+                registerSelf(uid)
+                return
+            }
+
+            // 1. Automated Stale Device Pruning: Purge devices inactive >14 days
+            val activeRecords = mutableListOf<CloudDeviceRecord>()
+            for (record in allRecords) {
+                val isStale = record.updatedAtEpochMs > 0L && record.updatedAtEpochMs < staleCutoffMs
+                if (isStale && record.deviceId != selfId) {
+                    println("GoogleLinkCoordinator: Pruning 14-day stale device doc ${record.deviceId} (${record.deviceName})")
+                    CloudAuthBackend.deleteDevice(uid, record.deviceId)
+                } else {
+                    activeRecords.add(record)
+                }
+            }
+
+            // 2. Primary Match (Hardware Fingerprint)
+            val primaryMatches = activeRecords.filter { record ->
+                val fp = record.hardwareFingerprint
+                fp.isNotEmpty() &&
+                    fp["manufacturer"] == selfFingerprint["manufacturer"] &&
+                    fp["model"] == selfFingerprint["model"] &&
+                    fp["device"] == selfFingerprint["device"] &&
+                    fp["board"] == selfFingerprint["board"]
+            }
+
+            // 3. Fallback Migration Match (Legacy Cleanup via deviceName)
+            val fallbackMatches = if (primaryMatches.isEmpty()) {
+                activeRecords.filter { record ->
+                    record.deviceName.isNotBlank() &&
+                        record.deviceName.equals(selfName.trim(), ignoreCase = true)
+                }
+            } else {
+                emptyList()
+            }
+
+            val matchingRecords = if (primaryMatches.isNotEmpty()) primaryMatches else fallbackMatches
+
+            if (matchingRecords.isNotEmpty()) {
+                // Pick most recently active document
+                val sortedMatches = matchingRecords.sortedByDescending { it.updatedAtEpochMs }
+                val bestMatch = sortedMatches.first()
+
+                // Purge duplicate/orphaned documents
+                val duplicates = activeRecords.filter { record ->
+                    record.deviceId != selfId &&
+                        (matchingRecords.any { it.deviceId == record.deviceId } ||
+                            (record.deviceName.isNotBlank() && record.deviceName.equals(selfName.trim(), ignoreCase = true)))
+                }.filter { it.deviceId != bestMatch.deviceId }
+
+                for (duplicate in duplicates) {
+                    println("GoogleLinkCoordinator: Deleting duplicate document ${duplicate.deviceId} (${duplicate.deviceName})")
+                    CloudAuthBackend.deleteDevice(uid, duplicate.deviceId)
+                }
+
+                // If bestMatch doc ID differs from local selfId, remove old doc ID after migration
+                if (bestMatch.deviceId != selfId) {
+                    println("GoogleLinkCoordinator: Migrating old doc ${bestMatch.deviceId} -> $selfId")
+                    CloudAuthBackend.deleteDevice(uid, bestMatch.deviceId)
+                }
+
+                // Consolidate SSOT record under selfId
+                val consolidatedRecord = buildSelfRecord().copy(
+                    deviceName = bestMatch.deviceName.ifBlank { selfName }
+                )
+                CloudAuthBackend.registerDevice(uid, consolidatedRecord)
+                lastPublishedPresence = buildSelfPresence().copy(
+                    updatedAtEpochMs = consolidatedRecord.updatedAtEpochMs
+                )
+            } else {
+                // First-time registration
+                registerSelf(uid)
+            }
+        }.onFailure { error ->
+            println("GoogleLinkCoordinator: reconcileAndSyncDevices error — ${error.message}")
         }
     }
 
@@ -360,7 +458,8 @@ object GoogleLinkCoordinator {
             platform = presence.platform,
             clientVersion = presence.clientVersion,
             clientVersionCode = presence.clientVersionCode,
-            updatedAtEpochMs = presence.updatedAtEpochMs
+            updatedAtEpochMs = presence.updatedAtEpochMs,
+            hardwareFingerprint = presence.hardwareFingerprint
         )
     }
 
@@ -379,7 +478,8 @@ object GoogleLinkCoordinator {
             clientVersionCode = currentAppVersionCode(),
             updatedAtEpochMs = TimestampDiagnostics.mutatingNow(
                 "GoogleLinkCoordinator.buildSelfPresence.updatedAtEpochMs"
-            )
+            ),
+            hardwareFingerprint = com.fileapex.platform.localHardwareFingerprint()
         )
     }
 

@@ -62,6 +62,9 @@ expect object CloudAuthBackend {
     /** Fresh read of a cloud registry device row (bypasses in-memory cache). */
     suspend fun fetchCloudDeviceRecord(uid: String, deviceId: String): CloudDeviceRecord?
 
+    /** Fetches all user device records from Firestore for reconciliation and stale pruning. */
+    suspend fun fetchAllUserDevices(uid: String): List<CloudDeviceRecord>
+
     /**
      * Observes pending diagnostics relay requests targeting [responderDeviceId].
      */

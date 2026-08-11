@@ -299,25 +299,7 @@ fun DevicesScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            if (usesOwnChrome) {
-                HomeTopBar(
-                    onExitClick = { confirmExit = true },
-                    headerActions = deviceOrderHeaderActions
-                )
-            }
-        },
-        bottomBar = {
-            if (usesOwnChrome) {
-                FileApexBottomBar(
-                    selected = HomeTab.Devices,
-                    onDevices = {},
-                    onFiles = onOpenLocalFiles,
-                    onSettings = onOpenSettings
-                )
-            }
-        }
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
         Column(
@@ -325,20 +307,13 @@ fun DevicesScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (embeddedInCompactShell && !isListPane) {
+            if (embeddedInCompactShell && !isListPane && !isKineticSphere) {
                 CompactDevicesTitleBand(
-                    actions = if (isKineticSphere) { {} } else deviceOrderHeaderActions,
-                    showLayoutView = !isKineticSphere,
+                    actions = deviceOrderHeaderActions,
+                    showLayoutView = true,
                     onToggleLayoutView = { FileApexServices.settings.setDevicesViewMode(viewMode.toggled()) },
-                    showCloseService = true,
-                    onCloseService = { confirmExit = true }
-                )
-
-            }
-            if (isListPane) {
-                FileApexPaneSectionHeader(
-                    title = "Paired Devices",
-                    actions = deviceOrderHeaderActions
+                    showCloseService = false,
+                    onCloseService = {}
                 )
             }
             if (isKineticSphere && !editMode) {

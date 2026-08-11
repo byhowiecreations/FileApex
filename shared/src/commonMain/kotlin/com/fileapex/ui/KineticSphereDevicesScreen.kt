@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -39,10 +41,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.fileapex.di.FileApexServices
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -55,6 +59,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -113,7 +118,7 @@ fun KineticSphereDevicesView(
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
         val centerX = widthPx / 2f
-        val centerY = heightPx * 0.44f
+        val centerY = heightPx * 0.50f
         val hubCenter = Offset(centerX, centerY)
 
         val nodeCount = deviceRows.size
@@ -133,6 +138,7 @@ fun KineticSphereDevicesView(
         // Pre-compute STATIC coordinates with collision guard, hub distance clearance & orbital radius staggering
         val staticNodePositions = remember(deviceRows, widthPx, heightPx, baseRadiusPx) {
             val marginPx = with(density) { 70.dp.toPx() }
+            val topMarginPx = with(density) { 55.dp.toPx() }
             val minDistancePx = with(density) { 135.dp.toPx() }
             val minHubDistancePx = with(density) { 138.dp.toPx() }
 
@@ -167,7 +173,7 @@ fun KineticSphereDevicesView(
                 }
 
                 cx = cx.coerceIn(marginPx, widthPx - marginPx)
-                cy = cy.coerceIn(marginPx, heightPx - marginPx)
+                cy = cy.coerceIn(topMarginPx, heightPx - marginPx)
                 Offset(cx, cy)
             }.toMutableList()
 
@@ -185,9 +191,9 @@ fun KineticSphereDevicesView(
                             val nx = dx / dist
                             val ny = dy / dist
                             val newIx = (posI.x - nx * overlap).coerceIn(marginPx, widthPx - marginPx)
-                            val newIy = (posI.y - ny * overlap).coerceIn(marginPx, heightPx - marginPx)
+                            val newIy = (posI.y - ny * overlap).coerceIn(topMarginPx, heightPx - marginPx)
                             val newJx = (posJ.x + nx * overlap).coerceIn(marginPx, widthPx - marginPx)
-                            val newJy = (posJ.y + ny * overlap).coerceIn(marginPx, heightPx - marginPx)
+                            val newJy = (posJ.y + ny * overlap).coerceIn(topMarginPx, heightPx - marginPx)
                             rawPositions[i] = Offset(newIx, newIy)
                             rawPositions[j] = Offset(newJx, newJy)
                         }
@@ -195,6 +201,41 @@ fun KineticSphereDevicesView(
                 }
             }
             rawPositions
+        }
+
+        val isExpandedDisplay = maxWidth >= 600.dp
+        val layoutScopePrefix = if (isExpandedDisplay) "exp:" else "cmp:"
+
+        val persistedNodeOffsets by FileApexServices.settings.kineticNodeOffsets.collectAsState()
+
+        // Compute live node positions with user drag offsets, boundary constraints, and hub clearance
+        val effectiveNodePositions = remember(staticNodePositions, persistedNodeOffsets, deviceRows, widthPx, heightPx, layoutScopePrefix) {
+            val marginPx = with(density) { 70.dp.toPx() }
+            val topMarginPx = with(density) { 55.dp.toPx() }
+            val minHubDistancePx = with(density) { 138.dp.toPx() }
+
+            staticNodePositions.mapIndexed { index, staticPos ->
+                val row = deviceRows.getOrNull(index) ?: return@mapIndexed staticPos
+                val scopedKey = layoutScopePrefix + row.deviceId
+                val offsetPair = persistedNodeOffsets[scopedKey] ?: persistedNodeOffsets[row.deviceId]
+                val dragOffset = if (offsetPair != null) Offset(offsetPair.first, offsetPair.second) else Offset.Zero
+                var cx = staticPos.x + dragOffset.x
+                var cy = staticPos.y + dragOffset.y
+
+                // Hub Clearance Guard — Ensure dragged node maintains hub clearance
+                val hubDx = cx - centerX
+                val hubDy = cy - centerY
+                val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
+                if (hubDist < minHubDistancePx && hubDist > 0.001f) {
+                    val factor = minHubDistancePx / hubDist
+                    cx = centerX + (hubDx * factor)
+                    cy = centerY + (hubDy * factor)
+                }
+
+                cx = cx.coerceIn(marginPx, widthPx - marginPx)
+                cy = cy.coerceIn(topMarginPx, heightPx - marginPx)
+                Offset(cx, cy)
+            }
         }
 
         // 1. Spatial Deep-Space Canvas with Continuous Glowing Elliptical Orbits & Dynamic Beams
@@ -241,8 +282,8 @@ fun KineticSphereDevicesView(
                 drawCircle(color = Color.White.copy(alpha = 0.4f), radius = 2f, center = star)
             }
 
-            // Connecting Dynamic Beams from Hub to Static Nodes
-            staticNodePositions.forEachIndexed { index, pos ->
+            // Connecting Dynamic Beams from Hub to Nodes
+            effectiveNodePositions.forEachIndexed { index, pos ->
                 val row = deviceRows.getOrNull(index) ?: return@forEachIndexed
                 val beamColor = if (row.online) Color(0x5500E676) else Color(0x44FFC107)
                 drawLine(
@@ -347,13 +388,33 @@ fun KineticSphereDevicesView(
                         onScanQr()
                     }
                 )
+                if (persistedNodeOffsets.isNotEmpty()) {
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFB74D),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(text = "Reset Node Layout", color = Color.White)
+                            }
+                        },
+                        onClick = {
+                            addMenuOpen = false
+                            FileApexServices.settings.resetKineticNodeOffsets()
+                        }
+                    )
+                }
             }
         }
 
         // 3. Render Node Orbs and Device Labels First
         if (nodeCount > 0) {
             deviceRows.forEachIndexed { index, row ->
-                val pos = staticNodePositions.getOrNull(index) ?: return@forEachIndexed
+                val pos = effectiveNodePositions.getOrNull(index) ?: return@forEachIndexed
                 val nodeCx = pos.x
                 val nodeCy = pos.y
 
@@ -376,7 +437,7 @@ fun KineticSphereDevicesView(
                 val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFC107)
                 var dropHover by remember { mutableStateOf(false) }
 
-                // 3a. Node Orb — Centered at static (nodeCx, nodeCy). Enlarges smoothly in place when selected!
+                // 3a. Node Orb — Centered at (nodeCx, nodeCy). Draggable & enlarges smoothly in place when selected!
                 Box(
                     modifier = Modifier
                         .offset {
@@ -405,6 +466,21 @@ fun KineticSphereDevicesView(
                             ),
                             CircleShape
                         )
+                        .pointerInput(row.deviceId, layoutScopePrefix) {
+                            detectDragGestures(
+                                onDragStart = { activeRadialNodeId = null },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val scopedKey = layoutScopePrefix + row.deviceId
+                                    val currentPair = persistedNodeOffsets[scopedKey]
+                                        ?: persistedNodeOffsets[row.deviceId]
+                                        ?: Pair(0f, 0f)
+                                    val newDx = currentPair.first + dragAmount.x
+                                    val newDy = currentPair.second + dragAmount.y
+                                    FileApexServices.settings.setKineticNodeOffset(scopedKey, newDx, newDy)
+                                }
+                            )
+                        }
                         .clickable {
                             activeRadialNodeId = if (isFocused) null else row.deviceId
                         },
@@ -462,7 +538,7 @@ fun KineticSphereDevicesView(
                 val activeIndex = deviceRows.indexOfFirst { it.deviceId == activeId }
                 if (activeIndex != -1) {
                     val row = deviceRows[activeIndex]
-                    val pos = staticNodePositions.getOrNull(activeIndex)
+                    val pos = effectiveNodePositions.getOrNull(activeIndex)
                     if (pos != null) {
                         KineticGlassActionCapsule(
                             centerPx = pos,

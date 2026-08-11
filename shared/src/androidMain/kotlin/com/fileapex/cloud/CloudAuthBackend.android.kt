@@ -50,7 +50,8 @@ actual object CloudAuthBackend {
             "platform" to record.platform,
             "clientVersion" to record.clientVersion,
             "clientVersionCode" to record.clientVersionCode,
-            "updatedAtEpochMs" to record.updatedAtEpochMs
+            "updatedAtEpochMs" to record.updatedAtEpochMs,
+            "hardwareFingerprint" to record.hardwareFingerprint
         )
         deviceDoc(uid, record.deviceId)
             .set(data, SetOptions.merge())
@@ -67,7 +68,8 @@ actual object CloudAuthBackend {
             "platform" to presence.platform,
             "clientVersion" to presence.clientVersion,
             "clientVersionCode" to presence.clientVersionCode,
-            "updatedAtEpochMs" to presence.updatedAtEpochMs
+            "updatedAtEpochMs" to presence.updatedAtEpochMs,
+            "hardwareFingerprint" to presence.hardwareFingerprint
         )
         val ref = deviceDoc(uid, presence.deviceId)
         runCatching {
@@ -173,6 +175,18 @@ actual object CloudAuthBackend {
         @Suppress("UNCHECKED_CAST")
         val data = snapshot.data as? Map<String, Any?> ?: return null
         return CloudDeviceRecordParsing.fromFirestoreMap(data, snapshot.id)
+    }
+
+    actual suspend fun fetchAllUserDevices(uid: String): List<CloudDeviceRecord> {
+        val snapshot = FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection("devices")
+            .get().await()
+        return snapshot.documents.mapNotNull { doc ->
+            @Suppress("UNCHECKED_CAST")
+            val data = doc.data as? Map<String, Any?> ?: return@mapNotNull null
+            CloudDeviceRecordParsing.fromFirestoreMap(data, doc.id)
+        }
     }
 
     actual fun observeDiagnosticsRelayInbox(

@@ -32,6 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -59,6 +64,9 @@ import com.fileapex.ui.theme.fileApexNavSelectedTextColor
 import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
 import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import com.fileapex.ui.theme.fileApexNavigationRailItemColors
+
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.LocalAppTheme
 
 /**
  * Medium / Expanded home: teal navigation rail + list-detail (devices | explorer).
@@ -122,6 +130,7 @@ fun AdaptiveWideHome(
                 },
                 onSettings = { onSelectTab(HomeTab.Settings) }
             )
+            val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
             when (selectedTab) {
                 HomeTab.Settings -> {
                     Surface(
@@ -148,11 +157,11 @@ fun AdaptiveWideHome(
                         )
                     }
                 }
-                HomeTab.Devices, HomeTab.Files -> {
-                    Row(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                HomeTab.Devices -> {
+                    if (isKineticSphere && selectedTarget == null) {
                         Surface(
                             modifier = Modifier
-                                .weight(0.35f)
+                                .weight(1f)
                                 .fillMaxHeight(),
                             color = MaterialTheme.colorScheme.surface
                         ) {
@@ -164,29 +173,78 @@ fun AdaptiveWideHome(
                                 onOpenSettings = { onSelectTab(HomeTab.Settings) },
                                 onExitApp = onExitApp,
                                 viewModel = devicesViewModel,
-                                layoutMode = DevicesScreenLayoutMode.ListPane,
+                                layoutMode = DevicesScreenLayoutMode.FullScreen,
                                 selectedDeviceId = selectedDeviceId
                             )
                         }
-                        VerticalDivider(
-                            thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-                        Box(
+                    } else if (selectedTarget != null && isKineticSphere) {
+                        Surface(
                             modifier = Modifier
-                                .weight(0.65f)
-                                .fillMaxHeight()
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            color = MaterialTheme.colorScheme.surface
                         ) {
-                            val detailTarget = selectedTarget
-                            if (detailTarget == null) {
-                                DetailEmptyState()
-                            } else {
-                                FileExplorerScreen(
-                                    target = detailTarget,
-                                    onBack = onClearDetail
+                            FileExplorerScreen(
+                                target = selectedTarget,
+                                onBack = onClearDetail
+                            )
+                        }
+                    } else {
+                        Row(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            Surface(
+                                modifier = Modifier
+                                    .weight(0.35f)
+                                    .fillMaxHeight(),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                DevicesScreen(
+                                    onOpenDevice = onSelectDevice,
+                                    onOpenLocalFiles = onOpenLocalFiles,
+                                    onGenerateQr = onGenerateQr,
+                                    onScanQr = onScanQr,
+                                    onOpenSettings = { onSelectTab(HomeTab.Settings) },
+                                    onExitApp = onExitApp,
+                                    viewModel = devicesViewModel,
+                                    layoutMode = DevicesScreenLayoutMode.ListPane,
+                                    selectedDeviceId = selectedDeviceId
                                 )
                             }
+                            VerticalDivider(
+                                thickness = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(0.65f)
+                                    .fillMaxHeight()
+                            ) {
+                                val detailTarget = selectedTarget
+                                if (detailTarget == null) {
+                                    DetailEmptyState()
+                                } else {
+                                    FileExplorerScreen(
+                                        target = detailTarget,
+                                        onBack = onClearDetail
+                                    )
+                                }
+                            }
                         }
+                    }
+                }
+                HomeTab.Files -> {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        val localTarget = (selectedTarget as? BrowseTarget.Local)
+                            ?: devicesViewModel.thisDeviceTarget()
+                        FileExplorerScreen(
+                            target = localTarget,
+                            onBack = onClearDetail,
+                            titleOverride = "Local Files"
+                        )
                     }
                 }
             }
@@ -205,22 +263,35 @@ private fun WideTopBar(
     onToggleExplorerViewMode: () -> Unit,
     onOpenTransferQueue: () -> Unit = {}
 ) {
-    val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail
+    val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
+    val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail && !isKineticSphere
     val showExplorerViewToggle = selectedTab == HomeTab.Files || hasActiveDetail
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .fileApexChromeBottomEdge()
             .background(fileApexChromeContainerColor())
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "FileApex",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-            color = fileApexChromeContentColor(),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
-        )
+        ) {
+            Text(
+                text = "FileApex",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = fileApexChromeContentColor()
+            )
+            if (selectedTab == HomeTab.Devices && !hasActiveDetail) {
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Paired Devices",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = fileApexChromeContentColor().copy(alpha = 0.85f)
+                )
+            }
+        }
         QueuedFilesButton(
             onClick = onOpenTransferQueue,
             iconTint = fileApexChromeContentColor()
@@ -238,12 +309,24 @@ private fun WideTopBar(
                 iconTint = fileApexChromeContentColor()
             )
         }
-        IconButton(onClick = onExitClick) {
-            Icon(
-                imageVector = Icons.Filled.PowerSettingsNew,
-                contentDescription = "Exit FileApex",
-                tint = fileApexChromeContentColor()
-            )
+        Spacer(modifier = Modifier.width(8.dp))
+        Surface(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onExitClick),
+            shape = CircleShape,
+            color = Color(0x3300E676),
+            border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Filled.PowerSettingsNew,
+                    contentDescription = "Exit FileApex",
+                    tint = Color(0xFF00E676),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -257,30 +340,40 @@ fun FileApexNavigationRail(
     onSettings: () -> Unit
 ) {
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
-    NavigationRail(
-        modifier = Modifier.fillMaxHeight(),
-        containerColor = fileApexChromeContainerColor(),
-        contentColor = fileApexChromeContentColor(),
-        header = { Spacer(modifier = Modifier.height(8.dp)) }
-    ) {
-        RailItem(
-            selected = selected == HomeTab.Devices,
-            onClick = onDevices,
-            icon = Icons.Filled.Devices,
-            label = devicesLabel
-        )
-        RailItem(
-            selected = selected == HomeTab.Files,
-            onClick = onFiles,
-            icon = Icons.Filled.Folder,
-            label = "Local Files"
-        )
-        RailItem(
-            selected = selected == HomeTab.Settings,
-            onClick = onSettings,
-            icon = Icons.Filled.Settings,
-            label = "Settings"
-        )
+    BoxWithConstraints(modifier = Modifier.fillMaxHeight()) {
+        val isPortrait = maxHeight > maxWidth
+        NavigationRail(
+            modifier = Modifier.fillMaxHeight(),
+            containerColor = fileApexChromeContainerColor(),
+            contentColor = fileApexChromeContentColor()
+        ) {
+            if (isPortrait) {
+                Spacer(modifier = Modifier.weight(1f))
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            RailItem(
+                selected = selected == HomeTab.Devices,
+                onClick = onDevices,
+                icon = Icons.Filled.Devices,
+                label = devicesLabel
+            )
+            RailItem(
+                selected = selected == HomeTab.Files,
+                onClick = onFiles,
+                icon = Icons.Filled.Folder,
+                label = "Local Files"
+            )
+            RailItem(
+                selected = selected == HomeTab.Settings,
+                onClick = onSettings,
+                icon = Icons.Filled.Settings,
+                label = "Settings"
+            )
+            if (isPortrait) {
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
     }
 }
 

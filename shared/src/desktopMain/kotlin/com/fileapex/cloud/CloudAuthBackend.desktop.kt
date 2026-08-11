@@ -119,7 +119,8 @@ actual object CloudAuthBackend {
             platform = record.platform,
             clientVersion = record.clientVersion,
             clientVersionCode = record.clientVersionCode,
-            updatedAtEpochMs = record.updatedAtEpochMs
+            updatedAtEpochMs = record.updatedAtEpochMs,
+            hardwareFingerprint = record.hardwareFingerprint
         )
         patchOrCreateDocument(
             token = token,
@@ -136,7 +137,8 @@ actual object CloudAuthBackend {
                 "platform",
                 "clientVersion",
                 "clientVersionCode",
-                "updatedAtEpochMs"
+                "updatedAtEpochMs",
+                "hardwareFingerprint"
             )
         )
     }
@@ -171,6 +173,7 @@ actual object CloudAuthBackend {
                             put("integerValue", presence.updatedAtEpochMs.toString())
                         }
                     )
+                    put("hardwareFingerprint", encodeHardwareFingerprintToFirestore(presence.hardwareFingerprint))
                 }
             )
         }
@@ -188,7 +191,8 @@ actual object CloudAuthBackend {
                 "platform",
                 "clientVersion",
                 "clientVersionCode",
-                "updatedAtEpochMs"
+                "updatedAtEpochMs",
+                "hardwareFingerprint"
             )
         )
     }
@@ -425,6 +429,21 @@ actual object CloudAuthBackend {
         return parseCloudDeviceDocument(doc)
     }
 
+    actual suspend fun fetchAllUserDevices(uid: String): List<CloudDeviceRecord> {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val url =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/devices"
+        val response = client.get(url) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        if (!response.status.isSuccess()) return emptyList()
+        val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
+        val docsEl = body["documents"] as? JsonArray ?: return emptyList()
+        return docsEl.mapNotNull { el -> parseCloudDeviceDocument(el.jsonObject) }
+    }
+
     actual fun observeDiagnosticsRelayInbox(
         uid: String,
         responderDeviceId: String,
@@ -586,7 +605,8 @@ actual object CloudAuthBackend {
         platform: String,
         clientVersion: String,
         clientVersionCode: Int,
-        updatedAtEpochMs: Long
+        updatedAtEpochMs: Long,
+        hardwareFingerprint: Map<String, String> = emptyMap()
     ): JsonObject = buildJsonObject {
         put(
             "fields",
@@ -607,6 +627,7 @@ actual object CloudAuthBackend {
                     "updatedAtEpochMs",
                     buildJsonObject { put("integerValue", updatedAtEpochMs.toString()) }
                 )
+                put("hardwareFingerprint", encodeHardwareFingerprintToFirestore(hardwareFingerprint))
             }
         )
     }
@@ -681,6 +702,30 @@ actual object CloudAuthBackend {
         )
     }
 
+    private fun encodeHardwareFingerprintToFirestore(fp: Map<String, String>): JsonObject = buildJsonObject {
+        put(
+            "mapValue",
+            buildJsonObject {
+                put(
+                    "fields",
+                    buildJsonObject {
+                        fp.forEach { (k, v) ->
+                            put(k, buildJsonObject { put("stringValue", v) })
+                        }
+                    }
+                )
+            }
+        )
+    }
+
+    private fun parseHardwareFingerprintFromFirestore(fields: JsonObject): Map<String, String> {
+        val fpEl = fields["hardwareFingerprint"]?.jsonObject ?: return emptyMap()
+        val mapValFields = fpEl["mapValue"]?.jsonObject?.get("fields")?.jsonObject ?: return emptyMap()
+        return mapValFields.entries.associate { (k, v) ->
+            k to (v.jsonObject["stringValue"]?.jsonPrimitive?.contentOrNull.orEmpty())
+        }
+    }
+
     private fun parseCloudDeviceDocument(doc: JsonObject): CloudDeviceRecord? {
         val fields = doc["fields"]?.jsonObject ?: return null
         val documentId = doc["name"]?.jsonPrimitive?.contentOrNull?.substringAfterLast('/').orEmpty()
@@ -698,6 +743,7 @@ actual object CloudAuthBackend {
             put("fcmToken", stringField(fields, "fcmToken"))
             put("diagnosticsPublicKey", stringField(fields, "diagnosticsPublicKey"))
             put("deviceDetailsCloudEnabled", booleanField(fields, "deviceDetailsCloudEnabled"))
+            put("hardwareFingerprint", parseHardwareFingerprintFromFirestore(fields))
         }
         return CloudDeviceRecordParsing.fromFirestoreMap(data, documentId)
     }

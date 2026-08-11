@@ -74,6 +74,9 @@ class BaseAppSettings(
     private val devicesViewModeFlow = MutableStateFlow(
         ExplorerViewMode.fromStorage(store.getString(KEY_DEVICES_VIEW_MODE, ExplorerViewMode.List.name))
     )
+    private val kineticNodeOffsetsFlow = MutableStateFlow(
+        decodeKineticOffsets(store.getString(KEY_KINETIC_NODE_OFFSETS, ""))
+    )
     private val deviceDetailsDisplayPreferencesFlow = MutableStateFlow(
         DeviceDetailsDisplayPreferences.decode(
             store.getString(KEY_DEVICE_DETAILS_DISPLAY, "")
@@ -119,6 +122,8 @@ class BaseAppSettings(
     override val desktopUiStyle: StateFlow<DesktopUiStyle> = desktopUiStyleFlow.asStateFlow()
     override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
     override val devicesViewMode: StateFlow<ExplorerViewMode> = devicesViewModeFlow.asStateFlow()
+    override val kineticNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> =
+        kineticNodeOffsetsFlow.asStateFlow()
     override val deviceDetailsDisplayPreferences: StateFlow<DeviceDetailsDisplayPreferences> =
         deviceDetailsDisplayPreferencesFlow.asStateFlow()
     override val deviceDetailsAllowOverCellular: StateFlow<Boolean> =
@@ -260,6 +265,17 @@ class BaseAppSettings(
         devicesViewModeFlow.value = mode
     }
 
+    override fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float) {
+        val updated = kineticNodeOffsetsFlow.value + (deviceId to Pair(dx, dy))
+        kineticNodeOffsetsFlow.value = updated
+        store.putString(KEY_KINETIC_NODE_OFFSETS, encodeKineticOffsets(updated))
+    }
+
+    override fun resetKineticNodeOffsets() {
+        kineticNodeOffsetsFlow.value = emptyMap()
+        store.putString(KEY_KINETIC_NODE_OFFSETS, "")
+    }
+
     override fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences) {
         val normalized = preferences.normalized()
         store.putString(KEY_DEVICE_DETAILS_DISPLAY, DeviceDetailsDisplayPreferences.encode(normalized))
@@ -322,5 +338,28 @@ class BaseAppSettings(
         const val KEY_DEVICE_DETAILS_DISPLAY = "device_details_display"
         const val KEY_DEVICE_DETAILS_ALLOW_CELLULAR = "device_details_allow_cellular"
         const val KEY_DIAGNOSTICS_PRIVATE_KEY = "diagnostics_private_key_b64"
+        const val KEY_KINETIC_NODE_OFFSETS = "kinetic_node_offsets"
     }
+}
+
+private fun encodeKineticOffsets(offsets: Map<String, Pair<Float, Float>>): String {
+    return offsets.entries.joinToString(";") { (id, pair) ->
+        val cleanId = id.replace(";", "_").replace(":", "_")
+        "$cleanId:${pair.first}:${pair.second}"
+    }
+}
+
+private fun decodeKineticOffsets(encoded: String): Map<String, Pair<Float, Float>> {
+    if (encoded.isBlank()) return emptyMap()
+    return encoded.split(";").mapNotNull { token ->
+        val parts = token.split(":")
+        if (parts.size == 3) {
+            val id = parts[0]
+            val dx = parts[1].toFloatOrNull()
+            val dy = parts[2].toFloatOrNull()
+            if (id.isNotBlank() && dx != null && dy != null) {
+                id to Pair(dx, dy)
+            } else null
+        } else null
+    }.toMap()
 }

@@ -136,17 +136,32 @@ class ExplorerViewModel(
                     )
                 }
                 val listing = browser.listAt(resolved)
-                applyPaneAndContent(
-                    panePath = resolved,
-                    contentPath = resolved,
-                    paneDirectories = listing.directories,
-                    contentDirectories = listing.directories,
-                    contentFiles = listing.files,
-                    selectedFolderPath = null
-                )
+                val topDir = listing.directories.firstOrNull()
+                if (topDir != null) {
+                    val topResolved = browser.resolveWithinRoot(topDir.absolutePath)
+                    val topListing = browser.listAt(topResolved)
+                    applyPaneAndContent(
+                        panePath = resolved,
+                        contentPath = topResolved,
+                        paneDirectories = listing.directories,
+                        contentDirectories = topListing.directories,
+                        contentFiles = topListing.files,
+                        selectedFolderPath = topResolved
+                    )
+                } else {
+                    applyPaneAndContent(
+                        panePath = resolved,
+                        contentPath = resolved,
+                        paneDirectories = listing.directories,
+                        contentDirectories = listing.directories,
+                        contentFiles = listing.files,
+                        selectedFolderPath = null
+                    )
+                }
             }
         }
     }
+
 
     /**
      * Wide left-pane folder: keep sibling list, show that folder's full contents on the right.

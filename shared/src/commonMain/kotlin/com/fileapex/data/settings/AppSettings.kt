@@ -50,6 +50,8 @@ interface AppSettings {
     val explorerViewMode: StateFlow<ExplorerViewMode>
     /** Paired-devices layout (list vs grid). Default [com.fileapex.presentation.ExplorerViewMode.List]. */
     val devicesViewMode: StateFlow<ExplorerViewMode>
+    /** Kinetic Sphere theme custom node drag offsets per device ID. */
+    val kineticNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>>
     /** Device Details popup field order and visibility. */
     val deviceDetailsDisplayPreferences: StateFlow<DeviceDetailsDisplayPreferences>
     /** When true, participate in encrypted cloud Device Details when LAN is unavailable. Default off. */
@@ -98,6 +100,10 @@ interface AppSettings {
     fun setExplorerViewMode(mode: ExplorerViewMode)
 
     fun setDevicesViewMode(mode: ExplorerViewMode)
+
+    fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float)
+
+    fun resetKineticNodeOffsets()
 
     fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences)
 

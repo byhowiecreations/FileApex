@@ -20,7 +20,9 @@ data class CloudDeviceRecord(
     /** Base64 X25519 public key for encrypted diagnostics relay — optional. */
     val diagnosticsPublicKey: String = "",
     /** Peer opted in to encrypted cloud Device Details when LAN is unavailable. */
-    val deviceDetailsCloudEnabled: Boolean = false
+    val deviceDetailsCloudEnabled: Boolean = false,
+    /** Static hardware parameters (manufacturer, model, device, board) for reconciliation. */
+    val hardwareFingerprint: Map<String, String> = emptyMap()
 )
 
 /**
@@ -36,7 +38,8 @@ data class CloudDevicePresence(
     val platform: String,
     val clientVersion: String,
     val clientVersionCode: Int,
-    val updatedAtEpochMs: Long
+    val updatedAtEpochMs: Long,
+    val hardwareFingerprint: Map<String, String> = emptyMap()
 )
 
 data class GoogleAuthSession(

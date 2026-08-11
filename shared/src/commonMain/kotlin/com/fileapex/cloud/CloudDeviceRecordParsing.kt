@@ -23,7 +23,13 @@ object CloudDeviceRecordParsing {
                 ?: 0L,
             fcmToken = data["fcmToken"]?.toString().orEmpty(),
             diagnosticsPublicKey = data["diagnosticsPublicKey"]?.toString().orEmpty(),
-            deviceDetailsCloudEnabled = data["deviceDetailsCloudEnabled"] as? Boolean == true
+            deviceDetailsCloudEnabled = data["deviceDetailsCloudEnabled"] as? Boolean == true,
+            hardwareFingerprint = (data["hardwareFingerprint"] as? Map<*, *>)
+                ?.mapNotNull { (k, v) ->
+                    val key = k?.toString()?.trim() ?: return@mapNotNull null
+                    val valStr = v?.toString()?.trim() ?: return@mapNotNull null
+                    key to valStr
+                }?.toMap().orEmpty()
         )
     }
 }

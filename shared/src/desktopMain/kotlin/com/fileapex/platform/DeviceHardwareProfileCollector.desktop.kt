@@ -37,3 +37,14 @@ private fun readDesktopHardwareModel(): String {
     }.getOrNull()
         ?: System.getProperty("os.arch").orEmpty().trim().ifBlank { "Desktop" }
 }
+
+actual fun localHardwareFingerprint(): Map<String, String> {
+    val profile = localDeviceHardwareProfile()
+    val host = System.getenv("COMPUTERNAME") ?: System.getenv("HOSTNAME") ?: profile.deviceModel
+    return mapOf(
+        "manufacturer" to profile.deviceMake,
+        "model" to profile.deviceModel,
+        "device" to host.trim(),
+        "board" to System.getProperty("os.arch", "x86_64").trim()
+    )
+}
