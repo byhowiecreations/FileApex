@@ -72,6 +72,11 @@ interface AppSettings {
     /** Kinetic Sphere sub-style toggle: show/hide 3D elliptical orbital rings in background. Default true. */
     val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean>
 
+    /** Expanded state for Settings category groups on the Settings root page. */
+    val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean>
+    val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean>
+    val settingsGroupSecurityAccountExpanded: StateFlow<Boolean>
+
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
     fun setGoogleAccountUid(uid: String)
@@ -84,6 +89,9 @@ interface AppSettings {
     fun setKineticSphereCleanMode(enabled: Boolean)
     fun setKineticSphereConnectedLinesEnabled(enabled: Boolean)
     fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean)
+    fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean)
+    fun setSettingsGroupAppearanceBehaviorExpanded(expanded: Boolean)
+    fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean)
 
 
     fun setPinRequiredEnabled(enabled: Boolean)

@@ -30,9 +30,18 @@ import kotlin.math.roundToInt
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -176,6 +185,9 @@ fun SettingsScreen(
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
+            onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
+            onToggleAppearanceBehaviorGroup = viewModel::toggleAppearanceBehaviorGroup,
+            onToggleSecurityAccountGroup = viewModel::toggleSecurityAccountGroup,
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             backgroundPersistence = backgroundPersistence,
             exactAlarmWarningActive = exactAlarmWarningActive
@@ -311,6 +323,9 @@ private fun SettingsRootPage(
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
+    onToggleSystemPerformanceGroup: () -> Unit,
+    onToggleAppearanceBehaviorGroup: () -> Unit,
+    onToggleSecurityAccountGroup: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean
@@ -331,87 +346,104 @@ private fun SettingsRootPage(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = 48.dp)
             ) {
-                SettingsNavItem(
-                    title = "Check for Updates",
-                    subtitle = if (state.checkForUpdatesEnabled) {
-                        UpdateCheckFrequency.label(
-                            state.checkForUpdatesIntervalUnit,
-                            state.checkForUpdatesIntervalAmount
+                SettingsCategoryGroup(
+                    title = "System & App Performance",
+                    expanded = state.systemPerformanceExpanded,
+                    onToggle = onToggleSystemPerformanceGroup
+                ) {
+                    SettingsNavItem(
+                        title = "Check for Updates",
+                        subtitle = if (state.checkForUpdatesEnabled) {
+                            UpdateCheckFrequency.label(
+                                state.checkForUpdatesIntervalUnit,
+                                state.checkForUpdatesIntervalAmount
+                            )
+                        } else {
+                            "Off"
+                        },
+                        onClick = onOpenCheckForUpdates
+                    )
+                    SettingsNavItem(
+                        title = "Background Persistence",
+                        subtitle = backgroundPersistenceSubtitle(
+                            watchdogEnabled = state.enableServiceWatchdog,
+                            backgroundPersistence = backgroundPersistence,
+                            exactAlarmWarningActive = exactAlarmWarningActive
+                        ),
+                        onClick = onOpenBackgroundPersistence
+                    )
+                    if (!usesDesktopFileSelection()) {
+                        SettingsNavItem(
+                            title = "Auto launch on reboot",
+                            subtitle = if (state.autoLaunchOnReboot) "On" else "Off",
+                            onClick = onOpenAutoLaunchOnReboot
                         )
-                    } else {
-                        "Off"
-                    },
-                    onClick = onOpenCheckForUpdates
-                )
-                SettingsNavItem(
-                    title = "PIN required",
-                    subtitle = buildString {
-                        append(if (state.pinRequiredEnabled) "On" else "Off")
-                        append(" · Browse unlock: ")
-                        append(state.pinIdleTimeout.label)
-                    },
-                    onClick = onOpenPinRequired
-                )
-                SettingsNavItem(
-                    title = "Background Persistence",
-                    subtitle = backgroundPersistenceSubtitle(
-                        watchdogEnabled = state.enableServiceWatchdog,
-                        backgroundPersistence = backgroundPersistence,
-                        exactAlarmWarningActive = exactAlarmWarningActive
-                    ),
-                    onClick = onOpenBackgroundPersistence
-                )
-                if (!usesDesktopFileSelection()) {
-                    SettingsNavItem(
-                        title = "Auto launch on reboot",
-                        subtitle = if (state.autoLaunchOnReboot) "On" else "Off",
-                        onClick = onOpenAutoLaunchOnReboot
-                    )
+                    }
                 }
-                SettingsNavItem(
-                    title = "Notifications",
-                    subtitle = if (state.fileTransferNotificationsEnabled || state.liveTransferCapsuleEnabled) "On" else "Off",
-                    onClick = onOpenNotifications
-                )
-                SettingsNavItem(
-                    title = "Themes",
-                    subtitle = state.appTheme.displayName,
-                    onClick = onOpenThemes
-                )
 
-
-                SettingsNavItem(
-                    title = "Clipboard",
-                    subtitle = if (state.clipboardSharingEnabled) "On" else "Off",
-                    onClick = onOpenClipboard
-                )
-
-                SettingsNavItem(
-                    title = "Device Details",
-                    subtitle = "Peer telemetry fields",
-                    onClick = onOpenDeviceDetails
-                )
-                SettingsNavItem(
-                    title = "Google Account",
-                    subtitle = when {
-                        !state.googleAccountLinkEnabled -> "Off"
-                        state.googleAccountEmail.isNotBlank() -> state.googleAccountEmail
-                        else -> "On"
-                    },
-                    onClick = onOpenGoogleAccount
-                )
-                if (usesDesktopFileSelection()) {
+                SettingsCategoryGroup(
+                    title = "Appearance & Behavior",
+                    expanded = state.appearanceBehaviorExpanded,
+                    onToggle = onToggleAppearanceBehaviorGroup
+                ) {
                     SettingsNavItem(
-                        title = "Desktop Layout",
-                        subtitle = state.desktopLayoutMode.label,
-                        onClick = onOpenDesktopLayout
+                        title = "Themes",
+                        subtitle = state.appTheme.displayName,
+                        onClick = onOpenThemes
                     )
-                }
-                if (supportsWindowsFluentDesign()) {
                     SettingsNavItem(
-                        title = "Windows Design",
-                        subtitle = state.desktopUiStyle.label,
-                        onClick = onOpenWindowsDesign
+                        title = "Notifications",
+                        subtitle = if (state.fileTransferNotificationsEnabled || state.liveTransferCapsuleEnabled) "On" else "Off",
+                        onClick = onOpenNotifications
+                    )
+                    SettingsNavItem(
+                        title = "Clipboard",
+                        subtitle = if (state.clipboardSharingEnabled) "On" else "Off",
+                        onClick = onOpenClipboard
+                    )
+                    SettingsNavItem(
+                        title = "Device Details",
+                        subtitle = "Peer telemetry fields",
+                        onClick = onOpenDeviceDetails
+                    )
+                    if (usesDesktopFileSelection()) {
+                        SettingsNavItem(
+                            title = "Desktop Layout",
+                            subtitle = state.desktopLayoutMode.label,
+                            onClick = onOpenDesktopLayout
+                        )
+                    }
+                    if (supportsWindowsFluentDesign()) {
+                        SettingsNavItem(
+                            title = "Windows Design",
+                            subtitle = state.desktopUiStyle.label,
+                            onClick = onOpenWindowsDesign
+                        )
+                    }
+                }
+
+                SettingsCategoryGroup(
+                    title = "Security & Account",
+                    expanded = state.securityAccountExpanded,
+                    onToggle = onToggleSecurityAccountGroup
+                ) {
+                    SettingsNavItem(
+                        title = "PIN required",
+                        subtitle = buildString {
+                            append(if (state.pinRequiredEnabled) "On" else "Off")
+                            append(" · Browse unlock: ")
+                            append(state.pinIdleTimeout.label)
+                        },
+                        onClick = onOpenPinRequired
+                    )
+                    SettingsNavItem(
+                        title = "Google Account",
+                        subtitle = when {
+                            !state.googleAccountLinkEnabled -> "Off"
+                            state.googleAccountEmail.isNotBlank() -> state.googleAccountEmail
+                            else -> "On"
+                        },
+                        onClick = onOpenGoogleAccount
                     )
                 }
             }
@@ -1562,3 +1594,73 @@ private fun ThemesSettingsPage(
 
 private const val VERSION_EASTER_EGG_TAP_COUNT = 5
 private const val VERSION_EASTER_EGG_TAP_WINDOW_MS = 2_000L
+
+@Composable
+private fun CollapsibleCategoryHeader(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val rotationAngle by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 300),
+        label = "ChevronRotation"
+    )
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontSize = 13.sp,
+                letterSpacing = 0.8.sp
+            ),
+            fontWeight = FontWeight.Bold,
+            color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.primary
+        )
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowDown,
+            contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+            modifier = Modifier.rotate(rotationAngle),
+            tint = if (isFluxGlass) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SettingsCategoryGroup(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CollapsibleCategoryHeader(
+            title = title,
+            expanded = expanded,
+            onToggle = onToggle
+        )
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                content()
+            }
+        }
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 4.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+        )
+    }
+}
+

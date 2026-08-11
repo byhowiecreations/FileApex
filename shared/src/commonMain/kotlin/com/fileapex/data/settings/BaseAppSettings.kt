@@ -97,6 +97,15 @@ class BaseAppSettings(
     private val kineticSphereOrbitalRingsFlow = MutableStateFlow(
         store.getBoolean(KEY_KINETIC_SPHERE_ORBITAL_RINGS, !store.getBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, false))
     )
+    private val settingsGroupSystemPerformanceFlow = MutableStateFlow(
+        store.getBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, true)
+    )
+    private val settingsGroupAppearanceBehaviorFlow = MutableStateFlow(
+        store.getBoolean(KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR, true)
+    )
+    private val settingsGroupSecurityAccountFlow = MutableStateFlow(
+        store.getBoolean(KEY_SETTINGS_GROUP_SECURITY_ACCOUNT, true)
+    )
     private val diagnosticsPrivateKeyBase64Stored = MutableStateFlow(
         store.getString(KEY_DIAGNOSTICS_PRIVATE_KEY, "")
     )
@@ -117,6 +126,12 @@ class BaseAppSettings(
     override val kineticSphereCleanMode: StateFlow<Boolean> = kineticSphereCleanModeFlow.asStateFlow()
     override val kineticSphereConnectedLinesEnabled: StateFlow<Boolean> = kineticSphereConnectedLinesFlow.asStateFlow()
     override val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean> = kineticSphereOrbitalRingsFlow.asStateFlow()
+    override val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean> =
+        settingsGroupSystemPerformanceFlow.asStateFlow()
+    override val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean> =
+        settingsGroupAppearanceBehaviorFlow.asStateFlow()
+    override val settingsGroupSecurityAccountExpanded: StateFlow<Boolean> =
+        settingsGroupSecurityAccountFlow.asStateFlow()
 
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
     override val devicePin: StateFlow<String> = pin.asStateFlow()
@@ -213,6 +228,21 @@ class BaseAppSettings(
     override fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean) {
         store.putBoolean(KEY_KINETIC_SPHERE_ORBITAL_RINGS, enabled)
         kineticSphereOrbitalRingsFlow.value = enabled
+    }
+
+    override fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean) {
+        store.putBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, expanded)
+        settingsGroupSystemPerformanceFlow.value = expanded
+    }
+
+    override fun setSettingsGroupAppearanceBehaviorExpanded(expanded: Boolean) {
+        store.putBoolean(KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR, expanded)
+        settingsGroupAppearanceBehaviorFlow.value = expanded
+    }
+
+    override fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean) {
+        store.putBoolean(KEY_SETTINGS_GROUP_SECURITY_ACCOUNT, expanded)
+        settingsGroupSecurityAccountFlow.value = expanded
     }
 
 
@@ -376,6 +406,9 @@ class BaseAppSettings(
         const val KEY_DEVICE_DETAILS_ALLOW_CELLULAR = "device_details_allow_cellular"
         const val KEY_DIAGNOSTICS_PRIVATE_KEY = "diagnostics_private_key_b64"
         const val KEY_KINETIC_NODE_OFFSETS = "kinetic_node_offsets"
+        const val KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE = "settings_group_system_performance_expanded"
+        const val KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR = "settings_group_appearance_behavior_expanded"
+        const val KEY_SETTINGS_GROUP_SECURITY_ACCOUNT = "settings_group_security_account_expanded"
     }
 }
 

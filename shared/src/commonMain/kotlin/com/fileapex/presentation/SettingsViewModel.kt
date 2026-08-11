@@ -52,7 +52,10 @@ data class SettingsUiState(
     val deviceDetailsAllowOverCellular: Boolean = false,
     val kineticSphereCleanMode: Boolean = false,
     val kineticSphereConnectedLinesEnabled: Boolean = true,
-    val kineticSphereOrbitalRingsEnabled: Boolean = true
+    val kineticSphereOrbitalRingsEnabled: Boolean = true,
+    val systemPerformanceExpanded: Boolean = true,
+    val appearanceBehaviorExpanded: Boolean = true,
+    val securityAccountExpanded: Boolean = true
 )
 
 class SettingsViewModel : ViewModel() {
@@ -81,7 +84,10 @@ class SettingsViewModel : ViewModel() {
             deviceDetailsAllowOverCellular = settings.deviceDetailsAllowOverCellular.value,
             kineticSphereCleanMode = settings.kineticSphereCleanMode.value,
             kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
-            kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value
+            kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value,
+            systemPerformanceExpanded = settings.settingsGroupSystemPerformanceExpanded.value,
+            appearanceBehaviorExpanded = settings.settingsGroupAppearanceBehaviorExpanded.value,
+            securityAccountExpanded = settings.settingsGroupSecurityAccountExpanded.value
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -102,6 +108,39 @@ class SettingsViewModel : ViewModel() {
                 _uiState.update { it.copy(kineticSphereOrbitalRingsEnabled = enabled) }
             }
         }
+        viewModelScope.launch {
+            settings.settingsGroupSystemPerformanceExpanded.collect { expanded ->
+                _uiState.update { it.copy(systemPerformanceExpanded = expanded) }
+            }
+        }
+        viewModelScope.launch {
+            settings.settingsGroupAppearanceBehaviorExpanded.collect { expanded ->
+                _uiState.update { it.copy(appearanceBehaviorExpanded = expanded) }
+            }
+        }
+        viewModelScope.launch {
+            settings.settingsGroupSecurityAccountExpanded.collect { expanded ->
+                _uiState.update { it.copy(securityAccountExpanded = expanded) }
+            }
+        }
+    }
+
+    fun toggleSystemPerformanceGroup() {
+        val newExpanded = !_uiState.value.systemPerformanceExpanded
+        settings.setSettingsGroupSystemPerformanceExpanded(newExpanded)
+        _uiState.update { it.copy(systemPerformanceExpanded = newExpanded) }
+    }
+
+    fun toggleAppearanceBehaviorGroup() {
+        val newExpanded = !_uiState.value.appearanceBehaviorExpanded
+        settings.setSettingsGroupAppearanceBehaviorExpanded(newExpanded)
+        _uiState.update { it.copy(appearanceBehaviorExpanded = newExpanded) }
+    }
+
+    fun toggleSecurityAccountGroup() {
+        val newExpanded = !_uiState.value.securityAccountExpanded
+        settings.setSettingsGroupSecurityAccountExpanded(newExpanded)
+        _uiState.update { it.copy(securityAccountExpanded = newExpanded) }
     }
 
     fun setKineticSphereCleanMode(enabled: Boolean) {
