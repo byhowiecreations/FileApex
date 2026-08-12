@@ -27,6 +27,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.network.DesktopShareServerController
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.platform.DesktopAppIcon
+import com.fileapex.platform.DesktopCrashHandler
 import com.fileapex.platform.DesktopJvmStartup
 import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.DesktopScreenGeometry
@@ -57,13 +58,23 @@ private val DesktopWindowMinHeight = 560.dp
 private val DesktopWindowMaxHeight = 900.dp
 
 fun main(args: Array<String>) {
-    if (DesktopSingleInstance.handleSingleInstanceOrHandoff(args)) {
-        return
-    }
-    DesktopJvmStartup.onMainEntry()
-    FileApexServices.beginBootstrap { createFileApexDatabase() }
+    DesktopCrashHandler.install()
+    try {
+        if (DesktopSingleInstance.handleSingleInstanceOrHandoff(args)) {
+            return
+        }
+        DesktopJvmStartup.onMainEntry()
+        FileApexServices.beginBootstrap { createFileApexDatabase() }
 
-    val initialCliSharePayload = parseCliSharePayload(args)
+        val initialCliSharePayload = parseCliSharePayload(args)
+        startDesktopApplication(initialCliSharePayload)
+    } catch (t: Throwable) {
+        DesktopCrashHandler.handleCrash(Thread.currentThread(), t)
+        throw t
+    }
+}
+
+private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload?) {
 
     application {
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }

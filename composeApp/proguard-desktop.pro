@@ -29,3 +29,14 @@
 # sqlite-bundled JNI — native methods are registered by exact name; obfuscation breaks load.
 -keepclasseswithmembers class androidx.sqlite.driver.bundled.** { native <methods>; }
 -keep class androidx.sqlite.driver.bundled.** { *; }
+
+# Preserve ServiceLoader implementations for kotlinx-coroutines (MainDispatcherFactory & Swing)
+-keepdirectories META-INF/services
+-keep class kotlinx.coroutines.internal.MainDispatcherFactory { *; }
+-keep class kotlinx.coroutines.swing.SwingDispatcherFactory { *; }
+-keep class kotlinx.coroutines.swing.** { *; }
+-keep class * implements kotlinx.coroutines.internal.MainDispatcherFactory { *; }
+-keepclassmembers class * implements kotlinx.coroutines.internal.MainDispatcherFactory {
+    public <init>();
+}
+

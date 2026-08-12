@@ -342,6 +342,8 @@ compose.desktop {
         jvmArgs += listOf(
             "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
+            "-Djava.awt.headless=false",
         )
         if (isMacHost()) {
             jvmArgs += listOf(
@@ -368,6 +370,7 @@ compose.desktop {
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
             // Marketing version stays version.md name=; installers are renamed on copy.
             packageVersion = "1.0.$fileapexVersionCode"
+            includeAllModules = true
 
             macOS {
                 iconFile.set(project.file("icons/FileApex.icns"))
@@ -1076,7 +1079,11 @@ tasks.register("verifyDesktopPackagingTasks") {
             }
             if (isWindowsHost()) {
                 add("createReleaseDistributable")
-                add("packageReleaseMsi")
+                if (tasks.findByName("packageReleaseMsi") != null) {
+                    add("packageReleaseMsi")
+                } else {
+                    add("packageInnoExe")
+                }
             }
         }
         requiredTasks.forEach { taskName ->

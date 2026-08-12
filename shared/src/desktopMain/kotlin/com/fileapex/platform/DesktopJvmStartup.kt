@@ -6,6 +6,7 @@ package com.fileapex.platform
  */
 object DesktopJvmStartup {
     fun onMainEntry() {
+        DesktopCrashHandler.install()
         configureWindowsSkikoRendering()
         if (DesktopPlatformPaths.isMacOs()) {
             MacOsExtensionRegistrar.registerOnLaunchDeferred()
