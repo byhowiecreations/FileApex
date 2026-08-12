@@ -9,7 +9,7 @@ AppVersion={#AppVersion}
 AppPublisher=ByHowieCreations
 AppComments=A local-first P2P file sharing app
 AppMutex=FileApex
-DefaultDirName={autopf}\FileApex
+DefaultDirName={code:GetDefaultInstallDir}
 DefaultGroupName=FileApex
 UninstallDisplayIcon={app}\FileApex.exe
 Compression=lzma2/ultra64
@@ -40,6 +40,7 @@ Name: "{autodesktop}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFile
 Name: "{usersendto}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFilename: "{app}\FileApex.exe"; Tasks: sendtoshortcut; WorkingDir: "{app}"
 
 [Registry]
+Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\*\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApexLauncher.cmd"" ""%1"""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
@@ -49,6 +50,66 @@ Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex\com
 Filename: "{app}\FileApexLauncher.cmd"; Description: "{cm:LaunchProgram,FileApex}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function GetDefaultInstallDir(Param: String): String;
+var
+  PrevDir: String;
+  UserDir: String;
+begin
+  // 1. Check if previous installation path is registered in Software\FileApex
+  if RegQueryStringValue(HKA, 'Software\FileApex', 'InstallDir', PrevDir) and (PrevDir <> '') then
+  begin
+    if (Pos('!', PrevDir) = 0) and DirExists(PrevDir) then
+    begin
+      Result := PrevDir;
+      Exit;
+    end;
+  end;
+
+  // 2. Check if previous uninstall location exists and is valid
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1', 'InstallLocation', PrevDir) and (PrevDir <> '') then
+  begin
+    if (Pos('!', PrevDir) = 0) and DirExists(PrevDir) then
+    begin
+      Result := PrevDir;
+      Exit;
+    end;
+  end;
+
+  // 3. Fallback to clean path: commonappdata if userappdata has '!', else autopf
+  UserDir := ExpandConstant('{userappdata}');
+  if Pos('!', UserDir) > 0 then
+    Result := ExpandConstant('{commonappdata}\FileApex')
+  else
+    Result := ExpandConstant('{autopf}\FileApex');
+end;
+
+procedure CleanupLegacyCorruptInstallations();
+var
+  LegacyDir: String;
+  UninstallerExe: String;
+  ResultCode: Integer;
+begin
+  // Check known legacy location that might contain '!' (e.g. C:\Users\<user!>\AppData\Local\Programs\FileApex)
+  LegacyDir := ExpandConstant('{userappdata}\Local\Programs\FileApex');
+  if (Pos('!', LegacyDir) > 0) and DirExists(LegacyDir) then
+  begin
+    UninstallerExe := AddBackslash(LegacyDir) + 'unins000.exe';
+    if FileExists(UninstallerExe) then
+    begin
+      Exec(UninstallerExe, '/SILENT /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+    DelTree(LegacyDir, True, True, True);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    CleanupLegacyCorruptInstallations();
+  end;
+end;
+
 function NeedsVCRedist(): Boolean;
 var
   Installed: Cardinal;

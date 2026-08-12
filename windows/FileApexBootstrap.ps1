@@ -1,5 +1,5 @@
 # FileApex Automated Pre-Flight System Dependency Checker & Launcher
-# Checks x64 architecture and Visual C++ 2015-2022 Redistributable (x64).
+# Checks x64 architecture, path validity, and Visual C++ 2015-2022 Redistributable (x64).
 
 param(
     [string[]]$AppArgs = @()
