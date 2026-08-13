@@ -105,8 +105,9 @@ fun KineticSphereDevicesView(
     onSendClipboardDevice: (deviceId: String) -> Unit,
     onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
-    onGenerateQr: () -> Unit,
-    onScanQr: () -> Unit,
+    onGenerateQr: () -> Unit = {},
+    onScanQr: () -> Unit = {},
+    onManualEntry: () -> Unit = {},
     onCheckBatteries: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -406,26 +407,24 @@ fun KineticSphereDevicesView(
                         onScanQr()
                     }
                 )
-                if (persistedNodeOffsets.isNotEmpty()) {
-                    DropdownMenuItem(
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFFB74D),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(text = "Reset Node Layout", color = Color.White)
-                            }
-                        },
-                        onClick = {
-                            addMenuOpen = false
-                            FileApexServices.settings.resetKineticNodeOffsets()
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = null,
+                                tint = Color(0xFF00E676),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(text = "Manually Enter Code", color = Color.White)
                         }
-                    )
-                }
+                    },
+                    onClick = {
+                        addMenuOpen = false
+                        onManualEntry()
+                    }
+                )
             }
         }
 

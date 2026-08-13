@@ -348,6 +348,7 @@ fun DevicesScreen(
                     },
                     onGenerateQr = onGenerateQr,
                     onScanQr = onScanQr,
+                    onManualEntry = { showManualCodeDialog = true },
                     onCheckBatteries = viewModel::checkBatteries,
 
                     modifier = Modifier

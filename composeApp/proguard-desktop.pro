@@ -1,4 +1,8 @@
-# Compose Desktop release shrinker — supplemental rules (default CMP rules still apply).
+# Disable bytecode preverification on desktop to prevent IncompleteClassHierarchyException on optional types
+-dontpreverify
+
+# Ignore unresolved references for optional third-party/Android/server dependencies
+-dontwarn **
 
 # qrose QR draws via Compose/Skia shader APIs; signatures drift across Compose/Skiko versions.
 -dontwarn io.github.alexzhirkevich.qrose.**
@@ -39,4 +43,14 @@
 -keepclassmembers class * implements kotlinx.coroutines.internal.MainDispatcherFactory {
     public <init>();
 }
+
+# Preserve ServiceLoader implementations for Ktor & kotlinx serialization
+-keep class io.ktor.serialization.** { *; }
+-keep class io.ktor.serialization.kotlinx.** { *; }
+-keep class io.ktor.serialization.kotlinx.json.** { *; }
+-keep class * implements io.ktor.serialization.kotlinx.KotlinxSerializationExtensionProvider { *; }
+-keepclassmembers class * implements io.ktor.serialization.kotlinx.KotlinxSerializationExtensionProvider {
+    public <init>(...);
+}
+
 
