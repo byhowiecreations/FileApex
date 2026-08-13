@@ -13,7 +13,7 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 * **Local-first P2P explorer:** Browse and move files between paired Android, macOS, and Windows devices on the same LAN.
 * **Multi-Target File Broadcasting:** Push files to multiple online devices at once.
 * **Smart receive folder:** Incoming files land in `Download/FileApex` (Android) or `~/Downloads/FileApex` (desktop).
-* **QR / link pairing:** Pair devices without typing IPs.
+* **QR Code or manual code pairing:** Pair devices without typing IPs. Either scan a QR Code or you can manually enter the 6-digit code to pair.
 * **PIN lock (optional):** Require a PIN before others can pair or browse.
 * **macOS Finder / Share Extension:** Send from Finder or the system Share sheet.
 * **Windows Share / Send To:** Can send files from right-click menu in Windows using Share or the Send To.
@@ -23,6 +23,8 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 * **Background Persistence (Android):** Keep the share server alive with battery guidance, watchdog, and optional auto-launch after reboot.
 * **Check for Updates:** Install newer builds from GitHub Releases (**opt-in**).
 * **Google Account (opt-in):** Cloud presence / wake helpers only — files stay on your LAN.
+* **Themes:** Choose from different themes and layouts to make it suit your preference.
+* **Notes:** Bringing "Send Message" feature of Pushbullet to FileApex. When you send a Note it goes to all paired devices. You can also delete messages from just one device or from all of them with the click of a button. If you opt-in to Google Account the Notes will also push to any paired Android device on cellular.
 
 
 ## Local Configuration
