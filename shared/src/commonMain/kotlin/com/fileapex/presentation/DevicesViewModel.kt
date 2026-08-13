@@ -373,32 +373,96 @@ class DevicesViewModel : ViewModel() {
                 _uiState.update { it.copy(errorMessage = "Please enter a pairing code") }
                 return@launch
             }
+
+            val directPayload = PairingPayload.parseOrNull(trimmed)
+            if (directPayload != null) {
+                pairFromQrPayload(directPayload)
+                return@launch
+            }
+
             val digitsOnly = trimmed.filter { it.isDigit() }
             if (digitsOnly.length == 6) {
                 _uiState.update { it.copy(statusMessage = "Connecting using code $trimmed…") }
-                val devices = repository.listDevices()
-                val matchedDevice = devices.firstOrNull()
-                if (matchedDevice != null) {
-                    val payload = PairingPayloadFactory.create(
-                        deviceId = matchedDevice.deviceId,
-                        deviceName = matchedDevice.deviceName,
-                        host = matchedDevice.lastKnownIp,
-                        port = matchedDevice.port,
-                        rootPath = matchedDevice.rootPath,
-                        pairingCode = digitsOnly
-                    )
-                    pairFromQrPayload(payload)
+
+                val candidateEndpoints = mutableListOf<Pair<String, Int>>()
+
+                val mdnsEndpoints = presence.getDiscoveredEndpoints()
+                candidateEndpoints.addAll(mdnsEndpoints)
+
+                val pairedDevices = repository.listDevices()
+                for (dev in pairedDevices) {
+                    if (dev.lastKnownIp.isNotBlank() && dev.port > 0) {
+                        candidateEndpoints.add(dev.lastKnownIp to dev.port)
+                    }
+                }
+
+                if (candidateEndpoints.isEmpty()) {
+                    val roots = NetworkUtils.lanBindCandidates().filter { NetworkUtils.isUsableLanIpv4(it) }
+                    val localIp = roots.firstOrNull() ?: NetworkUtils.preferredLanIpv4()
+                    if (NetworkUtils.isUsableLanIpv4(localIp)) {
+                        val subnetParts = localIp.split('.')
+                        if (subnetParts.size == 4) {
+                            val prefix = "${subnetParts[0]}.${subnetParts[1]}.${subnetParts[2]}"
+                            for (lastOctet in 1..254) {
+                                candidateEndpoints.add("$prefix.$lastOctet" to LocalIdentity.DEFAULT_SHARE_PORT)
+                            }
+                        }
+                    }
+                }
+
+                val distinctCandidates = candidateEndpoints.distinct()
+
+                var pairedSuccessfully = false
+                for (candidate in distinctCandidates) {
+                    val host = candidate.first
+                    val port = candidate.second
+                    val state = runCatching {
+                        FileApexServices.client.fetchPeerNodeState(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
+                    }.getOrNull() ?: continue
+
+                    if (state.deviceId.isNotBlank() && state.deviceId != identity.deviceId) {
+                        val payload = PairingPayloadFactory.create(
+                            deviceId = state.deviceId,
+                            deviceName = state.deviceName,
+                            host = host,
+                            port = port,
+                            rootPath = state.rootPath,
+                            pinRequired = state.pinRequired,
+                            pairingCode = digitsOnly
+                        )
+                        var attemptSuccess = false
+                        runCatching {
+                            val verified = runCatching {
+                                FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
+                            }.getOrNull()
+                            val pinRequired = verified?.pinRequired == true || payload.pinRequired
+                            if (pinRequired) {
+                                _uiState.update {
+                                    it.copy(
+                                        pendingPinPairing = payload.copy(pinRequired = true),
+                                        statusMessage = "Enter PIN for ${verified?.deviceName ?: payload.deviceName}"
+                                    )
+                                }
+                                attemptSuccess = true
+                            } else {
+                                completePairing(payload, pin = null)
+                                attemptSuccess = true
+                            }
+                        }
+                        if (attemptSuccess) {
+                            pairedSuccessfully = true
+                            break
+                        }
+                    }
+                }
+
+                if (pairedSuccessfully) {
                     return@launch
                 }
             }
 
-            val payload = PairingPayload.parseOrNull(trimmed)
-            if (payload != null) {
-                pairFromQrPayload(payload)
-            } else {
-                _uiState.update {
-                    it.copy(errorMessage = "Pairing code not recognized. Make sure both devices are on the same Wi-Fi network.")
-                }
+            _uiState.update {
+                it.copy(errorMessage = "Pairing code not recognized. Make sure both devices are on the same Wi-Fi network.")
             }
         }
     }

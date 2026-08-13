@@ -67,6 +67,7 @@ class PeerPresenceMonitor(
     private var lastSelfBroadcastEpochMs = 0L
 
     private val lastReachableEpochById = mutableMapOf<String, Long>()
+    private val discoveredMdnsEndpoints = mutableMapOf<Pair<String, Int>, Long>()
     private val _reachabilityEpochMs = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val _onlineSnapshotEpochMs = MutableStateFlow(0L)
 
@@ -75,6 +76,12 @@ class PeerPresenceMonitor(
 
     private val _onlineDeviceIds = MutableStateFlow<Set<String>>(emptySet())
     val onlineDeviceIds: StateFlow<Set<String>> = _onlineDeviceIds.asStateFlow()
+
+    suspend fun getDiscoveredEndpoints(): List<Pair<String, Int>> = mutex.withLock {
+        val cutoff = TimeUtils.now() - 300_000L
+        discoveredMdnsEndpoints.entries.removeAll { it.value < cutoff }
+        discoveredMdnsEndpoints.keys.toList()
+    }
 
     fun setAppInForeground(inForeground: Boolean) {
         appInForeground = inForeground
@@ -163,10 +170,18 @@ class PeerPresenceMonitor(
     }
 
     fun onMdnsPeerDiscovered(host: String, port: Int, hintedDeviceId: String?) {
+        val cleanedHost = host.trim()
+        if (cleanedHost.isNotEmpty() && port > 0) {
+            scope.launch {
+                mutex.withLock {
+                    discoveredMdnsEndpoints[cleanedHost to port] = TimeUtils.now()
+                }
+            }
+        }
         if (!FileApexServices.isDatabaseReady()) return
         scope.launch {
             runCatching {
-                handleMdnsPeerDiscovered(host, port, hintedDeviceId)
+                handleMdnsPeerDiscovered(cleanedHost, port, hintedDeviceId)
             }.onFailure { error ->
                 println("PeerPresenceMonitor: mDNS discovery failed — ${error.message}")
             }

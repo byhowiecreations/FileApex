@@ -17,9 +17,12 @@ if [ -f "signing.local.env" ]; then
 fi
 
 # Locate ARM64 JDK 21
-ARM64_JDK="$HOME/.jdks/jdk-21.0.11+10/Contents/Home"
-if [ ! -d "$ARM64_JDK" ]; then
-    echo "Error: Apple Silicon ARM64 JDK not found at $ARM64_JDK"
+if [ -d "$PROJECT_ROOT/.build-jdk/jdk-21.0.11+10/Contents/Home" ]; then
+    ARM64_JDK="$PROJECT_ROOT/.build-jdk/jdk-21.0.11+10/Contents/Home"
+elif [ -d "$HOME/.jdks/jdk-21.0.11+10/Contents/Home" ]; then
+    ARM64_JDK="$HOME/.jdks/jdk-21.0.11+10/Contents/Home"
+else
+    echo "Error: Apple Silicon ARM64 JDK not found"
     exit 1
 fi
 
