@@ -16,6 +16,7 @@ object AndroidNotificationChannels {
 
     const val APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
+    const val NOTE_MESSAGES = "fileapex_note_messages"
     /** Persistent share-server FGS alert — static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
     private const val LEGACY_SHARE_SERVER_CHANNEL = "fileapex_share_server_active"
@@ -29,6 +30,20 @@ object AndroidNotificationChannels {
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = "Alerts when a newer FileApex build is available"
+        }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureNoteMessagesChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            NOTE_MESSAGES,
+            "Notes & Messages",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Alerts when new notes or shared messages arrive from paired devices"
+            enableVibration(true)
         }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)

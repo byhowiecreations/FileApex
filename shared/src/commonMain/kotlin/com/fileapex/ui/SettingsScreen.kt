@@ -196,7 +196,8 @@ fun SettingsScreen(
             state = state,
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
-            onOpenFileTransferNotifications = { page = SettingsPage.FileTransferNotifications },
+            onToggleFileTransferNotifications = viewModel::setFileTransferNotifications,
+            onToggleNotesNotifications = viewModel::setNotesNotifications,
             onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule,
             onToggleLiveTransferShowQueue = viewModel::setLiveTransferShowQueue
         )
@@ -681,7 +682,8 @@ private fun NotificationsSettingsPage(
     state: SettingsUiState,
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
-    onOpenFileTransferNotifications: () -> Unit,
+    onToggleFileTransferNotifications: (Boolean) -> Unit,
+    onToggleNotesNotifications: (Boolean) -> Unit,
     onToggleLiveTransferCapsule: (Boolean) -> Unit,
     onToggleLiveTransferShowQueue: (Boolean) -> Unit
 ) {
@@ -695,10 +697,34 @@ private fun NotificationsSettingsPage(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            SettingsNavItem(
-                title = "File Transfer Notifications",
-                subtitle = if (state.fileTransferNotificationsEnabled) "On" else "Off",
-                onClick = onOpenFileTransferNotifications
+            FileApexPaneSectionHeader(title = "Transfers & Messages")
+
+            ListItem(
+                headlineContent = { Text("File Transfer Notifications") },
+                supportingContent = {
+                    Text("Show a notification after files are successfully received from paired devices.")
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.fileTransferNotificationsEnabled,
+                        onCheckedChange = onToggleFileTransferNotifications
+                    )
+                }
+            )
+
+            HorizontalDivider()
+
+            ListItem(
+                headlineContent = { Text("Notes & Messages Notifications") },
+                supportingContent = {
+                    Text("Show a notification when new notes or shared messages arrive from paired devices.")
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.notesNotificationsEnabled,
+                        onCheckedChange = onToggleNotesNotifications
+                    )
+                }
             )
 
             HorizontalDivider()

@@ -35,6 +35,10 @@ class BaseAppSettings(
     private val clipboardSharing = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHARING, false))
     private val transferNotifications =
         MutableStateFlow(store.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
+    private val notesNotificationsFlow =
+        MutableStateFlow(store.getBoolean(KEY_NOTES_NOTIFICATIONS, false))
+    private val notesNotificationPromptShownFlow =
+        MutableStateFlow(store.getBoolean(KEY_NOTES_NOTIFICATION_PROMPT_SHOWN, false))
     private val liveTransferCapsuleFlow =
         MutableStateFlow(store.getBoolean(KEY_LIVE_TRANSFER_CAPSULE, false))
     private val liveTransferShowQueueFlow =
@@ -118,6 +122,10 @@ class BaseAppSettings(
     override val clipboardSharingEnabled: StateFlow<Boolean> = clipboardSharing.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
+    override val notesNotificationsEnabled: StateFlow<Boolean> =
+        notesNotificationsFlow.asStateFlow()
+    override val notesNotificationPromptShown: StateFlow<Boolean> =
+        notesNotificationPromptShownFlow.asStateFlow()
     override val liveTransferCapsuleEnabled: StateFlow<Boolean> =
         liveTransferCapsuleFlow.asStateFlow()
     override val liveTransferShowQueueEnabled: StateFlow<Boolean> =
@@ -191,6 +199,16 @@ class BaseAppSettings(
     override fun setFileTransferNotificationsEnabled(enabled: Boolean) {
         store.putBoolean(KEY_TRANSFER_NOTIFICATIONS, enabled)
         transferNotifications.value = enabled
+    }
+
+    override fun setNotesNotificationsEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_NOTES_NOTIFICATIONS, enabled)
+        notesNotificationsFlow.value = enabled
+    }
+
+    override fun setNotesNotificationPromptShown(shown: Boolean) {
+        store.putBoolean(KEY_NOTES_NOTIFICATION_PROMPT_SHOWN, shown)
+        notesNotificationPromptShownFlow.value = shown
     }
 
     override fun setLiveTransferCapsuleEnabled(enabled: Boolean) {
@@ -378,6 +396,8 @@ class BaseAppSettings(
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
         const val KEY_CLIPBOARD_SHARING = "clipboard_sharing_enabled"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
+        const val KEY_NOTES_NOTIFICATIONS = "notes_notifications_enabled"
+        const val KEY_NOTES_NOTIFICATION_PROMPT_SHOWN = "notes_notification_prompt_shown"
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
         const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
         const val KEY_APP_THEME = "app_theme"

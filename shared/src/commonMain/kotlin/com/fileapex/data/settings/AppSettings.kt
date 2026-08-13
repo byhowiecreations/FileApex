@@ -57,6 +57,11 @@ interface AppSettings {
     /** When true, participate in encrypted cloud Device Details when LAN is unavailable. Default off. */
     val deviceDetailsAllowOverCellular: StateFlow<Boolean>
 
+    /** When true, show notifications for incoming notes and messages. Default true. */
+    val notesNotificationsEnabled: StateFlow<Boolean>
+    /** When true, the first-send note notification permission prompt has been shown. Default false. */
+    val notesNotificationPromptShown: StateFlow<Boolean>
+
     /** Android: When true, shows floating Dynamic Island Live Transfer capsule during transfers. Default off. */
     val liveTransferCapsuleEnabled: StateFlow<Boolean>
     /** Android: When true, persists Dynamic Island capsule for queued/pending items. Default off. */
@@ -83,6 +88,8 @@ interface AppSettings {
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
     fun setClipboardSharingEnabled(enabled: Boolean)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
+    fun setNotesNotificationsEnabled(enabled: Boolean)
+    fun setNotesNotificationPromptShown(shown: Boolean)
     fun setLiveTransferCapsuleEnabled(enabled: Boolean)
     fun setLiveTransferShowQueueEnabled(enabled: Boolean)
     fun setAppTheme(theme: AppTheme)

@@ -46,6 +46,7 @@ object FileApexAndroidBootstrap {
             initAndroidLocalIdentity(appContext)
             initAndroidLanConnectivity(appContext)
             initAndroidTransferReceiveNotifier(appContext)
+            initAndroidNoteReceiveNotifier(appContext)
             initAndroidBriefToast(appContext)
             initAndroidUpdateAvailableNotifier(appContext)
             if (!FileApexServices.isDatabaseReady()) {

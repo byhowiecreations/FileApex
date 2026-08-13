@@ -31,6 +31,7 @@ data class SettingsUiState(
     val googleAccountEmail: String = "",
     val clipboardSharingEnabled: Boolean = false,
     val fileTransferNotificationsEnabled: Boolean = false,
+    val notesNotificationsEnabled: Boolean = false,
     val liveTransferCapsuleEnabled: Boolean = false,
     val liveTransferShowQueueEnabled: Boolean = false,
     val appTheme: AppTheme = AppTheme.CLEAN,
@@ -66,6 +67,7 @@ class SettingsViewModel : ViewModel() {
             googleAccountEmail = settings.googleAccountEmail.value,
             clipboardSharingEnabled = settings.clipboardSharingEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
+            notesNotificationsEnabled = settings.notesNotificationsEnabled.value,
             liveTransferCapsuleEnabled = settings.liveTransferCapsuleEnabled.value,
             liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
             appTheme = settings.appTheme.value,
@@ -93,6 +95,11 @@ class SettingsViewModel : ViewModel() {
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            settings.notesNotificationsEnabled.collect { enabled ->
+                _uiState.update { it.copy(notesNotificationsEnabled = enabled) }
+            }
+        }
         viewModelScope.launch {
             settings.kineticSphereCleanMode.collect { mode ->
                 _uiState.update { it.copy(kineticSphereCleanMode = mode) }
@@ -200,6 +207,11 @@ class SettingsViewModel : ViewModel() {
     fun setFileTransferNotifications(enabled: Boolean) {
         settings.setFileTransferNotificationsEnabled(enabled)
         _uiState.update { it.copy(fileTransferNotificationsEnabled = enabled) }
+    }
+
+    fun setNotesNotifications(enabled: Boolean) {
+        settings.setNotesNotificationsEnabled(enabled)
+        _uiState.update { it.copy(notesNotificationsEnabled = enabled) }
     }
 
     fun setLiveTransferCapsule(enabled: Boolean) {

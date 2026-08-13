@@ -44,7 +44,7 @@ class NoteRepository {
         if (currentDao != null) {
             runCatching { currentDao.insertNote(note.toEntity()) }
         }
-        return mutex.withLock {
+        val added = mutex.withLock {
             val current = _notes.value
             if (current.any { it.noteId == note.noteId }) {
                 return@withLock false
@@ -53,6 +53,10 @@ class NoteRepository {
             _notes.value = updated
             true
         }
+        if (added && !note.isMine) {
+            runCatching { com.fileapex.platform.notifyNoteReceived(note.sourceDeviceName, note.content) }
+        }
+        return added
     }
 
     suspend fun sendNote(

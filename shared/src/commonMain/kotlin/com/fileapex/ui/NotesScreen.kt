@@ -67,6 +67,9 @@ fun NotesScreen(
     val displayNotes = remember(rawNotes) { rawNotes.sortedBy { it.epochMs } }
     var inputContent by remember { mutableStateOf("") }
     var noteToDelete by remember { mutableStateOf<NoteRecord?>(null) }
+    var showNotesPermissionPrompt by remember { mutableStateOf(false) }
+    var pendingNoteToSend by remember { mutableStateOf<String?>(null) }
+
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -89,6 +92,18 @@ fun NotesScreen(
     }
     val textColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
     val subTextColor = if (isCustomGlass) Color.White.copy(alpha = 0.70f) else MaterialTheme.colorScheme.onSurfaceVariant
+
+    fun doSendNote(text: String) {
+        if (!FileApexServices.settings.notesNotificationPromptShown.value) {
+            pendingNoteToSend = text
+            showNotesPermissionPrompt = true
+        } else {
+            inputContent = ""
+            scope.launch {
+                FileApexServices.noteRepository.sendNote(text)
+            }
+        }
+    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -210,10 +225,7 @@ fun NotesScreen(
                     onClick = {
                         val text = inputContent.trim()
                         if (text.isNotEmpty()) {
-                            inputContent = ""
-                            scope.launch {
-                                FileApexServices.noteRepository.sendNote(text)
-                            }
+                            doSendNote(text)
                         }
                     },
                     enabled = inputContent.trim().isNotEmpty(),
@@ -232,6 +244,59 @@ fun NotesScreen(
                 }
             }
         }
+    }
+
+    // First Chat Send Notification Prompt Dialog
+    if (showNotesPermissionPrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                FileApexServices.settings.setNotesNotificationsEnabled(false)
+                FileApexServices.settings.setNotesNotificationPromptShown(true)
+                val text = pendingNoteToSend
+                pendingNoteToSend = null
+                showNotesPermissionPrompt = false
+                if (!text.isNullOrBlank()) {
+                    inputContent = ""
+                    scope.launch { FileApexServices.noteRepository.sendNote(text) }
+                }
+            },
+            title = { Text("Enable Note Notifications?") },
+            text = { Text("Would you like to receive notifications when new notes or shared messages arrive from your paired devices?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        FileApexServices.settings.setNotesNotificationsEnabled(true)
+                        FileApexServices.settings.setNotesNotificationPromptShown(true)
+                        val text = pendingNoteToSend
+                        pendingNoteToSend = null
+                        showNotesPermissionPrompt = false
+                        if (!text.isNullOrBlank()) {
+                            inputContent = ""
+                            scope.launch { FileApexServices.noteRepository.sendNote(text) }
+                        }
+                    }
+                ) {
+                    Text("Enable Notifications")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        FileApexServices.settings.setNotesNotificationsEnabled(false)
+                        FileApexServices.settings.setNotesNotificationPromptShown(true)
+                        val text = pendingNoteToSend
+                        pendingNoteToSend = null
+                        showNotesPermissionPrompt = false
+                        if (!text.isNullOrBlank()) {
+                            inputContent = ""
+                            scope.launch { FileApexServices.noteRepository.sendNote(text) }
+                        }
+                    }
+                ) {
+                    Text("Not Now")
+                }
+            }
+        )
     }
 
     // Delete Scope Dialog (This device only vs All devices)
