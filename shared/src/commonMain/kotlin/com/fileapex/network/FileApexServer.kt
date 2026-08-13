@@ -462,6 +462,33 @@ class FileApexServer(
                     }
                 }
 
+                post("/api/v1/notes/send") {
+                    runCatching {
+                        val body = call.receiveText()
+                        val record = json.decodeFromString(com.fileapex.data.note.NoteRecord.serializer(), body)
+                        FileApexServices.noteRepository.addNote(record.copy(isMine = false))
+                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/notes/send failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "note_failed")
+                    }
+                }
+
+                post("/api/v1/notes/delete") {
+                    runCatching {
+                        val body = call.receiveText()
+                        val jsonObj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
+                        val noteId = jsonObj?.get("noteId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+                        if (noteId.isNotBlank()) {
+                            FileApexServices.noteRepository.deleteNote(noteId)
+                        }
+                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/notes/delete failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "delete_failed")
+                    }
+                }
+
                 get("/") {
                     call.respondText(WEB_SHARE_HTML, ContentType.Text.Html)
                 }

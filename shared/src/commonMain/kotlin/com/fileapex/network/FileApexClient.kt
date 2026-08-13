@@ -232,6 +232,40 @@ class FileApexClient(
         requireSuccess(response, "Remote rename failed (${response.statusCode})")
     }
 
+    suspend fun postNote(
+        host: String,
+        port: Int,
+        note: com.fileapex.data.note.NoteRecord
+    ) {
+        val payload = json.encodeToString(com.fileapex.data.note.NoteRecord.serializer(), note)
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/notes/send",
+            body = payload,
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Note dispatch failed (${response.statusCode})")
+    }
+
+    suspend fun postNoteDelete(
+        host: String,
+        port: Int,
+        noteId: String
+    ) {
+        val payload = """{"noteId":"$noteId"}"""
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/notes/delete",
+            body = payload,
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Note delete failed (${response.statusCode})")
+    }
+
     suspend fun postClusterSync(
         host: String,
         port: Int,

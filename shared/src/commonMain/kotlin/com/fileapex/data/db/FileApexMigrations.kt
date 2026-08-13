@@ -116,3 +116,26 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         }
     }
 }
+
+/** Adds [NoteEntity] table for persistent notes across app upgrades. */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            """
+            CREATE TABLE IF NOT EXISTS `note_records` (
+                `noteId` TEXT NOT NULL,
+                `sourceDeviceId` TEXT NOT NULL,
+                `sourceDeviceName` TEXT NOT NULL,
+                `content` TEXT NOT NULL,
+                `driveFileId` TEXT,
+                `checksum` TEXT,
+                `epochMs` INTEGER NOT NULL,
+                `isMine` INTEGER NOT NULL,
+                PRIMARY KEY(`noteId`)
+            )
+            """.trimIndent()
+        ).use { statement ->
+            statement.step()
+        }
+    }
+}

@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.ui.HomeTab
+import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.FileApexBottomBar
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
@@ -123,6 +124,7 @@ fun FluxGlassHeader(
     onToggleLayoutView: (() -> Unit)? = null,
     showCloseService: Boolean = false,
     onCloseService: (() -> Unit)? = null,
+    onOpenNotes: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
@@ -166,6 +168,10 @@ fun FluxGlassHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (onOpenNotes != null) {
+                NoteHeaderButton(onOpenNotes = onOpenNotes)
+            }
+
             actions()
 
             if (showLayoutView && onToggleLayoutView != null) {
@@ -194,8 +200,7 @@ fun FluxGlassHeader(
                 }
             }
 
-            val allowPowerOnDesktop = showCloseService && com.fileapex.cloud.currentPlatformLabel() != "Android"
-            if (allowPowerOnDesktop && onCloseService != null) {
+            if (showCloseService && onCloseService != null) {
                 Surface(
                     modifier = Modifier
                         .size(36.dp)
@@ -225,7 +230,8 @@ fun CompactDevicesTitleBand(
     showLayoutView: Boolean = false,
     onToggleLayoutView: (() -> Unit)? = null,
     showCloseService: Boolean = false,
-    onCloseService: (() -> Unit)? = null
+    onCloseService: (() -> Unit)? = null,
+    onOpenNotes: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
     val allowLayoutView = showLayoutView && currentTheme != AppTheme.KINETIC_SPHERE
@@ -236,6 +242,7 @@ fun CompactDevicesTitleBand(
         onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
         showCloseService = showCloseService,
         onCloseService = onCloseService,
+        onOpenNotes = onOpenNotes,
         actions = actions
     )
 }

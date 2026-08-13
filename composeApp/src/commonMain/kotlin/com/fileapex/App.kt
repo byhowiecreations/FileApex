@@ -61,6 +61,7 @@ import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.ShareSendScreen
 import com.fileapex.ui.TransferQueueScreen
+import com.fileapex.ui.NotesScreen
 import com.fileapex.presentation.TransferQueueViewModel
 import com.fileapex.ui.OnboardingScreen
 import com.fileapex.ui.UpdateAvailableSheet
@@ -304,6 +305,9 @@ fun App(
                             onBack = onNavigateHome,
                             viewModel = transferQueueViewModel
                         )
+                        AppRoute.Notes -> NotesScreen(
+                            onBack = onNavigateHome
+                        )
                         AppRoute.ScanQr -> {
                             route = AppRoute.Devices
                         }
@@ -390,7 +394,8 @@ fun App(
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
                                     onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                                    onOpenTransferQueue = { route = AppRoute.TransferQueue }
+                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                    onOpenNotes = { route = AppRoute.Notes }
                                 )
                             } else {
                                 CompactHomeContent(
@@ -418,7 +423,8 @@ fun App(
                                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
                                     onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                                    onOpenTransferQueue = { route = AppRoute.TransferQueue }
+                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                    onOpenNotes = { route = AppRoute.Notes }
                                 )
                             }
                         }
@@ -471,7 +477,8 @@ private fun CompactHomeContent(
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
-    onOpenTransferQueue: () -> Unit = {}
+    onOpenTransferQueue: () -> Unit = {},
+    onOpenNotes: () -> Unit = {}
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
@@ -518,6 +525,7 @@ private fun CompactHomeContent(
                 onScanQr = onScanQr,
                 onOpenSettings = onOpenSettings,
                 onExitApp = onExitApp,
+                onOpenNotes = onOpenNotes,
                 viewModel = devicesViewModel,
                 embeddedInCompactShell = true
             )
@@ -551,6 +559,7 @@ private fun CompactHomeContent(
                 onScanQr = onScanQr,
                 onOpenSettings = onOpenSettings,
                 onExitApp = onExitApp,
+                onOpenNotes = onOpenNotes,
                 viewModel = devicesViewModel,
                 embeddedInCompactShell = true
             )

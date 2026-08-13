@@ -14,4 +14,5 @@ sealed interface AppRoute {
         val directTargetDeviceId: String? = null
     ) : AppRoute
     data object TransferQueue : AppRoute
+    data object Notes : AppRoute
 }

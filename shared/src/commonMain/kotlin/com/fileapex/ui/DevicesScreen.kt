@@ -237,6 +237,7 @@ fun DevicesScreen(
     onScanQr: () -> Unit,
     onOpenSettings: () -> Unit,
     onExitApp: () -> Unit,
+    onOpenNotes: () -> Unit = {},
     embeddedInCompactShell: Boolean = false,
     viewModel: DevicesViewModel = viewModel { DevicesViewModel() },
     layoutMode: DevicesScreenLayoutMode = DevicesScreenLayoutMode.FullScreen,
@@ -258,19 +259,21 @@ fun DevicesScreen(
     val usesOwnChrome = !isListPane && !embeddedInCompactShell
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
-        if (editMode) {
-            TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
-                Text("Revert")
-            }
-            TextButton(onClick = viewModel::saveDeviceOrderAndExitEditMode) {
-                Text("Done")
-            }
-        } else if (deviceRows.isNotEmpty()) {
-            IconButton(onClick = viewModel::enterDeviceOrderEditMode) {
-                Icon(
-                    imageVector = Icons.Filled.Edit,
-                    contentDescription = "Reorder devices"
-                )
+        if (LocalAppTheme.current != AppTheme.KINETIC_SPHERE) {
+            if (editMode) {
+                TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
+                    Text("Revert")
+                }
+                TextButton(onClick = viewModel::saveDeviceOrderAndExitEditMode) {
+                    Text("Done")
+                }
+            } else if (deviceRows.isNotEmpty()) {
+                IconButton(onClick = viewModel::enterDeviceOrderEditMode) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Reorder devices"
+                    )
+                }
             }
         }
     }
@@ -311,13 +314,14 @@ fun DevicesScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (embeddedInCompactShell && !isListPane && !isKineticSphere) {
+            if (embeddedInCompactShell && !isListPane) {
                 CompactDevicesTitleBand(
                     actions = deviceOrderHeaderActions,
                     showLayoutView = true,
                     onToggleLayoutView = { FileApexServices.settings.setDevicesViewMode(viewMode.toggled()) },
                     showCloseService = true,
-                    onCloseService = onExitApp
+                    onCloseService = onExitApp,
+                    onOpenNotes = onOpenNotes
                 )
             }
             if (isKineticSphere && !editMode) {
@@ -349,8 +353,8 @@ fun DevicesScreen(
                     onGenerateQr = onGenerateQr,
                     onScanQr = onScanQr,
                     onManualEntry = { showManualCodeDialog = true },
-                    onCheckBatteries = viewModel::checkBatteries,
-
+                    onCheckBatteries = { viewModel.checkBatteries() },
+                    onOpenNotes = onOpenNotes,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -1162,7 +1166,8 @@ private fun DeviceGridCell(
 private fun HomeTopBar(
     onExitClick: () -> Unit,
     headerActions: @Composable RowScope.() -> Unit = {},
-    onToggleLayoutView: (() -> Unit)? = null
+    onToggleLayoutView: (() -> Unit)? = null,
+    onOpenNotes: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
@@ -1175,12 +1180,13 @@ private fun HomeTopBar(
             onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
             showCloseService = true,
             onCloseService = onExitClick,
+            onOpenNotes = onOpenNotes,
             actions = headerActions
         )
     } else {
         Column(modifier = Modifier.fillMaxWidth()) {
             CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
-            CompactDevicesTitleBand(actions = headerActions)
+            CompactDevicesTitleBand(actions = headerActions, onOpenNotes = onOpenNotes)
         }
     }
 }

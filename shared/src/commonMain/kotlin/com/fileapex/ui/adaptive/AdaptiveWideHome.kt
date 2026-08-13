@@ -50,6 +50,7 @@ import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.DevicesScreenLayoutMode
+import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileExplorerScreen
@@ -103,7 +104,8 @@ fun AdaptiveWideHome(
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenAppDetailsSettings: () -> Unit = {},
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
-    onOpenTransferQueue: () -> Unit = {}
+    onOpenTransferQueue: () -> Unit = {},
+    onOpenNotes: (() -> Unit)? = null
 ) {
     val state by devicesViewModel.uiState.collectAsState()
     val deviceRows by devicesViewModel.deviceRows.collectAsState()
@@ -138,6 +140,7 @@ fun AdaptiveWideHome(
             explorerViewMode = explorerViewMode,
             onToggleExplorerViewMode = onToggleExplorerViewMode,
             onOpenTransferQueue = onOpenTransferQueue,
+            onOpenNotes = onOpenNotes,
             deviceOrderHeaderActions = deviceOrderHeaderActions
         )
         Row(modifier = Modifier.fillMaxSize()) {
@@ -201,6 +204,7 @@ fun AdaptiveWideHome(
                                 onScanQr = onScanQr,
                                 onOpenSettings = { onSelectTab(HomeTab.Settings) },
                                 onExitApp = onExitApp,
+                                onOpenNotes = { onOpenNotes?.invoke() },
                                 viewModel = devicesViewModel,
                                 layoutMode = DevicesScreenLayoutMode.FullScreen,
                                 selectedDeviceId = selectedDeviceId
@@ -233,6 +237,7 @@ fun AdaptiveWideHome(
                                     onScanQr = onScanQr,
                                     onOpenSettings = { onSelectTab(HomeTab.Settings) },
                                     onExitApp = onExitApp,
+                                    onOpenNotes = { onOpenNotes?.invoke() },
                                     viewModel = devicesViewModel,
                                     layoutMode = DevicesScreenLayoutMode.ListPane,
                                     selectedDeviceId = selectedDeviceId
@@ -291,6 +296,7 @@ private fun WideTopBar(
     explorerViewMode: ExplorerViewMode,
     onToggleExplorerViewMode: () -> Unit,
     onOpenTransferQueue: () -> Unit = {},
+    onOpenNotes: (() -> Unit)? = null,
     deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {}
 ) {
     val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
@@ -326,6 +332,9 @@ private fun WideTopBar(
             onClick = onOpenTransferQueue,
             iconTint = fileApexChromeContentColor()
         )
+        if (onOpenNotes != null) {
+            NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode)
+        }
         if (showDevicesViewToggle) {
             deviceOrderHeaderActions()
             Spacer(modifier = Modifier.width(4.dp))

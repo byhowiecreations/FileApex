@@ -10,6 +10,7 @@ import androidx.room3.PrimaryKey
 import androidx.room3.Query
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
+import com.fileapex.data.note.NoteRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
@@ -45,6 +46,41 @@ data class PairedDeviceEntity(
     val supportedProtocolsJson: String = "[]",
     /** Epoch millis when this peer was last observed online (UTC). */
     val lastSeenEpochMs: Long = 0L
+)
+
+@Entity(tableName = "note_records")
+@Serializable
+data class NoteEntity(
+    @PrimaryKey val noteId: String,
+    val sourceDeviceId: String,
+    val sourceDeviceName: String,
+    val content: String,
+    val driveFileId: String? = null,
+    val checksum: String? = null,
+    val epochMs: Long,
+    val isMine: Boolean
+)
+
+fun NoteEntity.toRecord(): NoteRecord = NoteRecord(
+    noteId = noteId,
+    sourceDeviceId = sourceDeviceId,
+    sourceDeviceName = sourceDeviceName,
+    content = content,
+    driveFileId = driveFileId,
+    checksum = checksum,
+    epochMs = epochMs,
+    isMine = isMine
+)
+
+fun NoteRecord.toEntity(): NoteEntity = NoteEntity(
+    noteId = noteId,
+    sourceDeviceId = sourceDeviceId,
+    sourceDeviceName = sourceDeviceName,
+    content = content,
+    driveFileId = driveFileId,
+    checksum = checksum,
+    epochMs = epochMs,
+    isMine = isMine
 )
 
 @Dao
@@ -107,20 +143,40 @@ interface ControlDeliveryDao {
     suspend fun deleteAll()
 }
 
+@Dao
+interface NoteDao {
+    @Query("SELECT * FROM note_records ORDER BY epochMs ASC")
+    fun observeAllNotes(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM note_records ORDER BY epochMs ASC")
+    suspend fun getAllNotesOnce(): List<NoteEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNote(note: NoteEntity)
+
+    @Query("DELETE FROM note_records WHERE noteId = :noteId")
+    suspend fun deleteNote(noteId: String)
+
+    @Query("SELECT COUNT(*) FROM note_records WHERE noteId = :noteId OR (checksum IS NOT NULL AND checksum = :checksum AND checksum != '')")
+    suspend fun countNoteOrChecksum(noteId: String, checksum: String?): Int
+}
+
 @Database(
     entities = [
         PairedDeviceEntity::class,
         RemovedDeviceEntity::class,
         PendingControlDeliveryEntity::class,
-        PendingTransferEntity::class
+        PendingTransferEntity::class,
+        NoteEntity::class
     ],
-    version = 8
+    version = 9
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {
     abstract fun deviceDao(): DeviceDao
     abstract fun controlDeliveryDao(): ControlDeliveryDao
     abstract fun pendingTransferDao(): PendingTransferDao
+    abstract fun noteDao(): NoteDao
 }
 
 @Suppress("NO_ACTUAL_FOR_EXPECT")

@@ -7,6 +7,7 @@ import com.fileapex.data.device.recoverEmptyRosterIfNeeded
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
+import com.fileapex.data.note.NoteRepository
 import com.fileapex.data.settings.AppSettings
 import com.fileapex.data.settings.createAppSettings
 import com.fileapex.data.transfer.FileTransferService
@@ -45,6 +46,8 @@ object FileApexServices {
     val httpClient: HttpClient by lazy { FileApexHttpClientFactory.create() }
 
     val transferService: FileTransferService by lazy { FileTransferService(client = client) }
+
+    val noteRepository: NoteRepository by lazy { NoteRepository() }
 
     /** Outbound Multi Copy orchestration — single entry for UI and extension handoff. */
     val transferManager: TransferManager by lazy {
@@ -111,6 +114,7 @@ object FileApexServices {
             )
         }
         LocalDeviceNameStore.ensureLoaded()
+        noteRepository.attachDao(database.noteDao(), bootstrapScope)
         presenceMonitor.ensureOnlineSnapshotWatcher()
         presenceMonitor.ensureLanPollLoop()
         presenceMonitor.scheduleColdLaunchProbeOnce()
