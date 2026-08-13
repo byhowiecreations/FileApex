@@ -1,5 +1,6 @@
 package com.fileapex.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -11,14 +12,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.fileapex.domain.pairing.PairingPayload
 import io.github.alexzhirkevich.qrose.options.QrErrorCorrectionLevel
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
@@ -40,6 +44,8 @@ fun PairingQrPanel(
     val painter = rememberQrCodePainter(qrText) {
         errorCorrectionLevel = QrErrorCorrectionLevel.Medium
     }
+    val manualCode = payload.toShortManualCode()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -69,9 +75,34 @@ fun PairingQrPanel(
                 .background(Color.White)
                 .padding(12.dp)
         )
+        
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.padding(vertical = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "MANUAL PAIRING CODE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = manualCode,
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
         Text(
-            text = "Scan with Camera and tap Open FileApex, or Add New Device → Scan QR Code. " +
-                "Some Motorola phones require Scan QR Code inside FileApex.",
+            text = "Scan QR with Camera or FileApex scanner, or select 'Manually enter code' on the other device.",
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -59,6 +59,7 @@ class GenerateQrViewModel : ViewModel() {
             }
             return
         }
+        val freshRandomCode = PairingPayload.generatePairingCode()
         _uiState.update {
             it.copy(
                 errorMessage = null,
@@ -68,7 +69,8 @@ class GenerateQrViewModel : ViewModel() {
                     host = host,
                     port = live.sharePort,
                     rootPath = live.rootPath,
-                    pinRequired = FileApexServices.settings.pinRequiredEnabled.value
+                    pinRequired = FileApexServices.settings.pinRequiredEnabled.value,
+                    pairingCode = freshRandomCode
                 )
             )
         }

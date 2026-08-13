@@ -7,6 +7,7 @@ package com.fileapex.platform
 object DesktopJvmStartup {
     fun onMainEntry() {
         DesktopCrashHandler.install()
+        sanitizeTempDirectories()
         configureWindowsSkikoRendering()
         if (DesktopPlatformPaths.isMacOs()) {
             MacOsExtensionRegistrar.registerOnLaunchDeferred()
@@ -15,6 +16,22 @@ object DesktopJvmStartup {
             DesktopWindowsRegistration.registerWindowsContextMenuAndSendTo()
         }
         DesktopSendHandoff.installOpenUriHandler()
+    }
+
+    private fun sanitizeTempDirectories() {
+        if (!DesktopPlatformPaths.isWindows()) return
+        val tmpDir = System.getProperty("java.io.tmpdir").orEmpty()
+        val userHome = System.getProperty("user.home").orEmpty()
+        if (tmpDir.contains("!") || tmpDir.contains("#") || userHome.contains("!") || userHome.contains("#")) {
+            val programData = System.getenv("ProgramData")?.trim().takeIf { !it.isNullOrBlank() && !it.contains("!") && !it.contains("#") }
+                ?: "C:\\ProgramData"
+            val safeTemp = java.io.File(programData, "FileApex\\temp")
+            runCatching {
+                safeTemp.mkdirs()
+                System.setProperty("java.io.tmpdir", safeTemp.absolutePath)
+                System.setProperty("jna.tmpdir", safeTemp.absolutePath)
+            }
+        }
     }
 
     /**

@@ -42,11 +42,7 @@ object DesktopCrashHandler {
             if (it.exists() && it.isDirectory) it else File(userHome)
         }
 
-        var targetLogFile = File(desktopDir, "FileApex-error.log")
-        if (targetLogFile.exists()) {
-            val timeStamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-            targetLogFile = File(desktopDir, "FileApex-error-$timeStamp.log")
-        }
+        val targetLogFile = File(desktopDir, "FileApex-error.log")
 
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
@@ -87,7 +83,11 @@ object DesktopCrashHandler {
         }
 
         runCatching {
-            targetLogFile.writeText(logContent)
+            if (targetLogFile.exists()) {
+                targetLogFile.appendText("\n\n$logContent")
+            } else {
+                targetLogFile.writeText(logContent)
+            }
         }
 
         return targetLogFile

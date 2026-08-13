@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "0.6.26a"
+#define AppVersion "0.6.26b"
 #endif
 
 [Setup]
@@ -41,6 +41,10 @@ Name: "{usersendto}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFilen
 
 [Registry]
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "RuntimeDir"; ValueData: "{app}\runtime"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "Executable"; ValueData: "{app}\FileApex.exe"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\FileApex.exe"; ValueType: string; ValueData: "{app}\FileApexLauncher.cmd"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\FileApex.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app};{app}\runtime\bin;{app}\runtime\bin\server"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\*\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApexLauncher.cmd"" ""%1"""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
@@ -50,6 +54,11 @@ Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex\com
 Filename: "{app}\FileApexLauncher.cmd"; Description: "{cm:LaunchProgram,FileApex}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function IsUnsafeJavaPath(PathStr: String): Boolean;
+begin
+  Result := (Pos('!', PathStr) > 0) or (Pos('#', PathStr) > 0);
+end;
+
 function GetDefaultInstallDir(Param: String): String;
 var
   PrevDir: String;
@@ -58,7 +67,7 @@ begin
   // 1. Check if previous installation path is registered in Software\FileApex
   if RegQueryStringValue(HKA, 'Software\FileApex', 'InstallDir', PrevDir) and (PrevDir <> '') then
   begin
-    if (Pos('!', PrevDir) = 0) and DirExists(PrevDir) then
+    if (not IsUnsafeJavaPath(PrevDir)) and DirExists(PrevDir) then
     begin
       Result := PrevDir;
       Exit;
@@ -68,37 +77,100 @@ begin
   // 2. Check if previous uninstall location exists and is valid
   if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1', 'InstallLocation', PrevDir) and (PrevDir <> '') then
   begin
-    if (Pos('!', PrevDir) = 0) and DirExists(PrevDir) then
+    if (not IsUnsafeJavaPath(PrevDir)) and DirExists(PrevDir) then
     begin
       Result := PrevDir;
       Exit;
     end;
   end;
 
-  // 3. Fallback to clean path: commonappdata if userappdata has '!', else autopf
+  // 3. Fallback to clean path: commonappdata if userappdata has '!' or '#', else autopf
   UserDir := ExpandConstant('{userappdata}');
-  if Pos('!', UserDir) > 0 then
+  if IsUnsafeJavaPath(UserDir) then
     Result := ExpandConstant('{commonappdata}\FileApex')
   else
     Result := ExpandConstant('{autopf}\FileApex');
 end;
 
-procedure CleanupLegacyCorruptInstallations();
+procedure UninstallAndRemoveDirectory(PathDir: String);
 var
-  LegacyDir: String;
   UninstallerExe: String;
   ResultCode: Integer;
 begin
-  // Check known legacy location that might contain '!' (e.g. C:\Users\<user!>\AppData\Local\Programs\FileApex)
-  LegacyDir := ExpandConstant('{userappdata}\Local\Programs\FileApex');
-  if (Pos('!', LegacyDir) > 0) and DirExists(LegacyDir) then
+  if (PathDir <> '') and DirExists(PathDir) then
   begin
-    UninstallerExe := AddBackslash(LegacyDir) + 'unins000.exe';
+    UninstallerExe := AddBackslash(PathDir) + 'unins000.exe';
     if FileExists(UninstallerExe) then
     begin
-      Exec(UninstallerExe, '/SILENT /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec(UninstallerExe, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
-    DelTree(LegacyDir, True, True, True);
+    UninstallerExe := AddBackslash(PathDir) + 'unins001.exe';
+    if FileExists(UninstallerExe) then
+    begin
+      Exec(UninstallerExe, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+    DelTree(PathDir, True, True, True);
+  end;
+end;
+
+procedure CleanupLegacyCorruptInstallations();
+var
+  RegPath: String;
+  TargetAppDir: String;
+  UserAppDir1, UserAppDir2, UserAppDir3: String;
+begin
+  TargetAppDir := ExpandConstant('{app}');
+
+  // 1. HKCU Uninstall Key check
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1', 'InstallLocation', RegPath) then
+  begin
+    if (RegPath <> '') and (CompareText(RegPath, TargetAppDir) <> 0) then
+    begin
+      UninstallAndRemoveDirectory(RegPath);
+      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1');
+    end;
+  end;
+
+  // 2. HKLM Uninstall Key check
+  if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1', 'InstallLocation', RegPath) then
+  begin
+    if (RegPath <> '') and (CompareText(RegPath, TargetAppDir) <> 0) then
+    begin
+      UninstallAndRemoveDirectory(RegPath);
+      RegDeleteKeyIncludingSubkeys(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1');
+    end;
+  end;
+
+  // 3. HKLM64 Uninstall Key check
+  if RegQueryStringValue(HKLM64, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1', 'InstallLocation', RegPath) then
+  begin
+    if (RegPath <> '') and (CompareText(RegPath, TargetAppDir) <> 0) then
+    begin
+      UninstallAndRemoveDirectory(RegPath);
+      RegDeleteKeyIncludingSubkeys(HKLM64, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}_is1');
+    end;
+  end;
+
+  // 4. Scan known per-user corrupt paths (e.g. C:\Users\<user!>\AppData\Local\Programs\FileApex)
+  UserAppDir1 := ExpandConstant('{userappdata}\Local\Programs\FileApex');
+  if (CompareText(UserAppDir1, TargetAppDir) <> 0) and DirExists(UserAppDir1) then
+  begin
+    UninstallAndRemoveDirectory(UserAppDir1);
+  end;
+
+  UserAppDir2 := ExpandConstant('{userappdata}\FileApex');
+  if (CompareText(UserAppDir2, TargetAppDir) <> 0) and DirExists(UserAppDir2) then
+  begin
+    if FileExists(AddBackslash(UserAppDir2) + 'FileApex.exe') then
+    begin
+      UninstallAndRemoveDirectory(UserAppDir2);
+    end;
+  end;
+
+  UserAppDir3 := ExpandConstant('{localappdata}\Programs\FileApex');
+  if (CompareText(UserAppDir3, TargetAppDir) <> 0) and DirExists(UserAppDir3) then
+  begin
+    UninstallAndRemoveDirectory(UserAppDir3);
   end;
 end;
 

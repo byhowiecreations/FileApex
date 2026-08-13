@@ -13,7 +13,9 @@ data class PairingPayload(
     val rootPath: String,
     val publicKeyHash: String = "",
     /** When true, the scanner must supply this device's PIN to complete pairing. */
-    val pinRequired: Boolean = false
+    val pinRequired: Boolean = false,
+    /** Short 6-digit one-time manual entry pairing code. */
+    val pairingCode: String = ""
 ) {
     /**
      * Compact URI for QR codes — omits [rootPath] / [publicKeyHash] (fetched from the broadcaster after scan).
@@ -26,7 +28,20 @@ data class PairingPayload(
         append("&n=").append(encodeQueryValue(deviceName))
         append("&h=").append(encodeQueryValue(host))
         append("&p=").append(port)
+        val activeCode = pairingCode.ifBlank { generatePairingCode() }
+        append("&code=").append(activeCode)
         if (pinRequired) append("&pin=1")
+    }
+
+    /** Formats the 6-digit manual pairing code for human display (e.g. "742 - 918"). */
+    fun toShortManualCode(): String {
+        val code = pairingCode.ifBlank { generatePairingCode() }
+        val digits = code.filter { it.isDigit() }
+        return if (digits.length == 6) {
+            "${digits.substring(0, 3)} - ${digits.substring(3, 6)}"
+        } else {
+            code
+        }
     }
 
     companion object {
@@ -178,6 +193,7 @@ data class PairingPayload(
                 ?: error("Pairing link missing port")
             val version = params["v"]?.toIntOrNull() ?: 1
             val pinRequired = params["pin"] == "1" || params["pin"].equals("true", ignoreCase = true)
+            val code = params["code"] ?: ""
 
             return PairingPayload(
                 v = version,
@@ -187,8 +203,13 @@ data class PairingPayload(
                 port = port,
                 rootPath = "",
                 publicKeyHash = "",
-                pinRequired = pinRequired
+                pinRequired = pinRequired,
+                pairingCode = code
             )
+        }
+
+        fun generatePairingCode(): String {
+            return kotlin.random.Random.nextInt(100000, 999999).toString()
         }
 
         private fun parseJson(raw: String): PairingPayload =
@@ -240,8 +261,10 @@ object PairingPayloadFactory {
         port: Int,
         rootPath: String,
         publicKeyHash: String = "",
-        pinRequired: Boolean = false
+        pinRequired: Boolean = false,
+        pairingCode: String = ""
     ): PairingPayload {
+        val code = pairingCode.ifBlank { PairingPayload.generatePairingCode() }
         return PairingPayload(
             deviceId = deviceId,
             deviceName = deviceName,
@@ -249,7 +272,8 @@ object PairingPayloadFactory {
             port = port,
             rootPath = rootPath,
             publicKeyHash = publicKeyHash,
-            pinRequired = pinRequired
+            pinRequired = pinRequired,
+            pairingCode = code
         )
     }
 }

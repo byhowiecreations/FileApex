@@ -249,6 +249,7 @@ fun DevicesScreen(
     val editMode = state.deviceOrderEditMode
     val snackbarHostState = remember { SnackbarHostState() }
     var addMenuOpen by remember { mutableStateOf(false) }
+    var showManualCodeDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
     var renameText by remember { mutableStateOf("") }
     var pinText by remember { mutableStateOf("") }
@@ -453,10 +454,26 @@ fun DevicesScreen(
                             onScanQr()
                         }
                     )
+                    DropdownMenuItem(
+                        text = { Text("Manually Enter Code") },
+                        onClick = {
+                            addMenuOpen = false
+                            showManualCodeDialog = true
+                        }
+                    )
                 }
             }
             }
         }
+    }
+
+    if (showManualCodeDialog) {
+        ManualPairingCodeDialog(
+            onDismiss = { showManualCodeDialog = false },
+            onConfirm = { code ->
+                viewModel.pairFromManualInput(code)
+            }
+        )
     }
 
     val renameId = state.renameTargetId
@@ -1779,4 +1796,49 @@ private fun BatteryStatusOverlay(
             }
         }
     }
+}
+
+@Composable
+private fun ManualPairingCodeDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var codeText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manually Enter Pairing Code") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Type the 6-digit code shown on the other device (e.g. 742 - 918) or paste a pairing code.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = codeText,
+                    onValueChange = { codeText = it },
+                    label = { Text("Pairing Code") },
+                    placeholder = { Text("e.g. 742 918") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (codeText.isNotBlank()) {
+                        onConfirm(codeText)
+                        onDismiss()
+                    }
+                }
+            ) {
+                Text("Connect & Pair")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }

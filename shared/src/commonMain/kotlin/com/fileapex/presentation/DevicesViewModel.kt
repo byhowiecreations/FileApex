@@ -12,6 +12,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.PairingPayload
+import com.fileapex.domain.pairing.PairingPayloadFactory
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.network.PeerReachabilityMessages
@@ -360,6 +361,43 @@ class DevicesViewModel : ViewModel() {
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(errorMessage = error.message ?: "Pairing failed")
+                }
+            }
+        }
+    }
+
+    fun pairFromManualInput(input: String) {
+        viewModelScope.launch {
+            val trimmed = input.trim()
+            if (trimmed.isBlank()) {
+                _uiState.update { it.copy(errorMessage = "Please enter a pairing code") }
+                return@launch
+            }
+            val digitsOnly = trimmed.filter { it.isDigit() }
+            if (digitsOnly.length == 6) {
+                _uiState.update { it.copy(statusMessage = "Connecting using code $trimmed…") }
+                val devices = repository.listDevices()
+                val matchedDevice = devices.firstOrNull()
+                if (matchedDevice != null) {
+                    val payload = PairingPayloadFactory.create(
+                        deviceId = matchedDevice.deviceId,
+                        deviceName = matchedDevice.deviceName,
+                        host = matchedDevice.lastKnownIp,
+                        port = matchedDevice.port,
+                        rootPath = matchedDevice.rootPath,
+                        pairingCode = digitsOnly
+                    )
+                    pairFromQrPayload(payload)
+                    return@launch
+                }
+            }
+
+            val payload = PairingPayload.parseOrNull(trimmed)
+            if (payload != null) {
+                pairFromQrPayload(payload)
+            } else {
+                _uiState.update {
+                    it.copy(errorMessage = "Pairing code not recognized. Make sure both devices are on the same Wi-Fi network.")
                 }
             }
         }

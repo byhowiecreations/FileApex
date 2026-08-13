@@ -34,6 +34,13 @@ fun GenerateQrScreen(
         viewModel.onScreenEntered()
     }
 
+    LaunchedEffect(state.pairedDeviceName) {
+        if (state.pairedDeviceName != null) {
+            kotlinx.coroutines.delay(1500)
+            onBack()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

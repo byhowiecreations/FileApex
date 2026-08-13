@@ -107,15 +107,18 @@ object DesktopPlatformPaths {
 
     private fun windowsLocalAppDataDirectory(): File {
         val localAppData = System.getenv("LOCALAPPDATA")?.trim().orEmpty()
-        if (localAppData.isNotEmpty() && !localAppData.contains("!")) {
+        if (localAppData.isNotEmpty() && !isUnsafePath(localAppData)) {
             return File(localAppData, "FileApex")
         }
         val programData = System.getenv("ProgramData")?.trim().orEmpty()
-        if (programData.isNotEmpty() && !programData.contains("!")) {
+        if (programData.isNotEmpty() && !isUnsafePath(programData)) {
             return File(programData, "FileApex")
         }
         return File("C:\\ProgramData\\FileApex")
     }
+
+    private fun isUnsafePath(path: String): Boolean =
+        path.contains("!") || path.contains("#")
 
     private fun macApplicationSupportDirectory(): File {
         return File(userHomeDirectory(), "Library/Application Support/$BUNDLE_ID")
