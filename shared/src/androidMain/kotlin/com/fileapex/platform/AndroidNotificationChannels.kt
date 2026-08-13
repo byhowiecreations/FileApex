@@ -4,11 +4,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import android.util.Log
 
 /**
  * Single source of truth for FileApex Android notification channel ids and creation.
  */
 object AndroidNotificationChannels {
+    private const val TAG = "NotificationChannels"
+    private const val PREFS_NAME = "fileapex_notification_channels"
+    private const val KEY_SHARE_SERVER_MIGRATED = "share_server_v2_channel_migrated"
+
     const val APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
     /** Persistent share-server FGS alert — static after first post ([ShareServerForegroundNotification]). */
@@ -26,7 +31,7 @@ object AndroidNotificationChannels {
             description = "Alerts when a newer FileApex build is available"
         }
         context.getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+            ?.createNotificationChannel(channel)
     }
 
     fun ensureTransferReceiveChannel(context: Context) {
@@ -39,17 +44,17 @@ object AndroidNotificationChannels {
             description = "Alerts when FileApex receives files from paired devices"
         }
         context.getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+            ?.createNotificationChannel(channel)
     }
 
     fun ensureShareServerChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = context.getSystemService(NotificationManager::class.java)
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val existing = manager.getNotificationChannel(SHARE_SERVER_ACTIVE)
         if (existing != null && existing.importance == NotificationManager.IMPORTANCE_LOW) {
             return
         }
-        migrateLegacyShareServerChannels(manager)
+        migrateLegacyShareServerChannels(context)
         val channel = NotificationChannel(
             SHARE_SERVER_ACTIVE,
             "FileApex Server",
@@ -67,15 +72,52 @@ object AndroidNotificationChannels {
     /** One-time legacy cleanup — not on the FGS [startForeground] critical path. */
     fun migrateLegacyShareServerChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        migrateLegacyShareServerChannels(context.getSystemService(NotificationManager::class.java))
-    }
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_SHARE_SERVER_MIGRATED, false)) return
 
-    private fun migrateLegacyShareServerChannels(manager: NotificationManager) {
-        manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL_V1)
-        manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL)
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+
+        val activeNotifications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            manager.activeNotifications ?: emptyArray()
+        } else {
+            emptyArray()
+        }
+        val activeChannelIds = activeNotifications.mapNotNull { it.notification.channelId }.toSet()
+
+        var deferred = false
+
+        if (activeChannelIds.contains(LEGACY_SHARE_SERVER_CHANNEL_V1)) {
+            Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL_V1 while active — deferring migration")
+            deferred = true
+        } else {
+            runCatching { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL_V1) }
+        }
+
+        if (activeChannelIds.contains(LEGACY_SHARE_SERVER_CHANNEL)) {
+            Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL while active — deferring migration")
+            deferred = true
+        } else {
+            runCatching { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL) }
+        }
+
         val existing = manager.getNotificationChannel(SHARE_SERVER_ACTIVE)
         if (existing != null && existing.importance != NotificationManager.IMPORTANCE_LOW) {
-            manager.deleteNotificationChannel(SHARE_SERVER_ACTIVE)
+            if (activeChannelIds.contains(SHARE_SERVER_ACTIVE)) {
+                Log.w(
+                    TAG,
+                    "Cannot delete channel $SHARE_SERVER_ACTIVE while FGS notification is active — deferring migration"
+                )
+                deferred = true
+            } else {
+                runCatching { manager.deleteNotificationChannel(SHARE_SERVER_ACTIVE) }
+            }
         }
+
+        if (deferred) return
+
+        prefs.edit().putBoolean(KEY_SHARE_SERVER_MIGRATED, true).apply()
+        Log.i(TAG, "Legacy share server notification channel migration complete")
     }
 }
+
+

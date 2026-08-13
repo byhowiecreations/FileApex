@@ -1,2 +1,2 @@
-name=0.6.26b
-code=112
+name=0.6.27a
+code=113

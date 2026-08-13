@@ -22,6 +22,7 @@ composeApp/google-services.json
 .DS_Store
 captures/
 *.apk
+*.ipa
 *.aab
 *.ap_
 *.dex

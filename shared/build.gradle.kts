@@ -241,6 +241,15 @@ kotlin {
             implementation(libs.kotlinx.coroutines.play.services)
         }
 
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.junit)
+                implementation(libs.androidx.test.core)
+                implementation(libs.robolectric)
+            }
+        }
+
+
         val desktopMain by getting {
             dependsOn(jvmCommon)
             kotlin.srcDir(layout.buildDirectory.dir("generated/desktopCloud/kotlin"))
