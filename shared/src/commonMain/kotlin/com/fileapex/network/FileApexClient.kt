@@ -1,6 +1,7 @@
 package com.fileapex.network
 
 import com.fileapex.data.db.PairedDeviceEntity
+import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.pairing.ClusterSyncRequest
@@ -29,7 +30,8 @@ import kotlinx.serialization.json.Json
  * Cloud traffic uses the process-wide Ktor client from [com.fileapex.di.FileApexServices].
  */
 class FileApexClient(
-    private val json: Json = FileApexHttpClientFactory.defaultJson
+    private val json: Json = FileApexHttpClientFactory.defaultJson,
+    private val localDeviceId: () -> String = { loadLocalIdentity().deviceId }
 ) {
     /** In-memory PINs for peers that require PIN this session (host:port → pin). */
     private val sessionPinsLock = Any()
@@ -173,11 +175,11 @@ class FileApexClient(
         timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS
     ): Boolean {
         if (!PeerLanHttpPolicy.canRoute(host)) return false
-        val health = peerHttpGet(host, port, "/api/v1/health", timeoutMs)
+        val health = peerHttpGet(host, port, withSenderQuery("/api/v1/health"), timeoutMs)
         if (health != null && health.statusCode in 200..299) {
             return true
         }
-        val heartbeat = peerHttpGet(host, port, "/api/v1/heartbeat", timeoutMs)
+        val heartbeat = peerHttpGet(host, port, withSenderQuery("/api/v1/heartbeat"), timeoutMs)
         return heartbeat != null && heartbeat.statusCode in 200..299
     }
 
@@ -355,11 +357,13 @@ class FileApexClient(
         val result = peerHttpGetStreaming(
             host = host,
             port = port,
-            pathWithQuery = queryPath(
-                basePath = "/api/v1/files/stream",
-                host = host,
-                port = port,
-                params = mapOf("path" to remotePath)
+            pathWithQuery = withSenderQuery(
+                queryPath(
+                    basePath = "/api/v1/files/stream",
+                    host = host,
+                    port = port,
+                    params = mapOf("path" to remotePath)
+                )
             ),
             connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
             readIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
@@ -421,7 +425,7 @@ class FileApexClient(
         val response = peerHttpUploadFromChannel(
             host = host,
             port = port,
-            pathWithQuery = uploadPathWithQuery(host, port, remoteTargetPath),
+            pathWithQuery = withSenderQuery(uploadPathWithQuery(host, port, remoteTargetPath)),
             contentType = "application/octet-stream",
             chunks = chunks,
             connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
@@ -445,7 +449,7 @@ class FileApexClient(
         timeoutMs: Long
     ): PeerBoundHttpResponse {
         PeerLanHttpPolicy.ensureRoute(host)
-        return peerHttpGet(host, port, pathWithQuery, timeoutMs)
+        return peerHttpGet(host, port, withSenderQuery(pathWithQuery), timeoutMs)
             ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
     }
 
@@ -461,11 +465,22 @@ class FileApexClient(
         return peerHttpPost(
             host = host,
             port = port,
-            path = pathWithQuery,
+            path = withSenderQuery(pathWithQuery),
             body = body,
             contentType = contentType,
             timeoutMs = timeoutMs
         ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+    }
+
+    private fun withSenderQuery(pathWithQuery: String): String {
+        val id = localDeviceId().trim()
+        if (id.isEmpty()) return pathWithQuery
+        val part = "from=${id.encodeURLParameter()}"
+        return if (pathWithQuery.contains('?')) {
+            "$pathWithQuery&$part"
+        } else {
+            "$pathWithQuery?$part"
+        }
     }
 
     private fun queryPath(

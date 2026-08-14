@@ -11,6 +11,7 @@ object DesktopJvmStartup {
         configureWindowsSkikoRendering()
         if (DesktopPlatformPaths.isMacOs()) {
             MacOsExtensionRegistrar.registerOnLaunchDeferred()
+            DesktopMacTrayBridge.load()
         }
         if (DesktopPlatformPaths.isWindows()) {
             DesktopWindowsRegistration.registerWindowsContextMenuAndSendTo()

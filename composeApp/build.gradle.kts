@@ -372,6 +372,26 @@ compose.desktop {
             packageVersion = "1.0.$fileapexVersionCode"
             includeAllModules = true
 
+            // Pin the bundled JRE to the correct architecture for each Mac build type.
+            // The Intel packageIntelDmg task sets JAVA_HOME to jdk-21-x64 before invoking Gradle,
+            // so the env-var branch covers the x86_64 case. The arm64 branch prevents the Compose
+            // plugin from auto-discovering jdk-21-x64 alphabetically and bundling an x86_64 JRE
+            // into the Silicon .app / DMG.
+            val envJavaHome = System.getenv("JAVA_HOME")
+            val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+            val x64Jdk  = File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
+            val pinnedJdk = when {
+                // Intel build: JAVA_HOME already points at the x64 JDK.
+                !envJavaHome.isNullOrBlank() && envJavaHome.contains("x64") && x64Jdk.isDirectory -> x64Jdk
+                // Silicon build: always use the arm64 JDK when it exists.
+                arm64Jdk.isDirectory -> arm64Jdk
+                // Fallback: let Gradle decide (non-Mac hosts, CI, etc.).
+                else -> null
+            }
+            if (pinnedJdk != null) {
+                javaHome = pinnedJdk.absolutePath
+            }
+
             macOS {
                 iconFile.set(project.file("icons/FileApex.icns"))
 
@@ -385,9 +405,17 @@ compose.desktop {
                     extraKeysRawXml = """
                         <key>NSLocalNetworkUsageDescription</key>
                         <string>FileApex communicates directly with local devices over your network to sync files and manage node discovery.</string>
+                        <key>NSAppTransportSecurity</key>
+                        <dict>
+                            <key>NSAllowsLocalNetworking</key>
+                            <true/>
+                            <key>NSAllowsArbitraryLoads</key>
+                            <true/>
+                        </dict>
                         <key>NSBonjourServices</key>
                         <array>
                             <string>_fileapex._tcp</string>
+                            <string>_fileapex-ln._tcp</string>
                         </array>
                         <key>CFBundleURLTypes</key>
                         <array>
@@ -448,38 +476,53 @@ tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDi
 }
 
 tasks.matching { it.name == "createRuntimeImage" }.configureEach {
-    doFirst {
-        val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
-        val markerFile = stagingRuntime.resolve(".jdk_arch_marker")
-        val currentJavaExecutable = File(System.getProperty("java.home"), "bin/java")
-        val currentArch = if (currentJavaExecutable.exists()) {
-            val process = ProcessBuilder("file", currentJavaExecutable.absolutePath).start()
-            val out = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-            if (out.contains("x86_64")) "x86_64" else "arm64"
-        } else "unknown"
-
-        if (stagingRuntime.exists()) {
-            val previousArch = if (markerFile.exists()) markerFile.readText().trim() else ""
-            if (previousArch != currentArch) {
-                logger.lifecycle("Purging cached runtime image (previous arch '$previousArch' != current '$currentArch')")
-                stagingRuntime.deleteRecursively()
-            }
-        }
-    }
     doLast {
+        if (!isMacHost()) return@doLast
         val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
-        val markerFile = stagingRuntime.resolve(".jdk_arch_marker")
-        val currentJavaExecutable = File(System.getProperty("java.home"), "bin/java")
-        val currentArch = if (currentJavaExecutable.exists()) {
-            val process = ProcessBuilder("file", currentJavaExecutable.absolutePath).start()
-            val out = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-            if (out.contains("x86_64")) "x86_64" else "arm64"
-        } else "unknown"
-        if (stagingRuntime.exists()) {
-            markerFile.writeText(currentArch)
+        val libjli = stagingRuntime.resolve("lib/libjli.dylib")
+        if (!libjli.exists()) return@doLast
+
+        // Determine which arch this build needs.
+        val envJavaHome = System.getenv("JAVA_HOME") ?: ""
+        val needsArch = if (envJavaHome.contains("x64")) "x86_64" else "arm64"
+
+        // Determine what jlink actually produced.
+        val fileProc = ProcessBuilder("file", libjli.absolutePath).start()
+        val fileOut = fileProc.inputStream.bufferedReader().readText()
+        fileProc.waitFor()
+        val producedArch = if (fileOut.contains("x86_64")) "x86_64" else "arm64"
+
+        if (producedArch == needsArch) {
+            logger.lifecycle("Runtime image arch: $producedArch ✓")
+            return@doLast
         }
+
+        // Wrong arch — rebuild using the correct JDK's jlink directly.
+        logger.lifecycle("Runtime image is $producedArch but need $needsArch — rebuilding with correct jlink")
+        val correctJdkHome = when (needsArch) {
+            "arm64"  -> File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+            "x86_64" -> File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
+            else -> null
+        }
+        checkNotNull(correctJdkHome) { "Cannot determine correct JDK home for arch $needsArch" }
+        check(correctJdkHome.isDirectory) { "JDK not found at ${correctJdkHome.absolutePath}" }
+
+        val jlink   = File(correctJdkHome, "bin/jlink")
+        val jmodsDir = File(correctJdkHome, "jmods")
+        check(jlink.canExecute())  { "jlink not executable at ${jlink.absolutePath}" }
+        check(jmodsDir.isDirectory) { "jmods not found at ${jmodsDir.absolutePath}" }
+
+        stagingRuntime.deleteRecursively()
+        val jlinkResult = ProcessBuilder(
+            jlink.absolutePath,
+            "--module-path", jmodsDir.absolutePath,
+            "--add-modules", "ALL-MODULE-PATH",
+            "--no-header-files", "--no-man-pages",
+            "--compress=1", "--strip-debug",
+            "--output", stagingRuntime.absolutePath
+        ).inheritIO().start().waitFor()
+        check(jlinkResult == 0) { "jlink failed with exit code $jlinkResult" }
+        logger.lifecycle("Runtime image rebuilt as $needsArch ✓")
     }
 }
 
@@ -504,6 +547,33 @@ private fun Project.embedMacTrayBridgeIn(appBundle: File) {
     logger.lifecycle("Embedded native tray bridge at ${dest.absolutePath}")
 }
 
+private fun Project.patchMacRuntimeLocalNetworkPlist(appBundle: File) {
+    if (!isMacHost()) return
+    val runtimePlist = appBundle.resolve("Contents/runtime/Contents/Info.plist")
+    if (!runtimePlist.isFile) {
+        logger.warn("Nested JRE Info.plist missing — skipped Local Network keys")
+        return
+    }
+    val description =
+        "FileApex communicates directly with local devices over your network to sync files and manage node discovery."
+    fun buddy(vararg args: String): Int =
+        ProcessBuilder("/usr/libexec/PlistBuddy", *args, runtimePlist.absolutePath)
+            .redirectErrorStream(true)
+            .start()
+            .waitFor()
+    buddy("-c", "Delete :NSLocalNetworkUsageDescription")
+    buddy("-c", "Add :NSLocalNetworkUsageDescription string \"$description\"")
+    buddy("-c", "Delete :NSBonjourServices")
+    buddy("-c", "Add :NSBonjourServices array")
+    buddy("-c", "Add :NSBonjourServices:0 string _fileapex._tcp")
+    buddy("-c", "Add :NSBonjourServices:1 string _fileapex-ln._tcp")
+    buddy("-c", "Delete :NSAppTransportSecurity")
+    buddy("-c", "Add :NSAppTransportSecurity dict")
+    buddy("-c", "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true")
+    buddy("-c", "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true")
+    logger.lifecycle("Patched nested JRE Info.plist with Local Network + Bonjour keys")
+}
+
 tasks.register("embedMacExtensions") {
     group = "distribution"
     description = "Build Share Extension and embed into FileApex.app"
@@ -512,6 +582,7 @@ tasks.register("embedMacExtensions") {
     doLast {
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/FileApex.app").get().asFile
         embedMacTrayBridgeIn(appBundle)
+        patchMacRuntimeLocalNetworkPlist(appBundle)
         val script = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
         check(script.exists()) { "Missing ${script.absolutePath}" }
         val process = ProcessBuilder("bash", script.absolutePath, appBundle.absolutePath, "Release")
@@ -843,12 +914,24 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         return
     }
     embedMacTrayBridgeIn(appBundle)
+    patchMacRuntimeLocalNetworkPlist(appBundle)
     val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
     ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
         .directory(rootProject.projectDir)
         .inheritIO()
         .start()
         .waitFor()
+    val uuidScript = rootProject.layout.projectDirectory.file("macos/scripts/unique_main_uuid.sh").asFile
+    if (uuidScript.isFile) {
+        val uuidCode = ProcessBuilder("bash", uuidScript.absolutePath, appBundle.absolutePath)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+            .waitFor()
+        if (uuidCode != 0) {
+            logger.warn("unique_main_uuid.sh exited $uuidCode")
+        }
+    }
 }
 
 private fun Project.shipToCurrent(
@@ -1188,49 +1271,118 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
     dependsOn(generateGoogleServicesJson)
 }
 
+/**
+ * Silicon (arm64) DMG — spawns a fresh Gradle subprocess with JAVA_HOME explicitly set to the
+ * arm64 JDK so the Compose plugin always bundles the correct JRE regardless of what the parent
+ * daemon has cached.
+ */
+tasks.register("packageSiliconDmg") {
+    group = "distribution"
+    description = "Package Silicon arm64 Mac DMG — explicitly sets JAVA_HOME to arm64 JDK"
+    onlyIf { isMacHost() }
+    doLast {
+        val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+        check(arm64Jdk.isDirectory) { "arm64 JDK not found at ${arm64Jdk.absolutePath}" }
+
+        // Clear any stale x86_64 runtime that a cached checkRuntime task may have restored.
+        val stagingAppDir = layout.buildDirectory.dir("compose/binaries/main/app").get().asFile
+        val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
+        if (stagingAppDir.exists()) stagingAppDir.deleteRecursively()
+        if (stagingRuntime.exists()) stagingRuntime.deleteRecursively()
+
+        val cmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
+            " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon embedMacExtensions" +
+            " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+        val exit = ProcessBuilder("bash", "-c", cmd)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start().waitFor()
+        check(exit == 0) { "Silicon DMG packaging failed with exit code $exit" }
+
+        // Move the produced DMG and .app into current/.
+        val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
+        val siliconDmg = dmgDir.listFiles().orEmpty()
+            .firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
+        val dest = currentBuildsDest()
+        if (siliconDmg != null) {
+            moveToCurrent(dest, siliconDmg, destName = "FileApex-v$fileapexVersionName-Silicon.dmg", logger = logger)
+        }
+        val stagingApp = stagingAppDir.resolve("FileApex.app")
+        check(stagingApp.isDirectory) {
+            "Silicon .app missing at ${stagingApp.absolutePath}"
+        }
+        val destApp = dest.resolve("FileApex.app")
+        if (destApp.exists()) destApp.deleteRecursively()
+        destApp.mkdirs()
+        val rsync = ProcessBuilder(
+            "rsync", "-a", "--delete",
+            stagingApp.absolutePath + "/",
+            destApp.absolutePath + "/"
+        ).inheritIO().start().waitFor()
+        check(rsync == 0) { "rsync of FileApex.app exited $rsync" }
+        val plist = destApp.resolve("Contents/Info.plist")
+        check(plist.isFile) { "FileApex.app missing Contents/Info.plist after rsync" }
+        ProcessBuilder(
+            "/usr/libexec/PlistBuddy", "-c",
+            "Set :CFBundleShortVersionString $fileapexVersionName",
+            plist.absolutePath
+        ).inheritIO().start().waitFor()
+        logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$fileapexVersionName")
+    }
+}
+
+/**
+ * Intel (x86_64) DMG — spawns a fresh Gradle subprocess under Rosetta with JAVA_HOME set to the
+ * x64 JDK.  Runs after packageSiliconDmg so the two builds never share a runtime staging dir.
+ */
 tasks.register("packageIntelDmg") {
     group = "distribution"
-    description = "Package Intel x86_64 Mac DMG using x64 JDK under Rosetta"
+    description = "Package Intel x86_64 Mac DMG — explicitly sets JAVA_HOME to x64 JDK under Rosetta"
     onlyIf { isMacHost() }
     doLast {
         val x64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
         check(x64Jdk.isDirectory) { "x86_64 JDK not found at ${x64Jdk.absolutePath}" }
-        val stagingApp = layout.buildDirectory.dir("compose/binaries/main/app").get().asFile
+
+        // Clear any arm64 runtime left by packageSiliconDmg.
+        val stagingApp     = layout.buildDirectory.dir("compose/binaries/main/app").get().asFile
         val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
-        if (stagingApp.exists()) stagingApp.deleteRecursively()
+        if (stagingApp.exists())     stagingApp.deleteRecursively()
         if (stagingRuntime.exists()) stagingRuntime.deleteRecursively()
-        val process = ProcessBuilder(
-            "arch", "-x86_64", "bash", "-c", "source signing.local.env && export JAVA_HOME='${x64Jdk.absolutePath}' && ./gradlew --no-daemon packageDmg fixDmgVolumeIcon -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
-        )
-        .directory(rootProject.projectDir)
-        .inheritIO()
-        val exit = process.start().waitFor()
+
+        val cmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${x64Jdk.absolutePath}' &&" +
+            " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon" +
+            " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+        val exit = ProcessBuilder("arch", "-x86_64", "bash", "-c", cmd)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start().waitFor()
         check(exit == 0) { "Intel DMG packaging failed with exit code $exit" }
+
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
-        val x64Dmg = dmgDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
+        val x64Dmg = dmgDir.listFiles().orEmpty()
+            .firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
         if (x64Dmg != null) {
-            val dest = currentBuildsDest()
-            val destName = "FileApex-v$fileapexVersionName-Intel.dmg"
-            moveToCurrent(dest, x64Dmg, destName = destName, logger = logger)
+            moveToCurrent(
+                currentBuildsDest(), x64Dmg,
+                destName = "FileApex-v$fileapexVersionName-Intel.dmg",
+                logger = logger
+            )
         }
     }
 }
 
-
-
-
-
 /**
  * Full ship into `current/`.
- * Mac: release APK + .app + Silicon DMG + Intel DMG. Windows: release APK + release MSI/EXE.
- * Release APK ships as FileApex-v<version>.apk.
+ * Mac: release APK → packageSiliconDmg → packageIntelDmg (each with their own explicit JAVA_HOME).
+ * Windows: release APK + MSI.
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Ship into current/ (Mac full set with Silicon + Intel DMGs; Windows release APK + MSI)"
+    description = "Ship into current/ (Mac: APK + Silicon DMG + Intel DMG each with explicit JDK; Windows: APK + MSI)"
     if (isMacHost()) {
-        dependsOn("assembleRelease", "verifyReleaseApkSigned", "embedMacExtensions", "fixDmgVolumeIcon")
-        finalizedBy("packageIntelDmg")
+        // Only build the APK in-process; desktop DMGs are spawned as explicit subprocesses.
+        dependsOn("assembleRelease", "verifyReleaseApkSigned")
+        finalizedBy("packageSiliconDmg")
     } else if (isWindowsHost()) {
         dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageReleaseMsi")
     } else {
@@ -1238,16 +1390,25 @@ tasks.register("copyAllBuilds") {
     }
 
     doLast {
+        // Ship the APK only; DMGs are handled by the Silicon/Intel subprocess tasks.
         shipToCurrent(
             includeDebugApk = false,
             includeReleaseApk = true,
-            includeDmg = isMacHost(),
+            includeDmg = false,         // DMGs shipped by packageSiliconDmg / packageIntelDmg
             includeMsi = isWindowsHost(),
             mountDmg = false,
             preserveExistingDmgOnWipe = false,
             preserveExistingMsiOnWipe = false
         )
     }
+}
+
+// Silicon → Intel chaining: Intel always runs after Silicon, sequentially, so staging dirs don't clash.
+tasks.matching { it.name == "packageSiliconDmg" }.configureEach {
+    if (isMacHost()) finalizedBy("packageIntelDmg")
+}
+tasks.matching { it.name == "packageIntelDmg" }.configureEach {
+    mustRunAfter("packageSiliconDmg")
 }
 
 

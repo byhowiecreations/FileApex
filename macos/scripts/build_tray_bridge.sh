@@ -18,40 +18,36 @@ fi
 
 mkdir -p "$OUT"
 
-swiftc -O \
-  -target arm64-apple-macosx14.0 \
-  -emit-library \
-  -o "$OUT/libFileApexTray_arm64.dylib" \
-  "$TRAY/FileApexTrayBridge.swift" \
-  "$TRAY/MacTrayManager.swift" \
-  "$TRAY/TrayMenuView.swift" \
-  "$TRAY/DropBoxWindowManager.swift" \
-  "$TRAY/NativeToast.swift" \
-  "$TRAY/TrayDeviceBridge.swift" \
-  -framework AppKit \
-  -framework SwiftUI \
-  -framework Foundation \
-  -framework UniformTypeIdentifiers \
-  -Xlinker -install_name \
-  -Xlinker @executable_path/../Frameworks/libFileApexTray.dylib
+SWIFT_SOURCES=(
+  "$TRAY/FileApexTrayBridge.swift"
+  "$TRAY/MacTrayManager.swift"
+  "$TRAY/TrayMenuView.swift"
+  "$TRAY/DropBoxWindowManager.swift"
+  "$TRAY/NativeToast.swift"
+  "$TRAY/TrayDeviceBridge.swift"
+  "$TRAY/LocalNetworkProbe.swift"
+  "$TRAY/LanHttpClient.swift"
+)
 
-swiftc -O \
-  -target x86_64-apple-macosx14.0 \
-  -emit-library \
-  -o "$OUT/libFileApexTray_x86_64.dylib" \
-  "$TRAY/FileApexTrayBridge.swift" \
-  "$TRAY/MacTrayManager.swift" \
-  "$TRAY/TrayMenuView.swift" \
-  "$TRAY/DropBoxWindowManager.swift" \
-  "$TRAY/NativeToast.swift" \
-  "$TRAY/TrayDeviceBridge.swift" \
-  -framework AppKit \
-  -framework SwiftUI \
-  -framework Foundation \
-  -framework UniformTypeIdentifiers \
-  -Xlinker -install_name \
-  -Xlinker @executable_path/../Frameworks/libFileApexTray.dylib
+compile_arch() {
+  local arch="$1"
+  local output="$2"
+  swiftc -O \
+    -target "${arch}-apple-macosx14.0" \
+    -emit-library \
+    -o "$output" \
+    "${SWIFT_SOURCES[@]}" \
+    -framework AppKit \
+    -framework SwiftUI \
+    -framework Foundation \
+    -framework UniformTypeIdentifiers \
+    -framework Network \
+    -Xlinker -install_name \
+    -Xlinker @executable_path/../Frameworks/libFileApexTray.dylib
+}
 
+compile_arch arm64 "$OUT/libFileApexTray_arm64.dylib"
+compile_arch x86_64 "$OUT/libFileApexTray_x86_64.dylib"
 
 lipo -create -output "$OUT/libFileApexTray.dylib" "$OUT/libFileApexTray_arm64.dylib" "$OUT/libFileApexTray_x86_64.dylib"
 rm -f "$OUT/libFileApexTray_arm64.dylib" "$OUT/libFileApexTray_x86_64.dylib"

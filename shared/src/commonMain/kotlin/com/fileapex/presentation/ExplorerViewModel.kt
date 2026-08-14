@@ -15,6 +15,7 @@ import com.fileapex.platform.decodeImageBytes
 import com.fileapex.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +26,7 @@ import kotlin.coroutines.cancellation.CancellationException
 
 data class ExplorerUiState(
     val deviceTitle: String = "",
-    /** Path whose contents are shown (right pane / phone list). */
+    /** Navigated folder — compact list, paste, and transfers. Split-pane preview must not change this. */
     val currentPath: String = "",
     /** Path whose folders appear in the wide left pane. */
     val panePath: String = "",
@@ -34,7 +35,9 @@ data class ExplorerUiState(
     val canNavigateUp: Boolean = false,
     /** Folders at [panePath] (wide left column). */
     val paneDirectories: List<RemoteFileItem> = emptyList(),
-    /** Folders inside [currentPath] (right pane / phone list). */
+    /** Files at [panePath] (compact list / paste target). */
+    val paneFiles: List<RemoteFileItem> = emptyList(),
+    /** Folders inside the split-pane right column (preview or explicit selection). */
     val contentDirectories: List<RemoteFileItem> = emptyList(),
     /** Files inside [currentPath]. */
     val contentFiles: List<RemoteFileItem> = emptyList(),
@@ -85,6 +88,7 @@ class ExplorerViewModel(
     /** Anchor for desktop Shift-click range selection. */
     private var selectionAnchorId: String? = null
     private var browseJob: Job? = null
+    private var splitPanePreviewJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         ExplorerUiState(
@@ -136,28 +140,15 @@ class ExplorerViewModel(
                     )
                 }
                 val listing = browser.listAt(resolved)
-                val topDir = listing.directories.firstOrNull()
-                if (topDir != null) {
-                    val topResolved = browser.resolveWithinRoot(topDir.absolutePath)
-                    val topListing = browser.listAt(topResolved)
-                    applyPaneAndContent(
-                        panePath = resolved,
-                        contentPath = topResolved,
-                        paneDirectories = listing.directories,
-                        contentDirectories = topListing.directories,
-                        contentFiles = topListing.files,
-                        selectedFolderPath = topResolved
-                    )
-                } else {
-                    applyPaneAndContent(
-                        panePath = resolved,
-                        contentPath = resolved,
-                        paneDirectories = listing.directories,
-                        contentDirectories = listing.directories,
-                        contentFiles = listing.files,
-                        selectedFolderPath = null
-                    )
-                }
+                applyPaneAndContent(
+                    panePath = resolved,
+                    contentPath = resolved,
+                    paneDirectories = listing.directories,
+                    paneFiles = listing.files,
+                    contentDirectories = listing.directories,
+                    contentFiles = listing.files,
+                    selectedFolderPath = null
+                )
             }
         }
     }
@@ -183,6 +174,7 @@ class ExplorerViewModel(
                     panePath = _uiState.value.panePath.ifBlank { browseRoot },
                     contentPath = resolved,
                     paneDirectories = _uiState.value.paneDirectories,
+                    paneFiles = _uiState.value.paneFiles,
                     contentDirectories = listing.directories,
                     contentFiles = listing.files,
                     selectedFolderPath = resolved
@@ -213,10 +205,42 @@ class ExplorerViewModel(
                     panePath = newPane,
                     contentPath = newContent,
                     paneDirectories = paneListing.directories,
+                    paneFiles = paneListing.files,
                     contentDirectories = contentListing.directories,
                     contentFiles = contentListing.files,
                     selectedFolderPath = newContent
                 )
+            }
+        }
+    }
+
+    /**
+     * Wide layout only: fill the right pane with the first folder. Failures are ignored so a
+     * missing/empty child (e.g. Alarms) cannot fail the browse or mark the peer unreachable.
+     * Does not change [ExplorerUiState.currentPath], so compact nav and transfers stay put.
+     */
+    fun previewFirstSplitPaneFolder() {
+        val state = _uiState.value
+        if (state.selectedFolderPath != null) return
+        val first = state.paneDirectories.firstOrNull() ?: return
+        val paneSnapshot = browser.normalizePath(state.panePath.ifBlank { browseRoot })
+        splitPanePreviewJob?.cancel()
+        splitPanePreviewJob = viewModelScope.launch {
+            runCatching {
+                val resolved = browser.resolveWithinRoot(first.absolutePath)
+                val listing = browser.listAt(resolved)
+                _uiState.update { current ->
+                    val paneNow = browser.normalizePath(current.panePath.ifBlank { browseRoot })
+                    if (paneNow != paneSnapshot || current.selectedFolderPath != null) {
+                        current
+                    } else {
+                        current.copy(
+                            selectedFolderPath = resolved,
+                            contentDirectories = listing.directories,
+                            contentFiles = listing.files
+                        )
+                    }
+                }
             }
         }
     }
@@ -226,6 +250,7 @@ class ExplorerViewModel(
     }
 
     private fun launchBrowse(block: suspend () -> Unit) {
+        splitPanePreviewJob?.cancel()
         browseJob?.cancel()
         browseJob = viewModelScope.launch { block() }
     }
@@ -234,17 +259,25 @@ class ExplorerViewModel(
         try {
             block()
         } catch (error: CancellationException) {
-            // Expected when a newer folder navigation cancels the in-flight browse job.
             throw error
         } catch (error: PinSessionRequiredException) {
             requestPinThen { browseWithPinRetry(block) }
         } catch (error: Throwable) {
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    isRefreshing = false,
-                    errorMessage = error.message ?: "Unable to open folder"
-                )
+            runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
+            runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
+            delay(500)
+            try {
+                block()
+            } catch (retryError: PinSessionRequiredException) {
+                requestPinThen { browseWithPinRetry(block) }
+            } catch (retryError: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        errorMessage = retryError.message ?: "Unable to open folder"
+                    )
+                }
             }
         }
     }
@@ -297,6 +330,7 @@ class ExplorerViewModel(
         panePath: String,
         contentPath: String,
         paneDirectories: List<RemoteFileItem>,
+        paneFiles: List<RemoteFileItem>,
         contentDirectories: List<RemoteFileItem>,
         contentFiles: List<RemoteFileItem>,
         selectedFolderPath: String?
@@ -311,6 +345,7 @@ class ExplorerViewModel(
                 parentPath = parent,
                 canNavigateUp = parent != null,
                 paneDirectories = paneDirectories,
+                paneFiles = paneFiles,
                 contentDirectories = contentDirectories,
                 contentFiles = contentFiles,
                 selectedFolderPath = selectedFolderPath?.let(browser::normalizePath),
@@ -571,6 +606,7 @@ class ExplorerViewModel(
                     panePath = newPane,
                     contentPath = newContent,
                     paneDirectories = paneListing.directories,
+                    paneFiles = paneListing.files,
                     contentDirectories = contentListing.directories,
                     contentFiles = contentListing.files,
                     selectedFolderPath = newContent
@@ -615,6 +651,7 @@ class ExplorerViewModel(
                         panePath = browser.resolveWithinRoot(panePath),
                         contentPath = browser.resolveWithinRoot(panePath),
                         paneDirectories = paneListing.directories,
+                        paneFiles = paneListing.files,
                         contentDirectories = paneListing.directories,
                         contentFiles = paneListing.files,
                         selectedFolderPath = null
@@ -625,6 +662,7 @@ class ExplorerViewModel(
                         panePath = browser.resolveWithinRoot(panePath),
                         contentPath = browser.resolveWithinRoot(contentPath),
                         paneDirectories = paneListing.directories,
+                        paneFiles = paneListing.files,
                         contentDirectories = contentListing.directories,
                         contentFiles = contentListing.files,
                         selectedFolderPath = selected

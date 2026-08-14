@@ -198,6 +198,7 @@ fun FileExplorerScreen(
                 when {
                     state.isLoading &&
                         state.paneDirectories.isEmpty() &&
+                        state.paneFiles.isEmpty() &&
                         state.contentDirectories.isEmpty() &&
                         state.contentFiles.isEmpty() -> {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -262,9 +263,26 @@ fun FileExplorerScreen(
                             AdaptiveExplorerView(
                                 isWideDisplay = isWide,
                                 viewMode = state.viewMode,
+                                panePath = state.panePath,
                                 paneDirectories = state.paneDirectories,
-                                contentDirectories = state.contentDirectories,
-                                contentFiles = state.contentFiles,
+                                contentDirectories = if (isWide) {
+                                    state.contentDirectories
+                                } else if (state.currentPath.isBlank() ||
+                                    state.currentPath == state.panePath
+                                ) {
+                                    state.paneDirectories
+                                } else {
+                                    state.contentDirectories
+                                },
+                                contentFiles = if (isWide) {
+                                    state.contentFiles
+                                } else if (state.currentPath.isBlank() ||
+                                    state.currentPath == state.panePath
+                                ) {
+                                    state.paneFiles
+                                } else {
+                                    state.contentFiles
+                                },
                                 selectedFolderPath = state.selectedFolderPath,
                                 canNavigateUp = state.canNavigateUp,
                                 isSelectionMode = state.isSelectionMode,
@@ -274,6 +292,7 @@ fun FileExplorerScreen(
                                 onContentDirectoryClick = viewModel::onContentDirectoryClick,
                                 onFileOpen = viewModel::onFileClick,
                                 onFileLongPress = viewModel::onFileLongClick,
+                                onPreviewFirstSplitPaneFolder = viewModel::previewFirstSplitPaneFolder,
                                 onFileSelectExclusive = viewModel::selectFileExclusive,
                                 onFileToggleSelect = viewModel::toggleFileSelectionDesktop,
                                 onFileExtendSelect = viewModel::extendFileSelection,

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.fileapex.platform.androidApplicationContextOrNull
+import com.fileapex.util.NetworkUtils
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -162,10 +163,18 @@ actual object FileApexMdnsBrowser {
     }
 
     private fun hostFromServiceInfo(info: NsdServiceInfo): String {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return info.hostAddresses.firstOrNull()?.hostAddress?.trim().orEmpty()
-        }
-        return hostFromServiceInfoLegacy(info)
+        val addresses = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                addAll(
+                    info.hostAddresses.mapNotNull { address ->
+                        address.hostAddress?.trim()?.substringBefore('%')
+                    }
+                )
+            } else {
+                hostFromServiceInfoLegacy(info).takeIf { it.isNotEmpty() }?.let { add(it) }
+            }
+        }.filter { NetworkUtils.isPrivateLanPeerHost(it) }
+        return NetworkUtils.selectBestLanIpv4(addresses).orEmpty()
     }
 
     @Suppress("DEPRECATION")

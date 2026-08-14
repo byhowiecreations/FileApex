@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +75,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 fun AdaptiveExplorerView(
     isWideDisplay: Boolean,
     viewMode: ExplorerViewMode,
+    panePath: String,
     paneDirectories: List<RemoteFileItem>,
     contentDirectories: List<RemoteFileItem>,
     contentFiles: List<RemoteFileItem>,
@@ -90,12 +92,19 @@ fun AdaptiveExplorerView(
     onFileToggleSelect: (RemoteFileItem) -> Unit = {},
     onFileExtendSelect: (RemoteFileItem) -> Unit = {},
     onFileActivate: (RemoteFileItem) -> Unit = {},
+    onPreviewFirstSplitPaneFolder: () -> Unit = {},
     modifier: Modifier = Modifier,
     contentBottomPadding: Dp = 24.dp
 ) {
     val listPadding = PaddingValues(bottom = contentBottomPadding)
     val showingPaneRootFiles = selectedFolderPath == null
     val desktopSelection = usesDesktopFileSelection()
+
+    LaunchedEffect(isWideDisplay, panePath, selectedFolderPath) {
+        if (isWideDisplay && selectedFolderPath == null && paneDirectories.isNotEmpty()) {
+            onPreviewFirstSplitPaneFolder()
+        }
+    }
 
     if (isWideDisplay) {
         val rightDirs = if (showingPaneRootFiles) emptyList() else contentDirectories

@@ -417,44 +417,10 @@ class PeerPresenceMonitor(
      */
     suspend fun resolveOutboundEndpoint(peer: PairedDeviceEntity): PeerLanReachabilityVerdict.Direct? {
         if (!isActiveLanConnectivity()) return null
-        var live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
-        assessStoredEndpoint(live)?.let { return it }
-        if (!validatePeerOnDemand(live)) {
-            live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: live
-            if (!hasUsableEndpoint(live)) {
-                val discovered = PeerLanDiscovery.discoverPeerState(
-                    peer = live,
-                    client = client,
-                    budgetMs = LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS
-                )
-                if (discovered != null) {
-                    val host = discovered.resolvedIpAddress.trim()
-                    if (host.isNotEmpty()) {
-                        mutex.withLock {
-                            repository.applyPeerNodeState(discovered, rosterDeviceId = peer.deviceId)
-                        }
-                        markReachable(peer.deviceId)
-                        live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: live
-                    }
-                }
-            }
-            assessStoredEndpoint(live)?.let { return it }
-            return null
-        }
-        live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: live
-        assessStoredEndpoint(live)?.let { return it }
+        val live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
         val host = live.lastKnownIp.trim()
         val port = live.port
-        if (host.isNotEmpty() &&
-            NetworkUtils.isPrivateLanPeerHost(host) &&
-            port > 0 &&
-            PeerLanHttpPolicy.canRoute(host) &&
-            client.pingHealth(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
-        ) {
-            markReachable(live.deviceId)
-            mutex.withLock {
-                repository.touchPeerLastSeen(live.deviceId, host, port)
-            }
+        if (host.isNotEmpty() && NetworkUtils.isPrivateLanPeerHost(host) && port > 0) {
             return PeerLanReachabilityVerdict.Direct(host, port)
         }
         return null

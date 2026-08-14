@@ -2,8 +2,12 @@ package com.fileapex.platform
 
 import com.sun.jna.Callback
 import com.sun.jna.Library
+import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Pointer
+import com.sun.jna.ptr.IntByReference
+import com.sun.jna.ptr.PointerByReference
+import com.fileapex.network.PeerBoundHttpResponse
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -32,6 +36,10 @@ object DesktopMacTrayBridge {
     private var refreshDevicesCallback: VoidTrayCallback? = null
     @Volatile
     private var prepareDropBoxCallback: VoidTrayCallback? = null
+    @Volatile
+    private var lanPeerCallback: LanPeerCallback? = null
+    @Volatile
+    private var lanPeerListener: ((String, Int, String?) -> Unit)? = null
 
     val isLoaded: Boolean
         get() = DesktopPlatformPaths.isMacOs() && native != null
@@ -46,11 +54,149 @@ object DesktopMacTrayBridge {
         return runCatching {
             native = Native.load(dylib.absolutePath, FileApexTrayNative::class.java)
             println("DesktopMacTrayBridge: loaded ${dylib.absolutePath}")
+            startLocalNetworkProbe()
             true
         }.getOrElse { error ->
             println("DesktopMacTrayBridge: load failed :: ${error.message}")
             false
         }
+    }
+
+    fun startLocalNetworkProbe() {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        runCatching { native?.fileapex_tray_start_local_network_probe() }
+    }
+
+    /**
+     * Native Bonjour resolve — Finder/Dock Local Network permission applies here, not to Java sockets.
+     */
+    fun setLanPeerDiscoveredListener(listener: ((host: String, port: Int, serviceName: String?) -> Unit)?) {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        lanPeerListener = listener
+        if (listener == null) {
+            runCatching { native?.fileapex_lan_set_peer_callback(null) }
+            lanPeerCallback = null
+            return
+        }
+        val lib = native ?: return
+        val callback = LanPeerCallback { hostPtr, port, namePtr ->
+            val host = hostPtr?.getString(0).orEmpty()
+            val name = namePtr?.getString(0)
+            if (host.isNotBlank() && port > 0) {
+                lanPeerListener?.invoke(host, port, name)
+            }
+        }
+        lanPeerCallback = callback
+        lib.fileapex_lan_set_peer_callback(callback)
+    }
+
+    fun lanHttp(
+        method: String,
+        url: String,
+        contentType: String?,
+        body: ByteArray?,
+        timeoutMs: Long
+    ): PeerBoundHttpResponse? {
+        val lib = native ?: return null
+        val status = IntByReference()
+        val bodyPtr = PointerByReference()
+        val bodyLen = IntByReference()
+        val bodyMem = body?.takeIf { it.isNotEmpty() }?.let { bytes ->
+            Memory(bytes.size.toLong()).also { memory -> memory.write(0, bytes, 0, bytes.size) }
+        }
+        val rc = runCatching {
+            lib.fileapex_lan_http_execute(
+                method,
+                url,
+                contentType,
+                bodyMem,
+                body?.size ?: 0,
+                timeoutMs.coerceIn(250L, 600_000L).toInt(),
+                status,
+                bodyPtr,
+                bodyLen
+            )
+        }.getOrElse { error ->
+            println("DesktopMacLanHttp: $method $url failed — ${error.message}")
+            return null
+        }
+        if (rc != 0) return null
+        return readNativeHttp(lib, status, bodyPtr, bodyLen)
+    }
+
+    fun lanHttpUploadFile(
+        url: String,
+        contentType: String?,
+        filePath: String,
+        timeoutMs: Long
+    ): PeerBoundHttpResponse? {
+        val lib = native ?: return null
+        val status = IntByReference()
+        val bodyPtr = PointerByReference()
+        val bodyLen = IntByReference()
+        val rc = runCatching {
+            lib.fileapex_lan_http_upload_file(
+                url,
+                contentType,
+                filePath,
+                timeoutMs.coerceIn(250L, 600_000L).toInt(),
+                status,
+                bodyPtr,
+                bodyLen
+            )
+        }.getOrElse { error ->
+            println("DesktopMacLanHttp: upload $url failed — ${error.message}")
+            return null
+        }
+        if (rc != 0) return null
+        return readNativeHttp(lib, status, bodyPtr, bodyLen)
+    }
+
+    fun lanHttpDownloadFile(
+        url: String,
+        destinationPath: String,
+        timeoutMs: Long
+    ): Int? {
+        val lib = native ?: return null
+        val status = IntByReference()
+        val rc = runCatching {
+            lib.fileapex_lan_http_download_file(
+                url,
+                destinationPath,
+                timeoutMs.coerceIn(250L, 600_000L).toInt(),
+                status
+            )
+        }.getOrElse { error ->
+            println("DesktopMacLanHttp: download $url failed — ${error.message}")
+            return null
+        }
+        if (rc != 0) return null
+        val code = status.value
+        return code.takeIf { it > 0 }
+    }
+
+    private fun readNativeHttp(
+        lib: FileApexTrayNative,
+        status: IntByReference,
+        bodyPtr: PointerByReference,
+        bodyLen: IntByReference
+    ): PeerBoundHttpResponse? {
+        val code = status.value
+        if (code <= 0) return null
+        val pointer = bodyPtr.value
+        val length = bodyLen.value.coerceAtLeast(0)
+        val text = try {
+            if (pointer == null || length <= 0) {
+                ""
+            } else {
+                String(pointer.getByteArray(0, length), Charsets.UTF_8).trim()
+            }
+        } finally {
+            if (pointer != null) {
+                runCatching { lib.fileapex_lan_http_free(pointer) }
+            }
+        }
+        return PeerBoundHttpResponse(statusCode = code, body = text)
     }
 
     fun registerCallbacks(
@@ -227,6 +373,35 @@ object DesktopMacTrayBridge {
 
     private interface FileApexTrayNative : Library {
         fun fileapex_tray_setup()
+        fun fileapex_tray_start_local_network_probe()
+        fun fileapex_lan_set_peer_callback(callback: LanPeerCallback?)
+        fun fileapex_lan_http_execute(
+            method: String,
+            url: String,
+            contentType: String?,
+            body: Pointer?,
+            bodyLen: Int,
+            timeoutMs: Int,
+            outStatus: IntByReference,
+            outBody: PointerByReference,
+            outBodyLen: IntByReference
+        ): Int
+        fun fileapex_lan_http_upload_file(
+            url: String,
+            contentType: String?,
+            filePath: String,
+            timeoutMs: Int,
+            outStatus: IntByReference,
+            outBody: PointerByReference,
+            outBodyLen: IntByReference
+        ): Int
+        fun fileapex_lan_http_download_file(
+            url: String,
+            destinationPath: String,
+            timeoutMs: Int,
+            outStatus: IntByReference
+        ): Int
+        fun fileapex_lan_http_free(pointer: Pointer?)
         fun fileapex_tray_set_app_icon_path(path: String)
         fun fileapex_tray_bind_main_window(nsWindowPtr: Long)
         fun fileapex_tray_register_callbacks(
@@ -271,5 +446,9 @@ object DesktopMacTrayBridge {
 
     private fun interface VoidTrayCallback : Callback {
         fun invoke()
+    }
+
+    private fun interface LanPeerCallback : Callback {
+        fun invoke(host: Pointer?, port: Int, serviceName: Pointer?)
     }
 }

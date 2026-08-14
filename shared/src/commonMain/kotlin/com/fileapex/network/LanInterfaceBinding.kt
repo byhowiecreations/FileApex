@@ -13,6 +13,10 @@ object LanInterfaceBinding {
     /** Ordered local IPs for outbound peer sockets — active LAN first. */
     fun lanBindCandidates(): List<String> = NetworkUtils.lanBindCandidates()
 
+    /** Same as [lanBindCandidates] but local IPs on [peerHost]'s /24 are tried first. */
+    fun bindCandidatesForPeer(peerHost: String): List<String> =
+        NetworkUtils.orderBindCandidatesForPeer(peerHost)
+
     /** Inbound HTTP share-server listen socket — all interfaces (LAN + Windows Firewall). */
     fun shareServerListenHost(): String = "0.0.0.0"
 

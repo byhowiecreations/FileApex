@@ -174,7 +174,7 @@ private fun executeBoundHttp(
     contentType: String?,
     timeoutMs: Long
 ): PeerBoundHttpResponse? {
-    val candidates = LanInterfaceBinding.lanBindCandidates()
+    val candidates = LanInterfaceBinding.bindCandidatesForPeer(host)
     if (candidates.isEmpty()) {
         return null
     }
@@ -206,7 +206,7 @@ private suspend fun executeBoundGetStreaming(
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray) -> Unit
 ): PeerBoundStreamResult? {
-    val candidates = LanInterfaceBinding.lanBindCandidates()
+    val candidates = LanInterfaceBinding.bindCandidatesForPeer(host)
     if (candidates.isEmpty()) {
         return null
     }
@@ -312,7 +312,7 @@ private suspend fun executeBoundUpload(
     uploadIdleTimeoutMs: Long,
     contentLength: Long? = null
 ): PeerBoundHttpResponse? {
-    val candidates = LanInterfaceBinding.lanBindCandidates()
+    val candidates = LanInterfaceBinding.bindCandidatesForPeer(host)
     if (candidates.isEmpty()) {
         return null
     }

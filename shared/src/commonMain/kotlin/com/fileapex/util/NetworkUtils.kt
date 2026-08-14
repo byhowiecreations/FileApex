@@ -37,6 +37,25 @@ object NetworkUtils {
         }
     }
 
+    /**
+     * Bind the local address on the peer's /24 first so a multi-homed Mac (192.168 + 172.16)
+     * does not pin the wrong NIC before unbound fallback.
+     */
+    fun orderBindCandidatesForPeer(peerHost: String): List<String> {
+        val candidates = lanBindCandidates()
+        val dest = peerHost.trim()
+        val sameSubnet = candidates.filter { sameIpv4Slash24(it, dest) }
+        val rest = candidates.filter { ip -> sameSubnet.none { it == ip } }
+        return sameSubnet + rest
+    }
+
+    fun sameIpv4Slash24(left: String, right: String): Boolean {
+        val a = left.trim().split('.')
+        val b = right.trim().split('.')
+        if (a.size != 4 || b.size != 4) return false
+        return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]
+    }
+
     /** Raw platform LAN IPv4 list (platform may pre-sort; selection is finalized here). */
     fun lanIpv4Addresses(): List<String> = localIpv4Addresses()
 

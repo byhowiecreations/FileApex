@@ -122,7 +122,13 @@ public func fileapex_tray_setup() {
     DispatchQueue.main.async {
         MacTrayManager.shared.ensureTrayInstalled()
         wireTrayManagerCallbacks()
+        LocalNetworkProbe.start()
     }
+}
+
+@_cdecl("fileapex_tray_start_local_network_probe")
+public func fileapex_tray_start_local_network_probe() {
+    LocalNetworkProbe.start()
 }
 
 @_cdecl("fileapex_tray_set_app_icon_path")

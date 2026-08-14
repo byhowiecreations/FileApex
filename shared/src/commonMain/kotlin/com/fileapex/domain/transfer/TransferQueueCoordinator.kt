@@ -119,18 +119,37 @@ class TransferQueueCoordinator(
         val (routable, blocked) = partitionByLanReachability(remoteDevices)
         val sendNow = localDevices + routable
         val batch = if (sendNow.isNotEmpty()) {
-            transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = false)
+            runCatching {
+                transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = false)
+            }.getOrElse { error ->
+                val queuedNames = enqueueSourcesInternal(sources, remoteDevices.map { it.deviceId })
+                return QueueAwareSendResult(
+                    batch = null,
+                    queuedDeviceNames = queuedNames,
+                    message = listOfNotNull(
+                        error.message,
+                        queuedNames.takeIf { it.isNotEmpty() }?.let { queueOnlyMessage(it) }
+                    ).joinToString(" ")
+                )
+            }
         } else {
             null
         }
 
-        val queuedNames = if (blocked.isNotEmpty()) {
-            enqueueSourcesInternal(sources, blocked.map { it.deviceId })
+        val succeeded = batch?.results?.flatMap { it.succeededDeviceIds }?.toSet().orEmpty()
+        val failedRoutableIds = routable.map { it.deviceId }.filter { it !in succeeded }
+        val queueIds = (blocked.map { it.deviceId } + failedRoutableIds).distinct()
+        val queuedNames = if (queueIds.isNotEmpty()) {
+            enqueueSourcesInternal(sources, queueIds)
         } else {
             emptyList()
         }
 
-        return buildResult(batch, queuedNames, sendNow.isNotEmpty())
+        return buildResult(
+            batch = batch?.takeIf { succeeded.isNotEmpty() },
+            queuedNames = queuedNames,
+            hadImmediateTargets = succeeded.isNotEmpty()
+        )
     }
 
     suspend fun sendLocalPathsOrQueue(
@@ -305,8 +324,12 @@ class TransferQueueCoordinator(
         return routable to blocked
     }
 
-    private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? =
-        presenceMonitor.resolveOutboundEndpoint(peer)?.let { it.host to it.port }
+    private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? {
+        val reached = presenceMonitor.validatePeerOnDemand(peer)
+        if (!reached) return null
+        val live = deviceRepository.getDevice(peer.deviceId) ?: peer
+        return presenceMonitor.resolveOutboundEndpoint(live)?.let { it.host to it.port }
+    }
 
     private suspend fun enqueueSourcesInternal(
         sources: List<MultiCopySource>,

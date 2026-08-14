@@ -27,7 +27,7 @@ internal object PeerLanDiscovery {
         budgetMs: Long = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
     ): PeerNodeState? {
         val port = peer.port.takeIf { it > 0 } ?: return null
-        val scanRoots = subnetScanRoots()
+        val scanRoots = subnetScanRoots(peer)
         if (scanRoots.isEmpty()) return null
 
         val batchSize = if (peer.lastKnownIp.trim().isEmpty()) {
@@ -75,17 +75,27 @@ internal object PeerLanDiscovery {
         return null
     }
 
-    private fun subnetScanRoots(): List<String> {
-        val roots = NetworkUtils.lanBindCandidates()
+    /**
+     * Local Wi‑Fi/Ethernet /24s first, then the peer's last stored subnet when it differs.
+     * Mac often has 192.168 while a phone advertised 172.16 (or the reverse) after DHCP.
+     */
+    private fun subnetScanRoots(peer: PairedDeviceEntity): List<String> {
+        val roots = linkedSetOf<String>()
+        NetworkUtils.lanBindCandidates()
             .filter { NetworkUtils.isUsableLanIpv4(it) }
-            .distinct()
-        if (roots.isNotEmpty()) {
-            return roots
+            .forEach { roots.add(it) }
+        val stored = peer.lastKnownIp.trim()
+        if (NetworkUtils.isUsableLanIpv4(stored) &&
+            roots.none { NetworkUtils.sameIpv4Slash24(it, stored) }
+        ) {
+            roots.add(stored)
         }
-        return NetworkUtils.preferredLanIpv4()
-            .takeIf { NetworkUtils.isUsableLanIpv4(it) }
-            ?.let { listOf(it) }
-            .orEmpty()
+        if (roots.isEmpty()) {
+            NetworkUtils.preferredLanIpv4()
+                .takeIf { NetworkUtils.isUsableLanIpv4(it) }
+                ?.let { roots.add(it) }
+        }
+        return roots.toList()
     }
 
     private suspend fun scanBatch(

@@ -8,6 +8,7 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.ClusterSyncRequest
+import com.fileapex.domain.pairing.PeerSyncEventKind
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.domain.clipboard.ClipboardSendRequest
@@ -21,9 +22,12 @@ import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.notifyFilesReceived
 import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.NetworkUtils
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
@@ -120,6 +124,10 @@ class FileApexServer(
                 }
             }
 
+            intercept(ApplicationCallPipeline.Call) {
+                rememberInboundPeer(call)
+            }
+
             routing {
                 suspend fun respondSelfPeerState(call: io.ktor.server.application.ApplicationCall) {
                     val identity = identityProvider()
@@ -197,6 +205,7 @@ class FileApexServer(
                             call.respond(HttpStatusCode.BadRequest, "Empty pairing payload")
                             return@runCatching
                         }
+                        val inboundIp = inboundPeerLanIpv4(call)
                         val scanningDevice = runCatching {
                             json.decodeFromString(PairedDeviceEntity.serializer(), body)
                         }.getOrElse { decodeError ->
@@ -213,24 +222,29 @@ class FileApexServer(
                             call.respond(HttpStatusCode.BadRequest, "Cannot pair with self")
                             return@runCatching
                         }
+                        val inboundDevice = if (inboundIp != null) {
+                            scanningDevice.copy(lastKnownIp = inboundIp)
+                        } else {
+                            scanningDevice
+                        }
 
                         // Persist off the request-critical path so Room failures never tear down CIO.
                         withContext(Dispatchers.IO) {
-                            onPairingRespond(scanningDevice)
+                            onPairingRespond(inboundDevice)
                         }
                         onLog(
-                            "Paired inbound device ${scanningDevice.deviceName} (${scanningDevice.deviceId})",
+                            "Paired inbound device ${inboundDevice.deviceName} (${inboundDevice.deviceId})",
                             null
                         )
                         call.respond(HttpStatusCode.Created)
                         serverScope.launch {
                             runCatching {
                                 withContext(Dispatchers.IO) {
-                                    onPairingRespondComplete(scanningDevice)
+                                    onPairingRespondComplete(inboundDevice)
                                 }
                             }.onFailure { error ->
                                 onLog(
-                                    "Pairing roster seed failed for ${scanningDevice.deviceName}",
+                                    "Pairing roster seed failed for ${inboundDevice.deviceName}",
                                     error
                                 )
                             }
@@ -273,8 +287,21 @@ class FileApexServer(
                             call.respond(HttpStatusCode.BadRequest, "Invalid cluster payload")
                             return@runCatching
                         }
+                        val inboundIp = inboundPeerLanIpv4(call)
+                        val mergeRequest = if (
+                            inboundIp != null &&
+                            request.eventKind == PeerSyncEventKind.SELF_METADATA
+                        ) {
+                            request.copy(
+                                nodeStates = request.nodeStates.map { state ->
+                                    state.copy(ipAddress = inboundIp, lastKnownIp = inboundIp)
+                                }
+                            )
+                        } else {
+                            request
+                        }
                         withContext(Dispatchers.IO) {
-                            onClusterMerge(request)
+                            onClusterMerge(mergeRequest)
                         }
                         call.respond(HttpStatusCode.Created)
                     }.onFailure { error ->
@@ -608,6 +635,48 @@ class FileApexServer(
         val fromQuery = call.request.queryParameters["pin"].orEmpty().trim()
         if (fromQuery.isNotEmpty()) return fromQuery
         return call.request.headers["X-FileApex-Pin"].orEmpty().trim()
+    }
+
+    /**
+     * TCP source IP is the route we can actually reply on — overwrite advertised lastKnownIp.
+     */
+    private fun rememberInboundPeer(call: ApplicationCall) {
+        val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
+            call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
+        }
+        if (from.isEmpty()) return
+        val ip = inboundPeerLanIpv4(call) ?: return
+        val selfId = runCatching { identityProvider().deviceId }.getOrNull().orEmpty()
+        if (from == selfId) return
+        serverScope.launch {
+            runCatching {
+                val existing = FileApexServices.deviceRepository.getDevice(from) ?: return@runCatching
+                FileApexServices.deviceRepository.touchPeerLastSeen(
+                    deviceId = from,
+                    ip = ip,
+                    port = existing.port
+                )
+                FileApexServices.presenceMonitor.notifyPassiveReachability(from)
+            }
+        }
+    }
+
+    private fun inboundPeerLanIpv4(call: ApplicationCall): String? {
+        val raw = call.request.local.remoteAddress.trim()
+            .ifBlank { call.request.local.remoteHost.trim() }
+        val host = sanitizeInboundIpv4(raw) ?: return null
+        return host.takeIf { NetworkUtils.isPrivateLanPeerHost(it) }
+    }
+
+    private fun sanitizeInboundIpv4(raw: String): String? {
+        var value = raw.trim().removePrefix("/").substringBefore('%')
+        if (value.startsWith("::ffff:", ignoreCase = true)) {
+            value = value.substringAfter("::ffff:")
+        }
+        if (value.count { it == ':' } == 1 && value.contains('.')) {
+            value = value.substringBefore(':')
+        }
+        return value.takeIf { it.isNotEmpty() }
     }
 
     /**

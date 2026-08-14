@@ -1,5 +1,8 @@
 package com.fileapex.network
 
+import com.fileapex.platform.DesktopMacTrayBridge
+import com.fileapex.platform.DesktopPlatformPaths
+import java.io.File
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
@@ -95,6 +98,17 @@ actual suspend fun peerHttpGet(
     path: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
+        return@withContext macNativeHttp(
+            "GET",
+            host,
+            port,
+            path,
+            body = null,
+            contentType = null,
+            timeoutMs = timeoutMs
+        )
+    }
     executeBoundHttp(
         host = host,
         port = port,
@@ -114,6 +128,17 @@ actual suspend fun peerHttpPost(
     contentType: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
+        return@withContext macNativeHttp(
+            method = "POST",
+            host = host,
+            port = port,
+            path = path,
+            body = body.toByteArray(Charsets.UTF_8),
+            contentType = contentType,
+            timeoutMs = timeoutMs
+        )
+    }
     executeBoundHttp(
         host = host,
         port = port,
@@ -135,6 +160,24 @@ actual suspend fun peerHttpUploadFromChannel(
     uploadIdleTimeoutMs: Long,
     contentLength: Long?
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
+        val tmp = File.createTempFile("fileapex-up-", ".bin")
+        try {
+            tmp.outputStream().use { out ->
+                for (chunk in chunks) {
+                    out.write(chunk)
+                }
+            }
+            return@withContext DesktopMacTrayBridge.lanHttpUploadFile(
+                url = macLanUrl(host, port, pathWithQuery),
+                contentType = contentType,
+                filePath = tmp.absolutePath,
+                timeoutMs = uploadIdleTimeoutMs
+            )
+        } finally {
+            tmp.delete()
+        }
+    }
     executeBoundUpload(
         host = host,
         port = port,
@@ -155,6 +198,9 @@ actual suspend fun peerHttpGetStreaming(
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray) -> Unit
 ): PeerBoundStreamResult? = withContext(Dispatchers.IO) {
+    if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
+        return@withContext macNativeDownload(host, port, pathWithQuery, readIdleTimeoutMs, onChunk)
+    }
     executeBoundGetStreaming(
         host = host,
         port = port,
@@ -163,6 +209,61 @@ actual suspend fun peerHttpGetStreaming(
         readIdleTimeoutMs = readIdleTimeoutMs,
         onChunk = onChunk
     )
+}
+
+private fun macLanUrl(host: String, port: Int, path: String): String {
+    val normalized = if (path.startsWith("/")) path else "/$path"
+    return "http://$host:$port$normalized"
+}
+
+private fun macNativeHttp(
+    method: String,
+    host: String,
+    port: Int,
+    path: String,
+    body: ByteArray?,
+    contentType: String?,
+    timeoutMs: Long
+): PeerBoundHttpResponse? {
+    if (!DesktopPlatformPaths.isMacOs() || !DesktopMacTrayBridge.isLoaded) return null
+    return DesktopMacTrayBridge.lanHttp(
+        method = method,
+        url = macLanUrl(host, port, path),
+        contentType = contentType,
+        body = body,
+        timeoutMs = timeoutMs
+    )
+}
+
+private suspend fun macNativeDownload(
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    timeoutMs: Long,
+    onChunk: suspend (ByteArray) -> Unit
+): PeerBoundStreamResult? {
+    if (!DesktopPlatformPaths.isMacOs() || !DesktopMacTrayBridge.isLoaded) return null
+    val tmp = File.createTempFile("fileapex-dl-", ".bin")
+    try {
+        val status = DesktopMacTrayBridge.lanHttpDownloadFile(
+            url = macLanUrl(host, port, pathWithQuery),
+            destinationPath = tmp.absolutePath,
+            timeoutMs = timeoutMs
+        ) ?: return null
+        if (status in 200..299) {
+            tmp.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    onChunk(buffer.copyOf(read))
+                }
+            }
+        }
+        return PeerBoundStreamResult(statusCode = status)
+    } finally {
+        tmp.delete()
+    }
 }
 
 private fun executeBoundHttp(
@@ -174,11 +275,7 @@ private fun executeBoundHttp(
     contentType: String?,
     timeoutMs: Long
 ): PeerBoundHttpResponse? {
-    val candidates = LanInterfaceBinding.lanBindCandidates()
-    if (candidates.isEmpty()) {
-        return null
-    }
-    for (localIp in candidates) {
+    for (localIp in peerBindAttemptIps(host)) {
         val response = runCatching {
             executeBoundHttpOnLocalIp(
                 localIp = localIp,
@@ -206,11 +303,7 @@ private suspend fun executeBoundGetStreaming(
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray) -> Unit
 ): PeerBoundStreamResult? {
-    val candidates = LanInterfaceBinding.lanBindCandidates()
-    if (candidates.isEmpty()) {
-        return null
-    }
-    for (localIp in candidates) {
+    for (localIp in peerBindAttemptIps(host)) {
         val response = runCatching {
             executeBoundGetStreamingOnLocalIp(
                 localIp = localIp,
@@ -244,11 +337,13 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray) -> Unit
 ): PeerBoundStreamResult {
-    val connectTimeout = connectTimeoutMs.coerceIn(250L, 60_000L).toInt()
+    val connectTimeout = connectTimeoutForBindAttempt(localIp, connectTimeoutMs)
     val idleTimeout = readIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
     val socket = Socket()
     try {
-        socket.bind(InetSocketAddress(localIp, 0))
+        if (localIp.isNotBlank()) {
+            socket.bind(InetSocketAddress(localIp, 0))
+        }
         runCatching {
             socket.connect(InetSocketAddress(host, port), connectTimeout)
         }.onFailure {
@@ -302,6 +397,33 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
 
 private class BoundConnectFailed : Exception()
 
+/** Same-/24 as the peer first, then other LAN IPs, then OS-default routing.
+ * On macOS try unbound first so Finder/Dock launches are not pinned to a bound Java socket
+ * that Local Network TCC silently drops.
+ */
+private fun peerBindAttemptIps(peerHost: String): List<String> {
+    val bound = LanInterfaceBinding.bindCandidatesForPeer(peerHost)
+    return if (DesktopPlatformPaths.isMacOs()) {
+        listOf("") + bound
+    } else {
+        bound + ""
+    }
+}
+
+/**
+ * Interface-bound connects fail over quickly so Mac can reach the unbound OS route
+ * before short identity/health timeouts expire.
+ */
+private fun connectTimeoutForBindAttempt(localIp: String, requestedMs: Long): Int {
+    val capped = requestedMs.coerceIn(250L, 60_000L)
+    if (localIp.isBlank()) {
+        return capped.toInt()
+    }
+    return capped.coerceAtMost(BOUND_CONNECT_FAILOVER_MS).toInt()
+}
+
+private const val BOUND_CONNECT_FAILOVER_MS = 750L
+
 private suspend fun executeBoundUpload(
     host: String,
     port: Int,
@@ -312,11 +434,7 @@ private suspend fun executeBoundUpload(
     uploadIdleTimeoutMs: Long,
     contentLength: Long? = null
 ): PeerBoundHttpResponse? {
-    val candidates = LanInterfaceBinding.lanBindCandidates()
-    if (candidates.isEmpty()) {
-        return null
-    }
-    for (localIp in candidates) {
+    for (localIp in peerBindAttemptIps(host)) {
         val response = runCatching {
             executeBoundUploadOnLocalIp(
                 localIp = localIp,
@@ -354,11 +472,13 @@ private suspend fun executeBoundUploadOnLocalIp(
     uploadIdleTimeoutMs: Long,
     contentLength: Long? = null
 ): PeerBoundHttpResponse {
-    val connectTimeout = connectTimeoutMs.coerceIn(250L, 60_000L).toInt()
+    val connectTimeout = connectTimeoutForBindAttempt(localIp, connectTimeoutMs)
     val idleTimeout = uploadIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
     val socket = Socket()
     try {
-        socket.bind(InetSocketAddress(localIp, 0))
+        if (localIp.isNotBlank()) {
+            socket.bind(InetSocketAddress(localIp, 0))
+        }
         runCatching {
             socket.connect(InetSocketAddress(host, port), connectTimeout)
         }.onFailure {
@@ -393,7 +513,7 @@ private suspend fun executeBoundUploadOnLocalIp(
         }
         output.flush()
         socket.shutdownOutput()
-        val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)
+        val raw = readHttpResponse(socket.getInputStream())
         return parseHttpResponse(raw)
     } finally {
         runCatching { socket.close() }
@@ -410,11 +530,14 @@ private fun executeBoundHttpOnLocalIp(
     contentType: String?,
     timeoutMs: Long
 ): PeerBoundHttpResponse {
-    val timeout = timeoutMs.coerceIn(250L, 60_000L).toInt()
+    val connectTimeout = connectTimeoutForBindAttempt(localIp, timeoutMs)
+    val readTimeout = timeoutMs.coerceIn(250L, 60_000L).toInt()
     Socket().use { socket ->
-        socket.bind(InetSocketAddress(localIp, 0))
-        socket.connect(InetSocketAddress(host, port), timeout)
-        socket.soTimeout = timeout
+        if (localIp.isNotBlank()) {
+            socket.bind(InetSocketAddress(localIp, 0))
+        }
+        socket.connect(InetSocketAddress(host, port), connectTimeout)
+        socket.soTimeout = readTimeout
         val payload = body.orEmpty()
         val request = buildString {
             append(method)
@@ -444,7 +567,7 @@ private fun executeBoundHttpOnLocalIp(
         val output = socket.getOutputStream()
         output.write(request.toByteArray(Charsets.UTF_8))
         output.flush()
-        val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)
+        val raw = readHttpResponse(socket.getInputStream())
         return parseHttpResponse(raw)
     }
 }
@@ -457,6 +580,64 @@ private fun parseHttpResponse(raw: String): PeerBoundHttpResponse {
     val statusCode = Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull()
         ?: 0
     return PeerBoundHttpResponse(statusCode = statusCode, body = body.trim())
+}
+
+/**
+ * Read a full HTTP/1.1 response from [stream] without relying on TCP close for EOF.
+ * Honors Content-Length and Transfer-Encoding: chunked (Ktor CIO often uses either).
+ */
+private fun readHttpResponse(stream: java.io.InputStream): String {
+    val buf = stream.buffered(8192)
+    val headerLines = mutableListOf<String>()
+    while (true) {
+        val line = buf.readAsciiLine()
+        if (line.isEmpty()) break
+        headerLines += line
+    }
+    val bodyHeaders = HttpTransferBodyReader.parseHeaders(headerLines)
+    val bodyBytes = when {
+        bodyHeaders.isChunked -> readChunkedBodySync(buf)
+        bodyHeaders.contentLength != null && bodyHeaders.contentLength >= 0 -> {
+            val bodyBytes = ByteArray(bodyHeaders.contentLength.toInt())
+            var offset = 0
+            while (offset < bodyBytes.size) {
+                val n = buf.read(bodyBytes, offset, bodyBytes.size - offset)
+                if (n < 0) break
+                offset += n
+            }
+            if (offset == bodyBytes.size) bodyBytes else bodyBytes.copyOf(offset)
+        }
+        else -> buf.readBytes()
+    }
+
+    val headerBlock = headerLines.joinToString("\r\n")
+    return "$headerBlock\r\n\r\n${bodyBytes.toString(Charsets.UTF_8)}"
+}
+
+private fun readChunkedBodySync(input: java.io.BufferedInputStream): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    while (true) {
+        val sizeLine = input.readAsciiLine().trim()
+        if (sizeLine.isEmpty()) continue
+        val chunkSize = sizeLine.substringBefore(';').trim().toIntOrNull(16)
+            ?: error("Invalid HTTP chunk size: $sizeLine")
+        if (chunkSize == 0) {
+            while (input.readAsciiLine().isNotEmpty()) {
+                // consume optional trailer headers
+            }
+            break
+        }
+        val chunk = ByteArray(chunkSize)
+        var offset = 0
+        while (offset < chunkSize) {
+            val read = input.read(chunk, offset, chunkSize - offset)
+            if (read <= 0) break
+            offset += read
+        }
+        out.write(chunk, 0, offset)
+        input.readAsciiLine()
+    }
+    return out.toByteArray()
 }
 
 private fun readHttpStatusLine(input: java.io.BufferedInputStream): Int {

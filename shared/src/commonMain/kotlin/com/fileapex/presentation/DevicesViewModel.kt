@@ -304,29 +304,56 @@ class DevicesViewModel : ViewModel() {
             )
         }
         val peer = repository.getDevice(device.deviceId) ?: device
-        val direct = presence.resolveOutboundEndpoint(peer)
+        val initialEndpoint = presence.resolveOutboundEndpoint(peer)
+            ?: run {
+                presence.validatePeerOnDemand(peer)
+                presence.resolveOutboundEndpoint(repository.getDevice(device.deviceId) ?: peer)
+            }
             ?: return DeviceConnectOutcome.Unreachable(
-                detail = PeerReachabilityMessages.peerOffline(),
-                quickFail = true
+                detail = PeerReachabilityMessages.peerOffline()
             )
-        val refreshed = repository.getDevice(device.deviceId) ?: peer
+        var endpoint = initialEndpoint
+        var refreshed = repository.getDevice(device.deviceId) ?: peer
         if (DeviceSessionManager.isSessionValid(refreshed.deviceId)) {
             DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
             return DeviceConnectOutcome.Open(
-                browseTargetFor(refreshed, direct.host, direct.port, pinRequired = true)
+                browseTargetFor(refreshed, endpoint.host, endpoint.port, pinRequired = true)
             )
         }
-        val remote = runCatching {
+        runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
+        runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
+        var remote = runCatching {
             FileApexServices.client.fetchPeerNodeState(
-                direct.host,
-                direct.port,
+                endpoint.host,
+                endpoint.port,
                 LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
             )
-        }.getOrElse { error ->
-            return DeviceConnectOutcome.Unreachable(
-                detail = error.message ?: PeerReachabilityMessages.peerOffline(),
-                quickFail = true
+        }.recoverCatching {
+            delay(400)
+            FileApexServices.client.fetchPeerNodeState(
+                endpoint.host,
+                endpoint.port,
+                LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
             )
+        }.getOrNull()
+        if (remote == null) {
+            presence.validatePeerOnDemand(peer)
+            refreshed = repository.getDevice(device.deviceId) ?: peer
+            endpoint = presence.resolveOutboundEndpoint(refreshed)
+                ?: return DeviceConnectOutcome.Unreachable(
+                    detail = PeerReachabilityMessages.peerOffline()
+                )
+            remote = runCatching {
+                FileApexServices.client.fetchPeerNodeState(
+                    endpoint.host,
+                    endpoint.port,
+                    LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
+                )
+            }.getOrElse { error ->
+                return DeviceConnectOutcome.Unreachable(
+                    detail = error.message ?: PeerReachabilityMessages.peerOffline()
+                )
+            }
         }
         if (remote.pinRequired) {
             val name = remote.deviceName.ifBlank { refreshed.deviceName }
@@ -334,7 +361,7 @@ class DevicesViewModel : ViewModel() {
         }
         DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
         return DeviceConnectOutcome.Open(
-            browseTargetFor(refreshed, direct.host, direct.port, pinRequired = false)
+            browseTargetFor(refreshed, endpoint.host, endpoint.port, pinRequired = false)
         )
     }
 
