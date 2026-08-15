@@ -62,7 +62,7 @@ actual object GoogleDriveAuth {
             .putString(KEY_SCOPE, DRIVE_FILE_SCOPE)
             .apply()
         if (refreshToken.isBlank()) {
-            driveLog("persistGrant has no refresh token — silent Google Identity reauth will mint the next access token")
+            driveLog("persistGrant has no refresh token - silent Google Identity reauth will mint the next access token")
         }
     }
 
@@ -79,7 +79,7 @@ actual object GoogleDriveAuth {
         val prefs = prefs() ?: return false
         val refresh = prefs.getString(KEY_REFRESH, "").orEmpty()
         if (refresh.isBlank()) {
-            driveLog("no Drive refresh token — trying silent Google Identity reauth")
+            driveLog("no Drive refresh token - trying silent Google Identity reauth")
             return false
         }
         val clientId = BuildConfig.GOOGLE_WEB_CLIENT_ID

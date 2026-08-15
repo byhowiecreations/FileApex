@@ -9,7 +9,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
- * Single source of truth for share-server FGS restart and deferred recovery.
+ * Share-server FGS restart and deferred recovery.
  * Used by [FileApexWatchdogReceiver], [FileShareServerService], and [MainActivity].
  */
 object ShareServerRestartCoordinator {
@@ -64,7 +64,7 @@ object ShareServerRestartCoordinator {
     fun attemptWatchdogRestart(context: Context, trigger: RestartTrigger) {
         val appContext = context.applicationContext
         if (ServiceWatchdogScheduler.isShareServerRunning(appContext)) {
-            Log.i(TAG, "Share server heartbeat fresh — skip restart ($trigger)")
+            Log.i(TAG, "Share server heartbeat fresh - skip restart ($trigger)")
             ShareServerPendingStart.clear(appContext)
             return
         }

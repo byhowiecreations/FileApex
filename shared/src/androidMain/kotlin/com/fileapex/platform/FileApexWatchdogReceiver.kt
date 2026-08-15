@@ -39,7 +39,7 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
                     return
                 }
                 if (!FileApexAndroidBootstrap.ensureInitialized(appContext)) {
-                    Log.w(TAG, "Watchdog alarm skipped — process init not ready")
+                    Log.w(TAG, "Watchdog alarm skipped - process init not ready")
                     ServiceWatchdogScheduler.scheduleNext(appContext)
                     return
                 }
@@ -54,17 +54,17 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
 
     private fun handleBootAutoLaunch(appContext: Context) {
         if (!isUserStorageUnlocked(appContext)) {
-            Log.i(TAG, "Storage still locked — skip restart")
+            Log.i(TAG, "Storage still locked - skip restart")
             return
         }
         // Application.onCreate may have deferred init on an earlier Direct Boot spawn of this
         // same process — finish bootstrap before touching settings / starting the FGS.
         if (!FileApexAndroidBootstrap.ensureInitialized(appContext)) {
-            Log.w(TAG, "Boot auto-launch skipped — process init not ready")
+            Log.w(TAG, "Boot auto-launch skipped - process init not ready")
             return
         }
         if (!ServiceWatchdogScheduler.isAutoLaunchOnRebootEnabled(appContext)) {
-            Log.i(TAG, "Auto launch on reboot disabled — skipping boot restart")
+            Log.i(TAG, "Auto launch on reboot disabled - skipping boot restart")
             return
         }
         ShareServerRestartCoordinator.attemptWatchdogRestart(

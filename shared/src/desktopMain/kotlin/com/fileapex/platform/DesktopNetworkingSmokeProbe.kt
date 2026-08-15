@@ -47,14 +47,14 @@ object DesktopNetworkingSmokeProbe {
         var failures = 0
         println("FileApex desktop networking smoke probe")
         println("Host OS: ${System.getProperty("os.name")}")
-        println("—".repeat(60))
+        println("-".repeat(60))
         for (result in results) {
             val status = if (result.passed) "PASS" else "FAIL"
             println("[$status] ${result.name}")
             println("       ${result.detail}")
             if (!result.passed) failures++
         }
-        println("—".repeat(60))
+        println("-".repeat(60))
         if (failures == 0) {
             println("Smoke probe: all ${results.size} checks passed.")
         } else {
@@ -222,11 +222,11 @@ object DesktopNetworkingSmokeProbe {
                         "type=${FileApexMdns.SERVICE_TYPE}"
                 }
                 stackProbe -> {
-                    "multicast unresolved on $host (OS firewall/VLAN?) — " +
+                    "multicast unresolved on $host (OS firewall/VLAN?) - " +
                         "FileApexMdnsAdvertiser+Browser stack OK; validate cross-device via manual matrix"
                 }
                 else -> {
-                    "JmDNS stack failed on $host — check jmdns dependency and LAN interface"
+                    "JmDNS stack failed on $host - check jmdns dependency and LAN interface"
                 }
             }
         )

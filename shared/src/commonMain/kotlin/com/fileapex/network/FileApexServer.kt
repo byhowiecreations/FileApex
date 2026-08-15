@@ -96,7 +96,7 @@ class FileApexServer(
     fun start() {
         synchronized(engineLock) {
             if (serverEngine != null) {
-                onLog("start() ignored — engine already running on port $port", null)
+                onLog("start() ignored - engine already running on port $port", null)
                 return
             }
             if (lifecycleJob.isCancelled) {
@@ -590,7 +590,7 @@ class FileApexServer(
                     val snapshot = withContext(Dispatchers.IO) {
                         runCatching { collectDeviceDiagnostics() }
                             .getOrElse { error ->
-                                onLog("GET /api/v1/diagnostics collector failed — returning partial snapshot", error)
+                                onLog("GET /api/v1/diagnostics collector failed - returning partial snapshot", error)
                                 collectDeviceDiagnosticsFallback()
                             }
                     }

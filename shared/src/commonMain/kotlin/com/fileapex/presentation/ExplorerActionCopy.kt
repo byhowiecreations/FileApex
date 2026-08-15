@@ -1,7 +1,7 @@
 package com.fileapex.presentation
 
 /**
- * User-facing explorer selection / send action strings (SSOT for toolbar and picker copy).
+ * Explorer selection / send action strings for toolbar and picker copy.
  * Internal types remain MultiCopy* in the domain layer.
  */
 object ExplorerActionCopy {

@@ -16,17 +16,17 @@ fun initAndroidTransferReceiveNotifier(context: Context) {
 actual fun notifyFilesReceived(fileNames: List<String>) {
     if (fileNames.isEmpty()) return
     if (!FileApexServices.settings.fileTransferNotificationsEnabled.value) {
-        println("TransferReceiveNotifier: skipped — notifications disabled in Settings")
+        println("TransferReceiveNotifier: skipped - notifications disabled in Settings")
         return
     }
     if (!::notifierContext.isInitialized) {
-        println("TransferReceiveNotifier: skipped — notifier not initialized")
+        println("TransferReceiveNotifier: skipped - notifier not initialized")
         return
     }
 
     val manager = NotificationManagerCompat.from(notifierContext)
     if (!manager.areNotificationsEnabled()) {
-        println("TransferReceiveNotifier: skipped — system notifications disabled for FileApex")
+        println("TransferReceiveNotifier: skipped - system notifications disabled for FileApex")
         return
     }
 

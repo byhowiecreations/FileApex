@@ -25,7 +25,6 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
-/** Adds atomic peer metadata columns to [PairedDeviceEntity]. */
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override suspend fun migrate(connection: SQLiteConnection) {
         listOf(
@@ -42,7 +41,6 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
-/** Adds hardware identity columns to [PairedDeviceEntity]. */
 val MIGRATION_4_5 = object : Migration(4, 5) {
     override suspend fun migrate(connection: SQLiteConnection) {
         listOf(
@@ -57,7 +55,6 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
-/** Adds E2EE public key columns to [PairedDeviceEntity]. */
 val MIGRATION_5_6 = object : Migration(5, 6) {
     override suspend fun migrate(connection: SQLiteConnection) {
         listOf(
@@ -92,7 +89,6 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
-/** Deferred outbound file transfers — source paths only, drained when peer is LAN-reachable. */
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override suspend fun migrate(connection: SQLiteConnection) {
         connection.prepare(
@@ -117,7 +113,6 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
-/** Adds [NoteEntity] table for persistent notes across app upgrades. */
 val MIGRATION_8_9 = object : Migration(8, 9) {
     override suspend fun migrate(connection: SQLiteConnection) {
         connection.prepare(
@@ -140,7 +135,6 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
-/** Adds Notes attachment metadata for Google Drive relay. */
 val MIGRATION_9_10 = object : Migration(9, 10) {
     override suspend fun migrate(connection: SQLiteConnection) {
         connection.prepare(

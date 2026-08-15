@@ -49,7 +49,7 @@ actual object GoogleDriveAuth {
         prefs.put(KEY_SCOPE, DRIVE_FILE_SCOPE)
         prefs.flush()
         if (refreshToken.isBlank()) {
-            driveLog("persistGrant has no refresh token — Drive posts will fail after the access token expires")
+            driveLog("persistGrant has no refresh token - Drive posts will fail after the access token expires")
         }
     }
 

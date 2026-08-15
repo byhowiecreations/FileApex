@@ -59,19 +59,13 @@ data class DevicesUiState(
     val renameTargetId: String? = null,
     val statusMessage: String? = null,
     val errorMessage: String? = null,
-    /** Device card showing the 2s connecting handshake progress. */
+    /** 2s connecting handshake on the device card. */
     val connectingDeviceId: String? = null,
-    /** When set, UI must collect a PIN before completing pairing. */
     val pendingPinPairing: PairingPayload? = null,
-    /** When set, UI must collect a PIN before browsing a PIN-protected peer. */
     val pendingPinUnlock: PendingPinUnlock? = null,
-    /** Reorder mode for paired-device list on the home screen. */
     val deviceOrderEditMode: Boolean = false,
-    /** Draft order while [deviceOrderEditMode] is active. */
     val editOrderRows: List<DeviceListRow> = emptyList(),
-    /** When set, UI shows on-demand peer diagnostics. */
     val deviceDetails: DeviceDetailsState? = null,
-    /** When set, UI shows dynamic Check Batteries overlay popup. */
     val batteryOverlayState: BatteryCheckOverlayState? = null
 )
 
@@ -705,8 +699,7 @@ class DevicesViewModel : ViewModel() {
     }
 
     /**
-     * Finder / Explorer drop onto a device tile → outbound send via [transferManager] (SSOT).
-     * Accepts files and folders; folders keep their nested structure on the peer.
+     * Finder / Explorer drop onto a device tile. Folders keep nested structure on the peer.
      * Local "This device" drops are refused (no same-device remote transfer).
      */
     fun sendDroppedLocalFiles(deviceId: String, absolutePaths: List<String>) {

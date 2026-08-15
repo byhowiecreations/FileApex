@@ -66,7 +66,7 @@ object ShareServerPendingStart {
         ensureChannel(context)
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) {
-            Log.i(TAG, "Recovery notification skipped — notifications disabled")
+            Log.i(TAG, "Recovery notification skipped - notifications disabled")
             return
         }
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)

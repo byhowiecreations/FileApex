@@ -3,8 +3,7 @@ package com.fileapex.platform
 import android.content.Context
 
 /**
- * SSOT for [androidx.core.content.FileProvider] authority used by the manifest and URI builders.
- *
+ * [androidx.core.content.FileProvider] authority used by the manifest and URI builders.
  * Must stay in sync with `android:authorities="${applicationId}.fileprovider"` in the app manifest.
  */
 object FileApexFileProvider {

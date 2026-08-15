@@ -628,7 +628,7 @@ class MainActivity : ComponentActivity() {
             )
         }
         if (persistenceSnapshot.persistenceRestricted) {
-            Log.w(TAG, "Starting share server without battery exemption — background survival may be limited")
+            Log.w(TAG, "Starting share server without battery exemption - background survival may be limited")
         }
         val intent = Intent(this, FileShareServerService::class.java).apply {
             action = FileShareServerService.ACTION_START
@@ -640,7 +640,7 @@ class MainActivity : ComponentActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 error is ForegroundServiceStartNotAllowedException
             ) {
-                Log.w(TAG, "Share server start deferred — FGS not allowed :: ${error.message}")
+                Log.w(TAG, "Share server start deferred - FGS not allowed :: ${error.message}")
                 ShareServerRestartCoordinator.deferUntilForeground(
                     this,
                     "ui_start_blocked"

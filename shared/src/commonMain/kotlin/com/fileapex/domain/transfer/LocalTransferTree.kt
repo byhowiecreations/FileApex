@@ -4,11 +4,11 @@ import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
 /**
- * Single source of truth for expanding local drop/send roots into a flat file list that
- * preserves relative folder structure under each top-level name.
+ * Expand local drop/send roots into a flat file list that keeps relative folders
+ * under each top-level name.
  *
  * Desktop drag-and-drop (and any other path list) must call this before
- * [TransferManager.sendToDevices] — do not re-implement directory walks in UI layers.
+ * [TransferManager.sendToDevices]. Do not re-implement directory walks in UI layers.
  */
 object LocalTransferTree {
     /**

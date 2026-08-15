@@ -22,7 +22,7 @@ class UpdatePackageReplacedReceiver : BroadcastReceiver() {
             val replaced = intent.data?.schemeSpecificPart
             if (replaced != null && replaced != context.packageName) return
         }
-        println("UpdatePackageReplacedReceiver: package replaced — relaunching FileApex")
+        println("UpdatePackageReplacedReceiver: package replaced - relaunching FileApex")
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

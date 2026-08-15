@@ -4,9 +4,6 @@ import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.di.FileApexServices
 import com.fileapex.platform.DriveRelayNotifier
 
-/**
- * Single source of truth for whether this device may send/receive via Google Drive Relay.
- */
 object DriveRelayPolicy {
     const val NOTES_ATTACHMENT_MAX_BYTES: Long = 5L * 1024L * 1024L
     const val PURGE_AFTER_MS: Long = 72L * 60L * 60L * 1000L
@@ -39,7 +36,7 @@ object DriveRelayPolicy {
         }
         if (isRelayEnabled()) return true
         if (!settings.googleAccountLinkEnabled.value) {
-            driveLog("relay send blocked — Google Account not linked")
+            driveLog("relay send blocked - Google Account not linked")
             return false
         }
         if (GoogleDriveAuth.hasStoredAccess() && !GoogleDriveAuth.hasGrant()) {
@@ -57,7 +54,7 @@ object DriveRelayPolicy {
         val ready = isRelayEnabled()
         if (!ready) {
             driveLog(
-                "relay send blocked — cellular=${settings.cellularEnabled.value} " +
+                "relay send blocked - cellular=${settings.cellularEnabled.value} " +
                     "drive=${settings.googleDriveRelayEnabled.value} " +
                     "grant=${GoogleDriveAuth.hasGrant()} platform=${currentPlatformLabel()}"
             )

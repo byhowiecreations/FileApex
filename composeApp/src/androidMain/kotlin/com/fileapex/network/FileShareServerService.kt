@@ -16,21 +16,7 @@ import com.fileapex.platform.ShareServerKeepAliveCoordinator
 import com.fileapex.platform.ShareServerPendingStart
 import com.fileapex.platform.ShareServerRestartCoordinator
 
-/**
- * Foreground service that keeps the LAN share server alive via [ServerLifecycleManager].
- *
- * The persistent server notification is posted once via [ShareServerForegroundNotification] and
- * is never re-issued during AlarmManager re-asserts or other background housekeeping.
- *
- * Background recovery uses the **20-minute** AlarmManager watchdog ([ServiceWatchdogScheduler] /
- * [com.fileapex.util.TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS]) — not an in-process poll loop.
- * Cloud peer visibility uses the separate **10-minute** Firestore heartbeat
- * ([com.fileapex.cloud.CloudPresenceHeartbeat]).
- *
- * UDP peer-wake listening lives only in this FGS — there is no separate process-level wake
- * service; peers cannot wake the device via UDP until this service (or a watchdog/UI restart)
- * is running again.
- */
+/** LAN share server FGS: notification posted once, UDP wake listening lives only here. */
 class FileShareServerService : Service() {
     private var wakeReceiver: UdpWakeReceiver? = null
     private var isForegroundPromoted = false
@@ -51,7 +37,7 @@ class FileShareServerService : Service() {
         val reassert = intent?.action == ShareServerKeepAliveCoordinator.ACTION_REASSERT
         val stickyRestart = intent == null
         if (!FileApexAndroidBootstrap.ensureInitialized(this)) {
-            Log.w(TAG, "Process init not ready — deferring share-server start")
+            Log.w(TAG, "Process init not ready - deferring share-server start")
             handlePromotionFailure(fromForeground = fromForeground, stickyRestart = stickyRestart)
             return START_NOT_STICKY
         }
@@ -81,7 +67,7 @@ class FileShareServerService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         if (ServiceWatchdogScheduler.isWatchdogEnabled(this)) {
-            Log.i(TAG, "Task removed — scheduling immediate watchdog recovery")
+            Log.i(TAG, "Task removed - scheduling immediate watchdog recovery")
             ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
         }
         super.onTaskRemoved(rootIntent)
@@ -90,7 +76,7 @@ class FileShareServerService : Service() {
     override fun onTimeout(startId: Int, fgsType: Int) {
         Log.w(
             TAG,
-            "FGS runtime quota exceeded (type=$fgsType, startId=$startId) — " +
+            "FGS runtime quota exceeded (type=$fgsType, startId=$startId) - " +
                 "stopping cleanly and scheduling deferred watchdog restart"
         )
         ServiceWatchdogState.markTimeoutStop(this)
@@ -116,10 +102,10 @@ class FileShareServerService : Service() {
                 }
             }
             timeoutStop -> {
-                Log.i(TAG, "FGS stopped after runtime timeout — deferred watchdog restart pending")
+                Log.i(TAG, "FGS stopped after runtime timeout - deferred watchdog restart pending")
             }
             else -> {
-                Log.i(TAG, "Unexpected FGS stop — scheduling immediate watchdog recovery")
+                Log.i(TAG, "Unexpected FGS stop - scheduling immediate watchdog recovery")
                 ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
             }
         }
@@ -149,7 +135,7 @@ class FileShareServerService : Service() {
 
     private fun handlePromotionFailure(fromForeground: Boolean, stickyRestart: Boolean) {
         if (fromForeground) {
-            Log.w(TAG, "Foreground promotion failed from UI — server not started")
+            Log.w(TAG, "Foreground promotion failed from UI - server not started")
             stopSelf()
             return
         }

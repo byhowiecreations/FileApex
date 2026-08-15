@@ -13,16 +13,16 @@ import com.fileapex.MainActivity
 import android.app.PendingIntent
 
 /**
- * SSOT for the static share-server foreground notification.
+ * Static share-server foreground notification.
  *
- * Posted **once** per FGS lifetime — never re-issued on AlarmManager re-asserts, heartbeat
+ * Posted once per FGS lifetime. Never re-issued on AlarmManager re-asserts, heartbeat
  * housekeeping, or routine [com.fileapex.network.FileShareServerService] restarts while promoted.
  *
  * Strict OEMs (Motorola): [promoteImmediately] must run in [Service.onCreate] within ~5s of
- * [android.content.Context.startForegroundService] — no bitmap decode or channel migration.
+ * [android.content.Context.startForegroundService]. No bitmap decode or channel migration.
  *
- * File transfer alerts use [AndroidNotificationChannels.TRANSFER_RECEIVE] / transfer receive
- * notifier with separate notification ids — they must not touch this pipeline.
+ * File transfer alerts use [AndroidNotificationChannels.TRANSFER_RECEIVE] with separate
+ * notification ids. They must not touch this pipeline.
  */
 object ShareServerForegroundNotification {
     private const val TAG = "ShareServerFgNotify"
@@ -53,7 +53,7 @@ object ShareServerForegroundNotification {
     /** @return true when [Service.startForeground] ran for the first time this service instance. */
     fun postOnce(service: Service): Boolean {
         if (posted) {
-            Log.d(TAG, "Static server notification already posted — skipping re-post")
+            Log.d(TAG, "Static server notification already posted - skipping re-post")
             return false
         }
         AndroidNotificationChannels.ensureShareServerChannel(service)
@@ -78,7 +78,7 @@ object ShareServerForegroundNotification {
                 if (preferred == ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) {
                     Log.w(
                         TAG,
-                        "connectedDevice FGS denied — falling back to dataSync :: ${error.message}"
+                        "connectedDevice FGS denied - falling back to dataSync :: ${error.message}"
                     )
                     service.startForeground(
                         NOTIFICATION_ID,

@@ -61,7 +61,7 @@ data class PairingPayload(
             parseOrNull(qrText)
                 ?: throw IllegalArgumentException(parseFailureMessage(qrText))
 
-        /** Returns the first successful parse across [candidates] (OEM scanners disagree on which field is authoritative). */
+        /** First successful parse across [candidates]; OEM scanners disagree on which field to use. */
         fun parseFirstOrNull(candidates: Iterable<String>): PairingPayload? =
             candidates.asSequence()
                 .sortedByDescending { looksLikePairingCandidate(it) }

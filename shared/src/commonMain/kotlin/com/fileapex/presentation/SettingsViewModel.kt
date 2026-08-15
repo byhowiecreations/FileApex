@@ -459,7 +459,7 @@ class SettingsViewModel : ViewModel() {
             runCatching {
                 DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled)
             }.onFailure { error ->
-                println("SettingsViewModel: diagnostics cloud sync failed — ${error.message}")
+                println("SettingsViewModel: diagnostics cloud sync failed - ${error.message}")
             }
             if (enabled) {
                 DiagnosticsCloudRelay.startInbox(uid, deviceId)
@@ -513,7 +513,7 @@ class SettingsViewModel : ViewModel() {
                             drivePurgeNowMessage = "Could not delete relay files. Try Grant Access again."
                         )
                     }
-                    println("SettingsViewModel: Drive purge failed — ${error.message}")
+                    println("SettingsViewModel: Drive purge failed - ${error.message}")
                 }
         }
     }

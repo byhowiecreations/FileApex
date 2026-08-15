@@ -117,7 +117,7 @@ object DesktopMacTrayBridge {
                 bodyLen
             )
         }.getOrElse { error ->
-            println("DesktopMacLanHttp: $method $url failed — ${error.message}")
+            println("DesktopMacLanHttp: $method $url failed - ${error.message}")
             return null
         }
         if (rc != 0) return null
@@ -145,7 +145,7 @@ object DesktopMacTrayBridge {
                 bodyLen
             )
         }.getOrElse { error ->
-            println("DesktopMacLanHttp: upload $url failed — ${error.message}")
+            println("DesktopMacLanHttp: upload $url failed - ${error.message}")
             return null
         }
         if (rc != 0) return null
@@ -167,7 +167,7 @@ object DesktopMacTrayBridge {
                 status
             )
         }.getOrElse { error ->
-            println("DesktopMacLanHttp: download $url failed — ${error.message}")
+            println("DesktopMacLanHttp: download $url failed - ${error.message}")
             return null
         }
         if (rc != 0) return null

@@ -4,7 +4,7 @@ package com.fileapex.platform
 expect fun downloadsFolderDisplayLabel(): String
 
 /**
- * SSOT for inbound file landing folders on each device.
+ * Inbound file landing folders.
  *
  * Android public folder: `Download/FileApex`
  * macOS/desktop: `~/Downloads/FileApex`

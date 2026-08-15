@@ -144,7 +144,7 @@ object AppUpdateCoordinator {
                 val message = error.message ?: "Update download failed"
                 _statusMessage.value = message
                 BriefToast.show(message)
-                println("AppUpdateCoordinator: download failed — $message")
+                println("AppUpdateCoordinator: download failed - $message")
                 error.printStackTrace()
             } finally {
                 downloadInFlight = false
@@ -247,7 +247,7 @@ object AppUpdateCoordinator {
                 if (toastFeedback) {
                     BriefToast.show(message)
                 }
-                println("AppUpdateCoordinator: update check failed — $message")
+                println("AppUpdateCoordinator: update check failed - $message")
                 error.printStackTrace()
             } finally {
                 gate.withLock { inFlight = false }

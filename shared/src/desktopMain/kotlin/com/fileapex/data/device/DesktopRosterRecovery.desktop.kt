@@ -17,7 +17,7 @@ internal object DesktopRosterRecovery {
             if (!candidate.isFile) continue
             val imported = runCatching { importPairedDevices(candidate, repository) }
                 .getOrElse { error ->
-                    println("DesktopRosterRecovery: skip ${candidate.path} — ${error.message}")
+                    println("DesktopRosterRecovery: skip ${candidate.path} - ${error.message}")
                     0
                 }
             if (imported > 0) {

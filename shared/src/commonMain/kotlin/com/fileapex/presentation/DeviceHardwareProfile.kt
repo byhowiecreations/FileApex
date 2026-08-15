@@ -4,9 +4,6 @@ import androidx.compose.runtime.Immutable
 import com.fileapex.data.db.PairedDeviceEntity
 import kotlinx.serialization.Serializable
 
-/**
- * SSOT hardware identity for device list/grid rendering and LAN peer payloads.
- */
 @Immutable
 @Serializable
 data class DeviceHardwareProfile(

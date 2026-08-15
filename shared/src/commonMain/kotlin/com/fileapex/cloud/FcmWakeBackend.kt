@@ -173,7 +173,7 @@ internal object FcmHttpV1Client {
         }
         if (!response.status.isSuccess()) {
             println(
-                "FcmWakeBackend: v1 send failed (${response.status}) — " +
+                "FcmWakeBackend: v1 send failed (${response.status}) - " +
                     response.bodyAsText().take(200)
             )
             return false

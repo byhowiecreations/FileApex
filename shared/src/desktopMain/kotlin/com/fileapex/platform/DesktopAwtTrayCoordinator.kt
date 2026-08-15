@@ -57,7 +57,7 @@ object DesktopAwtTrayCoordinator {
         this.onQuitApp = onQuit
 
         if (!SystemTray.isSupported()) {
-            println("DesktopAwtTrayCoordinator: SystemTray unavailable — close will exit app")
+            println("DesktopAwtTrayCoordinator: SystemTray unavailable - close will exit app")
             return
         }
 
@@ -68,7 +68,7 @@ object DesktopAwtTrayCoordinator {
             minimizeToTrayOnClose = true
             println("DesktopAwtTrayCoordinator: AWT tray installed")
         }.onFailure { error ->
-            println("DesktopAwtTrayCoordinator: tray setup failed — ${error.message}")
+            println("DesktopAwtTrayCoordinator: tray setup failed - ${error.message}")
         }
     }
 
@@ -128,7 +128,7 @@ object DesktopAwtTrayCoordinator {
             val tray = SystemTray.getSystemTray()
             trayIcon?.let { tray.remove(it) }
         }.onFailure { error ->
-            println("DesktopAwtTrayCoordinator: tray remove failed — ${error.message}")
+            println("DesktopAwtTrayCoordinator: tray remove failed - ${error.message}")
         }
         trayIcon = null
         installed = false

@@ -52,13 +52,11 @@ kotlin {
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
-            implementation(libs.compose.ui.tooling.preview)
             implementation(libs.androidx.lifecycle.viewmodel.compose)
             implementation(libs.androidx.lifecycle.runtime.compose)
         }
 
         androidMain.dependencies {
-            implementation(libs.compose.ui.tooling)
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
             implementation(libs.zxing.android.embedded)
@@ -71,6 +69,10 @@ kotlin {
             }
         }
     }
+}
+
+dependencies {
+    debugImplementation(libs.compose.ui.tooling)
 }
 
 android {
@@ -105,7 +107,7 @@ android {
         }
     }
 
-    // rules.md §15 — keystore at ~/AndroidStudioProjects/signed_files/{project}/;
+    // rules.md §18 — keystore at ~/AndroidStudioProjects/signed_files/{project}/;
     // credentials from KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS only.
     val releaseKeystoreDir = file("${System.getProperty("user.home")}/AndroidStudioProjects/signed_files/FileApex")
     val releaseKeystoreFileName = "fileapex-release.jks"
@@ -498,7 +500,7 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
         }
 
         // Wrong arch — rebuild using the correct JDK's jlink directly.
-        logger.lifecycle("Runtime image is $producedArch but need $needsArch — rebuilding with correct jlink")
+        logger.lifecycle("Runtime image is $producedArch but need $needsArch - rebuilding with correct jlink")
         val correctJdkHome = when (needsArch) {
             "arm64"  -> File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
             "x86_64" -> File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
@@ -528,12 +530,12 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
 
 private fun Project.embedMacTrayBridgeIn(appBundle: File) {
     if (!isMacHost()) {
-        logger.lifecycle("Skipping Mac tray dylib embed — not a macOS build host")
+        logger.lifecycle("Skipping Mac tray dylib embed - not a macOS build host")
         return
     }
     val dylib = rootProject.layout.projectDirectory.file("macos/build/Tray/libFileApexTray.dylib").asFile
     if (!dylib.isFile) {
-        logger.warn("libFileApexTray.dylib missing — menu bar tray disabled")
+        logger.warn("libFileApexTray.dylib missing - menu bar tray disabled")
         return
     }
     val frameworksDir = appBundle.resolve("Contents/Frameworks")
@@ -551,7 +553,7 @@ private fun Project.patchMacRuntimeLocalNetworkPlist(appBundle: File) {
     if (!isMacHost()) return
     val runtimePlist = appBundle.resolve("Contents/runtime/Contents/Info.plist")
     if (!runtimePlist.isFile) {
-        logger.warn("Nested JRE Info.plist missing — skipped Local Network keys")
+        logger.warn("Nested JRE Info.plist missing - skipped Local Network keys")
         return
     }
     val description =
@@ -721,10 +723,6 @@ afterEvaluate {
         }
     }
 
-    tasks.named("assembleDebug").configure {
-        finalizedBy("copyCurrentBuilds")
-        dependsOn(":shared:verifyDesktopSmokeTestConfig")
-    }
 }
 
 /**
@@ -755,9 +753,6 @@ tasks.matching { it.name == "packageReleaseMsi" }.configureEach {
 
 private fun releaseApkDestName(appVersionName: String): String =
     "FileApex-v$appVersionName.apk"
-
-private fun debugApkDestName(appVersionName: String): String =
-    "FileApex-v$appVersionName-debug.apk"
 
 private fun Project.apkOutputDir(variant: String): File =
     layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
@@ -865,7 +860,19 @@ private fun moveToCurrent(
     logger.lifecycle("Moved ${source.name} -> current/$destName")
 }
 
-
+private fun Project.pruneMacComposeStaging(reason: String) {
+    if (!isMacHost()) return
+    listOf(
+        layout.buildDirectory.dir("compose/binaries/main/app").get().asFile,
+        layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile,
+        layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile,
+    ).forEach { dir ->
+        if (dir.exists()) {
+            dir.deleteRecursively()
+            logger.lifecycle("Pruned $reason: ${dir.absolutePath}")
+        }
+    }
+}
 
 /** Detach FileApex installer volumes so `current/` can be replaced safely. */
 private fun detachFileApexDmgVolumes() {
@@ -918,7 +925,7 @@ private fun patchShippedAppMarketingVersion(dest: File, appVersionName: String, 
 
 private fun Project.embedMacExtensionsIn(appBundle: File) {
     if (!isMacHost()) {
-        logger.lifecycle("Skipping Mac extension embed — not a macOS build host")
+        logger.lifecycle("Skipping Mac extension embed - not a macOS build host")
         return
     }
     embedMacTrayBridgeIn(appBundle)
@@ -941,10 +948,10 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
 }
 
 private fun Project.shipToCurrent(
-    includeDebugApk: Boolean,
     includeReleaseApk: Boolean,
     includeDmg: Boolean,
     includeMsi: Boolean,
+    includeMacApp: Boolean,
     mountDmg: Boolean,
     preserveExistingDmgOnWipe: Boolean,
     preserveExistingMsiOnWipe: Boolean = false
@@ -975,14 +982,12 @@ private fun Project.shipToCurrent(
                 )
             }
             val destName = when (variant) {
-                "debug" -> debugApkDestName(appVersionName)
                 "release" -> releaseApkDestName(appVersionName)
                 else -> apk.name
             }
             moveToCurrent(dest, apk, destName = destName, logger = logger)
         }
     }
-    if (includeDebugApk) moveApksFrom("debug")
     if (includeReleaseApk) moveApksFrom("release")
 
     if (includeDmg && isMacHost()) {
@@ -1005,7 +1010,7 @@ private fun Project.shipToCurrent(
         shipExeToCurrent(dest, appVersionName, logger, release = true)
     }
 
-    if (isMacHost()) {
+    if (includeMacApp && isMacHost()) {
         val buildAppBundle = distributableMacAppBundle()
         check(buildAppBundle.exists()) {
             "Missing build output: ${buildAppBundle.absolutePath}"
@@ -1033,28 +1038,6 @@ private fun Project.shipToCurrent(
 }
 
 /**
- * Post-[assembleDebug]: debug APK + desktop app into `current/` (Mac only).
- */
-tasks.register("copyCurrentBuilds") {
-    group = "distribution"
-    description = "Move debug APK and Mac .app into root current/ (Mac host only)"
-    onlyIf { isMacHost() }
-    dependsOn("assembleDebug", "embedMacExtensions")
-
-    doLast {
-        shipToCurrent(
-            includeDebugApk = true,
-            includeReleaseApk = false,
-            includeDmg = false,
-            includeMsi = false,
-            mountDmg = false,
-            preserveExistingDmgOnWipe = true,
-            preserveExistingMsiOnWipe = true
-        )
-    }
-}
-
-/**
  * Final release ship into `current/`. Mac: .app + DMG. Windows: release MSI only.
  */
 tasks.register("copyReleaseBuilds") {
@@ -1069,10 +1052,10 @@ tasks.register("copyReleaseBuilds") {
 
     doLast {
         shipToCurrent(
-            includeDebugApk = false,
             includeReleaseApk = apkOutputDir("release").listFiles()?.any { it.isFile && it.extension == "apk" } == true,
             includeDmg = isMacHost(),
             includeMsi = false,
+            includeMacApp = isMacHost(),
             mountDmg = false,
             preserveExistingDmgOnWipe = false,
             preserveExistingMsiOnWipe = false
@@ -1091,10 +1074,10 @@ tasks.register("copyWindowsBuilds") {
 
     doLast {
         shipToCurrent(
-            includeDebugApk = false,
             includeReleaseApk = false,
             includeDmg = false,
             includeMsi = false,
+            includeMacApp = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = true,
             preserveExistingMsiOnWipe = false
@@ -1144,10 +1127,10 @@ tasks.register("copyWindowsReleaseBuilds") {
 
     doLast {
         shipToCurrent(
-            includeDebugApk = false,
             includeReleaseApk = true,
             includeDmg = false,
             includeMsi = false,
+            includeMacApp = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = true,
             preserveExistingMsiOnWipe = false
@@ -1305,7 +1288,7 @@ tasks.register("packageSiliconDmg") {
             .start().waitFor()
         check(exit == 0) { "Silicon DMG packaging failed with exit code $exit" }
 
-        // Move the produced DMG and .app into current/.
+        // Ship DMG first (embeds staging .app), then move .app out of build/ into current/.
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
         val siliconDmg = dmgDir.listFiles().orEmpty()
             .firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
@@ -1317,22 +1300,8 @@ tasks.register("packageSiliconDmg") {
         check(stagingApp.isDirectory) {
             "Silicon .app missing at ${stagingApp.absolutePath}"
         }
-        val destApp = dest.resolve("FileApex.app")
-        if (destApp.exists()) destApp.deleteRecursively()
-        destApp.mkdirs()
-        val rsync = ProcessBuilder(
-            "rsync", "-a", "--delete",
-            stagingApp.absolutePath + "/",
-            destApp.absolutePath + "/"
-        ).inheritIO().start().waitFor()
-        check(rsync == 0) { "rsync of FileApex.app exited $rsync" }
-        val plist = destApp.resolve("Contents/Info.plist")
-        check(plist.isFile) { "FileApex.app missing Contents/Info.plist after rsync" }
-        ProcessBuilder(
-            "/usr/libexec/PlistBuddy", "-c",
-            "Set :CFBundleShortVersionString $fileapexVersionName",
-            plist.absolutePath
-        ).inheritIO().start().waitFor()
+        moveToCurrent(dest, stagingApp, logger = logger)
+        patchShippedAppMarketingVersion(dest, fileapexVersionName, fileapexVersionCode)
         logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$fileapexVersionName")
     }
 }
@@ -1374,6 +1343,7 @@ tasks.register("packageIntelDmg") {
                 logger = logger
             )
         }
+        pruneMacComposeStaging("after Intel DMG ship")
     }
 }
 
@@ -1396,12 +1366,12 @@ tasks.register("copyAllBuilds") {
     }
 
     doLast {
-        // Ship the APK only; DMGs are handled by the Silicon/Intel subprocess tasks.
+        // Ship release APK only; Mac .app + DMGs are handled by packageSiliconDmg / packageIntelDmg.
         shipToCurrent(
-            includeDebugApk = false,
             includeReleaseApk = true,
-            includeDmg = false,         // DMGs shipped by packageSiliconDmg / packageIntelDmg
+            includeDmg = false,
             includeMsi = isWindowsHost(),
+            includeMacApp = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = false,
             preserveExistingMsiOnWipe = false

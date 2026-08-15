@@ -21,7 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Single source of truth for Android Direct Share device shortcuts.
+ * Android Direct Share device shortcuts.
  *
  * Long-lived shortcuts need resource (or properly granted URI) icons.
  * Do not use [ShortcutInfoCompat.setExcludedFromSurfaces] with
@@ -77,7 +77,7 @@ object DirectShareShortcutCoordinator {
             runCatching {
                 ShortcutManagerCompat.pushDynamicShortcut(appContext, buildShortcut(peer, rank = 0))
             }.onFailure { error ->
-                println("DirectShareShortcutCoordinator: pushDynamicShortcut failed — ${error.message}")
+                println("DirectShareShortcutCoordinator: pushDynamicShortcut failed - ${error.message}")
             }
         }
     }
@@ -131,11 +131,11 @@ object DirectShareShortcutCoordinator {
     private suspend fun publishShortcuts(peers: List<PairedDeviceEntity>) {
         if (!::appContext.isInitialized) return
         if (!FileApexServices.isDatabaseReady()) {
-            println("DirectShareShortcutCoordinator: skip publish — database not ready")
+            println("DirectShareShortcutCoordinator: skip publish - database not ready")
             return
         }
         if (ShortcutManagerCompat.isRateLimitingActive(appContext)) {
-            println("DirectShareShortcutCoordinator: rate limited — scheduling retry")
+            println("DirectShareShortcutCoordinator: rate limited - scheduling retry")
             pendingPublishPeers = peers
             scheduleRateLimitRetry()
             return
@@ -165,7 +165,7 @@ object DirectShareShortcutCoordinator {
                 )
                 println("DirectShareShortcutCoordinator: cleared share shortcuts (empty roster)")
             } else {
-                println("DirectShareShortcutCoordinator: skip clear — empty publish list but roster not empty")
+                println("DirectShareShortcutCoordinator: skip clear - empty publish list but roster not empty")
             }
             pendingPublishPeers = null
             return
@@ -177,7 +177,7 @@ object DirectShareShortcutCoordinator {
         val ok = runCatching {
             ShortcutManagerCompat.setDynamicShortcuts(appContext, shortcuts)
         }.getOrElse { error ->
-            println("DirectShareShortcutCoordinator: setDynamicShortcuts threw — ${error.message}")
+            println("DirectShareShortcutCoordinator: setDynamicShortcuts threw - ${error.message}")
             false
         }
         val publishedIds = ShortcutManagerCompat.getDynamicShortcuts(appContext)
@@ -186,7 +186,7 @@ object DirectShareShortcutCoordinator {
         if (!ok || publishedIds.isEmpty()) {
             println(
                 "DirectShareShortcutCoordinator: publish failed " +
-                    "(ok=$ok, system=${publishedIds.size}/${peersToPublish.size}) — retry later"
+                    "(ok=$ok, system=${publishedIds.size}/${peersToPublish.size}) - retry later"
             )
             pendingPublishPeers = peersToPublish
             scheduleRateLimitRetry()

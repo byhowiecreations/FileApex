@@ -72,7 +72,7 @@ internal fun openWakeListenerOnPrimaryInterface(onLog: (String) -> Unit): Datagr
     val localIp = LanInterfaceBinding.lanBindCandidates().firstOrNull()
     val networkInterface = localIp?.let { networkInterfaceForIp(it) }
     if (localIp == null || networkInterface == null) {
-        onLog("UDP wake bind skipped — no primary LAN interface")
+        onLog("UDP wake bind skipped - no primary LAN interface")
         return null
     }
     return runCatching {

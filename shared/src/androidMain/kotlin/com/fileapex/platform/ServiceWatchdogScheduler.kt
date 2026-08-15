@@ -10,15 +10,7 @@ import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices
 import com.fileapex.util.TimeUtils
 
-/**
- * **20-minute** AlarmManager FGS recovery watchdog for [FileApexWatchdogReceiver].
- *
- * Distinct from the **10-minute** Firestore cloud presence heartbeat
- * ([com.fileapex.cloud.CloudPresenceHeartbeat] / [com.fileapex.domain.presence.LanPresenceTiming.FIRESTORE_PRESENCE_HEARTBEAT_MS]).
- *
- * All trigger times route through [TimeUtils]. Watchdog enablement and exact-alarm warnings use
- * device-protected storage for direct boot.
- */
+/** AlarmManager FGS recovery for [FileApexWatchdogReceiver]; prefs use device-protected storage for direct boot. */
 object ServiceWatchdogScheduler {
     private const val TAG = "ServiceWatchdogScheduler"
     const val ACTION_SERVICE_WATCHDOG = "com.fileapex.action.SERVICE_WATCHDOG"
@@ -68,7 +60,7 @@ object ServiceWatchdogScheduler {
                     )
                 }
                 else -> {
-                    Log.w(TAG, "Exact alarms unavailable — using inexact watchdog scheduling")
+                    Log.w(TAG, "Exact alarms unavailable - using inexact watchdog scheduling")
                     alarmManager.set(
                         AlarmManager.RTC_WAKEUP,
                         triggerAt,
@@ -157,7 +149,7 @@ object ServiceWatchdogScheduler {
             .putBoolean(KEY_BATTERY_OPTIMIZATION_WARNING, restricted)
             .commit()
         if (restricted) {
-            Log.w(TAG, "Battery optimization active — background server survival may be limited")
+            Log.w(TAG, "Battery optimization active - background server survival may be limited")
         }
     }
 

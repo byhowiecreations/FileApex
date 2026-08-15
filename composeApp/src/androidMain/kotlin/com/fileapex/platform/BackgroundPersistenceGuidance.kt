@@ -15,9 +15,6 @@ import androidx.core.content.IntentCompat
 import androidx.core.content.PackageManagerCompat
 import androidx.core.content.UnusedAppRestrictionsConstants
 
-/**
- * SSOT for battery exemption, background restriction, unused-app hibernation, and OEM guidance.
- */
 object BackgroundPersistenceGuidance {
     private const val TAG = "BackgroundPersistence"
     private const val APP_BATTERY_USAGE_ACTIVITY =

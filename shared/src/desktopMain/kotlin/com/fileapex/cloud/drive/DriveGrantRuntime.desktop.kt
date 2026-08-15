@@ -81,7 +81,7 @@ object DesktopDriveGrantRuntime {
             DriveRelayNotifier.onDriveEnabledAndGranted()
             DriveRelayCoordinator.applySchedulerFromSettings()
             runCatching { FileApexServices.transferQueue.scheduleDrain() }
-            driveLog("Drive grant completed — draining off-LAN queue via Relay")
+            driveLog("Drive grant completed - draining off-LAN queue via Relay")
             _results.emit(true to null)
         }.onFailure { error ->
             driveLogError("Drive grant exchange failed", error)

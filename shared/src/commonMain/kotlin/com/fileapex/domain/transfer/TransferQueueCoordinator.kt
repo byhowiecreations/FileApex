@@ -473,7 +473,7 @@ class TransferQueueCoordinator(
                 desktopPendingNames = desktopNamesAmong(deviceIds)
             )
         }.getOrElse { error ->
-            driveLogError("Drive relay failed — queuing", error)
+            driveLogError("Drive relay failed - queuing", error)
             DriveRelayNotifier.notifyFailed(
                 fileName = localSources.firstOrNull()?.fileName.orEmpty(),
                 queued = true

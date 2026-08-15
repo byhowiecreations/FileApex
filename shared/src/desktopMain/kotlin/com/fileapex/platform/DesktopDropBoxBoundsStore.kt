@@ -2,7 +2,6 @@ package com.fileapex.platform
 
 import java.util.prefs.Preferences
 
-/** SSOT for persisting the desktop drop-box panel frame across launches. */
 object DesktopDropBoxBoundsStore {
     private const val PREFS_NODE = "com.fileapex.desktop.dropbox"
     private const val KEY_SAVED = "saved"

@@ -29,7 +29,6 @@ data class DesktopWindowBounds(
     )
 }
 
-/** SSOT for persisting FileApex desktop window size and location across launches. */
 object DesktopWindowBoundsStore {
     private const val PREFS_NODE = "com.fileapex.desktop.window"
     private const val KEY_SAVED = "saved"

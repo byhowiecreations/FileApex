@@ -48,7 +48,7 @@ private fun backupDesktopDatabaseIfPresent(dbFile: File) {
         }
         println("FileApexDatabase: saved roster backup at ${backup.absolutePath}")
     }.onFailure { error ->
-        println("FileApexDatabase: roster backup failed — ${error.message}")
+        println("FileApexDatabase: roster backup failed - ${error.message}")
     }
 }
 
@@ -71,7 +71,7 @@ internal fun resolveDesktopDatabaseFile(): File {
                 runCatching {
                     copyDatabaseTree(source, supportDb, supportDir)
                 }.onFailure { error ->
-                    println("FileApexDatabase: DB migration failed — ${error.message}")
+                    println("FileApexDatabase: DB migration failed - ${error.message}")
                 }
             }
         } else if (countPairedDevices(supportDb) == 0) {
@@ -83,7 +83,7 @@ internal fun resolveDesktopDatabaseFile(): File {
                         "FileApexDatabase: restored empty roster from ${source.absolutePath}"
                     )
                 }.onFailure { error ->
-                    println("FileApexDatabase: roster restore failed — ${error.message}")
+                    println("FileApexDatabase: roster restore failed - ${error.message}")
                 }
             }
         }
@@ -91,7 +91,7 @@ internal fun resolveDesktopDatabaseFile(): File {
         runCatching {
             rosterResolvedMarker.writeText("ok")
         }.onFailure { error ->
-            println("FileApexDatabase: roster marker write failed — ${error.message}")
+            println("FileApexDatabase: roster marker write failed - ${error.message}")
         }
     }
 

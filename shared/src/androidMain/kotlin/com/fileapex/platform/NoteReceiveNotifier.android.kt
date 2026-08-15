@@ -16,17 +16,17 @@ fun initAndroidNoteReceiveNotifier(context: Context) {
 actual fun notifyNoteReceived(sourceDeviceName: String, content: String) {
     if (content.isBlank()) return
     if (!FileApexServices.settings.notesNotificationsEnabled.value) {
-        println("NoteReceiveNotifier: skipped — note notifications disabled in Settings")
+        println("NoteReceiveNotifier: skipped - note notifications disabled in Settings")
         return
     }
     if (!::noteNotifierContext.isInitialized) {
-        println("NoteReceiveNotifier: skipped — notifier not initialized")
+        println("NoteReceiveNotifier: skipped - notifier not initialized")
         return
     }
 
     val manager = NotificationManagerCompat.from(noteNotifierContext)
     if (!manager.areNotificationsEnabled()) {
-        println("NoteReceiveNotifier: skipped — system notifications disabled for FileApex")
+        println("NoteReceiveNotifier: skipped - system notifications disabled for FileApex")
         return
     }
 

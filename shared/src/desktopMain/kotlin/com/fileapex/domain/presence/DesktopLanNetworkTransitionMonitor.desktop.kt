@@ -28,7 +28,7 @@ internal object DesktopLanNetworkTransitionMonitor {
                 val next = currentSnapshot()
                 if (next != lastSnapshot) {
                     lastSnapshot = next
-                    println("DesktopLanNetworkTransitionMonitor: LAN interfaces changed — revalidating")
+                    println("DesktopLanNetworkTransitionMonitor: LAN interfaces changed - revalidating")
                     PresenceNetworkRevalidator.onLanNetworkTransition()
                 }
             }

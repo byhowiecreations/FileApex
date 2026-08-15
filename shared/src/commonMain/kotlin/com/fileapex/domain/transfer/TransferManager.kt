@@ -20,9 +20,9 @@ import kotlinx.coroutines.delay
 
 
 /**
- * Single source of truth for outbound Multi Copy and explorer transfer actions.
+ * Outbound Multi Copy and explorer transfer actions.
  *
- * UI (explorer), Share Extension job handoff, and copy/paste/download must call here —
+ * UI (explorer), Share Extension job handoff, and copy/paste/download must call here,
  * not [FileTransferService.multiCopyToDevices] or [MultiCopyBroadcastEngine] directly.
  * Stream fan-out stays in [FileTransferService] / [MultiCopyBroadcastEngine]; this class owns
  * readiness, device-option resolution, and public transfer entry points.

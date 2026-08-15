@@ -26,7 +26,7 @@ object PresenceNetworkRevalidator {
             runCatching {
                 revalidateAfterNetworkTransition()
             }.onFailure { error ->
-                println("PresenceNetworkRevalidator: transition revalidation failed — ${error.message}")
+                println("PresenceNetworkRevalidator: transition revalidation failed - ${error.message}")
             }
         }
     }
@@ -50,7 +50,7 @@ object PresenceNetworkRevalidator {
             runCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
             FileApexServices.presenceMonitor.runSingleShotRevalidation()
             runCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
-                println("PresenceNetworkRevalidator: queue drain failed — ${error.message}")
+                println("PresenceNetworkRevalidator: queue drain failed - ${error.message}")
             }
             return
         }
@@ -58,7 +58,7 @@ object PresenceNetworkRevalidator {
         DriveRelayCoordinator.onLeftLocalNetwork()
         FileApexServices.presenceMonitor.runSingleShotRevalidation()
         runCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
-            println("PresenceNetworkRevalidator: queue drain failed — ${error.message}")
+            println("PresenceNetworkRevalidator: queue drain failed - ${error.message}")
         }
     }
 

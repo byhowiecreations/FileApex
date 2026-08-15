@@ -19,7 +19,7 @@ actual object DriveSyncScheduler {
                 delay(DriveRelayPolicy.LEDGER_POLL_INTERVAL_MS)
                 runCatching { DriveRelayCoordinator.sweep() }
                     .onFailure { error ->
-                        println("DriveSyncScheduler: sweep failed — ${error.message}")
+                        println("DriveSyncScheduler: sweep failed - ${error.message}")
                     }
             }
         }
@@ -34,7 +34,7 @@ actual object DriveSyncScheduler {
         scope.launch {
             runCatching { DriveRelayCoordinator.sweep() }
                 .onFailure { error ->
-                    println("DriveSyncScheduler: immediate sweep failed — ${error.message}")
+                    println("DriveSyncScheduler: immediate sweep failed - ${error.message}")
                 }
         }
         ensureScheduled()

@@ -38,22 +38,19 @@ private fun loadDesktopResourceBytes(relativePath: String): ByteArray? {
     val absPath = if (relativePath.startsWith("/")) relativePath else "/$relativePath"
     val relPath = relativePath.removePrefix("/")
 
-    // 1. Class resource with leading slash
     runCatching {
         NoteIconKind::class.java.getResourceAsStream(absPath)?.use { it.readBytes() }
     }.getOrNull()?.let { return it }
 
-    // 2. ClassLoader resource
     runCatching {
         Thread.currentThread().contextClassLoader?.getResourceAsStream(relPath)?.use { it.readBytes() }
     }.getOrNull()?.let { return it }
 
-    // 3. System ClassLoader resource
     runCatching {
         ClassLoader.getSystemResourceAsStream(relPath)?.use { it.readBytes() }
     }.getOrNull()?.let { return it }
 
-    // 4. File system fallback paths during dev run
+    // Unpackaged `run` looks next to the project sources.
     val devPaths = listOf(
         "shared/src/desktopMain/resources/$relPath",
         "../shared/src/desktopMain/resources/$relPath",

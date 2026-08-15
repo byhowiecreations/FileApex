@@ -27,7 +27,7 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * Opt-in Google Account linking + Firestore virtual device registry.
- * Single source of truth for cloud pairing seed → local [com.fileapex.data.device.DeviceRepository].
+ * Cloud pairing seed feeds local [com.fileapex.data.device.DeviceRepository].
  *
  * [deviceName] is written to Firestore only from explicit user rename actions
  * ([publishUserRenamedDevice]). Presence fields publish on cold launch, link/restore, rename,
@@ -56,11 +56,9 @@ object GoogleLinkCoordinator {
     @Volatile
     private var lastCloudRegistryIds: Set<String> = emptySet()
 
-    /** Cached cloud device rows for FCM wake target resolution. */
     @Volatile
     private var cachedCloudRecords: List<CloudDeviceRecord> = emptyList()
 
-    /** Lookup a peer's latest cloud registry row (diagnostics relay, FCM wake). */
     fun cloudRecordFor(deviceId: String): CloudDeviceRecord? =
         cachedCloudRecords.find { it.deviceId == deviceId }
 
@@ -79,12 +77,11 @@ object GoogleLinkCoordinator {
             runCatching { restoreSessionAndListen() }
                 .onFailure { error ->
                     _status.value = error.message ?: "Cloud link restore failed"
-                    println("GoogleLinkCoordinator: restore failed — ${error.message}")
+                    println("GoogleLinkCoordinator: restore failed - ${error.message}")
                 }
         }
     }
 
-    /** One-shot cloud presence publish on cold launch or foreground refresh. */
     suspend fun publishSelfPresenceIfLinked() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
         if (!cloudOpsActive) return
@@ -92,7 +89,7 @@ object GoogleLinkCoordinator {
         if (uid.isBlank()) return
         runCatching { patchSelfPresence(uid) }
             .onFailure { error ->
-                println("GoogleLinkCoordinator: presence publish failed — ${error.message}")
+                println("GoogleLinkCoordinator: presence publish failed - ${error.message}")
             }
     }
 
@@ -110,16 +107,14 @@ object GoogleLinkCoordinator {
             CloudAuthBackend.patchDevicePresence(uid, next)
             lastPublishedPresence = next
         }.onFailure { error ->
-            println("GoogleLinkCoordinator: scheduled heartbeat failed — ${error.message}")
+            println("GoogleLinkCoordinator: scheduled heartbeat failed - ${error.message}")
         }
     }
 
-    /** Clears dedupe cache so the next publish runs after LAN/network transitions. */
     fun invalidatePublishedPresenceCache() {
         lastPublishedPresence = null
     }
 
-    /** FCM wake targets — cloud-linked peers that have a registered token. */
     fun linkedPeerFcmTargets(selfDeviceId: String): List<FcmWakeTarget> =
         cachedCloudRecords.mapNotNull { it.toFcmTargetOrNull(selfDeviceId) }
 
@@ -182,7 +177,7 @@ object GoogleLinkCoordinator {
             CloudAuthBackend.patchDeviceFcmToken(uid, loadLocalIdentity().deviceId, trimmed)
             true
         }.getOrElse { error ->
-            println("GoogleLinkCoordinator: FCM token patch failed — ${error.message}")
+            println("GoogleLinkCoordinator: FCM token patch failed - ${error.message}")
             false
         }
     }
@@ -239,7 +234,7 @@ object GoogleLinkCoordinator {
         val cloudId = resolveCloudDeviceId(deviceId)
         runCatching { CloudAuthBackend.deleteDevice(uid, cloudId) }
             .onFailure { error ->
-                println("GoogleLinkCoordinator: cloud remove failed — ${error.message}")
+                println("GoogleLinkCoordinator: cloud remove failed - ${error.message}")
             }
     }
 
@@ -322,7 +317,7 @@ object GoogleLinkCoordinator {
                 reconcileAndSyncDevices(uid)
                 FileApexServices.deviceRepositoryOrNull()?.reconcileDuplicateEndpoints()
             }.onFailure { error ->
-                println("GoogleLinkCoordinator: reconcile failed — ${error.message}")
+                println("GoogleLinkCoordinator: reconcile failed - ${error.message}")
             }
         }
 
@@ -338,7 +333,7 @@ object GoogleLinkCoordinator {
             onError = { error ->
                 if (isSessionLive(epoch)) {
                     _status.value = error.message ?: "Cloud registry error"
-                    println("GoogleLinkCoordinator: observe error — ${error.message}")
+                    println("GoogleLinkCoordinator: observe error - ${error.message}")
                 }
             }
         )
@@ -350,11 +345,9 @@ object GoogleLinkCoordinator {
     }
 
     /**
-     * Executes 14-day automated stale device pruning and device reconciliation:
-     * 1. Primary Match: Matches existing Firestore records via static hardwareFingerprint.
-     * 2. Fallback Migration Match: One-time legacy match via deviceName.
-     * 3. Consolidation & Cleanup: Keeps the most recently active record, updates with local deviceId,
-     *    fcmToken, and fingerprint as SSOT, and deletes all duplicate/orphaned documents.
+     * Fingerprint match first, then one-time deviceName fallback for legacy docs.
+     * Keep the most recently active record, write it under local deviceId, delete dupes.
+     * Inactive docs older than 14 days are removed (except self).
      */
     suspend fun reconcileAndSyncDevices(uid: String) {
         if (uid.isBlank()) return
@@ -372,7 +365,6 @@ object GoogleLinkCoordinator {
                 return
             }
 
-            // 1. Automated Stale Device Pruning: Purge devices inactive >14 days
             val activeRecords = mutableListOf<CloudDeviceRecord>()
             for (record in allRecords) {
                 val isStale = record.updatedAtEpochMs > 0L && record.updatedAtEpochMs < staleCutoffMs
@@ -384,7 +376,6 @@ object GoogleLinkCoordinator {
                 }
             }
 
-            // 2. Primary Match (Hardware Fingerprint)
             val primaryMatches = activeRecords.filter { record ->
                 val fp = record.hardwareFingerprint
                 fp.isNotEmpty() &&
@@ -394,7 +385,6 @@ object GoogleLinkCoordinator {
                     fp["board"] == selfFingerprint["board"]
             }
 
-            // 3. Fallback Migration Match (Legacy Cleanup via deviceName)
             val fallbackMatches = if (primaryMatches.isEmpty()) {
                 activeRecords.filter { record ->
                     record.deviceName.isNotBlank() &&
@@ -407,11 +397,9 @@ object GoogleLinkCoordinator {
             val matchingRecords = if (primaryMatches.isNotEmpty()) primaryMatches else fallbackMatches
 
             if (matchingRecords.isNotEmpty()) {
-                // Pick most recently active document
                 val sortedMatches = matchingRecords.sortedByDescending { it.updatedAtEpochMs }
                 val bestMatch = sortedMatches.first()
 
-                // Purge duplicate/orphaned documents
                 val duplicates = activeRecords.filter { record ->
                     record.deviceId != selfId &&
                         (matchingRecords.any { it.deviceId == record.deviceId } ||
@@ -423,13 +411,11 @@ object GoogleLinkCoordinator {
                     CloudAuthBackend.deleteDevice(uid, duplicate.deviceId)
                 }
 
-                // If bestMatch doc ID differs from local selfId, remove old doc ID after migration
                 if (bestMatch.deviceId != selfId) {
                     println("GoogleLinkCoordinator: Migrating old doc ${bestMatch.deviceId} -> $selfId")
                     CloudAuthBackend.deleteDevice(uid, bestMatch.deviceId)
                 }
 
-                // Consolidate SSOT record under selfId
                 val consolidatedRecord = buildSelfRecord().copy(
                     deviceName = bestMatch.deviceName.ifBlank { selfName }
                 )
@@ -442,7 +428,7 @@ object GoogleLinkCoordinator {
                 registerSelf(uid)
             }
         }.onFailure { error ->
-            println("GoogleLinkCoordinator: reconcileAndSyncDevices error — ${error.message}")
+            println("GoogleLinkCoordinator: reconcileAndSyncDevices error - ${error.message}")
         }
     }
 
@@ -456,7 +442,7 @@ object GoogleLinkCoordinator {
         runCatching {
             DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled)
         }.onFailure { error ->
-            println("GoogleLinkCoordinator: diagnostics cloud sync failed — ${error.message}")
+            println("GoogleLinkCoordinator: diagnostics cloud sync failed - ${error.message}")
         }
         if (enabled) {
             DiagnosticsCloudRelay.startInbox(uid, deviceId)
@@ -560,7 +546,7 @@ object GoogleLinkCoordinator {
                     }.onFailure { error ->
                         println(
                             "GoogleLinkCoordinator: cloud removal apply failed for " +
-                                "$vanishedId — ${error.message}"
+                                "$vanishedId - ${error.message}"
                         )
                     }
                 }
@@ -617,7 +603,7 @@ object GoogleLinkCoordinator {
                         }
                     }.onFailure { error ->
                         println(
-                            "GoogleLinkCoordinator: skip Room upsert after teardown — ${error.message}"
+                            "GoogleLinkCoordinator: skip Room upsert after teardown - ${error.message}"
                         )
                     }
                 }

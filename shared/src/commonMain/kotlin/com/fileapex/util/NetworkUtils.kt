@@ -8,8 +8,8 @@ import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.platform.localIpv4Addresses
 
 /**
- * Single source of truth for LAN interface selection and “this device” identity.
- * Prefer stable, routable LAN IPv4 (192.168 → 10.x → 172.16–31) across heartbeats / pairing.
+ * LAN interface selection and this-device identity.
+ * Prefer stable, routable LAN IPv4 (192.168 then 10.x then 172.16–31) across heartbeats / pairing.
  */
 object NetworkUtils {
     /**
@@ -56,12 +56,8 @@ object NetworkUtils {
         return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]
     }
 
-    /** Raw platform LAN IPv4 list (platform may pre-sort; selection is finalized here). */
     fun lanIpv4Addresses(): List<String> = localIpv4Addresses()
 
-    /**
-     * Best routable LAN IPv4 from [candidates], or null when none qualify.
-     */
     fun selectBestLanIpv4(candidates: Collection<String>): String? =
         candidates
             .asSequence()
@@ -69,7 +65,6 @@ object NetworkUtils {
             .filter { isUsableLanIpv4(it) }
             .minWithOrNull(lanIpv4PreferenceOrder())
 
-    /** True for RFC1918 LAN destinations reached only over Wi‑Fi/Ethernet peer routes. */
     fun isPrivateLanPeerHost(host: String): Boolean {
         val cleaned = host.trim()
         if (!isUsableLanIpv4(cleaned)) {
@@ -80,7 +75,6 @@ object NetworkUtils {
             isPrivate172(cleaned)
     }
 
-    /** True for non-loopback, non-link-local IPv4 suitable for LAN reachability probes. */
     fun isUsableLanIpv4(ip: String): Boolean {
         val cleaned = ip.trim()
         if (cleaned.isEmpty() || cleaned == "127.0.0.1" || cleaned == "0.0.0.0") {

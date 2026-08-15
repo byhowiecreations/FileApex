@@ -4,8 +4,7 @@ import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
 
 /**
- * Single source of truth for peer LAN HTTP routing.
- * Peer traffic is Wi‑Fi/Ethernet only — never cellular or OS default-route Ktor.
+ * Peer LAN HTTP routing. Wi‑Fi/Ethernet only; never cellular or OS default-route Ktor.
  */
 object PeerLanHttpPolicy {
     /** Non-throwing check used by background probes (presence sweep, health ping). */

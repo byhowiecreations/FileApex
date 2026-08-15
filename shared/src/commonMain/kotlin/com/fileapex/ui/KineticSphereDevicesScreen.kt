@@ -147,7 +147,6 @@ fun KineticSphereDevicesView(
             )
         }
 
-        // Pre-compute STATIC coordinates with collision guard, hub distance clearance & orbital radius staggering
         val staticNodePositions = remember(deviceRows, widthPx, heightPx, baseRadiusPx) {
             val marginPx = with(density) { 70.dp.toPx() }
             val topMarginPx = with(density) { 55.dp.toPx() }
@@ -156,7 +155,6 @@ fun KineticSphereDevicesView(
 
             val rawPositions = deviceRows.mapIndexed { index, _ ->
                 val config = orbitConfigs[index % orbitConfigs.size]
-                // Alternate inner/outer radii for adjacent nodes (0.85f vs 1.38f) to prevent node collisions
                 val radiusMultiplier = if (nodeCount <= 4) 1.0f else (if (index % 2 == 0) 0.85f else 1.38f)
                 val angleStep = (2.0 * PI / nodeCount)
                 val baseAngle = (angleStep * index) - (PI / 2.0)
@@ -174,7 +172,6 @@ fun KineticSphereDevicesView(
                 var cx = centerX + rotX
                 var cy = centerY + rotY
 
-                // Hub Clearance Guard — Ensure no node is placed on top of the Central Hub
                 val hubDx = cx - centerX
                 val hubDy = cy - centerY
                 val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
@@ -189,7 +186,6 @@ fun KineticSphereDevicesView(
                 Offset(cx, cy)
             }.toMutableList()
 
-            // Iterative collision resolution guard to eliminate overlaps
             for (iter in 0 until 6) {
                 for (i in 0 until rawPositions.size) {
                     for (j in i + 1 until rawPositions.size) {
@@ -220,7 +216,6 @@ fun KineticSphereDevicesView(
 
         val persistedNodeOffsets by FileApexServices.settings.kineticNodeOffsets.collectAsState()
 
-        // Compute live node positions with user drag offsets, boundary constraints, and hub clearance
         val effectiveNodePositions = remember(staticNodePositions, persistedNodeOffsets, deviceRows, widthPx, heightPx, layoutScopePrefix) {
             val marginPx = with(density) { 70.dp.toPx() }
             val topMarginPx = with(density) { 55.dp.toPx() }
@@ -234,7 +229,6 @@ fun KineticSphereDevicesView(
                 var cx = staticPos.x + dragOffset.x
                 var cy = staticPos.y + dragOffset.y
 
-                // Hub Clearance Guard — Ensure dragged node maintains hub clearance
                 val hubDx = cx - centerX
                 val hubDy = cy - centerY
                 val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
@@ -253,12 +247,10 @@ fun KineticSphereDevicesView(
         val showConnectedLines by FileApexServices.settings.kineticSphereConnectedLinesEnabled.collectAsState()
         val showOrbitalRings by FileApexServices.settings.kineticSphereOrbitalRingsEnabled.collectAsState()
 
-        // 1. Spatial Deep-Space Canvas with Continuous Glowing Elliptical Orbits & Dynamic Beams
         Canvas(modifier = Modifier.fillMaxSize()) {
             val solidGlowStroke = Stroke(width = 4f.dp.toPx())
             val solidCoreStroke = Stroke(width = 1.8f.dp.toPx())
 
-            // 1a. Background Static Deep-Space Orbital Rings
             if (showOrbitalRings) {
                 orbitConfigs.forEach { config ->
                     withTransform({
@@ -268,14 +260,12 @@ fun KineticSphereDevicesView(
                         val rx = baseRadiusPx * config.scaleX
                         val ry = baseRadiusPx * config.scaleY
 
-                        // Outer neon glow track
                         drawOval(
                             color = Color(0xFF00E5FF).copy(alpha = 0.14f),
                             topLeft = Offset(-rx, -ry),
                             size = Size(rx * 2f, ry * 2f),
                             style = solidGlowStroke
                         )
-                        // Core luminous continuous track
                         drawOval(
                             color = Color(0xFF00E5FF).copy(alpha = 0.40f),
                             topLeft = Offset(-rx, -ry),
@@ -286,7 +276,6 @@ fun KineticSphereDevicesView(
                 }
             }
 
-            // Star Particle Dots
             val stars = listOf(
                 Offset(centerX * 0.3f, centerY * 0.4f),
                 Offset(centerX * 1.6f, centerY * 0.3f),
@@ -299,7 +288,6 @@ fun KineticSphereDevicesView(
                 drawCircle(color = Color.White.copy(alpha = 0.4f), radius = 2f, center = star)
             }
 
-            // 1b. Connected Device Spoke Lines from Hub to Nodes
             if (showConnectedLines) {
                 effectiveNodePositions.forEachIndexed { index, pos ->
                     val row = deviceRows.getOrNull(index) ?: return@forEachIndexed
@@ -317,7 +305,6 @@ fun KineticSphereDevicesView(
             }
         }
 
-        // 2. Interactive Central Hub ("Add New Device")
         val hubSizeDp = 110.dp
         val hubPx = with(density) { hubSizeDp.toPx() }
         Box(
@@ -430,7 +417,6 @@ fun KineticSphereDevicesView(
             }
         }
 
-        // 2b. Dynamic "Check Battery / Check Batteries" Micro-Action Button
         if (deviceRows.isNotEmpty() && onCheckBatteries != null) {
             val batteryText = if (deviceRows.size <= 1) "Check Battery" else "Check Batteries"
             Box(
@@ -479,7 +465,6 @@ fun KineticSphereDevicesView(
             }
         }
 
-        // 3. Render Node Orbs and Device Labels First
         if (nodeCount > 0) {
             deviceRows.forEachIndexed { index, row ->
                 val pos = effectiveNodePositions.getOrNull(index) ?: return@forEachIndexed
@@ -496,7 +481,6 @@ fun KineticSphereDevicesView(
                     label = "nodeFocus_${row.deviceId}"
                 )
 
-                // Smoothly ENLARGE orb size on selection (68dp -> 88dp) to indicate selected device
                 val baseOrbSizeDp = 68.dp
                 val focusedOrbSizeDp = 88.dp
                 val currentOrbSizeDp = baseOrbSizeDp + ((focusedOrbSizeDp - baseOrbSizeDp) * focusProgress)
@@ -505,7 +489,6 @@ fun KineticSphereDevicesView(
                 val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFC107)
                 var dropHover by remember { mutableStateOf(false) }
 
-                // 3a. Node Orb — Centered at (nodeCx, nodeCy). Draggable & enlarges smoothly in place when selected!
                 Box(
                     modifier = Modifier
                         .offset {
@@ -561,7 +544,6 @@ fun KineticSphereDevicesView(
                     )
                 }
 
-                // 3b. Device Label — Fades out smoothly when capsule is open to eliminate text collisions
                 val labelWidthDp = 125.dp
                 val labelWidthPx = with(density) { labelWidthDp.toPx() }
                 val labelTopPx = nodeCy + (currentOrbSizePx / 2f) + with(density) { 4.dp.toPx() }
@@ -601,7 +583,6 @@ fun KineticSphereDevicesView(
                 }
             }
 
-            // 4. Render Active Selected Device's Floating Glass Action Capsule LAST (Top Z-Index Layer)
             activeRadialNodeId?.let { activeId ->
                 val activeIndex = deviceRows.indexOfFirst { it.deviceId == activeId }
                 if (activeIndex != -1) {
@@ -636,7 +617,6 @@ fun KineticSphereDevicesView(
                 }
             }
         } else {
-            // Empty state guidance
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -677,19 +657,16 @@ private fun KineticGlassActionCapsule(
     val density = LocalDensity.current
     val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFC107)
 
-    // Directional vector away from Central Hub
     val dx = centerPx.x - hubCenter.x
     val dy = centerPx.y - hubCenter.y
     val outwardAngle = kotlin.math.atan2(dy.toDouble(), dx.toDouble())
 
-    // Offset distance from static device node center
     val distDp = 82.dp
     val distPx = with(density) { distDp.toPx() }
 
     val rawX = centerPx.x + (distPx * cos(outwardAngle)).toFloat()
     val rawY = centerPx.y + (distPx * sin(outwardAngle)).toFloat()
 
-    // Capsule dimensions
     val capsuleWidthDp = 224.dp
     val capsuleHeightDp = 106.dp
     val capsuleWidthPx = with(density) { capsuleWidthDp.toPx() }
@@ -736,7 +713,6 @@ private fun KineticGlassActionCapsule(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header: Device Title + Status Indicator
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -770,7 +746,6 @@ private fun KineticGlassActionCapsule(
                 }
             }
 
-            // Divider Line
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -778,7 +753,6 @@ private fun KineticGlassActionCapsule(
                     .background(Color(0x3300E5FF))
             )
 
-            // Action Buttons Grid: 4 distinct padded action pills with high contrast
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

@@ -8,10 +8,6 @@ import com.fileapex.presentation.PinSessionRequiredException
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.util.PathUtils
 
-/**
- * Single source of truth for explorer directory listing and path navigation within a browse root.
- * Path security delegates to [PathUtils].
- */
 class BrowserCoordinator(
     private val target: BrowseTarget,
     private val transfer: FileTransferService

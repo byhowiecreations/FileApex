@@ -19,7 +19,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.ui.theme.FileApexTeal
 
-/** SSOT for folder / file-type icons in explorer list and grid layouts. */
 object ExplorerEntryIcons {
     fun iconFor(item: RemoteFileItem): ImageVector = when {
         item.isDirectory -> Icons.Filled.Folder

@@ -1,6 +1,6 @@
 package com.fileapex.network
 
-/** mDNS/Bonjour service contract — SSOT for offline QR-paired LAN discovery. */
+/** mDNS/Bonjour service contract for offline QR-paired LAN discovery. */
 object FileApexMdns {
     /** NSD/jmDNS type (trailing dot required on Android NsdManager). */
     const val SERVICE_TYPE = "_fileapex._tcp."

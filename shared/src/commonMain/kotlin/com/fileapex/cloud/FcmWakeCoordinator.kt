@@ -29,7 +29,7 @@ object FcmWakeCoordinator {
                     )
                 }
             }.onFailure { error ->
-                println("FcmWakeCoordinator: FCM wake dispatch failed — ${error.message}")
+                println("FcmWakeCoordinator: FCM wake dispatch failed - ${error.message}")
             }
         }
     }
@@ -61,7 +61,7 @@ object FcmWakeCoordinator {
                     )
                 }
             }.onFailure { error ->
-                println("FcmWakeCoordinator: Note FCM wake dispatch failed — ${error.message}")
+                println("FcmWakeCoordinator: Note FCM wake dispatch failed - ${error.message}")
             }
         }
     }
@@ -81,11 +81,11 @@ object FcmWakeCoordinator {
 
     suspend fun dispatchDriveRelayPointer(entryId: String, targetDeviceIds: List<String> = emptyList()) {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) {
-            println("FcmWakeCoordinator: Drive FCM skipped — Google Account not linked")
+            println("FcmWakeCoordinator: Drive FCM skipped - Google Account not linked")
             return
         }
         if (!FcmWakeBackend.isConfigured()) {
-            println("FcmWakeCoordinator: Drive FCM skipped — Admin SDK is not configured")
+            println("FcmWakeCoordinator: Drive FCM skipped - Admin SDK is not configured")
             return
         }
         val selfId = loadLocalIdentity().deviceId
@@ -93,7 +93,7 @@ object FcmWakeCoordinator {
             val targets = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, targetDeviceIds)
             if (targets.isEmpty()) {
                 println(
-                    "FcmWakeCoordinator: Drive FCM skipped — no Android FCM token for " +
+                    "FcmWakeCoordinator: Drive FCM skipped - no Android FCM token for " +
                         targetDeviceIds.joinToString().ifBlank { "linked peers" }
                 )
                 return
@@ -110,7 +110,7 @@ object FcmWakeCoordinator {
                 )
             }
         }.onFailure { error ->
-            println("FcmWakeCoordinator: Drive relay FCM failed — ${error.message}")
+            println("FcmWakeCoordinator: Drive relay FCM failed - ${error.message}")
         }
     }
 
@@ -129,7 +129,7 @@ object FcmWakeCoordinator {
                     )
                 }
             }.onFailure { error ->
-                println("FcmWakeCoordinator: Note delete FCM wake dispatch failed — ${error.message}")
+                println("FcmWakeCoordinator: Note delete FCM wake dispatch failed - ${error.message}")
             }
         }
     }

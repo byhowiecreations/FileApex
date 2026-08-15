@@ -1,7 +1,7 @@
 package com.fileapex.util
 
 /**
- * Single source of truth for path join / normalize / within-root security checks.
+ * Path join / normalize / within-root checks.
  * Browse UI, server API path allowlists, and transfer destination joins must use this.
  */
 object PathUtils {

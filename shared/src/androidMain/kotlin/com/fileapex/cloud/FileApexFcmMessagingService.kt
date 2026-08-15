@@ -28,7 +28,7 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
         Log.i(TAG, "FCM received type=$type keys=${data.keys.joinToString()}")
         serviceScope.launch {
             if (!FileApexAndroidBootstrap.ensureInitialized(applicationContext)) {
-                Log.e(TAG, "FCM dropped type=$type — process not initialized")
+                Log.e(TAG, "FCM dropped type=$type - process not initialized")
                 return@launch
             }
             dispatch(data, type)

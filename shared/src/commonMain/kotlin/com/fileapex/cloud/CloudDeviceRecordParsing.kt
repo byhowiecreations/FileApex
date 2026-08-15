@@ -1,6 +1,5 @@
 package com.fileapex.cloud
 
-/** SSOT for parsing Firestore device document fields. */
 object CloudDeviceRecordParsing {
     fun fromFirestoreMap(data: Map<String, Any?>, documentId: String): CloudDeviceRecord {
         val id = data["deviceId"]?.toString()?.trim().orEmpty().ifBlank { documentId }

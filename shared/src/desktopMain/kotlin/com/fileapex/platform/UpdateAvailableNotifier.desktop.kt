@@ -4,7 +4,7 @@ import com.fileapex.update.PendingUpdateOffer
 
 actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
     println(
-        "UpdateAvailableNotifier: FileApex ${offer.remoteVersion} available — " +
+        "UpdateAvailableNotifier: FileApex ${offer.remoteVersion} available - " +
             offer.notificationDetail(maxNoteLines = 2)
     )
 }

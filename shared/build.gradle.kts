@@ -203,7 +203,6 @@ kotlin {
             implementation(compose.materialIconsExtended)
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
-            implementation(libs.compose.ui.tooling.preview)
 
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
@@ -227,7 +226,6 @@ kotlin {
         }
 
         androidMain.dependencies {
-            implementation(libs.ktor.client.cio)
             implementation(libs.androidx.core.ktx)
             implementation(libs.androidx.sharetarget)
             implementation(libs.androidx.activity.compose)
@@ -434,11 +432,23 @@ val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
 }
 
 tasks.withType<KotlinCompilationTask<*>>().configureEach {
-    dependsOn(generateFileApexAppVersion, generateDesktopCloudConfig, generateFcmCredentials)
+    dependsOn(generateFileApexAppVersion, generateFcmCredentials)
 }
 
 tasks.matching { it.name.startsWith("ksp") }.configureEach {
-    dependsOn(generateFileApexAppVersion, generateDesktopCloudConfig, generateFcmCredentials)
+    dependsOn(generateFileApexAppVersion, generateFcmCredentials)
+}
+
+kotlin.targets.matching { it.name == "desktop" }.configureEach {
+    compilations.configureEach {
+        compileTaskProvider.configure {
+            dependsOn(generateDesktopCloudConfig)
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith("ksp") && it.name.contains("Desktop", ignoreCase = true) }.configureEach {
+    dependsOn(generateDesktopCloudConfig)
 }
 
 /**
@@ -448,6 +458,14 @@ tasks.matching { it.name.startsWith("ksp") }.configureEach {
 tasks.register("verifyGoogleOAuthProjectAlignment") {
     group = "verification"
     description = "Ensure Web OAuth client ID matches the Firebase/GCP project number"
+    val googleServicesFile = rootProject.layout.projectDirectory.file("json/google-services.json")
+    val webClientIdProperty = providers.gradleProperty("fileapex.google.web.client.id").orElse("")
+    val firebaseAppIdProperty = providers.gradleProperty("fileapex.firebase.application.id").orElse("")
+    inputs.file(googleServicesFile).optional()
+    inputs.property("webClientId", webClientIdProperty)
+    inputs.property("firebaseAppId", firebaseAppIdProperty)
+    val marker = layout.buildDirectory.file("verification/google-oauth-project-aligned.ok")
+    outputs.file(marker)
     doLast {
         val webClientId = resolvedWebClientId()
         require(webClientId.isNotBlank()) {
@@ -481,6 +499,8 @@ tasks.register("verifyGoogleOAuthProjectAlignment") {
         logger.lifecycle(
             "Google OAuth aligned: Web client project_number=$webProjectNumber matches Firebase"
         )
+        marker.get().asFile.parentFile.mkdirs()
+        marker.get().asFile.writeText("ok")
     }
 }
 
@@ -517,6 +537,16 @@ fun org.gradle.api.Project.releaseKeystoreSha1(): String {
 tasks.register("verifyMacOAuthRedirect") {
     group = "verification"
     description = "Warn if Mac OAuth credentials are missing (Desktop JSON or Web client_secret JSON)"
+    val jsonDir = rootProject.layout.projectDirectory.dir("json")
+    val desktopClientIdProperty = providers.gradleProperty("fileapex.google.desktop.client.id").orElse("")
+    val webClientIdProperty = providers.gradleProperty("fileapex.google.web.client.id").orElse("")
+    val webClientSecretProperty = providers.gradleProperty("fileapex.google.web.client.secret").orElse("")
+    inputs.dir(jsonDir).optional()
+    inputs.property("desktopClientId", desktopClientIdProperty)
+    inputs.property("webClientId", webClientIdProperty)
+    inputs.property("webClientSecretPresent", webClientSecretProperty.map { it.isNotBlank() })
+    val marker = layout.buildDirectory.file("verification/mac-oauth-redirect.ok")
+    outputs.file(marker)
     doLast {
         if (macOAuthConfigured()) {
             if (resolvedDesktopClientId().isNotBlank()) {
@@ -524,24 +554,30 @@ tasks.register("verifyMacOAuthRedirect") {
             } else {
                 logger.lifecycle("Mac OAuth redirect URI present in json/ Web client_secret")
             }
-            return@doLast
+        } else {
+            logger.warn(
+                """
+                |Mac Google Sign-In: OAuth credentials missing for desktop builds.
+                |See docs/gcp-mac-oauth-setup.md — quickest fix:
+                |  GCP project fileapex-22813 → Credentials → Create OAuth client → Desktop app
+                |  → Download JSON → json/ → rebuild (no client_secret needed)
+                |
+                |Or Web application with redirect $macOAuthRedirectUri → Download JSON → json/
+                """.trimMargin()
+            )
         }
-        logger.warn(
-            """
-            |Mac Google Sign-In: OAuth credentials missing for desktop builds.
-            |See docs/gcp-mac-oauth-setup.md — quickest fix:
-            |  GCP project fileapex-22813 → Credentials → Create OAuth client → Desktop app
-            |  → Download JSON → json/ → rebuild (no client_secret needed)
-            |
-            |Or Web application with redirect $macOAuthRedirectUri → Download JSON → json/
-            """.trimMargin()
-        )
+        marker.get().asFile.parentFile.mkdirs()
+        marker.get().asFile.writeText(if (macOAuthConfigured()) "ok" else "warn")
     }
 }
 
 tasks.register("verifyFirebaseAndroidOAuthSetup") {
     group = "verification"
     description = "Ensure google-services.json includes an Android OAuth client (SHA-1 registered in Firebase)"
+    val googleServicesFile = rootProject.layout.projectDirectory.file("json/google-services.json")
+    inputs.file(googleServicesFile).optional()
+    val marker = layout.buildDirectory.file("verification/firebase-android-oauth.ok")
+    outputs.file(marker)
     doLast {
         if (!hasAndroidOAuthClientInGoogleServices()) {
             val releaseSha1 = releaseKeystoreSha1()
@@ -563,6 +599,8 @@ tasks.register("verifyFirebaseAndroidOAuthSetup") {
             )
         }
         logger.lifecycle("Firebase Android OAuth client present in google-services.json")
+        marker.get().asFile.parentFile.mkdirs()
+        marker.get().asFile.writeText("ok")
     }
 }
 
@@ -583,7 +621,7 @@ tasks.register("verifyDesktopSmokeTestConfig") {
             "Missing smoke test guide: ${smokeDoc.absolutePath}"
         }
         logger.lifecycle(
-            "Desktop smoke test config OK — run :shared:runDesktopNetworkingSmoke on Mac or Windows LAN hosts."
+            "Desktop smoke test config OK - run :shared:runDesktopNetworkingSmoke on Mac or Windows LAN hosts."
         )
     }
 }

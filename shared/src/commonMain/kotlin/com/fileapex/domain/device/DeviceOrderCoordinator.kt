@@ -7,9 +7,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * SSOT for paired-device list ordering (local per device).
- */
 object DeviceOrderCoordinator {
     private val _revisionEpochMs = MutableStateFlow(0L)
     val revisionEpochMs: StateFlow<Long> = _revisionEpochMs.asStateFlow()

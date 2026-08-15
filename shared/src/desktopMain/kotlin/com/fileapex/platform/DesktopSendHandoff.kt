@@ -89,7 +89,7 @@ object DesktopSendHandoff {
                     println("DesktopSendHandoff: TransferManager not ready :: ${error.message}")
                     return@launch
                 }
-            println("DesktopSendHandoff: TransferManager ready — draining send jobs")
+            println("DesktopSendHandoff: TransferManager ready - draining send jobs")
             val pending = flow {
                 listPendingJobIds().forEach { emit(it) }
             }
@@ -170,7 +170,7 @@ object DesktopSendHandoff {
             if (!outcome.hadQueue && !failed) {
                 cleanupStaging(jobId)
             }
-            println("DesktopSendHandoff: $status — ${outcome.message}")
+            println("DesktopSendHandoff: $status - ${outcome.message}")
         }.onFailure { error ->
             val message = error.message ?: "Send failed"
             writeJob(job.copy(status = STATUS_FAILED, message = message))

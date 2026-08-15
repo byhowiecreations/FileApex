@@ -132,7 +132,7 @@ internal object DiagnosticsCloudRelayJvm {
                 sessionId = sessionId
             )
         ) {
-            println("DiagnosticsCloudRelay: FCM wake send failed — polling relay anyway")
+            println("DiagnosticsCloudRelay: FCM wake send failed - polling relay anyway")
         }
     }
 
@@ -177,7 +177,7 @@ internal object DiagnosticsCloudRelayJvm {
                 }
             },
             onError = { error ->
-                println("DiagnosticsCloudRelay: inbox error — ${error.message}")
+                println("DiagnosticsCloudRelay: inbox error - ${error.message}")
             }
         )
     }
@@ -250,7 +250,7 @@ internal object DiagnosticsCloudRelayJvm {
                         googleUid = uid
                     )
                 }.getOrElse {
-                    println("DiagnosticsCloudRelay: request decrypt failed — ${it.message}")
+                    println("DiagnosticsCloudRelay: request decrypt failed - ${it.message}")
                     CloudAuthBackend.failDiagnosticsRelaySession(uid, session.sessionId)
                     return
                 }
@@ -269,7 +269,7 @@ internal object DiagnosticsCloudRelayJvm {
                     responseEncPayload = responseEnc
                 )
             } catch (error: Throwable) {
-                println("DiagnosticsCloudRelay: respond failed — ${error.message}")
+                println("DiagnosticsCloudRelay: respond failed - ${error.message}")
                 runCatching { CloudAuthBackend.failDiagnosticsRelaySession(uid, session.sessionId) }
             } finally {
                 inFlightSessionIds.remove(session.sessionId)

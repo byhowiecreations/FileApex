@@ -29,7 +29,7 @@ object MacOsExtensionRegistrar {
         Thread(
             {
                 runCatching { registerOnLaunch() }
-                    .onFailure { error -> log("deferred registration failed — ${error.message}") }
+                    .onFailure { error -> log("deferred registration failed - ${error.message}") }
             },
             "FileApex-ExtensionRegistrar"
         ).apply {
@@ -48,7 +48,7 @@ object MacOsExtensionRegistrar {
         val bundle = resolveRunningAppBundle()
         if (bundle == null || !isApplicationsBundle(bundle)) {
             log(
-                "skip pluginkit — not running from $ApplicationsAppPath " +
+                "skip pluginkit - not running from $ApplicationsAppPath " +
                     "(running=${bundle?.absolutePath ?: "unknown"})"
             )
             return
@@ -73,7 +73,7 @@ object MacOsExtensionRegistrar {
         }
         if (!shareEnts.isFile) {
             log(
-                "ExtensionEntitlements missing under $entsDir — " +
+                "ExtensionEntitlements missing under $entsDir - " +
                     "re-copy current/FileApex.app to /Applications"
             )
             return
@@ -81,7 +81,7 @@ object MacOsExtensionRegistrar {
 
         val stamp = registrationStamp(appsRoot, share, shareEnts)
         if (readStamp() == stamp) {
-            log("skip pluginkit — unchanged since last successful registration")
+            log("skip pluginkit - unchanged since last successful registration")
             return
         }
 

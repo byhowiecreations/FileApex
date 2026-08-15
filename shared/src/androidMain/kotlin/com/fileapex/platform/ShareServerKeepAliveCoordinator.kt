@@ -14,14 +14,14 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
- * SSOT for OEM-resistant share-server keep-alive: freeze-guard receivers,
+ * OEM-resistant share-server keep-alive: freeze-guard receivers,
  * JobScheduler fallback, and foreground re-assertion on network resume.
  *
- * Timer responsibilities (do not conflate):
- * - **10 min** — [com.fileapex.cloud.CloudPresenceHeartbeat] Firestore cloud presence only.
- * - **20 min** — [ServiceWatchdogScheduler] AlarmManager FGS recovery ([TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS]).
+ * Do not conflate timers:
+ * - 10 min: [com.fileapex.cloud.CloudPresenceHeartbeat] Firestore cloud presence only.
+ * - 20 min: [ServiceWatchdogScheduler] AlarmManager FGS recovery ([TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS]).
  *
- * There is no in-process polling loop; recovery is event-driven (alarms, FCM, network, freeze-guard).
+ * No in-process polling loop; recovery is event-driven (alarms, FCM, network, freeze-guard).
  */
 object ShareServerKeepAliveCoordinator {
     private const val TAG = "ShareServerKeepAlive"
@@ -72,11 +72,11 @@ object ShareServerKeepAliveCoordinator {
     fun reassertOrRestart(context: Context, reason: String) {
         val appContext = context.applicationContext
         if (!ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
-            Log.i(TAG, "Keep-alive skipped — watchdog disabled ($reason)")
+            Log.i(TAG, "Keep-alive skipped - watchdog disabled ($reason)")
             return
         }
         if (ShareServerPendingStart.isPending(appContext)) {
-            Log.i(TAG, "Pending foreground start — attempting watchdog restart ($reason)")
+            Log.i(TAG, "Pending foreground start - attempting watchdog restart ($reason)")
             ShareServerRestartCoordinator.attemptWatchdogRestart(
                 appContext,
                 restartTriggerForReason(reason)
@@ -84,7 +84,7 @@ object ShareServerKeepAliveCoordinator {
             return
         }
         if (!ServiceWatchdogScheduler.isShareServerRunning(appContext)) {
-            Log.i(TAG, "Stale share-server heartbeat — attempting watchdog restart ($reason)")
+            Log.i(TAG, "Stale share-server heartbeat - attempting watchdog restart ($reason)")
             ShareServerRestartCoordinator.attemptWatchdogRestart(
                 appContext,
                 restartTriggerForReason(reason)

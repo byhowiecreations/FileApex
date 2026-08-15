@@ -3,10 +3,10 @@ package com.fileapex.domain.peer
 import kotlinx.serialization.Serializable
 
 /**
- * Immutable atomic peer metadata payload — SSOT wire model for LAN identity broadcasts.
+ * Peer metadata payload for LAN identity broadcasts.
  *
  * [deviceId] is the immutable primary key. [deviceName] and network fields are mutable;
- * the latest payload for a given [deviceId] is strictly authoritative.
+ * the latest payload for a given [deviceId] wins.
  */
 @Serializable
 data class PeerNodeState(

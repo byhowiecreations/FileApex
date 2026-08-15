@@ -35,7 +35,7 @@ actual object FileApexMdnsAdvertiser {
         runCatching {
             manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
-            println("FileApexMdnsAdvertiser: registerService failed — ${error.message}")
+            println("FileApexMdnsAdvertiser: registerService failed - ${error.message}")
         }
     }
 

@@ -4,7 +4,7 @@ import com.fileapex.util.TimeUtils
 
 /**
  * Coalesces UDP wake signals so burst packets do not thrash server start.
- * Rate limit window uses [TimeUtils] (SSOT clock).
+ * Rate limit window uses [TimeUtils].
  */
 object WakeSignalGate {
     const val COALESCE_WINDOW_MS: Long = 250L

@@ -123,7 +123,7 @@ object FileApexServices {
             runCatching {
                 recoverEmptyRosterIfNeeded(deviceRepository)
             }.onFailure { error ->
-                println("FileApexServices: roster recovery skipped — ${error.message}")
+                println("FileApexServices: roster recovery skipped - ${error.message}")
             }
         }
         markBootstrapComplete()
@@ -144,7 +144,7 @@ object FileApexServices {
             runCatching {
                 init(createDatabase())
             }.onFailure { error ->
-                println("FileApexServices: bootstrap failed — ${error.message}")
+                println("FileApexServices: bootstrap failed - ${error.message}")
                 markBootstrapComplete()
             }
         }

@@ -13,7 +13,7 @@ class FileApexApplication : Application() {
             // registered). Credential-encrypted storage throws until unlock — skip full init.
             // [FileApexAndroidBootstrap.ensureInitialized] completes init later from
             // USER_UNLOCKED / BOOT_COMPLETED / MainActivity / FileShareServerService.
-            Log.i(TAG, "onCreate: user storage still locked — deferring full init")
+            Log.i(TAG, "onCreate: user storage still locked - deferring full init")
             return
         }
         FileApexAndroidBootstrap.ensureInitialized(this)

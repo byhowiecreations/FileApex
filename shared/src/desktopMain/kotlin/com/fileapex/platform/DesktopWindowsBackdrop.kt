@@ -52,7 +52,7 @@ object DesktopWindowsBackdrop {
         runCatching {
             api.DwmSetWindowAttribute(hwnd, attribute, buf, 4)
         }.onFailure { error ->
-            println("DesktopWindowsBackdrop: attr $attribute failed — ${error.message}")
+            println("DesktopWindowsBackdrop: attr $attribute failed - ${error.message}")
         }
     }
 

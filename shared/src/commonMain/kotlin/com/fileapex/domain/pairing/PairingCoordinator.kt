@@ -59,7 +59,7 @@ class PairingCoordinator(
             runCatching { repository.applyRemoteRemoval(record) }
                 .onFailure { error ->
                     println(
-                        "PairingCoordinator: remote removal failed for ${record.deviceId} — ${error.message}"
+                        "PairingCoordinator: remote removal failed for ${record.deviceId} - ${error.message}"
                     )
                 }
         }
@@ -72,7 +72,7 @@ class PairingCoordinator(
                     repository.adoptFromPairing(PeerNodeStateMapper.toEntity(state))
                 }.onFailure { error ->
                     println(
-                        "PairingCoordinator: pairing intro adopt failed for ${state.deviceId} — ${error.message}"
+                        "PairingCoordinator: pairing intro adopt failed for ${state.deviceId} - ${error.message}"
                     )
                 }
             }
@@ -83,7 +83,7 @@ class PairingCoordinator(
                 }
                 .onFailure { error ->
                     println(
-                        "PairingCoordinator: node state apply failed for ${state.deviceId} — ${error.message}"
+                        "PairingCoordinator: node state apply failed for ${state.deviceId} - ${error.message}"
                     )
                 }
         }
@@ -94,7 +94,7 @@ class PairingCoordinator(
      */
     suspend fun broadcastSelfIdentity() {
         if (!NetworkUtils.isUsableLanIpv4(NetworkUtils.preferredLanIpv4())) {
-            println("PairingCoordinator: skip self broadcast — no usable LAN IPv4")
+            println("PairingCoordinator: skip self broadcast - no usable LAN IPv4")
             return
         }
         val selfState = selfNodeState()
@@ -157,7 +157,7 @@ class PairingCoordinator(
      */
     suspend fun announceSelfToCluster(excludeDeviceIds: Set<String> = emptySet()) {
         if (!NetworkUtils.isUsableLanIpv4(NetworkUtils.preferredLanIpv4())) {
-            println("PairingCoordinator: skip self announce — no usable LAN IPv4")
+            println("PairingCoordinator: skip self announce - no usable LAN IPv4")
             return
         }
         val localId = identityProvider().deviceId
@@ -218,13 +218,13 @@ class PairingCoordinator(
                 client.listPairedDevices(host, port)
             }.getOrElse { error ->
                 println(
-                    "PairingCoordinator: roster import attempt ${attempt + 1} failed — ${error.message}"
+                    "PairingCoordinator: roster import attempt ${attempt + 1} failed - ${error.message}"
                 )
                 return@repeat
             }
             val eligible = eligibleRosterDevices(remoteDevices, excludeDeviceIds)
             if (eligible.isEmpty()) {
-                println("PairingCoordinator: roster import — broadcaster returned no importable peers")
+                println("PairingCoordinator: roster import - broadcaster returned no importable peers")
                 return 0
             }
             imported = ingestRosterDevices(remoteDevices, excludeDeviceIds)
@@ -258,7 +258,7 @@ class PairingCoordinator(
             val adopted = runCatching { repository.adoptFromPairing(device) }
                 .onFailure { error ->
                     println(
-                        "PairingCoordinator: roster adopt failed for ${device.deviceName} — ${error.message}"
+                        "PairingCoordinator: roster adopt failed for ${device.deviceName} - ${error.message}"
                     )
                 }
                 .getOrDefault(false)

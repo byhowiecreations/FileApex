@@ -16,7 +16,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * SSOT for macOS menu-bar tray: device roster sync, send handoff, passive presence badges, battery hints.
+ * macOS menu-bar tray: device roster sync, send handoff, passive presence badges, battery hints.
  */
 object DesktopMacTrayCoordinator {
     private val json = Json { encodeDefaults = true }
@@ -130,7 +130,7 @@ object DesktopMacTrayCoordinator {
                 }
                 delay(100)
             }
-            println("DesktopMacTrayCoordinator: NSWindow bind skipped — using Compose hide-on-close")
+            println("DesktopMacTrayCoordinator: NSWindow bind skipped - using Compose hide-on-close")
         }
     }
 

@@ -113,7 +113,6 @@ fun NotesScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    // Auto-scroll to newest message at the bottom when notes change
     LaunchedEffect(listRows.size) {
         if (listRows.isNotEmpty()) {
             listState.animateScrollToItem(listRows.size - 1)
@@ -416,7 +415,6 @@ fun NotesScreen(
         }
     }
 
-    // First Chat Send Notification Prompt Dialog
     if (showNotesPermissionPrompt) {
         AlertDialog(
             onDismissRequest = {
@@ -471,7 +469,6 @@ fun NotesScreen(
         )
     }
 
-    // Delete Scope Dialog (This device only vs All devices)
     val targetToDelete = noteToDelete
     if (targetToDelete != null) {
         AlertDialog(

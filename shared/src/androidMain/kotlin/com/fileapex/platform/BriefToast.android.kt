@@ -14,7 +14,7 @@ fun initAndroidBriefToast(context: Context) {
 actual object BriefToast {
     actual fun show(message: String) {
         if (!::toastContext.isInitialized) {
-            println("BriefToast: skipped — not initialized ($message)")
+            println("BriefToast: skipped - not initialized ($message)")
             return
         }
         val text = message

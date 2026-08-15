@@ -7,9 +7,6 @@ import android.os.Build
 import android.util.Log
 import com.fileapex.shared.R
 
-/**
- * Single source of truth for FileApex Android notification channel ids and creation.
- */
 object AndroidNotificationChannels {
     /** Monochrome app silhouette — every FileApex status-bar notification icon. */
     val smallIcon: Int = R.drawable.ic_fileapex_notification
@@ -126,14 +123,14 @@ object AndroidNotificationChannels {
         var deferred = false
 
         if (activeChannelIds.contains(LEGACY_SHARE_SERVER_CHANNEL_V1)) {
-            Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL_V1 while active — deferring migration")
+            Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL_V1 while active - deferring migration")
             deferred = true
         } else {
             runCatching { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL_V1) }
         }
 
         if (activeChannelIds.contains(LEGACY_SHARE_SERVER_CHANNEL)) {
-            Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL while active — deferring migration")
+            Log.w(TAG, "Cannot delete legacy channel $LEGACY_SHARE_SERVER_CHANNEL while active - deferring migration")
             deferred = true
         } else {
             runCatching { manager.deleteNotificationChannel(LEGACY_SHARE_SERVER_CHANNEL) }
@@ -144,7 +141,7 @@ object AndroidNotificationChannels {
             if (activeChannelIds.contains(SHARE_SERVER_ACTIVE)) {
                 Log.w(
                     TAG,
-                    "Cannot delete channel $SHARE_SERVER_ACTIVE while FGS notification is active — deferring migration"
+                    "Cannot delete channel $SHARE_SERVER_ACTIVE while FGS notification is active - deferring migration"
                 )
                 deferred = true
             } else {

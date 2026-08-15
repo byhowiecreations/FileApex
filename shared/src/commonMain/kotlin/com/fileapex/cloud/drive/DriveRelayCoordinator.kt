@@ -69,7 +69,7 @@ object DriveRelayCoordinator {
             }
             DriveRelayNotifier.onDriveEnabledAndGranted()
         }.onFailure { error ->
-            driveLogError("stored Drive grant failed probe — keeping tokens", error)
+            driveLogError("stored Drive grant failed probe - keeping tokens", error)
         }
     }
 
@@ -97,7 +97,7 @@ object DriveRelayCoordinator {
             return
         }
         if (!DriveRelayPolicy.canReceive()) {
-            driveLog("FCM Drive pointer ignored — relay not ready to receive")
+            driveLog("FCM Drive pointer ignored - relay not ready to receive")
             return
         }
         scope.launch {
@@ -276,11 +276,11 @@ object DriveRelayCoordinator {
 
     suspend fun sweep(forceReload: Boolean = false) {
         if (!DriveRelayPolicy.canReceive() && !DriveRelayPolicy.isRelayEnabled()) {
-            driveLog("sweep skipped — relay not enabled")
+            driveLog("sweep skipped - relay not enabled")
             return
         }
         if (!GoogleDriveAuth.hasGrant()) {
-            driveLog("sweep skipped — no Drive grant")
+            driveLog("sweep skipped - no Drive grant")
             return
         }
         mutex.withLock {

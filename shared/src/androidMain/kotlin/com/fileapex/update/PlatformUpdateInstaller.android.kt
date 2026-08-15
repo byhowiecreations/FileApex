@@ -72,7 +72,7 @@ actual object PlatformUpdateInstaller {
             true
         }.getOrElse { error ->
             println(
-                "PlatformUpdateInstaller: ACTION_INSTALL_PACKAGE failed — ${error.message}; " +
+                "PlatformUpdateInstaller: ACTION_INSTALL_PACKAGE failed - ${error.message}; " +
                     "falling back to ACTION_VIEW"
             )
             false

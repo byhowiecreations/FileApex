@@ -127,7 +127,6 @@ class NoteRepository {
             attachmentSizeBytes = resolvedSize
         )
 
-        // 2. Direct P2P push to all online/paired devices (Mac, Desktop & active Android devices)
         CoroutineScope(Dispatchers.Default).launch {
             runCatching {
                 val devices = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
@@ -178,10 +177,8 @@ class NoteRepository {
     suspend fun deleteNoteFromAllDevices(noteId: String) {
         deleteNote(noteId)
 
-        // 1. FCM deletion push for Android sleeping devices
         FcmWakeCoordinator.dispatchNoteDeleteToLinkedPeers(noteId)
 
-        // 2. Direct P2P delete for online paired devices
         CoroutineScope(Dispatchers.Default).launch {
             runCatching {
                 val devices = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
@@ -277,7 +274,7 @@ class NoteRepository {
         runCatching {
             com.fileapex.cloud.drive.DriveRelayCoordinator.materializeNoteAttachment(note)
         }.onFailure { error ->
-            println("NoteRepository: attachment download failed — ${error.message}")
+            println("NoteRepository: attachment download failed - ${error.message}")
         }
     }
 

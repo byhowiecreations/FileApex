@@ -37,12 +37,12 @@ internal object LanNetworkTransitionMonitor {
             connectivity.registerNetworkCallback(request, callback)
             registered = true
         }.onFailure { error ->
-            println("LanNetworkTransitionMonitor: register failed — ${error.message}")
+            println("LanNetworkTransitionMonitor: register failed - ${error.message}")
         }
     }
 
     private fun notifyTransition(reason: String) {
-        println("LanNetworkTransitionMonitor: network $reason — revalidating peers")
+        println("LanNetworkTransitionMonitor: network $reason - revalidating peers")
         PresenceNetworkRevalidator.onLanNetworkTransition()
     }
 }

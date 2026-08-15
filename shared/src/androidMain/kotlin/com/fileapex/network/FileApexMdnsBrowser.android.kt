@@ -53,7 +53,7 @@ actual object FileApexMdnsBrowser {
             manager.stopServiceDiscovery(listener)
             manager.discoverServices(FileApexMdns.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
-            println("FileApexMdnsBrowser: requestProbe failed — ${error.message}")
+            println("FileApexMdnsBrowser: requestProbe failed - ${error.message}")
             scheduleDiscoveryRestart()
         }
     }
@@ -67,7 +67,7 @@ actual object FileApexMdnsBrowser {
         runCatching {
             manager.discoverServices(FileApexMdns.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
-            println("FileApexMdnsBrowser: discoverServices failed — ${error.message}")
+            println("FileApexMdnsBrowser: discoverServices failed - ${error.message}")
             scheduleDiscoveryRestart()
         }
     }

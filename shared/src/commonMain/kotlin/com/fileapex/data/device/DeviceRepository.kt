@@ -27,9 +27,6 @@ data class LocalDeviceRef(
     }
 }
 
-/**
- * Single source of truth for paired-device CRUD.
- */
 class DeviceRepository(
     private val deviceDao: DeviceDao,
     private val localDeviceProvider: () -> LocalDeviceRef = { LocalDeviceRef.None }
@@ -99,7 +96,7 @@ class DeviceRepository(
      * Atomically replaces the peer record keyed by [PeerNodeState.deviceId].
      *
      * [rosterDeviceId] is the row id used to reach this peer when it differs from the
-     * authoritative payload id (stale roster restore). The payload [deviceName] always wins.
+     * payload [deviceId] (stale roster restore). The payload [deviceName] always wins.
      */
     suspend fun applyPeerNodeState(state: PeerNodeState, rosterDeviceId: String? = null): Boolean =
         mutateMutex.withLock {
@@ -113,7 +110,7 @@ class DeviceRepository(
                 return purgeLocalRowsLocked()
             }
             if (isBlocklistedLocked(normalized)) return false
-            replacePeerRecordAuthoritative(normalized, rosterDeviceId)
+            replacePeerRecordByDeviceId(normalized, rosterDeviceId)
         }
 
     /**
@@ -142,7 +139,7 @@ class DeviceRepository(
     }
 
     /**
-     * LAN identity probe is authoritative for [live] — replaces a stale Room row when ids diverge
+     * LAN identity probe replaces a stale Room row when ids diverge
      * (common after roster restore from an older database file).
      */
     suspend fun adoptLiveIdentity(staleDeviceId: String, live: PairedDeviceEntity): Boolean =
@@ -225,9 +222,9 @@ class DeviceRepository(
     }
 
     /**
-     * Authoritative ingestion for live [PeerNodeState] payloads — never re-keys via alias merge.
+     * Live [PeerNodeState] ingest keyed by payload [deviceId]; does not re-key via alias merge.
      */
-    private suspend fun replacePeerRecordAuthoritative(
+    private suspend fun replacePeerRecordByDeviceId(
         normalized: PairedDeviceEntity,
         rosterDeviceId: String?
     ): Boolean {

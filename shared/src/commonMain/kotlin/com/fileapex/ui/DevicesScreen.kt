@@ -133,7 +133,6 @@ val DeviceCardSlotHeight = 96.dp
 /** Empty space under the last device card (~2 card rows), inside the list section. */
 val DeviceListToAddGap = DeviceCardSlotHeight * 2
 
-/** Responsive paired-devices grid metrics — SSOT across platforms. */
 private data class DeviceGridLayoutSpec(
     val columnCount: Int,
     val cellHeight: Dp,
@@ -1363,7 +1362,6 @@ private fun CustomGlassNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Icon inside compact green accent pill indicator
         Box(
             modifier = Modifier
                 .size(width = 52.dp, height = 30.dp)
@@ -1379,7 +1377,6 @@ private fun CustomGlassNavItem(
             )
         }
         Spacer(modifier = Modifier.height(3.dp))
-        // Text label OUTSIDE the green pill, cleanly aligned under icon
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(

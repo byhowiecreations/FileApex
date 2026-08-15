@@ -4,7 +4,6 @@ import com.fileapex.di.FileApexServices
 import java.util.Base64
 import org.bouncycastle.math.ec.rfc7748.X25519
 
-/** SSOT for local diagnostics X25519 private key material. */
 object DiagnosticsIdentityStore {
     fun privateKeyBase64OrNull(): String? {
         return FileApexServices.settings.diagnosticsPrivateKeyBase64().ifBlank { null }

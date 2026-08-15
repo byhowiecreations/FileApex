@@ -18,12 +18,12 @@ fun initAndroidUpdateAvailableNotifier(context: Context) {
 
 actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
     if (!::updateNotifierContext.isInitialized) {
-        println("UpdateAvailableNotifier: skipped — not initialized")
+        println("UpdateAvailableNotifier: skipped - not initialized")
         return
     }
     val manager = NotificationManagerCompat.from(updateNotifierContext)
     if (!manager.areNotificationsEnabled()) {
-        println("UpdateAvailableNotifier: skipped — notifications disabled")
+        println("UpdateAvailableNotifier: skipped - notifications disabled")
         return
     }
 

@@ -10,11 +10,11 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.update.AppUpdateCoordinator
 
 /**
- * Single source of truth for Android process bootstrap after credential storage is unlocked.
+ * Android process bootstrap after credential storage is unlocked.
  *
  * [android.app.Application.onCreate] can return early during Direct Boot (storage locked). That
  * leaves a half-alive process that later receives [android.content.Intent.ACTION_USER_UNLOCKED],
- * boot auto-launch, or a UI start **without** re-running Application.onCreate — so identity /
+ * boot auto-launch, or a UI start without re-running Application.onCreate — so identity /
  * Room / settings stay uninitialized and [FileShareServerService] crashes with
  * `Call initAndroidLocalIdentity(context) before loadLocalIdentity()`.
  *
@@ -34,7 +34,7 @@ object FileApexAndroidBootstrap {
         if (fullyInitialized && FileApexServices.isDatabaseReady()) return true
         val appContext = context.applicationContext
         if (!isUserStorageUnlocked(appContext)) {
-            Log.i(TAG, "skip — user storage still locked")
+            Log.i(TAG, "skip - user storage still locked")
             return false
         }
         synchronized(lock) {

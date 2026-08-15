@@ -4,10 +4,6 @@ import com.fileapex.domain.model.RemoteFileItem
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
-/**
- * Single source of truth for local filesystem listing via kotlinx.io.
- * No java.io.File in commonMain.
- */
 class LocalFileRepository {
     fun listDirectory(absolutePath: String): Result<DirectoryListing> {
         return runCatching {

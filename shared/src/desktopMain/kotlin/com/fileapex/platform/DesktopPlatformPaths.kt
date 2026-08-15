@@ -3,14 +3,11 @@ package com.fileapex.platform
 import java.io.File
 
 /**
- * Desktop-only SSOT for on-disk app data paths (macOS + Windows).
+ * Desktop on-disk app data paths (macOS + Windows).
+ * Android uses its own storage layer in `androidMain`.
  *
- * Android uses its own storage layer in `androidMain` — this type is not referenced there.
- *
- * | OS      | Root |
- * |---------|------|
- * | macOS   | `~/Library/Application Support/com.fileapex/` |
- * | Windows | `%LOCALAPPDATA%\FileApex\` |
+ * macOS: `~/Library/Application Support/com.fileapex/`
+ * Windows: `%LOCALAPPDATA%\FileApex\`
  */
 object DesktopPlatformPaths {
     const val BUNDLE_ID = "com.fileapex"

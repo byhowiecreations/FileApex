@@ -5,5 +5,5 @@ internal actual fun driveLog(message: String) {
 }
 
 internal actual fun driveLogError(message: String, error: Throwable?) {
-    println("DriveRelay: $message${error?.message?.let { " — $it" }.orEmpty()}")
+    println("DriveRelay: $message${error?.message?.let { " - $it" }.orEmpty()}")
 }

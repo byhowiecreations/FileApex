@@ -30,7 +30,7 @@ actual object FcmTokenRegistrar {
             val token = FirebaseMessaging.getInstance().token.await()
             if (token.isNotBlank()) publishToken(token)
         }.onFailure { error ->
-            Log.e(TAG, "FCM token fetch failed — ${error.message}")
+            Log.e(TAG, "FCM token fetch failed - ${error.message}")
         }
     }
 
@@ -44,7 +44,7 @@ actual object FcmTokenRegistrar {
             }
             delay(500L * (attempt + 1))
         }
-        Log.e(TAG, "FCM token was not published — cloud session not ready")
+        Log.e(TAG, "FCM token was not published - cloud session not ready")
     }
 
     private const val TAG = "FcmTokenRegistrar"

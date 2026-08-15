@@ -63,7 +63,7 @@ actual object FileApexMdnsAdvertiser {
             registeredName = name
             println("FileApexMdnsAdvertiser: registered $name on ${bindAddress.hostAddress}:$port")
         }.onFailure { error ->
-            println("FileApexMdnsAdvertiser: register failed — ${error.message}")
+            println("FileApexMdnsAdvertiser: register failed - ${error.message}")
         }
     }
 
@@ -124,7 +124,7 @@ actual object FileApexMdnsBrowser {
                 instance.requestServiceInfo(FileApexMdns.SERVICE_TYPE, null, 1_500L)
             }.onFailure { error ->
                 if (error !is IOException) {
-                    println("FileApexMdnsBrowser: requestProbe failed — ${error.message}")
+                    println("FileApexMdnsBrowser: requestProbe failed - ${error.message}")
                 }
             }
         }
@@ -156,7 +156,7 @@ actual object FileApexMdnsBrowser {
             val bind = address?.hostAddress ?: "default"
             println("FileApexMdnsBrowser: listening for ${FileApexMdns.SERVICE_TYPE} on $bind")
         }.onFailure { error ->
-            println("FileApexMdnsBrowser: start failed — ${error.message}")
+            println("FileApexMdnsBrowser: start failed - ${error.message}")
         }
     }
 }

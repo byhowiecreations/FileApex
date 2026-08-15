@@ -26,22 +26,17 @@ import kotlin.coroutines.cancellation.CancellationException
 
 data class ExplorerUiState(
     val deviceTitle: String = "",
-    /** Navigated folder — compact list, paste, and transfers. Split-pane preview must not change this. */
+    /** Navigated folder for list, paste, and transfers. Split-pane preview must not change this. */
     val currentPath: String = "",
-    /** Path whose folders appear in the wide left pane. */
+    /** Folders shown in the wide left pane. */
     val panePath: String = "",
     /** Parent within the browse root only; null means back should leave the explorer. */
     val parentPath: String? = null,
     val canNavigateUp: Boolean = false,
-    /** Folders at [panePath] (wide left column). */
     val paneDirectories: List<RemoteFileItem> = emptyList(),
-    /** Files at [panePath] (compact list / paste target). */
     val paneFiles: List<RemoteFileItem> = emptyList(),
-    /** Folders inside the split-pane right column (preview or explicit selection). */
     val contentDirectories: List<RemoteFileItem> = emptyList(),
-    /** Files inside [currentPath]. */
     val contentFiles: List<RemoteFileItem> = emptyList(),
-    /** Highlighted folder on the left; null when right shows files of [panePath]. */
     val selectedFolderPath: String? = null,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,

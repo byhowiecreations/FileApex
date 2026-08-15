@@ -160,7 +160,7 @@ class PeerPresenceMonitor(
             runCatching {
                 onBackgroundWakeSignalInternal(sourceDeviceId)
             }.onFailure { error ->
-                println("PeerPresenceMonitor: background wake failed — ${error.message}")
+                println("PeerPresenceMonitor: background wake failed - ${error.message}")
             }
         }
     }
@@ -183,7 +183,7 @@ class PeerPresenceMonitor(
             runCatching {
                 handleMdnsPeerDiscovered(cleanedHost, port, hintedDeviceId)
             }.onFailure { error ->
-                println("PeerPresenceMonitor: mDNS discovery failed — ${error.message}")
+                println("PeerPresenceMonitor: mDNS discovery failed - ${error.message}")
             }
         }
     }

@@ -109,7 +109,6 @@ fun CompactTealStrip(
     return
 }
 
-/** Layout style for [CompactHomeTitleBand]. */
 enum class CompactHomeTitleStyle {
     /** Small eyebrow line + large headline (Devices / Settings root). */
     Prominent,
