@@ -175,14 +175,15 @@ class ShareSendViewModel(
                 if (batch != null && !batch.allFailed) {
                     recordDirectShareOnSuccess?.let { recordDirectShareTargetUsed(it) }
                 }
-                val allFailed = batch?.allFailed != false && !outcome.hadQueue
+                val allFailed = batch?.allFailed == true && !outcome.hadQueue && !outcome.hadRelay
+                val confirmOnly = outcome.message.startsWith("Confirm Cellular")
                 _uiState.update {
                     it.copy(
                         isPreparing = false,
                         isSending = false,
-                        sendCompleted = !allFailed,
+                        sendCompleted = !allFailed && !confirmOnly,
                         statusMessage = outcome.message,
-                        errorMessage = outcome.message.takeIf { allFailed }
+                        errorMessage = outcome.message.takeIf { allFailed && !confirmOnly }
                     )
                 }
             },

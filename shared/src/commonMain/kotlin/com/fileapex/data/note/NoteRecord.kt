@@ -11,5 +11,9 @@ data class NoteRecord(
     val driveFileId: String? = null,
     val checksum: String? = null,
     val epochMs: Long,
-    val isMine: Boolean = false
+    val isMine: Boolean = false,
+    val attachmentFileName: String? = null,
+    val attachmentSizeBytes: Long = 0L,
+    val attachmentPinned: Boolean = false,
+    val attachmentLocalPath: String? = null
 )

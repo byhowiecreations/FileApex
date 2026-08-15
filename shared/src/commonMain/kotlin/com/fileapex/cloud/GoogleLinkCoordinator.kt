@@ -119,30 +119,71 @@ object GoogleLinkCoordinator {
         lastPublishedPresence = null
     }
 
-    /** FCM wake targets — cloud-linked Android peers with a registered token. */
+    /** FCM wake targets — cloud-linked peers that have a registered token. */
     fun linkedPeerFcmTargets(selfDeviceId: String): List<FcmWakeTarget> =
-        cachedCloudRecords.asSequence()
-            .filter { record ->
-                record.deviceId.isNotBlank() &&
-                    record.deviceId != selfDeviceId &&
-                    record.platform.equals("android", ignoreCase = true) &&
-                    record.fcmToken.isNotBlank()
-            }
-            .map { record -> FcmWakeTarget(record.deviceId, record.fcmToken) }
-            .toList()
+        cachedCloudRecords.mapNotNull { it.toFcmTargetOrNull(selfDeviceId) }
 
-    /** Registers/refreshes this device's FCM token in Firestore when cloud-linked. */
-    suspend fun patchSelfFcmToken(fcmToken: String) {
-        val trimmed = fcmToken.trim()
-        if (trimmed.isEmpty()) return
-        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
-        if (!cloudOpsActive) return
+    /**
+     * Drive-relay FCM targets for [deviceIds]. Cache first, then a live Firestore read.
+     * A token is enough — do not drop Honor/other Android rows whose platform string is not
+     * exactly "Android". If the paired ID still has no token, wake every linked token;
+     * retrieve stays scoped by ledger target.
+     */
+    suspend fun fcmTargetsForDevices(
+        selfDeviceId: String,
+        deviceIds: List<String>
+    ): List<FcmWakeTarget> {
+        val wanted = deviceIds.filter { it.isNotBlank() && it != selfDeviceId }.distinct()
+        if (wanted.isEmpty()) {
+            return linkedPeerFcmTargets(selfDeviceId).ifEmpty { fetchAllFcmTargets(selfDeviceId) }
+        }
+        val cached = linkedPeerFcmTargets(selfDeviceId).filter { it.deviceId in wanted }
+        val missing = wanted.filter { id -> cached.none { it.deviceId == id } }
+        if (missing.isEmpty()) return cached
         val uid = FileApexServices.settings.googleAccountUid.value
-        if (uid.isBlank()) return
-        runCatching {
+        if (uid.isBlank()) return cached.ifEmpty { linkedPeerFcmTargets(selfDeviceId) }
+        val fetched = missing.mapNotNull { deviceId ->
+            runCatching { CloudAuthBackend.fetchCloudDeviceRecord(uid, deviceId) }.getOrNull()
+                ?.toFcmTargetOrNull(selfDeviceId)
+        }
+        val found = (cached + fetched).distinctBy { it.deviceId }
+        if (found.size == wanted.size) return found
+        val all = fetchAllFcmTargets(selfDeviceId)
+        val matched = all.filter { it.deviceId in wanted }
+        return matched.ifEmpty { (found + all).distinctBy { it.deviceId } }
+    }
+
+    private suspend fun fetchAllFcmTargets(selfDeviceId: String): List<FcmWakeTarget> {
+        val uid = FileApexServices.settings.googleAccountUid.value
+        if (uid.isBlank()) return emptyList()
+        val records = runCatching { CloudAuthBackend.fetchAllUserDevices(uid) }.getOrDefault(emptyList())
+        if (records.isNotEmpty()) cachedCloudRecords = records
+        return records.mapNotNull { it.toFcmTargetOrNull(selfDeviceId) }
+    }
+
+    private fun CloudDeviceRecord.toFcmTargetOrNull(selfDeviceId: String): FcmWakeTarget? {
+        if (deviceId.isBlank() || deviceId == selfDeviceId) return null
+        if (fcmToken.isBlank()) return null
+        return FcmWakeTarget(deviceId, fcmToken)
+    }
+
+    /**
+     * Registers/refreshes this device's FCM token in Firestore when cloud-linked.
+     * @return true when the token was written.
+     */
+    suspend fun patchSelfFcmToken(fcmToken: String): Boolean {
+        val trimmed = fcmToken.trim()
+        if (trimmed.isEmpty()) return false
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
+        if (!cloudOpsActive) return false
+        val uid = FileApexServices.settings.googleAccountUid.value
+        if (uid.isBlank()) return false
+        return runCatching {
             CloudAuthBackend.patchDeviceFcmToken(uid, loadLocalIdentity().deviceId, trimmed)
-        }.onFailure { error ->
+            true
+        }.getOrElse { error ->
             println("GoogleLinkCoordinator: FCM token patch failed — ${error.message}")
+            false
         }
     }
 
@@ -185,6 +226,7 @@ object GoogleLinkCoordinator {
             }
             runCatching { CloudAuthBackend.signOut() }
             FileApexServices.settings.setGoogleAccountLinkEnabled(false)
+            com.fileapex.cloud.drive.DriveRelayCoordinator.clearGrantOnUnlink()
             _status.value = "Google Account unlinked"
         }
     }
@@ -269,6 +311,7 @@ object GoogleLinkCoordinator {
 
     private fun startCloudSessionLocked(uid: String) {
         cloudOpsActive = true
+        FcmTokenRegistrar.start()
         val epoch = sessionEpoch
         val selfId = loadLocalIdentity().deviceId
         val scope = sessionScope

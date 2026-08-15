@@ -8,3 +8,12 @@ internal actual fun formatEpochMsToLocal(epochMs: Long, zoneId: String): String 
     val zoned = Instant.ofEpochMilli(epochMs).atZone(ZoneId.of(zoneId))
     return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(zoned)
 }
+
+internal actual fun localizeNoteListStamp(epochMs: Long, zoneId: String): NoteListStamp {
+    val zoned = Instant.ofEpochMilli(epochMs).atZone(ZoneId.of(zoneId))
+    return NoteListStamp(
+        dayKey = zoned.toLocalDate().toString(),
+        dateHeader = DateTimeFormatter.ofPattern("MM/dd").format(zoned),
+        timeLabel = DateTimeFormatter.ofPattern("h:mm a").format(zoned)
+    )
+}

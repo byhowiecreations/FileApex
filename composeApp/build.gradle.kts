@@ -595,6 +595,14 @@ tasks.register("embedMacExtensions") {
         if (code != 0) {
             logger.warn("embed_extensions.sh exited $code (extensions may be missing)")
         }
+        val uuidScript = rootProject.layout.projectDirectory.file("macos/scripts/unique_main_uuid.sh").asFile
+        check(uuidScript.isFile) { "Missing ${uuidScript.absolutePath}" }
+        val uuidCode = ProcessBuilder("bash", uuidScript.absolutePath, appBundle.absolutePath)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+            .waitFor()
+        check(uuidCode == 0) { "unique_main_uuid.sh exited $uuidCode — Local Network UUID patch failed" }
     }
 }
 
@@ -922,16 +930,14 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         .start()
         .waitFor()
     val uuidScript = rootProject.layout.projectDirectory.file("macos/scripts/unique_main_uuid.sh").asFile
-    if (uuidScript.isFile) {
-        val uuidCode = ProcessBuilder("bash", uuidScript.absolutePath, appBundle.absolutePath)
-            .directory(rootProject.projectDir)
-            .inheritIO()
-            .start()
-            .waitFor()
-        if (uuidCode != 0) {
-            logger.warn("unique_main_uuid.sh exited $uuidCode")
-        }
-    }
+    check(uuidScript.isFile) { "Missing ${uuidScript.absolutePath}" }
+    logger.lifecycle("Uniquing FileApex launcher Mach-O UUID for Local Network policy")
+    val uuidCode = ProcessBuilder("bash", uuidScript.absolutePath, appBundle.absolutePath)
+        .directory(rootProject.projectDir)
+        .inheritIO()
+        .start()
+        .waitFor()
+    check(uuidCode == 0) { "unique_main_uuid.sh exited $uuidCode — Local Network UUID patch failed" }
 }
 
 private fun Project.shipToCurrent(

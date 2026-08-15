@@ -1,20 +1,113 @@
 package com.fileapex.platform
 
 import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialCancellationException
-import androidx.credentials.exceptions.NoCredentialException
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.fileapex.cloud.GoogleIdentityScopes
+import com.fileapex.cloud.emailFromGoogleIdToken
+import com.fileapex.cloud.exchangeGoogleServerAuthCode
 import com.fileapex.cloud.googleWebClientId
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+
+@Composable
+actual fun rememberGoogleSignInLauncher(
+    onResult: (idToken: String?, email: String?, errorMessage: String?) -> Unit
+): () -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val resolutionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { activityResult ->
+        val activity = context as? Activity
+        if (activity == null || activityResult.resultCode != Activity.RESULT_OK) {
+            onResult(null, null, "Sign-in cancelled")
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            runCatching {
+                val result = Identity.getAuthorizationClient(activity)
+                    .getAuthorizationResultFromIntent(activityResult.data)
+                completeIdentitySignIn(result)
+            }.onSuccess { (idToken, email) ->
+                onResult(idToken, email, null)
+            }.onFailure { error ->
+                onResult(null, null, googleSignInErrorMessage(error))
+            }
+        }
+    }
+
+    return remember(context) {
+        {
+            val clientId = googleWebClientId()
+            if (clientId.isBlank()) {
+                onResult(
+                    null,
+                    null,
+                    "Set fileapex.google.web.client.id in gradle.properties (Google Web OAuth client ID)"
+                )
+            } else {
+                val activity = context as? Activity
+                if (activity == null) {
+                    onResult(null, null, "Google sign-in requires an Activity context")
+                } else {
+                    scope.launch {
+                        runCatching {
+                            val request = AuthorizationRequest.builder()
+                                .setRequestedScopes(
+                                    GoogleIdentityScopes.identity.map { Scope(it) }
+                                )
+                                .setOptOutIncludingGrantedScopes(true)
+                                .requestOfflineAccess(clientId, false)
+                                .build()
+                            val result = Identity.getAuthorizationClient(activity)
+                                .authorize(request)
+                                .await()
+                            if (result.hasResolution()) {
+                                val sender = result.pendingIntent?.intentSender
+                                    ?: error("Google sign-in is missing a resolution")
+                                resolutionLauncher.launch(
+                                    IntentSenderRequest.Builder(sender).build()
+                                )
+                            } else {
+                                val (idToken, email) = completeIdentitySignIn(result)
+                                onResult(idToken, email, null)
+                            }
+                        }.onFailure { error ->
+                            onResult(null, null, googleSignInErrorMessage(error))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private suspend fun completeIdentitySignIn(result: AuthorizationResult): Pair<String, String?> {
+    val account = result.toGoogleSignInAccount()
+    val fromAccount = account?.idToken.orEmpty()
+    if (fromAccount.isNotBlank()) {
+        val email = account?.email?.ifBlank { null } ?: emailFromGoogleIdToken(fromAccount)
+        return fromAccount to email
+    }
+    val serverAuthCode = result.serverAuthCode.orEmpty()
+    if (serverAuthCode.isBlank()) {
+        error("Google authorization returned no ID token")
+    }
+    val tokens = exchangeGoogleServerAuthCode(serverAuthCode)
+    val idToken = tokens.idToken.ifBlank { error("Google token response missing id_token") }
+    val email = account?.email?.ifBlank { null } ?: emailFromGoogleIdToken(idToken)
+    return idToken to email
+}
 
 private fun googleSignInErrorMessage(error: Throwable): String {
     val raw = error.message.orEmpty()
@@ -26,65 +119,5 @@ private fun googleSignInErrorMessage(error: Throwable): String {
                 "SHA-1 fingerprint, enable Google under Authentication, re-download " +
                 "google-services.json to json/, then rebuild and reinstall."
         else -> raw.ifBlank { "Google sign-in failed" }
-    }
-}
-
-@Composable
-actual fun rememberGoogleSignInLauncher(
-    onResult: (idToken: String?, email: String?, errorMessage: String?) -> Unit
-): () -> Unit {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    return remember(context) {
-        {
-            val clientId = googleWebClientId()
-            if (clientId.isBlank()) {
-                onResult(
-                    null,
-                    null,
-                    "Set fileapex.google.web.client.id in gradle.properties (Google Web OAuth client ID)"
-                )
-            } else {
-                scope.launch {
-                    runCatching {
-                        val activity = context as? Activity
-                            ?: error("Google sign-in requires an Activity context")
-                        val manager = CredentialManager.create(context)
-                        val googleIdOption = GetGoogleIdOption.Builder()
-                            .setFilterByAuthorizedAccounts(false)
-                            .setServerClientId(clientId)
-                            .setAutoSelectEnabled(false)
-                            .build()
-                        val request = GetCredentialRequest.Builder()
-                            .addCredentialOption(googleIdOption)
-                            .build()
-                        val response = try {
-                            manager.getCredential(activity, request)
-                        } catch (_: NoCredentialException) {
-                            val signInOption = GetSignInWithGoogleOption.Builder(clientId).build()
-                            val fallback = GetCredentialRequest.Builder()
-                                .addCredentialOption(signInOption)
-                                .build()
-                            manager.getCredential(activity, fallback)
-                        }
-                        val credential = response.credential
-                        if (credential is CustomCredential &&
-                            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                        ) {
-                            val google = GoogleIdTokenCredential.createFrom(credential.data)
-                            onResult(google.idToken, google.id, null)
-                        } else {
-                            onResult(null, null, "Unexpected credential type")
-                        }
-                    }.onFailure { error ->
-                        if (error is GetCredentialCancellationException) {
-                            onResult(null, null, "Sign-in cancelled")
-                        } else {
-                            onResult(null, null, googleSignInErrorMessage(error))
-                        }
-                    }
-                }
-            }
-        }
     }
 }

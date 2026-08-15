@@ -139,3 +139,21 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         }
     }
 }
+
+/** Adds Notes attachment metadata for Google Drive relay. */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            "ALTER TABLE `note_records` ADD COLUMN `attachmentFileName` TEXT"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `note_records` ADD COLUMN `attachmentSizeBytes` INTEGER NOT NULL DEFAULT 0"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `note_records` ADD COLUMN `attachmentPinned` INTEGER NOT NULL DEFAULT 0"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `note_records` ADD COLUMN `attachmentLocalPath` TEXT"
+        ).use { statement -> statement.step() }
+    }
+}

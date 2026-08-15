@@ -252,7 +252,7 @@ object DirectShareShortcutCoordinator {
 
     /** Resource icons are required for reliable long-lived Sharing Shortcuts. */
     private fun shareTargetIcon(): IconCompat =
-        IconCompat.createWithResource(appContext, R.drawable.ic_fileapex_notification)
+        IconCompat.createWithResource(appContext, AndroidNotificationChannels.smallIcon)
 
     /**
      * Android typically renders up to four Direct Share bubbles in portrait; keep the

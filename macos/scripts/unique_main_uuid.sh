@@ -10,7 +10,7 @@ if [[ ! -f "$BIN" ]]; then
   exit 1
 fi
 
-python3 - "$BIN" <<'PY'
+/usr/bin/python3 - "$BIN" <<'PY'
 import struct, sys, uuid
 
 LC_UUID = 0x1B

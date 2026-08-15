@@ -58,7 +58,11 @@ data class NoteEntity(
     val driveFileId: String? = null,
     val checksum: String? = null,
     val epochMs: Long,
-    val isMine: Boolean
+    val isMine: Boolean,
+    val attachmentFileName: String? = null,
+    val attachmentSizeBytes: Long = 0L,
+    val attachmentPinned: Boolean = false,
+    val attachmentLocalPath: String? = null
 )
 
 fun NoteEntity.toRecord(): NoteRecord = NoteRecord(
@@ -69,7 +73,11 @@ fun NoteEntity.toRecord(): NoteRecord = NoteRecord(
     driveFileId = driveFileId,
     checksum = checksum,
     epochMs = epochMs,
-    isMine = isMine
+    isMine = isMine,
+    attachmentFileName = attachmentFileName,
+    attachmentSizeBytes = attachmentSizeBytes,
+    attachmentPinned = attachmentPinned,
+    attachmentLocalPath = attachmentLocalPath
 )
 
 fun NoteRecord.toEntity(): NoteEntity = NoteEntity(
@@ -80,7 +88,11 @@ fun NoteRecord.toEntity(): NoteEntity = NoteEntity(
     driveFileId = driveFileId,
     checksum = checksum,
     epochMs = epochMs,
-    isMine = isMine
+    isMine = isMine,
+    attachmentFileName = attachmentFileName,
+    attachmentSizeBytes = attachmentSizeBytes,
+    attachmentPinned = attachmentPinned,
+    attachmentLocalPath = attachmentLocalPath
 )
 
 @Dao
@@ -169,7 +181,7 @@ interface NoteDao {
         PendingTransferEntity::class,
         NoteEntity::class
     ],
-    version = 9
+    version = 10
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {

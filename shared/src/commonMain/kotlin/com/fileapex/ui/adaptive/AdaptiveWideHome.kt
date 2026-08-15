@@ -205,6 +205,7 @@ fun AdaptiveWideHome(
                                 onOpenSettings = { onSelectTab(HomeTab.Settings) },
                                 onExitApp = onExitApp,
                                 onOpenNotes = { onOpenNotes?.invoke() },
+                                onOpenTransferQueue = onOpenTransferQueue,
                                 viewModel = devicesViewModel,
                                 layoutMode = DevicesScreenLayoutMode.FullScreen,
                                 selectedDeviceId = selectedDeviceId
@@ -238,6 +239,7 @@ fun AdaptiveWideHome(
                                     onOpenSettings = { onSelectTab(HomeTab.Settings) },
                                     onExitApp = onExitApp,
                                     onOpenNotes = { onOpenNotes?.invoke() },
+                                    onOpenTransferQueue = onOpenTransferQueue,
                                     viewModel = devicesViewModel,
                                     layoutMode = DevicesScreenLayoutMode.ListPane,
                                     selectedDeviceId = selectedDeviceId
@@ -350,25 +352,23 @@ private fun WideTopBar(
                 iconTint = fileApexChromeContentColor()
             )
         }
-        if (com.fileapex.cloud.currentPlatformLabel() != "Android") {
-            Spacer(modifier = Modifier.width(8.dp))
-            Surface(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onExitClick),
-                shape = CircleShape,
-                color = Color(0x3300E676),
-                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.PowerSettingsNew,
-                        contentDescription = "Exit FileApex",
-                        tint = Color(0xFF00E676),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+        Spacer(modifier = Modifier.width(8.dp))
+        Surface(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onExitClick),
+            shape = CircleShape,
+            color = Color(0x3300E676),
+            border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Filled.PowerSettingsNew,
+                    contentDescription = "Exit FileApex",
+                    tint = Color(0xFF00E676),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }

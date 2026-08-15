@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.NoteHeaderButton
+import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileApexBottomBar
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
@@ -125,6 +126,7 @@ fun FluxGlassHeader(
     showCloseService: Boolean = false,
     onCloseService: (() -> Unit)? = null,
     onOpenNotes: (() -> Unit)? = null,
+    onOpenTransferQueue: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
@@ -168,6 +170,10 @@ fun FluxGlassHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (onOpenTransferQueue != null) {
+                QueuedFilesButton(onClick = onOpenTransferQueue)
+            }
+
             if (onOpenNotes != null) {
                 NoteHeaderButton(onOpenNotes = onOpenNotes)
             }
@@ -231,7 +237,8 @@ fun CompactDevicesTitleBand(
     onToggleLayoutView: (() -> Unit)? = null,
     showCloseService: Boolean = false,
     onCloseService: (() -> Unit)? = null,
-    onOpenNotes: (() -> Unit)? = null
+    onOpenNotes: (() -> Unit)? = null,
+    onOpenTransferQueue: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
     val allowLayoutView = showLayoutView && currentTheme != AppTheme.KINETIC_SPHERE
@@ -243,6 +250,7 @@ fun CompactDevicesTitleBand(
         showCloseService = showCloseService,
         onCloseService = onCloseService,
         onOpenNotes = onOpenNotes,
+        onOpenTransferQueue = onOpenTransferQueue,
         actions = actions
     )
 }
@@ -253,6 +261,7 @@ fun CompactHomeTitleBand(
     secondaryLine: String? = null,
     style: CompactHomeTitleStyle = CompactHomeTitleStyle.Detail,
     modifier: Modifier = Modifier,
+    onOpenTransferQueue: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
@@ -261,10 +270,15 @@ fun CompactHomeTitleBand(
         FluxGlassHeader(
             primaryTitle = "FileApex",
             secondaryTitle = if (primaryLine == "FileApex") secondaryLine ?: "Paired Devices" else primaryLine,
+            onOpenTransferQueue = onOpenTransferQueue,
             actions = actions
         )
     } else {
-        CompactHomeTitleBandRow(modifier = modifier, actions = actions) {
+        CompactHomeTitleBandRow(
+            modifier = modifier,
+            onOpenTransferQueue = onOpenTransferQueue,
+            actions = actions
+        ) {
             when (style) {
                 CompactHomeTitleStyle.Prominent -> {
                     Text(
@@ -310,6 +324,7 @@ fun CompactHomeTitleBand(
 @Composable
 private fun CompactHomeTitleBandRow(
     modifier: Modifier = Modifier,
+    onOpenTransferQueue: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     titleContent: @Composable () -> Unit
 ) {
@@ -327,6 +342,9 @@ private fun CompactHomeTitleBandRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             titleContent()
+        }
+        if (onOpenTransferQueue != null) {
+            QueuedFilesButton(onClick = onOpenTransferQueue)
         }
         actions()
     }

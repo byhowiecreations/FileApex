@@ -31,6 +31,7 @@ data class SettingsUiState(
     val googleAccountEmail: String = "",
     val clipboardSharingEnabled: Boolean = false,
     val fileTransferNotificationsEnabled: Boolean = false,
+    val driveRelayNotificationsEnabled: Boolean = false,
     val notesNotificationsEnabled: Boolean = false,
     val liveTransferCapsuleEnabled: Boolean = false,
     val liveTransferShowQueueEnabled: Boolean = false,
@@ -51,6 +52,12 @@ data class SettingsUiState(
     val deviceDetailsDisplayPreferences: DeviceDetailsDisplayPreferences =
         DeviceDetailsDisplayPreferences.defaults(),
     val deviceDetailsAllowOverCellular: Boolean = false,
+    val cellularEnabled: Boolean = false,
+    val googleDriveRelayEnabled: Boolean = false,
+    val drivePurgeAfter72Hours: Boolean = true,
+    val googleDriveAuthError: String? = null,
+    val drivePurgeNowBusy: Boolean = false,
+    val drivePurgeNowMessage: String? = null,
     val kineticSphereCleanMode: Boolean = false,
     val kineticSphereConnectedLinesEnabled: Boolean = true,
     val kineticSphereOrbitalRingsEnabled: Boolean = true,
@@ -67,6 +74,7 @@ class SettingsViewModel : ViewModel() {
             googleAccountEmail = settings.googleAccountEmail.value,
             clipboardSharingEnabled = settings.clipboardSharingEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
+            driveRelayNotificationsEnabled = settings.driveRelayNotificationsEnabled.value,
             notesNotificationsEnabled = settings.notesNotificationsEnabled.value,
             liveTransferCapsuleEnabled = settings.liveTransferCapsuleEnabled.value,
             liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
@@ -84,6 +92,9 @@ class SettingsViewModel : ViewModel() {
             desktopUiStyle = settings.desktopUiStyle.value,
             deviceDetailsDisplayPreferences = settings.deviceDetailsDisplayPreferences.value,
             deviceDetailsAllowOverCellular = settings.deviceDetailsAllowOverCellular.value,
+            cellularEnabled = settings.cellularEnabled.value,
+            googleDriveRelayEnabled = settings.googleDriveRelayEnabled.value,
+            drivePurgeAfter72Hours = settings.drivePurgeAfter72Hours.value,
             kineticSphereCleanMode = settings.kineticSphereCleanMode.value,
             kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
             kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value,
@@ -98,6 +109,11 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.notesNotificationsEnabled.collect { enabled ->
                 _uiState.update { it.copy(notesNotificationsEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.driveRelayNotificationsEnabled.collect { enabled ->
+                _uiState.update { it.copy(driveRelayNotificationsEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -206,7 +222,23 @@ class SettingsViewModel : ViewModel() {
 
     fun setFileTransferNotifications(enabled: Boolean) {
         settings.setFileTransferNotificationsEnabled(enabled)
-        _uiState.update { it.copy(fileTransferNotificationsEnabled = enabled) }
+        if (!enabled) {
+            settings.setLiveTransferCapsuleEnabled(false)
+        }
+        _uiState.update {
+            it.copy(
+                fileTransferNotificationsEnabled = enabled,
+                liveTransferCapsuleEnabled = if (enabled) it.liveTransferCapsuleEnabled else false
+            )
+        }
+    }
+
+    fun setDriveRelayNotifications(enabled: Boolean) {
+        settings.setDriveRelayNotificationsEnabled(enabled)
+        if (enabled && com.fileapex.cloud.drive.GoogleDriveAuth.hasGrant()) {
+            com.fileapex.platform.DriveRelayNotifier.onDriveEnabledAndGranted()
+        }
+        _uiState.update { it.copy(driveRelayNotificationsEnabled = enabled) }
     }
 
     fun setNotesNotifications(enabled: Boolean) {
@@ -433,6 +465,69 @@ class SettingsViewModel : ViewModel() {
                 DiagnosticsCloudRelay.startInbox(uid, deviceId)
             } else {
                 DiagnosticsCloudRelay.stopInbox()
+            }
+        }
+    }
+
+    fun setCellularEnabled(enabled: Boolean) {
+        settings.setCellularEnabled(enabled)
+        _uiState.update { it.copy(cellularEnabled = enabled) }
+        com.fileapex.cloud.drive.DriveRelayCoordinator.applySchedulerFromSettings()
+    }
+
+    fun setGoogleDriveRelayEnabled(enabled: Boolean) {
+        settings.setGoogleDriveRelayEnabled(enabled)
+        _uiState.update { it.copy(googleDriveRelayEnabled = enabled, googleDriveAuthError = null) }
+        com.fileapex.cloud.drive.DriveRelayCoordinator.applySchedulerFromSettings()
+        if (enabled) {
+            settings.setCellularReceivePromptAcknowledged(true)
+            settings.setCellularSendPromptAcknowledged(true)
+            if (com.fileapex.cloud.drive.GoogleDriveAuth.hasGrant()) {
+                com.fileapex.platform.DriveRelayNotifier.onDriveEnabledAndGranted()
+            }
+        }
+    }
+
+    fun setDrivePurgeAfter72Hours(enabled: Boolean) {
+        settings.setDrivePurgeAfter72Hours(enabled)
+        _uiState.update { it.copy(drivePurgeAfter72Hours = enabled) }
+    }
+
+    fun purgeDriveRelayNow() {
+        if (_uiState.value.drivePurgeNowBusy) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(drivePurgeNowBusy = true, drivePurgeNowMessage = null) }
+            runCatching { com.fileapex.cloud.drive.DriveRelayCoordinator.purgeRelayNow() }
+                .onSuccess { deleted ->
+                    _uiState.update {
+                        it.copy(
+                            drivePurgeNowBusy = false,
+                            drivePurgeNowMessage = "Deleted $deleted file(s) from FileApex Relay"
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            drivePurgeNowBusy = false,
+                            drivePurgeNowMessage = "Could not delete relay files. Try Grant Access again."
+                        )
+                    }
+                    println("SettingsViewModel: Drive purge failed — ${error.message}")
+                }
+        }
+    }
+
+    fun onGoogleDriveAuthResult(granted: Boolean, errorMessage: String?) {
+        if (granted) {
+            setGoogleDriveRelayEnabled(true)
+        } else {
+            settings.setGoogleDriveRelayEnabled(false)
+            _uiState.update {
+                it.copy(
+                    googleDriveRelayEnabled = false,
+                    googleDriveAuthError = errorMessage
+                )
             }
         }
     }

@@ -10,7 +10,6 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.fileapex.MainActivity
-import com.fileapex.R
 import android.app.PendingIntent
 
 /**
@@ -107,7 +106,7 @@ object ShareServerForegroundNotification {
         val builder = NotificationCompat.Builder(context, AndroidNotificationChannels.SHARE_SERVER_ACTIVE)
             .setContentTitle("FileApex Server Active")
             .setContentText("Local WiFi secure ecosystem running...")
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(AndroidNotificationChannels.smallIcon)
             .setContentIntent(contentIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -117,7 +116,9 @@ object ShareServerForegroundNotification {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
         if (includeLargeIcon) {
-            builder.setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.ic_launcher))
+            builder.setLargeIcon(
+                BitmapFactory.decodeResource(context.resources, AndroidNotificationChannels.largeIcon)
+            )
         }
         return builder.build()
     }

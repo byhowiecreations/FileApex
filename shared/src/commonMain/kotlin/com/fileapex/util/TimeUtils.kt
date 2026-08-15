@@ -58,7 +58,17 @@ object TimeUtils {
     }
 
     const val DEFAULT_ZONE_ID: String = "America/New_York"
+
+    /** SMS-style stamp for Notes: `MM/dd` group header and `h:mm a` on the bubble. */
+    fun noteListStamp(epochMs: Long, zoneId: String = DEFAULT_ZONE_ID): NoteListStamp =
+        localizeNoteListStamp(epochMs, zoneId)
 }
+
+data class NoteListStamp(
+    val dayKey: String,
+    val dateHeader: String,
+    val timeLabel: String
+)
 
 /**
  * Audit trail for timestamp mutations (RULES.md Audit Trail Requirement).
@@ -88,3 +98,5 @@ object TimestampDiagnostics {
 }
 
 internal expect fun formatEpochMsToLocal(epochMs: Long, zoneId: String): String
+
+internal expect fun localizeNoteListStamp(epochMs: Long, zoneId: String): NoteListStamp

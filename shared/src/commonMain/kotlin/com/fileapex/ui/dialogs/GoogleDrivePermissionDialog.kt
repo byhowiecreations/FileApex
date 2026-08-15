@@ -24,7 +24,7 @@ fun GoogleDrivePermissionDialog(
         },
         text = {
             Text(
-                text = "To send or receive files over Cellular data using Google Drive Relay, FileApex requires permission to access the Google Drive API. Would you like to grant access now?",
+                text = "FileApex will create a FileApex Relay folder in your Drive for off‑LAN transfers. It cannot see your other Drive files.",
                 style = MaterialTheme.typography.bodyMedium
             )
         },

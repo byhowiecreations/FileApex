@@ -100,6 +100,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             launch(Dispatchers.Default) {
                 AppUpdateCoordinator.onAppLaunch()
                 GoogleLinkCoordinator.onAppLaunch()
+                com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
                 DesktopSendHandoff.startJobProcessor()
             }
         }

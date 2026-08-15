@@ -47,6 +47,7 @@ object FileApexAndroidBootstrap {
             initAndroidLanConnectivity(appContext)
             initAndroidTransferReceiveNotifier(appContext)
             initAndroidNoteReceiveNotifier(appContext)
+            initAndroidDriveRelayNotifier(appContext)
             initAndroidBriefToast(appContext)
             initAndroidUpdateAvailableNotifier(appContext)
             if (!FileApexServices.isDatabaseReady()) {
@@ -61,6 +62,8 @@ object FileApexAndroidBootstrap {
             }
             AppUpdateCoordinator.onAppLaunch()
             GoogleLinkCoordinator.onAppLaunch()
+            com.fileapex.cloud.FcmTokenRegistrar.start()
+            com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
             fullyInitialized = true
             Log.i(TAG, "Android process init complete")
             return true

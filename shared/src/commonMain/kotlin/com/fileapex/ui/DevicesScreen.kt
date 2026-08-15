@@ -238,6 +238,7 @@ fun DevicesScreen(
     onOpenSettings: () -> Unit,
     onExitApp: () -> Unit,
     onOpenNotes: () -> Unit = {},
+    onOpenTransferQueue: () -> Unit = {},
     embeddedInCompactShell: Boolean = false,
     viewModel: DevicesViewModel = viewModel { DevicesViewModel() },
     layoutMode: DevicesScreenLayoutMode = DevicesScreenLayoutMode.FullScreen,
@@ -256,7 +257,6 @@ fun DevicesScreen(
     var pinText by remember { mutableStateOf("") }
     var confirmExit by remember { mutableStateOf(false) }
     val isListPane = layoutMode == DevicesScreenLayoutMode.ListPane
-    val usesOwnChrome = !isListPane && !embeddedInCompactShell
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         if (LocalAppTheme.current != AppTheme.KINETIC_SPHERE) {
@@ -321,7 +321,8 @@ fun DevicesScreen(
                     onToggleLayoutView = { FileApexServices.settings.setDevicesViewMode(viewMode.toggled()) },
                     showCloseService = true,
                     onCloseService = onExitApp,
-                    onOpenNotes = onOpenNotes
+                    onOpenNotes = onOpenNotes,
+                    onOpenTransferQueue = onOpenTransferQueue
                 )
             }
             if (isKineticSphere && !editMode) {
@@ -1167,7 +1168,8 @@ private fun HomeTopBar(
     onExitClick: () -> Unit,
     headerActions: @Composable RowScope.() -> Unit = {},
     onToggleLayoutView: (() -> Unit)? = null,
-    onOpenNotes: (() -> Unit)? = null
+    onOpenNotes: (() -> Unit)? = null,
+    onOpenTransferQueue: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
@@ -1181,12 +1183,17 @@ private fun HomeTopBar(
             showCloseService = true,
             onCloseService = onExitClick,
             onOpenNotes = onOpenNotes,
+            onOpenTransferQueue = onOpenTransferQueue,
             actions = headerActions
         )
     } else {
         Column(modifier = Modifier.fillMaxWidth()) {
             CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
-            CompactDevicesTitleBand(actions = headerActions, onOpenNotes = onOpenNotes)
+            CompactDevicesTitleBand(
+                actions = headerActions,
+                onOpenNotes = onOpenNotes,
+                onOpenTransferQueue = onOpenTransferQueue
+            )
         }
     }
 }

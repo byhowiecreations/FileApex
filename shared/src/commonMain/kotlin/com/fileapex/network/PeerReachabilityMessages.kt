@@ -12,12 +12,22 @@ object PeerReachabilityMessages {
         "$deviceName is off local Wi‑Fi — transfer queued until back on Wi‑Fi."
 
     fun fileTransferOffWifiQueuedMultiple(deviceNames: List<String>): String {
-        val targets = when (deviceNames.size) {
-            0 -> "Device"
-            1 -> deviceNames.first()
-            else -> deviceNames.joinToString(", ")
+        if (deviceNames.isEmpty()) return ""
+        val targets = if (deviceNames.size == 1) {
+            deviceNames.first()
+        } else {
+            deviceNames.joinToString(", ")
         }
         return "$targets off local Wi‑Fi — transfer(s) queued until back on Wi‑Fi."
+    }
+
+    fun fileTransferOffWifiDriveNotReady(deviceNames: List<String>): String {
+        val targets = when {
+            deviceNames.isEmpty() -> "Device"
+            deviceNames.size == 1 -> deviceNames.first()
+            else -> deviceNames.joinToString(", ")
+        }
+        return "$targets is off local Wi‑Fi. Enable Cellular → Google Drive Relay on this device to send now."
     }
 
     fun localWifiRequired(): String =

@@ -81,7 +81,7 @@ object ShareServerPendingStart {
             flags
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setSmallIcon(AndroidNotificationChannels.smallIcon)
             .setContentTitle("FileApex server paused")
             .setContentText("Tap to restore local Wi‑Fi file sharing.")
             .setContentIntent(contentIntent)

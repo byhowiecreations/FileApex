@@ -77,7 +77,7 @@ fun LiveTransferCapsuleOverlay(
 ) {
     val settings = FileApexServices.settings
     val capsuleEnabled by settings.liveTransferCapsuleEnabled.collectAsState()
-    val showQueueEnabled by settings.liveTransferShowQueueEnabled.collectAsState()
+    val transferNotificationsEnabled by settings.fileTransferNotificationsEnabled.collectAsState()
     val isTransferActive by TransferActivityGuard.isTransferActiveFlow.collectAsState()
     val liveProgress by TransferActivityGuard.transferProgressFlow.collectAsState()
     val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
@@ -85,8 +85,14 @@ fun LiveTransferCapsuleOverlay(
     var capsuleData by remember { mutableStateOf(CapsuleDisplayData()) }
     var expanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(capsuleEnabled, showQueueEnabled, isTransferActive, liveProgress, pendingItems) {
-        if (!capsuleEnabled) {
+    LaunchedEffect(
+        capsuleEnabled,
+        transferNotificationsEnabled,
+        isTransferActive,
+        liveProgress,
+        pendingItems
+    ) {
+        if (!capsuleEnabled || !transferNotificationsEnabled) {
             capsuleData = CapsuleDisplayData(CapsuleState.Hidden)
             return@LaunchedEffect
         }
@@ -108,7 +114,6 @@ fun LiveTransferCapsuleOverlay(
                 )
             }
 
-
             capsuleData.state == CapsuleState.Transferring && !isTransferActive -> {
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Completed,
@@ -121,16 +126,6 @@ fun LiveTransferCapsuleOverlay(
                 if (!TransferActivityGuard.isTransferActive()) {
                     capsuleData = CapsuleDisplayData(CapsuleState.Hidden)
                 }
-            }
-            showQueueEnabled && pendingCount > 0 -> {
-                val first = pendingItems.firstOrNull()
-                capsuleData = CapsuleDisplayData(
-                    state = CapsuleState.Pending,
-                    title = first?.displayLabel ?: "Queue Staged",
-                    subtitle = "$pendingCount files pending",
-                    progress = 0f,
-                    pendingCount = pendingCount
-                )
             }
             else -> {
                 capsuleData = CapsuleDisplayData(CapsuleState.Hidden)

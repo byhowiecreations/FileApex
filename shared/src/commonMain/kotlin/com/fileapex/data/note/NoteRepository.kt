@@ -7,6 +7,8 @@ import com.fileapex.data.db.toRecord
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.platform.UniqueFileNames
+import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.io.buffered
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
 import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
 
@@ -53,8 +58,12 @@ class NoteRepository {
             _notes.value = updated
             true
         }
-        if (added && !note.isMine) {
-            runCatching { com.fileapex.platform.notifyNoteReceived(note.sourceDeviceName, note.content) }
+        if (added) {
+            hydrateIncomingAttachment(note)
+            if (!note.isMine) {
+                val preview = note.content.ifBlank { note.attachmentFileName.orEmpty() }
+                runCatching { com.fileapex.platform.notifyNoteReceived(note.sourceDeviceName, preview) }
+            }
         }
         return added
     }
@@ -62,31 +71,60 @@ class NoteRepository {
     suspend fun sendNote(
         content: String,
         driveFileId: String? = null,
-        checksum: String? = null
+        checksum: String? = null,
+        attachmentPath: String? = null,
+        attachmentFileName: String? = null,
+        attachmentSizeBytes: Long = 0L
     ): NoteRecord {
         val selfIdentity = loadLocalIdentity()
         val selfName = LocalDeviceNameStore.current().ifBlank { selfIdentity.deviceName }
         val noteId = "note-" + TimeUtils.now() + "-" + (1000..9999).random()
 
+        var resolvedDriveId = driveFileId
+        var resolvedChecksum = checksum
+        var resolvedName = attachmentFileName
+        var resolvedSize = attachmentSizeBytes
+        var pinned = false
+        var localPath = attachmentPath
+        if (!attachmentPath.isNullOrBlank()) {
+            val display = attachmentFileName
+                ?: attachmentPath.substringAfterLast('/').substringAfterLast('\\')
+            localPath = copyIntoDownloads(attachmentPath, display)
+            val entry = com.fileapex.cloud.drive.DriveRelayCoordinator.uploadNoteAttachment(
+                localPath = localPath,
+                displayName = display
+            )
+            resolvedDriveId = entry.driveFileId
+            resolvedChecksum = entry.contentHash
+            resolvedName = entry.fileName
+            resolvedSize = entry.sizeBytes
+        }
+
+        val caption = content.trim()
         val record = NoteRecord(
             noteId = noteId,
             sourceDeviceId = selfIdentity.deviceId,
             sourceDeviceName = selfName,
-            content = content,
-            driveFileId = driveFileId,
-            checksum = checksum,
+            content = caption,
+            driveFileId = resolvedDriveId,
+            checksum = resolvedChecksum,
             epochMs = TimeUtils.now(),
-            isMine = true
+            isMine = true,
+            attachmentFileName = resolvedName,
+            attachmentSizeBytes = resolvedSize,
+            attachmentPinned = pinned,
+            attachmentLocalPath = localPath
         )
 
         addNote(record)
 
-        // 1. Dispatch silent FCM wake to linked peers (for sleeping Android devices)
         FcmWakeCoordinator.dispatchNoteWakeToLinkedPeers(
             noteId = noteId,
-            content = content,
-            driveFileId = driveFileId,
-            checksum = checksum
+            content = caption,
+            driveFileId = resolvedDriveId,
+            checksum = resolvedChecksum,
+            attachmentName = resolvedName,
+            attachmentSizeBytes = resolvedSize
         )
 
         // 2. Direct P2P push to all online/paired devices (Mac, Desktop & active Android devices)
@@ -106,6 +144,24 @@ class NoteRepository {
         }
 
         return record
+    }
+
+    suspend fun setAttachmentPinned(noteId: String, pinned: Boolean) {
+        val current = notes.value.find { it.noteId == noteId } ?: return
+        val updated = current.copy(attachmentPinned = pinned)
+        val currentDao = dao
+        if (currentDao != null) {
+            runCatching { currentDao.insertNote(updated.toEntity()) }
+        }
+        mutex.withLock {
+            _notes.value = _notes.value.map { if (it.noteId == noteId) updated else it }
+        }
+        val driveId = current.driveFileId
+        if (!driveId.isNullOrBlank()) {
+            runCatching {
+                com.fileapex.cloud.drive.DriveRelayCoordinator.setNoteAttachmentPinned(driveId, pinned)
+            }
+        }
     }
 
     suspend fun deleteNote(noteId: String) {
@@ -152,5 +208,98 @@ class NoteRepository {
                 item.noteId == noteId || (!checksum.isNullOrBlank() && item.checksum == checksum)
             }
         }
+    }
+
+    suspend fun setAttachmentLocalPath(noteId: String, localPath: String) {
+        val currentDao = dao
+        mutex.withLock {
+            _notes.value = _notes.value.map { note ->
+                if (note.noteId != noteId) {
+                    note
+                } else {
+                    val updated = note.copy(attachmentLocalPath = localPath)
+                    if (currentDao != null) {
+                        runCatching { currentDao.insertNote(updated.toEntity()) }
+                    }
+                    updated
+                }
+            }
+        }
+    }
+
+    suspend fun bindDownloadedAttachment(
+        driveFileId: String,
+        checksum: String,
+        localPath: String,
+        fileName: String,
+        sizeBytes: Long,
+        pinned: Boolean
+    ): Boolean {
+        var matched = false
+        val currentDao = dao
+        mutex.withLock {
+            _notes.value = _notes.value.map { note ->
+                val sameFile = (!driveFileId.isBlank() && note.driveFileId == driveFileId) ||
+                    (!checksum.isBlank() && note.checksum == checksum)
+                if (!sameFile) {
+                    note
+                } else {
+                    matched = true
+                    val updated = note.copy(
+                        driveFileId = driveFileId.ifBlank { note.driveFileId },
+                        checksum = checksum.ifBlank { note.checksum },
+                        attachmentFileName = note.attachmentFileName?.ifBlank { null } ?: fileName,
+                        attachmentSizeBytes = if (note.attachmentSizeBytes > 0L) note.attachmentSizeBytes else sizeBytes,
+                        attachmentPinned = note.attachmentPinned || pinned,
+                        attachmentLocalPath = localPath,
+                        content = if (note.content == fileName ||
+                            note.content.startsWith("[Synced note from Drive:")
+                        ) {
+                            ""
+                        } else {
+                            note.content
+                        }
+                    )
+                    if (currentDao != null) {
+                        runCatching { currentDao.insertNote(updated.toEntity()) }
+                    }
+                    updated
+                }
+            }
+        }
+        return matched
+    }
+
+    private suspend fun hydrateIncomingAttachment(note: NoteRecord) {
+        val driveId = note.driveFileId?.takeIf { it.isNotBlank() } ?: return
+        val local = note.attachmentLocalPath
+        if (!local.isNullOrBlank() && SystemFileSystem.exists(Path(local))) return
+        runCatching {
+            com.fileapex.cloud.drive.DriveRelayCoordinator.materializeNoteAttachment(note)
+        }.onFailure { error ->
+            println("NoteRepository: attachment download failed — ${error.message}")
+        }
+    }
+
+    private fun copyIntoDownloads(sourceAbsolutePath: String, fileName: String): String {
+        val dest = UniqueFileNames.resolveInDirectory(defaultDownloadsDir(), fileName)
+        val from = Path(sourceAbsolutePath)
+        val to = Path(dest)
+        if (from.toString() == to.toString()) return dest
+        to.parent?.let { parent ->
+            if (!SystemFileSystem.exists(parent)) {
+                SystemFileSystem.createDirectories(parent)
+            }
+        }
+        SystemFileSystem.source(from).buffered().use { input ->
+            SystemFileSystem.sink(to).buffered().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (!input.exhausted()) {
+                    val n = input.readAtMostTo(buffer)
+                    if (n > 0) output.write(buffer, 0, n)
+                }
+            }
+        }
+        return dest
     }
 }

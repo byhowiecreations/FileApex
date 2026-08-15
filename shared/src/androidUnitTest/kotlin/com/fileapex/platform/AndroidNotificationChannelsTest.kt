@@ -40,7 +40,7 @@ class AndroidNotificationChannelsTest {
         val notification = Notification.Builder(context, AndroidNotificationChannels.SHARE_SERVER_ACTIVE)
             .setContentTitle("Server Active Test")
             .setContentText("Testing FGS active state")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(AndroidNotificationChannels.smallIcon)
             .build()
         notificationManager.notify(1, notification)
 

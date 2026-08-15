@@ -5,11 +5,21 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import com.fileapex.shared.R
 
 /**
  * Single source of truth for FileApex Android notification channel ids and creation.
  */
 object AndroidNotificationChannels {
+    /** Monochrome app silhouette — every FileApex status-bar notification icon. */
+    val smallIcon: Int = R.drawable.ic_fileapex_notification
+
+    /** Full-color app icon for notification shade / expanded headers. */
+    val largeIcon: Int = R.drawable.ic_fileapex_large
+
+    /** Note alerts: app icon + N badge (status bar and shade). */
+    val noteSmallIcon: Int = R.drawable.ic_fileapex_note_notification
+    val noteLargeIcon: Int = R.drawable.ic_fileapex_note_large
     private const val TAG = "NotificationChannels"
     private const val PREFS_NAME = "fileapex_notification_channels"
     private const val KEY_SHARE_SERVER_MIGRATED = "share_server_v2_channel_migrated"
@@ -17,6 +27,7 @@ object AndroidNotificationChannels {
     const val APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
     const val NOTE_MESSAGES = "fileapex_note_messages"
+    const val DRIVE_RELAY = "fileapex_drive_relay"
     /** Persistent share-server FGS alert — static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
     private const val LEGACY_SHARE_SERVER_CHANNEL = "fileapex_share_server_active"
@@ -57,6 +68,19 @@ object AndroidNotificationChannels {
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = "Alerts when FileApex receives files from paired devices"
+        }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureDriveRelayChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            DRIVE_RELAY,
+            "Google Drive Relay",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Alerts when FileApex posts or retrieves files through Google Drive Relay"
         }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)

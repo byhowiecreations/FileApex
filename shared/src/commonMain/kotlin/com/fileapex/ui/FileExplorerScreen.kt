@@ -80,6 +80,7 @@ fun FileExplorerScreen(
      */
     titleOverride: String? = null,
     embeddedInCompactShell: Boolean = false,
+    onOpenTransferQueue: () -> Unit = {},
     viewModel: ExplorerViewModel = viewModel(key = target.deviceId) { ExplorerViewModel(target) }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -210,6 +211,7 @@ fun FileExplorerScreen(
                                     primaryLine = topBarTitle,
                                     secondaryLine = explorerSubtitle(state),
                                     style = CompactHomeTitleStyle.Detail,
+                                    onOpenTransferQueue = onOpenTransferQueue,
                                     actions = {
                                         ExplorerNavigationAction(
                                             state = state,

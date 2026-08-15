@@ -7,7 +7,6 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.fileapex.shared.R
 import com.fileapex.update.PendingUpdateOffer
 
 private lateinit var updateNotifierContext: Context
@@ -55,8 +54,10 @@ actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
         updateNotifierContext,
         AndroidNotificationChannels.APP_UPDATES
     )
-        .setSmallIcon(R.drawable.ic_fileapex_notification)
-        .setLargeIcon(BitmapFactory.decodeResource(updateNotifierContext.resources, R.drawable.ic_fileapex_large))
+        .setSmallIcon(AndroidNotificationChannels.smallIcon)
+        .setLargeIcon(
+            BitmapFactory.decodeResource(updateNotifierContext.resources, AndroidNotificationChannels.largeIcon)
+        )
         .setContentTitle(title)
         .setContentText(body.lineSequence().firstOrNull() ?: title)
         .setStyle(NotificationCompat.BigTextStyle().bigText(body))

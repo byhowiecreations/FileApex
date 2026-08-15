@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.di.FileApexServices
@@ -31,7 +32,13 @@ actual fun notifyNoteReceived(sourceDeviceName: String, content: String) {
 
     val title = "Note from ${sourceDeviceName.ifBlank { "Paired Device" }}"
     val notification = NotificationCompat.Builder(noteNotifierContext, AndroidNotificationChannels.NOTE_MESSAGES)
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
+        .setLargeIcon(
+            BitmapFactory.decodeResource(
+                noteNotifierContext.resources,
+                AndroidNotificationChannels.noteLargeIcon
+            )
+        )
         .setContentTitle(title)
         .setContentText(content)
         .setStyle(NotificationCompat.BigTextStyle().bigText(content))

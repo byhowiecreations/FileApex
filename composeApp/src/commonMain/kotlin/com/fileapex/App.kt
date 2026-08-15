@@ -156,6 +156,8 @@ fun App(
     val showUpdateSheet by AppUpdateCoordinator.showUpdateSheet.collectAsState()
     val explorerViewMode by FileApexServices.settings.explorerViewMode.collectAsState()
     val devicesViewMode by FileApexServices.settings.devicesViewMode.collectAsState()
+    val pendingCellularSend by com.fileapex.cloud.drive.DriveRelayCoordinator.pendingSendPrompt.collectAsState()
+    val pendingCellularReceive by com.fileapex.cloud.drive.DriveRelayCoordinator.pendingReceivePrompt.collectAsState()
 
     val onNavigateHome: () -> Unit = {
         route = AppRoute.Devices
@@ -447,6 +449,54 @@ fun App(
     if (showUpdateSheet && offer != null) {
         UpdateAvailableSheet(offer = offer)
     }
+    if (pendingCellularSend) {
+        AlertDialog(
+            onDismissRequest = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissSendPrompt() },
+            title = { Text("Send over Cellular?") },
+            text = {
+                Text(
+                    if (com.fileapex.cloud.currentPlatformLabel() == "Android") {
+                        "FileApex can send via Google Drive Relay using cellular data. Continue?"
+                    } else {
+                        "This destination is not on local Wi‑Fi. FileApex can send via Google Drive " +
+                            "Relay using cellular data. Continue?"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.acknowledgeSendPrompt() }
+                ) { Text("Send via Drive") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissSendPrompt() }
+                ) { Text("Not Now") }
+            }
+        )
+    }
+    if (pendingCellularReceive) {
+        AlertDialog(
+            onDismissRequest = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissReceivePrompt() },
+            title = { Text("Receive over Cellular?") },
+            text = {
+                Text(
+                    "A paired device sent a file through Google Drive Relay. Download it using " +
+                        "cellular data?"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.acknowledgeReceivePrompt() }
+                ) { Text("Allow") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissReceivePrompt() }
+                ) { Text("Not Now") }
+            }
+        )
+    }
 }
 
 private fun compactHomeTab(route: AppRoute): HomeTab = when (route) {
@@ -526,6 +576,7 @@ private fun CompactHomeContent(
                 onOpenSettings = onOpenSettings,
                 onExitApp = onExitApp,
                 onOpenNotes = onOpenNotes,
+                onOpenTransferQueue = onOpenTransferQueue,
                 viewModel = devicesViewModel,
                 embeddedInCompactShell = true
             )
@@ -542,11 +593,13 @@ private fun CompactHomeContent(
                 exactAlarmWarningActive = exactAlarmWarningActive,
                 onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                 onOpenAppDetailsSettings = onOpenAppDetailsSettings,
-                onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled
+                onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
+                onOpenTransferQueue = onOpenTransferQueue
             )
             is AppRoute.Explorer -> FileExplorerScreen(
                 target = current.target,
                 embeddedInCompactShell = true,
+                onOpenTransferQueue = onOpenTransferQueue,
                 onBack = {
                     DeviceSessionManager.clearSession(current.target.deviceId)
                     onNavigateHome()
@@ -560,6 +613,7 @@ private fun CompactHomeContent(
                 onOpenSettings = onOpenSettings,
                 onExitApp = onExitApp,
                 onOpenNotes = onOpenNotes,
+                onOpenTransferQueue = onOpenTransferQueue,
                 viewModel = devicesViewModel,
                 embeddedInCompactShell = true
             )

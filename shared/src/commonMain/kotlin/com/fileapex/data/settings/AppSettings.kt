@@ -15,6 +15,8 @@ interface AppSettings {
     val clipboardSharingEnabled: StateFlow<Boolean>
     /** When true, this device shows a notification after successfully receiving files. Default off. */
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
+    /** When true, show notifications for Google Drive Relay post/retrieve. On after Drive is granted. */
+    val driveRelayNotificationsEnabled: StateFlow<Boolean>
     /** When true, scanners must supply this device's PIN to pair. Default off. */
     val pinRequiredEnabled: StateFlow<Boolean>
     /** Local PIN others must enter when [pinRequiredEnabled] is on. */
@@ -57,6 +59,17 @@ interface AppSettings {
     /** When true, participate in encrypted cloud Device Details when LAN is unavailable. Default off. */
     val deviceDetailsAllowOverCellular: StateFlow<Boolean>
 
+    /** Master Cellular toggle. Default off. Both this and Google Account are required to send via Drive Relay. */
+    val cellularEnabled: StateFlow<Boolean>
+    /** When true (and [cellularEnabled]), off-LAN sends/receives use Google Drive Relay. Default off. */
+    val googleDriveRelayEnabled: StateFlow<Boolean>
+    /** When true, unpinned Drive relay files are purged 72 hours after upload. Default on. */
+    val drivePurgeAfter72Hours: StateFlow<Boolean>
+    /** First-time confirmation to send a file over cellular/Drive has been granted. */
+    val cellularSendPromptAcknowledged: StateFlow<Boolean>
+    /** First-time confirmation to receive a Drive/FCM cellular payload has been granted. */
+    val cellularReceivePromptAcknowledged: StateFlow<Boolean>
+
     /** When true, show notifications for incoming notes and messages. Default true. */
     val notesNotificationsEnabled: StateFlow<Boolean>
     /** When true, the first-send note notification permission prompt has been shown. Default false. */
@@ -88,6 +101,7 @@ interface AppSettings {
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
     fun setClipboardSharingEnabled(enabled: Boolean)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
+    fun setDriveRelayNotificationsEnabled(enabled: Boolean)
     fun setNotesNotificationsEnabled(enabled: Boolean)
     fun setNotesNotificationPromptShown(shown: Boolean)
     fun setLiveTransferCapsuleEnabled(enabled: Boolean)
@@ -133,6 +147,16 @@ interface AppSettings {
     fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences)
 
     fun setDeviceDetailsAllowOverCellular(enabled: Boolean)
+
+    fun setCellularEnabled(enabled: Boolean)
+
+    fun setGoogleDriveRelayEnabled(enabled: Boolean)
+
+    fun setDrivePurgeAfter72Hours(enabled: Boolean)
+
+    fun setCellularSendPromptAcknowledged(acknowledged: Boolean)
+
+    fun setCellularReceivePromptAcknowledged(acknowledged: Boolean)
 
     fun diagnosticsPrivateKeyBase64(): String
 

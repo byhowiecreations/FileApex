@@ -2,7 +2,6 @@ package com.fileapex.cloud
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexHttpClientFactory
-import com.fileapex.platform.DesktopOAuthCallbacks
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -25,8 +24,11 @@ object DesktopAuthCoordinator {
     data class PendingAuth(
         val codeVerifier: String,
         val state: String,
-        val redirectUri: String
+        val redirectUri: String,
+        val purpose: Purpose = Purpose.Identity
     )
+
+    enum class Purpose { Identity, Drive }
 
     @Volatile
     private var pending: PendingAuth? = null
@@ -52,21 +54,127 @@ object DesktopAuthCoordinator {
         val challenge = sha256Base64Url(verifier)
         val state = randomUrlSafe(24)
         val redirectUri = DesktopOAuthLoopbackServer.start { result ->
-            DesktopOAuthCallbacks.emit(result)
+            routeOAuthCallback(result)
         }
         lastOAuthRedirectUri = redirectUri
-        pending = PendingAuth(codeVerifier = verifier, state = state, redirectUri = redirectUri)
+        pending = PendingAuth(
+            codeVerifier = verifier,
+            state = state,
+            redirectUri = redirectUri,
+            purpose = Purpose.Identity
+        )
         return buildString {
             append("https://accounts.google.com/o/oauth2/v2/auth")
             append("?client_id=").append(oauthClientId.encodeUrl())
             append("&redirect_uri=").append(redirectUri.encodeUrl())
             append("&response_type=code")
-            append("&scope=").append("openid%20email%20profile")
+            append("&scope=").append(
+                java.net.URLEncoder.encode(
+                    GoogleIdentityScopes.identityQueryValue(),
+                    Charsets.UTF_8
+                )
+            )
+            append("&include_granted_scopes=false")
             append("&code_challenge=").append(challenge.encodeUrl())
             append("&code_challenge_method=S256")
             append("&state=").append(state.encodeUrl())
             append("&access_type=online")
             append("&prompt=select_account")
+        }
+    }
+
+    fun beginDriveAuthorizationUrl(oauthClientId: String, loginHint: String): String {
+        val verifier = randomUrlSafe(64)
+        val challenge = sha256Base64Url(verifier)
+        val state = randomUrlSafe(24)
+        val redirectUri = DesktopOAuthLoopbackServer.start { result ->
+            routeOAuthCallback(result)
+        }
+        lastOAuthRedirectUri = redirectUri
+        pending = PendingAuth(
+            codeVerifier = verifier,
+            state = state,
+            redirectUri = redirectUri,
+            purpose = Purpose.Drive
+        )
+        val scopes = java.net.URLEncoder.encode(
+            com.fileapex.cloud.drive.DRIVE_FILE_SCOPE,
+            Charsets.UTF_8
+        )
+        return buildString {
+            append("https://accounts.google.com/o/oauth2/v2/auth")
+            append("?client_id=").append(oauthClientId.encodeUrl())
+            append("&redirect_uri=").append(redirectUri.encodeUrl())
+            append("&response_type=code")
+            append("&scope=").append(scopes)
+            append("&include_granted_scopes=false")
+            append("&code_challenge=").append(challenge.encodeUrl())
+            append("&code_challenge_method=S256")
+            append("&state=").append(state.encodeUrl())
+            append("&access_type=offline")
+            append("&prompt=consent")
+            if (loginHint.isNotBlank()) {
+                append("&login_hint=").append(loginHint.encodeUrl())
+            }
+        }
+    }
+
+    suspend fun exchangeCodeForDriveTokens(code: String, state: String?) {
+        val pendingAuth = pending ?: error("No pending OAuth request")
+        if (pendingAuth.purpose != Purpose.Drive) {
+            error("OAuth purpose mismatch")
+        }
+        if (state != null && state != pendingAuth.state) {
+            error("OAuth state mismatch")
+        }
+        val clientId = desktopOAuthClientId()
+        val clientSecret = desktopOAuthClientSecret()
+        val redirectUri = pendingAuth.redirectUri
+        lastOAuthRedirectUri = redirectUri
+        pending = null
+        val client = FileApexServices.httpClient
+        val json = FileApexHttpClientFactory.defaultJson
+        val tokenBody = buildString {
+            append("code=${code.encodeUrl()}")
+            append("&client_id=${clientId.encodeUrl()}")
+            if (clientSecret.isNotBlank()) {
+                append("&client_secret=${clientSecret.encodeUrl()}")
+            }
+            append("&redirect_uri=${redirectUri.encodeUrl()}")
+            append("&grant_type=authorization_code")
+            append("&code_verifier=${pendingAuth.codeVerifier.encodeUrl()}")
+        }
+        val response = client.post("https://oauth2.googleapis.com/token") {
+            contentType(ContentType.Application.FormUrlEncoded)
+            setBody(tokenBody)
+        }
+        if (!response.status.isSuccess()) {
+            error("Drive token exchange failed (${response.status}): ${response.bodyAsText()}")
+        }
+        val obj = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val access = obj["access_token"]?.jsonPrimitive?.contentOrNull
+            ?: error("Token response missing access_token")
+        val refresh = obj["refresh_token"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val expiresIn = obj["expires_in"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 3600L
+        com.fileapex.cloud.drive.GoogleDriveAuth.persistGrant(
+            accessToken = access,
+            refreshToken = refresh,
+            expiresAtEpochMs = System.currentTimeMillis() + expiresIn * 1000L
+        )
+        runCatching {
+            com.fileapex.cloud.drive.GoogleDriveClient.verifyRelayAccess()
+        }.getOrElse { error ->
+            com.fileapex.cloud.drive.GoogleDriveAuth.clearGrant()
+            throw error
+        }
+        com.fileapex.cloud.drive.GoogleDriveAuth.markAccessVerified()
+    }
+
+    private fun routeOAuthCallback(result: com.fileapex.platform.OAuthCodeResult) {
+        if (pending?.purpose == Purpose.Drive) {
+            com.fileapex.platform.DesktopDriveOAuthCallbacks.emit(result)
+        } else {
+            com.fileapex.platform.DesktopOAuthCallbacks.emit(result)
         }
     }
 

@@ -493,7 +493,9 @@ class FileApexServer(
                     runCatching {
                         val body = call.receiveText()
                         val record = json.decodeFromString(com.fileapex.data.note.NoteRecord.serializer(), body)
-                        FileApexServices.noteRepository.addNote(record.copy(isMine = false))
+                        FileApexServices.noteRepository.addNote(
+                            record.copy(isMine = false, attachmentLocalPath = null)
+                        )
                         call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
                     }.onFailure { error ->
                         onLog("POST /api/v1/notes/send failed", error)

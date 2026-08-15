@@ -1,5 +1,11 @@
 package com.fileapex.domain.transfer
 
+import com.fileapex.cloud.drive.DriveRelayCoordinator
+import com.fileapex.cloud.drive.DriveRelayPolicy
+import com.fileapex.cloud.drive.driveLog
+import com.fileapex.cloud.drive.driveLogError
+import com.fileapex.cloud.drive.startDriveGrantIfNeeded
+import com.fileapex.platform.DriveRelayNotifier
 import com.fileapex.data.db.PendingTransferDao
 import com.fileapex.data.db.PendingTransferEntity
 import com.fileapex.data.db.PendingTransferStatus
@@ -7,6 +13,8 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.QueuedSourceSnapshot
 import com.fileapex.data.db.QueuedTransferSourceKind
 import com.fileapex.data.device.DeviceRepository
+import com.fileapex.domain.peer.PeerPlatform
+import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.domain.presence.PeerPresenceMonitor
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.platform.isActiveLanConnectivity
@@ -42,10 +50,13 @@ data class PendingTransferItem(
 data class QueueAwareSendResult(
     val batch: TransferBatchResult?,
     val queuedDeviceNames: List<String>,
-    val message: String
+    val message: String,
+    val relayedDeviceNames: List<String> = emptyList(),
+    val pendingDesktopSyncNames: List<String> = emptyList()
 ) {
     val hadImmediateSend: Boolean get() = batch != null && !batch.allFailed
     val hadQueue: Boolean get() = queuedDeviceNames.isNotEmpty()
+    val hadRelay: Boolean get() = relayedDeviceNames.isNotEmpty()
 }
 
 /**
@@ -121,26 +132,17 @@ class TransferQueueCoordinator(
         val batch = if (sendNow.isNotEmpty()) {
             runCatching {
                 transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = false)
-            }.getOrElse { error ->
-                val queuedNames = enqueueSourcesInternal(sources, remoteDevices.map { it.deviceId })
-                return QueueAwareSendResult(
-                    batch = null,
-                    queuedDeviceNames = queuedNames,
-                    message = listOfNotNull(
-                        error.message,
-                        queuedNames.takeIf { it.isNotEmpty() }?.let { queueOnlyMessage(it) }
-                    ).joinToString(" ")
-                )
-            }
+            }.getOrNull()
         } else {
             null
         }
 
         val succeeded = batch?.results?.flatMap { it.succeededDeviceIds }?.toSet().orEmpty()
         val failedRoutableIds = routable.map { it.deviceId }.filter { it !in succeeded }
-        val queueIds = (blocked.map { it.deviceId } + failedRoutableIds).distinct()
-        val queuedNames = if (queueIds.isNotEmpty()) {
-            enqueueSourcesInternal(sources, queueIds)
+        val offLanIds = (blocked.map { it.deviceId } + failedRoutableIds).distinct()
+        val offLan = relayOrQueueOffLan(sources, offLanIds)
+        val queuedNames = if (offLan.queueIds.isNotEmpty()) {
+            enqueueSourcesInternal(sources, offLan.queueIds)
         } else {
             emptyList()
         }
@@ -148,7 +150,10 @@ class TransferQueueCoordinator(
         return buildResult(
             batch = batch?.takeIf { succeeded.isNotEmpty() },
             queuedNames = queuedNames,
-            hadImmediateTargets = succeeded.isNotEmpty()
+            hadImmediateTargets = succeeded.isNotEmpty() || offLan.relayedNames.isNotEmpty(),
+            relayedNames = offLan.relayedNames,
+            pendingDesktopSyncNames = offLan.desktopPendingNames,
+            queueReason = offLan.queueReason
         )
     }
 
@@ -184,7 +189,6 @@ class TransferQueueCoordinator(
     }
 
     suspend fun drainEligible() {
-        if (!isActiveLanConnectivity()) return
         if (TransferActivityGuard.isTransferActive()) return
         drainMutex.withLock {
             recoverStaleSendingRows()
@@ -229,6 +233,20 @@ class TransferQueueCoordinator(
     private suspend fun drainOne(entity: PendingTransferEntity) {
         val now = TimeUtils.now()
         val pendingIds = decodeDeviceIds(entity.pendingDeviceIdsJson)
+        if (pendingIds.isEmpty()) {
+            deleteQueueItem(entity)
+            return
+        }
+        val sources = decodeSources(entity) ?: run {
+            deleteQueueItem(entity)
+            return
+        }
+        if (sources.isEmpty()) {
+            deleteQueueItem(entity)
+            return
+        }
+
+        val driveReady = DriveRelayPolicy.ensureReadyForSend() && DriveRelayPolicy.canSend()
         val reachabilityMap = presenceMonitor.reachabilityEpochMs.value
         val hasFreshSignal = pendingIds.any { id ->
             (reachabilityMap[id] ?: 0L) > entity.lastAttemptEpochMs
@@ -236,25 +254,23 @@ class TransferQueueCoordinator(
         val pendingOnlineOrFresh = hasFreshSignal || pendingIds.any { id ->
             deviceRepository.getDevice(id)?.let { presenceMonitor.isDeviceOnline(it) } == true
         }
+        val grantJustCompleted = entity.lastError == WAITING_DRIVE_GRANT && driveReady
         if (entity.lastAttemptEpochMs > 0L &&
             now - entity.lastAttemptEpochMs < DRAIN_RETRY_BACKOFF_MS &&
-            !pendingOnlineOrFresh
+            !pendingOnlineOrFresh &&
+            !grantJustCompleted
         ) {
             return
         }
-        if (pendingIds.isEmpty()) {
-            deleteQueueItem(entity)
-            return
-        }
-        val routableTargets = resolveDrainTargets(pendingIds)
-        if (routableTargets.isEmpty()) return
 
-        val sources = decodeSources(entity) ?: run {
-            deleteQueueItem(entity)
-            return
+        val routableTargets = if (isActiveLanConnectivity()) {
+            resolveDrainTargets(pendingIds)
+        } else {
+            emptyList()
         }
-        if (sources.isEmpty()) {
-            deleteQueueItem(entity)
+        val routableIds = routableTargets.map { it.first }
+        val offLanIds = pendingIds.filter { it !in routableIds.toSet() }
+        if (routableTargets.isEmpty() && offLanIds.isEmpty()) {
             return
         }
 
@@ -266,40 +282,65 @@ class TransferQueueCoordinator(
             )
         )
 
-        val routableIds = routableTargets.map { it.first }
-        val options = routableTargets.map { it.second }
-        val batch = runCatching {
-            transferManager.sendToDevices(sources, options, skipTransferPrepare = false)
-        }.getOrElse { error ->
-            dao.upsert(
-                entity.copy(
-                    status = PendingTransferStatus.Queued.name,
-                    lastError = error.message,
-                    lastAttemptEpochMs = now,
-                    attemptCount = entity.attemptCount + 1
+        val delivered = mutableSetOf<String>()
+        var lastError: String? = null
+
+        if (offLanIds.isNotEmpty()) {
+            driveLog("queue drain via Drive for ${offLanIds.size} off-LAN destination(s)")
+            val outcome = relayOrQueueOffLan(sources, offLanIds)
+            delivered += outcome.relayedIds
+            if (outcome.queueReason == "drive_not_ready") {
+                startDriveGrantIfNeeded()
+                lastError = WAITING_DRIVE_GRANT
+            } else if (outcome.queueIds.isNotEmpty()) {
+                lastError = "Drive relay did not finish"
+            }
+        }
+
+        if (routableTargets.isNotEmpty()) {
+            val batch = runCatching {
+                transferManager.sendToDevices(
+                    sources,
+                    routableTargets.map { it.second },
+                    skipTransferPrepare = false
                 )
-            )
-            return
+            }.getOrElse { error ->
+                lastError = error.message
+                null
+            }
+            if (batch != null) {
+                val succeeded = batch.results.flatMap { it.succeededDeviceIds }.toSet()
+                delivered += routableIds.filter { it in succeeded }
+                val failedIds = routableIds.filter { id ->
+                    id !in succeeded && batch.results.any { id in it.failures }
+                }
+                if (failedIds.isNotEmpty()) {
+                    lastError = batch.summaryMessage
+                }
+            }
         }
 
-        val succeeded = batch.results.flatMap { it.succeededDeviceIds }.toSet()
-        val failedIds = routableIds.filter { id ->
-            id !in succeeded && batch.results.any { id in it.failures }
-        }
-        val stillPending = (pendingIds - routableIds.toSet()) + failedIds
-
+        val stillPending = pendingIds.filter { it !in delivered }
         if (stillPending.isEmpty()) {
             deleteQueueItem(entity)
-        } else {
-            val names = deviceNames(stillPending)
-            dao.upsert(
-                entity.copy(
-                    status = PendingTransferStatus.Queued.name,
-                    pendingDeviceIdsJson = json.encodeToString(stillPending),
-                    displayLabel = buildDisplayLabel(sourceSummaryFromEntity(entity), names),
-                    lastError = batch.summaryMessage.takeIf { failedIds.isNotEmpty() }
-                )
+            return
+        }
+        val names = deviceNames(stillPending)
+        dao.upsert(
+            entity.copy(
+                status = PendingTransferStatus.Queued.name,
+                pendingDeviceIdsJson = json.encodeToString(stillPending),
+                displayLabel = buildDisplayLabel(sourceSummaryFromEntity(entity), names),
+                lastError = lastError,
+                lastAttemptEpochMs = now,
+                attemptCount = entity.attemptCount + 1
             )
+        )
+        if (lastError != WAITING_DRIVE_GRANT && offLanIds.any { it in stillPending }) {
+            scope.launch {
+                delay(DRAIN_RETRY_BACKOFF_MS)
+                scheduleDrain()
+            }
         }
     }
 
@@ -325,11 +366,15 @@ class TransferQueueCoordinator(
     }
 
     private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? {
-        val reached = presenceMonitor.validatePeerOnDemand(peer)
-        if (!reached) return null
-        val live = deviceRepository.getDevice(peer.deviceId) ?: peer
-        return presenceMonitor.resolveOutboundEndpoint(live)?.let { it.host to it.port }
+        val direct = presenceMonitor.quickAssessLanReachability(peer) as? PeerLanReachabilityVerdict.Direct
+            ?: return null
+        return direct.host to direct.port
     }
+
+    suspend fun enqueueSources(
+        sources: List<MultiCopySource>,
+        deviceIds: List<String>
+    ): List<String> = enqueueSourcesInternal(sources, deviceIds)
 
     private suspend fun enqueueSourcesInternal(
         sources: List<MultiCopySource>,
@@ -373,21 +418,116 @@ class TransferQueueCoordinator(
             deviceRepository.getDevice(id)?.deviceName ?: id
         }
 
+    private data class OffLanRelayOutcome(
+        val relayedNames: List<String>,
+        val relayedIds: List<String> = emptyList(),
+        val queueIds: List<String>,
+        val desktopPendingNames: List<String>,
+        val queueReason: String? = null
+    )
+
+    private suspend fun relayOrQueueOffLan(
+        sources: List<MultiCopySource>,
+        deviceIds: List<String>
+    ): OffLanRelayOutcome {
+        if (deviceIds.isEmpty()) {
+            return OffLanRelayOutcome(emptyList(), emptyList(), emptyList(), emptyList())
+        }
+        if (!DriveRelayPolicy.ensureReadyForSend()) {
+            startDriveGrantIfNeeded()
+            return OffLanRelayOutcome(
+                relayedNames = emptyList(),
+                queueIds = deviceIds,
+                desktopPendingNames = emptyList(),
+                queueReason = "drive_not_ready"
+            )
+        }
+        if (DriveRelayPolicy.needsSendPrompt()) {
+            DriveRelayCoordinator.requestSendConfirmation(sources, deviceIds)
+            return OffLanRelayOutcome(emptyList(), emptyList(), emptyList(), emptyList())
+        }
+        if (!DriveRelayPolicy.canSend()) {
+            startDriveGrantIfNeeded()
+            return OffLanRelayOutcome(
+                relayedNames = emptyList(),
+                queueIds = deviceIds,
+                desktopPendingNames = emptyList(),
+                queueReason = "drive_not_ready"
+            )
+        }
+        val localSources = sources.filter { it is MultiCopySource.Local && it.absolutePath.isNotBlank() }
+        if (localSources.isEmpty()) {
+            return OffLanRelayOutcome(emptyList(), emptyList(), deviceIds, emptyList())
+        }
+        return runCatching {
+            val entries = DriveRelayCoordinator.uploadDirectTransfers(localSources, deviceIds)
+            val names = deviceNames(deviceIds)
+            DriveRelayNotifier.notifyPosted(
+                fileNames = entries.map { it.fileName }.distinct(),
+                targetNames = names
+            )
+            OffLanRelayOutcome(
+                relayedNames = names,
+                relayedIds = deviceIds,
+                queueIds = emptyList(),
+                desktopPendingNames = desktopNamesAmong(deviceIds)
+            )
+        }.getOrElse { error ->
+            driveLogError("Drive relay failed — queuing", error)
+            DriveRelayNotifier.notifyFailed(
+                fileName = localSources.firstOrNull()?.fileName.orEmpty(),
+                queued = true
+            )
+            OffLanRelayOutcome(emptyList(), emptyList(), deviceIds, emptyList())
+        }
+    }
+
+    private suspend fun desktopNamesAmong(deviceIds: List<String>): List<String> =
+        deviceIds.mapNotNull { id ->
+            val peer = deviceRepository.getDevice(id) ?: return@mapNotNull null
+            if (PeerPlatform.isDesktop(peer.os, peer.platform)) peer.deviceName else null
+        }
+
     private fun buildResult(
         batch: TransferBatchResult?,
         queuedNames: List<String>,
-        hadImmediateTargets: Boolean
+        hadImmediateTargets: Boolean,
+        relayedNames: List<String> = emptyList(),
+        pendingDesktopSyncNames: List<String> = emptyList(),
+        queueReason: String? = null
     ): QueueAwareSendResult {
-        val message = when {
-            queuedNames.isEmpty() -> batch?.summaryMessage ?: "Send complete"
-            !hadImmediateTargets -> queueOnlyMessage(queuedNames)
-            else -> {
-                val sentPart = batch?.summaryMessage ?: "Sent"
-                val queuePart = queueOnlyMessage(queuedNames)
-                "$sentPart ${queuePart.replaceFirstChar { it.lowercase() }}"
-            }
+        val sentPart = batch?.summaryMessage ?: "Sent"
+        val relayPart = relayMessage(relayedNames, pendingDesktopSyncNames)
+        val queuedPart = if (queueReason == "drive_not_ready") {
+            PeerReachabilityMessages.fileTransferOffWifiDriveNotReady(queuedNames)
+        } else {
+            queueOnlyMessage(queuedNames)
         }
-        return QueueAwareSendResult(batch, queuedNames, message)
+        val message = when {
+            queuedNames.isEmpty() && relayedNames.isEmpty() &&
+                DriveRelayCoordinator.pendingSendPrompt.value ->
+                "Confirm Cellular send to deliver via Google Drive Relay"
+            queuedNames.isEmpty() && relayedNames.isEmpty() -> sentPart
+            relayedNames.isNotEmpty() && queuedNames.isEmpty() && !hadImmediateTargets ->
+                relayPart
+            relayedNames.isNotEmpty() && queuedNames.isEmpty() ->
+                "$sentPart $relayPart"
+            !hadImmediateTargets -> queuedPart
+            else -> "$sentPart ${queuedPart.replaceFirstChar { it.lowercase() }}"
+        }
+        return QueueAwareSendResult(
+            batch = batch,
+            queuedDeviceNames = queuedNames,
+            message = message,
+            relayedDeviceNames = relayedNames,
+            pendingDesktopSyncNames = pendingDesktopSyncNames
+        )
+    }
+
+    private fun relayMessage(relayedNames: List<String>, desktopNames: List<String>): String {
+        val sent = "Sent via Google Drive Relay to ${relayedNames.joinToString(", ")}"
+        if (desktopNames.isEmpty()) return sent
+        return "$sent. Waiting for desktop Drive sync."
     }
 
     private fun queueOnlyMessage(deviceNames: List<String>): String =
@@ -501,6 +641,7 @@ class TransferQueueCoordinator(
     companion object {
         private const val DRAIN_TRIGGER_DEBOUNCE_MS = 750L
         private const val DRAIN_RETRY_BACKOFF_MS = 30_000L
+        private const val WAITING_DRIVE_GRANT = "Waiting for Google Drive grant"
     }
 }
 

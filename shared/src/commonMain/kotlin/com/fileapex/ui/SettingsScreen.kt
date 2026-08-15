@@ -90,6 +90,9 @@ import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.util.TimeUtils
 import com.fileapex.platform.rememberGoogleSignInLauncher
+import com.fileapex.platform.rememberGoogleDriveAuthLauncher
+import com.fileapex.cloud.drive.GoogleDriveAuth
+import com.fileapex.ui.dialogs.GoogleDrivePermissionDialog
 import com.fileapex.presentation.SettingsUiState
 import com.fileapex.presentation.SettingsViewModel
 import com.fileapex.ui.adaptive.CompactHomeTitleBand
@@ -110,6 +113,7 @@ private enum class SettingsPage {
     Clipboard,
     DeviceDetails,
     GoogleAccount,
+    Cellular,
     DesktopLayout,
     WindowsDesign
 }
@@ -146,6 +150,7 @@ fun SettingsScreen(
     onOpenAppDetailsSettings: () -> Unit = {},
     /** Android: gate cellular opt-in behind READ_PHONE_STATE; other platforms invoke [onProceed] immediately. */
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
+    onOpenTransferQueue: () -> Unit = {},
     viewModel: SettingsViewModel = viewModel { SettingsViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -183,6 +188,7 @@ fun SettingsScreen(
 
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
+            onOpenCellular = { page = SettingsPage.Cellular },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
@@ -190,7 +196,8 @@ fun SettingsScreen(
             onToggleSecurityAccountGroup = viewModel::toggleSecurityAccountGroup,
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             backgroundPersistence = backgroundPersistence,
-            exactAlarmWarningActive = exactAlarmWarningActive
+            exactAlarmWarningActive = exactAlarmWarningActive,
+            onOpenTransferQueue = onOpenTransferQueue
         )
         SettingsPage.Notifications -> NotificationsSettingsPage(
             state = state,
@@ -198,8 +205,8 @@ fun SettingsScreen(
             onBack = { page = SettingsPage.Root },
             onToggleFileTransferNotifications = viewModel::setFileTransferNotifications,
             onToggleNotesNotifications = viewModel::setNotesNotifications,
-            onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule,
-            onToggleLiveTransferShowQueue = viewModel::setLiveTransferShowQueue
+            onToggleDriveRelayNotifications = viewModel::setDriveRelayNotifications,
+            onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule
         )
         SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
             state = state,
@@ -281,6 +288,16 @@ fun SettingsScreen(
             onDisable = viewModel::disableGoogleAccountLink,
             onIdToken = viewModel::onGoogleIdToken
         )
+        SettingsPage.Cellular -> CellularSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onCellularChange = viewModel::setCellularEnabled,
+            onDriveRelayChange = viewModel::setGoogleDriveRelayEnabled,
+            onDriveAuthResult = viewModel::onGoogleDriveAuthResult,
+            onPurgeChange = viewModel::setDrivePurgeAfter72Hours,
+            onPurgeNow = viewModel::purgeDriveRelayNow
+        )
         SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
             state = state,
             layoutMode = layoutMode,
@@ -322,6 +339,7 @@ private fun SettingsRootPage(
 
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
+    onOpenCellular: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
     onToggleSystemPerformanceGroup: () -> Unit,
@@ -329,7 +347,8 @@ private fun SettingsRootPage(
     onToggleSecurityAccountGroup: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     backgroundPersistence: BackgroundPersistenceUiState,
-    exactAlarmWarningActive: Boolean
+    exactAlarmWarningActive: Boolean,
+    onOpenTransferQueue: () -> Unit = {}
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
     var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
@@ -338,7 +357,8 @@ private fun SettingsRootPage(
     SettingsPageShell(
         title = "Settings",
         layoutMode = layoutMode,
-        onBack = onBack.takeIf { showBackNavigation }
+        onBack = onBack.takeIf { showBackNavigation },
+        onOpenTransferQueue = onOpenTransferQueue
     ) { contentModifier ->
         Box(modifier = contentModifier.fillMaxSize()) {
             Column(
@@ -394,7 +414,12 @@ private fun SettingsRootPage(
                     )
                     SettingsNavItem(
                         title = "Notifications",
-                        subtitle = if (state.fileTransferNotificationsEnabled || state.liveTransferCapsuleEnabled) "On" else "Off",
+                        subtitle = if (
+                            state.notesNotificationsEnabled ||
+                            state.driveRelayNotificationsEnabled ||
+                            state.fileTransferNotificationsEnabled ||
+                            state.liveTransferCapsuleEnabled
+                        ) "On" else "Off",
                         onClick = onOpenNotifications
                     )
                     SettingsNavItem(
@@ -439,12 +464,18 @@ private fun SettingsRootPage(
                     )
                     SettingsNavItem(
                         title = "Google Account",
-                        subtitle = when {
-                            !state.googleAccountLinkEnabled -> "Off"
-                            state.googleAccountEmail.isNotBlank() -> state.googleAccountEmail
-                            else -> "On"
-                        },
+                        subtitle = if (state.googleAccountLinkEnabled) "Connected" else "Not Connected",
                         onClick = onOpenGoogleAccount
+                    )
+                    SettingsNavItem(
+                        title = "Cellular",
+                        subtitle = buildString {
+                            append(if (state.cellularEnabled) "On" else "Off")
+                            if (state.cellularEnabled && state.googleDriveRelayEnabled) {
+                                append(" · Drive Relay")
+                            }
+                        },
+                        onClick = onOpenCellular
                     )
                 }
             }
@@ -684,9 +715,10 @@ private fun NotificationsSettingsPage(
     onBack: () -> Unit,
     onToggleFileTransferNotifications: (Boolean) -> Unit,
     onToggleNotesNotifications: (Boolean) -> Unit,
-    onToggleLiveTransferCapsule: (Boolean) -> Unit,
-    onToggleLiveTransferShowQueue: (Boolean) -> Unit
+    onToggleDriveRelayNotifications: (Boolean) -> Unit,
+    onToggleLiveTransferCapsule: (Boolean) -> Unit
 ) {
+    val driveRelayReady = state.googleDriveRelayEnabled
     SettingsPageShell(
         title = "Notifications",
         layoutMode = layoutMode,
@@ -697,25 +729,10 @@ private fun NotificationsSettingsPage(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            FileApexPaneSectionHeader(title = "Transfers & Messages")
+            FileApexPaneSectionHeader(title = "Notifications")
 
             ListItem(
-                headlineContent = { Text("File Transfer Notifications") },
-                supportingContent = {
-                    Text("Show a notification after files are successfully received from paired devices.")
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.fileTransferNotificationsEnabled,
-                        onCheckedChange = onToggleFileTransferNotifications
-                    )
-                }
-            )
-
-            HorizontalDivider()
-
-            ListItem(
-                headlineContent = { Text("Notes & Messages Notifications") },
+                headlineContent = { Text("Notes") },
                 supportingContent = {
                     Text("Show a notification when new notes or shared messages arrive from paired devices.")
                 },
@@ -729,32 +746,54 @@ private fun NotificationsSettingsPage(
 
             HorizontalDivider()
 
-            FileApexPaneSectionHeader(title = "Live Transfer")
-
             ListItem(
-                headlineContent = { Text("Live Activity") },
+                headlineContent = { Text("Drive Relay") },
                 supportingContent = {
-                    Text("Shows progress of active transfers in a floating capsule.")
+                    Text(
+                        if (driveRelayReady) {
+                            "Alerts when FileApex posts or retrieves files through Google Drive Relay."
+                        } else {
+                            "Turns on after Google Drive Relay is enabled and granted in Cellular settings."
+                        }
+                    )
                 },
                 trailingContent = {
                     Switch(
-                        checked = state.liveTransferCapsuleEnabled,
-                        onCheckedChange = onToggleLiveTransferCapsule
+                        checked = driveRelayReady && state.driveRelayNotificationsEnabled,
+                        onCheckedChange = onToggleDriveRelayNotifications,
+                        enabled = driveRelayReady
                     )
                 }
             )
 
-            if (state.liveTransferCapsuleEnabled) {
+            HorizontalDivider()
+
+            ListItem(
+                headlineContent = { Text("File Transfer") },
+                supportingContent = {
+                    Text("Show a notification after files are successfully received from paired devices.")
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.fileTransferNotificationsEnabled,
+                        onCheckedChange = onToggleFileTransferNotifications
+                    )
+                }
+            )
+
+            if (!usesDesktopFileSelection()) {
                 ListItem(
                     modifier = Modifier.padding(start = 16.dp),
-                    headlineContent = { Text("Show Queue in Live Activity") },
+                    headlineContent = { Text("Live Activity") },
                     supportingContent = {
-                        Text("Persist capsule while items remain in pending queue.")
+                        Text("Shows progress of active file transfers in a floating capsule. Queued items use the header clock icon.")
                     },
                     trailingContent = {
                         Switch(
-                            checked = state.liveTransferShowQueueEnabled,
-                            onCheckedChange = onToggleLiveTransferShowQueue
+                            checked = state.fileTransferNotificationsEnabled &&
+                                state.liveTransferCapsuleEnabled,
+                            onCheckedChange = onToggleLiveTransferCapsule,
+                            enabled = state.fileTransferNotificationsEnabled
                         )
                     }
                 )
@@ -835,6 +874,142 @@ private fun ClipboardSettingsPage(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun CellularSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onCellularChange: (Boolean) -> Unit,
+    onDriveRelayChange: (Boolean) -> Unit,
+    onDriveAuthResult: (Boolean, String?) -> Unit,
+    onPurgeChange: (Boolean) -> Unit,
+    onPurgeNow: () -> Unit
+) {
+    val launchDriveAuth = rememberGoogleDriveAuthLauncher(onResult = onDriveAuthResult)
+    var showDrivePermission by remember { mutableStateOf(false) }
+
+    SettingsPageShell(
+        title = "Cellular",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Cellular") },
+                supportingContent = {
+                    Text(
+                        "Allow FileApex to send and receive files when this device is off local " +
+                            "Wi‑Fi, using Google Drive Relay. Requires a linked Google Account."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.cellularEnabled,
+                        onCheckedChange = { enabled ->
+                            if (enabled && !state.googleAccountLinkEnabled) {
+                                onCellularChange(false)
+                            } else {
+                                onCellularChange(enabled)
+                            }
+                        }
+                    )
+                }
+            )
+            ListItem(
+                headlineContent = { Text("Google Drive Relay") },
+                supportingContent = {
+                    Text(
+                        "Store relayed files in a FileApex Relay folder on your Google Drive. " +
+                            "FileApex cannot see your other Drive files. Desktop has no FCM, so it " +
+                            "checks that folder on launch and every 15 minutes when off Wi‑Fi."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.googleDriveRelayEnabled && GoogleDriveAuth.hasGrant(),
+                        enabled = state.cellularEnabled && state.googleAccountLinkEnabled,
+                        onCheckedChange = { enabled ->
+                            if (!enabled) {
+                                onDriveRelayChange(false)
+                            } else if (GoogleDriveAuth.hasGrant()) {
+                                onDriveRelayChange(true)
+                            } else {
+                                showDrivePermission = true
+                            }
+                        }
+                    )
+                }
+            )
+            ListItem(
+                headlineContent = { Text("Purge File(s) after 72 hours") },
+                supportingContent = {
+                    Text(
+                        "Delete unpinned Drive relay files 72 hours after upload. Direct " +
+                            "transfers are also removed as soon as the destination device retrieves them."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.drivePurgeAfter72Hours,
+                        enabled = state.cellularEnabled,
+                        onCheckedChange = onPurgeChange
+                    )
+                }
+            )
+            ListItem(
+                headlineContent = { Text("Delete relay files now") },
+                supportingContent = {
+                    Text(
+                        state.drivePurgeNowMessage
+                            ?: "Remove every file in FileApex Relay immediately, including " +
+                            "uploads that never downloaded. Does not wait 72 hours."
+                    )
+                },
+                trailingContent = {
+                    TextButton(
+                        onClick = onPurgeNow,
+                        enabled = state.googleAccountLinkEnabled &&
+                            GoogleDriveAuth.hasGrant() &&
+                            !state.drivePurgeNowBusy
+                    ) {
+                        Text(if (state.drivePurgeNowBusy) "Deleting…" else "Delete")
+                    }
+                }
+            )
+            if (!state.googleAccountLinkEnabled) {
+                Text(
+                    text = "Link a Google Account under Security & Account before enabling Cellular.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            state.googleDriveAuthError?.let { err ->
+                Text(
+                    text = err,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+
+    if (showDrivePermission) {
+        GoogleDrivePermissionDialog(
+            onGrant = {
+                showDrivePermission = false
+                launchDriveAuth()
+            },
+            onDismiss = { showDrivePermission = false }
+        )
     }
 }
 
@@ -1242,8 +1417,8 @@ private fun GoogleAccountSettingsPage(
                     Text(
                         "Opt-in only. Signs in with Google and registers this device’s public ID " +
                             "and LAN address in your private Firebase registry so other FileApex " +
-                            "apps on the same account can discover you. No files or folder " +
-                            "contents are ever uploaded."
+                            "apps on the same account can discover you. Files are uploaded only " +
+                            "when Cellular → Google Drive Relay is also enabled."
                     )
                 },
                 trailingContent = {
@@ -1293,6 +1468,7 @@ private fun SettingsPageShell(
     title: String,
     layoutMode: SettingsScreenLayoutMode,
     onBack: (() -> Unit)?,
+    onOpenTransferQueue: (() -> Unit)? = null,
     content: @Composable (Modifier) -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
@@ -1323,7 +1499,8 @@ private fun SettingsPageShell(
                     CompactHomeTitleBand(
                         primaryLine = "FileApex",
                         secondaryLine = title,
-                        style = CompactHomeTitleStyle.Prominent
+                        style = CompactHomeTitleStyle.Prominent,
+                        onOpenTransferQueue = onOpenTransferQueue
                     )
                 }
                 content(Modifier.weight(1f).fillMaxWidth())

@@ -35,8 +35,10 @@ class BaseAppSettings(
     private val clipboardSharing = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHARING, false))
     private val transferNotifications =
         MutableStateFlow(store.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
+    private val driveRelayNotificationsFlow =
+        MutableStateFlow(store.getBoolean(KEY_DRIVE_RELAY_NOTIFICATIONS, false))
     private val notesNotificationsFlow =
-        MutableStateFlow(store.getBoolean(KEY_NOTES_NOTIFICATIONS, false))
+        MutableStateFlow(loadNotesNotifications())
     private val notesNotificationPromptShownFlow =
         MutableStateFlow(store.getBoolean(KEY_NOTES_NOTIFICATION_PROMPT_SHOWN, false))
     private val liveTransferCapsuleFlow =
@@ -89,6 +91,21 @@ class BaseAppSettings(
     private val deviceDetailsAllowOverCellularFlow = MutableStateFlow(
         store.getBoolean(KEY_DEVICE_DETAILS_ALLOW_CELLULAR, false)
     )
+    private val cellularEnabledFlow = MutableStateFlow(
+        store.getBoolean(KEY_CELLULAR_ENABLED, false)
+    )
+    private val googleDriveRelayEnabledFlow = MutableStateFlow(
+        store.getBoolean(KEY_GOOGLE_DRIVE_RELAY, false)
+    )
+    private val drivePurgeAfter72HoursFlow = MutableStateFlow(
+        store.getBoolean(KEY_DRIVE_PURGE_AFTER_72H, true)
+    )
+    private val cellularSendPromptAcknowledgedFlow = MutableStateFlow(
+        store.getBoolean(KEY_CELLULAR_SEND_PROMPT_ACK, false)
+    )
+    private val cellularReceivePromptAcknowledgedFlow = MutableStateFlow(
+        store.getBoolean(KEY_CELLULAR_RECEIVE_PROMPT_ACK, false)
+    )
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
@@ -122,6 +139,8 @@ class BaseAppSettings(
     override val clipboardSharingEnabled: StateFlow<Boolean> = clipboardSharing.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
+    override val driveRelayNotificationsEnabled: StateFlow<Boolean> =
+        driveRelayNotificationsFlow.asStateFlow()
     override val notesNotificationsEnabled: StateFlow<Boolean> =
         notesNotificationsFlow.asStateFlow()
     override val notesNotificationPromptShown: StateFlow<Boolean> =
@@ -163,6 +182,15 @@ class BaseAppSettings(
         deviceDetailsDisplayPreferencesFlow.asStateFlow()
     override val deviceDetailsAllowOverCellular: StateFlow<Boolean> =
         deviceDetailsAllowOverCellularFlow.asStateFlow()
+    override val cellularEnabled: StateFlow<Boolean> = cellularEnabledFlow.asStateFlow()
+    override val googleDriveRelayEnabled: StateFlow<Boolean> =
+        googleDriveRelayEnabledFlow.asStateFlow()
+    override val drivePurgeAfter72Hours: StateFlow<Boolean> =
+        drivePurgeAfter72HoursFlow.asStateFlow()
+    override val cellularSendPromptAcknowledged: StateFlow<Boolean> =
+        cellularSendPromptAcknowledgedFlow.asStateFlow()
+    override val cellularReceivePromptAcknowledged: StateFlow<Boolean> =
+        cellularReceivePromptAcknowledgedFlow.asStateFlow()
 
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
@@ -199,6 +227,11 @@ class BaseAppSettings(
     override fun setFileTransferNotificationsEnabled(enabled: Boolean) {
         store.putBoolean(KEY_TRANSFER_NOTIFICATIONS, enabled)
         transferNotifications.value = enabled
+    }
+
+    override fun setDriveRelayNotificationsEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_DRIVE_RELAY_NOTIFICATIONS, enabled)
+        driveRelayNotificationsFlow.value = enabled
     }
 
     override fun setNotesNotificationsEnabled(enabled: Boolean) {
@@ -369,6 +402,31 @@ class BaseAppSettings(
         deviceDetailsAllowOverCellularFlow.value = enabled
     }
 
+    override fun setCellularEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CELLULAR_ENABLED, enabled)
+        cellularEnabledFlow.value = enabled
+    }
+
+    override fun setGoogleDriveRelayEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_GOOGLE_DRIVE_RELAY, enabled)
+        googleDriveRelayEnabledFlow.value = enabled
+    }
+
+    override fun setDrivePurgeAfter72Hours(enabled: Boolean) {
+        store.putBoolean(KEY_DRIVE_PURGE_AFTER_72H, enabled)
+        drivePurgeAfter72HoursFlow.value = enabled
+    }
+
+    override fun setCellularSendPromptAcknowledged(acknowledged: Boolean) {
+        store.putBoolean(KEY_CELLULAR_SEND_PROMPT_ACK, acknowledged)
+        cellularSendPromptAcknowledgedFlow.value = acknowledged
+    }
+
+    override fun setCellularReceivePromptAcknowledged(acknowledged: Boolean) {
+        store.putBoolean(KEY_CELLULAR_RECEIVE_PROMPT_ACK, acknowledged)
+        cellularReceivePromptAcknowledgedFlow.value = acknowledged
+    }
+
     override fun diagnosticsPrivateKeyBase64(): String = diagnosticsPrivateKeyBase64Stored.value
 
     override fun setDiagnosticsPrivateKeyBase64(value: String) {
@@ -380,6 +438,15 @@ class BaseAppSettings(
     /**
      * Pre-0.6.1a boot restart followed the service watchdog toggle; migrate once on first read.
      */
+    /** Unset Notes toggle follows the documented default (on), without overriding an explicit off. */
+    private fun loadNotesNotifications(): Boolean {
+        if (!store.contains(KEY_NOTES_NOTIFICATIONS)) {
+            store.putBoolean(KEY_NOTES_NOTIFICATIONS, true)
+            return true
+        }
+        return store.getBoolean(KEY_NOTES_NOTIFICATIONS, true)
+    }
+
     private fun loadAutoLaunchOnReboot(): Boolean {
         if (!store.contains(KEY_AUTO_LAUNCH_ON_REBOOT)) {
             val migrated = store.getBoolean(KEY_SERVICE_WATCHDOG, true)
@@ -396,6 +463,7 @@ class BaseAppSettings(
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
         const val KEY_CLIPBOARD_SHARING = "clipboard_sharing_enabled"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
+        const val KEY_DRIVE_RELAY_NOTIFICATIONS = "drive_relay_notifications_enabled"
         const val KEY_NOTES_NOTIFICATIONS = "notes_notifications_enabled"
         const val KEY_NOTES_NOTIFICATION_PROMPT_SHOWN = "notes_notification_prompt_shown"
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
@@ -424,6 +492,11 @@ class BaseAppSettings(
         const val KEY_DEVICES_VIEW_MODE = "devices_view_mode"
         const val KEY_DEVICE_DETAILS_DISPLAY = "device_details_display"
         const val KEY_DEVICE_DETAILS_ALLOW_CELLULAR = "device_details_allow_cellular"
+        const val KEY_CELLULAR_ENABLED = "cellular_enabled"
+        const val KEY_GOOGLE_DRIVE_RELAY = "google_drive_relay_enabled"
+        const val KEY_DRIVE_PURGE_AFTER_72H = "drive_purge_after_72h"
+        const val KEY_CELLULAR_SEND_PROMPT_ACK = "cellular_send_prompt_ack"
+        const val KEY_CELLULAR_RECEIVE_PROMPT_ACK = "cellular_receive_prompt_ack"
         const val KEY_DIAGNOSTICS_PRIVATE_KEY = "diagnostics_private_key_b64"
         const val KEY_KINETIC_NODE_OFFSETS = "kinetic_node_offsets"
         const val KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE = "settings_group_system_performance_expanded"

@@ -50,54 +50,24 @@ object FcmWakeBackend {
         )
     }
 
-    fun buildNotePayload(
-        targetToken: String,
-        sourceDeviceId: String,
-        noteId: String,
-        content: String?,
-        driveFileId: String?,
-        checksum: String?
-    ): Map<String, Any> {
-        val MAX_INLINE_BYTES = 3000
-        val contentBytes = content?.toByteArray(Charsets.UTF_8)
-        val isInline = contentBytes != null && contentBytes.size <= MAX_INLINE_BYTES
-
-        val dataMap = mutableMapOf(
-            FcmWakeProtocol.Keys.TYPE to if (isInline) FcmWakeProtocol.TYPE_NOTE_INLINE else FcmWakeProtocol.TYPE_NOTE_SYNC,
-            FcmWakeProtocol.Keys.SOURCE_DEVICE_ID to sourceDeviceId,
-            FcmWakeProtocol.Keys.NOTE_ID to noteId,
-            FcmWakeProtocol.Keys.EPOCH_MS to TimeUtils.now().toString()
-        )
-
-        if (isInline) {
-            dataMap[FcmWakeProtocol.Keys.CONTENT] = content!!
-        } else {
-            dataMap[FcmWakeProtocol.Keys.DRIVE_FILE_ID] = driveFileId.orEmpty()
-            dataMap[FcmWakeProtocol.Keys.CHECKSUM] = checksum.orEmpty()
-        }
-
-        return mapOf(
-            "message" to mapOf(
-                "token" to targetToken,
-                "data" to dataMap,
-                "android" to mapOf("priority" to "HIGH")
-            )
-        )
-    }
-
     suspend fun sendNoteWake(
         targetFcmToken: String,
         sourceDeviceId: String,
         noteId: String,
         content: String?,
         driveFileId: String?,
-        checksum: String?
+        checksum: String?,
+        attachmentName: String? = null,
+        attachmentSizeBytes: Long = 0L
     ): Boolean {
         val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
         if (targetFcmToken.isBlank() || noteId.isBlank()) return false
         val MAX_INLINE_BYTES = 3000
         val contentBytes = content?.toByteArray(Charsets.UTF_8)
-        val isInline = contentBytes != null && contentBytes.size <= MAX_INLINE_BYTES
+        val hasDriveFile = !driveFileId.isNullOrBlank()
+        val isInline = !hasDriveFile &&
+            contentBytes != null &&
+            contentBytes.size <= MAX_INLINE_BYTES
 
         val dataObj = buildJsonObject {
             put(
@@ -107,9 +77,19 @@ object FcmWakeBackend {
             put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
             put(FcmWakeProtocol.Keys.NOTE_ID, noteId)
             put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
-            if (isInline) {
-                put(FcmWakeProtocol.Keys.CONTENT, content.orEmpty())
-            } else {
+            if (!content.isNullOrBlank() && (isInline || contentBytes == null || contentBytes.size <= MAX_INLINE_BYTES)) {
+                put(FcmWakeProtocol.Keys.CONTENT, content)
+            }
+            if (hasDriveFile) {
+                put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId)
+                put(FcmWakeProtocol.Keys.CHECKSUM, checksum.orEmpty())
+                if (!attachmentName.isNullOrBlank()) {
+                    put(FcmWakeProtocol.Keys.ATTACHMENT_NAME, attachmentName)
+                }
+                if (attachmentSizeBytes > 0L) {
+                    put(FcmWakeProtocol.Keys.ATTACHMENT_SIZE, attachmentSizeBytes.toString())
+                }
+            } else if (!isInline) {
                 put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId.orEmpty())
                 put(FcmWakeProtocol.Keys.CHECKSUM, checksum.orEmpty())
             }
@@ -132,6 +112,28 @@ object FcmWakeBackend {
             put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_NOTE_DELETE)
             put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
             put(FcmWakeProtocol.Keys.NOTE_ID, noteId)
+        }
+        return FcmHttpV1Client.sendDataWake(
+            config = config,
+            targetToken = targetFcmToken,
+            data = dataObj
+        )
+    }
+
+    suspend fun sendDriveRelayPointer(
+        targetFcmToken: String,
+        sourceDeviceId: String,
+        entryId: String
+    ): Boolean {
+        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (targetFcmToken.isBlank()) return false
+        val dataObj = buildJsonObject {
+            put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_DRIVE_RELAY)
+            put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_DRIVE_RELAY)
+            put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
+            put(FcmWakeProtocol.Keys.ENTRY_ID, entryId)
+            put(FcmWakeProtocol.KEY_ENTRY_ID, entryId)
+            put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
         }
         return FcmHttpV1Client.sendDataWake(
             config = config,

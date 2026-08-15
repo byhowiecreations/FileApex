@@ -235,10 +235,9 @@ kotlin {
             implementation(libs.firebase.auth)
             implementation(libs.firebase.firestore)
             implementation(libs.firebase.messaging)
-            implementation(libs.androidx.credentials)
-            implementation(libs.androidx.credentials.play.services)
-            implementation(libs.googleid)
             implementation(libs.kotlinx.coroutines.play.services)
+            implementation(libs.androidx.work.runtime)
+            implementation(libs.play.services.auth)
         }
 
         val androidUnitTest by getting {
@@ -270,7 +269,9 @@ android {
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
         val webClientId = resolvedWebClientId()
-        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$webClientId\"")
+        val webClientSecret = resolvedWebClientSecret()
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${escapeKotlinString(webClientId)}\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_SECRET", "\"${escapeKotlinString(webClientSecret)}\"")
     }
 
     buildFeatures {

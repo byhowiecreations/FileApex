@@ -1,5 +1,6 @@
 package com.fileapex.domain.presence
 
+import com.fileapex.cloud.drive.DriveRelayCoordinator
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
@@ -54,6 +55,7 @@ object PresenceNetworkRevalidator {
             return
         }
 
+        DriveRelayCoordinator.onLeftLocalNetwork()
         FileApexServices.presenceMonitor.runSingleShotRevalidation()
         runCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
             println("PresenceNetworkRevalidator: queue drain failed — ${error.message}")

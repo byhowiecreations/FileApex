@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.di.FileApexServices
@@ -37,7 +38,10 @@ actual fun notifyFilesReceived(fileNames: List<String>) {
     val body = fileNames.joinToString(separator = ", ")
 
     val notification = NotificationCompat.Builder(notifierContext, AndroidNotificationChannels.TRANSFER_RECEIVE)
-        .setSmallIcon(android.R.drawable.stat_sys_download_done)
+        .setSmallIcon(AndroidNotificationChannels.smallIcon)
+        .setLargeIcon(
+            BitmapFactory.decodeResource(notifierContext.resources, AndroidNotificationChannels.largeIcon)
+        )
         .setContentTitle(title)
         .setContentText(body)
         .setStyle(NotificationCompat.BigTextStyle().bigText(body))

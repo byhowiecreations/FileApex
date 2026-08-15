@@ -30,6 +30,8 @@ bouncycastle = "1.78.1"
 junit = "4.13.2"
 robolectric = "4.14.1"
 androidx-test-core = "1.6.1"
+work = "2.10.2"
+play-services-auth = "21.3.0"
 
 [libraries]
 junit = { module = "junit:junit", version.ref = "junit" }
@@ -81,6 +83,8 @@ firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "credentials" }
 androidx-credentials-play-services = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
+androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "play-services-auth" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
