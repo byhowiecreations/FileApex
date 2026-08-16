@@ -24,7 +24,8 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 * **Check for Updates:** Install newer builds from GitHub Releases (**opt-in**).
 * **Google Account (opt-in):** Cloud presence / wake helpers only — files stay on your LAN.
 * **Themes:** Choose from different themes and layouts to make it suit your preference.
-* **Notes:** Bringing "Send Message" feature of Pushbullet to FileApex. When you send a Note it goes to all paired devices. You can also delete messages from just one device or from all of them with the click of a button. If you opt-in to Google Account the Notes will also push to any paired Android device on cellular.
+* **Bulletin Board:** Bringing "Send Message" feature of Pushbullet to FileApex. You can now send a text message or file attachment in a single place and it goes to all paired devices. You can also delete messages from just one device or from all of them with the click of a button (deleted messages also remove the notification if it is still sitting in Notification Shade on Android). If you opt-in to Google Account the Bulletin Board will also push to any paired Android device on cellular.
+* **Low Battery Alert:** Great for those with multiple Android devices - FileApex will listen for Android low battery system message and post that in the Bulletin Board for you to see from your other devices. Once it is plugged in and charging that device will remove the notice from the board.
 
 
 ## Local Configuration
