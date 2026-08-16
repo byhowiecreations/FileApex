@@ -10,11 +10,11 @@ import org.jetbrains.skia.FilterMipmap
 import org.jetbrains.skia.FilterMode
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.MipmapMode
-import org.jetbrains.skia.Paint
 import org.jetbrains.skia.Rect
 
-actual fun decodeImageBytes(bytes: ByteArray): ImageBitmap? {
+actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
     if (bytes.isEmpty()) return null
+    val edge = maxEdge.coerceAtLeast(16)
     return runCatching {
         val codec = Codec.makeFromData(Data.makeFromBytes(bytes))
         val srcWidth = codec.width
@@ -24,8 +24,8 @@ actual fun decodeImageBytes(bytes: ByteArray): ImageBitmap? {
         val sampleSize = calculateInSampleSize(
             width = srcWidth,
             height = srcHeight,
-            maxWidth = MAX_DECODE_EDGE,
-            maxHeight = MAX_DECODE_EDGE
+            maxWidth = edge,
+            maxHeight = edge
         )
         val full = Image.makeFromEncoded(bytes)
         if (sampleSize <= 1) {
@@ -65,5 +65,3 @@ private fun calculateInSampleSize(
     }
     return inSampleSize.coerceAtLeast(1)
 }
-
-private const val MAX_DECODE_EDGE = 2048

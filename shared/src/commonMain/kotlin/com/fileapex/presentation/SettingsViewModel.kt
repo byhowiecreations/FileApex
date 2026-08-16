@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.DriveRelayMaxMb
 
 data class SettingsUiState(
     val googleAccountLinkEnabled: Boolean = false,
@@ -54,6 +55,7 @@ data class SettingsUiState(
     val deviceDetailsAllowOverCellular: Boolean = false,
     val cellularEnabled: Boolean = false,
     val googleDriveRelayEnabled: Boolean = false,
+    val driveRelayMaxMb: DriveRelayMaxMb = DriveRelayMaxMb.DEFAULT,
     val drivePurgeAfter72Hours: Boolean = true,
     val googleDriveAuthError: String? = null,
     val drivePurgeNowBusy: Boolean = false,
@@ -94,6 +96,7 @@ class SettingsViewModel : ViewModel() {
             deviceDetailsAllowOverCellular = settings.deviceDetailsAllowOverCellular.value,
             cellularEnabled = settings.cellularEnabled.value,
             googleDriveRelayEnabled = settings.googleDriveRelayEnabled.value,
+            driveRelayMaxMb = settings.driveRelayMaxMb.value,
             drivePurgeAfter72Hours = settings.drivePurgeAfter72Hours.value,
             kineticSphereCleanMode = settings.kineticSphereCleanMode.value,
             kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
@@ -486,6 +489,11 @@ class SettingsViewModel : ViewModel() {
                 com.fileapex.platform.DriveRelayNotifier.onDriveEnabledAndGranted()
             }
         }
+    }
+
+    fun setDriveRelayMaxMb(limit: DriveRelayMaxMb) {
+        settings.setDriveRelayMaxMb(limit)
+        _uiState.update { it.copy(driveRelayMaxMb = limit) }
     }
 
     fun setDrivePurgeAfter72Hours(enabled: Boolean) {

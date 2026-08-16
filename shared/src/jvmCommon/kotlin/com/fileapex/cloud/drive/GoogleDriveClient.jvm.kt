@@ -25,6 +25,8 @@ import java.io.RandomAccessFile
 import java.security.MessageDigest
 import kotlin.math.min
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -42,6 +44,7 @@ actual object GoogleDriveClient {
     private const val FOLDER_MIME = "application/vnd.google-apps.folder"
 
     private val json = Json { ignoreUnknownKeys = true }
+    private val ledgerFileMutex = Mutex()
     private var cachedFolderId: String? = null
     private var cachedLogFileId: String? = null
 
@@ -138,7 +141,7 @@ actual object GoogleDriveClient {
                 }
             }
             cachedLogFileId = null
-            createLogFile(token)
+            resolveLogFileId(token, allowCreate = true)
             deleted
         }
     }
@@ -171,45 +174,13 @@ actual object GoogleDriveClient {
     actual suspend fun loadLedger(ifNoneMatch: String?): DriveLedgerSnapshot {
         return authorized { token ->
             retryOnRateLimit {
-                val logId = resolveLogFileId(token)
-                val meta = getFileMetadata(token, logId, ifNoneMatch)
-                if (meta.status == 304) {
-                    return@retryOnRateLimit DriveLedgerSnapshot(
-                        ledger = DriveLedger(),
-                        etag = ifNoneMatch,
-                        logFileId = logId,
-                        notModified = true
-                    )
-                }
-                if (meta.status == 404) {
-                    cachedLogFileId = null
-                    val created = createLogFile(token)
-                    return@retryOnRateLimit DriveLedgerSnapshot(
-                        DriveLedger(),
-                        created.second,
-                        created.first
-                    )
-                }
-                val media = FileApexServices.httpClient.get("$FILES_URL/$logId") {
-                    header(HttpHeaders.Authorization, "Bearer $token")
-                    parameter("alt", "media")
-                    driveApiTimeout()
-                }
-                throwIfDriveFailed(media, "Drive ledger")
-                if (media.status.value == 404) {
-                    cachedLogFileId = null
-                    val created = createLogFile(token)
-                    return@retryOnRateLimit DriveLedgerSnapshot(
-                        DriveLedger(),
-                        created.second,
-                        created.first
-                    )
-                }
-                DriveLedgerSnapshot(
-                    ledger = DriveLedgerCodec.parse(media.bodyAsText()),
-                    etag = meta.etag,
-                    logFileId = logId
-                )
+                val logId = resolveLogFileId(token, allowCreate = true)
+                val snapshot = readLedgerFile(token, logId, ifNoneMatch)
+                if (snapshot != null) return@retryOnRateLimit snapshot
+                cachedLogFileId = null
+                val recovered = resolveLogFileId(token, allowCreate = true)
+                readLedgerFile(token, recovered, ifNoneMatch = null)
+                    ?: DriveLedgerSnapshot(DriveLedger(), null, recovered)
             }
         }
     }
@@ -222,30 +193,35 @@ actual object GoogleDriveClient {
         val bytes = markdown.toByteArray(Charsets.UTF_8)
         return authorized { token ->
             retryOnRateLimit {
-                val logId = resolveLogFileId(token)
-                val match = ifMatchEtag?.takeIf { it.isNotBlank() }
-                    ?: getFileMetadata(token, logId, ifNoneMatch = null).etag
-                val patch = FileApexServices.httpClient.patch("$UPLOAD_URL/$logId") {
-                    header(HttpHeaders.Authorization, "Bearer $token")
-                    parameter("uploadType", "media")
-                    driveApiTimeout()
-                    if (!match.isNullOrBlank()) {
-                        header(HttpHeaders.IfMatch, match)
+                val preferred = cachedLogFileId
+                if (!preferred.isNullOrBlank()) {
+                    val first = patchLedgerFile(token, preferred, bytes, ifMatchEtag)
+                    if (!first.missing) {
+                        return@retryOnRateLimit DriveLedgerSnapshot(ledger, first.etag, preferred)
                     }
-                    contentType(ContentType.parse("text/markdown"))
-                    setBody(bytes)
+                    cachedLogFileId = null
                 }
-                when (patch.status.value) {
-                    401 -> throw DriveUnauthorizedException("Drive ledger save unauthorized")
-                    412 -> throw DriveHttpException(412, "Ledger etag mismatch")
-                    429 -> throw DriveHttpException(429, patch.bodyAsText())
+                val listed = listLogFiles(token)
+                if (listed.isNotEmpty()) {
+                    val logId = pickCanonicalLogId(listed, preferred)
+                    cachedLogFileId = logId
+                    val patched = patchLedgerFile(token, logId, bytes, ifMatchEtag = null)
+                    if (!patched.missing) {
+                        return@retryOnRateLimit DriveLedgerSnapshot(ledger, patched.etag, logId)
+                    }
                 }
-                if (!patch.status.isSuccess()) {
-                    throw DriveHttpException(patch.status.value, patch.bodyAsText())
+                val created = createLogFile(token)
+                val seeded = patchLedgerFile(
+                    token,
+                    created,
+                    bytes,
+                    ifMatchEtag = null,
+                    skipExistsCheck = true
+                )
+                if (seeded.missing) {
+                    throw DriveHttpException(404, "Drive ledger write failed")
                 }
-                val etag = patch.headers[HttpHeaders.ETag]
-                    ?: getFileMetadata(token, logId, ifNoneMatch = null).etag
-                DriveLedgerSnapshot(ledger, etag, logId)
+                DriveLedgerSnapshot(ledger, seeded.etag, created)
             }
         }
     }
@@ -345,22 +321,85 @@ actual object GoogleDriveClient {
         return id
     }
 
-    private suspend fun resolveLogFileId(token: String): String {
-        cachedLogFileId?.let { return it }
-        val folderId = resolveRelayFolderId(token)
-        val existing = findFileId(
-            token,
-            "name='${DriveLedgerCodec.LOG_FILE_NAME}' and '$folderId' in parents and trashed=false"
-        )
-        if (!existing.isNullOrBlank()) {
-            cachedLogFileId = existing
-            return existing
+    private suspend fun resolveLogFileId(token: String, allowCreate: Boolean): String {
+        return ledgerFileMutex.withLock {
+            val cached = cachedLogFileId
+            if (!cached.isNullOrBlank()) {
+                val meta = getFileMetadata(token, cached, ifNoneMatch = null)
+                if (meta.status != 404) return@withLock cached
+                cachedLogFileId = null
+            }
+            var existing = listLogFiles(token)
+            if (existing.isEmpty() && allowCreate) {
+                delay(400)
+                existing = listLogFiles(token)
+            }
+            if (existing.isNotEmpty()) {
+                return@withLock adoptCanonicalLogFile(token, existing, cached)
+            }
+            if (!allowCreate) {
+                throw DriveHttpException(404, "Drive ledger not found")
+            }
+            createLogFile(token)
         }
-        val created = createLogFile(token)
-        return created.first
     }
 
-    private suspend fun createLogFile(token: String): Pair<String, String?> {
+    private fun pickCanonicalLogId(files: List<DriveLogFile>, preferId: String?): String {
+        val preferred = preferId?.takeIf { id -> files.any { it.id == id } }
+        if (!preferred.isNullOrBlank()) return preferred
+        return files.minWith(compareBy<DriveLogFile> { it.createdTime }.thenBy { it.id }).id
+    }
+
+    private suspend fun listLogFiles(token: String): List<DriveLogFile> {
+        val folderId = resolveRelayFolderId(token)
+        val files = mutableListOf<DriveLogFile>()
+        var pageToken: String? = null
+        do {
+            val listed = FileApexServices.httpClient.get(FILES_URL) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                parameter(
+                    "q",
+                    "name='${DriveLedgerCodec.LOG_FILE_NAME}' and '$folderId' in parents and trashed=false"
+                )
+                parameter("pageSize", "100")
+                parameter("fields", "files(id,createdTime),nextPageToken")
+                if (!pageToken.isNullOrBlank()) {
+                    parameter("pageToken", pageToken)
+                }
+                driveApiTimeout()
+            }
+            throwIfDriveFailed(listed, "Drive log list")
+            val obj = json.parseToJsonElement(listed.bodyAsText()).jsonObject
+            obj["files"]?.jsonArray.orEmpty().forEach { element ->
+                val id = element.jsonObject["id"]?.jsonPrimitive?.contentOrNull
+                if (id.isNullOrBlank()) return@forEach
+                val created = element.jsonObject["createdTime"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                files += DriveLogFile(id, created)
+            }
+            pageToken = obj["nextPageToken"]?.jsonPrimitive?.contentOrNull
+        } while (!pageToken.isNullOrBlank())
+        return files
+    }
+
+    private suspend fun adoptCanonicalLogFile(
+        token: String,
+        files: List<DriveLogFile>,
+        preferId: String?
+    ): String {
+        val canonicalId = pickCanonicalLogId(files, preferId)
+        cachedLogFileId = canonicalId
+        val extras = files.filter { it.id != canonicalId }
+        if (extras.isNotEmpty()) {
+            driveLog("collapsing ${extras.size} extra log.md onto $canonicalId")
+            for (extra in extras) {
+                runCatching { deleteFileById(token, extra.id) }
+                    .onFailure { error -> driveLogError("failed to remove extra log.md", error) }
+            }
+        }
+        return canonicalId
+    }
+
+    private suspend fun createLogFile(token: String): String {
         val folderId = resolveRelayFolderId(token)
         val metadata =
             """{"name":"${DriveLedgerCodec.LOG_FILE_NAME}","parents":[${jsonString(folderId)}]}"""
@@ -386,9 +425,85 @@ actual object GoogleDriveClient {
             setBody(seed)
         }
         throwIfDriveFailed(media, "Drive ledger seed")
-        val etag = media.headers[HttpHeaders.ETag]
-            ?: getFileMetadata(token, id, ifNoneMatch = null).etag
-        return id to etag
+        return id
+    }
+
+    private suspend fun readLedgerFile(
+        token: String,
+        logId: String,
+        ifNoneMatch: String?
+    ): DriveLedgerSnapshot? {
+        val meta = getFileMetadata(token, logId, ifNoneMatch)
+        if (meta.status == 304) {
+            return DriveLedgerSnapshot(
+                ledger = DriveLedger(),
+                etag = ifNoneMatch,
+                logFileId = logId,
+                notModified = true
+            )
+        }
+        if (meta.status == 404) return null
+        val media = FileApexServices.httpClient.get("$FILES_URL/$logId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("alt", "media")
+            driveApiTimeout()
+        }
+        throwIfDriveFailed(media, "Drive ledger")
+        if (media.status.value == 404) return null
+        return DriveLedgerSnapshot(
+            ledger = DriveLedgerCodec.parse(media.bodyAsText()),
+            etag = meta.etag,
+            logFileId = logId
+        )
+    }
+
+    private suspend fun patchLedgerFile(
+        token: String,
+        logId: String,
+        bytes: ByteArray,
+        ifMatchEtag: String?,
+        skipExistsCheck: Boolean = false
+    ): LedgerPatchResult {
+        if (!skipExistsCheck) {
+            val meta = getFileMetadata(token, logId, ifNoneMatch = null)
+            if (meta.status == 404) return LedgerPatchResult(missing = true, etag = null)
+        }
+        val match = ifMatchEtag?.takeIf { it.isNotBlank() }
+        val patch = FileApexServices.httpClient.patch("$UPLOAD_URL/$logId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("uploadType", "media")
+            driveApiTimeout()
+            if (!match.isNullOrBlank()) {
+                header(HttpHeaders.IfMatch, match)
+            }
+            contentType(ContentType.parse("text/markdown"))
+            setBody(bytes)
+        }
+        when (patch.status.value) {
+            401 -> throw DriveUnauthorizedException("Drive ledger save unauthorized")
+            404 -> return LedgerPatchResult(missing = true, etag = null)
+            412 -> throw DriveHttpException(412, "Ledger etag mismatch")
+            429 -> throw DriveHttpException(429, patch.bodyAsText())
+        }
+        if (!patch.status.isSuccess()) {
+            throw DriveHttpException(patch.status.value, patch.bodyAsText())
+        }
+        val etag = patch.headers[HttpHeaders.ETag]
+            ?: getFileMetadata(token, logId, ifNoneMatch = null).etag
+        return LedgerPatchResult(missing = false, etag = etag)
+    }
+
+    private suspend fun deleteFileById(token: String, fileId: String) {
+        if (fileId.isBlank()) return
+        val response = FileApexServices.httpClient.delete("$FILES_URL/$fileId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            driveApiTimeout()
+        }
+        if (response.status.value == 401) throw DriveUnauthorizedException("Drive delete unauthorized")
+        if (response.status.value == 404) return
+        if (!response.status.isSuccess()) {
+            throw DriveHttpException(response.status.value, response.bodyAsText())
+        }
     }
 
     private suspend fun findFileId(token: String, query: String): String? {
@@ -409,6 +524,10 @@ actual object GoogleDriveClient {
             ?.jsonPrimitive
             ?.contentOrNull
     }
+
+    private data class DriveLogFile(val id: String, val createdTime: String)
+
+    private data class LedgerPatchResult(val missing: Boolean, val etag: String?)
 
     private data class DriveMeta(val status: Int, val etag: String?)
 

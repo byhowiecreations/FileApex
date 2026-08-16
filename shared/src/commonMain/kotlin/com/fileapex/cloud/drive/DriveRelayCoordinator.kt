@@ -17,9 +17,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
@@ -100,6 +102,7 @@ object DriveRelayCoordinator {
             driveLog("FCM Drive pointer ignored - relay not ready to receive")
             return
         }
+        DriveSyncScheduler.enqueueImmediateSweep()
         scope.launch {
             runCatching { sweep(forceReload = true) }
                 .onFailure { error ->
@@ -163,12 +166,16 @@ object DriveRelayCoordinator {
         pendingSendDeviceIds = emptyList()
     }
 
-    suspend fun uploadNoteAttachment(localPath: String, displayName: String): DriveLedgerEntry {
+    suspend fun uploadNoteAttachment(
+        localPath: String,
+        displayName: String,
+        noteId: String = ""
+    ): DriveLedgerEntry {
         require(DriveRelayPolicy.canSend()) { "Cellular Google Drive Relay is not enabled" }
         val fileLen = SystemFileSystem.metadataOrNull(Path(localPath))?.size
             ?: error("Attachment file not found")
-        require(fileLen <= DriveRelayPolicy.NOTES_ATTACHMENT_MAX_BYTES) {
-            "Notes attachments must be under 5 MB"
+        require(!DriveRelayPolicy.payloadExceedsRelayLimit(fileLen)) {
+            DriveRelayPolicy.relayLimitExceededMessage(fileLen)
         }
         val uploaded = GoogleDriveClient.uploadResumable(localPath, uniqueRemoteName(displayName))
         val selfId = loadLocalIdentity().deviceId
@@ -187,7 +194,8 @@ object DriveRelayCoordinator {
                 DriveTargetStatus(selfId, DriveDeliveryStates.RETRIEVED, TimeUtils.now())
             ),
             pinned = false,
-            relativeDestPath = displayName
+            relativeDestPath = displayName,
+            noteId = noteId
         )
         appendLedger(entry)
         FcmWakeCoordinator.dispatchDriveRelayPointer(entry.entryId)
@@ -202,6 +210,9 @@ object DriveRelayCoordinator {
         val selfId = loadLocalIdentity().deviceId
         val created = mutableListOf<DriveLedgerEntry>()
         require(sources.isNotEmpty()) { "Nothing to send via Google Drive Relay" }
+        require(!DriveRelayPolicy.payloadExceedsRelayLimit(sources.map { it.sizeBytes })) {
+            DriveRelayPolicy.relayLimitExceededMessage(sources.map { it.sizeBytes })
+        }
         for (source in sources) {
             require(source.absolutePath.isNotBlank()) {
                 "Drive relay source path is missing for ${source.fileName}"
@@ -263,6 +274,24 @@ object DriveRelayCoordinator {
         }
     }
 
+    suspend fun deleteNoteAttachment(driveFileId: String) {
+        if (driveFileId.isBlank()) return
+        if (!GoogleDriveAuth.hasGrant()) return
+        withContext(Dispatchers.IO) {
+            runCatching { GoogleDriveClient.deleteFile(driveFileId) }
+            mutex.withLock {
+                mutateLedger { ledger ->
+                    ledger.copy(
+                        entries = ledger.entries.filterNot { entry ->
+                            entry.driveFileId == driveFileId &&
+                                entry.kind == DriveLedgerKinds.NOTE_ATTACHMENT
+                        }
+                    )
+                }
+            }
+        }
+    }
+
     suspend fun purgeRelayNow(): Int {
         mutex.withLock {
             val deleted = GoogleDriveClient.purgeRelayFolder()
@@ -283,16 +312,24 @@ object DriveRelayCoordinator {
             driveLog("sweep skipped - no Drive grant")
             return
         }
+        val retries = if (forceReload) DriveRelayPolicy.RECEIVE_RETRIES else 0
+        var attempt = 0
+        while (true) {
+            val error = runCatching { sweepOnce(forceReload) }.exceptionOrNull() ?: return
+            if (error is CancellationException) throw error
+            driveLogError("ledger sweep attempt ${attempt + 1} failed", error)
+            if (attempt >= retries) return
+            delay(DriveRelayPolicy.receiveRetryDelayMs())
+            attempt += 1
+        }
+    }
+
+    private suspend fun sweepOnce(forceReload: Boolean) {
         mutex.withLock {
             driveLog("sweep start forceReload=$forceReload")
-            val snapshot = runCatching {
-                val etagHint = cachedEtag.takeIf { !forceReload && cachedLedger != null }
-                GoogleDriveClient.loadLedger(etagHint)
-            }.getOrElse { error ->
-                if (error is CancellationException) throw error
-                driveLogError("ledger load failed", error)
-                return
-            }
+            val snapshot = GoogleDriveClient.loadLedger(
+                cachedEtag.takeIf { !forceReload && cachedLedger != null }
+            )
             val loaded = if (snapshot.notModified) {
                 cachedLedger ?: return
             } else {
@@ -308,7 +345,8 @@ object DriveRelayCoordinator {
             val inbound = ledger.entries.filter { entry ->
                 entry.sourceDeviceId != selfId &&
                     (entry.targetScope == DriveLedgerScope.BROADCAST || entry.targetScope == selfId) &&
-                    !entry.isRetrievedBy(selfId)
+                    !entry.isRetrievedBy(selfId) &&
+                    !FileApexServices.noteRepository.isRetracted(null, entry.driveFileId, entry.contentHash)
             }
             driveLog(
                 "ledger entries=${ledger.entries.size} inbound=${inbound.size} self=$selfId"
@@ -322,13 +360,26 @@ object DriveRelayCoordinator {
                     driveLog("retrieving ${inbound.size} Drive file(s)")
                 }
                 val retrievedNames = mutableListOf<String>()
+                val goneIds = mutableSetOf<String>()
                 for (entry in inbound) {
                     val key = "${entry.entryId}:${selfId}"
                     if (key in processedHashes) continue
-                    val ok = retrieveWithRetries(entry)
-                    if (ok) {
+                    val result = retrieveWithRetries(entry)
+                    if (result == RetrieveResult.GONE) {
+                        goneIds += entry.entryId
+                        dirty = true
+                        continue
+                    }
+                    if (result == RetrieveResult.OK) {
                         processedHashes += key
-                        retrievedNames += entry.fileName
+                        if (entry.kind == DriveLedgerKinds.FILE_TRANSFER &&
+                            !FileApexServices.noteRepository.containsNoteOrChecksum(
+                                entry.noteId,
+                                entry.contentHash
+                            )
+                        ) {
+                            retrievedNames += entry.fileName
+                        }
                         ledger = ledger.copy(
                             entries = ledger.entries.map { current ->
                                 if (current.entryId == entry.entryId) {
@@ -340,6 +391,11 @@ object DriveRelayCoordinator {
                         )
                         dirty = true
                     }
+                }
+                if (goneIds.isNotEmpty()) {
+                    ledger = ledger.copy(
+                        entries = ledger.entries.filterNot { it.entryId in goneIds }
+                    )
                 }
                 if (retrievedNames.isNotEmpty()) {
                     DriveRelayNotifier.notifyRetrieved(retrievedNames)
@@ -362,13 +418,17 @@ object DriveRelayCoordinator {
                 dirty = true
             }
             if (dirty) {
-                runCatching {
-                    val saved = GoogleDriveClient.saveLedger(ledger, snapshot.etag ?: cachedEtag)
-                    cachedLedger = saved.ledger
-                    cachedEtag = saved.etag
-                }.onFailure { error ->
-                    driveLogError("ledger save failed", error)
+                val saved = runCatching {
+                    GoogleDriveClient.saveLedger(ledger, snapshot.etag ?: cachedEtag)
+                }.getOrElse { error ->
+                    if (error is DriveHttpException && error.status == 412) {
+                        cachedLedger = null
+                        cachedEtag = null
+                    }
+                    throw error
                 }
+                cachedLedger = saved.ledger
+                cachedEtag = saved.etag
             }
         }
     }
@@ -381,21 +441,38 @@ object DriveRelayCoordinator {
         _pendingReceivePrompt.value = false
     }
 
-    private suspend fun retrieveWithRetries(entry: DriveLedgerEntry): Boolean {
+    private suspend fun retrieveWithRetries(entry: DriveLedgerEntry): RetrieveResult {
         var attempt = 0
-        while (attempt < 3) {
-            val ok = runCatching { retrieveEntry(entry) }.getOrElse { error ->
+        while (true) {
+            val result = runCatching { retrieveEntry(entry) }.getOrElse { error ->
                 if (error is CancellationException) throw error
+                if (error is DriveHttpException && error.status == 404) {
+                    driveLog("retrieve gone ${entry.fileName}")
+                    return RetrieveResult.GONE
+                }
                 driveLogError("retrieve ${entry.entryId} attempt ${attempt + 1} failed", error)
-                false
+                RetrieveResult.FAILED
             }
-            if (ok) return true
+            if (result == RetrieveResult.OK || result == RetrieveResult.GONE) return result
+            if (attempt >= DriveRelayPolicy.RECEIVE_RETRIES) return RetrieveResult.FAILED
+            delay(DriveRelayPolicy.receiveRetryDelayMs())
             attempt += 1
         }
-        return false
     }
 
-    private suspend fun retrieveEntry(entry: DriveLedgerEntry): Boolean {
+    private suspend fun retrieveEntry(entry: DriveLedgerEntry): RetrieveResult {
+        val already = FileApexServices.noteRepository.existingLocalAttachment(
+            noteId = entry.noteId,
+            driveFileId = entry.driveFileId,
+            checksum = entry.contentHash,
+            fileName = entry.fileName,
+            sizeBytes = entry.sizeBytes
+        )
+        if (!already.isNullOrBlank()) {
+            driveLog("retrieve already held as note ${entry.fileName}")
+            bindRetrievedNote(entry, already)
+            return RetrieveResult.OK
+        }
         val destRoot = defaultDownloadsDir()
         val relative = entry.relativeDestPath.ifBlank { entry.fileName }
         val preferred = "${destRoot.trimEnd('/', '\\')}/${relative.trimStart('/', '\\')}"
@@ -407,7 +484,7 @@ object DriveRelayCoordinator {
         ) {
             driveLog("retrieve already on disk ${entry.fileName} bytes=$existingSize")
             bindRetrievedNote(entry, preferred)
-            return true
+            return RetrieveResult.OK
         }
         val destPath = if (SystemFileSystem.exists(preferredPath)) {
             UniqueFileNames.resolve(preferred)
@@ -418,11 +495,11 @@ object DriveRelayCoordinator {
         driveLog("retrieve ${entry.fileName} bytes=${entry.sizeBytes} dest=$destPath")
         GoogleDriveClient.downloadToPath(entry.driveFileId, partPath, entry.sizeBytes)
         val part = Path(partPath)
-        if (!SystemFileSystem.exists(part)) return false
+        if (!SystemFileSystem.exists(part)) return RetrieveResult.FAILED
         val have = SystemFileSystem.metadataOrNull(part)?.size
         if (entry.sizeBytes > 0L && have != null && have != entry.sizeBytes) {
             driveLog("retrieve incomplete have=$have expected=${entry.sizeBytes}")
-            return false
+            return RetrieveResult.FAILED
         }
         val dest = Path(destPath)
         if (SystemFileSystem.exists(dest)) {
@@ -430,12 +507,14 @@ object DriveRelayCoordinator {
         }
         SystemFileSystem.atomicMove(part, dest)
         bindRetrievedNote(entry, destPath)
-        return SystemFileSystem.exists(Path(destPath))
+        return if (SystemFileSystem.exists(Path(destPath))) RetrieveResult.OK else RetrieveResult.FAILED
     }
 
     private suspend fun bindRetrievedNote(entry: DriveLedgerEntry, destPath: String) {
         if (entry.kind != DriveLedgerKinds.NOTE_ATTACHMENT) return
+        if (FileApexServices.noteRepository.isRetracted(null, entry.driveFileId, entry.contentHash)) return
         val bound = FileApexServices.noteRepository.bindDownloadedAttachment(
+            noteId = entry.noteId,
             driveFileId = entry.driveFileId,
             checksum = entry.contentHash,
             localPath = destPath,
@@ -444,7 +523,7 @@ object DriveRelayCoordinator {
             pinned = entry.pinned
         )
         if (bound) return
-        val noteId = "note-drive-" + entry.entryId
+        val noteId = entry.noteId.takeIf { it.isNotBlank() } ?: ("note-drive-" + entry.entryId)
         val already = FileApexServices.noteRepository.containsNoteOrChecksum(noteId, entry.contentHash)
         if (already) return
         FileApexServices.noteRepository.addNote(
@@ -529,4 +608,10 @@ object DriveRelayCoordinator {
         val safe = displayName.replace('/', '_').replace('\\', '_')
         return "${TimeUtils.now()}-${generateDeviceId().take(8)}-$safe"
     }
+}
+
+private enum class RetrieveResult {
+    OK,
+    FAILED,
+    GONE
 }

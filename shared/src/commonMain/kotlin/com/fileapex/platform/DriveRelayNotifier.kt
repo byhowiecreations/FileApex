@@ -9,4 +9,5 @@ expect object DriveRelayNotifier {
     fun notifyPosted(fileNames: List<String>, targetNames: List<String>)
     fun notifyFailed(fileName: String, queued: Boolean)
     fun notifyRetrieved(fileNames: List<String>)
+    fun retractRetrieved(fileName: String)
 }

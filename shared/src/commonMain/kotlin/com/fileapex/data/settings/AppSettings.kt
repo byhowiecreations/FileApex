@@ -39,9 +39,11 @@ interface AppSettings {
     /** Drive Relay also requires a linked Google Account. */
     val cellularEnabled: StateFlow<Boolean>
     val googleDriveRelayEnabled: StateFlow<Boolean>
+    val driveRelayMaxMb: StateFlow<DriveRelayMaxMb>
     val drivePurgeAfter72Hours: StateFlow<Boolean>
     val cellularSendPromptAcknowledged: StateFlow<Boolean>
     val cellularReceivePromptAcknowledged: StateFlow<Boolean>
+    val driveRelayOptInPromptShown: StateFlow<Boolean>
 
     val notesNotificationsEnabled: StateFlow<Boolean>
     val notesNotificationPromptShown: StateFlow<Boolean>
@@ -115,7 +117,11 @@ interface AppSettings {
 
     fun setGoogleDriveRelayEnabled(enabled: Boolean)
 
+    fun setDriveRelayMaxMb(limit: DriveRelayMaxMb)
+
     fun setDrivePurgeAfter72Hours(enabled: Boolean)
+
+    fun setDriveRelayOptInPromptShown(shown: Boolean)
 
     fun setCellularSendPromptAcknowledged(acknowledged: Boolean)
 

@@ -23,4 +23,7 @@ actual object DriveRelayNotifier {
         if (fileNames.isEmpty()) return
         println("DriveRelayNotifier: retrieved ${fileNames.joinToString()}")
     }
+
+    actual fun retractRetrieved(fileName: String) {
+    }
 }

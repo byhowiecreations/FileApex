@@ -82,6 +82,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.platform.BackgroundPersistenceUiState
@@ -294,6 +295,7 @@ fun SettingsScreen(
             onBack = { page = SettingsPage.Root },
             onCellularChange = viewModel::setCellularEnabled,
             onDriveRelayChange = viewModel::setGoogleDriveRelayEnabled,
+            onDriveRelayMaxMbSelected = viewModel::setDriveRelayMaxMb,
             onDriveAuthResult = viewModel::onGoogleDriveAuthResult,
             onPurgeChange = viewModel::setDrivePurgeAfter72Hours,
             onPurgeNow = viewModel::purgeDriveRelayNow
@@ -884,12 +886,14 @@ private fun CellularSettingsPage(
     onBack: () -> Unit,
     onCellularChange: (Boolean) -> Unit,
     onDriveRelayChange: (Boolean) -> Unit,
+    onDriveRelayMaxMbSelected: (DriveRelayMaxMb) -> Unit,
     onDriveAuthResult: (Boolean, String?) -> Unit,
     onPurgeChange: (Boolean) -> Unit,
     onPurgeNow: () -> Unit
 ) {
     val launchDriveAuth = rememberGoogleDriveAuthLauncher(onResult = onDriveAuthResult)
     var showDrivePermission by remember { mutableStateOf(false) }
+    var relayLimitExpanded by remember { mutableStateOf(false) }
 
     SettingsPageShell(
         title = "Cellular",
@@ -945,6 +949,40 @@ private fun CellularSettingsPage(
                             }
                         }
                     )
+                }
+            )
+            val relayControlsEnabled = state.cellularEnabled && state.googleAccountLinkEnabled
+            ListItem(
+                headlineContent = { Text("Relay size limit") },
+                supportingContent = {
+                    Text(
+                        "Max size for one Google Drive Relay send — a single file, or a selected " +
+                            "group at once. Default is ${DriveRelayMaxMb.DEFAULT.label}."
+                    )
+                },
+                trailingContent = {
+                    Box {
+                        TextButton(
+                            onClick = { relayLimitExpanded = true },
+                            enabled = relayControlsEnabled
+                        ) {
+                            Text(state.driveRelayMaxMb.label)
+                        }
+                        DropdownMenu(
+                            expanded = relayLimitExpanded,
+                            onDismissRequest = { relayLimitExpanded = false }
+                        ) {
+                            DriveRelayMaxMb.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    onClick = {
+                                        onDriveRelayMaxMbSelected(option)
+                                        relayLimitExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             )
             ListItem(

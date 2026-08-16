@@ -69,10 +69,24 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
                     attachmentSizeBytes = attachmentSize
                 )
             }
-            FcmWakeCoordinator.isNoteDelete(type) -> {
-                if (!noteId.isNullOrBlank()) {
+            FcmWakeCoordinator.isNoteDelete(
+                type,
+                data[FcmWakeProtocol.Keys.ACTION] ?: data[FcmWakeProtocol.KEY_ACTION]
+            ) -> {
+                val driveFileId = data[FcmWakeProtocol.Keys.DRIVE_FILE_ID]
+                    ?: data[FcmWakeProtocol.KEY_DRIVE_FILE_ID]
+                val checksum = data[FcmWakeProtocol.Keys.CHECKSUM]
+                    ?: data[FcmWakeProtocol.KEY_CHECKSUM]
+                val attachmentName = data[FcmWakeProtocol.Keys.ATTACHMENT_NAME]
+                    ?: data[FcmWakeProtocol.KEY_ATTACHMENT_NAME]
+                if (!noteId.isNullOrBlank() || !driveFileId.isNullOrBlank() || !checksum.isNullOrBlank()) {
                     serviceScope.launch {
-                        FileApexServices.noteRepository.deleteNote(noteId)
+                        FileApexServices.noteRepository.applyRemoteRetract(
+                            noteId = noteId.orEmpty(),
+                            driveFileId = driveFileId,
+                            checksum = checksum,
+                            attachmentName = attachmentName
+                        )
                     }
                 }
             }
@@ -117,6 +131,7 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
         val sourceId = sourceDeviceId.takeIf { !it.isNullOrBlank() } ?: "unknown"
         Log.i(TAG, "Inline note received noteId=$id from $sourceId")
         serviceScope.launch {
+            if (FileApexServices.noteRepository.isRetracted(id, null, null)) return@launch
             FileApexServices.noteRepository.addNote(
                 NoteRecord(
                     noteId = id,
@@ -143,6 +158,8 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
         val sourceId = sourceDeviceId.takeIf { !it.isNullOrBlank() } ?: "unknown"
         Log.i(TAG, "Drive sync note received noteId=$id from $sourceId")
         serviceScope.launch {
+            if (FileApexServices.noteRepository.isRetracted(id, driveFileId, remoteChecksum)) return@launch
+            DriveRelayCoordinator.onFcmRelayPointer()
             val already = FileApexServices.noteRepository.containsNoteOrChecksum(id, remoteChecksum)
             if (!already) {
                 FileApexServices.noteRepository.addNote(
@@ -160,7 +177,6 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
                     )
                 )
             }
-            DriveRelayCoordinator.onFcmRelayPointer()
         }
     }
 

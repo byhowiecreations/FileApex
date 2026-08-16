@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
-/**
- * Platform abstraction for posting system notifications when a new Note or Message is received.
- */
-expect fun notifyNoteReceived(sourceDeviceName: String, content: String)
+expect fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId: String)
+
+expect fun retractNoteNotification(noteId: String)
+
+expect fun retractNoteNotifications(noteIds: List<String>, previewTexts: List<String> = emptyList())

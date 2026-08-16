@@ -49,7 +49,7 @@ actual object DriveSyncScheduler {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             UNIQUE_ONE_SHOT,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             oneShot
         )
         ensureScheduled()

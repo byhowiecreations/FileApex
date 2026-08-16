@@ -10,7 +10,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.awtTransferable
+import androidx.compose.ui.geometry.Offset
 import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.DropTargetDragEvent
+import java.awt.dnd.DropTargetDropEvent
 import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
@@ -18,12 +21,14 @@ import java.io.File
 actual fun Modifier.deviceFileDropTarget(
     enabled: Boolean,
     onHoverChange: (Boolean) -> Unit,
-    onFilesDropped: (paths: List<String>) -> Unit
+    onFilesDropped: (paths: List<String>) -> Unit,
+    onDropPosition: (Offset) -> Unit
 ): Modifier {
     if (!enabled) return this
 
     val hoverHandler = rememberUpdatedState(onHoverChange)
     val dropHandler = rememberUpdatedState(onFilesDropped)
+    val dropPositionHandler = rememberUpdatedState(onDropPosition)
 
     val target = remember {
         object : DragAndDropTarget {
@@ -41,6 +46,7 @@ actual fun Modifier.deviceFileDropTarget(
 
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 hoverHandler.value(false)
+                dropPositionHandler.value(event.dropOffsetInRoot())
                 val paths = extractAbsoluteFilePaths(event)
                 if (paths.isEmpty()) return false
                 dropHandler.value(paths)
@@ -57,6 +63,16 @@ actual fun Modifier.deviceFileDropTarget(
         },
         target = target
     )
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun DragAndDropEvent.dropOffsetInRoot(): Offset {
+    val point = when (val native = nativeEvent) {
+        is DropTargetDropEvent -> native.location
+        is DropTargetDragEvent -> native.location
+        else -> null
+    } ?: return Offset.Unspecified
+    return Offset(point.x.toFloat(), point.y.toFloat())
 }
 
 @OptIn(ExperimentalComposeUiApi::class)

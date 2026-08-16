@@ -4,8 +4,9 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
-actual fun decodeImageBytes(bytes: ByteArray): ImageBitmap? {
+actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
     if (bytes.isEmpty()) return null
+    val edge = maxEdge.coerceAtLeast(16)
     return runCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -14,8 +15,8 @@ actual fun decodeImageBytes(bytes: ByteArray): ImageBitmap? {
         val sampleSize = calculateInSampleSize(
             width = bounds.outWidth,
             height = bounds.outHeight,
-            maxWidth = 2048,
-            maxHeight = 2048
+            maxWidth = edge,
+            maxHeight = edge
         )
         val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null

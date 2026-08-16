@@ -56,6 +56,7 @@ import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.GenerateQrScreen
 import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.HomeTab
+import com.fileapex.ui.KineticDropFxLayer
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.QueuedFilesButton
@@ -429,6 +430,7 @@ fun App(
                                     onOpenNotes = { route = AppRoute.Notes }
                                 )
                             }
+                            KineticDropFxLayer()
                         }
                     }
                 }

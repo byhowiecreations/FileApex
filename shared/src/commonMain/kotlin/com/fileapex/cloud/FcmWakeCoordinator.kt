@@ -75,7 +75,10 @@ object FcmWakeCoordinator {
 
     fun isNoteSync(type: String?): Boolean = type == FcmWakeProtocol.TYPE_NOTE_SYNC
 
-    fun isNoteDelete(type: String?): Boolean = type == FcmWakeProtocol.TYPE_NOTE_DELETE
+    fun isNoteDelete(type: String?, action: String? = null): Boolean =
+        type == FcmWakeProtocol.TYPE_NOTE_DELETE ||
+            type == FcmWakeProtocol.TYPE_NOTE_RETRACT ||
+            action == FcmWakeProtocol.ACTION_RETRACT_MESSAGE
 
     fun isDriveRelay(type: String?): Boolean = type == FcmWakeProtocol.TYPE_DRIVE_RELAY
 
@@ -114,7 +117,12 @@ object FcmWakeCoordinator {
         }
     }
 
-    fun dispatchNoteDeleteToLinkedPeers(noteId: String) {
+    fun dispatchNoteDeleteToLinkedPeers(
+        noteId: String,
+        driveFileId: String? = null,
+        checksum: String? = null,
+        attachmentName: String? = null
+    ) {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
         if (!FcmWakeBackend.isConfigured()) return
         val selfId = loadLocalIdentity().deviceId
@@ -125,7 +133,10 @@ object FcmWakeCoordinator {
                     FcmWakeBackend.sendNoteDeleteWake(
                         targetFcmToken = target.fcmToken,
                         sourceDeviceId = selfId,
-                        noteId = noteId
+                        noteId = noteId,
+                        driveFileId = driveFileId,
+                        checksum = checksum,
+                        attachmentName = attachmentName
                     )
                 }
             }.onFailure { error ->

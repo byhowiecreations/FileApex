@@ -63,8 +63,8 @@ fun TransferQueueScreen(
                 .padding(horizontal = 20.dp)
         ) {
             Text(
-                text = "Files send automatically when the destination is back on local Wi‑Fi. " +
-                    "Tap remove to cancel a queued send.",
+                text = "Waiting sends stay here until they finish on local Wi‑Fi or via Google Drive Relay. " +
+                    "Tap remove to cancel.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp)

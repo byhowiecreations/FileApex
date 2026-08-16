@@ -65,7 +65,9 @@ object FcmWakeBackend {
         val MAX_INLINE_BYTES = 3000
         val contentBytes = content?.toByteArray(Charsets.UTF_8)
         val hasDriveFile = !driveFileId.isNullOrBlank()
+        val hasAttachment = !attachmentName.isNullOrBlank() || attachmentSizeBytes > 0L
         val isInline = !hasDriveFile &&
+            !hasAttachment &&
             contentBytes != null &&
             contentBytes.size <= MAX_INLINE_BYTES
 
@@ -83,13 +85,15 @@ object FcmWakeBackend {
             if (hasDriveFile) {
                 put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId)
                 put(FcmWakeProtocol.Keys.CHECKSUM, checksum.orEmpty())
+            }
+            if (hasAttachment) {
                 if (!attachmentName.isNullOrBlank()) {
                     put(FcmWakeProtocol.Keys.ATTACHMENT_NAME, attachmentName)
                 }
                 if (attachmentSizeBytes > 0L) {
                     put(FcmWakeProtocol.Keys.ATTACHMENT_SIZE, attachmentSizeBytes.toString())
                 }
-            } else if (!isInline) {
+            } else if (!isInline && !hasDriveFile) {
                 put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId.orEmpty())
                 put(FcmWakeProtocol.Keys.CHECKSUM, checksum.orEmpty())
             }
@@ -104,7 +108,10 @@ object FcmWakeBackend {
     suspend fun sendNoteDeleteWake(
         targetFcmToken: String,
         sourceDeviceId: String,
-        noteId: String
+        noteId: String,
+        driveFileId: String? = null,
+        checksum: String? = null,
+        attachmentName: String? = null
     ): Boolean {
         val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
         if (targetFcmToken.isBlank() || noteId.isBlank()) return false
@@ -112,6 +119,16 @@ object FcmWakeBackend {
             put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_NOTE_DELETE)
             put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
             put(FcmWakeProtocol.Keys.NOTE_ID, noteId)
+            put(FcmWakeProtocol.Keys.ACTION, FcmWakeProtocol.ACTION_RETRACT_MESSAGE)
+            if (!driveFileId.isNullOrBlank()) {
+                put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId)
+            }
+            if (!checksum.isNullOrBlank()) {
+                put(FcmWakeProtocol.Keys.CHECKSUM, checksum)
+            }
+            if (!attachmentName.isNullOrBlank()) {
+                put(FcmWakeProtocol.Keys.ATTACHMENT_NAME, attachmentName)
+            }
         }
         return FcmHttpV1Client.sendDataWake(
             config = config,

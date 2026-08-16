@@ -44,10 +44,28 @@ actual object DriveRelayNotifier {
     actual fun notifyRetrieved(fileNames: List<String>) {
         if (fileNames.isEmpty()) return
         val title = if (fileNames.size == 1) "Received via Google Drive Relay" else "${fileNames.size} files received via Drive Relay"
-        post(title, fileNames.joinToString(", "))
+        post(title, fileNames.joinToString(", "), DRIVE_RETRIEVE_TAG, NOTIFICATION_ID_RETRIEVED)
     }
 
-    private fun post(title: String, body: String) {
+    actual fun retractRetrieved(fileName: String) {
+        if (!::driveNotifierContext.isInitialized) return
+        val manager = NotificationManagerCompat.from(driveNotifierContext)
+        runCatching { manager.cancel(DRIVE_RETRIEVE_TAG, NOTIFICATION_ID_RETRIEVED) }
+        runCatching { manager.cancel(NOTIFICATION_ID_RETRIEVED) }
+        runCatching {
+            manager.cancel(NOTIFICATION_ID_BASE + ("Received via Google Drive Relay".hashCode() and 0xFFFF))
+        }
+        if (fileName.isNotBlank()) {
+            runCatching { manager.cancel(NOTIFICATION_ID_BASE + (fileName.hashCode() and 0xFFFF)) }
+        }
+    }
+
+    private fun post(
+        title: String,
+        body: String,
+        tag: String? = null,
+        id: Int = NOTIFICATION_ID_BASE + (title.hashCode() and 0xFFFF)
+    ) {
         if (!FileApexServices.settings.driveRelayNotificationsEnabled.value) return
         if (!::driveNotifierContext.isInitialized) return
         val manager = NotificationManagerCompat.from(driveNotifierContext)
@@ -71,9 +89,15 @@ actual object DriveRelayNotifier {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
         runCatching {
-            manager.notify(NOTIFICATION_ID_BASE + (title.hashCode() and 0xFFFF), notification)
+            if (tag.isNullOrBlank()) {
+                manager.notify(id, notification)
+            } else {
+                manager.notify(tag, id, notification)
+            }
         }
     }
 }
 
 private const val NOTIFICATION_ID_BASE = 6200
+private const val DRIVE_RETRIEVE_TAG = "fileapex.drive.retrieved"
+private const val NOTIFICATION_ID_RETRIEVED = 6201

@@ -503,13 +503,70 @@ class FileApexServer(
                     }
                 }
 
+                post("/api/v1/notes/attachment") {
+                    runCatching {
+                        val noteId = call.request.queryParameters["noteId"].orEmpty().trim()
+                        val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
+                        if (noteId.isBlank() || fileName.isBlank()) {
+                            call.respond(HttpStatusCode.BadRequest, "note_attachment_missing")
+                            return@runCatching
+                        }
+                        val expectedLength = call.request.headers["Content-Length"]?.toLongOrNull()
+                        if (expectedLength != null &&
+                            expectedLength > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
+                        ) {
+                            call.respond(HttpStatusCode.PayloadTooLarge, "note_attachment_too_large")
+                            return@runCatching
+                        }
+                        val dest = UniqueFileNames.resolveInDirectory(defaultDownloadsDir(), fileName)
+                        val targetPath = Path(dest)
+                        targetPath.parent?.let { parent ->
+                            if (!SystemFileSystem.exists(parent)) {
+                                SystemFileSystem.createDirectories(parent)
+                            }
+                        }
+                        val channel = call.receiveChannel()
+                        val received = receiveUploadBytes(channel, targetPath, expectedLength)
+                        val complete = expectedLength == null || received == expectedLength
+                        if (!complete || received <= 0L ||
+                            received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
+                        ) {
+                            runCatching {
+                                if (SystemFileSystem.exists(targetPath)) {
+                                    SystemFileSystem.delete(targetPath)
+                                }
+                            }
+                            val status = if (received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES) {
+                                HttpStatusCode.PayloadTooLarge
+                            } else {
+                                HttpStatusCode.BadRequest
+                            }
+                            call.respond(status, "note_attachment_rejected")
+                            return@runCatching
+                        }
+                        FileApexServices.noteRepository.setAttachmentLocalPath(noteId, dest)
+                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/notes/attachment failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "note_attachment_failed")
+                    }
+                }
+
                 post("/api/v1/notes/delete") {
                     runCatching {
                         val body = call.receiveText()
                         val jsonObj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
                         val noteId = jsonObj?.get("noteId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
-                        if (noteId.isNotBlank()) {
-                            FileApexServices.noteRepository.deleteNote(noteId)
+                        val driveFileId = jsonObj?.get("driveFileId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                        val checksum = jsonObj?.get("checksum")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                        val attachmentName = jsonObj?.get("attachmentName")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                        if (noteId.isNotBlank() || !driveFileId.isNullOrBlank() || !checksum.isNullOrBlank()) {
+                            FileApexServices.noteRepository.applyRemoteRetract(
+                                noteId,
+                                driveFileId,
+                                checksum,
+                                attachmentName
+                            )
                         }
                         call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
                     }.onFailure { error ->

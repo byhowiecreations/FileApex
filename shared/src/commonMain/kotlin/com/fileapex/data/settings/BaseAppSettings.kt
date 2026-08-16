@@ -97,6 +97,9 @@ class BaseAppSettings(
     private val googleDriveRelayEnabledFlow = MutableStateFlow(
         store.getBoolean(KEY_GOOGLE_DRIVE_RELAY, false)
     )
+    private val driveRelayMaxMbFlow = MutableStateFlow(
+        DriveRelayMaxMb.fromStorage(store.getInt(KEY_DRIVE_RELAY_MAX_MB, DriveRelayMaxMb.DEFAULT.megabytes))
+    )
     private val drivePurgeAfter72HoursFlow = MutableStateFlow(
         store.getBoolean(KEY_DRIVE_PURGE_AFTER_72H, true)
     )
@@ -105,6 +108,9 @@ class BaseAppSettings(
     )
     private val cellularReceivePromptAcknowledgedFlow = MutableStateFlow(
         store.getBoolean(KEY_CELLULAR_RECEIVE_PROMPT_ACK, false)
+    )
+    private val driveRelayOptInPromptShownFlow = MutableStateFlow(
+        store.getBoolean(KEY_DRIVE_RELAY_OPT_IN_PROMPT_SHOWN, false)
     )
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
@@ -185,12 +191,16 @@ class BaseAppSettings(
     override val cellularEnabled: StateFlow<Boolean> = cellularEnabledFlow.asStateFlow()
     override val googleDriveRelayEnabled: StateFlow<Boolean> =
         googleDriveRelayEnabledFlow.asStateFlow()
+    override val driveRelayMaxMb: StateFlow<DriveRelayMaxMb> =
+        driveRelayMaxMbFlow.asStateFlow()
     override val drivePurgeAfter72Hours: StateFlow<Boolean> =
         drivePurgeAfter72HoursFlow.asStateFlow()
     override val cellularSendPromptAcknowledged: StateFlow<Boolean> =
         cellularSendPromptAcknowledgedFlow.asStateFlow()
     override val cellularReceivePromptAcknowledged: StateFlow<Boolean> =
         cellularReceivePromptAcknowledgedFlow.asStateFlow()
+    override val driveRelayOptInPromptShown: StateFlow<Boolean> =
+        driveRelayOptInPromptShownFlow.asStateFlow()
 
 
     override fun setGoogleAccountLinkEnabled(enabled: Boolean) {
@@ -412,6 +422,11 @@ class BaseAppSettings(
         googleDriveRelayEnabledFlow.value = enabled
     }
 
+    override fun setDriveRelayMaxMb(limit: DriveRelayMaxMb) {
+        store.putInt(KEY_DRIVE_RELAY_MAX_MB, limit.megabytes)
+        driveRelayMaxMbFlow.value = limit
+    }
+
     override fun setDrivePurgeAfter72Hours(enabled: Boolean) {
         store.putBoolean(KEY_DRIVE_PURGE_AFTER_72H, enabled)
         drivePurgeAfter72HoursFlow.value = enabled
@@ -425,6 +440,11 @@ class BaseAppSettings(
     override fun setCellularReceivePromptAcknowledged(acknowledged: Boolean) {
         store.putBoolean(KEY_CELLULAR_RECEIVE_PROMPT_ACK, acknowledged)
         cellularReceivePromptAcknowledgedFlow.value = acknowledged
+    }
+
+    override fun setDriveRelayOptInPromptShown(shown: Boolean) {
+        store.putBoolean(KEY_DRIVE_RELAY_OPT_IN_PROMPT_SHOWN, shown)
+        driveRelayOptInPromptShownFlow.value = shown
     }
 
     override fun diagnosticsPrivateKeyBase64(): String = diagnosticsPrivateKeyBase64Stored.value
@@ -494,6 +514,8 @@ class BaseAppSettings(
         const val KEY_DEVICE_DETAILS_ALLOW_CELLULAR = "device_details_allow_cellular"
         const val KEY_CELLULAR_ENABLED = "cellular_enabled"
         const val KEY_GOOGLE_DRIVE_RELAY = "google_drive_relay_enabled"
+        const val KEY_DRIVE_RELAY_MAX_MB = "drive_relay_max_mb"
+        const val KEY_DRIVE_RELAY_OPT_IN_PROMPT_SHOWN = "drive_relay_opt_in_prompt_shown"
         const val KEY_DRIVE_PURGE_AFTER_72H = "drive_purge_after_72h"
         const val KEY_CELLULAR_SEND_PROMPT_ACK = "cellular_send_prompt_ack"
         const val KEY_CELLULAR_RECEIVE_PROMPT_ACK = "cellular_receive_prompt_ack"

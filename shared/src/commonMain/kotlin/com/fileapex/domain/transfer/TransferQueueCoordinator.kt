@@ -140,20 +140,14 @@ class TransferQueueCoordinator(
         val succeeded = batch?.results?.flatMap { it.succeededDeviceIds }?.toSet().orEmpty()
         val failedRoutableIds = routable.map { it.deviceId }.filter { it !in succeeded }
         val offLanIds = (blocked.map { it.deviceId } + failedRoutableIds).distinct()
-        val offLan = relayOrQueueOffLan(sources, offLanIds)
-        val queuedNames = if (offLan.queueIds.isNotEmpty()) {
-            enqueueSourcesInternal(sources, offLan.queueIds)
-        } else {
-            emptyList()
-        }
-
+        val queuedNames = enqueueSourcesInternal(sources, offLanIds)
         return buildResult(
             batch = batch?.takeIf { succeeded.isNotEmpty() },
             queuedNames = queuedNames,
-            hadImmediateTargets = succeeded.isNotEmpty() || offLan.relayedNames.isNotEmpty(),
-            relayedNames = offLan.relayedNames,
-            pendingDesktopSyncNames = offLan.desktopPendingNames,
-            queueReason = offLan.queueReason
+            hadImmediateTargets = succeeded.isNotEmpty(),
+            relayedNames = emptyList(),
+            pendingDesktopSyncNames = emptyList(),
+            queueReason = null
         )
     }
 
@@ -455,6 +449,14 @@ class TransferQueueCoordinator(
                 queueReason = "drive_not_ready"
             )
         }
+        if (DriveRelayPolicy.payloadExceedsRelayLimit(sources.map { it.sizeBytes })) {
+            return OffLanRelayOutcome(
+                relayedNames = emptyList(),
+                queueIds = deviceIds,
+                desktopPendingNames = emptyList(),
+                queueReason = "relay_too_large"
+            )
+        }
         val localSources = sources.filter { it is MultiCopySource.Local && it.absolutePath.isNotBlank() }
         if (localSources.isEmpty()) {
             return OffLanRelayOutcome(emptyList(), emptyList(), deviceIds, emptyList())
@@ -498,10 +500,14 @@ class TransferQueueCoordinator(
     ): QueueAwareSendResult {
         val sentPart = batch?.summaryMessage ?: "Sent"
         val relayPart = relayMessage(relayedNames, pendingDesktopSyncNames)
-        val queuedPart = if (queueReason == "drive_not_ready") {
-            PeerReachabilityMessages.fileTransferOffWifiDriveNotReady(queuedNames)
-        } else {
-            queueOnlyMessage(queuedNames)
+        val queuedPart = when (queueReason) {
+            "drive_not_ready" ->
+                PeerReachabilityMessages.fileTransferOffWifiDriveNotReady(queuedNames)
+            "relay_too_large" ->
+                "This send exceeds the Google Drive Relay limit " +
+                    "(${DriveRelayPolicy.relayLimitLabel()} per file or group). " +
+                    "Queued until Wi‑Fi: ${queuedNames.joinToString(", ")}"
+            else -> queueOnlyMessage(queuedNames)
         }
         val message = when {
             queuedNames.isEmpty() && relayedNames.isEmpty() &&

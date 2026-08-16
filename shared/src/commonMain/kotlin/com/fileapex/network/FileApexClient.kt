@@ -251,12 +251,79 @@ class FileApexClient(
         requireSuccess(response, "Note dispatch failed (${response.statusCode})")
     }
 
+    suspend fun uploadNoteAttachment(
+        host: String,
+        port: Int,
+        noteId: String,
+        fileName: String,
+        localSourcePath: String
+    ) {
+        val source = Path(localSourcePath)
+        check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
+        val contentLength = SystemFileSystem.metadataOrNull(source)?.size?.takeIf { it > 0L }
+        val channel = Channel<ByteArray>(UPLOAD_CHANNEL_CAPACITY)
+        coroutineScope {
+            val producer = launch(Dispatchers.IO) {
+                try {
+                    SystemFileSystem.source(source).buffered().use { input ->
+                        val buffer = ByteArray(CHUNK_SIZE)
+                        while (!input.exhausted()) {
+                            val read = input.readAtMostTo(buffer)
+                            if (read > 0) {
+                                channel.send(buffer.copyOf(read))
+                            }
+                        }
+                    }
+                } finally {
+                    channel.close()
+                }
+            }
+            PeerLanHttpPolicy.ensureRoute(host)
+            val response = peerHttpUploadFromChannel(
+                host = host,
+                port = port,
+                pathWithQuery = withSenderQuery(
+                    queryPath(
+                        basePath = "/api/v1/notes/attachment",
+                        host = host,
+                        port = port,
+                        params = mapOf("noteId" to noteId, "fileName" to fileName)
+                    )
+                ),
+                contentType = "application/octet-stream",
+                chunks = channel,
+                connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+                uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
+                contentLength = contentLength?.takeIf { it > 0L }
+            ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+            producer.join()
+            if (response.statusCode == 403) {
+                error("PIN required — open the device and enter its PIN")
+            }
+            require(response.statusCode in 200..299) {
+                "Note attachment upload failed (${response.statusCode})"
+            }
+        }
+    }
+
     suspend fun postNoteDelete(
         host: String,
         port: Int,
-        noteId: String
+        noteId: String,
+        driveFileId: String? = null,
+        checksum: String? = null,
+        attachmentName: String? = null
     ) {
-        val payload = """{"noteId":"$noteId"}"""
+        val drive = driveFileId?.takeIf { it.isNotBlank() }?.replace("\"", "")
+        val hash = checksum?.takeIf { it.isNotBlank() }?.replace("\"", "")
+        val name = attachmentName?.takeIf { it.isNotBlank() }?.replace("\"", "")
+        val payload = buildString {
+            append("""{"noteId":"$noteId","action":"RETRACT_MESSAGE"""")
+            if (!drive.isNullOrBlank()) append(""","driveFileId":"$drive"""")
+            if (!hash.isNullOrBlank()) append(""","checksum":"$hash"""")
+            if (!name.isNullOrBlank()) append(""","attachmentName":"$name"""")
+            append("}")
+        }
         val response = boundPost(
             host = host,
             port = port,

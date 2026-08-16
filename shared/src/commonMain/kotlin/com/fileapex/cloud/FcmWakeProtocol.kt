@@ -7,6 +7,8 @@ object FcmWakeProtocol {
     const val TYPE_NOTE_INLINE = "note_inline"
     const val TYPE_NOTE_SYNC = "note_sync"
     const val TYPE_NOTE_DELETE = "note_delete"
+    const val TYPE_NOTE_RETRACT = "retract_message"
+    const val ACTION_RETRACT_MESSAGE = "RETRACT_MESSAGE"
     const val TYPE_DRIVE_RELAY = "drive_relay"
 
     const val KEY_TYPE = "type"
@@ -20,6 +22,7 @@ object FcmWakeProtocol {
     const val KEY_ENTRY_ID = "entryId"
     const val KEY_ATTACHMENT_NAME = "attachmentName"
     const val KEY_ATTACHMENT_SIZE = "attachmentSize"
+    const val KEY_ACTION = "action"
 
     object Keys {
         const val TYPE = "type"
@@ -33,5 +36,6 @@ object FcmWakeProtocol {
         const val ENTRY_ID = "entryId"
         const val ATTACHMENT_NAME = "attachmentName"
         const val ATTACHMENT_SIZE = "attachmentSize"
+        const val ACTION = "action"
     }
 }

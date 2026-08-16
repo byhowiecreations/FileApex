@@ -31,7 +31,8 @@ data class DriveLedgerEntry(
     val retrievedBy: List<String> = emptyList(),
     val delivery: List<DriveTargetStatus> = emptyList(),
     val pinned: Boolean = false,
-    val relativeDestPath: String = ""
+    val relativeDestPath: String = "",
+    val noteId: String = ""
 ) {
     fun isRetrievedBy(deviceId: String): Boolean {
         if (deviceId.isBlank()) return false

@@ -274,6 +274,36 @@ object DesktopMacTrayBridge {
         native?.fileapex_tray_bind_main_window(nsWindowPtr)
     }
 
+    fun hasNativeOpenPanel(): Boolean {
+        if (!DesktopPlatformPaths.isMacOs()) return false
+        if (native == null) load()
+        return native != null
+    }
+
+    fun pickOpenFile(title: String, initialDirectory: String?): String? {
+        if (!DesktopPlatformPaths.isMacOs()) return null
+        if (java.awt.EventQueue.isDispatchThread()) {
+            println("DesktopMacTrayBridge: refusing NSOpenPanel on AWT main")
+            return null
+        }
+        if (native == null) load()
+        val lib = native ?: return null
+        val outPath = PointerByReference()
+        val ok = runCatching {
+            lib.fileapex_pick_open_file(title, initialDirectory, outPath)
+        }.getOrElse { error ->
+            println("DesktopMacTrayBridge: NSOpenPanel failed :: ${error.message}")
+            0
+        }
+        if (ok == 0) return null
+        val pointer = outPath.value ?: return null
+        return try {
+            pointer.getString(0)
+        } finally {
+            lib.fileapex_lan_http_free(pointer)
+        }
+    }
+
     fun hideMainWindow() {
         if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_hide_main_window()
@@ -422,6 +452,11 @@ object DesktopMacTrayBridge {
         fun fileapex_tray_show_toast(message: String)
         fun fileapex_tray_begin_background_activity()
         fun fileapex_tray_end_background_activity()
+        fun fileapex_pick_open_file(
+            title: String?,
+            initialDir: String?,
+            outPath: PointerByReference
+        ): Int
     }
 
     private fun interface SendCallback : Callback {

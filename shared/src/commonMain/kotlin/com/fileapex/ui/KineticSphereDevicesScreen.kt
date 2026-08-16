@@ -27,6 +27,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Add
@@ -115,11 +117,13 @@ fun KineticSphereDevicesView(
 ) {
     var addMenuOpen by remember { mutableStateOf(false) }
     var activeRadialNodeId by remember { mutableStateOf<String?>(null) }
+    var sphereCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val density = LocalDensity.current
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
+            .onGloballyPositioned { sphereCoords = it }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -498,7 +502,23 @@ fun KineticSphereDevicesView(
                         .deviceFileDropTarget(
                             enabled = true,
                             onHoverChange = { dropHover = it },
-                            onFilesDropped = { paths -> onFilesDropped(row.deviceId, paths) }
+                            onFilesDropped = { paths ->
+                                val firstName = paths.firstOrNull()
+                                    ?.substringAfterLast('/')
+                                    ?.substringAfterLast('\\')
+                                    .orEmpty()
+                                if (firstName.isNotEmpty()) {
+                                    sphereCoords?.let { coords ->
+                                        startKineticDropFx(
+                                            sphere = coords,
+                                            node = Offset(nodeCx, nodeCy),
+                                            queued = !row.online,
+                                            fileName = firstName
+                                        )
+                                    }
+                                }
+                                onFilesDropped(row.deviceId, paths)
+                            }
                         )
                         .clip(CircleShape)
                         .background(

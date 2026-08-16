@@ -454,6 +454,9 @@ tasks.register("buildMacTrayBridge") {
     group = "distribution"
     description = "Compile libFileApexTray.dylib (NSStatusItem + NSPopover)"
     onlyIf { isMacHost() }
+    inputs.dir(rootProject.layout.projectDirectory.dir("macos/Tray"))
+    inputs.file(rootProject.layout.projectDirectory.file("macos/scripts/build_tray_bridge.sh"))
+    outputs.file(rootProject.layout.projectDirectory.file("macos/build/Tray/libFileApexTray.dylib"))
     doLast {
         val script = rootProject.layout.projectDirectory.file("macos/scripts/build_tray_bridge.sh").asFile
         if (!script.exists()) {

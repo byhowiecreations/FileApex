@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 public typealias FileApexSendCallback = @convention(c) (UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
 public typealias FileApexBoolCallback = @convention(c) (Bool) -> Void
@@ -203,4 +204,68 @@ public func fileapex_tray_end_background_activity() {
             backgroundActivityToken = nil
         }
     }
+}
+
+private var openPanelBusy = false
+
+@_cdecl("fileapex_pick_open_file")
+public func fileapex_pick_open_file(
+    _ title: UnsafePointer<CChar>?,
+    _ initialDir: UnsafePointer<CChar>?,
+    _ outPath: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32 {
+    var picked: String?
+    var skipped = false
+    onMainThread {
+        if openPanelBusy {
+            skipped = true
+            return
+        }
+        openPanelBusy = true
+        defer { openPanelBusy = false }
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.canCreateDirectories = false
+        panel.allowedContentTypes = [.item]
+        panel.prompt = "Open"
+        if let title {
+            panel.title = String(cString: title)
+        }
+        if let initialDir {
+            let dir = URL(fileURLWithPath: String(cString: initialDir), isDirectory: true)
+            if FileManager.default.fileExists(atPath: dir.path) {
+                panel.directoryURL = dir
+            }
+        }
+        let result = panel.runModal()
+        if result == .OK {
+            picked = panel.url?.path
+        }
+        let drainUntil = Date().addingTimeInterval(0.08)
+        while NSApp.nextEvent(
+            matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp],
+            until: drainUntil,
+            inMode: .default,
+            dequeue: true
+        ) != nil {}
+    }
+    if skipped {
+        outPath.pointee = nil
+        return 0
+    }
+    guard let path = picked else {
+        outPath.pointee = nil
+        return 0
+    }
+    let count = path.utf8.count + 1
+    let buf = UnsafeMutablePointer<CChar>.allocate(capacity: count)
+    path.withCString { src in
+        buf.initialize(from: src, count: count)
+    }
+    outPath.pointee = buf
+    return 1
 }

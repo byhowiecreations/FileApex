@@ -1,14 +1,86 @@
 package com.fileapex.cloud.drive
 
 import com.fileapex.cloud.currentPlatformLabel
+import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.di.FileApexServices
 import com.fileapex.platform.DriveRelayNotifier
+import kotlin.random.Random
 
 object DriveRelayPolicy {
-    const val NOTES_ATTACHMENT_MAX_BYTES: Long = 5L * 1024L * 1024L
+    const val NOTES_LAN_ATTACHMENT_MAX_BYTES: Long = 35L * 1024L * 1024L
     const val PURGE_AFTER_MS: Long = 72L * 60L * 60L * 1000L
     /** Background log.md ETag poll — 15 minutes keeps Drive well under rate limits. */
     const val LEDGER_POLL_INTERVAL_MS: Long = 15L * 60L * 1000L
+    const val RECEIVE_RETRIES: Int = 2
+
+    fun receiveRetryDelayMs(): Long = 3_000L + Random.nextLong(15_001L)
+
+    fun relayMaxMb(): DriveRelayMaxMb = FileApexServices.settings.driveRelayMaxMb.value
+
+    fun relayMaxBytes(): Long = relayMaxMb().bytes
+
+    fun relayLimitLabel(): String = relayMaxMb().label
+
+    fun lanAttachmentLimitLabel(): String = "35 MB"
+
+    fun formatBytesLabel(bytes: Long): String {
+        val mb = bytes / (1024L * 1024L)
+        val remainder = bytes % (1024L * 1024L)
+        return if (remainder == 0L) {
+            "$mb MB"
+        } else {
+            val tenths = ((remainder * 10) / (1024L * 1024L)).coerceAtLeast(1L)
+            "$mb.$tenths MB"
+        }
+    }
+
+    fun payloadExceedsRelayLimit(sizeBytes: Long): Boolean = sizeBytes > relayMaxBytes()
+
+    fun payloadExceedsRelayLimit(sizeBytesList: List<Long>): Boolean {
+        if (sizeBytesList.isEmpty()) return false
+        val sizes = sizeBytesList.map { it.coerceAtLeast(0L) }
+        if (sizes.any { it > relayMaxBytes() }) return true
+        return sizes.sum() > relayMaxBytes()
+    }
+
+    fun relayLimitExceededMessage(sizeBytes: Long): String =
+        "This file is ${formatBytesLabel(sizeBytes)}. Google Drive Relay is set to " +
+            "${relayLimitLabel()} per file or group at once."
+
+    fun relayLimitExceededMessage(sizeBytesList: List<Long>): String {
+        val sizes = sizeBytesList.map { it.coerceAtLeast(0L) }
+        val total = sizes.sum()
+        if (sizes.size <= 1) return relayLimitExceededMessage(total)
+        return "This send is ${formatBytesLabel(total)}. Google Drive Relay is set to " +
+            "${relayLimitLabel()} per file or group at once."
+    }
+
+    fun evaluateNotesAttachment(sizeBytes: Long): NotesAttachmentDecision {
+        val relayReady = canSend()
+        val overLan = sizeBytes > NOTES_LAN_ATTACHMENT_MAX_BYTES
+        val overRelay = sizeBytes > relayMaxBytes()
+        if (!overLan) return NotesAttachmentDecision.AllowLan
+        if (relayReady && !overRelay) return NotesAttachmentDecision.AllowRelay
+        if (overRelay) {
+            return NotesAttachmentDecision.TooLargeForRelay(
+                fileLabel = formatBytesLabel(sizeBytes),
+                relayLimitLabel = relayLimitLabel()
+            )
+        }
+        val settings = FileApexServices.settings
+        return if (!settings.driveRelayOptInPromptShown.value) {
+            NotesAttachmentDecision.OfferRelayOptIn(
+                fileLabel = formatBytesLabel(sizeBytes),
+                lanLimitLabel = lanAttachmentLimitLabel(),
+                relayLimitLabel = relayLimitLabel()
+            )
+        } else {
+            NotesAttachmentDecision.NeedsRelayEnabled(
+                fileLabel = formatBytesLabel(sizeBytes),
+                lanLimitLabel = lanAttachmentLimitLabel()
+            )
+        }
+    }
 
     fun isRelayEnabled(): Boolean {
         val settings = FileApexServices.settings
@@ -69,4 +141,22 @@ object DriveRelayPolicy {
     fun needsSendPrompt(): Boolean = false
 
     fun needsReceivePrompt(): Boolean = false
+}
+
+sealed class NotesAttachmentDecision {
+    data object AllowLan : NotesAttachmentDecision()
+    data object AllowRelay : NotesAttachmentDecision()
+    data class OfferRelayOptIn(
+        val fileLabel: String,
+        val lanLimitLabel: String,
+        val relayLimitLabel: String
+    ) : NotesAttachmentDecision()
+    data class NeedsRelayEnabled(
+        val fileLabel: String,
+        val lanLimitLabel: String
+    ) : NotesAttachmentDecision()
+    data class TooLargeForRelay(
+        val fileLabel: String,
+        val relayLimitLabel: String
+    ) : NotesAttachmentDecision()
 }

@@ -1,5 +1,6 @@
 package com.fileapex.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Schedule
@@ -9,18 +10,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import com.fileapex.di.FileApexServices
 import com.fileapex.ui.theme.fileApexChromeContentColor
 
-/**
- * Header affordance for deferred transfers — visible when the queue is non-empty.
- * Tap to open the queue screen and remove items; add via device card drop or multi-select send.
- */
+object QueueBadgeAnchor {
+    var windowRect by mutableStateOf<Rect?>(null)
+}
+
 @Composable
 fun QueuedFilesButton(
     onClick: () -> Unit,
@@ -28,10 +36,28 @@ fun QueuedFilesButton(
     modifier: Modifier = Modifier
 ) {
     val count by FileApexServices.transferQueue.pendingCount.collectAsState(initial = 0)
-    if (count <= 0) return
+
+    DisposableEffect(Unit) {
+        onDispose { QueueBadgeAnchor.windowRect = null }
+    }
+
+    val positionMod = modifier.onGloballyPositioned { coords ->
+        val topLeft = coords.localToWindow(Offset.Zero)
+        QueueBadgeAnchor.windowRect = Rect(
+            offset = topLeft,
+            size = Size(
+                coords.size.width.toFloat().coerceAtLeast(1f),
+                coords.size.height.toFloat().coerceAtLeast(1f)
+            )
+        )
+    }
+    if (count <= 0) {
+        Box(modifier = positionMod.size(0.dp))
+        return
+    }
 
     BadgedBox(
-        modifier = modifier,
+        modifier = positionMod,
         badge = {
             Badge {
                 Text(text = if (count > 99) "99+" else count.toString())
