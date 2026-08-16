@@ -76,6 +76,26 @@ class DeviceRepository(
         }
 
     /**
+     * Cloud registry seed — clears a stale blocklist entry and upserts the peer.
+     * Used when Firestore still lists a device that was mistakenly blocklisted after
+     * dropping off a transient snapshot (offline / listener gap). Explicit user removal
+     * also deletes the cloud doc, so presence here means the peer should stay paired.
+     */
+    suspend fun reinstateFromCloudSeed(device: PairedDeviceEntity): Boolean =
+        mutateMutex.withLock {
+            val normalized = normalize(device)
+            if (isLocalDevice(normalized)) {
+                return purgeLocalRowsLocked()
+            }
+            deviceDao.clearRemovedDevice(normalized.deviceId)
+            val hash = normalized.publicKeyHash.trim()
+            if (hash.isNotEmpty()) {
+                deviceDao.clearRemovedByPublicKeyHash(hash)
+            }
+            upsertReplacingAliasesLocked(normalized)
+        }
+
+    /**
      * Explicit pairing handshake — clears the removal blocklist entry and upserts the peer.
      */
     suspend fun adoptFromPairing(device: PairedDeviceEntity): Boolean =

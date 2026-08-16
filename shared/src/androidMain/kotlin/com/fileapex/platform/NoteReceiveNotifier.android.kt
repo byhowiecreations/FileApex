@@ -37,7 +37,7 @@ actual fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId:
         putString(EXTRA_NOTE_ID, noteId)
         putString(EXTRA_NOTE_PREVIEW, content)
     }
-    val title = "Note from ${sourceDeviceName.ifBlank { "Paired Device" }}"
+    val title = "Bulletin Board · ${sourceDeviceName.ifBlank { "Paired Device" }}"
     val notification = NotificationCompat.Builder(noteNotifierContext, AndroidNotificationChannels.NOTE_MESSAGES)
         .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
         .setLargeIcon(

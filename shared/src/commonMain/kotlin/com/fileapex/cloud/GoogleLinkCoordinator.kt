@@ -6,7 +6,6 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimestampDiagnostics
@@ -51,10 +50,6 @@ object GoogleLinkCoordinator {
 
     @Volatile
     private var cloudOpsActive: Boolean = false
-
-    /** Last cloud registry ids seen — used to propagate explicit cloud removals locally. */
-    @Volatile
-    private var lastCloudRegistryIds: Set<String> = emptySet()
 
     @Volatile
     private var cachedCloudRecords: List<CloudDeviceRecord> = emptyList()
@@ -285,7 +280,6 @@ object GoogleLinkCoordinator {
         sessionEpoch += 1L
         cloudOpsActive = false
         lastPublishedPresence = null
-        lastCloudRegistryIds = emptySet()
         cachedCloudRecords = emptyList()
 
         val previousHandle = registryHandle
@@ -316,6 +310,10 @@ object GoogleLinkCoordinator {
             runCatching {
                 reconcileAndSyncDevices(uid)
                 FileApexServices.deviceRepositoryOrNull()?.reconcileDuplicateEndpoints()
+                val records = CloudAuthBackend.fetchAllUserDevices(uid)
+                if (records.isNotEmpty()) {
+                    applyRemoteDevices(records, selfId, epoch)
+                }
             }.onFailure { error ->
                 println("GoogleLinkCoordinator: reconcile failed - ${error.message}")
             }
@@ -365,10 +363,17 @@ object GoogleLinkCoordinator {
                 return
             }
 
+            val locallyPairedIds = FileApexServices.deviceRepositoryOrNull()
+                ?.listDevices()
+                ?.map { it.deviceId }
+                ?.toSet()
+                .orEmpty()
+
             val activeRecords = mutableListOf<CloudDeviceRecord>()
             for (record in allRecords) {
                 val isStale = record.updatedAtEpochMs > 0L && record.updatedAtEpochMs < staleCutoffMs
-                if (isStale && record.deviceId != selfId) {
+                val keepForLocalRoster = record.deviceId in locallyPairedIds
+                if (isStale && record.deviceId != selfId && !keepForLocalRoster) {
                     println("GoogleLinkCoordinator: Pruning 14-day stale device doc ${record.deviceId} (${record.deviceName})")
                     CloudAuthBackend.deleteDevice(uid, record.deviceId)
                 } else {
@@ -528,30 +533,6 @@ object GoogleLinkCoordinator {
             if (!isSessionLive(epoch)) return
             val repo = FileApexServices.deviceRepositoryOrNull() ?: return
             cachedCloudRecords = records
-            val remoteIds = records.map { it.deviceId }.filter { it.isNotBlank() }.toSet()
-            if (lastCloudRegistryIds.isNotEmpty()) {
-                val removedFromCloud = lastCloudRegistryIds - remoteIds - selfId
-                for (vanishedId in removedFromCloud) {
-                    if (!isSessionLive(epoch)) return
-                    val local = repo.getDevice(vanishedId)
-                    runCatching {
-                        repo.applyRemoteRemoval(
-                            RemovedDeviceRecord(
-                                deviceId = vanishedId,
-                                publicKeyHash = local?.publicKeyHash.orEmpty(),
-                                lastKnownIp = local?.lastKnownIp.orEmpty(),
-                                port = local?.port ?: 0
-                            )
-                        )
-                    }.onFailure { error ->
-                        println(
-                            "GoogleLinkCoordinator: cloud removal apply failed for " +
-                                "$vanishedId - ${error.message}"
-                        )
-                    }
-                }
-            }
-            lastCloudRegistryIds = remoteIds
             // Apply peers with usable LAN endpoints first so blank-IP stubs merge into them
             // instead of temporarily winning and deleting the good row.
             records.asSequence()
@@ -571,7 +552,7 @@ object GoogleLinkCoordinator {
                     val mergedPort = remote.port.takeIf { it > 0 } ?: local?.port ?: 0
                     runCatching {
                         if (!isSessionLive(epoch)) return@runCatching
-                        repo.upsertReplacingAliases(
+                        repo.reinstateFromCloudSeed(
                             PairedDeviceEntity(
                                 deviceId = remote.deviceId,
                                 deviceName = remote.deviceName.ifBlank { "Cloud device" },

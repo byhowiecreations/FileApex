@@ -64,6 +64,7 @@ object FileApexAndroidBootstrap {
             GoogleLinkCoordinator.onAppLaunch()
             com.fileapex.cloud.FcmTokenRegistrar.start()
             com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
+            BatteryBulletinCoordinator.registerIfNeeded(appContext)
             fullyInitialized = true
             Log.i(TAG, "Android process init complete")
             return true

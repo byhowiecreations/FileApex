@@ -158,6 +158,14 @@
         </provider>
 
         <receiver
+            android:name="com.fileapex.platform.BatteryBulletinReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BATTERY_LOW" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name="com.fileapex.platform.UpdateNotificationReceiver"
             android:exported="false">
             <intent-filter>

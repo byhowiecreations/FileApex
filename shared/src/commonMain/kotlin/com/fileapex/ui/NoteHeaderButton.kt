@@ -35,7 +35,7 @@ fun NoteHeaderButton(
     ) {
         Image(
             painter = painter,
-            contentDescription = "Notes",
+            contentDescription = "Bulletin Board",
             modifier = Modifier.size(24.dp)
         )
     }

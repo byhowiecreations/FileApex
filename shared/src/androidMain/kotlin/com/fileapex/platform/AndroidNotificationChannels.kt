@@ -47,10 +47,10 @@ object AndroidNotificationChannels {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             NOTE_MESSAGES,
-            "Notes & Messages",
+            "Bulletin Board",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Alerts when new notes or shared messages arrive from paired devices"
+            description = "Alerts when shared messages, files, or device alerts arrive from paired devices"
             enableVibration(true)
         }
         context.getSystemService(NotificationManager::class.java)

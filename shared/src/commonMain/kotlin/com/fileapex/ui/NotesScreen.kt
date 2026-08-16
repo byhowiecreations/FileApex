@@ -579,7 +579,7 @@ fun NotesScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "Notes & Shared Memory",
+                        text = "Bulletin Board",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
@@ -587,7 +587,7 @@ fun NotesScreen(
                         color = textColor
                     )
                     Text(
-                        text = "Sync notes, messages, & files across paired devices",
+                        text = "Sync messages, files, and device alerts across paired devices",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         color = subTextColor
                     )
@@ -854,7 +854,7 @@ fun NotesScreen(
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (inputContent.isEmpty()) {
                                     Text(
-                                        text = "Write a note or message...",
+                                        text = "Broadcast message or attach file",
                                         color = subTextColor,
                                         fontSize = 13.sp,
                                         maxLines = 1,

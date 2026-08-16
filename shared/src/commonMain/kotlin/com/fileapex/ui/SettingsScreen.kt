@@ -734,9 +734,11 @@ private fun NotificationsSettingsPage(
             FileApexPaneSectionHeader(title = "Notifications")
 
             ListItem(
-                headlineContent = { Text("Notes") },
+                headlineContent = { Text("Bulletin Board") },
                 supportingContent = {
-                    Text("Show a notification when new notes or shared messages arrive from paired devices.")
+                    Text(
+                        "Show a notification when new shared messages, files, or alerts arrive from paired devices."
+                    )
                 },
                 trailingContent = {
                     Switch(
