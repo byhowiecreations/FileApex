@@ -359,8 +359,12 @@ compose.desktop {
         }
 
         buildTypes.release.proguard {
-            obfuscate.set(false)
-            configurationFiles.from(project.file("proguard-desktop.pro"))
+            if (isWindowsHost()) {
+                isEnabled.set(false)
+            } else {
+                obfuscate.set(false)
+                configurationFiles.from(project.file("proguard-desktop.pro"))
+            }
         }
 
         nativeDistributions {
@@ -1107,7 +1111,9 @@ tasks.register("packageInnoExe") {
         exec {
             commandLine(isccExe.absolutePath, "/DAppVersion=$fileapexVersionName", issFile.absolutePath)
         }
-        logger.lifecycle("Successfully compiled Inno Setup installer into current/FileApex-v$fileapexVersionName.exe")
+        val dest = currentBuildsDest()
+        dest.mkdirs()
+        shipExeToCurrent(dest, fileapexVersionName, logger, release = true)
 
         // Prune app-image staging dirs so files are not left on disk
         listOf(
