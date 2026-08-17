@@ -208,7 +208,12 @@ data class PairingPayload(
             )
         }
 
-        fun generatePairingCode(): String {
+        fun generatePairingCode(exclude: String = ""): String {
+            val blocked = exclude.filter { it.isDigit() }
+            repeat(32) {
+                val code = kotlin.random.Random.nextInt(100000, 999999).toString()
+                if (code != blocked) return code
+            }
             return kotlin.random.Random.nextInt(100000, 999999).toString()
         }
 

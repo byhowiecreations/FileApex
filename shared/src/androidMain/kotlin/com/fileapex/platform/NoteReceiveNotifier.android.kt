@@ -2,8 +2,11 @@ package com.fileapex.platform
 
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -49,7 +52,9 @@ actual fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId:
         .setContentTitle(title)
         .setContentText(content)
         .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+        .setContentIntent(noteOpenPendingIntent(noteId))
         .setAutoCancel(true)
+        .setCategory(NotificationCompat.CATEGORY_MESSAGE)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .addExtras(extras)
         .build()
@@ -136,7 +141,30 @@ private fun notificationIdForNote(noteId: String): Int {
     return NOTE_NOTIFICATION_ID_BASE + (hash and 0x7FFF)
 }
 
+private fun noteOpenPendingIntent(noteId: String): PendingIntent {
+    val launch = noteNotifierContext.packageManager
+        .getLaunchIntentForPackage(noteNotifierContext.packageName)
+        ?.apply { applyNoteOpenExtras(noteId) }
+        ?: Intent().setClassName(noteNotifierContext.packageName, MAIN_ACTIVITY_CLASS)
+            .apply { applyNoteOpenExtras(noteId) }
+    return PendingIntent.getActivity(
+        noteNotifierContext,
+        notificationIdForNote(noteId),
+        launch,
+        PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+    )
+}
+
+private fun Intent.applyNoteOpenExtras(noteId: String) {
+    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    putExtra(EXTRA_OPEN_NOTE_ID, noteId)
+}
+
+const val EXTRA_OPEN_NOTE_ID = "com.fileapex.extra.OPEN_NOTE_ID"
+
 private const val NOTE_NOTIFICATION_TAG = "fileapex.note"
 private const val NOTE_NOTIFICATION_ID_BASE = 5200
 private const val EXTRA_NOTE_ID = "fileapex.noteId"
 private const val EXTRA_NOTE_PREVIEW = "fileapex.notePreview"
+private const val MAIN_ACTIVITY_CLASS = "com.fileapex.MainActivity"

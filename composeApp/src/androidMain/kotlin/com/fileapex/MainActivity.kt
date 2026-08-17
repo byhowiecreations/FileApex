@@ -46,10 +46,6 @@ import com.fileapex.platform.ShareServerPendingStart
 import com.fileapex.platform.ShareServerRestartCoordinator
 import android.util.Log
 import com.fileapex.ui.theme.FileApexTeal
-import com.google.zxing.client.android.Intents
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanIntentResult
-import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -79,6 +75,7 @@ class MainActivity : ComponentActivity() {
     private var incomingShare by mutableStateOf<IncomingSharePayload?>(null)
     private var directShareDeviceId by mutableStateOf<String?>(null)
     private var requestShowUpdateSheet by mutableStateOf(false)
+    private var pendingOpenNoteId by mutableStateOf<String?>(null)
     private var isPreparingShare by mutableStateOf(false)
     private var sharePrepareError by mutableStateOf<String?>(null)
 
@@ -111,12 +108,6 @@ class MainActivity : ComponentActivity() {
         refreshPermissions()
     }
 
-    private val cameraPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) launchQrScanner()
-    }
-
     private val phoneStatePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -124,19 +115,6 @@ class MainActivity : ComponentActivity() {
             pendingCellularOptInProceed?.invoke()
         }
         pendingCellularOptInProceed = null
-    }
-
-    private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
-        val candidates = extractQrScanCandidates(result)
-        if (candidates.isEmpty()) return@registerForActivityResult
-        val payload = PairingPayload.parseFirstOrNull(candidates)
-        if (payload != null) {
-            qrScanError = null
-            scannedPayload = payload
-            return@registerForActivityResult
-        }
-        scannedPayload = null
-        qrScanError = PairingPayload.parseFailureMessage(candidates)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -180,7 +158,6 @@ class MainActivity : ComponentActivity() {
                     onStartShareServer = ::startShareServer,
                     onStopShareServer = ::stopShareServer,
                     onExitApp = ::exitFileApex,
-                    onScanQr = ::requestScanQr,
                     appVersionName = runCatching {
                         packageManager.getPackageInfo(packageName, 0).versionName
                     }.getOrNull().orEmpty().ifBlank { com.fileapex.update.FileApexAppVersion.NAME },
@@ -197,7 +174,9 @@ class MainActivity : ComponentActivity() {
                     onDismissShareError = ::onDismissShareError,
                     directShareDeviceId = directShareDeviceId,
                     requestShowUpdateSheet = requestShowUpdateSheet,
-                    onUpdateSheetRequestConsumed = { requestShowUpdateSheet = false }
+                    onUpdateSheetRequestConsumed = { requestShowUpdateSheet = false },
+                    pendingOpenNoteId = pendingOpenNoteId,
+                    onOpenNoteRequestConsumed = { pendingOpenNoteId = null }
                 )
                 com.fileapex.platform.LiveTransferCapsuleOverlay()
             }
@@ -252,6 +231,13 @@ class MainActivity : ComponentActivity() {
         ) {
             requestShowUpdateSheet = true
             intent.removeExtra(com.fileapex.platform.EXTRA_SHOW_UPDATE_SHEET)
+        }
+        val openNoteId = intent?.getStringExtra(com.fileapex.platform.EXTRA_OPEN_NOTE_ID)
+            ?.trim()
+            .orEmpty()
+        if (openNoteId.isNotEmpty()) {
+            pendingOpenNoteId = openNoteId
+            intent?.removeExtra(com.fileapex.platform.EXTRA_OPEN_NOTE_ID)
         }
 
         intent?.data?.let { uri ->
@@ -532,74 +518,6 @@ class MainActivity : ComponentActivity() {
         }
         pendingCellularOptInProceed = onProceed
         phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-    }
-
-    private fun requestScanQr() {
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            launchQrScanner()
-        } else {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
-    }
-
-    private fun launchQrScanner() {
-        val options = ScanOptions()
-            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-            .setPrompt("Scan FileApex pairing QR")
-            .setBeepEnabled(false)
-            .setOrientationLocked(true)
-        qrScannerLauncher.launch(options)
-    }
-
-    private fun extractQrScanCandidates(result: ScanIntentResult): List<String> {
-        val collected = linkedSetOf<String>()
-        result.getContents()?.let { collected.add(it) }
-        result.originalIntent?.let { intent ->
-            intent.getStringExtra(Intents.Scan.RESULT)?.let { collected.add(it) }
-            collected.addAll(reassembleByteSegmentExtras(intent))
-        }
-        result.rawBytes?.let { bytes -> collected.addAll(decodeRawScanBytes(bytes)) }
-        val normalized = collected
-            .map { it.replace("\u0000", "").trim().trimStart('\uFEFF') }
-            .filter { it.isNotEmpty() }
-            .distinct()
-        if (normalized.size > 1) {
-            val joined = normalized.joinToString("")
-            if (joined.isNotBlank()) {
-                return (normalized + joined).distinct()
-            }
-        }
-        return normalized
-    }
-
-    private fun reassembleByteSegmentExtras(intent: android.content.Intent): List<String> {
-        val segments = mutableListOf<ByteArray>()
-        var index = 0
-        while (true) {
-            val chunk = intent.getByteArrayExtra("${Intents.Scan.RESULT_BYTE_SEGMENTS_PREFIX}$index")
-                ?: break
-            if (chunk.isNotEmpty()) segments.add(chunk)
-            index++
-        }
-        if (segments.isEmpty()) return emptyList()
-        val combined = segments.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
-        return decodeRawScanBytes(combined)
-    }
-
-    private fun decodeRawScanBytes(bytes: ByteArray): List<String> {
-        if (bytes.isEmpty()) return emptyList()
-        return buildList {
-            add(bytes.decodeToString())
-            if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
-                runCatching { String(bytes, Charsets.UTF_16LE) }.getOrNull()?.let { add(it) }
-            } else if (bytes.size % 2 == 0 && bytes.any { it == 0.toByte() }) {
-                runCatching { String(bytes, Charsets.UTF_16LE) }.getOrNull()?.let { add(it) }
-            }
-        }
     }
 
     /** Rebuild pairing URI text without Android Uri.toString() path-style drift (`fileapex:///pair`). */

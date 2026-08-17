@@ -13,7 +13,7 @@ FileApex is an ecosystem file manager designed to seamlessly sync, manage, and b
 * **Local-first P2P explorer:** Browse and move files between paired Android, macOS, and Windows devices on the same LAN.
 * **Multi-Target File Broadcasting:** Push files to multiple online devices at once.
 * **Smart receive folder:** Incoming files land in `Download/FileApex` (Android) or `~/Downloads/FileApex` (desktop).
-* **QR Code or manual code pairing:** Pair devices without typing IPs. Either scan a QR Code or you can manually enter the 6-digit code to pair.
+* **QR Code or local join:** Pair devices without typing IPs. Generate a QR on one device, or use Join on the other to scan the code, enter the 6-digit code, or auto-fill from a nearby broadcast.
 * **PIN lock (optional):** Require a PIN before others can pair or browse.
 * **macOS Finder / Share Extension:** Send from Finder or the system Share sheet.
 * **Windows Share / Send To:** Can send files from right-click menu in Windows using Share or the Send To.
@@ -43,7 +43,7 @@ To provide cross-platform file access and seamless system integration, the app m
 * **Background operation (Android):** Keeps the share server available so paired devices do not see you as unexpectedly offline. Includes foreground service, boot restart (when enabled in Settings), and recommended battery settings so the OS does not kill background sharing.
 * **Notifications (Android):** Shows share-server status and, if you turn it on, alerts when files are received.
 * **Nearby Wi‑Fi devices (Android):** Reads Wi‑Fi name and wireless connection details for the Device Details screen. Not used for location.
-* **Camera (Android):** Scan a pairing QR code when you choose Scan to add a device.
+* **Camera (Android):** Live QR preview on the Join device screen when pairing a new device.
 
 **Optional features (only if you enable them):**
 

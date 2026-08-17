@@ -249,7 +249,6 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                     shutdownDesktop()
                     exitApplication()
                 },
-                onScanQr = {},
                 appVersionName = FileApexAppVersion.NAME,
                 incomingShare = desktopIncomingShare,
                 onIncomingShareConsumed = { desktopIncomingShare = null }

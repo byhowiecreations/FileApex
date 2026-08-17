@@ -7,7 +7,7 @@ sealed interface AppRoute {
     data object Devices : AppRoute
     data object Settings : AppRoute
     data object GenerateQr : AppRoute
-    data object ScanQr : AppRoute
+    data object Join : AppRoute
     data class Explorer(val target: BrowseTarget) : AppRoute
     data class ShareSend(
         val payload: IncomingSharePayload,

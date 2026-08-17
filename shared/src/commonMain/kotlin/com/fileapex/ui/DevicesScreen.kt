@@ -233,7 +233,7 @@ fun DevicesScreen(
     onOpenDevice: (BrowseTarget) -> Unit,
     onOpenLocalFiles: () -> Unit,
     onGenerateQr: () -> Unit,
-    onScanQr: () -> Unit,
+    onJoinDevice: () -> Unit,
     onOpenSettings: () -> Unit,
     onExitApp: () -> Unit,
     onOpenNotes: () -> Unit = {},
@@ -250,7 +250,6 @@ fun DevicesScreen(
     val editMode = state.deviceOrderEditMode
     val snackbarHostState = remember { SnackbarHostState() }
     var addMenuOpen by remember { mutableStateOf(false) }
-    var showManualCodeDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
     var renameText by remember { mutableStateOf("") }
     var pinText by remember { mutableStateOf("") }
@@ -351,8 +350,7 @@ fun DevicesScreen(
                         viewModel.sendDroppedLocalFiles(deviceId, paths)
                     },
                     onGenerateQr = onGenerateQr,
-                    onScanQr = onScanQr,
-                    onManualEntry = { showManualCodeDialog = true },
+                    onJoinDevice = onJoinDevice,
                     onCheckBatteries = { viewModel.checkBatteries() },
                     onOpenNotes = onOpenNotes,
                     modifier = Modifier
@@ -453,32 +451,16 @@ fun DevicesScreen(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Scan QR Code") },
+                        text = { Text("Join device") },
                         onClick = {
                             addMenuOpen = false
-                            onScanQr()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Manually Enter Code") },
-                        onClick = {
-                            addMenuOpen = false
-                            showManualCodeDialog = true
+                            onJoinDevice()
                         }
                     )
                 }
             }
             }
         }
-    }
-
-    if (showManualCodeDialog) {
-        ManualPairingCodeDialog(
-            onDismiss = { showManualCodeDialog = false },
-            onConfirm = { code ->
-                viewModel.pairFromManualInput(code)
-            }
-        )
     }
 
     val renameId = state.renameTargetId
@@ -774,7 +756,7 @@ private fun PairedDevicesEditReorderList(
         ) {
             if (deviceRows.isEmpty()) {
                 Text(
-                    text = "No paired devices yet. Tap Add New Device to generate or scan a QR code.",
+                    text = "No paired devices yet. Tap Add New Device to generate a QR code or join a device.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
@@ -873,7 +855,7 @@ private fun PairedDevicesBrowseList(
                 contentType = "empty"
             ) {
                 Text(
-                    text = "No paired devices yet. Tap Add New Device to generate or scan a QR code.",
+                    text = "No paired devices yet. Tap Add New Device to generate a QR code or join a device.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier
@@ -950,7 +932,7 @@ private fun PairedDevicesGridBrowseList(
             if (deviceRows.isEmpty()) {
                 item(key = "empty", span = { GridItemSpan(grid.columnCount) }) {
                     Text(
-                        text = "No paired devices yet. Tap Add New Device to generate or scan a QR code.",
+                        text = "No paired devices yet. Tap Add New Device to generate a QR code or join a device.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
@@ -1807,49 +1789,4 @@ private fun BatteryStatusOverlay(
             }
         }
     }
-}
-
-@Composable
-private fun ManualPairingCodeDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var codeText by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Manually Enter Pairing Code") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Type the 6-digit code shown on the other device (e.g. 742 - 918) or paste a pairing code.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = codeText,
-                    onValueChange = { codeText = it },
-                    label = { Text("Pairing Code") },
-                    placeholder = { Text("e.g. 742 918") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (codeText.isNotBlank()) {
-                        onConfirm(codeText)
-                        onDismiss()
-                    }
-                }
-            ) {
-                Text("Connect & Pair")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
 }

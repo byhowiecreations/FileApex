@@ -8,6 +8,7 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.ClusterSyncRequest
+import com.fileapex.domain.pairing.LanPairingDiscovery
 import com.fileapex.domain.pairing.PeerSyncEventKind
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
@@ -200,6 +201,10 @@ class FileApexServer(
                             call.respond(HttpStatusCode.Forbidden, "pin_required")
                             return@runCatching
                         }
+                        if (!LanPairingDiscovery.matchesActiveCode(providedPairingCode(call))) {
+                            call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
+                            return@runCatching
+                        }
                         val body = call.receiveText()
                         if (body.isBlank()) {
                             call.respond(HttpStatusCode.BadRequest, "Empty pairing payload")
@@ -237,6 +242,7 @@ class FileApexServer(
                             null
                         )
                         call.respond(HttpStatusCode.Created)
+                        LanPairingDiscovery.onHostPairingAccepted()
                         serverScope.launch {
                             runCatching {
                                 withContext(Dispatchers.IO) {
@@ -694,6 +700,12 @@ class FileApexServer(
         val fromQuery = call.request.queryParameters["pin"].orEmpty().trim()
         if (fromQuery.isNotEmpty()) return fromQuery
         return call.request.headers["X-FileApex-Pin"].orEmpty().trim()
+    }
+
+    private fun providedPairingCode(call: ApplicationCall): String {
+        val fromQuery = call.request.queryParameters["code"].orEmpty().trim()
+        if (fromQuery.isNotEmpty()) return fromQuery
+        return call.request.headers["X-FileApex-Pairing-Code"].orEmpty().trim()
     }
 
     /**

@@ -59,7 +59,6 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
-            implementation(libs.zxing.android.embedded)
         }
 
         val desktopMain by getting {

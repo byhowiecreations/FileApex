@@ -187,11 +187,16 @@ class FileApexClient(
         host: String,
         port: Int,
         scannerDevice: PairedDeviceEntity,
-        pin: String? = null
+        pin: String? = null,
+        pairingCode: String? = null
     ) {
         val params = buildMap {
             if (!pin.isNullOrBlank()) {
                 put("pin", pin.trim())
+            }
+            val code = pairingCode?.filter { it.isDigit() }.orEmpty()
+            if (code.length == 6) {
+                put("code", code)
             }
         }
         val payload = json.encodeToString(PairedDeviceEntity.serializer(), scannerDevice)
@@ -209,6 +214,10 @@ class FileApexClient(
             timeoutMs = PEER_REQUEST_TIMEOUT_MS
         )
         if (response.statusCode == 403) {
+            val body = response.body.lowercase()
+            if (body.contains("pairing_code")) {
+                error("Pairing code expired or incorrect. Ask the other device to tap Retry.")
+            }
             error("Incorrect PIN — pairing rejected")
         }
         requireSuccess(response, "Pairing handshake failed (${response.statusCode})")

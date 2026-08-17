@@ -45,7 +45,6 @@ import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.ui.text.style.TextAlign
 
 /** Shared compact home header metrics — keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
@@ -138,19 +137,22 @@ fun FluxGlassHeader(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f, fill = true)) {
             Text(
                 text = primaryTitle,
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 34.sp,
+                    fontSize = 30.sp,
                     letterSpacing = (-0.5).sp
                 ),
-                color = titleColor
+                color = titleColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
             )
             if (!secondaryTitle.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -158,16 +160,18 @@ fun FluxGlassHeader(
                     text = secondaryTitle,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Medium,
-                        fontSize = 18.sp
+                        fontSize = 16.sp
                     ),
-                    color = subtitleColor
+                    color = subtitleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (onOpenTransferQueue != null) {
                 QueuedFilesButton(onClick = onOpenTransferQueue)
@@ -180,35 +184,20 @@ fun FluxGlassHeader(
             actions()
 
             if (showLayoutView && onToggleLayoutView != null) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Icon(
+                    imageVector = Icons.Filled.GridView,
+                    contentDescription = "Layout View",
+                    tint = accentTint,
                     modifier = Modifier
+                        .size(24.dp)
                         .clickable(onClick = onToggleLayoutView)
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.GridView,
-                        contentDescription = "Layout View",
-                        tint = accentTint,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Layout\nView",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
-                            textAlign = TextAlign.Center
-                        ),
-                        color = titleColor.copy(alpha = 0.85f)
-                    )
-                }
+                )
             }
 
             if (showCloseService && onCloseService != null) {
                 Surface(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .clickable(onClick = onCloseService),
                     shape = CircleShape,
@@ -220,7 +209,7 @@ fun FluxGlassHeader(
                             imageVector = Icons.Filled.PowerSettingsNew,
                             contentDescription = "Exit FileApex",
                             tint = Color(0xFF00E676),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }

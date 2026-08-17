@@ -104,6 +104,8 @@ import kotlinx.io.files.SystemFileSystem
 @Composable
 fun NotesScreen(
     onBack: () -> Unit,
+    focusNoteId: String? = null,
+    onFocusNoteConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentTheme = LocalAppTheme.current
@@ -119,6 +121,7 @@ fun NotesScreen(
     var pendingAttachmentPath by remember { mutableStateOf<String?>(null) }
     var pendingAttachmentSize by remember { mutableLongStateOf(0L) }
     var revealedNoteId by remember { mutableStateOf<String?>(null) }
+    var highlightedNoteId by remember { mutableStateOf<String?>(null) }
     var relayOptIn by remember { mutableStateOf<NotesAttachmentDecision.OfferRelayOptIn?>(null) }
     var pendingRelayPick by remember { mutableStateOf<PickedLocalFile?>(null) }
     var showDrivePermission by remember { mutableStateOf(false) }
@@ -270,12 +273,38 @@ fun NotesScreen(
         }
     }
 
-    LaunchedEffect(listRows.size, pendingTransport != null, transport?.settled, transport?.streamDone) {
+    LaunchedEffect(listRows.size, pendingTransport != null, transport?.settled, transport?.streamDone, focusNoteId) {
+        if (!focusNoteId.isNullOrBlank()) return@LaunchedEffect
         val extra = if (pendingTransport != null || (transport != null && transport?.settled != true)) 1 else 0
         val count = listRows.size + extra
         if (count > 0) {
             listState.animateScrollToItem(count - 1)
         }
+    }
+
+    LaunchedEffect(focusNoteId, listRows) {
+        val id = focusNoteId?.trim().orEmpty()
+        if (id.isEmpty()) return@LaunchedEffect
+        val index = listRows.indexOfFirst { row ->
+            row is NotesListRow.Bubble && row.note.noteId == id
+        }
+        if (index < 0) return@LaunchedEffect
+        listState.animateScrollToItem(index)
+        highlightedNoteId = id
+        onFocusNoteConsumed()
+    }
+
+    LaunchedEffect(highlightedNoteId) {
+        val id = highlightedNoteId ?: return@LaunchedEffect
+        delay(2200)
+        if (highlightedNoteId == id) highlightedNoteId = null
+    }
+
+    LaunchedEffect(focusNoteId) {
+        val id = focusNoteId?.trim().orEmpty()
+        if (id.isEmpty()) return@LaunchedEffect
+        delay(4000)
+        if (focusNoteId == id) onFocusNoteConsumed()
     }
 
     val backgroundColor = when (currentTheme) {
@@ -675,6 +704,7 @@ fun NotesScreen(
                                     subTextColor = subTextColor,
                                     isCustomGlass = isCustomGlass,
                                     revealed = revealedNoteId == row.note.noteId,
+                                    highlighted = highlightedNoteId == row.note.noteId,
                                     assembling = false,
                                     thumbnail = bubbleThumbs[row.note.noteId],
                                     onBubblePositioned = {},
@@ -1057,6 +1087,7 @@ private fun NoteBubbleItem(
     subTextColor: Color,
     isCustomGlass: Boolean,
     revealed: Boolean,
+    highlighted: Boolean = false,
     assembling: Boolean,
     thumbnail: ImageBitmap?,
     footerLabel: String? = null,
@@ -1173,7 +1204,14 @@ private fun NoteBubbleItem(
                     modifier = Modifier.onGloballyPositioned(onBubblePositioned),
                     colors = CardDefaults.cardColors(containerColor = bubbleBg),
                     shape = bubbleShape,
-                    border = if (isCustomGlass) BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)) else null
+                    border = when {
+                        highlighted -> BorderStroke(
+                            2.dp,
+                            if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                        )
+                        isCustomGlass -> BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                        else -> null
+                    }
                 ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

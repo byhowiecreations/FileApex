@@ -2,10 +2,12 @@ package com.fileapex.cloud
 
 import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.data.db.PairedDeviceEntity
+import com.fileapex.data.device.DeviceDisplayNames
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimestampDiagnostics
@@ -520,9 +522,9 @@ object GoogleLinkCoordinator {
     /**
      * Remote snapshot seeds peers into Room. Never writes Firestore from here.
      *
-     * This device's display name is owned locally (UI rename or POST /identity/rename).
-     * Firestore / peer-roster copies of our name are ignored so stale snapshots cannot
-     * toggle "This device" after a rename.
+     * This device's display name is owned locally after a rename. A factory/hardware
+     * name may still be replaced by a cloud custom name so an APK update cannot
+     * lose a rename that never landed in local prefs.
      */
     private suspend fun applyRemoteDevices(
         records: List<CloudDeviceRecord>,
@@ -544,12 +546,14 @@ object GoogleLinkCoordinator {
                 .forEach { remote ->
                     if (!isSessionLive(epoch)) return
                     if (remote.deviceId == selfId) {
-                        // Publish our name TO the cloud on rename; never import OUR name FROM cloud.
+                        adoptCloudNameIfLocalIsFactory(remote.deviceName)
                         return@forEach
                     }
                     val local = repo.getDevice(remote.deviceId)
                     val mergedIp = remote.lastKnownIp.trim().ifBlank { local?.lastKnownIp.orEmpty() }
                     val mergedPort = remote.port.takeIf { it > 0 } ?: local?.port ?: 0
+                    val fingerprintMake = remote.hardwareFingerprint["manufacturer"].orEmpty()
+                    val fingerprintModel = remote.hardwareFingerprint["model"].orEmpty()
                     runCatching {
                         if (!isSessionLive(epoch)) return@runCatching
                         repo.reinstateFromCloudSeed(
@@ -567,6 +571,8 @@ object GoogleLinkCoordinator {
                                     ?: local?.clientVersionCode
                                     ?: 0,
                                 platform = remote.platform.ifBlank { local?.platform.orEmpty() },
+                                deviceMake = fingerprintMake.ifBlank { local?.deviceMake.orEmpty() },
+                                deviceModel = fingerprintModel.ifBlank { local?.deviceModel.orEmpty() },
                                 lastSeenEpochMs = remote.updatedAtEpochMs.coerceAtLeast(0L)
                             )
                         )
@@ -590,6 +596,17 @@ object GoogleLinkCoordinator {
                 }
             runCatching { repo.reconcileDuplicateEndpoints() }
         }
+    }
+
+    private suspend fun adoptCloudNameIfLocalIsFactory(cloudName: String) {
+        val trimmed = cloudName.trim()
+        if (trimmed.isEmpty()) return
+        val hardware = localDeviceHardwareProfile()
+        val current = LocalDeviceNameStore.current().ifBlank { loadLocalIdentity().deviceName }
+        if (!DeviceDisplayNames.isFactory(current, hardware.deviceMake, hardware.deviceModel)) return
+        if (DeviceDisplayNames.isFactory(trimmed, hardware.deviceMake, hardware.deviceModel)) return
+        LocalDeviceNameStore.apply(trimmed)
+        runCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity() }
     }
 
     private fun resolveCloudDeviceId(deviceId: String): String {

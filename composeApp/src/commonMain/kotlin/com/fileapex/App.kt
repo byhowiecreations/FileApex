@@ -54,6 +54,7 @@ import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.GenerateQrScreen
+import com.fileapex.ui.JoinDeviceScreen
 import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.KineticDropFxLayer
@@ -96,7 +97,6 @@ fun App(
     onStartShareServer: () -> Unit,
     onStopShareServer: () -> Unit,
     onExitApp: () -> Unit,
-    onScanQr: () -> Unit,
     appVersionName: String,
     scannedPayload: PairingPayload? = null,
     onScannedPayloadConsumed: () -> Unit = {},
@@ -111,7 +111,9 @@ fun App(
     onDismissShareError: () -> Unit = {},
     directShareDeviceId: String? = null,
     requestShowUpdateSheet: Boolean = false,
-    onUpdateSheetRequestConsumed: () -> Unit = {}
+    onUpdateSheetRequestConsumed: () -> Unit = {},
+    pendingOpenNoteId: String? = null,
+    onOpenNoteRequestConsumed: () -> Unit = {}
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
@@ -151,6 +153,12 @@ fun App(
             AppUpdateCoordinator.requestShowUpdateSheet()
             onUpdateSheetRequestConsumed()
         }
+    }
+
+    LaunchedEffect(pendingOpenNoteId) {
+        val noteId = pendingOpenNoteId?.trim().orEmpty()
+        if (noteId.isEmpty()) return@LaunchedEffect
+        route = AppRoute.Notes
     }
 
     val pendingUpdate by AppUpdateCoordinator.pendingUpdate.collectAsState()
@@ -299,6 +307,10 @@ fun App(
                     // Overlay routes stay full-screen on every size class.
                     when (val overlay = route) {
                         AppRoute.GenerateQr -> GenerateQrScreen(onBack = onNavigateHome)
+                        AppRoute.Join -> JoinDeviceScreen(
+                            onBack = onNavigateHome,
+                            viewModel = devicesViewModel
+                        )
                         is AppRoute.ShareSend -> ShareSendScreen(
                             payload = overlay.payload,
                             directTargetDeviceId = overlay.directTargetDeviceId,
@@ -309,11 +321,10 @@ fun App(
                             viewModel = transferQueueViewModel
                         )
                         AppRoute.Notes -> NotesScreen(
-                            onBack = onNavigateHome
+                            onBack = onNavigateHome,
+                            focusNoteId = pendingOpenNoteId,
+                            onFocusNoteConsumed = onOpenNoteRequestConsumed
                         )
-                        AppRoute.ScanQr -> {
-                            route = AppRoute.Devices
-                        }
                         else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                             val widthClass = widthSizeClassFor(maxWidth)
                             val desktopLayoutMode = if (usesDesktopFileSelection()) {
@@ -377,7 +388,10 @@ fun App(
                                         onStartShareServer()
                                         route = AppRoute.GenerateQr
                                     },
-                                    onScanQr = onScanQr,
+                                    onJoinDevice = {
+                                        onStartShareServer()
+                                        route = AppRoute.Join
+                                    },
                                     onExitApp = exitFileApex,
                                     onClearDetail = {
                                         wideSelectedTarget?.deviceId?.let {
@@ -413,7 +427,10 @@ fun App(
                                         onStartShareServer()
                                         route = AppRoute.GenerateQr
                                     },
-                                    onScanQr = onScanQr,
+                                    onJoinDevice = {
+                                        onStartShareServer()
+                                        route = AppRoute.Join
+                                    },
                                     onOpenSettings = { route = AppRoute.Settings },
                                     onNavigateHome = onNavigateHome,
                                     onExitApp = exitFileApex,
@@ -516,7 +533,7 @@ private fun CompactHomeContent(
     onOpenDevice: (BrowseTarget) -> Unit,
     onOpenLocalFiles: () -> Unit,
     onGenerateQr: () -> Unit,
-    onScanQr: () -> Unit,
+    onJoinDevice: () -> Unit,
     onOpenSettings: () -> Unit,
     onNavigateHome: () -> Unit,
     onExitApp: () -> Unit,
@@ -574,7 +591,7 @@ private fun CompactHomeContent(
                 onOpenDevice = onOpenDevice,
                 onOpenLocalFiles = onOpenLocalFiles,
                 onGenerateQr = onGenerateQr,
-                onScanQr = onScanQr,
+                onJoinDevice = onJoinDevice,
                 onOpenSettings = onOpenSettings,
                 onExitApp = onExitApp,
                 onOpenNotes = onOpenNotes,
@@ -611,7 +628,7 @@ private fun CompactHomeContent(
                 onOpenDevice = onOpenDevice,
                 onOpenLocalFiles = onOpenLocalFiles,
                 onGenerateQr = onGenerateQr,
-                onScanQr = onScanQr,
+                onJoinDevice = onJoinDevice,
                 onOpenSettings = onOpenSettings,
                 onExitApp = onExitApp,
                 onOpenNotes = onOpenNotes,

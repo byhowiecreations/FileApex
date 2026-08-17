@@ -5,28 +5,21 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * Manifest receiver for [Intent.ACTION_BATTERY_LOW] (background) and dynamic registration for
- * charging / battery-level transitions while the process is alive.
+ * Manifest + dynamic receiver for [Intent.ACTION_BATTERY_LOW] and [Intent.ACTION_POWER_CONNECTED].
+ * Does not listen to [Intent.ACTION_BATTERY_CHANGED].
  */
-class BatteryBulletinReceiver(
-    private val forDynamicRegistration: Boolean = false
-) : BroadcastReceiver() {
+class BatteryBulletinReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
         val appContext = context.applicationContext
         when (action) {
             Intent.ACTION_BATTERY_LOW -> {
-                if (forDynamicRegistration) return
                 val pending = goAsync()
                 BatteryBulletinCoordinator.onBatteryLow(appContext) { pending.finish() }
             }
             Intent.ACTION_POWER_CONNECTED -> {
                 val pending = goAsync()
                 BatteryBulletinCoordinator.onCharging(appContext) { pending.finish() }
-            }
-            Intent.ACTION_BATTERY_CHANGED -> {
-                if (!forDynamicRegistration) return
-                BatteryBulletinCoordinator.onBatteryChanged(appContext, intent)
             }
         }
     }

@@ -190,9 +190,11 @@ class PairingCoordinator(
      */
     suspend fun awaitShareServerReady() {
         ServerLifecycleManager.ensureRunning()
+        if (ServerLifecycleManager.isRunning) {
+            return
+        }
         repeat(SHARE_SERVER_READY_ATTEMPTS) {
             if (ServerLifecycleManager.isRunning) {
-                delay(SHARE_SERVER_SETTLE_MS)
                 return
             }
             delay(SHARE_SERVER_POLL_MS)
@@ -347,7 +349,6 @@ class PairingCoordinator(
     private companion object {
         const val SHARE_SERVER_READY_ATTEMPTS = 20
         const val SHARE_SERVER_POLL_MS = 100L
-        const val SHARE_SERVER_SETTLE_MS = 150L
         const val ROSTER_IMPORT_ATTEMPTS = 3
         const val ROSTER_IMPORT_RETRY_MS = 500L
     }

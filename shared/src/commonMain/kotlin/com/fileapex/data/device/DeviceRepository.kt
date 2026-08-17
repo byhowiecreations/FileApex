@@ -116,7 +116,8 @@ class DeviceRepository(
      * Atomically replaces the peer record keyed by [PeerNodeState.deviceId].
      *
      * [rosterDeviceId] is the row id used to reach this peer when it differs from the
-     * payload [deviceId] (stale roster restore). The payload [deviceName] always wins.
+     * payload [deviceId] (stale roster restore). Hardware-default names in the payload
+     * do not replace a user-assigned [deviceName].
      */
     suspend fun applyPeerNodeState(state: PeerNodeState, rosterDeviceId: String? = null): Boolean =
         mutateMutex.withLock {
@@ -403,7 +404,12 @@ class DeviceRepository(
         }
         val secondary = if (primary.deviceId == incoming.deviceId) existing else incoming
         return primary.copy(
-            deviceName = incoming.deviceName.trim().ifBlank { primary.deviceName.ifBlank { secondary.deviceName } },
+            deviceName = DeviceDisplayNames.merge(
+                existingName = existing.deviceName.ifBlank { primary.deviceName.ifBlank { secondary.deviceName } },
+                incomingName = incoming.deviceName,
+                make = firstNonBlank(incoming.deviceMake, primary.deviceMake, secondary.deviceMake),
+                model = firstNonBlank(incoming.deviceModel, primary.deviceModel, secondary.deviceModel)
+            ),
             lastKnownIp = when {
                 hasUsableEndpoint(endpointSource) -> endpointSource.lastKnownIp
                 hasUsableEndpoint(secondary) -> secondary.lastKnownIp

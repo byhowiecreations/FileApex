@@ -102,7 +102,7 @@ fun PairingQrPanel(
         }
 
         Text(
-            text = "Scan QR with Camera or FileApex scanner, or select 'Manually enter code' on the other device.",
+            text = "Scan QR with Camera or FileApex, or choose Join device on the other device to auto-fill from this broadcast.",
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant

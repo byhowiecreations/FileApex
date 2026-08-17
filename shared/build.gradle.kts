@@ -229,6 +229,7 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             implementation(libs.androidx.sharetarget)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.zxing.android.embedded)
             implementation(project.dependencies.platform(libs.firebase.bom))
             implementation(libs.firebase.auth)
             implementation(libs.firebase.firestore)

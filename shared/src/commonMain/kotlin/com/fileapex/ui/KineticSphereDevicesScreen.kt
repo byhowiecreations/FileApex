@@ -23,15 +23,18 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
@@ -45,10 +48,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.fileapex.di.FileApexServices
 import androidx.compose.ui.Alignment
@@ -109,8 +114,7 @@ fun KineticSphereDevicesView(
     onRemoveDevice: (deviceId: String, deviceName: String) -> Unit,
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     onGenerateQr: () -> Unit = {},
-    onScanQr: () -> Unit = {},
-    onManualEntry: () -> Unit = {},
+    onJoinDevice: () -> Unit = {},
     onCheckBatteries: (() -> Unit)? = null,
     onOpenNotes: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -220,31 +224,53 @@ fun KineticSphereDevicesView(
 
         val persistedNodeOffsets by FileApexServices.settings.kineticNodeOffsets.collectAsState()
 
-        val effectiveNodePositions = remember(staticNodePositions, persistedNodeOffsets, deviceRows, widthPx, heightPx, layoutScopePrefix) {
+        // Absolute canvas positions keyed as "pos:{cmp|exp}:{deviceId}".
+        // Legacy relative offsets ("cmp:id") are migrated once so roster reorders cannot move nodes.
+        LaunchedEffect(staticNodePositions, deviceRows, persistedNodeOffsets, layoutScopePrefix) {
+            deviceRows.forEachIndexed { index, row ->
+                val posKey = "pos:$layoutScopePrefix${row.deviceId}"
+                if (persistedNodeOffsets.containsKey(posKey)) return@forEachIndexed
+                val staticPos = staticNodePositions.getOrNull(index) ?: return@forEachIndexed
+                val scopedKey = layoutScopePrefix + row.deviceId
+                val legacy = persistedNodeOffsets[scopedKey] ?: persistedNodeOffsets[row.deviceId]
+                val absX = if (legacy != null) staticPos.x + legacy.first else staticPos.x
+                val absY = if (legacy != null) staticPos.y + legacy.second else staticPos.y
+                FileApexServices.settings.setKineticNodeOffset(posKey, absX, absY)
+            }
+        }
+
+        val effectiveNodePositions = remember(
+            staticNodePositions,
+            persistedNodeOffsets,
+            deviceRows,
+            widthPx,
+            heightPx,
+            layoutScopePrefix
+        ) {
             val marginPx = with(density) { 70.dp.toPx() }
             val topMarginPx = with(density) { 55.dp.toPx() }
-            val minHubDistancePx = with(density) { 138.dp.toPx() }
 
             staticNodePositions.mapIndexed { index, staticPos ->
                 val row = deviceRows.getOrNull(index) ?: return@mapIndexed staticPos
-                val scopedKey = layoutScopePrefix + row.deviceId
-                val offsetPair = persistedNodeOffsets[scopedKey] ?: persistedNodeOffsets[row.deviceId]
-                val dragOffset = if (offsetPair != null) Offset(offsetPair.first, offsetPair.second) else Offset.Zero
-                var cx = staticPos.x + dragOffset.x
-                var cy = staticPos.y + dragOffset.y
-
-                val hubDx = cx - centerX
-                val hubDy = cy - centerY
-                val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
-                if (hubDist < minHubDistancePx && hubDist > 0.001f) {
-                    val factor = minHubDistancePx / hubDist
-                    cx = centerX + (hubDx * factor)
-                    cy = centerY + (hubDy * factor)
+                val posKey = "pos:$layoutScopePrefix${row.deviceId}"
+                val abs = persistedNodeOffsets[posKey]
+                if (abs != null) {
+                    Offset(
+                        abs.first.coerceIn(marginPx, widthPx - marginPx),
+                        abs.second.coerceIn(topMarginPx, heightPx - marginPx)
+                    )
+                } else {
+                    val scopedKey = layoutScopePrefix + row.deviceId
+                    val legacy = persistedNodeOffsets[scopedKey] ?: persistedNodeOffsets[row.deviceId]
+                    if (legacy != null) {
+                        Offset(
+                            (staticPos.x + legacy.first).coerceIn(marginPx, widthPx - marginPx),
+                            (staticPos.y + legacy.second).coerceIn(topMarginPx, heightPx - marginPx)
+                        )
+                    } else {
+                        staticPos
+                    }
                 }
-
-                cx = cx.coerceIn(marginPx, widthPx - marginPx)
-                cy = cy.coerceIn(topMarginPx, heightPx - marginPx)
-                Offset(cx, cy)
             }
         }
 
@@ -392,30 +418,12 @@ fun KineticSphereDevicesView(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(text = "Scan QR Code", color = Color.White)
+                            Text(text = "Join device", color = Color.White)
                         }
                     },
                     onClick = {
                         addMenuOpen = false
-                        onScanQr()
-                    }
-                )
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = null,
-                                tint = Color(0xFF00E676),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(text = "Manually Enter Code", color = Color.White)
-                        }
-                    },
-                    onClick = {
-                        addMenuOpen = false
-                        onManualEntry()
+                        onJoinDevice()
                     }
                 )
             }
@@ -492,6 +500,8 @@ fun KineticSphereDevicesView(
 
                 val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFC107)
                 var dropHover by remember { mutableStateOf(false) }
+                val latestNodeCx by rememberUpdatedState(nodeCx)
+                val latestNodeCy by rememberUpdatedState(nodeCy)
 
                 Box(
                     modifier = Modifier
@@ -537,18 +547,25 @@ fun KineticSphereDevicesView(
                             ),
                             CircleShape
                         )
+                        // Do not key on nodeCx/nodeCy — that restarts the gesture mid-drag and locks nodes.
                         .pointerInput(row.deviceId, layoutScopePrefix) {
+                            var dragX = 0f
+                            var dragY = 0f
                             detectDragGestures(
-                                onDragStart = { activeRadialNodeId = null },
+                                onDragStart = {
+                                    activeRadialNodeId = null
+                                    dragX = latestNodeCx
+                                    dragY = latestNodeCy
+                                },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    val scopedKey = layoutScopePrefix + row.deviceId
-                                    val currentPair = persistedNodeOffsets[scopedKey]
-                                        ?: persistedNodeOffsets[row.deviceId]
-                                        ?: Pair(0f, 0f)
-                                    val newDx = currentPair.first + dragAmount.x
-                                    val newDy = currentPair.second + dragAmount.y
-                                    FileApexServices.settings.setKineticNodeOffset(scopedKey, newDx, newDy)
+                                    dragX += dragAmount.x
+                                    dragY += dragAmount.y
+                                    FileApexServices.settings.setKineticNodeOffset(
+                                        "pos:$layoutScopePrefix${row.deviceId}",
+                                        dragX,
+                                        dragY
+                                    )
                                 }
                             )
                         }
@@ -631,6 +648,10 @@ fun KineticSphereDevicesView(
                             onInfo = {
                                 activeRadialNodeId = null
                                 onDeviceDetails(row.deviceId)
+                            },
+                            onRemove = {
+                                activeRadialNodeId = null
+                                onRemoveDevice(row.deviceId, row.deviceName)
                             }
                         )
                     }
@@ -672,7 +693,8 @@ private fun KineticGlassActionCapsule(
     onOpen: () -> Unit,
     onSendClipboard: () -> Unit,
     onRename: () -> Unit,
-    onInfo: () -> Unit
+    onInfo: () -> Unit,
+    onRemove: () -> Unit
 ) {
     val density = LocalDensity.current
     val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFC107)
@@ -681,16 +703,18 @@ private fun KineticGlassActionCapsule(
     val dy = centerPx.y - hubCenter.y
     val outwardAngle = kotlin.math.atan2(dy.toDouble(), dx.toDouble())
 
-    val distDp = 82.dp
+    val distDp = 90.dp
     val distPx = with(density) { distDp.toPx() }
 
     val rawX = centerPx.x + (distPx * cos(outwardAngle)).toFloat()
     val rawY = centerPx.y + (distPx * sin(outwardAngle)).toFloat()
 
-    val capsuleWidthDp = 224.dp
-    val capsuleHeightDp = 106.dp
+    val capsuleWidthDp = 236.dp
+    val fallbackHeightDp = 148.dp
     val capsuleWidthPx = with(density) { capsuleWidthDp.toPx() }
-    val capsuleHeightPx = with(density) { capsuleHeightDp.toPx() }
+    val fallbackHeightPx = with(density) { fallbackHeightDp.toPx() }
+    var measuredHeightPx by remember { mutableStateOf(0f) }
+    val capsuleHeightPx = measuredHeightPx.takeIf { it > 0f } ?: fallbackHeightPx
 
     val edgeMarginPx = with(density) { 16.dp.toPx() }
     val clampedX = (rawX - (capsuleWidthPx / 2f)).coerceIn(edgeMarginPx, canvasWidthPx - edgeMarginPx - capsuleWidthPx)
@@ -700,7 +724,8 @@ private fun KineticGlassActionCapsule(
         modifier = Modifier
             .offset { IntOffset(clampedX.roundToInt(), clampedY.roundToInt()) }
             .width(capsuleWidthDp)
-            .height(capsuleHeightDp)
+            .wrapContentHeight()
+            .onSizeChanged { measuredHeightPx = it.height.toFloat() }
             .graphicsLayer {
                 scaleX = 0.6f + (0.4f * expansionProgress)
                 scaleY = 0.6f + (0.4f * expansionProgress)
@@ -727,11 +752,11 @@ private fun KineticGlassActionCapsule(
                 ),
                 RoundedCornerShape(20.dp)
             )
-            .padding(vertical = 8.dp, horizontal = 10.dp)
+            .padding(vertical = 10.dp, horizontal = 10.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -781,7 +806,14 @@ private fun KineticGlassActionCapsule(
                 CapsuleActionButton("Browse", Icons.Filled.Folder, Color(0xFF00E676), onOpen)
                 CapsuleActionButton("Clipboard", Icons.AutoMirrored.Filled.Assignment, Color(0xFF00E5FF), onSendClipboard)
                 CapsuleActionButton("Rename", Icons.Filled.Edit, Color(0xFFFFC107), onRename)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 CapsuleActionButton("Info", Icons.Filled.Info, Color(0xFF40C4FF), onInfo)
+                CapsuleActionButton("Remove", Icons.Filled.Delete, Color(0xFFFF5252), onRemove)
             }
         }
     }

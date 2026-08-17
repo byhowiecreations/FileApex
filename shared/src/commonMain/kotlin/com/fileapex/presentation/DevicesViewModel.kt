@@ -11,11 +11,13 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
+import com.fileapex.domain.pairing.LanPairingDiscovery
+import com.fileapex.domain.pairing.PairingBeacon
 import com.fileapex.domain.pairing.PairingPayload
-import com.fileapex.domain.pairing.PairingPayloadFactory
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.network.PeerReachabilityMessages
+import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.PlatformClipboard
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.platform.purgeDirectShareTarget
@@ -23,6 +25,7 @@ import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -66,7 +69,8 @@ data class DevicesUiState(
     val deviceOrderEditMode: Boolean = false,
     val editOrderRows: List<DeviceListRow> = emptyList(),
     val deviceDetails: DeviceDetailsState? = null,
-    val batteryOverlayState: BatteryCheckOverlayState? = null
+    val batteryOverlayState: BatteryCheckOverlayState? = null,
+    val discoveredPairingPeers: List<PairingBeacon> = emptyList()
 )
 
 data class DeviceDetailsState(
@@ -103,6 +107,7 @@ class DevicesViewModel : ViewModel() {
         get() = FileApexServices.localIdentity
 
     private var pendingOpenAction: ((BrowseTarget) -> Unit)? = null
+    private var pairingDiscoveryPrune: Job? = null
 
     /** Scroll bookmark — not part of reactive UI state (avoids list recomposition on scroll). */
     private var listScrollIndex: Int = 0
@@ -170,6 +175,11 @@ class DevicesViewModel : ViewModel() {
                 if (name.isNotBlank()) {
                     _uiState.update { it.copy(localDeviceName = name) }
                 }
+            }
+        }
+        viewModelScope.launch {
+            LanPairingDiscovery.discoveredPeers.collect { peers ->
+                _uiState.update { it.copy(discoveredPairingPeers = peers) }
             }
         }
     }
@@ -387,6 +397,26 @@ class DevicesViewModel : ViewModel() {
         }
     }
 
+    fun startPairingDiscovery() {
+        LanPairingDiscovery.startDiscovery()
+        viewModelScope.launch(Dispatchers.IO) {
+            ServerLifecycleManager.ensureRunning()
+        }
+        pairingDiscoveryPrune?.cancel()
+        pairingDiscoveryPrune = viewModelScope.launch {
+            while (true) {
+                delay(500)
+                LanPairingDiscovery.pruneStalePeers()
+            }
+        }
+    }
+
+    fun stopPairingDiscovery() {
+        pairingDiscoveryPrune?.cancel()
+        pairingDiscoveryPrune = null
+        LanPairingDiscovery.stopDiscovery()
+    }
+
     fun pairFromManualInput(input: String) {
         viewModelScope.launch {
             val trimmed = input.trim()
@@ -395,95 +425,17 @@ class DevicesViewModel : ViewModel() {
                 return@launch
             }
 
-            val directPayload = PairingPayload.parseOrNull(trimmed)
-            if (directPayload != null) {
-                pairFromQrPayload(directPayload)
+            val matched = LanPairingDiscovery.matchInput(trimmed)
+            if (matched != null) {
+                pairFromQrPayload(matched)
                 return@launch
             }
 
-            val digitsOnly = trimmed.filter { it.isDigit() }
-            if (digitsOnly.length == 6) {
-                _uiState.update { it.copy(statusMessage = "Connecting using code $trimmed…") }
-
-                val candidateEndpoints = mutableListOf<Pair<String, Int>>()
-
-                val mdnsEndpoints = presence.getDiscoveredEndpoints()
-                candidateEndpoints.addAll(mdnsEndpoints)
-
-                val pairedDevices = repository.listDevices()
-                for (dev in pairedDevices) {
-                    if (dev.lastKnownIp.isNotBlank() && dev.port > 0) {
-                        candidateEndpoints.add(dev.lastKnownIp to dev.port)
-                    }
-                }
-
-                if (candidateEndpoints.isEmpty()) {
-                    val roots = NetworkUtils.lanBindCandidates().filter { NetworkUtils.isUsableLanIpv4(it) }
-                    val localIp = roots.firstOrNull() ?: NetworkUtils.preferredLanIpv4()
-                    if (NetworkUtils.isUsableLanIpv4(localIp)) {
-                        val subnetParts = localIp.split('.')
-                        if (subnetParts.size == 4) {
-                            val prefix = "${subnetParts[0]}.${subnetParts[1]}.${subnetParts[2]}"
-                            for (lastOctet in 1..254) {
-                                candidateEndpoints.add("$prefix.$lastOctet" to LocalIdentity.DEFAULT_SHARE_PORT)
-                            }
-                        }
-                    }
-                }
-
-                val distinctCandidates = candidateEndpoints.distinct()
-
-                var pairedSuccessfully = false
-                for (candidate in distinctCandidates) {
-                    val host = candidate.first
-                    val port = candidate.second
-                    val state = runCatching {
-                        FileApexServices.client.fetchPeerNodeState(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
-                    }.getOrNull() ?: continue
-
-                    if (state.deviceId.isNotBlank() && state.deviceId != identity.deviceId) {
-                        val payload = PairingPayloadFactory.create(
-                            deviceId = state.deviceId,
-                            deviceName = state.deviceName,
-                            host = host,
-                            port = port,
-                            rootPath = state.rootPath,
-                            pinRequired = state.pinRequired,
-                            pairingCode = digitsOnly
-                        )
-                        var attemptSuccess = false
-                        runCatching {
-                            val verified = runCatching {
-                                FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
-                            }.getOrNull()
-                            val pinRequired = verified?.pinRequired == true || payload.pinRequired
-                            if (pinRequired) {
-                                _uiState.update {
-                                    it.copy(
-                                        pendingPinPairing = payload.copy(pinRequired = true),
-                                        statusMessage = "Enter PIN for ${verified?.deviceName ?: payload.deviceName}"
-                                    )
-                                }
-                                attemptSuccess = true
-                            } else {
-                                completePairing(payload, pin = null)
-                                attemptSuccess = true
-                            }
-                        }
-                        if (attemptSuccess) {
-                            pairedSuccessfully = true
-                            break
-                        }
-                    }
-                }
-
-                if (pairedSuccessfully) {
-                    return@launch
-                }
-            }
-
             _uiState.update {
-                it.copy(errorMessage = "Pairing code not recognized. Make sure both devices are on the same Wi-Fi network.")
+                it.copy(
+                    errorMessage = "No nearby device is broadcasting that code. " +
+                        "Make sure the other device is on the pairing screen and on the same Wi-Fi."
+                )
             }
         }
     }
@@ -574,27 +526,41 @@ class DevicesViewModel : ViewModel() {
             host = payload.host,
             port = payload.port,
             scannerDevice = scannerEntity,
-            pin = pin
+            pin = pin,
+            pairingCode = payload.pairingCode
         )
         if (!pin.isNullOrBlank()) {
             FileApexServices.client.rememberSessionPin(payload.host, payload.port, pin)
             DeviceSessionManager.markDeviceAccessed(broadcasterId)
         }
-        val importedCount = FileApexServices.pairingCoordinator.importDirectPeerRoster(
-            host = payload.host,
-            port = payload.port,
-            excludeDeviceIds = setOf(broadcasterId)
-        )
-        FileApexServices.pairingCoordinator.announceSelfToCluster(excludeDeviceIds = setOf(broadcasterId))
-        FileApexServices.pairingCoordinator.afterOutboundPair(broadcasterEntity)
 
-        val statusMessage = if (importedCount > 0) {
-            "Paired with $broadcasterName (+$importedCount cluster ${if (importedCount == 1) "device" else "devices"})"
-        } else {
-            "Paired with $broadcasterName (cluster updated)"
-        }
+        // Navigate back immediately — roster import / cluster announce can take seconds on cold LAN.
         _uiState.update {
-            it.copy(statusMessage = statusMessage)
+            it.copy(statusMessage = "Paired with $broadcasterName")
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                val importedCount = FileApexServices.pairingCoordinator.importDirectPeerRoster(
+                    host = payload.host,
+                    port = payload.port,
+                    excludeDeviceIds = setOf(broadcasterId)
+                )
+                FileApexServices.pairingCoordinator.announceSelfToCluster(
+                    excludeDeviceIds = setOf(broadcasterId)
+                )
+                FileApexServices.pairingCoordinator.afterOutboundPair(broadcasterEntity)
+                if (importedCount > 0) {
+                    _uiState.update {
+                        it.copy(
+                            statusMessage = "Paired with $broadcasterName " +
+                                "(+$importedCount cluster ${if (importedCount == 1) "device" else "devices"})"
+                        )
+                    }
+                }
+            }.onFailure { error ->
+                println("DevicesViewModel: post-pair cluster sync failed - ${error.message}")
+            }
         }
     }
 
@@ -638,7 +604,6 @@ class DevicesViewModel : ViewModel() {
                 } else {
                     val peer = repository.getDevice(deviceId)
                         ?: error("Device not found")
-                    val updated = peer.copy(deviceName = trimmed)
                     runCatching {
                         FileApexServices.client.postRemoteRename(
                             host = peer.lastKnownIp,
@@ -646,7 +611,7 @@ class DevicesViewModel : ViewModel() {
                             newName = trimmed
                         )
                     }
-                    repository.upsertReplacingAliases(updated)
+                    repository.rename(deviceId, trimmed)
                     runCatching {
                         GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
                     }
@@ -809,6 +774,11 @@ class DevicesViewModel : ViewModel() {
 
     fun dismissMessages() {
         _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+    }
+
+    override fun onCleared() {
+        stopPairingDiscovery()
+        super.onCleared()
     }
 
     fun reportScanError(message: String) {

@@ -1,6 +1,7 @@
 package com.fileapex.domain.peer
 
 import com.fileapex.data.db.PairedDeviceEntity
+import com.fileapex.data.device.DeviceDisplayNames
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.cloud.currentPlatformLabel
@@ -52,7 +53,14 @@ object PeerNodeStateMapper {
     fun toEntity(state: PeerNodeState, existing: PairedDeviceEntity? = null): PairedDeviceEntity {
         val deviceId = state.deviceId.trim()
         require(deviceId.isNotEmpty()) { "PeerNodeState.deviceId cannot be empty" }
-        val name = state.deviceName.trim().ifBlank { existing?.deviceName.orEmpty() }
+        val make = state.deviceMake.trim().ifBlank { existing?.deviceMake.orEmpty() }
+        val model = state.deviceModel.trim().ifBlank { existing?.deviceModel.orEmpty() }
+        val name = DeviceDisplayNames.merge(
+            existingName = existing?.deviceName.orEmpty(),
+            incomingName = state.deviceName,
+            make = make,
+            model = model
+        )
         return PairedDeviceEntity(
             deviceId = deviceId,
             deviceName = name.ifBlank { "Paired device" },
