@@ -164,10 +164,15 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
     ) {
         val id = noteId.takeIf { !it.isNullOrBlank() } ?: return
         val sourceId = sourceDeviceId.takeIf { !it.isNullOrBlank() } ?: "unknown"
-        Log.i(TAG, "Drive sync note received noteId=$id from $sourceId")
+        Log.i(TAG, "Drive sync note received noteId=$id from $sourceId driveFileId=${driveFileId.ifBlank { "none" }}")
         serviceScope.launch {
             if (FileApexServices.noteRepository.isRetracted(id, driveFileId, remoteChecksum)) return@launch
-            DriveRelayCoordinator.onFcmRelayPointer()
+            // TYPE_NOTE_SYNC with no driveFileId has nothing to fetch — skip the ledger sweep.
+            if (driveFileId.isNotBlank()) {
+                DriveRelayCoordinator.onFcmRelayPointer()
+            } else {
+                Log.d(TAG, "Drive sync note has no driveFileId - skipping relay sweep noteId=$id")
+            }
             val already = FileApexServices.noteRepository.containsNoteOrChecksum(id, remoteChecksum)
             if (!already) {
                 FileApexServices.noteRepository.addNote(

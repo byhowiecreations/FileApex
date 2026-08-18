@@ -52,7 +52,6 @@ actual object DriveSyncScheduler {
             ExistingWorkPolicy.REPLACE,
             oneShot
         )
-        ensureScheduled()
     }
 
     private const val UNIQUE_PERIODIC = "fileapex_drive_sync"

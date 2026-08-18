@@ -103,13 +103,6 @@ object DriveRelayCoordinator {
             return
         }
         DriveSyncScheduler.enqueueImmediateSweep()
-        scope.launch {
-            runCatching { sweep(forceReload = true) }
-                .onFailure { error ->
-                    if (error is CancellationException) throw error
-                    driveLogError("FCM Drive retrieve failed", error)
-                }
-        }
     }
 
     fun acknowledgeReceivePrompt() {
