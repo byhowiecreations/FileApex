@@ -5,18 +5,29 @@ import android.app.job.JobService
 import android.util.Log
 
 /**
- * JobScheduler fallback heartbeat when AlarmManager delivery is throttled by OEM power managers.
+ * Scheduled only during the 25%→15% battery step-down. Reads BatteryManager and posts if
+ * already <=15% because Motorola withholds ACTION_BATTERY_LOW from stopped apps.
  */
 class ShareServerKeepAliveJobService : JobService() {
     override fun onStartJob(params: JobParameters?): Boolean {
         Log.i(TAG, "Keep-alive job fired")
-        ShareServerKeepAliveCoordinator.reassertOrRestart(
-            applicationContext,
-            reason = "job_scheduler"
-        )
-        ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(applicationContext)
-        jobFinished(params, false)
-        return false
+        if (ServiceWatchdogScheduler.isWatchdogEnabled(applicationContext)) {
+            ShareServerKeepAliveCoordinator.reassertOrRestart(
+                applicationContext,
+                reason = "job_scheduler"
+            )
+        }
+        val initialized = FileApexAndroidBootstrap.ensureInitialized(applicationContext)
+        if (!initialized) {
+            ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(applicationContext)
+            jobFinished(params, false)
+            return false
+        }
+        BatteryBulletinCoordinator.onProcessStart(applicationContext) {
+            ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(applicationContext)
+            jobFinished(params, false)
+        }
+        return true
     }
 
     override fun onStopJob(params: JobParameters?): Boolean = false

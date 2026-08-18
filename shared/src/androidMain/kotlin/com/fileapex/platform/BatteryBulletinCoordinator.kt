@@ -18,6 +18,11 @@ import kotlin.math.roundToInt
  * Posts a Bulletin Board alert on [android.content.Intent.ACTION_BATTERY_LOW] and retracts it
  * cluster-wide once the device is charging.
  *
+ * Motorola / some Honor units put the process in a stopped-like state and withhold
+ * [android.content.Intent.ACTION_BATTERY_LOW] even though it is an implicit-broadcast exemption.
+ * [onProcessStart] and the keep-alive job read [BatteryManager] and post if already at or
+ * below 15% for this discharge cycle.
+ *
  * Does not register for [android.content.Intent.ACTION_BATTERY_CHANGED] — that would wake the
  * process on every 1% tick. Sticky battery state is read once with
  * `registerReceiver(null, …)` only to fill in the percent / charging check.
@@ -26,6 +31,8 @@ object BatteryBulletinCoordinator {
     private const val TAG = "BatteryBulletin"
     private const val PREFS_NAME = "fileapex_battery_bulletin"
     private const val KEY_ACTIVE_NOTE_ID = "active_low_battery_note_id"
+    private const val KEY_ALERTED_THIS_CYCLE = "alerted_this_discharge_cycle"
+    private const val KEY_LAST_ALERTED_LEVEL = "last_alerted_level_percent"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
@@ -39,39 +46,31 @@ object BatteryBulletinCoordinator {
     @Volatile
     private var postInFlight = false
 
-    fun registerIfNeeded(context: Context) {
+    data class Snapshot(
+        val levelPercent: Int?,
+        val charging: Boolean
+    )
+
+    fun onProcessStart(context: Context, onComplete: (() -> Unit)? = null) {
         val appContext = context.applicationContext
         registerDynamicReceiver(appContext)
-        reconcileOnLaunch(appContext)
+        ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
+        reconcile(appContext, onComplete)
     }
 
     fun onBatteryLow(context: Context, onComplete: (() -> Unit)? = null) {
-        val appContext = context.applicationContext
-        synchronized(lock) {
-            if (postInFlight || readActiveNoteIdLocked(appContext) != null) {
-                Log.i(TAG, "Low battery bulletin already active - skipping duplicate")
-                onComplete?.invoke()
-                return
-            }
-            postInFlight = true
-        }
-        scope.launch {
-            try {
-                postLowBatteryBulletin(appContext)
-            } finally {
-                synchronized(lock) { postInFlight = false }
-                onComplete?.invoke()
-            }
-        }
+        onProcessStart(context, onComplete)
     }
 
     fun onCharging(context: Context, onComplete: (() -> Unit)? = null) {
+        val appContext = context.applicationContext
         scope.launch {
             runCatching {
-                if (!FileApexAndroidBootstrap.ensureInitialized(context.applicationContext)) return@runCatching
-                val noteId = consumeActiveNoteId(context) ?: return@runCatching
-                FileApexServices.noteRepository.deleteNoteFromAllDevices(noteId)
-                Log.i(TAG, "Retracted low battery bulletin noteId=$noteId (device charging)")
+                retractIfNeeded(appContext, reason = "device charging")
+                val snapshot = currentSnapshot(appContext)
+                if (BatteryBulletinPolicy.shouldClearAlertedCycle(snapshot.charging, snapshot.levelPercent)) {
+                    clearAlertedCycle(appContext)
+                }
             }.onFailure { error ->
                 Log.w(TAG, "Failed to retract low battery bulletin :: ${error.message}")
             }
@@ -79,17 +78,78 @@ object BatteryBulletinCoordinator {
         }
     }
 
-    private suspend fun postLowBatteryBulletin(context: Context) {
-        runCatching {
-            if (!FileApexAndroidBootstrap.ensureInitialized(context)) {
-                Log.w(TAG, "Skip low battery bulletin - process not initialized")
+    fun onUnplugged(context: Context, onComplete: (() -> Unit)? = null) {
+        onProcessStart(context, onComplete)
+    }
+
+    fun currentSnapshot(context: Context): Snapshot {
+        val intent = stickyBatteryIntent(context)
+        if (intent == null) return Snapshot(levelPercent = null, charging = false)
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val percent = if (level < 0 || scale <= 0) {
+            null
+        } else {
+            ((level * 100f) / scale).roundToInt().coerceIn(0, 100)
+        }
+        val charging = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        return Snapshot(levelPercent = percent, charging = charging)
+    }
+
+    fun isAlertedThisCycle(context: Context): Boolean {
+        synchronized(lock) {
+            return context.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_ALERTED_THIS_CYCLE, false)
+        }
+    }
+
+    private fun reconcile(context: Context, onComplete: (() -> Unit)?) {
+        scope.launch {
+            runCatching {
+                if (!FileApexAndroidBootstrap.ensureInitialized(context)) {
+                    Log.w(TAG, "Skip battery bulletin reconcile - process not initialized")
+                    return@runCatching
+                }
+                val snapshot = currentSnapshot(context)
+                if (snapshot.charging) {
+                    retractIfNeeded(context, reason = "launch reconcile charging")
+                    if (BatteryBulletinPolicy.shouldClearAlertedCycle(true, snapshot.levelPercent)) {
+                        clearAlertedCycle(context)
+                    }
+                    return@runCatching
+                }
+                val alreadyAlerted = isAlertedThisCycle(context) || readActiveNoteId(context) != null
+                if (!BatteryBulletinPolicy.shouldPostAlert(
+                        levelPercent = snapshot.levelPercent,
+                        charging = false,
+                        alreadyAlertedThisCycle = alreadyAlerted
+                    )
+                ) {
+                    return@runCatching
+                }
+                postLowBatteryBulletin(context, snapshot.levelPercent)
+            }.onFailure { error ->
+                Log.w(TAG, "Battery bulletin reconcile failed :: ${error.message}")
+            }
+            onComplete?.invoke()
+        }
+    }
+
+    private suspend fun postLowBatteryBulletin(context: Context, knownLevel: Int?) {
+        synchronized(lock) {
+            if (postInFlight || readActiveNoteIdLocked(context) != null || isAlertedThisCycleLocked(context)) {
+                Log.i(TAG, "Low battery bulletin already active - skipping duplicate")
                 return
             }
+            postInFlight = true
+        }
+        try {
             if (isDevicePluggedIn(context)) {
                 Log.i(TAG, "Device already charging - skipping low battery bulletin")
                 return
             }
-            val level = readBatteryLevelPercent(context)
+            val level = knownLevel ?: readBatteryLevelPercent(context)
             val deviceName = LocalDeviceNameStore.current()
                 .ifBlank { loadLocalIdentity().deviceName }
                 .ifBlank { "This device" }
@@ -103,28 +163,18 @@ object BatteryBulletinCoordinator {
                 FileApexServices.noteRepository.deleteNoteFromAllDevices(note.noteId)
                 Log.i(TAG, "Retracted low battery bulletin immediately (charging during post)")
             } else {
-                setActiveNoteId(context, note.noteId)
+                markAlerted(context, note.noteId, level)
                 Log.i(TAG, "Posted low battery bulletin noteId=${note.noteId} level=${level ?: "unknown"}")
             }
-        }.onFailure { error ->
-            Log.w(TAG, "Failed to post low battery bulletin :: ${error.message}")
+        } finally {
+            synchronized(lock) { postInFlight = false }
         }
     }
 
-    private fun reconcileOnLaunch(context: Context) {
-        scope.launch {
-            if (!FileApexAndroidBootstrap.ensureInitialized(context.applicationContext)) return@launch
-            val active = readActiveNoteId(context) ?: return@launch
-            if (isDevicePluggedIn(context)) {
-                runCatching {
-                    FileApexServices.noteRepository.deleteNoteFromAllDevices(active)
-                    clearActiveNoteId(context)
-                    Log.i(TAG, "Launch reconcile retracted stale low battery bulletin noteId=$active")
-                }.onFailure { error ->
-                    Log.w(TAG, "Launch reconcile retract failed :: ${error.message}")
-                }
-            }
-        }
+    private suspend fun retractIfNeeded(context: Context, reason: String) {
+        val noteId = consumeActiveNoteId(context) ?: return
+        FileApexServices.noteRepository.deleteNoteFromAllDevices(noteId)
+        Log.i(TAG, "Retracted low battery bulletin noteId=$noteId ($reason)")
     }
 
     private fun registerDynamicReceiver(context: Context) {
@@ -137,12 +187,13 @@ object BatteryBulletinCoordinator {
                 IntentFilter().apply {
                     addAction(android.content.Intent.ACTION_BATTERY_LOW)
                     addAction(android.content.Intent.ACTION_POWER_CONNECTED)
+                    addAction(android.content.Intent.ACTION_POWER_DISCONNECTED)
                 },
                 ContextCompat.RECEIVER_NOT_EXPORTED
             )
             dynamicReceiver = receiver
             receiverRegistered = true
-            Log.i(TAG, "Registered dynamic battery bulletin receiver (LOW + POWER_CONNECTED)")
+            Log.i(TAG, "Registered dynamic battery bulletin receiver (LOW + POWER_CONNECTED/DISCONNECTED)")
         }.onFailure { error ->
             Log.w(TAG, "Dynamic battery bulletin receiver registration failed :: ${error.message}")
         }
@@ -152,18 +203,9 @@ object BatteryBulletinCoordinator {
     private fun stickyBatteryIntent(context: Context) =
         context.registerReceiver(null, IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
 
-    private fun readBatteryLevelPercent(context: Context): Int? {
-        val intent = stickyBatteryIntent(context) ?: return null
-        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-        if (level < 0 || scale <= 0) return null
-        return ((level * 100f) / scale).roundToInt().coerceIn(0, 100)
-    }
+    private fun readBatteryLevelPercent(context: Context): Int? = currentSnapshot(context).levelPercent
 
-    private fun isDevicePluggedIn(context: Context): Boolean {
-        val intent = stickyBatteryIntent(context) ?: return false
-        return intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
-    }
+    private fun isDevicePluggedIn(context: Context): Boolean = currentSnapshot(context).charging
 
     private fun readActiveNoteId(context: Context): String? {
         synchronized(lock) {
@@ -179,13 +221,23 @@ object BatteryBulletinCoordinator {
             ?.takeIf { it.isNotEmpty() }
     }
 
-    private fun setActiveNoteId(context: Context, noteId: String) {
+    private fun isAlertedThisCycleLocked(context: Context): Boolean {
+        return context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ALERTED_THIS_CYCLE, false)
+    }
+
+    private fun markAlerted(context: Context, noteId: String, level: Int?) {
         synchronized(lock) {
-            context.applicationContext
+            val editor = context.applicationContext
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
                 .putString(KEY_ACTIVE_NOTE_ID, noteId)
-                .apply()
+                .putBoolean(KEY_ALERTED_THIS_CYCLE, true)
+            if (level != null) {
+                editor.putInt(KEY_LAST_ALERTED_LEVEL, level)
+            }
+            editor.apply()
         }
     }
 
@@ -200,12 +252,13 @@ object BatteryBulletinCoordinator {
         }
     }
 
-    private fun clearActiveNoteId(context: Context) {
+    private fun clearAlertedCycle(context: Context) {
         synchronized(lock) {
             context.applicationContext
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
-                .remove(KEY_ACTIVE_NOTE_ID)
+                .putBoolean(KEY_ALERTED_THIS_CYCLE, false)
+                .remove(KEY_LAST_ALERTED_LEVEL)
                 .apply()
         }
     }

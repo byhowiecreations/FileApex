@@ -37,6 +37,7 @@ import com.fileapex.platform.AndroidShareIntake
 import com.fileapex.platform.AndroidOnboardingPermissions
 import com.fileapex.platform.AndroidRuntimePermissions
 import com.fileapex.platform.BackgroundPersistenceGuidance
+import com.fileapex.platform.BatteryBulletinCoordinator
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.platform.toUiState
@@ -126,6 +127,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Complete init if this process deferred Application.onCreate during Direct Boot.
         FileApexAndroidBootstrap.ensureInitialized(this)
+        BatteryBulletinCoordinator.onProcessStart(this)
         configureVisibleSystemBars()
         refreshPermissions()
         if (onboardingComplete) {

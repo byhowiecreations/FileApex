@@ -42,10 +42,21 @@ private fun resolveMdnsIpv4(info: ServiceInfo): String? {
 actual object FileApexMdnsAdvertiser {
     private var jmdns: JmDNS? = null
     private var registeredName: String? = null
+    private var registeredPort: Int? = null
+    private var registeredDeviceId: String? = null
+    private var registeredBindHost: String? = null
 
     actual fun start(port: Int, deviceId: String) {
-        stop()
         val bindAddress = desktopMdnsBindAddress() ?: return
+        val bindHost = bindAddress.hostAddress
+        if (jmdns != null &&
+            registeredPort == port &&
+            registeredDeviceId == deviceId &&
+            registeredBindHost == bindHost
+        ) {
+            return
+        }
+        stop()
         runCatching {
             val instance = JmDNS.create(bindAddress)
             val name = FileApexMdns.serviceNameFor(deviceId)
@@ -61,6 +72,9 @@ actual object FileApexMdnsAdvertiser {
             )
             jmdns = instance
             registeredName = name
+            registeredPort = port
+            registeredDeviceId = deviceId
+            registeredBindHost = bindHost
             println("FileApexMdnsAdvertiser: registered $name on ${bindAddress.hostAddress}:$port")
         }.onFailure { error ->
             println("FileApexMdnsAdvertiser: register failed - ${error.message}")
@@ -71,6 +85,9 @@ actual object FileApexMdnsAdvertiser {
         val instance = jmdns ?: return
         jmdns = null
         registeredName = null
+        registeredPort = null
+        registeredDeviceId = null
+        registeredBindHost = null
         if (fast) return
         runCatching {
             instance.unregisterAllServices()

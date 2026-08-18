@@ -58,14 +58,14 @@ object FileApexAndroidBootstrap {
             BootLaunchPreference.syncFromSettings()
             if (FileApexServices.settings.enableServiceWatchdog.value) {
                 ShareServerKeepAliveCoordinator.registerFreezeGuardIfNeeded(appContext)
-                ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
             }
+            ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
             AppUpdateCoordinator.onAppLaunch()
             GoogleLinkCoordinator.onAppLaunch()
             com.fileapex.cloud.FcmTokenRegistrar.start()
             com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
-            BatteryBulletinCoordinator.registerIfNeeded(appContext)
             fullyInitialized = true
+            BatteryBulletinCoordinator.onProcessStart(appContext)
             Log.i(TAG, "Android process init complete")
             return true
         }

@@ -8,8 +8,16 @@ import com.fileapex.platform.androidApplicationContextOrNull
 actual object FileApexMdnsAdvertiser {
     private var nsdManager: NsdManager? = null
     private var registrationListener: NsdManager.RegistrationListener? = null
+    private var registeredPort: Int? = null
+    private var registeredDeviceId: String? = null
 
     actual fun start(port: Int, deviceId: String) {
+        if (registrationListener != null &&
+            registeredPort == port &&
+            registeredDeviceId == deviceId
+        ) {
+            return
+        }
         stop()
         val context = androidApplicationContextOrNull() ?: return
         val manager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
@@ -32,10 +40,16 @@ actual object FileApexMdnsAdvertiser {
             override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) = Unit
         }
         registrationListener = listener
+        registeredPort = port
+        registeredDeviceId = deviceId
         runCatching {
             manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
             println("FileApexMdnsAdvertiser: registerService failed - ${error.message}")
+            nsdManager = null
+            registrationListener = null
+            registeredPort = null
+            registeredDeviceId = null
         }
     }
 
@@ -47,5 +61,7 @@ actual object FileApexMdnsAdvertiser {
         }
         nsdManager = null
         registrationListener = null
+        registeredPort = null
+        registeredDeviceId = null
     }
 }

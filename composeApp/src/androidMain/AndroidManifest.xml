@@ -157,13 +157,14 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- exported=true is required for system implicit BATTERY_LOW / POWER_CONNECTED. -->
+        <!-- exported=true is required for system implicit BATTERY_LOW / POWER_*. -->
         <receiver
             android:name="com.fileapex.platform.BatteryBulletinReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BATTERY_LOW" />
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
             </intent-filter>
         </receiver>
 

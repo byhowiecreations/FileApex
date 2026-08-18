@@ -25,10 +25,11 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
                 // Finish deferred Application init as soon as CE storage is available. Do not rely
                 // on FGS start here — Pixel/API 31+ often denies background FGS until the
                 // BOOT_COMPLETED temp-allowlist window (next branch).
-                if (FileApexAndroidBootstrap.ensureInitialized(appContext) &&
-                    ServiceWatchdogScheduler.isWatchdogEnabled(appContext)
-                ) {
-                    ServiceWatchdogScheduler.scheduleNext(appContext)
+                if (FileApexAndroidBootstrap.ensureInitialized(appContext)) {
+                    BatteryBulletinCoordinator.onProcessStart(appContext)
+                    if (ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) {
+                        ServiceWatchdogScheduler.scheduleNext(appContext)
+                    }
                     ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
                 }
             }
@@ -43,11 +44,13 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
                     ServiceWatchdogScheduler.scheduleNext(appContext)
                     return
                 }
+                BatteryBulletinCoordinator.onProcessStart(appContext)
                 ShareServerRestartCoordinator.attemptWatchdogRestart(
                     appContext,
                     ShareServerRestartCoordinator.RestartTrigger.WATCHDOG_ALARM
                 )
                 ServiceWatchdogScheduler.scheduleNext(appContext)
+                ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
             }
         }
     }
@@ -63,6 +66,8 @@ class FileApexWatchdogReceiver : BroadcastReceiver() {
             Log.w(TAG, "Boot auto-launch skipped - process init not ready")
             return
         }
+        BatteryBulletinCoordinator.onProcessStart(appContext)
+        ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
         if (!ServiceWatchdogScheduler.isAutoLaunchOnRebootEnabled(appContext)) {
             Log.i(TAG, "Auto launch on reboot disabled - skipping boot restart")
             return

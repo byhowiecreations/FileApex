@@ -9,7 +9,6 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 
@@ -20,6 +19,7 @@ import androidx.core.content.ContextCompat
  * Do not conflate timers:
  * - 10 min: [com.fileapex.cloud.CloudPresenceHeartbeat] Firestore cloud presence only.
  * - 20 min: [ServiceWatchdogScheduler] AlarmManager FGS recovery ([TimeUtils.SERVICE_WATCHDOG_ALARM_INTERVAL_MS]).
+ * - Battery job: unscheduled above 25%; 30/20/10 min step-down from 25% to the 15% alert.
  *
  * No in-process polling loop; recovery is event-driven (alarms, FCM, network, freeze-guard).
  */
@@ -28,7 +28,10 @@ object ShareServerKeepAliveCoordinator {
     private const val FILE_SHARE_SERVER_SERVICE = "com.fileapex.network.FileShareServerService"
     const val ACTION_REASSERT = "com.fileapex.action.REASSERT_SHARE_SERVER"
     private const val JOB_ID = 42_025
-    private const val JOB_INTERVAL_MS = 15 * 60 * 1000L
+    private const val NETWORK_REASSERT_DEBOUNCE_MS = 60_000L
+
+    @Volatile
+    private var lastNetworkReassertAtMs = 0L
 
     @Volatile
     private var freezeGuardRegistered = false
@@ -49,10 +52,11 @@ object ShareServerKeepAliveCoordinator {
     fun onForegroundServiceInactive(context: Context, retainRecoveryJob: Boolean = false) {
         val appContext = context.applicationContext
         unregisterNetworkCallback(appContext)
-        if (retainRecoveryJob) {
-            scheduleJobIfNeeded(appContext)
-        } else {
-            cancelJob(appContext)
+        // Battery backstop must survive a clean FGS stop — Motorola withholds BATTERY_LOW
+        // from stopped apps, so this job is the wake that can still read BatteryManager.
+        scheduleJobIfNeeded(appContext)
+        if (!retainRecoveryJob) {
+            Log.i(TAG, "FGS inactive - keep-alive job retained for battery bulletin backstop")
         }
     }
 
@@ -103,36 +107,54 @@ object ShareServerKeepAliveCoordinator {
     }
 
     fun scheduleJobIfNeeded(context: Context) {
-        if (!ServiceWatchdogScheduler.isWatchdogEnabled(context)) return
-        val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
-        if (scheduler.getPendingJob(JOB_ID) != null) return
-        val component = ComponentName(context, ShareServerKeepAliveJobService::class.java)
-        val builder = JobInfo.Builder(JOB_ID, component)
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setPersisted(true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            builder.setPeriodic(JOB_INTERVAL_MS, JOB_INTERVAL_MS)
-        } else {
-            @Suppress("DEPRECATION")
-            builder.setPeriodic(JOB_INTERVAL_MS)
+        val appContext = context.applicationContext
+        val snapshot = BatteryBulletinCoordinator.currentSnapshot(appContext)
+        val intervalMs = BatteryBulletinPolicy.jobIntervalMs(
+            levelPercent = snapshot.levelPercent,
+            charging = snapshot.charging,
+            alreadyAlertedThisCycle = BatteryBulletinCoordinator.isAlertedThisCycle(appContext)
+        )
+        val scheduler = appContext.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        if (intervalMs == null) {
+            if (scheduler.getPendingJob(JOB_ID) != null) {
+                cancelJob(appContext)
+            }
+            return
         }
+        val pending = scheduler.getPendingJob(JOB_ID)
+        if (pending != null &&
+            !pending.isPeriodic &&
+            pending.minLatencyMillis <= intervalMs
+        ) {
+            return
+        }
+        val component = ComponentName(appContext, ShareServerKeepAliveJobService::class.java)
+        val builder = JobInfo.Builder(JOB_ID, component)
+            .setPersisted(true)
+            .setMinimumLatency(intervalMs)
+            .setOverrideDeadline(intervalMs + intervalMs / 2)
         runCatching {
             scheduler.schedule(builder.build())
-            Log.i(TAG, "Scheduled keep-alive JobScheduler heartbeat (${JOB_INTERVAL_MS}ms)")
+            Log.i(
+                TAG,
+                "Scheduled battery backstop job in ${intervalMs}ms " +
+                    "(level=${snapshot.levelPercent ?: "?"})"
+            )
         }.onFailure { error ->
             Log.w(TAG, "JobScheduler schedule failed :: ${error.message}")
         }
     }
 
     fun cancelJobIfNeeded(context: Context) {
-        cancelJob(context)
+        // Watchdog-off: keep a job only while the battery step-down is active.
+        scheduleJobIfNeeded(context)
     }
 
     private fun cancelJob(context: Context) {
         val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
         runCatching {
             scheduler.cancel(JOB_ID)
-            Log.i(TAG, "Cancelled keep-alive JobScheduler heartbeat")
+            Log.i(TAG, "Cancelled battery backstop job (above 25% or already alerted)")
         }.onFailure { error ->
             Log.w(TAG, "JobScheduler cancel failed :: ${error.message}")
         }
@@ -208,6 +230,14 @@ object ShareServerKeepAliveCoordinator {
     }
 
     private fun onNetworkEvent(event: String) {
+        val now = com.fileapex.util.TimeUtils.now()
+        if (event != "available" &&
+            lastNetworkReassertAtMs > 0L &&
+            now - lastNetworkReassertAtMs < NETWORK_REASSERT_DEBOUNCE_MS
+        ) {
+            return
+        }
+        lastNetworkReassertAtMs = now
         val context = ServiceWatchdogScheduler.contextOrNull() ?: return
         reassertOrRestart(context, reason = "network:$event")
         if (com.fileapex.di.FileApexServices.isDatabaseReady()) {

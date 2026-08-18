@@ -7,6 +7,7 @@ import android.os.IBinder
 import android.util.Log
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.presence.PresenceBackgroundWake
+import com.fileapex.platform.BatteryBulletinCoordinator
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.platform.ServiceWatchdogScheduler
@@ -26,6 +27,7 @@ class FileShareServerService : Service() {
         // Finish deferred Application init before promotion / identity use. Pixel can reuse a
         // process that skipped Application.onCreate during Direct Boot.
         FileApexAndroidBootstrap.ensureInitialized(this)
+        BatteryBulletinCoordinator.onProcessStart(this)
         ShareServerForegroundNotification.resetPostedState()
         // Strict OEMs (Motorola): startForeground within ~5s of startForegroundService — before
         // onStartCommand and before any server / UDP setup work.

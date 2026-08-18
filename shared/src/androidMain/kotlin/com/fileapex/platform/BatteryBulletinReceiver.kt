@@ -5,8 +5,8 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * Manifest + dynamic receiver for [Intent.ACTION_BATTERY_LOW] and [Intent.ACTION_POWER_CONNECTED].
- * Does not listen to [Intent.ACTION_BATTERY_CHANGED].
+ * Manifest + dynamic receiver for [Intent.ACTION_BATTERY_LOW], [Intent.ACTION_POWER_CONNECTED],
+ * and [Intent.ACTION_POWER_DISCONNECTED]. Does not listen to [Intent.ACTION_BATTERY_CHANGED].
  */
 class BatteryBulletinReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
@@ -20,6 +20,10 @@ class BatteryBulletinReceiver : BroadcastReceiver() {
             Intent.ACTION_POWER_CONNECTED -> {
                 val pending = goAsync()
                 BatteryBulletinCoordinator.onCharging(appContext) { pending.finish() }
+            }
+            Intent.ACTION_POWER_DISCONNECTED -> {
+                val pending = goAsync()
+                BatteryBulletinCoordinator.onUnplugged(appContext) { pending.finish() }
             }
         }
     }

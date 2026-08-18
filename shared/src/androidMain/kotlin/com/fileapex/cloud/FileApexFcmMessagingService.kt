@@ -9,6 +9,7 @@ import com.fileapex.data.note.NoteRecord
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceBackgroundWake
 import com.fileapex.network.ServerLifecycleManager
+import com.fileapex.platform.BatteryBulletinCoordinator
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +22,13 @@ import kotlinx.coroutines.launch
  */
 class FileApexFcmMessagingService : FirebaseMessagingService() {
     private val serviceScope = CoroutineScope(Dispatchers.Default)
+
+    override fun onCreate() {
+        super.onCreate()
+        if (FileApexAndroidBootstrap.ensureInitialized(applicationContext)) {
+            BatteryBulletinCoordinator.onProcessStart(applicationContext)
+        }
+    }
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data

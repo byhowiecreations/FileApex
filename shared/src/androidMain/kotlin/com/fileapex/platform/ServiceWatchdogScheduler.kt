@@ -21,6 +21,8 @@ object ServiceWatchdogScheduler {
     private const val KEY_EXACT_ALARM_WARNING = "exact_alarm_unavailable"
     private const val KEY_BATTERY_OPTIMIZATION_WARNING = "battery_optimization_active"
     private const val KEY_SHARE_SERVER_HEARTBEAT_EPOCH_MS = "share_server_heartbeat_epoch_ms"
+    /** Disk flush cadence — in-memory skip until this age. 15 min stays inside the 25 min stale window. */
+    private const val HEARTBEAT_WRITE_MIN_INTERVAL_MS = 15 * 60 * 1000L
 
     fun scheduleNext(context: Context) {
         scheduleAt(
@@ -97,7 +99,10 @@ object ServiceWatchdogScheduler {
     }
 
     fun recordShareServerHeartbeat(context: Context) {
-        directBootPrefs(context).edit()
+        val prefs = directBootPrefs(context)
+        val last = prefs.getLong(KEY_SHARE_SERVER_HEARTBEAT_EPOCH_MS, 0L)
+        if (TimeUtils.isWithinWindow(last, HEARTBEAT_WRITE_MIN_INTERVAL_MS)) return
+        prefs.edit()
             .putLong(KEY_SHARE_SERVER_HEARTBEAT_EPOCH_MS, TimeUtils.now())
             .commit()
     }
