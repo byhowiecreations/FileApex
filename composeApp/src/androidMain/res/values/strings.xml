@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FileApex</string>
+    <string name="bulletin_board_share_label">Bulletin Board</string>
+    <string name="send_with_fileapex_share_label">Send with FileApex</string>
 </resources>

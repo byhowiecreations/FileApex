@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -84,6 +85,7 @@ import com.fileapex.cloud.drive.DriveRelayPolicy
 import com.fileapex.cloud.drive.GoogleDriveAuth
 import com.fileapex.cloud.drive.NotesAttachmentDecision
 import com.fileapex.data.note.NoteRecord
+import com.fileapex.platform.BriefToast
 import com.fileapex.platform.PickedLocalFile
 import com.fileapex.platform.openLocalFile
 import com.fileapex.platform.rememberDownloadsFilePicker
@@ -111,6 +113,7 @@ fun NotesScreen(
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
     val rawNotes by FileApexServices.noteRepository.notes.collectAsState()
+    val downloadingAttachmentIds by FileApexServices.noteRepository.downloadingAttachmentIds.collectAsState()
     val displayNotes = remember(rawNotes) { rawNotes.sortedBy { it.epochMs } }
     var inputContent by remember { mutableStateOf("") }
     var noteToDelete by remember { mutableStateOf<NoteRecord?>(null) }
@@ -267,9 +270,16 @@ fun NotesScreen(
         staleIds.forEach { bubbleThumbs.remove(it) }
         for (note in displayNotes) {
             if (bubbleThumbs.containsKey(note.noteId)) continue
+            if (!notesAttachmentIsImage(note.attachmentFileName)) continue
             val path = note.attachmentLocalPath
-            if (!notesAttachmentIsImage(note.attachmentFileName) || path.isNullOrBlank()) continue
-            bubbleThumbs[note.noteId] = loadNotesAttachmentBitmap(path, note.attachmentFileName)
+            val thumb = if (!path.isNullOrBlank()) {
+                loadNotesAttachmentBitmap(path, note.attachmentFileName)
+            } else {
+                loadNotesInlinePreviewBitmap(note.attachmentPreviewBase64)
+            }
+            if (thumb != null) {
+                bubbleThumbs[note.noteId] = thumb
+            }
         }
     }
 
@@ -707,6 +717,7 @@ fun NotesScreen(
                                     highlighted = highlightedNoteId == row.note.noteId,
                                     assembling = false,
                                     thumbnail = bubbleThumbs[row.note.noteId],
+                                    isDownloadingAttachment = row.note.noteId in downloadingAttachmentIds,
                                     onBubblePositioned = {},
                                     onRevealedChange = { open ->
                                         revealedNoteId = if (open) row.note.noteId else null
@@ -726,10 +737,19 @@ fun NotesScreen(
                                         }
                                     },
                                     onOpenAttachment = {
-                                        val path = row.note.attachmentLocalPath
                                         val name = row.note.attachmentFileName.orEmpty()
-                                        if (!path.isNullOrBlank()) {
-                                            openLocalFile(path, name)
+                                        scope.launch {
+                                            val path = FileApexServices.noteRepository.fetchAttachmentIfNeeded(
+                                                row.note.noteId
+                                            )
+                                            if (!path.isNullOrBlank()) {
+                                                openLocalFile(path, name)
+                                            } else if (
+                                                row.note.noteId !in downloadingAttachmentIds &&
+                                                FileApexServices.noteRepository.attachmentNeedsDownload(row.note)
+                                            ) {
+                                                BriefToast.show("Could not download attachment")
+                                            }
                                         }
                                     }
                                 )
@@ -1090,6 +1110,7 @@ private fun NoteBubbleItem(
     highlighted: Boolean = false,
     assembling: Boolean,
     thumbnail: ImageBitmap?,
+    isDownloadingAttachment: Boolean = false,
     footerLabel: String? = null,
     gesturesEnabled: Boolean = true,
     onBubblePositioned: (LayoutCoordinates) -> Unit,
@@ -1185,16 +1206,6 @@ private fun NoteBubbleItem(
                                         }
                                     }
                                 )
-                                .combinedClickable(
-                                    onClick = {
-                                        if (revealed) {
-                                            onRevealedChange(false)
-                                        } else {
-                                            onCloseAnyReveal()
-                                        }
-                                    },
-                                    onLongClick = { onRevealedChange(true) }
-                                )
                         } else {
                             Modifier
                         }
@@ -1214,7 +1225,23 @@ private fun NoteBubbleItem(
                     }
                 ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = if (gesturesEnabled) {
+                            Modifier.combinedClickable(
+                                onClick = {
+                                    if (revealed) {
+                                        onRevealedChange(false)
+                                    } else {
+                                        onCloseAnyReveal()
+                                    }
+                                },
+                                onLongClick = { onRevealedChange(true) }
+                            )
+                        } else {
+                            Modifier
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = if (isMine) "This Device" else item.sourceDeviceName,
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
@@ -1238,71 +1265,91 @@ private fun NoteBubbleItem(
 
                     if (!caption.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(
+                        NoteLinkText(
                             text = caption,
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp, lineHeight = 19.sp),
-                            color = textColor
+                            color = textColor,
+                            linkColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
                         )
                     }
                     if (attachmentName != null) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier
-                                .then(
-                                    if (gesturesEnabled) {
-                                        Modifier.combinedClickable(
-                                            onClick = {
-                                                if (revealed) {
-                                                    onRevealedChange(false)
-                                                } else {
-                                                    onCloseAnyReveal()
-                                                    onOpenAttachment()
-                                                }
-                                            },
-                                            onLongClick = { onRevealedChange(true) }
-                                        )
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (thumbnail != null) {
-                                Image(
-                                    bitmap = thumbnail,
-                                    contentDescription = "Open attachment",
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
+                        Surface(
+                            onClick = {
+                                if (gesturesEnabled) {
+                                    onCloseAnyReveal()
+                                    onOpenAttachment()
+                                }
+                            },
+                            enabled = gesturesEnabled,
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isCustomGlass) {
+                                Color.White.copy(alpha = 0.08f)
                             } else {
-                                Icon(
-                                    imageVector = ExplorerEntryIcons.iconForFile(attachmentName, ""),
-                                    contentDescription = "Open attachment",
-                                    tint = subTextColor,
-                                    modifier = Modifier.size(14.dp)
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (thumbnail != null) {
+                                    Image(
+                                        bitmap = thumbnail,
+                                        contentDescription = "Open attachment",
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = ExplorerEntryIcons.iconForFile(attachmentName, ""),
+                                        contentDescription = "Open attachment",
+                                        tint = subTextColor,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = attachmentName,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = textColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = attachmentName,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = textColor
-                            )
                         }
                     }
                 }
             }
             val footerText = footerLabel ?: stamp.timeLabel
-            if (footerText.isNotEmpty()) {
-                Text(
-                    text = footerText,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    color = subTextColor,
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp)
-                )
+            if (footerText.isNotEmpty() || isDownloadingAttachment) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (footerText.isNotEmpty()) {
+                        Text(
+                            text = footerText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = subTextColor
+                        )
+                    }
+                    if (isDownloadingAttachment) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(10.dp),
+                            strokeWidth = 1.5.dp,
+                            color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+                        )
+                        Text(
+                            text = "Downloading…",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = subTextColor
+                        )
+                    }
+                }
             }
             }
         }

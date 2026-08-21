@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Send with FileApex</string>
+	<string>Bulletin Board</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Send with FileApex</string>
+	<string>Bulletin Board</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -26,26 +26,26 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-			<!--
-			  Dictionary activation rules surface FileApex in Finder's Share submenu
-			  (right-click → Share) and the system Share sheet for files/media.
-			-->
 			<key>NSExtensionActivationRule</key>
 			<dict>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
+				<integer>1</integer>
 				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
-				<integer>100</integer>
+				<integer>10</integer>
 				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
-				<integer>100</integer>
-				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
-				<integer>100</integer>
+				<integer>10</integer>
 				<key>NSExtensionActivationSupportsAttachmentsWithMaxCount</key>
-				<integer>100</integer>
+				<integer>10</integer>
 			</dict>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>
 		<key>NSExtensionPrincipalClass</key>
-		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+		<string>$(PRODUCT_MODULE_NAME).BulletinShareViewController</string>
 	</dict>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © FileApex.</string>

@@ -12,6 +12,7 @@ import java.io.File
 object DesktopPlatformPaths {
     const val BUNDLE_ID = "com.fileapex"
     const val DATABASE_FILE_NAME = "fileapex.db"
+    const val BULLETIN_BOARD_DATABASE_FILE_NAME = "bulletin_board.db"
     private const val SEND_JOBS_DIR_NAME = "send-jobs"
     private const val IDENTITY_FILE_NAME = "identity.properties"
     private const val ROSTER_RESOLVED_MARKER = ".roster-resolved"
@@ -35,6 +36,9 @@ object DesktopPlatformPaths {
     fun applicationSupportDirectory(): File = ensureDirectory(primaryAppDataDirectory())
 
     fun databaseFile(): File = File(applicationSupportDirectory(), DATABASE_FILE_NAME)
+
+    fun bulletinBoardDatabaseFile(): File =
+        File(applicationSupportDirectory(), BULLETIN_BOARD_DATABASE_FILE_NAME)
 
     fun rosterResolvedMarkerFile(): File =
         File(applicationSupportDirectory(), ROSTER_RESOLVED_MARKER)

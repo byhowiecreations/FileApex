@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the FileApex Share Extension with ad-hoc signing (no Apple ID).
+# Build FileApex macOS Share extensions with ad-hoc signing (no Apple ID).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -16,7 +16,7 @@ if [[ "$(xcode-select -p 2>/dev/null)" == "/Library/Developer/CommandLineTools" 
   if [[ -d /Applications/Xcode.app ]]; then
     echo "Developer dir is Command Line Tools; prefer: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
   else
-    echo "Full Xcode.app is required to build the Share extension."
+    echo "Full Xcode.app is required to build Share extensions."
     exit 1
   fi
 fi
@@ -35,13 +35,14 @@ common=(
 )
 
 xcodebuild "${common[@]}" -scheme FileApexShareExtension build
+xcodebuild "${common[@]}" -scheme FileApexBulletinShareExtension build
 
 PRODUCTS="$OUT/DerivedData/Build/Products/$CONFIGURATION"
 SHARE="$PRODUCTS/FileApexShareExtension.appex"
+BULLETIN="$PRODUCTS/FileApexBulletinShareExtension.appex"
 
-# Ad-hoc codesign so pluginkit / Gatekeeper can load unsigned local builds.
 codesign --force --sign - --entitlements "$MACOS/ShareExtension/ShareExtension.entitlements" "$SHARE"
+codesign --force --sign - --entitlements "$MACOS/BulletinShareExtension/BulletinShareExtension.entitlements" "$BULLETIN"
 
 echo "Built + ad-hoc signed:"
-ls -la "$SHARE"
-codesign -dv --verbose=2 "$SHARE"
+ls -la "$SHARE" "$BULLETIN"

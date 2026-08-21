@@ -66,6 +66,11 @@ object DesktopSendHandoff {
                 parseJobId(uri)?.let { jobId ->
                     println("DesktopSendHandoff: open URI job=$jobId")
                     enqueueJob(jobId)
+                    return@setOpenURIHandler
+                }
+                DesktopBulletinHandoff.parseBulletinJobId(uri)?.let { jobId ->
+                    println("DesktopBulletinHandoff: open URI job=$jobId")
+                    DesktopBulletinHandoff.enqueueJob(jobId)
                 }
             }
             println("DesktopSendHandoff: APP_OPEN_URI handler installed")

@@ -2,14 +2,17 @@ package com.fileapex.data.note
 
 import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.cloud.drive.DriveRelayPolicy
+import com.fileapex.data.bulletin.BulletinBoardRepository
+import com.fileapex.data.bulletin.BulletinBoardSyncEngine
+import com.fileapex.data.bulletin.BulletinContentType
+import com.fileapex.data.bulletin.BulletinFileMetadata
 import com.fileapex.data.db.NoteDao
-import com.fileapex.data.db.toEntity
-import com.fileapex.data.db.toRecord
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
+import com.fileapex.platform.textContainsWebUrl
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -33,44 +37,65 @@ class NoteRepository {
     val notes: StateFlow<List<NoteRecord>> = _notes.asStateFlow()
 
     @Volatile
-    private var dao: NoteDao? = null
-    private val retractedKeys = mutableSetOf<String>()
+    private var legacyDao: NoteDao? = null
+
+    @Volatile
+    private var bulletinRepository: BulletinBoardRepository? = null
+
+    @Volatile
+    private var bulletinSyncEngine: BulletinBoardSyncEngine? = null
+
     private val notifiedNoteIds = mutableSetOf<String>()
 
-    fun attachDao(noteDao: NoteDao, scope: CoroutineScope) {
-        this.dao = noteDao
+    private val _downloadingAttachmentIds = MutableStateFlow<Set<String>>(emptySet())
+    val downloadingAttachmentIds: StateFlow<Set<String>> = _downloadingAttachmentIds.asStateFlow()
+
+    @Volatile
+    private var appScope: CoroutineScope? = null
+
+    fun attachLegacyDao(noteDao: NoteDao, scope: CoroutineScope) {
+        this.legacyDao = noteDao
+        appScope = scope
+    }
+
+    fun attachBulletinBoard(
+        repository: BulletinBoardRepository,
+        syncEngine: BulletinBoardSyncEngine,
+        scope: CoroutineScope
+    ) {
+        this.bulletinRepository = repository
+        this.bulletinSyncEngine = syncEngine
+        appScope = scope
         scope.launch(Dispatchers.IO) {
-            noteDao.observeAllNotes().collect { entities ->
+            repository.observeAsNotes().collect { records ->
                 mutex.withLock {
-                    _notes.value = entities.map { it.toRecord() }
+                    _notes.value = records
                 }
             }
         }
     }
 
     suspend fun addNote(note: NoteRecord): Boolean {
-        if (isRetracted(note.noteId, note.driveFileId, note.checksum)) {
-            return false
-        }
-        val currentDao = dao
-        if (currentDao != null) {
-            runCatching { currentDao.insertNote(note.toEntity()) }
-        }
-        val added = mutex.withLock {
-            val current = _notes.value
-            if (current.any { it.noteId == note.noteId }) {
-                return@withLock false
+        val bulletin = bulletinRepository
+        if (bulletin != null) {
+            if (bulletin.isTombstoned(note.noteId)) return false
+            val payload = com.fileapex.data.bulletin.BulletinMessagePayload(
+                id = note.noteId,
+                originDeviceId = note.sourceDeviceId,
+                senderName = note.sourceDeviceName,
+                content = encodeBulletinContent(note),
+                contentType = bulletinContentType(note),
+                timestamp = note.epochMs,
+                isPinned = note.attachmentPinned
+            )
+            if (!bulletin.upsertFromSync(payload)) return false
+            maybeNotifyIncoming(note.copy(isMine = note.sourceDeviceId == loadLocalIdentity().deviceId))
+            if (shouldAutoFetchAttachment(note)) {
+                appScope?.launch { fetchAttachmentIfNeeded(note.noteId) }
             }
-            val updated = (current + listOf(note)).sortedBy { it.epochMs }
-            _notes.value = updated
-            true
+            return true
         }
-        if (added) {
-            hydrateIncomingAttachment(note)
-            val latest = mutex.withLock { _notes.value.firstOrNull { it.noteId == note.noteId } } ?: note
-            maybeNotifyIncoming(latest)
-        }
-        return added
+        return addNoteLegacy(note)
     }
 
     suspend fun sendNote(
@@ -81,159 +106,55 @@ class NoteRepository {
         attachmentFileName: String? = null,
         attachmentSizeBytes: Long = 0L
     ): NoteRecord {
-        val selfIdentity = loadLocalIdentity()
-        val selfName = LocalDeviceNameStore.current().ifBlank { selfIdentity.deviceName }
-        val noteId = "note-" + TimeUtils.now() + "-" + (1000..9999).random()
-
-        var resolvedDriveId = driveFileId
-        var resolvedChecksum = checksum
-        var resolvedName = attachmentFileName
-        var resolvedSize = attachmentSizeBytes
-        var pinned = false
-        var localPath = attachmentPath
-        if (!attachmentPath.isNullOrBlank()) {
-            val display = attachmentFileName
-                ?: attachmentPath.substringAfterLast('/').substringAfterLast('\\')
-            localPath = copyIntoDownloads(attachmentPath, display)
-            val fileLen = SystemFileSystem.metadataOrNull(Path(localPath))?.size
-                ?: error("Attachment file not found")
-            resolvedName = display
-            resolvedSize = fileLen
-            if (fileLen > DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES) {
-                require(DriveRelayPolicy.canSend()) {
-                    "Offline Notes attachments must be under ${DriveRelayPolicy.lanAttachmentLimitLabel()}"
-                }
-                require(!DriveRelayPolicy.payloadExceedsRelayLimit(fileLen)) {
-                    DriveRelayPolicy.relayLimitExceededMessage(fileLen)
-                }
+        val bulletin = bulletinRepository
+        val syncEngine = bulletinSyncEngine
+        if (bulletin != null && syncEngine != null) {
+            val message = if (!attachmentPath.isNullOrBlank()) {
+                val display = attachmentFileName
+                    ?: attachmentPath.substringAfterLast('/').substringAfterLast('\\')
+                val fileLen = SystemFileSystem.metadataOrNull(Path(attachmentPath))?.size
+                    ?: error("Attachment file not found")
+                bulletin.ingestLocalFile(attachmentPath, display, fileLen, content.trim())
+            } else {
+                val link = textContainsWebUrl(content.trim())
+                bulletin.ingestLocalText(content.trim(), link = link)
             }
+            syncEngine.publishMessage(message)
+            return mutex.withLock {
+                _notes.value.firstOrNull { it.noteId == message.id }
+            } ?: message.toNoteRecordFallback()
         }
-
-        val caption = content.trim()
-        val record = NoteRecord(
-            noteId = noteId,
-            sourceDeviceId = selfIdentity.deviceId,
-            sourceDeviceName = selfName,
-            content = caption,
-            driveFileId = resolvedDriveId,
-            checksum = resolvedChecksum,
-            epochMs = TimeUtils.now(),
-            isMine = true,
-            attachmentFileName = resolvedName,
-            attachmentSizeBytes = resolvedSize,
-            attachmentPinned = pinned,
-            attachmentLocalPath = localPath
+        return sendNoteLegacy(
+            content,
+            driveFileId,
+            checksum,
+            attachmentPath,
+            attachmentFileName,
+            attachmentSizeBytes
         )
-
-        addNote(record)
-
-        val lanAttach = !localPath.isNullOrBlank() &&
-            !resolvedName.isNullOrBlank() &&
-            resolvedSize <= DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
-
-        FcmWakeCoordinator.dispatchNoteWakeToLinkedPeers(
-            noteId = noteId,
-            content = caption,
-            driveFileId = resolvedDriveId,
-            checksum = resolvedChecksum,
-            attachmentName = resolvedName,
-            attachmentSizeBytes = resolvedSize
-        )
-
-        CoroutineScope(Dispatchers.IO).launch {
-            dispatchNoteToLanPeers(record, lanAttach, localPath, resolvedName)
-        }
-
-        if (!localPath.isNullOrBlank() && DriveRelayPolicy.canSend()) {
-            val path = localPath
-            val display = resolvedName ?: "attachment"
-            CoroutineScope(Dispatchers.IO).launch {
-                runCatching {
-                    val entry = com.fileapex.cloud.drive.DriveRelayCoordinator.uploadNoteAttachment(
-                        localPath = path,
-                        displayName = display,
-                        noteId = noteId
-                    )
-                    applyDriveMetadata(noteId, entry)
-                    FcmWakeCoordinator.dispatchNoteWakeToLinkedPeers(
-                        noteId = noteId,
-                        content = caption,
-                        driveFileId = entry.driveFileId,
-                        checksum = entry.contentHash,
-                        attachmentName = entry.fileName,
-                        attachmentSizeBytes = entry.sizeBytes
-                    )
-                }.onFailure { error ->
-                    println("NoteRepository: Drive failsafe upload failed - ${error.message}")
-                }
-            }
-        }
-
-        return record
     }
 
     suspend fun setAttachmentPinned(noteId: String, pinned: Boolean) {
-        val current = notes.value.find { it.noteId == noteId } ?: return
-        val updated = current.copy(attachmentPinned = pinned)
-        val currentDao = dao
-        if (currentDao != null) {
-            runCatching { currentDao.insertNote(updated.toEntity()) }
-        }
-        mutex.withLock {
-            _notes.value = _notes.value.map { if (it.noteId == noteId) updated else it }
-        }
-        val driveId = current.driveFileId
-        if (!driveId.isNullOrBlank()) {
-            runCatching {
-                com.fileapex.cloud.drive.DriveRelayCoordinator.setNoteAttachmentPinned(driveId, pinned)
-            }
-        }
+        bulletinRepository?.setPinned(noteId, pinned)
+            ?: setAttachmentPinnedLegacy(noteId, pinned)
     }
 
     suspend fun deleteNote(noteId: String) {
-        applyRemoteRetract(noteId)
+        deleteNoteFromAllDevices(noteId)
     }
 
     suspend fun deleteNoteFromAllDevices(noteId: String) {
-        val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
-        val driveFileId = snapshot?.driveFileId?.takeIf { it.isNotBlank() }
-        val checksum = snapshot?.checksum?.takeIf { it.isNotBlank() }
-        val attachmentName = snapshot?.attachmentFileName?.takeIf { it.isNotBlank() }
-        applyRemoteRetract(noteId, driveFileId, checksum, attachmentName)
-        if (!driveFileId.isNullOrBlank()) {
-            runCatching {
-                com.fileapex.cloud.drive.DriveRelayCoordinator.deleteNoteAttachment(driveFileId)
-            }
+        val bulletin = bulletinRepository
+        val syncEngine = bulletinSyncEngine
+        if (bulletin != null && syncEngine != null) {
+            retractedKeys += noteId
+            bulletin.deleteMessage(noteId)
+            syncEngine.publishTombstone(noteId)
+            val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
+            retractNotifications(snapshot, noteId)
+            return
         }
-
-        FcmWakeCoordinator.dispatchNoteDeleteToLinkedPeers(
-            noteId = noteId,
-            driveFileId = driveFileId,
-            checksum = checksum,
-            attachmentName = attachmentName
-        )
-
-        CoroutineScope(Dispatchers.Default).launch {
-            runCatching {
-                val devices = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
-                for (device in devices) {
-                    val host = device.lastKnownIp
-                    val port = device.port
-                    if (host.isNotBlank() && port > 0) {
-                        runCatching {
-                            FileApexServices.client.postNoteDelete(
-                                host = host,
-                                port = port,
-                                noteId = noteId,
-                                driveFileId = driveFileId,
-                                checksum = checksum,
-                                attachmentName = attachmentName
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        deleteNoteFromAllDevicesLegacy(noteId)
     }
 
     suspend fun applyRemoteRetract(
@@ -242,38 +163,21 @@ class NoteRepository {
         checksum: String? = null,
         attachmentName: String? = null
     ) {
-        if (noteId.isBlank() && driveFileId.isNullOrBlank() && checksum.isNullOrBlank() &&
-            attachmentName.isNullOrBlank()
-        ) return
-        val matches = mutex.withLock {
-            if (noteId.isNotBlank()) retractedKeys += noteId
-            driveFileId?.takeIf { it.isNotBlank() }?.let { retractedKeys += it }
-            checksum?.takeIf { it.isNotBlank() }?.let { retractedKeys += it }
-            val found = matchingNotesLocked(noteId, driveFileId, checksum, attachmentName)
-            found.forEach { rememberRetractedLocked(it) }
-            found
+        val bulletin = bulletinRepository
+        if (bulletin != null && noteId.isNotBlank()) {
+            retractedKeys += noteId
+            bulletin.applyTombstone(
+                com.fileapex.data.bulletin.BulletinTombstonePayload(
+                    id = noteId,
+                    deletedAt = TimeUtils.now(),
+                    originDeviceId = ""
+                )
+            )
+            val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
+            retractNotifications(snapshot, noteId, attachmentName)
+            return
         }
-        val ids = (matches.map { it.noteId } + listOfNotNull(noteId.takeIf { it.isNotBlank() })).distinct()
-        val previews = (
-            matches.map { note ->
-                note.content.ifBlank { note.attachmentFileName.orEmpty() }
-            } + listOfNotNull(attachmentName?.takeIf { it.isNotBlank() })
-            ).filter { it.isNotBlank() }.distinct()
-        runCatching { com.fileapex.platform.retractNoteNotifications(ids, previews) }
-        matches.mapNotNull { it.attachmentFileName?.ifBlank { null } }.distinct().forEach { name ->
-            runCatching { com.fileapex.platform.DriveRelayNotifier.retractRetrieved(name) }
-        }
-        val currentDao = dao
-        for (id in ids) {
-            if (currentDao != null) {
-                runCatching { currentDao.deleteNote(id) }
-            }
-            notifiedNoteIds.remove(id)
-        }
-        mutex.withLock {
-            val drop = ids.toSet()
-            _notes.value = _notes.value.filterNot { it.noteId in drop }
-        }
+        applyRemoteRetractLegacy(noteId, driveFileId, checksum, attachmentName)
     }
 
     fun isRetracted(noteId: String?, driveFileId: String?, checksum: String?): Boolean {
@@ -285,10 +189,6 @@ class NoteRepository {
 
     suspend fun containsNoteOrChecksum(noteId: String, checksum: String?): Boolean {
         if (isRetracted(noteId, null, checksum)) return true
-        val currentDao = dao
-        if (currentDao != null && runCatching { currentDao.countNoteOrChecksum(noteId, checksum) }.getOrDefault(0) > 0) {
-            return true
-        }
         return mutex.withLock {
             _notes.value.any { item ->
                 (!noteId.isBlank() && item.noteId == noteId) ||
@@ -314,18 +214,10 @@ class NoteRepository {
     }
 
     suspend fun setAttachmentLocalPath(noteId: String, localPath: String) {
-        val currentDao = dao
+        bulletinRepository?.bindLocalPath(noteId, localPath)
         mutex.withLock {
             _notes.value = _notes.value.map { note ->
-                if (note.noteId != noteId) {
-                    note
-                } else {
-                    val updated = note.copy(attachmentLocalPath = localPath)
-                    if (currentDao != null) {
-                        runCatching { currentDao.insertNote(updated.toEntity()) }
-                    }
-                    updated
-                }
+                if (note.noteId != noteId) note else note.copy(attachmentLocalPath = localPath)
             }
         }
         val latest = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
@@ -341,95 +233,102 @@ class NoteRepository {
         sizeBytes: Long,
         pinned: Boolean
     ): Boolean {
-        var matched = false
-        val currentDao = dao
-        mutex.withLock {
-            _notes.value = _notes.value.map { note ->
-                val sameFile = matchesAttachmentLocked(
-                    note,
-                    noteId,
-                    driveFileId,
-                    checksum,
-                    fileName,
-                    sizeBytes
-                )
-                if (!sameFile) {
-                    note
-                } else {
-                    matched = true
-                    val updated = note.copy(
-                        driveFileId = driveFileId.ifBlank { note.driveFileId },
-                        checksum = checksum.ifBlank { note.checksum },
-                        attachmentFileName = note.attachmentFileName?.ifBlank { null } ?: fileName,
-                        attachmentSizeBytes = if (note.attachmentSizeBytes > 0L) note.attachmentSizeBytes else sizeBytes,
-                        attachmentPinned = note.attachmentPinned || pinned,
-                        attachmentLocalPath = localPath,
-                        content = if (note.content == fileName ||
-                            note.content.startsWith("[Synced note from Drive:")
-                        ) {
-                            ""
-                        } else {
-                            note.content
-                        }
-                    )
-                    if (currentDao != null) {
-                        runCatching { currentDao.insertNote(updated.toEntity()) }
-                    }
-                    updated
-                }
-            }
-        }
-        if (matched) {
-            val latest = mutex.withLock {
+        val id = noteId.ifBlank {
+            mutex.withLock {
                 _notes.value.firstOrNull { note ->
-                    matchesAttachmentLocked(note, noteId, driveFileId, checksum, fileName, sizeBytes)
-                }
-            }
-            if (latest != null) maybeNotifyIncoming(latest)
+                    matchesAttachmentLocked(note, null, driveFileId, checksum, fileName, sizeBytes)
+                }?.noteId
+            }.orEmpty()
         }
-        return matched
-    }
-
-    private fun matchingNotesLocked(
-        noteId: String,
-        driveFileId: String?,
-        checksum: String?,
-        attachmentName: String? = null
-    ): List<NoteRecord> {
-        return _notes.value.filter { note ->
-            note.noteId == noteId ||
-                (!driveFileId.isNullOrBlank() && note.driveFileId == driveFileId) ||
-                (!checksum.isNullOrBlank() && note.checksum == checksum) ||
-                (!attachmentName.isNullOrBlank() && note.attachmentFileName == attachmentName)
+        if (id.isNotBlank()) {
+            setAttachmentLocalPath(id, localPath)
+            if (pinned) setAttachmentPinned(id, true)
+            return true
         }
-    }
-
-    private fun rememberRetractedLocked(note: NoteRecord) {
-        retractedKeys += note.noteId
-        note.driveFileId?.takeIf { it.isNotBlank() }?.let { retractedKeys += it }
-        note.checksum?.takeIf { it.isNotBlank() }?.let { retractedKeys += it }
-    }
-
-    private fun attachmentStillDownloading(note: NoteRecord): Boolean {
-        val named = !note.attachmentFileName.isNullOrBlank()
-        val driven = !note.driveFileId.isNullOrBlank()
-        if (!named && !driven) return false
-        val local = note.attachmentLocalPath
-        if (local.isNullOrBlank()) return true
-        return !SystemFileSystem.exists(Path(local))
-    }
-
-    private fun alreadyNotified(note: NoteRecord): Boolean {
-        if (note.noteId in notifiedNoteIds) return true
-        if (!note.driveFileId.isNullOrBlank() && note.driveFileId in notifiedNoteIds) return true
-        if (!note.checksum.isNullOrBlank() && note.checksum in notifiedNoteIds) return true
         return false
     }
 
-    private fun rememberNotified(note: NoteRecord) {
-        notifiedNoteIds += note.noteId
-        note.driveFileId?.takeIf { it.isNotBlank() }?.let { notifiedNoteIds += it }
-        note.checksum?.takeIf { it.isNotBlank() }?.let { notifiedNoteIds += it }
+    suspend fun requestFullFile(noteId: String): String? {
+        return bulletinSyncEngine?.requestFullFile(noteId)
+    }
+
+    suspend fun fetchAttachmentIfNeeded(noteId: String): String? {
+        val note = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } } ?: return null
+        resolveLocalAttachmentPath(note)?.let { return it }
+        if (noteId in _downloadingAttachmentIds.value) return null
+
+        _downloadingAttachmentIds.update { it + noteId }
+        return try {
+            if (!note.driveFileId.isNullOrBlank()) {
+                hydrateIncomingAttachment(note)
+            } else if (!note.attachmentFileName.isNullOrBlank()) {
+                requestFullFile(noteId)?.also { path ->
+                    setAttachmentLocalPath(noteId, path)
+                }
+            } else {
+                null
+            }
+            mutex.withLock {
+                _notes.value.firstOrNull { it.noteId == noteId }
+            }?.let { resolveLocalAttachmentPath(it) }
+        } finally {
+            _downloadingAttachmentIds.update { it - noteId }
+        }
+    }
+
+    fun attachmentNeedsDownload(note: NoteRecord): Boolean {
+        if (note.attachmentFileName.isNullOrBlank()) return false
+        return resolveLocalAttachmentPath(note) == null
+    }
+
+    private suspend fun retractNotifications(
+        snapshot: NoteRecord?,
+        noteId: String,
+        attachmentName: String? = null
+    ) {
+        val previews = buildList {
+            snapshot?.content?.takeIf { it.isNotBlank() }?.let { add(it) }
+            snapshot?.attachmentFileName?.takeIf { it.isNotBlank() }?.let { add(it) }
+            attachmentName?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }.distinct()
+        runCatching { com.fileapex.platform.retractNoteNotifications(listOf(noteId), previews) }
+        notifiedNoteIds.remove(noteId)
+    }
+
+    private fun bulletinContentType(note: NoteRecord): Int {
+        return if (!note.attachmentFileName.isNullOrBlank()) {
+            BulletinContentType.FILE_METADATA
+        } else if (textContainsWebUrl(note.content)) {
+            BulletinContentType.LINK
+        } else {
+            BulletinContentType.TEXT
+        }
+    }
+
+    private fun encodeBulletinContent(note: NoteRecord): String {
+        if (note.attachmentFileName.isNullOrBlank()) return note.content
+        val meta = BulletinFileMetadata(
+            fileName = note.attachmentFileName,
+            sizeBytes = note.attachmentSizeBytes,
+            sha256 = note.checksum.orEmpty(),
+            originNode = note.sourceDeviceId,
+            localPath = note.attachmentLocalPath,
+            driveFileId = note.driveFileId
+        )
+        val body = json.encodeToString(BulletinFileMetadata.serializer(), meta)
+        return if (note.content.isBlank()) body else "${note.content.trim()}\n$body"
+    }
+
+    private fun com.fileapex.data.bulletin.MessageEntity.toNoteRecordFallback(): NoteRecord {
+        val selfId = loadLocalIdentity().deviceId
+        return NoteRecord(
+            noteId = id,
+            sourceDeviceId = originDeviceId,
+            sourceDeviceName = senderName,
+            content = content,
+            epochMs = timestamp,
+            isMine = originDeviceId == selfId
+        )
     }
 
     private fun matchesAttachmentLocked(
@@ -455,12 +354,11 @@ class NoteRepository {
 
     private fun maybeNotifyIncoming(note: NoteRecord) {
         if (note.isMine) return
-        if (alreadyNotified(note)) return
-        if (isRetracted(note.noteId, note.driveFileId, note.checksum)) return
+        if (note.noteId in notifiedNoteIds) return
         if (attachmentStillDownloading(note)) return
         val preview = note.content.ifBlank { note.attachmentFileName.orEmpty() }
         if (preview.isBlank()) return
-        rememberNotified(note)
+        notifiedNoteIds += note.noteId
         runCatching {
             com.fileapex.platform.notifyNoteReceived(
                 sourceDeviceName = note.sourceDeviceName,
@@ -468,69 +366,17 @@ class NoteRepository {
                 noteId = note.noteId
             )
         }
-        if (isRetracted(note.noteId, note.driveFileId, note.checksum)) {
-            runCatching {
-                com.fileapex.platform.retractNoteNotifications(
-                    listOf(note.noteId),
-                    listOfNotNull(preview.takeIf { it.isNotBlank() }, note.attachmentFileName)
-                )
-            }
-        }
     }
 
-    private suspend fun dispatchNoteToLanPeers(
-        record: NoteRecord,
-        lanAttach: Boolean,
-        localPath: String?,
-        fileName: String?
-    ) {
-        val devices = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
-        for (device in devices) {
-            val host = device.lastKnownIp
-            val port = device.port
-            if (host.isBlank() || port <= 0) continue
-            runCatching {
-                FileApexServices.client.postNote(host, port, record)
-                if (lanAttach && !localPath.isNullOrBlank() && !fileName.isNullOrBlank()) {
-                    FileApexServices.client.uploadNoteAttachment(
-                        host = host,
-                        port = port,
-                        noteId = record.noteId,
-                        fileName = fileName,
-                        localSourcePath = localPath
-                    )
-                }
-            }
-        }
+    private fun resolveLocalAttachmentPath(note: NoteRecord): String? {
+        val path = note.attachmentLocalPath?.takeIf { it.isNotBlank() } ?: return null
+        return path.takeIf { SystemFileSystem.exists(Path(it)) }
     }
 
-    private suspend fun applyDriveMetadata(
-        noteId: String,
-        entry: com.fileapex.cloud.drive.DriveLedgerEntry
-    ) {
-        val currentDao = dao
-        mutex.withLock {
-            _notes.value = _notes.value.map { note ->
-                if (note.noteId != noteId) {
-                    note
-                } else {
-                    val updated = note.copy(
-                        driveFileId = entry.driveFileId,
-                        checksum = entry.contentHash,
-                        attachmentSizeBytes = if (note.attachmentSizeBytes > 0L) {
-                            note.attachmentSizeBytes
-                        } else {
-                            entry.sizeBytes
-                        }
-                    )
-                    if (currentDao != null) {
-                        runCatching { currentDao.insertNote(updated.toEntity()) }
-                    }
-                    updated
-                }
-            }
-        }
-    }
+    private fun shouldAutoFetchAttachment(note: NoteRecord): Boolean =
+        !note.driveFileId.isNullOrBlank() && attachmentNeedsDownload(note)
+
+    private fun attachmentStillDownloading(note: NoteRecord): Boolean = attachmentNeedsDownload(note)
 
     private suspend fun hydrateIncomingAttachment(note: NoteRecord) {
         val driveId = note.driveFileId?.takeIf { it.isNotBlank() } ?: return
@@ -550,6 +396,91 @@ class NoteRepository {
             delay(DriveRelayPolicy.receiveRetryDelayMs())
             attempt += 1
         }
+    }
+
+    // Legacy fallbacks when bulletin board is not initialized (tests / early boot).
+    private val retractedKeys = mutableSetOf<String>()
+
+    private suspend fun addNoteLegacy(note: NoteRecord): Boolean {
+        if (note.noteId in retractedKeys) return false
+        val currentDao = legacyDao
+        if (currentDao != null) {
+            runCatching { currentDao.insertNote(note.toLegacyEntity()) }
+        }
+        val added = mutex.withLock {
+            val current = _notes.value
+            if (current.any { it.noteId == note.noteId }) return@withLock false
+            _notes.value = (current + listOf(note)).sortedBy { it.epochMs }
+            true
+        }
+        if (added) maybeNotifyIncoming(note)
+        return added
+    }
+
+    private suspend fun sendNoteLegacy(
+        content: String,
+        driveFileId: String?,
+        checksum: String?,
+        attachmentPath: String?,
+        attachmentFileName: String?,
+        attachmentSizeBytes: Long
+    ): NoteRecord {
+        val selfIdentity = loadLocalIdentity()
+        val selfName = LocalDeviceNameStore.current().ifBlank { selfIdentity.deviceName }
+        val noteId = "note-" + TimeUtils.now() + "-" + (1000..9999).random()
+        var localPath = attachmentPath
+        var resolvedName = attachmentFileName
+        var resolvedSize = attachmentSizeBytes
+        if (!attachmentPath.isNullOrBlank()) {
+            val display = attachmentFileName
+                ?: attachmentPath.substringAfterLast('/').substringAfterLast('\\')
+            localPath = copyIntoDownloads(attachmentPath, display)
+            resolvedName = display
+            resolvedSize = SystemFileSystem.metadataOrNull(Path(localPath))?.size ?: resolvedSize
+        }
+        val record = NoteRecord(
+            noteId = noteId,
+            sourceDeviceId = selfIdentity.deviceId,
+            sourceDeviceName = selfName,
+            content = content.trim(),
+            driveFileId = driveFileId,
+            checksum = checksum,
+            epochMs = TimeUtils.now(),
+            isMine = true,
+            attachmentFileName = resolvedName,
+            attachmentSizeBytes = resolvedSize,
+            attachmentLocalPath = localPath
+        )
+        addNoteLegacy(record)
+        return record
+    }
+
+    private suspend fun setAttachmentPinnedLegacy(noteId: String, pinned: Boolean) {
+        val current = _notes.value.find { it.noteId == noteId } ?: return
+        val updated = current.copy(attachmentPinned = pinned)
+        legacyDao?.insertNote(updated.toLegacyEntity())
+        mutex.withLock {
+            _notes.value = _notes.value.map { if (it.noteId == noteId) updated else it }
+        }
+    }
+
+    private suspend fun deleteNoteFromAllDevicesLegacy(noteId: String) {
+        applyRemoteRetractLegacy(noteId)
+        FcmWakeCoordinator.dispatchNoteDeleteToLinkedPeers(noteId = noteId)
+    }
+
+    private suspend fun applyRemoteRetractLegacy(
+        noteId: String,
+        driveFileId: String? = null,
+        checksum: String? = null,
+        attachmentName: String? = null
+    ) {
+        if (noteId.isNotBlank()) retractedKeys += noteId
+        legacyDao?.deleteNote(noteId)
+        mutex.withLock {
+            _notes.value = _notes.value.filterNot { it.noteId == noteId }
+        }
+        retractNotifications(null, noteId, attachmentName)
     }
 
     private fun copyIntoDownloads(sourceAbsolutePath: String, fileName: String): String {
@@ -573,4 +504,19 @@ class NoteRepository {
         }
         return dest
     }
+
+    private fun NoteRecord.toLegacyEntity() = com.fileapex.data.db.NoteEntity(
+        noteId = noteId,
+        sourceDeviceId = sourceDeviceId,
+        sourceDeviceName = sourceDeviceName,
+        content = content,
+        driveFileId = driveFileId,
+        checksum = checksum,
+        epochMs = epochMs,
+        isMine = isMine,
+        attachmentFileName = attachmentFileName,
+        attachmentSizeBytes = attachmentSizeBytes,
+        attachmentPinned = attachmentPinned,
+        attachmentLocalPath = attachmentLocalPath
+    )
 }

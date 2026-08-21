@@ -13,22 +13,38 @@
 		A30000000000000000000014 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
 		A30000000000000000000015 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
 		A30000000000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ShareViewController.swift */; };
+		B30000000000000000000011 /* FileApexPaths.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* FileApexPaths.swift */; };
+		B30000000000000000000012 /* FileApexSendHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* FileApexSendHandoff.swift */; };
+		B30000000000000000000013 /* FileApexBulletinHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* FileApexBulletinHandoff.swift */; };
+		B30000000000000000000014 /* BulletinShareViewController.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000030 /* BulletinShareViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A10000000000000000000013 /* FileApexShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FileApexShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000013 /* FileApexBulletinShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FileApexBulletinShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000001 /* FileApexPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileApexPaths.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* PairedDeviceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDeviceStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* FileApexSendHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileApexSendHandoff.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* DevicePickerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerModel.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* FileApexBulletinHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileApexBulletinHandoff.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000022 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000030 /* BulletinShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulletinShareViewController.swift; sourceTree = "<group>"; };
+		B20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B20000000000000000000022 /* BulletinShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BulletinShareExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A10000000000000000000025 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000025 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -43,6 +59,7 @@
 			children = (
 				A10000000000000000000004 /* Shared */,
 				A10000000000000000000006 /* ShareExtension */,
+				B10000000000000000000006 /* BulletinShareExtension */,
 				A10000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -51,6 +68,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000013 /* FileApexShareExtension.appex */,
+				B10000000000000000000013 /* FileApexBulletinShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -63,6 +81,7 @@
 				A20000000000000000000003 /* FileApexSendHandoff.swift */,
 				A20000000000000000000004 /* DevicePickerModel.swift */,
 				A20000000000000000000005 /* DevicePickerView.swift */,
+				A20000000000000000000006 /* FileApexBulletinHandoff.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -75,6 +94,16 @@
 				A20000000000000000000022 /* ShareExtension.entitlements */,
 			);
 			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000006 /* BulletinShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000030 /* BulletinShareViewController.swift */,
+				B20000000000000000000021 /* Info.plist */,
+				B20000000000000000000022 /* BulletinShareExtension.entitlements */,
+			);
+			path = BulletinShareExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -95,6 +124,23 @@
 			name = FileApexShareExtension;
 			productName = FileApexShareExtension;
 			productReference = A10000000000000000000013 /* FileApexShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B10000000000000000000011 /* FileApexBulletinShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000042 /* Build configuration list for PBXNativeTarget "FileApexBulletinShareExtension" */;
+			buildPhases = (
+				B10000000000000000000023 /* BulletinSources */,
+				B10000000000000000000025 /* Frameworks */,
+				B10000000000000000000024 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FileApexBulletinShareExtension;
+			productName = FileApexBulletinShareExtension;
+			productReference = B10000000000000000000013 /* FileApexBulletinShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -121,12 +167,20 @@
 			projectRoot = "";
 			targets = (
 				A10000000000000000000011 /* FileApexShareExtension */,
+				B10000000000000000000011 /* FileApexBulletinShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A10000000000000000000024 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000024 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -146,6 +200,17 @@
 				A30000000000000000000014 /* DevicePickerModel.swift in Sources */,
 				A30000000000000000000015 /* DevicePickerView.swift in Sources */,
 				A30000000000000000000020 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000023 /* BulletinSources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B30000000000000000000011 /* FileApexPaths.swift in BulletinSources */,
+				B30000000000000000000012 /* FileApexSendHandoff.swift in BulletinSources */,
+				B30000000000000000000013 /* FileApexBulletinHandoff.swift in BulletinSources */,
+				B30000000000000000000014 /* BulletinShareViewController.swift in BulletinSources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -234,6 +299,56 @@
 			};
 			name = Release;
 		};
+		B10000000000000000000034 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BulletinShareExtension/BulletinShareExtension.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 25;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BulletinShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0c;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fileapex.BulletinShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		B10000000000000000000035 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BulletinShareExtension/BulletinShareExtension.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 25;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BulletinShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0c;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fileapex.BulletinShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -251,6 +366,15 @@
 			buildConfigurations = (
 				A10000000000000000000034 /* Debug */,
 				A10000000000000000000035 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000042 /* Build configuration list for PBXNativeTarget "FileApexBulletinShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000034 /* Debug */,
+				B10000000000000000000035 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

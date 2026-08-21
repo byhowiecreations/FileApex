@@ -15,5 +15,7 @@ data class NoteRecord(
     val attachmentFileName: String? = null,
     val attachmentSizeBytes: Long = 0L,
     val attachmentPinned: Boolean = false,
-    val attachmentLocalPath: String? = null
+    val attachmentLocalPath: String? = null,
+    /** Compressed inline preview for bulletin image messages (not the full file). */
+    val attachmentPreviewBase64: String? = null
 )

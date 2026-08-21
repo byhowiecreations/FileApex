@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Android system Share (ACTION_SEND / ACTION_SEND_MULTIPLE) → staged files for TransferManager.
+ * [isWebPageLinkShare] ignores Chrome page-preview PNGs when [Intent.EXTRA_TEXT] holds the URL.
  */
 object AndroidShareIntake {
     fun isShareAction(intent: Intent?): Boolean {
@@ -42,8 +43,15 @@ object AndroidShareIntake {
         return null
     }
 
+    fun isWebPageLinkShare(intent: Intent?): Boolean {
+        if (intent == null || intent.action != Intent.ACTION_SEND) return false
+        val text = extractSharedText(intent).orEmpty()
+        return textContainsWebUrl(text)
+    }
+
     fun extractStreamUris(intent: Intent?): List<Uri> {
         if (intent == null) return emptyList()
+        if (isWebPageLinkShare(intent)) return emptyList()
         val uris = when (intent.action) {
             Intent.ACTION_SEND -> buildList {
                 readSingleStream(intent)?.let { add(it) }

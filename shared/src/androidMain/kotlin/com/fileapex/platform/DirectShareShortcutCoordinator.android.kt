@@ -34,6 +34,7 @@ object DirectShareShortcutCoordinator {
     const val EXTRA_TARGET_DEVICE_ID = "com.fileapex.extra.TARGET_DEVICE_ID"
     /** Matches [android.content.pm.ShortcutManager.EXTRA_SHORTCUT_ID] on API 29+. */
     const val EXTRA_SHORTCUT_ID = "android.intent.extra.shortcut.ID"
+    const val BULLETIN_SHORTCUT_ID = "share-bulletin-board"
 
     private const val SHORTCUT_PREFIX = "share-device-"
     private const val RATE_LIMIT_RETRY_MS = 30_000L
@@ -94,9 +95,12 @@ object DirectShareShortcutCoordinator {
     fun shortcutId(deviceId: String): String = "$SHORTCUT_PREFIX$deviceId"
 
     fun deviceIdFromShortcutId(shortcutId: String?): String? {
-        if (shortcutId.isNullOrBlank() || !shortcutId.startsWith(SHORTCUT_PREFIX)) return null
+        if (shortcutId.isNullOrBlank() || shortcutId == BULLETIN_SHORTCUT_ID) return null
+        if (!shortcutId.startsWith(SHORTCUT_PREFIX)) return null
         return shortcutId.removePrefix(SHORTCUT_PREFIX).takeIf { it.isNotBlank() }
     }
+
+    fun isBulletinShortcut(shortcutId: String?): Boolean = shortcutId == BULLETIN_SHORTCUT_ID
 
     /** Re-publish after peer discovery or roster changes outside the observe flow. */
     fun refreshFromPeerDiscovery() {
@@ -143,8 +147,10 @@ object DirectShareShortcutCoordinator {
 
         val maxCount = ShortcutManagerCompat.getMaxShortcutCountPerActivity(appContext)
             .coerceAtLeast(1)
-        val peersToPublish = rankPeersForShare(peers).take(maxCount)
-        val targetIds = peersToPublish.map { shortcutId(it.deviceId) }.toSet()
+        val bulletinShortcut = buildBulletinBoardShortcut()
+        val peerSlots = (maxCount - 1).coerceAtLeast(0)
+        val peersToPublish = rankPeersForShare(peers).take(peerSlots)
+        val targetIds = peersToPublish.map { shortcutId(it.deviceId) }.toSet() + BULLETIN_SHORTCUT_ID
 
         val staleIds = ShortcutManagerCompat.getDynamicShortcuts(appContext)
             .map { it.id }
@@ -154,25 +160,25 @@ object DirectShareShortcutCoordinator {
         }
 
         if (peersToPublish.isEmpty()) {
-            // Only clear when roster is truly empty — avoid wiping on a transient empty emit.
-            val confirmedEmpty = FileApexServices.deviceRepository.listDevices().isEmpty()
-            if (confirmedEmpty) {
-                ShortcutManagerCompat.removeDynamicShortcuts(
-                    appContext,
-                    ShortcutManagerCompat.getDynamicShortcuts(appContext)
-                        .map { it.id }
-                        .filter { it.startsWith(SHORTCUT_PREFIX) }
-                )
-                println("DirectShareShortcutCoordinator: cleared share shortcuts (empty roster)")
-            } else {
-                println("DirectShareShortcutCoordinator: skip clear - empty publish list but roster not empty")
+            val ok = runCatching {
+                ShortcutManagerCompat.setDynamicShortcuts(appContext, listOf(bulletinShortcut))
+            }.getOrElse { error ->
+                println("DirectShareShortcutCoordinator: setDynamicShortcuts threw - ${error.message}")
+                false
             }
-            pendingPublishPeers = null
+            if (ok) {
+                pendingPublishPeers = null
+                rateLimitRetryJob?.cancel()
+                println("DirectShareShortcutCoordinator: published Bulletin Board share shortcut only")
+            } else {
+                pendingPublishPeers = peers
+                scheduleRateLimitRetry()
+            }
             return
         }
 
-        val shortcuts = peersToPublish.mapIndexed { index, peer ->
-            buildShortcut(peer, rank = index)
+        val shortcuts = listOf(bulletinShortcut) + peersToPublish.mapIndexed { index, peer ->
+            buildShortcut(peer, rank = index + 1)
         }
         val ok = runCatching {
             ShortcutManagerCompat.setDynamicShortcuts(appContext, shortcuts)
@@ -180,13 +186,13 @@ object DirectShareShortcutCoordinator {
             println("DirectShareShortcutCoordinator: setDynamicShortcuts threw - ${error.message}")
             false
         }
-        val publishedIds = ShortcutManagerCompat.getDynamicShortcuts(appContext)
-            .map { it.id }
-            .filter { it.startsWith(SHORTCUT_PREFIX) }
-        if (!ok || publishedIds.isEmpty()) {
+        val publishedIds = ShortcutManagerCompat.getDynamicShortcuts(appContext).map { it.id }
+        val hasBulletin = BULLETIN_SHORTCUT_ID in publishedIds
+        val deviceCount = publishedIds.count { it.startsWith(SHORTCUT_PREFIX) }
+        if (!ok || !hasBulletin) {
             println(
                 "DirectShareShortcutCoordinator: publish failed " +
-                    "(ok=$ok, system=${publishedIds.size}/${peersToPublish.size}) - retry later"
+                    "(ok=$ok, bulletin=$hasBulletin, devices=$deviceCount/${peersToPublish.size}) - retry later"
             )
             pendingPublishPeers = peersToPublish
             scheduleRateLimitRetry()
@@ -204,10 +210,34 @@ object DirectShareShortcutCoordinator {
         }
 
         println(
-            "DirectShareShortcutCoordinator: published ${peersToPublish.size} share shortcut(s) " +
-                "(system has ${publishedIds.size}): " +
+            "DirectShareShortcutCoordinator: published Bulletin Board + ${peersToPublish.size} device shortcut(s) " +
+                "(system bulletin=$hasBulletin, devices=$deviceCount): " +
                 peersToPublish.joinToString { it.deviceName }
         )
+    }
+
+    private fun buildBulletinBoardShortcut(): ShortcutInfoCompat {
+        val launchIntent = Intent(Intent.ACTION_DEFAULT).apply {
+            setClassName(appContext, MAIN_ACTIVITY_CLASS)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val person = Person.Builder()
+            .setName("Bulletin Board")
+            .setKey(BULLETIN_SHORTCUT_ID)
+            .setBot(false)
+            .setImportant(true)
+            .build()
+        return ShortcutInfoCompat.Builder(appContext, BULLETIN_SHORTCUT_ID)
+            .setShortLabel("Bulletin Board")
+            .setLongLabel("Post to Bulletin Board")
+            .setIcon(shareTargetIcon())
+            .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
+            .setIntent(launchIntent)
+            .setCategories(setOf(CATEGORY_SHARE_TARGET))
+            .setPerson(person)
+            .setLongLived(true)
+            .setRank(0)
+            .build()
     }
 
     private fun scheduleRateLimitRetry() {
@@ -250,14 +280,9 @@ object DirectShareShortcutCoordinator {
             .build()
     }
 
-    /** Resource icons are required for reliable long-lived Sharing Shortcuts. */
     private fun shareTargetIcon(): IconCompat =
         IconCompat.createWithResource(appContext, AndroidNotificationChannels.smallIcon)
 
-    /**
-     * Android typically renders up to four Direct Share bubbles in portrait; keep the
-     * top ranks boosted via [ShortcutManagerCompat.reportShortcutUsed].
-     */
     private const val SHARE_SHEET_VISIBLE_HINT = 4
     private const val SHORT_LABEL_MAX = 25
     private const val LONG_LABEL_MAX = 50

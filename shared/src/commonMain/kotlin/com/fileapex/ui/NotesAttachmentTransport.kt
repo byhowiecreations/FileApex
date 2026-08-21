@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.fileapex.domain.preview.FilePreviewManager
+import com.fileapex.platform.decodeBase64Bytes
 import com.fileapex.platform.decodeImageBytes
 import com.fileapex.ui.theme.FileApexTeal
 import kotlin.math.cos
@@ -79,6 +80,16 @@ suspend fun loadNotesAttachmentBitmap(path: String?, fileName: String?): ImageBi
     return withContext(Dispatchers.Default) {
         runCatching {
             val bytes = FilePreviewManager.readLocalBytesCapped(path, NOTES_THUMB_MAX_BYTES)
+            decodeImageBytes(bytes, maxEdge = NOTES_THUMB_MAX_EDGE)
+        }.getOrNull()
+    }
+}
+
+suspend fun loadNotesInlinePreviewBitmap(previewBase64: String?): ImageBitmap? {
+    if (previewBase64.isNullOrBlank()) return null
+    return withContext(Dispatchers.Default) {
+        runCatching {
+            val bytes = decodeBase64Bytes(previewBase64) ?: return@withContext null
             decodeImageBytes(bytes, maxEdge = NOTES_THUMB_MAX_EDGE)
         }.getOrNull()
     }

@@ -265,6 +265,34 @@ class MainActivity : ComponentActivity() {
         if (!AndroidShareIntake.isShareAction(intent)) return
         val shareIntent = intent ?: return
 
+        val shortcutId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            shareIntent.getStringExtra(
+                com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID
+            )
+        } else {
+            null
+        }
+        if (com.fileapex.platform.DirectShareShortcutCoordinator.isBulletinShortcut(shortcutId)) {
+            openedFromShareSheet = true
+            isPreparingShare = false
+            sharePrepareError = null
+            lifecycleScope.launch {
+                runCatching {
+                    com.fileapex.platform.AndroidShareBulletin.ingestShareIntent(this@MainActivity, shareIntent)
+                    com.fileapex.platform.BriefToast.show("Posted to Bulletin Board")
+                }.onFailure { error ->
+                    com.fileapex.platform.BriefToast.show(
+                        error.message ?: "Could not post to Bulletin Board"
+                    )
+                }
+                if (openedFromShareSheet) {
+                    openedFromShareSheet = false
+                    finish()
+                }
+            }
+            return
+        }
+
         val targetDeviceId = shareIntent.getStringExtra(
             com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID
         )?.trim()?.takeIf { it.isNotEmpty() }

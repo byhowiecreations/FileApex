@@ -82,23 +82,30 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="apex" android:host="pair" />
             </intent-filter>
-            <!-- System Share panel: single file -->
+            <!-- Sharesheet: single target activity; Direct Share bubbles come from ShortcutManagerCompat. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="com.fileapex.category.SHARE_TARGET" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="com.fileapex.category.SHARE_TARGET" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="com.fileapex.category.SHARE_TARGET" />
                 <data android:mimeType="*/*" />
             </intent-filter>
-            <!-- System Share panel: multiple files -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="com.fileapex.category.SHARE_TARGET" />
                 <data android:mimeType="*/*" />
-            </intent-filter>
-            <!-- Text selection context menu -->
-            <intent-filter>
-                <action android:name="android.intent.action.PROCESS_TEXT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
             </intent-filter>
             <meta-data
                 android:name="android.app.shortcuts"
@@ -107,6 +114,20 @@
             <meta-data
                 android:name="android.service.chooser.chooser_target_service"
                 android:value="androidx.sharetarget.ChooserTargetServiceCompat" />
+        </activity>
+
+        <activity
+            android:name=".BulletinShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <activity

@@ -25,6 +25,7 @@ import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.NetworkUtils
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
@@ -578,6 +579,72 @@ class FileApexServer(
                     }.onFailure { error ->
                         onLog("POST /api/v1/notes/delete failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "delete_failed")
+                    }
+                }
+
+                post("/api/v1/bulletin/sync/batch") {
+                    runCatching {
+                        val body = call.receiveText()
+                        val batch = json.decodeFromString(
+                            com.fileapex.data.bulletin.BulletinSyncBatch.serializer(),
+                            body
+                        )
+                        val ack = FileApexServices.bulletinSyncEngine.processIncomingBatch(batch)
+                        call.respondText(
+                            json.encodeToString(com.fileapex.data.bulletin.BulletinSyncAck.serializer(), ack),
+                            ContentType.Application.Json
+                        )
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/bulletin/sync/batch failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "bulletin_sync_failed")
+                    }
+                }
+
+                get("/api/v1/bulletin/file") {
+                    runCatching {
+                        val messageId = call.request.queryParameters["messageId"].orEmpty().trim()
+                        val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
+                        if (messageId.isBlank() || fileName.isBlank()) {
+                            call.respond(HttpStatusCode.BadRequest, "bulletin_file_missing")
+                            return@runCatching
+                        }
+                        val message = FileApexServices.bulletinBoardRepository.getMessage(messageId)
+                            ?: run {
+                                call.respond(HttpStatusCode.NotFound, "bulletin_message_missing")
+                                return@runCatching
+                            }
+                        val meta = FileApexServices.bulletinBoardRepository.decodeFileMetadata(message)
+                            ?: run {
+                                call.respond(HttpStatusCode.NotFound, "bulletin_file_metadata_missing")
+                                return@runCatching
+                            }
+                        val localPath = meta.localPath?.takeIf { it.isNotBlank() }
+                            ?: run {
+                                call.respond(HttpStatusCode.NotFound, "bulletin_file_unavailable")
+                                return@runCatching
+                            }
+                        val source = Path(localPath)
+                        if (!SystemFileSystem.exists(source)) {
+                            call.respond(HttpStatusCode.NotFound, "bulletin_file_missing_on_disk")
+                            return@runCatching
+                        }
+                        val size = SystemFileSystem.metadataOrNull(source)?.size ?: 0L
+                        call.respondOutputStream(
+                            contentType = ContentType.Application.OctetStream,
+                            status = HttpStatusCode.OK,
+                            contentLength = size
+                        ) {
+                            SystemFileSystem.source(source).buffered().use { input ->
+                                val buffer = ByteArray(64 * 1024)
+                                while (!input.exhausted()) {
+                                    val read = input.readAtMostTo(buffer)
+                                    if (read > 0) write(buffer, 0, read)
+                                }
+                            }
+                        }
+                    }.onFailure { error ->
+                        onLog("GET /api/v1/bulletin/file failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "bulletin_file_failed")
                     }
                 }
 

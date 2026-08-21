@@ -18,8 +18,10 @@ object MacOsExtensionRegistrar {
     private const val ApplicationsAppPath = "/Applications/FileApex.app"
     private const val DeprecatedFinderSyncId = "com.fileapex.FinderSync"
     private const val ShareExtensionId = "com.fileapex.ShareExtension"
+    private const val BulletinShareExtensionId = "com.fileapex.BulletinShareExtension"
     private const val DeprecatedFinderAppexName = "FileApexFinderSync.appex"
     private const val ShareAppexName = "FileApexShareExtension.appex"
+    private const val BulletinShareAppexName = "FileApexBulletinShareExtension.appex"
     private const val Pluginkit = "/usr/bin/pluginkit"
     private const val Codesign = "/usr/bin/codesign"
 
@@ -44,6 +46,7 @@ object MacOsExtensionRegistrar {
         // Always purge the deprecated Finder Sync extension (any install location).
         removeAllRegistrations(DeprecatedFinderSyncId)
         removeNonApplicationsRegistrations(ShareExtensionId)
+        removeNonApplicationsRegistrations(BulletinShareExtensionId)
 
         val bundle = resolveRunningAppBundle()
         if (bundle == null || !isApplicationsBundle(bundle)) {
@@ -56,9 +59,11 @@ object MacOsExtensionRegistrar {
 
         val appsRoot = File(ApplicationsAppPath)
         val share = File(appsRoot, "Contents/PlugIns/$ShareAppexName")
+        val bulletin = File(appsRoot, "Contents/PlugIns/$BulletinShareAppexName")
         val legacyFinder = File(appsRoot, "Contents/PlugIns/$DeprecatedFinderAppexName")
         val entsDir = File(appsRoot, "Contents/Resources/ExtensionEntitlements")
         val shareEnts = File(entsDir, "ShareExtension.entitlements")
+        val bulletinEnts = File(entsDir, "BulletinShareExtension.entitlements")
         val hostEnts = File(entsDir, "FileApex.entitlements")
 
         if (legacyFinder.isDirectory) {
@@ -71,7 +76,11 @@ object MacOsExtensionRegistrar {
             log("Share PlugIn missing under $ApplicationsAppPath")
             return
         }
-        if (!shareEnts.isFile) {
+        if (!bulletin.isDirectory) {
+            log("Bulletin Share PlugIn missing under $ApplicationsAppPath")
+            return
+        }
+        if (!shareEnts.isFile || !bulletinEnts.isFile) {
             log(
                 "ExtensionEntitlements missing under $entsDir - " +
                     "re-copy current/FileApex.app to /Applications"
@@ -79,7 +88,7 @@ object MacOsExtensionRegistrar {
             return
         }
 
-        val stamp = registrationStamp(appsRoot, share, shareEnts)
+        val stamp = registrationStamp(appsRoot, share, bulletin, shareEnts, bulletinEnts)
         if (readStamp() == stamp) {
             log("skip pluginkit - unchanged since last successful registration")
             return
@@ -90,6 +99,10 @@ object MacOsExtensionRegistrar {
             Codesign, "--force", "--sign", "-",
             "--entitlements", shareEnts.absolutePath, share.absolutePath
         )
+        val signBulletin = runCapture(
+            Codesign, "--force", "--sign", "-",
+            "--entitlements", bulletinEnts.absolutePath, bulletin.absolutePath
+        )
         if (hostEnts.isFile) {
             runCapture(
                 Codesign, "--force", "--sign", "-",
@@ -99,21 +112,25 @@ object MacOsExtensionRegistrar {
         runCapture("/usr/bin/xattr", "-cr", appsRoot.absolutePath)
 
         val addShare = runCapture(Pluginkit, "-a", share.absolutePath)
+        val addBulletin = runCapture(Pluginkit, "-a", bulletin.absolutePath)
         val useShare = runCapture(Pluginkit, "-e", "use", "-i", ShareExtensionId)
+        val useBulletin = runCapture(Pluginkit, "-e", "use", "-i", BulletinShareExtensionId)
         val ignoreFinder = runCapture(Pluginkit, "-e", "ignore", "-i", DeprecatedFinderSyncId)
         log(
-            "registered Share from $ApplicationsAppPath " +
-                "(signShare=$signShare addShare=$addShare useShare=$useShare " +
-                "ignoreFinder=$ignoreFinder)"
+            "registered Share + Bulletin from $ApplicationsAppPath " +
+                "(signShare=$signShare signBulletin=$signBulletin addShare=$addShare addBulletin=$addBulletin " +
+                "useShare=$useShare useBulletin=$useBulletin ignoreFinder=$ignoreFinder)"
         )
         writeStamp(stamp)
     }
 
-    private fun registrationStamp(appsRoot: File, shareAppex: File, shareEnts: File): String =
+    private fun registrationStamp(appsRoot: File, shareAppex: File, bulletinAppex: File, shareEnts: File, bulletinEnts: File): String =
         listOf(
             appsRoot.lastModified(),
             shareAppex.lastModified(),
+            bulletinAppex.lastModified(),
             shareEnts.lastModified(),
+            bulletinEnts.lastModified(),
             appsRoot.length()
         ).joinToString(":")
 

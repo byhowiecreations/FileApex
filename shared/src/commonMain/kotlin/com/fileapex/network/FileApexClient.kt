@@ -344,6 +344,86 @@ class FileApexClient(
         requireSuccess(response, "Note delete failed (${response.statusCode})")
     }
 
+    suspend fun postBulletinSyncBatch(
+        host: String,
+        port: Int,
+        batch: com.fileapex.data.bulletin.BulletinSyncBatch
+    ): com.fileapex.data.bulletin.BulletinSyncAck {
+        val payload = json.encodeToString(com.fileapex.data.bulletin.BulletinSyncBatch.serializer(), batch)
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/bulletin/sync/batch",
+            body = payload,
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Bulletin sync batch failed (${response.statusCode})")
+        return json.decodeFromString(com.fileapex.data.bulletin.BulletinSyncAck.serializer(), response.body)
+    }
+
+    suspend fun downloadBulletinFile(
+        host: String,
+        port: Int,
+        messageId: String,
+        fileName: String,
+        expectedSha256: String,
+        expectedSizeBytes: Long
+    ): String {
+        val dest = com.fileapex.platform.UniqueFileNames.resolveInDirectory(
+            com.fileapex.platform.defaultDownloadsDir(),
+            fileName
+        )
+        val target = Path(dest)
+        target.parent?.let { parent ->
+            if (!SystemFileSystem.exists(parent)) {
+                SystemFileSystem.createDirectories(parent)
+            }
+        }
+        var bytesWritten = 0L
+        SystemFileSystem.sink(target).buffered().use { sink ->
+            PeerLanHttpPolicy.ensureRoute(host)
+            val result = peerHttpGetStreaming(
+                host = host,
+                port = port,
+                pathWithQuery = withSenderQuery(
+                    queryPath(
+                        basePath = "/api/v1/bulletin/file",
+                        host = host,
+                        port = port,
+                        params = mapOf("messageId" to messageId, "fileName" to fileName)
+                    )
+                ),
+                connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+                readIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
+                onChunk = { chunk ->
+                    sink.write(chunk)
+                    bytesWritten += chunk.size
+                }
+            ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+            if (result.statusCode == 403) {
+                error("PIN required — open the device and enter its PIN")
+            }
+            require(result.statusCode in 200..299) {
+                "Bulletin file pull failed (${result.statusCode})"
+            }
+        }
+        if (expectedSizeBytes > 0L && bytesWritten != expectedSizeBytes) {
+            runCatching {
+                if (SystemFileSystem.exists(target)) SystemFileSystem.delete(target)
+            }
+            error("Bulletin file size mismatch (expected $expectedSizeBytes, got $bytesWritten)")
+        }
+        val hash = com.fileapex.util.sha256HexFile(dest)
+        if (expectedSha256.isNotBlank() && !hash.equals(expectedSha256, ignoreCase = true)) {
+            runCatching {
+                if (SystemFileSystem.exists(target)) SystemFileSystem.delete(target)
+            }
+            error("Bulletin file checksum mismatch")
+        }
+        return dest
+    }
+
     suspend fun postClusterSync(
         host: String,
         port: Int,

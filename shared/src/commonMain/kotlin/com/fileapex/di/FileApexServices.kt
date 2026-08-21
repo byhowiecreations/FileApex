@@ -1,6 +1,9 @@
 package com.fileapex.di
 
 import com.fileapex.data.db.FileApexDatabase
+import com.fileapex.data.bulletin.BulletinBoardDatabase
+import com.fileapex.data.bulletin.BulletinBoardRepository
+import com.fileapex.data.bulletin.BulletinBoardSyncEngine
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.device.LocalDeviceRef
 import com.fileapex.data.device.recoverEmptyRosterIfNeeded
@@ -36,6 +39,15 @@ object FileApexServices {
     private var database: FileApexDatabase? = null
 
     @Volatile
+    private var bulletinDatabase: BulletinBoardDatabase? = null
+
+    @Volatile
+    private var bulletinBoardRepositoryInstance: BulletinBoardRepository? = null
+
+    @Volatile
+    private var bulletinSyncEngineInstance: BulletinBoardSyncEngine? = null
+
+    @Volatile
     private var deviceRepositoryInstance: DeviceRepository? = null
 
     val deviceRepository: DeviceRepository
@@ -48,6 +60,14 @@ object FileApexServices {
     val transferService: FileTransferService by lazy { FileTransferService(client = client) }
 
     val noteRepository: NoteRepository by lazy { NoteRepository() }
+
+    val bulletinBoardRepository: BulletinBoardRepository
+        get() = bulletinBoardRepositoryInstance
+            ?: error("FileApexServices.initBulletinBoard(database) must be called first")
+
+    val bulletinSyncEngine: BulletinBoardSyncEngine
+        get() = bulletinSyncEngineInstance
+            ?: error("FileApexServices.initBulletinBoard(database) must be called first")
 
     /** Outbound Multi Copy orchestration — single entry for UI and extension handoff. */
     val transferManager: TransferManager by lazy {
@@ -114,7 +134,7 @@ object FileApexServices {
             )
         }
         LocalDeviceNameStore.ensureLoaded()
-        noteRepository.attachDao(database.noteDao(), bootstrapScope)
+        noteRepository.attachLegacyDao(database.noteDao(), bootstrapScope)
         presenceMonitor.ensureOnlineSnapshotWatcher()
         presenceMonitor.ensureLanPollLoop()
         presenceMonitor.scheduleColdLaunchProbeOnce()
@@ -129,11 +149,41 @@ object FileApexServices {
         markBootstrapComplete()
     }
 
+    fun initBulletinBoard(database: BulletinBoardDatabase) {
+        val existing = bulletinDatabase
+        if (existing != null) {
+            check(existing === database) {
+                "FileApexServices.initBulletinBoard must not replace an active bulletin database"
+            }
+            return
+        }
+        bulletinDatabase = database
+        val repository = BulletinBoardRepository(database)
+        bulletinBoardRepositoryInstance = repository
+        val syncEngine = BulletinBoardSyncEngine(database, repository, bootstrapScope)
+        bulletinSyncEngineInstance = syncEngine
+        syncEngine.ensureStarted()
+        noteRepository.attachBulletinBoard(repository, syncEngine, bootstrapScope)
+        bootstrapScope.launch {
+            runCatching {
+                val coreDb = this@FileApexServices.database
+                if (coreDb != null) {
+                    repository.migrateFromLegacyNotes(coreDb.noteDao())
+                }
+            }.onFailure { error ->
+                println("FileApexServices: bulletin migration skipped - ${error.message}")
+            }
+        }
+    }
+
     /**
      * Desktop cold start: open Room on a background dispatcher while Compose creates the window.
      * Android continues to call [init] synchronously from [com.fileapex.FileApexApplication].
      */
-    fun beginBootstrap(createDatabase: () -> FileApexDatabase) {
+    fun beginBootstrap(
+        createDatabase: () -> FileApexDatabase,
+        createBulletinBoard: () -> BulletinBoardDatabase
+    ) {
         if (isDatabaseReady()) {
             markBootstrapComplete()
             return
@@ -143,6 +193,7 @@ object FileApexServices {
         bootstrapScope.launch(Dispatchers.IO) {
             runCatching {
                 init(createDatabase())
+                initBulletinBoard(createBulletinBoard())
             }.onFailure { error ->
                 println("FileApexServices: bootstrap failed - ${error.message}")
                 markBootstrapComplete()

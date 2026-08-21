@@ -21,6 +21,7 @@ import androidx.compose.ui.window.rememberWindowState
 import java.awt.Desktop
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.createFileApexDatabase
+import com.fileapex.data.bulletin.createBulletinBoardDatabase
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.di.FileApexServices
@@ -34,6 +35,7 @@ import com.fileapex.platform.DesktopScreenGeometry
 import com.fileapex.platform.DesktopTraySupport
 import com.fileapex.platform.DesktopWindowBoundsStore
 import com.fileapex.platform.DesktopSendHandoff
+import com.fileapex.platform.DesktopBulletinHandoff
 import com.fileapex.platform.DesktopWindowsBackdrop
 import com.fileapex.ui.DeviceCardSlotHeight
 import com.fileapex.ui.DeviceListToAddGap
@@ -64,7 +66,10 @@ fun main(args: Array<String>) {
             return
         }
         DesktopJvmStartup.onMainEntry()
-        FileApexServices.beginBootstrap { createFileApexDatabase() }
+        FileApexServices.beginBootstrap(
+            createDatabase = { createFileApexDatabase() },
+            createBulletinBoard = { createBulletinBoardDatabase() }
+        )
 
         val initialCliSharePayload = parseCliSharePayload(args)
         startDesktopApplication(initialCliSharePayload)
@@ -102,6 +107,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 GoogleLinkCoordinator.onAppLaunch()
                 com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
                 DesktopSendHandoff.startJobProcessor()
+                DesktopBulletinHandoff.startJobProcessor()
             }
         }
 
