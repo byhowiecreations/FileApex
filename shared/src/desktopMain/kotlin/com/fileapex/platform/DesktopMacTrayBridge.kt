@@ -128,6 +128,7 @@ object DesktopMacTrayBridge {
         url: String,
         contentType: String?,
         filePath: String,
+        offsetBytes: Long = 0L,
         timeoutMs: Long
     ): PeerBoundHttpResponse? {
         val lib = native ?: return null
@@ -139,6 +140,7 @@ object DesktopMacTrayBridge {
                 url,
                 contentType,
                 filePath,
+                offsetBytes,
                 timeoutMs.coerceIn(250L, 600_000L).toInt(),
                 status,
                 bodyPtr,
@@ -420,6 +422,7 @@ object DesktopMacTrayBridge {
             url: String,
             contentType: String?,
             filePath: String,
+            offsetBytes: Long,
             timeoutMs: Int,
             outStatus: IntByReference,
             outBody: PointerByReference,

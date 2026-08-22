@@ -60,9 +60,24 @@ expect suspend fun peerHttpUploadFromChannel(
     contentLength: Long? = null
 ): PeerBoundHttpResponse?
 
+expect suspend fun peerHttpUploadFromFile(
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    contentType: String,
+    sourcePath: String,
+    offset: Long,
+    length: Long,
+    connectTimeoutMs: Long,
+    uploadIdleTimeoutMs: Long
+): PeerBoundHttpResponse?
+
 /**
  * Streams a GET response body over TCP bound to a LAN interface.
  * Returns null only when no bind candidate could connect.
+ *
+ * [onChunk] must consume `buffer[0, length)` before returning — the array is reused.
+ * [onStatus] runs after the HTTP status line, before any body bytes.
  */
 expect suspend fun peerHttpGetStreaming(
     host: String,
@@ -70,7 +85,8 @@ expect suspend fun peerHttpGetStreaming(
     pathWithQuery: String,
     connectTimeoutMs: Long,
     readIdleTimeoutMs: Long,
-    onChunk: suspend (ByteArray) -> Unit
+    onChunk: suspend (ByteArray, Int) -> Unit,
+    onStatus: ((Int) -> Unit)? = null
 ): PeerBoundStreamResult?
 
 expect fun sendWakeBroadcastOnPrimaryInterface()

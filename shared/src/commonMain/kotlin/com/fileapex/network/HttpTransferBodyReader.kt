@@ -4,6 +4,8 @@ package com.fileapex.network
  * Decodes HTTP/1.1 response bodies from a raw socket after the status line and headers.
  * Handles [Transfer-Encoding: chunked] and [Content-Length] so binary file streams are not
  * corrupted by chunk framing bytes.
+ *
+ * [onChunk] must consume `buffer[0, length)` before returning — the array is reused.
  */
 internal object HttpTransferBodyReader {
 
@@ -32,7 +34,7 @@ internal object HttpTransferBodyReader {
         readAsciiLine: () -> String,
         readAtLeast: (ByteArray, Int, Int) -> Int,
         headers: Headers,
-        onChunk: suspend (ByteArray) -> Unit
+        onChunk: suspend (ByteArray, Int) -> Unit
     ) {
         when {
             headers.isChunked -> readChunkedBody(readAsciiLine, readAtLeast, onChunk)
@@ -45,8 +47,9 @@ internal object HttpTransferBodyReader {
     private suspend fun readChunkedBody(
         readAsciiLine: () -> String,
         readAtLeast: (ByteArray, Int, Int) -> Int,
-        onChunk: suspend (ByteArray) -> Unit
+        onChunk: suspend (ByteArray, Int) -> Unit
     ) {
+        val buffer = ByteArray(SocketFileStreamer.BUFFER_BYTES)
         while (true) {
             val sizeLine = readAsciiLine().trim()
             if (sizeLine.isEmpty()) continue
@@ -59,14 +62,13 @@ internal object HttpTransferBodyReader {
                 break
             }
             var remaining = chunkSize
-            val buffer = ByteArray(minOf(8192, chunkSize))
             while (remaining > 0) {
                 val toRead = minOf(remaining, buffer.size)
                 val read = readAtLeast(buffer, 0, toRead)
                 if (read <= 0) {
                     error("Unexpected end of chunked HTTP body")
                 }
-                onChunk(buffer.copyOf(read))
+                onChunk(buffer, read)
                 remaining -= read
             }
             readAsciiLine()
@@ -76,30 +78,30 @@ internal object HttpTransferBodyReader {
     private suspend fun readFixedLengthBody(
         readAtLeast: (ByteArray, Int, Int) -> Int,
         contentLength: Long,
-        onChunk: suspend (ByteArray) -> Unit
+        onChunk: suspend (ByteArray, Int) -> Unit
     ) {
         var remaining = contentLength
-        val buffer = ByteArray(8192)
+        val buffer = ByteArray(SocketFileStreamer.BUFFER_BYTES)
         while (remaining > 0L) {
             val toRead = minOf(remaining, buffer.size.toLong()).toInt()
             val read = readAtLeast(buffer, 0, toRead)
             if (read <= 0) {
                 error("Unexpected end of HTTP body (expected $contentLength bytes)")
             }
-            onChunk(buffer.copyOf(read))
+            onChunk(buffer, read)
             remaining -= read
         }
     }
 
     private suspend fun readUntilEof(
         readAtLeast: (ByteArray, Int, Int) -> Int,
-        onChunk: suspend (ByteArray) -> Unit
+        onChunk: suspend (ByteArray, Int) -> Unit
     ) {
-        val buffer = ByteArray(8192)
+        val buffer = ByteArray(SocketFileStreamer.BUFFER_BYTES)
         while (true) {
             val read = readAtLeast(buffer, 0, buffer.size)
             if (read <= 0) break
-            onChunk(buffer.copyOf(read))
+            onChunk(buffer, read)
         }
     }
 }

@@ -1,2 +1,2 @@
-name=0.8.1a
-code=126
+name=0.8.2a
+code=128

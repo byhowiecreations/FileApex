@@ -172,6 +172,7 @@ actual suspend fun peerHttpUploadFromChannel(
                 url = macLanUrl(host, port, pathWithQuery),
                 contentType = contentType,
                 filePath = tmp.absolutePath,
+                offsetBytes = 0L,
                 timeoutMs = uploadIdleTimeoutMs
             )
         } finally {
@@ -183,10 +184,54 @@ actual suspend fun peerHttpUploadFromChannel(
         port = port,
         pathWithQuery = pathWithQuery,
         contentType = contentType,
-        chunks = chunks,
         connectTimeoutMs = connectTimeoutMs,
         uploadIdleTimeoutMs = uploadIdleTimeoutMs,
-        contentLength = contentLength
+        contentLength = contentLength,
+        writeBody = { output ->
+            for (chunk in chunks) {
+                output.write(chunk)
+            }
+        }
+    )
+}
+
+actual suspend fun peerHttpUploadFromFile(
+    host: String,
+    port: Int,
+    pathWithQuery: String,
+    contentType: String,
+    sourcePath: String,
+    offset: Long,
+    length: Long,
+    connectTimeoutMs: Long,
+    uploadIdleTimeoutMs: Long
+): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
+        return@withContext DesktopMacTrayBridge.lanHttpUploadFile(
+            url = macLanUrl(host, port, pathWithQuery),
+            contentType = contentType,
+            filePath = sourcePath,
+            offsetBytes = offset,
+            timeoutMs = uploadIdleTimeoutMs
+        )
+    }
+    executeBoundUpload(
+        host = host,
+        port = port,
+        pathWithQuery = pathWithQuery,
+        contentType = contentType,
+        connectTimeoutMs = connectTimeoutMs,
+        uploadIdleTimeoutMs = uploadIdleTimeoutMs,
+        contentLength = length.takeIf { it >= 0L },
+        writeBody = { output ->
+            SocketFileStreamer.streamFromOffset(
+                sourcePath = sourcePath,
+                offset = offset,
+                byteLimit = length
+            ) { buffer, read ->
+                output.write(buffer, 0, read)
+            }
+        }
     )
 }
 
@@ -196,10 +241,18 @@ actual suspend fun peerHttpGetStreaming(
     pathWithQuery: String,
     connectTimeoutMs: Long,
     readIdleTimeoutMs: Long,
-    onChunk: suspend (ByteArray) -> Unit
+    onChunk: suspend (ByteArray, Int) -> Unit,
+    onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? = withContext(Dispatchers.IO) {
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
-        return@withContext macNativeDownload(host, port, pathWithQuery, readIdleTimeoutMs, onChunk)
+        return@withContext macNativeDownload(
+            host = host,
+            port = port,
+            pathWithQuery = pathWithQuery,
+            timeoutMs = readIdleTimeoutMs,
+            onChunk = onChunk,
+            onStatus = onStatus
+        )
     }
     executeBoundGetStreaming(
         host = host,
@@ -207,7 +260,8 @@ actual suspend fun peerHttpGetStreaming(
         pathWithQuery = pathWithQuery,
         connectTimeoutMs = connectTimeoutMs,
         readIdleTimeoutMs = readIdleTimeoutMs,
-        onChunk = onChunk
+        onChunk = onChunk,
+        onStatus = onStatus
     )
 }
 
@@ -240,7 +294,8 @@ private suspend fun macNativeDownload(
     port: Int,
     pathWithQuery: String,
     timeoutMs: Long,
-    onChunk: suspend (ByteArray) -> Unit
+    onChunk: suspend (ByteArray, Int) -> Unit,
+    onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? {
     if (!DesktopPlatformPaths.isMacOs() || !DesktopMacTrayBridge.isLoaded) return null
     val tmp = File.createTempFile("fileapex-dl-", ".bin")
@@ -250,13 +305,14 @@ private suspend fun macNativeDownload(
             destinationPath = tmp.absolutePath,
             timeoutMs = timeoutMs
         ) ?: return null
+        onStatus?.invoke(status)
         if (status in 200..299) {
-            tmp.inputStream().use { input ->
-                val buffer = ByteArray(64 * 1024)
+            java.io.RandomAccessFile(tmp, "r").use { raf ->
+                val buffer = ByteArray(SocketFileStreamer.BUFFER_BYTES)
                 while (true) {
-                    val read = input.read(buffer)
+                    val read = raf.read(buffer)
                     if (read <= 0) break
-                    onChunk(buffer.copyOf(read))
+                    onChunk(buffer, read)
                 }
             }
         }
@@ -301,7 +357,8 @@ private suspend fun executeBoundGetStreaming(
     pathWithQuery: String,
     connectTimeoutMs: Long,
     readIdleTimeoutMs: Long,
-    onChunk: suspend (ByteArray) -> Unit
+    onChunk: suspend (ByteArray, Int) -> Unit,
+    onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? {
     for (localIp in peerBindAttemptIps(host)) {
         val response = runCatching {
@@ -312,7 +369,8 @@ private suspend fun executeBoundGetStreaming(
                 pathWithQuery = pathWithQuery,
                 connectTimeoutMs = connectTimeoutMs,
                 readIdleTimeoutMs = readIdleTimeoutMs,
-                onChunk = onChunk
+                onChunk = onChunk,
+                onStatus = onStatus
             )
         }.getOrElse { error ->
             if (error is BoundConnectFailed) {
@@ -335,7 +393,8 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
     pathWithQuery: String,
     connectTimeoutMs: Long,
     readIdleTimeoutMs: Long,
-    onChunk: suspend (ByteArray) -> Unit
+    onChunk: suspend (ByteArray, Int) -> Unit,
+    onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult {
     val connectTimeout = connectTimeoutForBindAttempt(localIp, connectTimeoutMs)
     val idleTimeout = readIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
@@ -363,12 +422,21 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
             append("\r\n")
             append("Connection: close\r\n")
             append("Accept: application/octet-stream\r\n")
+            val resumeOffset = pathWithQuery.substringAfter("offset=", missingDelimiterValue = "")
+                .substringBefore('&')
+                .toLongOrNull()
+            if (resumeOffset != null && resumeOffset > 0L) {
+                append("Range: bytes=")
+                append(resumeOffset)
+                append("-\r\n")
+            }
             append("\r\n")
         }
         output.write(request.toByteArray(Charsets.UTF_8))
         output.flush()
         val input = socket.getInputStream().buffered()
         val statusCode = readHttpStatusLine(input)
+        onStatus?.invoke(statusCode)
         val headerLines = readHttpHeaderLines(input)
         val bodyHeaders = HttpTransferBodyReader.parseHeaders(headerLines)
         if (statusCode in 200..299) {
@@ -429,10 +497,10 @@ private suspend fun executeBoundUpload(
     port: Int,
     pathWithQuery: String,
     contentType: String,
-    chunks: ReceiveChannel<ByteArray>,
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
-    contentLength: Long? = null
+    contentLength: Long? = null,
+    writeBody: suspend (java.io.OutputStream) -> Unit
 ): PeerBoundHttpResponse? {
     for (localIp in peerBindAttemptIps(host)) {
         val response = runCatching {
@@ -442,10 +510,10 @@ private suspend fun executeBoundUpload(
                 port = port,
                 pathWithQuery = pathWithQuery,
                 contentType = contentType,
-                chunks = chunks,
                 connectTimeoutMs = connectTimeoutMs,
                 uploadIdleTimeoutMs = uploadIdleTimeoutMs,
-                contentLength = contentLength
+                contentLength = contentLength,
+                writeBody = writeBody
             )
         }.getOrElse { error ->
             if (error is BoundConnectFailed) {
@@ -467,10 +535,10 @@ private suspend fun executeBoundUploadOnLocalIp(
     port: Int,
     pathWithQuery: String,
     contentType: String,
-    chunks: ReceiveChannel<ByteArray>,
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
-    contentLength: Long? = null
+    contentLength: Long? = null,
+    writeBody: suspend (java.io.OutputStream) -> Unit
 ): PeerBoundHttpResponse {
     val connectTimeout = connectTimeoutForBindAttempt(localIp, connectTimeoutMs)
     val idleTimeout = uploadIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
@@ -508,9 +576,7 @@ private suspend fun executeBoundUploadOnLocalIp(
             append("\r\n")
         }
         output.write(header.toByteArray(Charsets.UTF_8))
-        for (chunk in chunks) {
-            output.write(chunk)
-        }
+        writeBody(output)
         output.flush()
         socket.shutdownOutput()
         val raw = readHttpResponse(socket.getInputStream())

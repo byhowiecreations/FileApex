@@ -1,19 +1,18 @@
 package com.fileapex.domain.transfer
 
 import com.fileapex.network.FileApexClient
+import com.fileapex.network.SocketFileStreamer
+import com.fileapex.network.TransferResumeProtocol
 import com.fileapex.platform.UniqueFileNames
+import java.io.RandomAccessFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.io.buffered
-import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.readAtMostTo
-import kotlinx.io.write
 
 /**
  * Coordinates Multi Copy: one source stream fan-out to many destinations in parallel.
@@ -42,10 +41,62 @@ class MultiCopyBroadcastEngine(
             is MultiCopySource.Local -> source.verifiedFromDisk()
             is MultiCopySource.Remote -> source
         }
-        // Small bound keeps only a few shared chunk refs in flight per destination.
+        val plans = destinations.map { destination ->
+            DestPlan(
+                destination = destination,
+                offset = queryDestinationOffset(destination, verifiedSource.sizeBytes)
+            )
+        }
+        val failures = linkedMapOf<String, String>()
+        val succeeded = linkedSetOf<String>()
+
+        for (plan in plans) {
+            if (plan.offset >= verifiedSource.sizeBytes && verifiedSource.sizeBytes > 0L) {
+                succeeded += plan.destination.deviceId
+            }
+        }
+
+        val pending = plans.filter { it.destination.deviceId !in succeeded }
+        val zeroOffset = pending.filter { it.offset <= 0L }
+        val resume = pending.filter { it.offset > 0L }
+
+        if (zeroOffset.isNotEmpty()) {
+            val fanOut = fanOutFromOffset(verifiedSource, zeroOffset.map { it.destination }, offset = 0L)
+            succeeded += fanOut.succeededDeviceIds
+            failures.putAll(fanOut.failures)
+        }
+
+        val stillFailed = destinations.filter { dest ->
+            dest.deviceId !in succeeded && dest.deviceId in failures
+        }
+        val independent = resume.map { it.destination } + stillFailed
+        for (destination in independent.distinctBy { it.deviceId }) {
+            val outcome = uploadWithResume(verifiedSource, destination)
+            if (outcome.errorMessage == null) {
+                succeeded += destination.deviceId
+                failures.remove(destination.deviceId)
+            } else {
+                failures[destination.deviceId] = outcome.errorMessage
+                succeeded.remove(destination.deviceId)
+            }
+        }
+
+        MultiCopyResult(
+            fileName = verifiedSource.fileName,
+            succeededDeviceIds = succeeded.toSet(),
+            failures = failures.toMap()
+        )
+    }
+
+    private suspend fun fanOutFromOffset(
+        source: MultiCopySource,
+        destinations: List<MultiCopyDestination>,
+        offset: Long
+    ): MultiCopyResult = coroutineScope {
         val chunkChannels = destinations.map {
             Channel<ByteArray>(capacity = CHANNEL_CAPACITY)
         }
+        val remaining = (source.sizeBytes - offset).coerceAtLeast(0L)
 
         val writers = destinations.mapIndexed { index, destination ->
             async(Dispatchers.IO) {
@@ -54,7 +105,9 @@ class MultiCopyBroadcastEngine(
                         is MultiCopyDestination.LocalDevice -> {
                             writeLocalFromChannel(
                                 absolutePath = destination.absolutePath,
-                                chunks = chunkChannels[index]
+                                chunks = chunkChannels[index],
+                                startOffset = offset,
+                                totalSize = source.sizeBytes
                             )
                         }
                         is MultiCopyDestination.RemoteDevice -> {
@@ -63,18 +116,15 @@ class MultiCopyBroadcastEngine(
                                 port = destination.port,
                                 remoteTargetPath = destination.absolutePath,
                                 chunks = chunkChannels[index],
-                                contentLength = verifiedSource.sizeBytes
+                                contentLength = remaining,
+                                resumeOffset = offset,
+                                totalSize = source.sizeBytes
                             )
                         }
                     }
                     WriterOutcome(deviceId = destination.deviceId, errorMessage = null)
                 }.getOrElse { error ->
                     runCatching { chunkChannels[index].close() }
-                    when (destination) {
-                        is MultiCopyDestination.LocalDevice ->
-                            deletePartialLocalFile(destination.absolutePath)
-                        is MultiCopyDestination.RemoteDevice -> Unit
-                    }
                     WriterOutcome(
                         deviceId = destination.deviceId,
                         errorMessage = error.message
@@ -84,12 +134,13 @@ class MultiCopyBroadcastEngine(
             }
         }
 
-        var sentBytes = 0L
-        val totalBytes = verifiedSource.sizeBytes
+        var sentBytes = offset
+        val totalBytes = source.sizeBytes
+        TransferActivityGuard.updateProgress(sentBytes, totalBytes)
 
         val producer = launch(Dispatchers.IO) {
             try {
-                streamSource(verifiedSource) { chunk ->
+                streamSource(source, offset) { chunk ->
                     sentBytes += chunk.size
                     TransferActivityGuard.updateProgress(sentBytes, totalBytes)
                     coroutineScope {
@@ -100,7 +151,6 @@ class MultiCopyBroadcastEngine(
                         }.awaitAll()
                     }
                 }
-
                 chunkChannels.forEach { channel ->
                     runCatching { channel.close() }
                 }
@@ -114,7 +164,6 @@ class MultiCopyBroadcastEngine(
 
         val producerError = runCatching { producer.join() }.exceptionOrNull()
         val outcomes = writers.awaitAll()
-
         val failures = linkedMapOf<String, String>()
         val succeeded = linkedSetOf<String>()
         for (outcome in outcomes) {
@@ -133,39 +182,113 @@ class MultiCopyBroadcastEngine(
                 )
             }
         }
-
         MultiCopyResult(
-            fileName = verifiedSource.fileName,
+            fileName = source.fileName,
             succeededDeviceIds = succeeded.toSet(),
             failures = failures.toMap()
         )
     }
 
-    private fun deletePartialLocalFile(absolutePath: String) {
-        runCatching {
-            val path = Path(absolutePath)
-            if (SystemFileSystem.exists(path)) {
-                SystemFileSystem.delete(path)
+    private suspend fun uploadWithResume(
+        source: MultiCopySource,
+        destination: MultiCopyDestination
+    ): WriterOutcome {
+        var lastError: String? = null
+        repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
+            val offset = queryDestinationOffset(destination, source.sizeBytes)
+            if (offset >= source.sizeBytes && source.sizeBytes > 0L) {
+                return WriterOutcome(destination.deviceId, errorMessage = null)
             }
+            val remaining = (source.sizeBytes - offset).coerceAtLeast(0L)
+            val result = runCatching {
+                when (destination) {
+                    is MultiCopyDestination.LocalDevice -> {
+                        writeLocalFromSource(source, destination.absolutePath, offset, source.sizeBytes)
+                    }
+                    is MultiCopyDestination.RemoteDevice -> {
+                        when (source) {
+                            is MultiCopySource.Local -> {
+                                client.uploadFromLocal(
+                                    host = destination.host,
+                                    port = destination.port,
+                                    localSourcePath = source.absolutePath,
+                                    remoteTargetPath = destination.absolutePath
+                                )
+                            }
+                            is MultiCopySource.Remote -> {
+                                val channel = Channel<ByteArray>(capacity = CHANNEL_CAPACITY)
+                                coroutineScope {
+                                    val producer = launch(Dispatchers.IO) {
+                                        try {
+                                            streamSource(source, offset) { chunk ->
+                                                channel.send(chunk)
+                                            }
+                                        } finally {
+                                            channel.close()
+                                        }
+                                    }
+                                    client.uploadFromChunkChannel(
+                                        host = destination.host,
+                                        port = destination.port,
+                                        remoteTargetPath = destination.absolutePath,
+                                        chunks = channel,
+                                        contentLength = remaining,
+                                        resumeOffset = offset,
+                                        totalSize = source.sizeBytes
+                                    )
+                                    producer.join()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (result.isSuccess) {
+                return WriterOutcome(destination.deviceId, errorMessage = null)
+            }
+            lastError = result.exceptionOrNull()?.message
+                ?: "Transfer failed on ${destination.deviceName}"
+            if (attempt < TransferResumeProtocol.MAX_ATTEMPTS - 1) {
+                delay(TransferResumeProtocol.RETRY_DELAY_MS)
+            }
+        }
+        return WriterOutcome(destination.deviceId, errorMessage = lastError)
+    }
+
+    private suspend fun queryDestinationOffset(
+        destination: MultiCopyDestination,
+        expectedSize: Long
+    ): Long = when (destination) {
+        is MultiCopyDestination.LocalDevice -> {
+            val resolved = UniqueFileNames.resolve(destination.absolutePath)
+            SocketFileStreamer.fileLength(SocketFileStreamer.partPathFor(resolved))
+        }
+        is MultiCopyDestination.RemoteDevice -> {
+            client.queryUploadResumeOffset(
+                host = destination.host,
+                port = destination.port,
+                remoteTargetPath = destination.absolutePath,
+                expectedSizeBytes = expectedSize
+            )
         }
     }
 
     private suspend fun streamSource(
         source: MultiCopySource,
+        offset: Long,
         onChunk: suspend (ByteArray) -> Unit
     ) {
         when (source) {
             is MultiCopySource.Local -> {
-                val path = Path(source.absolutePath)
-                check(SystemFileSystem.exists(path)) { "Missing local file: ${source.absolutePath}" }
-                SystemFileSystem.source(path).buffered().use { input ->
-                    val buffer = ByteArray(FileApexClient.CHUNK_SIZE)
-                    while (!input.exhausted()) {
-                        val read = input.readAtMostTo(buffer)
-                        if (read > 0) {
-                            // One immutable slice per read; shared by all destination channels.
-                            onChunk(buffer.copyOf(read))
-                        }
+                val buffer = ByteArray(FileApexClient.CHUNK_SIZE)
+                RandomAccessFile(source.absolutePath, "r").use { raf ->
+                    val size = raf.length()
+                    require(offset in 0L..size) { "Invalid stream offset $offset for size $size" }
+                    raf.seek(offset)
+                    while (true) {
+                        val read = raf.read(buffer)
+                        if (read <= 0) break
+                        onChunk(buffer.copyOf(read))
                     }
                 }
             }
@@ -174,34 +297,56 @@ class MultiCopyBroadcastEngine(
                     host = source.host,
                     port = source.port,
                     remotePath = source.absolutePath,
-                    onChunk = onChunk
-                )
+                    offset = offset
+                ) { buffer, length ->
+                    onChunk(buffer.copyOf(length))
+                }
             }
         }
     }
 
-    private suspend fun writeLocalFromChannel(
+    private suspend fun writeLocalFromSource(
+        source: MultiCopySource,
         absolutePath: String,
-        chunks: Channel<ByteArray>
+        offset: Long,
+        totalSize: Long
     ) {
         val resolved = UniqueFileNames.resolve(absolutePath)
-        val target = Path(resolved)
-        target.parent?.let { parent ->
-            if (!SystemFileSystem.exists(parent)) {
-                SystemFileSystem.createDirectories(parent)
+        val partPath = SocketFileStreamer.partPathFor(resolved)
+        SocketFileStreamer.openAppender(partPath, offset).use { raf ->
+            var written = offset
+            streamSource(source, offset) { chunk ->
+                raf.write(chunk)
+                written += chunk.size
+                TransferActivityGuard.updateProgress(written, totalSize)
             }
         }
-        try {
-            SystemFileSystem.sink(target).buffered().use { sink ->
-                for (chunk in chunks) {
-                    sink.write(chunk)
-                }
-            }
-        } catch (error: Throwable) {
-            deletePartialLocalFile(resolved)
-            throw error
-        }
+        SocketFileStreamer.finalizePart(partPath, resolved)
     }
+
+    private suspend fun writeLocalFromChannel(
+        absolutePath: String,
+        chunks: Channel<ByteArray>,
+        startOffset: Long,
+        totalSize: Long
+    ) {
+        val resolved = UniqueFileNames.resolve(absolutePath)
+        val partPath = SocketFileStreamer.partPathFor(resolved)
+        var written = startOffset
+        SocketFileStreamer.openAppender(partPath, startOffset).use { raf ->
+            for (chunk in chunks) {
+                raf.write(chunk)
+                written += chunk.size
+                TransferActivityGuard.updateProgress(written, totalSize)
+            }
+        }
+        SocketFileStreamer.finalizePart(partPath, resolved)
+    }
+
+    private data class DestPlan(
+        val destination: MultiCopyDestination,
+        val offset: Long
+    )
 
     private data class WriterOutcome(
         val deviceId: String,

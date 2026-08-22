@@ -7,6 +7,7 @@ import Network
 enum LanHttpClient {
     private static let queue = DispatchQueue(label: "com.fileapex.lan-http", attributes: .concurrent)
     private static let slots = DispatchSemaphore(value: 6)
+    private static let streamBufferBytes = 256 * 1024
     private static let logLock = NSLock()
 
     static func execute(
@@ -41,6 +42,7 @@ enum LanHttpClient {
         urlString: String,
         contentType: String?,
         filePath: String,
+        offsetBytes: UInt64,
         timeoutMs: Int
     ) -> (status: Int, body: Data)? {
         guard let target = Target(urlString: urlString) else { return nil }
@@ -50,10 +52,15 @@ enum LanHttpClient {
             return nil
         }
         defer { try? handle.close() }
-        let fileSize: UInt64
+        let remaining: UInt64
         do {
-            fileSize = try handle.seekToEnd()
-            try handle.seek(toOffset: 0)
+            let end = try handle.seekToEnd()
+            if offsetBytes > end {
+                log("upload offset \(offsetBytes) past size \(end)")
+                return nil
+            }
+            remaining = end - offsetBytes
+            try handle.seek(toOffset: offsetBytes)
         } catch {
             log("upload seek failed \(error.localizedDescription)")
             return nil
@@ -62,8 +69,8 @@ enum LanHttpClient {
         header += "Host: \(target.host):\(target.port)\r\n"
         header += "Connection: close\r\n"
         header += "Content-Type: \(contentType?.isEmpty == false ? contentType! : "application/octet-stream")\r\n"
-        header += "Content-Length: \(fileSize)\r\n\r\n"
-        log("UPLOAD \(target.host):\(target.port)\(target.path) bytes=\(fileSize)")
+        header += "Content-Length: \(remaining)\r\n\r\n"
+        log("UPLOAD \(target.host):\(target.port)\(target.path) offset=\(offsetBytes) bytes=\(remaining)")
         return transact(
             target: target,
             request: Data(header.utf8),
@@ -79,24 +86,18 @@ enum LanHttpClient {
         destinationPath: String,
         timeoutMs: Int
     ) -> Int? {
-        guard let result = execute(
-            method: "GET",
-            urlString: urlString,
-            contentType: nil,
-            body: nil,
+        guard let target = Target(urlString: urlString) else { return nil }
+        var header = "GET \(target.path) HTTP/1.1\r\n"
+        header += "Host: \(target.host):\(target.port)\r\n"
+        header += "Connection: close\r\n"
+        header += "Accept: application/octet-stream\r\n\r\n"
+        log("GET-FILE \(target.host):\(target.port)\(target.path)")
+        return transactToFile(
+            target: target,
+            request: Data(header.utf8),
+            destinationPath: destinationPath,
             timeoutMs: timeoutMs
-        ) else {
-            return nil
-        }
-        if result.status >= 200 && result.status < 300 {
-            let dest = URL(fileURLWithPath: destinationPath)
-            try? FileManager.default.createDirectory(
-                at: dest.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try? result.body.write(to: dest)
-        }
-        return result.status
+        )
     }
 
     private struct Target {
@@ -270,7 +271,7 @@ enum LanHttpClient {
     ) {
         let chunk: Data
         do {
-            chunk = try handle.read(upToCount: 64 * 1024) ?? Data()
+            chunk = try handle.read(upToCount: streamBufferBytes) ?? Data()
         } catch {
             log("upload read failed \(error.localizedDescription)")
             completion(false)
@@ -290,6 +291,257 @@ enum LanHttpClient {
             }
             sendFile(handle, on: connection, completion: completion)
         })
+    }
+
+    private static func transactToFile(
+        target: Target,
+        request: Data,
+        destinationPath: String,
+        timeoutMs: Int
+    ) -> Int? {
+        guard let port = NWEndpoint.Port(rawValue: target.port) else { return nil }
+        slots.wait()
+        defer { slots.signal() }
+        let host: NWEndpoint.Host = IPv4Address(target.host).map { .ipv4($0) } ?? NWEndpoint.Host(target.host)
+        let connection = NWConnection(
+            to: .hostPort(host: host, port: port),
+            using: unicastTcpParams()
+        )
+        let lock = DispatchSemaphore(value: 0)
+        let stateLock = NSLock()
+        var result: Int?
+        var finished = false
+        func finish(_ value: Int?) {
+            stateLock.lock()
+            let shouldComplete = !finished
+            if shouldComplete {
+                finished = true
+                result = value
+            }
+            stateLock.unlock()
+            guard shouldComplete else { return }
+            connection.cancel()
+            lock.signal()
+        }
+
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                connection.send(content: request, isComplete: true, completion: .contentProcessed { error in
+                    if let error {
+                        log("send failed \(error.localizedDescription)")
+                        finish(nil)
+                        return
+                    }
+                    receiveHttpToFile(
+                        on: connection,
+                        destinationPath: destinationPath,
+                        headerBuffer: Data(),
+                        finish: finish
+                    )
+                })
+            case .waiting(let error):
+                let reason = unsatisfiedText(connection.currentPath)
+                log("waiting \(target.host):\(target.port) \(error.localizedDescription) \(reason)")
+            case .failed(let error):
+                log("connect failed \(target.host):\(target.port) \(error.localizedDescription)")
+                finish(nil)
+            default:
+                break
+            }
+        }
+        connection.start(queue: queue)
+        let seconds = max(TimeInterval(timeoutMs) / 1000.0, 0.25) + 1.0
+        _ = lock.wait(timeout: .now() + seconds)
+        stateLock.lock()
+        let timedOut = !finished
+        stateLock.unlock()
+        if timedOut {
+            log("timeout \(target.host):\(target.port)")
+            connection.cancel()
+        }
+        return result
+    }
+
+    private static func receiveHttpToFile(
+        on connection: NWConnection,
+        destinationPath: String,
+        headerBuffer: Data,
+        finish: @escaping (Int?) -> Void
+    ) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { content, _, isComplete, error in
+            if let error {
+                log("receive failed \(error.localizedDescription)")
+                finish(nil)
+                return
+            }
+            var next = headerBuffer
+            if let content, !content.isEmpty {
+                next.append(content)
+            }
+            let separator = Data("\r\n\r\n".utf8)
+            guard let range = next.range(of: separator) else {
+                if isComplete {
+                    finish(nil)
+                    return
+                }
+                receiveHttpToFile(
+                    on: connection,
+                    destinationPath: destinationPath,
+                    headerBuffer: next,
+                    finish: finish
+                )
+                return
+            }
+            let headerBytes = next.subdata(in: 0..<range.lowerBound)
+            let bodyPrefix = next.subdata(in: range.upperBound..<next.count)
+            guard let parsed = HttpResponseParser.parseHeaders(headerBytes) else {
+                finish(nil)
+                return
+            }
+            let dest = URL(fileURLWithPath: destinationPath)
+            do {
+                try FileManager.default.createDirectory(
+                    at: dest.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                if FileManager.default.fileExists(atPath: destinationPath) {
+                    try FileManager.default.removeItem(at: dest)
+                }
+                FileManager.default.createFile(atPath: destinationPath, contents: nil)
+            } catch {
+                log("download dest failed \(error.localizedDescription)")
+                finish(nil)
+                return
+            }
+            guard let handle = try? FileHandle(forWritingTo: dest) else {
+                finish(nil)
+                return
+            }
+            streamBodyToFile(
+                on: connection,
+                handle: handle,
+                status: parsed.status,
+                contentLength: parsed.contentLength,
+                isChunked: parsed.isChunked,
+                pending: bodyPrefix,
+                received: 0,
+                isComplete: isComplete,
+                finish: finish
+            )
+        }
+    }
+
+    private static func streamBodyToFile(
+        on connection: NWConnection,
+        handle: FileHandle,
+        status: Int,
+        contentLength: Int?,
+        isChunked: Bool,
+        pending: Data,
+        received: Int,
+        isComplete: Bool,
+        finish: @escaping (Int?) -> Void
+    ) {
+        func closeAndFinish(_ value: Int?) {
+            try? handle.close()
+            finish(value)
+        }
+        do {
+            if isChunked {
+                let decoded = try writeChunked(pending, to: handle)
+                if decoded.done || isComplete {
+                    closeAndFinish(status)
+                    return
+                }
+                connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { content, _, complete, error in
+                    if let error {
+                        log("receive failed \(error.localizedDescription)")
+                        closeAndFinish(nil)
+                        return
+                    }
+                    streamBodyToFile(
+                        on: connection,
+                        handle: handle,
+                        status: status,
+                        contentLength: contentLength,
+                        isChunked: true,
+                        pending: decoded.leftover + (content ?? Data()),
+                        received: received,
+                        isComplete: complete,
+                        finish: finish
+                    )
+                }
+                return
+            }
+            if !pending.isEmpty {
+                try handle.write(contentsOf: pending)
+            }
+        } catch {
+            log("download write failed \(error.localizedDescription)")
+            closeAndFinish(nil)
+            return
+        }
+        let written = received + pending.count
+        if let contentLength, written >= contentLength {
+            closeAndFinish(status)
+            return
+        }
+        if isComplete {
+            closeAndFinish(status)
+            return
+        }
+        connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { content, _, complete, error in
+            if let error {
+                log("receive failed \(error.localizedDescription)")
+                closeAndFinish(nil)
+                return
+            }
+            streamBodyToFile(
+                on: connection,
+                handle: handle,
+                status: status,
+                contentLength: contentLength,
+                isChunked: false,
+                pending: content ?? Data(),
+                received: written,
+                isComplete: complete,
+                finish: finish
+            )
+        }
+    }
+
+    /// Writes complete chunk payloads to disk; keeps only an unfinished chunk in [leftover].
+    private static func writeChunked(_ data: Data, to handle: FileHandle) throws -> (leftover: Data, done: Bool) {
+        var leftover = data
+        let crlf = Data("\r\n".utf8)
+        while true {
+            guard let lineEnd = leftover.range(of: crlf) else {
+                return (leftover, false)
+            }
+            let sizeLine = leftover.subdata(in: 0..<lineEnd.lowerBound)
+            let hex = String(data: sizeLine, encoding: .isoLatin1)?
+                .split(separator: ";").first?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let size = Int(hex, radix: 16) else {
+                throw NSError(domain: "FileApexLanHttp", code: 1)
+            }
+            leftover = leftover.subdata(in: lineEnd.upperBound..<leftover.count)
+            if size == 0 {
+                return (Data(), true)
+            }
+            guard leftover.count >= size + 2 else {
+                var restored = sizeLine
+                restored.append(crlf)
+                restored.append(leftover)
+                return (restored, false)
+            }
+            try handle.write(contentsOf: leftover.prefix(size))
+            leftover = leftover.subdata(in: leftover.startIndex.advanced(by: size)..<leftover.endIndex)
+            if leftover.starts(with: crlf) {
+                leftover = leftover.subdata(in: leftover.startIndex.advanced(by: 2)..<leftover.endIndex)
+            }
+        }
     }
 
     private static func receiveHttp(
@@ -366,6 +618,27 @@ private enum HttpResponseParser {
         return (status, Data(body))
     }
 
+    static func parseHeaders(_ headerBytes: Data) -> (status: Int, contentLength: Int?, isChunked: Bool)? {
+        guard let headerText = String(data: headerBytes, encoding: .isoLatin1) else { return nil }
+        let lines = headerText.split(separator: "\r\n", omittingEmptySubsequences: false)
+        guard let statusLine = lines.first else { return nil }
+        let status = statusLine.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? 0
+        guard status > 0 else { return nil }
+        var contentLength: Int?
+        var isChunked = false
+        for line in lines.dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let key = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            if key == "content-length" {
+                contentLength = Int(value)
+            } else if key == "transfer-encoding", value.lowercased().contains("chunked") {
+                isChunked = true
+            }
+        }
+        return (status, contentLength, isChunked)
+    }
+
     private static func decodeChunked(_ data: Data) -> Data? {
         var remaining = data
         var out = Data()
@@ -426,16 +699,19 @@ public func fileapex_lan_http_upload_file(
     url: UnsafePointer<CChar>?,
     contentType: UnsafePointer<CChar>?,
     filePath: UnsafePointer<CChar>?,
+    offsetBytes: Int64,
     timeoutMs: Int32,
     outStatus: UnsafeMutablePointer<Int32>?,
     outBody: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
     outBodyLen: UnsafeMutablePointer<Int32>?
 ) -> Int32 {
     guard let url, let filePath else { return -1 }
+    let offset = offsetBytes > 0 ? UInt64(offsetBytes) : 0
     guard let result = LanHttpClient.uploadFile(
         urlString: String(cString: url),
         contentType: contentType.map { String(cString: $0) },
         filePath: String(cString: filePath),
+        offsetBytes: offset,
         timeoutMs: Int(timeoutMs)
     ) else {
         return -1

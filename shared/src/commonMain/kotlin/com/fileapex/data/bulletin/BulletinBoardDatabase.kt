@@ -12,7 +12,7 @@ import androidx.room3.RoomDatabaseConstructor
         OutboxEntity::class,
         ProcessedPacketEntity::class
     ],
-    version = 1
+    version = 2
 )
 @ConstructedBy(BulletinBoardDatabaseConstructor::class)
 abstract class BulletinBoardDatabase : RoomDatabase() {

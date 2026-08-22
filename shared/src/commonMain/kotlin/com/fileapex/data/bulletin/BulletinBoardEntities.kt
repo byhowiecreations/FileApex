@@ -22,7 +22,8 @@ data class MessageEntity(
 data class TombstoneEntity(
     @PrimaryKey val id: String,
     val deletedAt: Long,
-    val originDeviceId: String
+    val originDeviceId: String,
+    val remotePurge: Boolean = false
 )
 
 @Entity(tableName = "outbox")

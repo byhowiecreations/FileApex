@@ -49,5 +49,6 @@ data class BulletinMessagePayload(
 data class BulletinTombstonePayload(
     val id: String,
     val deletedAt: Long,
-    val originDeviceId: String
+    val originDeviceId: String,
+    val remotePurge: Boolean = false
 )

@@ -47,6 +47,7 @@ interface AppSettings {
 
     val notesNotificationsEnabled: StateFlow<Boolean>
     val notesNotificationPromptShown: StateFlow<Boolean>
+    val bulletinRemoteFilePurgePreference: StateFlow<BulletinRemoteFilePurgePreference>
 
     val liveTransferCapsuleEnabled: StateFlow<Boolean>
     val liveTransferShowQueueEnabled: StateFlow<Boolean>
@@ -69,6 +70,7 @@ interface AppSettings {
     fun setDriveRelayNotificationsEnabled(enabled: Boolean)
     fun setNotesNotificationsEnabled(enabled: Boolean)
     fun setNotesNotificationPromptShown(shown: Boolean)
+    fun setBulletinRemoteFilePurgePreference(preference: BulletinRemoteFilePurgePreference)
     fun setLiveTransferCapsuleEnabled(enabled: Boolean)
     fun setLiveTransferShowQueueEnabled(enabled: Boolean)
     fun setAppTheme(theme: AppTheme)

@@ -115,6 +115,7 @@ class BulletinBoardSyncEngine(
         val accepted = mutableListOf<String>()
         val incomingMessages = mutableListOf<MessageEntity>()
         val incomingTombstones = mutableListOf<TombstoneEntity>()
+        val remotePurgeMessageIds = mutableListOf<String>()
         for (item in batch.items) {
             if (tombstoneDao.countById(item.payloadId) > 0 && item.payloadType == BulletinPayloadType.MESSAGE) {
                 continue
@@ -140,8 +141,12 @@ class BulletinBoardSyncEngine(
                     incomingTombstones += TombstoneEntity(
                         id = payload.id,
                         deletedAt = payload.deletedAt,
-                        originDeviceId = payload.originDeviceId
+                        originDeviceId = payload.originDeviceId,
+                        remotePurge = payload.remotePurge
                     )
+                    if (payload.remotePurge) {
+                        remotePurgeMessageIds += payload.id
+                    }
                     accepted += item.payloadId
                 }
             }
@@ -154,6 +159,9 @@ class BulletinBoardSyncEngine(
                 processedAt = TimeUtils.now()
             )
         )
+        for (messageId in remotePurgeMessageIds.distinct()) {
+            BulletinRemoteFilePurgeHandler.handle(messageId)
+        }
         return BulletinSyncAck(
             packetId = batch.packetId,
             originDeviceId = loadLocalIdentity().deviceId,
@@ -270,7 +278,8 @@ class BulletinBoardSyncEngine(
                             BulletinTombstonePayload(
                                 id = tombstone.id,
                                 deletedAt = tombstone.deletedAt,
-                                originDeviceId = tombstone.originDeviceId
+                                originDeviceId = tombstone.originDeviceId,
+                                remotePurge = tombstone.remotePurge
                             )
                         )
                     )

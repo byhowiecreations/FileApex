@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -84,6 +85,11 @@ import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.cloud.drive.DriveRelayPolicy
 import com.fileapex.cloud.drive.GoogleDriveAuth
 import com.fileapex.cloud.drive.NotesAttachmentDecision
+import com.fileapex.data.bulletin.BulletinRemoteFilePurgeCoordinator
+import com.fileapex.data.bulletin.BulletinRemoteFilePurgeHandler
+import com.fileapex.data.bulletin.BulletinRemotePurgePrompt
+import com.fileapex.data.bulletin.bulletinDeleteContentKind
+import com.fileapex.data.bulletin.hasBulletinBinaryAttachment
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.platform.BriefToast
 import com.fileapex.platform.PickedLocalFile
@@ -117,6 +123,8 @@ fun NotesScreen(
     val displayNotes = remember(rawNotes) { rawNotes.sortedBy { it.epochMs } }
     var inputContent by remember { mutableStateOf("") }
     var noteToDelete by remember { mutableStateOf<NoteRecord?>(null) }
+    var pendingRemotePurgeDelete by remember { mutableStateOf<NoteRecord?>(null) }
+    var remotePurgePrompt by remember { mutableStateOf<BulletinRemotePurgePrompt?>(null) }
     var showNotesPermissionPrompt by remember { mutableStateOf(false) }
     var pendingNoteToSend by remember { mutableStateOf<String?>(null) }
     var attachError by remember { mutableStateOf<String?>(null) }
@@ -261,6 +269,12 @@ fun NotesScreen(
         delay(NOTES_SENT_HOLD_MS)
         if (transport === session) {
             session.settled = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        BulletinRemoteFilePurgeCoordinator.pendingPrompts.collect { prompt ->
+            remotePurgePrompt = prompt
         }
     }
 
@@ -1056,17 +1070,27 @@ fun NotesScreen(
 
     val targetToDelete = noteToDelete
     if (targetToDelete != null) {
+        val deleteKind = targetToDelete.bulletinDeleteContentKind()
         AlertDialog(
             onDismissRequest = { noteToDelete = null },
-            title = { Text("Delete Note") },
-            text = { Text("Do you want to delete this note entry from this device only, or delete it from all paired devices?") },
+            title = { Text(deleteKind.dialogTitle) },
+            text = {
+                Text(
+                    "Do you want to delete this ${deleteKind.entryLabel} from this device only, " +
+                        "or delete it from all paired devices?"
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val target = targetToDelete
                         noteToDelete = null
-                        scope.launch {
-                            FileApexServices.noteRepository.deleteNoteFromAllDevices(target.noteId)
+                        if (target.hasBulletinBinaryAttachment()) {
+                            pendingRemotePurgeDelete = target
+                        } else {
+                            scope.launch {
+                                FileApexServices.noteRepository.deleteNoteFromAllDevices(target.noteId)
+                            }
                         }
                     }
                 ) {
@@ -1087,11 +1111,106 @@ fun NotesScreen(
                         Text("This Device Only")
                     }
                     Spacer(modifier = Modifier.width(4.dp))
-                    TextButton(
-                        onClick = { noteToDelete = null }
-                    ) {
+                    TextButton(onClick = { noteToDelete = null }) {
                         Text("Cancel")
                     }
+                }
+            }
+        )
+    }
+
+    val remotePurgeDeleteTarget = pendingRemotePurgeDelete
+    if (remotePurgeDeleteTarget != null) {
+        AlertDialog(
+            onDismissRequest = { pendingRemotePurgeDelete = null },
+            title = { Text("Remove From Remote Storage?") },
+            text = {
+                Text("Also remove the file from remote device storage?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val target = remotePurgeDeleteTarget
+                        pendingRemotePurgeDelete = null
+                        scope.launch {
+                            FileApexServices.noteRepository.deleteNoteFromAllDevices(
+                                noteId = target.noteId,
+                                remotePurge = true
+                            )
+                        }
+                    }
+                ) {
+                    Text("Remove File", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            val target = remotePurgeDeleteTarget
+                            pendingRemotePurgeDelete = null
+                            scope.launch {
+                                FileApexServices.noteRepository.deleteNoteFromAllDevices(
+                                    noteId = target.noteId,
+                                    remotePurge = false
+                                )
+                            }
+                        }
+                    ) {
+                        Text("Keep File")
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    TextButton(onClick = { pendingRemotePurgeDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
+    val incomingRemotePurgePrompt = remotePurgePrompt
+    if (incomingRemotePurgePrompt != null) {
+        AlertDialog(
+            onDismissRequest = {
+                BulletinRemoteFilePurgeHandler.resolveFirstTimePrompt(
+                    deleteFiles = false,
+                    localPath = incomingRemotePurgePrompt.localPath
+                )
+                remotePurgePrompt = null
+            },
+            title = { Text("Remote File Delete Request") },
+            text = {
+                Text(
+                    "Another device asked to delete \"${incomingRemotePurgePrompt.fileName}\" and " +
+                        "remove its copy from this device. Choose whether FileApex should delete " +
+                        "shared bulletin files from local storage when requested. This choice is saved " +
+                        "and won't be asked again."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        BulletinRemoteFilePurgeHandler.resolveFirstTimePrompt(
+                            deleteFiles = true,
+                            localPath = incomingRemotePurgePrompt.localPath
+                        )
+                        remotePurgePrompt = null
+                    }
+                ) {
+                    Text("Delete Files", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        BulletinRemoteFilePurgeHandler.resolveFirstTimePrompt(
+                            deleteFiles = false,
+                            localPath = incomingRemotePurgePrompt.localPath
+                        )
+                        remotePurgePrompt = null
+                    }
+                ) {
+                    Text("Keep Files")
                 }
             }
         )
@@ -1274,50 +1393,77 @@ private fun NoteBubbleItem(
                     }
                     if (attachmentName != null) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Surface(
-                            onClick = {
-                                if (gesturesEnabled) {
-                                    onCloseAnyReveal()
-                                    onOpenAttachment()
+                        if (thumbnail != null) {
+                            Surface(
+                                onClick = {
+                                    if (gesturesEnabled) {
+                                        onCloseAnyReveal()
+                                        onOpenAttachment()
+                                    }
+                                },
+                                enabled = gesturesEnabled,
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isCustomGlass) {
+                                    Color.White.copy(alpha = 0.08f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                                 }
-                            },
-                            enabled = gesturesEnabled,
-                            shape = RoundedCornerShape(6.dp),
-                            color = if (isCustomGlass) {
-                                Color.White.copy(alpha = 0.08f)
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (thumbnail != null) {
+                                Column(modifier = Modifier.padding(8.dp)) {
                                     Image(
                                         bitmap = thumbnail,
-                                        contentDescription = "Open attachment",
+                                        contentDescription = "Open image",
                                         modifier = Modifier
-                                            .size(18.dp)
-                                            .clip(RoundedCornerShape(3.dp)),
+                                            .fillMaxWidth()
+                                            .heightIn(min = 120.dp, max = 220.dp)
+                                            .clip(RoundedCornerShape(6.dp)),
                                         contentScale = ContentScale.Crop
                                     )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = attachmentName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = textColor,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        } else {
+                            Surface(
+                                onClick = {
+                                    if (gesturesEnabled) {
+                                        onCloseAnyReveal()
+                                        onOpenAttachment()
+                                    }
+                                },
+                                enabled = gesturesEnabled,
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isCustomGlass) {
+                                    Color.White.copy(alpha = 0.08f)
                                 } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
                                         imageVector = ExplorerEntryIcons.iconForFile(attachmentName, ""),
                                         contentDescription = "Open attachment",
                                         tint = subTextColor,
                                         modifier = Modifier.size(14.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = attachmentName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = textColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = attachmentName,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = textColor,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                             }
                         }
                     }

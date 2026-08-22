@@ -140,15 +140,23 @@ class NoteRepository {
     }
 
     suspend fun deleteNote(noteId: String) {
-        deleteNoteFromAllDevices(noteId)
+        val bulletin = bulletinRepository
+        if (bulletin != null) {
+            retractedKeys += noteId
+            bulletin.deleteMessageLocalOnly(noteId)
+            val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
+            retractNotifications(snapshot, noteId)
+            return
+        }
+        deleteNoteFromAllDevicesLegacy(noteId)
     }
 
-    suspend fun deleteNoteFromAllDevices(noteId: String) {
+    suspend fun deleteNoteFromAllDevices(noteId: String, remotePurge: Boolean = false) {
         val bulletin = bulletinRepository
         val syncEngine = bulletinSyncEngine
         if (bulletin != null && syncEngine != null) {
             retractedKeys += noteId
-            bulletin.deleteMessage(noteId)
+            bulletin.deleteMessage(noteId, remotePurge = remotePurge)
             syncEngine.publishTombstone(noteId)
             val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
             retractNotifications(snapshot, noteId)

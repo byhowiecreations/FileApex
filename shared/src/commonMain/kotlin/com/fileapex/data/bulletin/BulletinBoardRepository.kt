@@ -133,18 +133,32 @@ class BulletinBoardRepository(
             TombstoneEntity(
                 id = payload.id,
                 deletedAt = payload.deletedAt,
-                originDeviceId = payload.originDeviceId
+                originDeviceId = payload.originDeviceId,
+                remotePurge = payload.remotePurge
             )
         )
     }
 
-    suspend fun deleteMessage(id: String) {
+    suspend fun deleteMessageLocalOnly(id: String) {
         val identity = loadLocalIdentity()
         applyTombstone(
             BulletinTombstonePayload(
                 id = id,
                 deletedAt = TimeUtils.now(),
-                originDeviceId = identity.deviceId
+                originDeviceId = identity.deviceId,
+                remotePurge = false
+            )
+        )
+    }
+
+    suspend fun deleteMessage(id: String, remotePurge: Boolean = false) {
+        val identity = loadLocalIdentity()
+        applyTombstone(
+            BulletinTombstonePayload(
+                id = id,
+                deletedAt = TimeUtils.now(),
+                originDeviceId = identity.deviceId,
+                remotePurge = remotePurge
             )
         )
     }

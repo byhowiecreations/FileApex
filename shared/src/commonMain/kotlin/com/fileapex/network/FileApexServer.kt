@@ -37,6 +37,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
@@ -45,7 +46,6 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,11 +53,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.readAtMostTo
-import kotlinx.io.write
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -372,19 +369,36 @@ class FileApexServer(
                             fileMetadata?.isDirectory != true
                         ) {
                             val fileSize = fileMetadata?.size?.coerceAtLeast(0L) ?: 0L
+                            val offset = TransferResumeProtocol.parseByteOffset(
+                                queryOffset = call.request.queryParameters[TransferResumeProtocol.OFFSET_QUERY],
+                                rangeHeader = call.request.headers[HttpHeaders.Range]
+                            )
+                            if (offset > fileSize) {
+                                call.response.header(HttpHeaders.ContentRange, "bytes */$fileSize")
+                                call.respond(HttpStatusCode.RequestedRangeNotSatisfiable)
+                                return@runCatching
+                            }
+                            val remaining = (fileSize - offset).coerceAtLeast(0L)
+                            val partial = offset > 0L
+                            call.response.header(HttpHeaders.AcceptRanges, "bytes")
+                            if (partial) {
+                                val endInclusive = (fileSize - 1L).coerceAtLeast(offset)
+                                call.response.header(
+                                    HttpHeaders.ContentRange,
+                                    "bytes $offset-$endInclusive/$fileSize"
+                                )
+                            }
+                            if (remaining == 0L) {
+                                call.respond(if (partial) HttpStatusCode.PartialContent else HttpStatusCode.OK)
+                                return@runCatching
+                            }
                             call.respondOutputStream(
                                 contentType = ContentType.Application.OctetStream,
-                                status = HttpStatusCode.OK,
-                                contentLength = fileSize
+                                status = if (partial) HttpStatusCode.PartialContent else HttpStatusCode.OK,
+                                contentLength = remaining
                             ) {
-                                SystemFileSystem.source(filePath).buffered().use { source ->
-                                    val buffer = ByteArray(8192)
-                                    while (!source.exhausted()) {
-                                        val read = source.readAtMostTo(buffer)
-                                        if (read > 0) {
-                                            write(buffer, 0, read)
-                                        }
-                                    }
+                                SocketFileStreamer.streamFromOffset(pathStr, offset) { buffer, length ->
+                                    write(buffer, 0, length)
                                 }
                             }
                         } else {
@@ -393,6 +407,28 @@ class FileApexServer(
                     }.onFailure { error ->
                         onLog("GET /api/v1/files/stream failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "stream_failed")
+                    }
+                }
+
+                get("/api/v1/files/resume") {
+                    runCatching {
+                        val preferredPathStr = call.request.queryParameters["targetPath"]
+                            ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+                        if (!isPathAllowed(preferredPathStr)) {
+                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
+                            return@runCatching
+                        }
+                        val expectedSize = call.request.queryParameters[TransferResumeProtocol.EXPECTED_SIZE_QUERY]
+                            ?.toLongOrNull()
+                            ?: 0L
+                        val snapshot = TransferResumeProtocol.inspectIncoming(preferredPathStr, expectedSize)
+                        call.respondText(
+                            text = json.encodeToString(ResumeOffsetResponse.serializer(), snapshot),
+                            contentType = ContentType.Application.Json
+                        )
+                    }.onFailure { error ->
+                        onLog("GET /api/v1/files/resume failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "resume_failed")
                     }
                 }
 
@@ -412,38 +448,65 @@ class FileApexServer(
                             call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                             return@runCatching
                         }
-                        val targetPath = Path(targetPathStr)
-                        val parent = targetPath.parent
-                        if (parent != null && !SystemFileSystem.exists(parent)) {
-                            SystemFileSystem.createDirectories(parent)
-                        }
-
-                        val expectedLength = call.request.headers["Content-Length"]?.toLongOrNull()
-                        val channel = call.receiveChannel()
-                        val received = receiveUploadBytes(channel, targetPath, expectedLength)
-                        val complete = expectedLength == null || received == expectedLength
-                        if (!complete || received <= 0L) {
-                            runCatching {
-                                if (SystemFileSystem.exists(targetPath)) {
-                                    SystemFileSystem.delete(targetPath)
-                                }
+                        val partPath = SocketFileStreamer.partPathFor(targetPathStr)
+                        val sessionLength = call.request.headers["Content-Length"]?.toLongOrNull()
+                        val offset = TransferResumeProtocol.parseByteOffset(
+                            queryOffset = call.request.queryParameters[TransferResumeProtocol.OFFSET_QUERY],
+                            rangeHeader = null
+                        ).let { fromQuery ->
+                            if (fromQuery > 0L) {
+                                fromQuery
+                            } else {
+                                TransferResumeProtocol.parseContentRangeStart(
+                                    call.request.headers[HttpHeaders.ContentRange]
+                                )
                             }
-                            val reason = if (received <= 0L) "upload_empty" else "upload_incomplete"
+                        }
+                        val totalSize = TransferResumeProtocol.parseTotalSize(
+                            queryTotal = call.request.queryParameters[TransferResumeProtocol.TOTAL_SIZE_QUERY],
+                            contentRange = call.request.headers[HttpHeaders.ContentRange],
+                            sessionLength = sessionLength,
+                            offset = offset
+                        )
+                        val existingPart = SocketFileStreamer.fileLength(partPath)
+                        if (offset > existingPart) {
                             onLog(
-                                "upload rejected path=$targetPathStr bytes=$received" +
-                                    (expectedLength?.let { " expected=$it" } ?: "") +
+                                "upload resume gap path=$partPath offset=$offset existing=$existingPart",
+                                null
+                            )
+                            call.respond(HttpStatusCode.BadRequest, "resume_offset_invalid")
+                            return@runCatching
+                        }
+                        val channel = call.receiveChannel()
+                        val received = receiveUploadBytes(channel, partPath, offset, sessionLength)
+                        val totalReceived = offset + received
+                        val complete = when {
+                            received <= 0L && offset == 0L -> false
+                            totalSize != null -> totalReceived == totalSize
+                            sessionLength != null -> received == sessionLength
+                            else -> received > 0L
+                        }
+                        if (!complete) {
+                            val reason = if (totalReceived <= 0L) "upload_empty" else "upload_incomplete"
+                            onLog(
+                                "upload paused path=$partPath offset=$offset session=$received" +
+                                    (totalSize?.let { " total=$it" } ?: "") +
                                     " reason=$reason",
                                 null
                             )
+                            if (totalReceived <= 0L) {
+                                SocketFileStreamer.deleteQuietly(partPath)
+                            }
                             call.respond(HttpStatusCode.BadRequest, reason)
                             return@runCatching
                         }
+                        val finalPath = SocketFileStreamer.finalizePart(partPath, targetPathStr)
                         onLog(
-                            "upload complete path=$targetPathStr bytes=$received" +
-                                (expectedLength?.let { " expected=$it" } ?: ""),
+                            "upload complete path=$finalPath bytes=$totalReceived" +
+                                (if (offset > 0L) " resumedFrom=$offset" else ""),
                             null
                         )
-                        val receivedName = targetPathStr
+                        val receivedName = finalPath
                             .substringAfterLast('/')
                             .substringAfterLast('\\')
                         if (receivedName.isNotBlank()) {
@@ -526,23 +589,13 @@ class FileApexServer(
                             return@runCatching
                         }
                         val dest = UniqueFileNames.resolveInDirectory(defaultDownloadsDir(), fileName)
-                        val targetPath = Path(dest)
-                        targetPath.parent?.let { parent ->
-                            if (!SystemFileSystem.exists(parent)) {
-                                SystemFileSystem.createDirectories(parent)
-                            }
-                        }
                         val channel = call.receiveChannel()
-                        val received = receiveUploadBytes(channel, targetPath, expectedLength)
+                        val received = receiveUploadBytes(channel, dest, startOffset = 0L, expectedLength)
                         val complete = expectedLength == null || received == expectedLength
                         if (!complete || received <= 0L ||
                             received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
                         ) {
-                            runCatching {
-                                if (SystemFileSystem.exists(targetPath)) {
-                                    SystemFileSystem.delete(targetPath)
-                                }
-                            }
+                            SocketFileStreamer.deleteQuietly(dest)
                             val status = if (received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES) {
                                 HttpStatusCode.PayloadTooLarge
                             } else {
@@ -634,12 +687,8 @@ class FileApexServer(
                             status = HttpStatusCode.OK,
                             contentLength = size
                         ) {
-                            SystemFileSystem.source(source).buffered().use { input ->
-                                val buffer = ByteArray(64 * 1024)
-                                while (!input.exhausted()) {
-                                    val read = input.readAtMostTo(buffer)
-                                    if (read > 0) write(buffer, 0, read)
-                                }
+                            SocketFileStreamer.streamFromOffset(localPath, 0L) { buffer, length ->
+                                write(buffer, 0, length)
                             }
                         }
                     }.onFailure { error ->
@@ -831,16 +880,18 @@ class FileApexServer(
     /**
      * Reads an upload body without hanging when the sender closes early or stalls.
      * URLSession clients send Content-Length; FileApex/Ktor senders may use chunked EOF.
+     * Partial files are kept at [targetPath] so a later request can resume from disk length.
      */
     private suspend fun receiveUploadBytes(
         channel: ByteReadChannel,
-        targetPath: Path,
+        targetPath: String,
+        startOffset: Long,
         expectedLength: Long?
     ): Long {
         var received = 0L
         var idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
-        SystemFileSystem.sink(targetPath).buffered().use { sink ->
-            val buffer = ByteArray(8192)
+        SocketFileStreamer.openAppender(targetPath, startOffset).use { raf ->
+            val buffer = ByteArray(SocketFileStreamer.BUFFER_BYTES)
             while (expectedLength == null || received < expectedLength) {
                 if (TimeUtils.now() >= idleDeadlineMs) break
                 val remaining = expectedLength?.minus(received)
@@ -852,7 +903,7 @@ class FileApexServer(
                 val read = channel.readAvailable(buffer, 0, want)
                 when {
                     read > 0 -> {
-                        sink.write(buffer, 0, read)
+                        raf.write(buffer, 0, read)
                         received += read.toLong()
                         idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
                     }

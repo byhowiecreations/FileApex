@@ -21,4 +21,6 @@ object BulletinBoardPolicy {
     const val LAN_FILE_MAX_BYTES = 8L * 1024 * 1024
     /** First build with /api/v1/bulletin/sync/batch (version.md code=126, v0.8.1a). */
     const val BULLETIN_SYNC_MIN_VERSION_CODE = 126
+    /** Remote file purge flag on bulletin tombstones (version.md code=127, v0.8.1b). */
+    const val BULLETIN_REMOTE_PURGE_MIN_VERSION_CODE = 127
 }

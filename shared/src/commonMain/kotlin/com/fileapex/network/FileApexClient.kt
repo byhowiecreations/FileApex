@@ -8,15 +8,12 @@ import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.peer.PeerNodeState
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.io.Buffer
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.readAtMostTo
 import kotlinx.io.readByteArray
 import kotlinx.io.write
 import kotlinx.serialization.builtins.ListSerializer
@@ -269,49 +266,31 @@ class FileApexClient(
     ) {
         val source = Path(localSourcePath)
         check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
-        val contentLength = SystemFileSystem.metadataOrNull(source)?.size?.takeIf { it > 0L }
-        val channel = Channel<ByteArray>(UPLOAD_CHANNEL_CAPACITY)
-        coroutineScope {
-            val producer = launch(Dispatchers.IO) {
-                try {
-                    SystemFileSystem.source(source).buffered().use { input ->
-                        val buffer = ByteArray(CHUNK_SIZE)
-                        while (!input.exhausted()) {
-                            val read = input.readAtMostTo(buffer)
-                            if (read > 0) {
-                                channel.send(buffer.copyOf(read))
-                            }
-                        }
-                    }
-                } finally {
-                    channel.close()
-                }
-            }
-            PeerLanHttpPolicy.ensureRoute(host)
-            val response = peerHttpUploadFromChannel(
-                host = host,
-                port = port,
-                pathWithQuery = withSenderQuery(
-                    queryPath(
-                        basePath = "/api/v1/notes/attachment",
-                        host = host,
-                        port = port,
-                        params = mapOf("noteId" to noteId, "fileName" to fileName)
-                    )
-                ),
-                contentType = "application/octet-stream",
-                chunks = channel,
-                connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-                uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-                contentLength = contentLength?.takeIf { it > 0L }
-            ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
-            producer.join()
-            if (response.statusCode == 403) {
-                error("PIN required — open the device and enter its PIN")
-            }
-            require(response.statusCode in 200..299) {
-                "Note attachment upload failed (${response.statusCode})"
-            }
+        val contentLength = SystemFileSystem.metadataOrNull(source)?.size?.takeIf { it > 0L } ?: 0L
+        PeerLanHttpPolicy.ensureRoute(host)
+        val response = peerHttpUploadFromFile(
+            host = host,
+            port = port,
+            pathWithQuery = withSenderQuery(
+                queryPath(
+                    basePath = "/api/v1/notes/attachment",
+                    host = host,
+                    port = port,
+                    params = mapOf("noteId" to noteId, "fileName" to fileName)
+                )
+            ),
+            contentType = "application/octet-stream",
+            sourcePath = localSourcePath,
+            offset = 0L,
+            length = contentLength,
+            connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+            uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
+        ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+        if (response.statusCode == 403) {
+            error("PIN required — open the device and enter its PIN")
+        }
+        require(response.statusCode in 200..299) {
+            "Note attachment upload failed (${response.statusCode})"
         }
     }
 
@@ -396,9 +375,9 @@ class FileApexClient(
                 ),
                 connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
                 readIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-                onChunk = { chunk ->
-                    sink.write(chunk)
-                    bytesWritten += chunk.size
+                onChunk = { buffer, length ->
+                    sink.write(buffer, startIndex = 0, endIndex = length)
+                    bytesWritten += length.toLong()
                 }
             ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
             if (result.statusCode == 403) {
@@ -460,12 +439,12 @@ class FileApexClient(
     ): ByteArray {
         val sink = Buffer()
         var total = 0L
-        streamRemoteFile(host, port, remotePath) { chunk ->
-            total += chunk.size
+        streamRemoteFile(host, port, remotePath) { buffer, length ->
+            total += length.toLong()
             if (total > maxBytes) {
                 error("File is too large to preview (>${maxBytes / (1024 * 1024)} MB)")
             }
-            sink.write(chunk)
+            sink.write(buffer, startIndex = 0, endIndex = length)
         }
         return sink.readByteArray()
     }
@@ -477,39 +456,74 @@ class FileApexClient(
         localTargetPath: String,
         expectedSizeBytes: Long? = null
     ) {
-        val target = Path(localTargetPath)
-        target.parent?.let { parent ->
-            if (!SystemFileSystem.exists(parent)) {
-                SystemFileSystem.createDirectories(parent)
+        val partPath = SocketFileStreamer.partPathFor(localTargetPath)
+        var lastError: Throwable? = null
+        repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
+            val requestedOffset = SocketFileStreamer.fileLength(partPath)
+            if (expectedSizeBytes != null && expectedSizeBytes > 0L && requestedOffset >= expectedSizeBytes) {
+                SocketFileStreamer.finalizePart(partPath, localTargetPath)
+                return
             }
-        }
-        var bytesWritten = 0L
-        SystemFileSystem.sink(target).buffered().use { sink ->
-            streamRemoteFile(host, port, remotePath) { chunk ->
-                sink.write(chunk)
-                bytesWritten += chunk.size
-            }
-        }
-        if (expectedSizeBytes != null && expectedSizeBytes > 0L && bytesWritten != expectedSizeBytes) {
-            runCatching {
-                if (SystemFileSystem.exists(target)) {
-                    SystemFileSystem.delete(target)
+            var appender: java.io.RandomAccessFile? = null
+            try {
+                var bytesWritten = requestedOffset
+                streamRemoteFile(
+                    host = host,
+                    port = port,
+                    remotePath = remotePath,
+                    offset = requestedOffset,
+                    onStatus = { status ->
+                        if (status in 200..299) {
+                            val writeOffset = if (status == 206) requestedOffset else 0L
+                            appender = SocketFileStreamer.openAppender(partPath, writeOffset)
+                            bytesWritten = writeOffset
+                        }
+                    }
+                ) { buffer, length ->
+                    val raf = appender ?: error("Download body arrived before HTTP status")
+                    raf.write(buffer, 0, length)
+                    bytesWritten += length.toLong()
                 }
+                if (expectedSizeBytes != null && expectedSizeBytes > 0L && bytesWritten != expectedSizeBytes) {
+                    error(
+                        "Download incomplete for ${Path(localTargetPath).name} " +
+                            "(got $bytesWritten bytes, expected $expectedSizeBytes)"
+                    )
+                }
+                runCatching { appender?.close() }
+                appender = null
+                SocketFileStreamer.finalizePart(partPath, localTargetPath)
+                return
+            } catch (error: Throwable) {
+                lastError = error
+                runCatching { appender?.close() }
+                appender = null
+                if (attempt == TransferResumeProtocol.MAX_ATTEMPTS - 1) {
+                    throw error
+                }
+                delay(TransferResumeProtocol.RETRY_DELAY_MS)
+            } finally {
+                runCatching { appender?.close() }
             }
-            error(
-                "Download incomplete for ${target.name} " +
-                    "(got $bytesWritten bytes, expected $expectedSizeBytes)"
-            )
         }
+        throw lastError ?: error("Download failed")
     }
 
     suspend fun streamRemoteFile(
         host: String,
         port: Int,
         remotePath: String,
-        onChunk: suspend (ByteArray) -> Unit
+        offset: Long = 0L,
+        onStatus: ((Int) -> Unit)? = null,
+        onChunk: suspend (ByteArray, Int) -> Unit
     ) {
         PeerLanHttpPolicy.ensureRoute(host)
+        val params = buildMap {
+            put("path", remotePath)
+            if (offset > 0L) {
+                put(TransferResumeProtocol.OFFSET_QUERY, offset.toString())
+            }
+        }
         val result = peerHttpGetStreaming(
             host = host,
             port = port,
@@ -518,12 +532,13 @@ class FileApexClient(
                     basePath = "/api/v1/files/stream",
                     host = host,
                     port = port,
-                    params = mapOf("path" to remotePath)
+                    params = params
                 )
             ),
             connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
             readIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-            onChunk = { chunk -> onChunk(chunk) }
+            onChunk = onChunk,
+            onStatus = onStatus
         ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
         if (result.statusCode == 403) {
             error("PIN required — open the device and enter its PIN")
@@ -531,6 +546,36 @@ class FileApexClient(
         require(result.statusCode in 200..299) {
             "Stream failed (${result.statusCode})"
         }
+    }
+
+    suspend fun queryUploadResumeOffset(
+        host: String,
+        port: Int,
+        remoteTargetPath: String,
+        expectedSizeBytes: Long
+    ): Long {
+        val response = runCatching {
+            boundGet(
+                host = host,
+                port = port,
+                pathWithQuery = queryPath(
+                    basePath = "/api/v1/files/resume",
+                    host = host,
+                    port = port,
+                    params = buildMap {
+                        put("targetPath", remoteTargetPath)
+                        if (expectedSizeBytes > 0L) {
+                            put(TransferResumeProtocol.EXPECTED_SIZE_QUERY, expectedSizeBytes.toString())
+                        }
+                    }
+                ),
+                timeoutMs = PEER_REQUEST_TIMEOUT_MS
+            )
+        }.getOrNull() ?: return 0L
+        if (response.statusCode !in 200..299) return 0L
+        return runCatching {
+            json.decodeFromString(ResumeOffsetResponse.serializer(), response.body).offset
+        }.getOrDefault(0L).coerceAtLeast(0L)
     }
 
     suspend fun uploadFromLocal(
@@ -541,33 +586,46 @@ class FileApexClient(
     ) {
         val source = Path(localSourcePath)
         check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
-        val contentLength = SystemFileSystem.metadataOrNull(source)?.size?.takeIf { it > 0L }
-        val channel = Channel<ByteArray>(UPLOAD_CHANNEL_CAPACITY)
-        coroutineScope {
-            val producer = launch(Dispatchers.IO) {
-                try {
-                    SystemFileSystem.source(source).buffered().use { input ->
-                        val buffer = ByteArray(CHUNK_SIZE)
-                        while (!input.exhausted()) {
-                            val read = input.readAtMostTo(buffer)
-                            if (read > 0) {
-                                channel.send(buffer.copyOf(read))
-                            }
-                        }
-                    }
-                } finally {
-                    channel.close()
-                }
+        val totalSize = SystemFileSystem.metadataOrNull(source)?.size?.coerceAtLeast(0L) ?: 0L
+        var lastError: Throwable? = null
+        repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
+            val offset = queryUploadResumeOffset(host, port, remoteTargetPath, totalSize)
+                .coerceAtMost(totalSize)
+            if (offset >= totalSize && totalSize > 0L) {
+                return
             }
-            uploadFromChunkChannel(
-                host = host,
-                port = port,
-                remoteTargetPath = remoteTargetPath,
-                chunks = channel,
-                contentLength = contentLength
-            )
-            producer.join()
+            val remaining = (totalSize - offset).coerceAtLeast(0L)
+            try {
+                PeerLanHttpPolicy.ensureRoute(host)
+                val response = peerHttpUploadFromFile(
+                    host = host,
+                    port = port,
+                    pathWithQuery = withSenderQuery(
+                        uploadPathWithQuery(host, port, remoteTargetPath, offset, totalSize)
+                    ),
+                    contentType = "application/octet-stream",
+                    sourcePath = localSourcePath,
+                    offset = offset,
+                    length = remaining,
+                    connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
+                    uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
+                ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
+                if (response.statusCode == 403) {
+                    error("PIN required — open the device and enter its PIN")
+                }
+                require(response.statusCode in 200..299) {
+                    "Upload failed (${response.statusCode})"
+                }
+                return
+            } catch (error: Throwable) {
+                lastError = error
+                if (attempt == TransferResumeProtocol.MAX_ATTEMPTS - 1) {
+                    throw error
+                }
+                delay(TransferResumeProtocol.RETRY_DELAY_MS)
+            }
         }
+        throw lastError ?: error("Upload failed")
     }
 
     suspend fun uploadFromChunkChannel(
@@ -575,18 +633,23 @@ class FileApexClient(
         port: Int,
         remoteTargetPath: String,
         chunks: ReceiveChannel<ByteArray>,
-        contentLength: Long? = null
+        contentLength: Long? = null,
+        resumeOffset: Long = 0L,
+        totalSize: Long? = null
     ) {
         PeerLanHttpPolicy.ensureRoute(host)
+        val remaining = contentLength?.takeIf { it > 0L }
         val response = peerHttpUploadFromChannel(
             host = host,
             port = port,
-            pathWithQuery = withSenderQuery(uploadPathWithQuery(host, port, remoteTargetPath)),
+            pathWithQuery = withSenderQuery(
+                uploadPathWithQuery(host, port, remoteTargetPath, resumeOffset, totalSize ?: contentLength)
+            ),
             contentType = "application/octet-stream",
             chunks = chunks,
             connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
             uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-            contentLength = contentLength?.takeIf { it > 0L }
+            contentLength = remaining
         ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
         if (response.statusCode == 403) {
             error("PIN required — open the device and enter its PIN")
@@ -659,13 +722,29 @@ class FileApexClient(
         return "$basePath?${queryParts.joinToString("&")}"
     }
 
-    private fun uploadPathWithQuery(host: String, port: Int, remoteTargetPath: String): String =
-        queryPath(
+    private fun uploadPathWithQuery(
+        host: String,
+        port: Int,
+        remoteTargetPath: String,
+        offset: Long = 0L,
+        totalSize: Long? = null
+    ): String {
+        val params = buildMap {
+            put("targetPath", remoteTargetPath)
+            if (offset > 0L) {
+                put(TransferResumeProtocol.OFFSET_QUERY, offset.toString())
+            }
+            if (totalSize != null && totalSize > 0L) {
+                put(TransferResumeProtocol.TOTAL_SIZE_QUERY, totalSize.toString())
+            }
+        }
+        return queryPath(
             basePath = "/api/v1/files/upload",
             host = host,
             port = port,
-            params = mapOf("targetPath" to remoteTargetPath)
+            params = params
         )
+    }
 
     private fun rejectPinRequired(response: PeerBoundHttpResponse, message: String) {
         if (response.statusCode == 403) {
@@ -680,8 +759,7 @@ class FileApexClient(
     }
 
     companion object {
-        const val CHUNK_SIZE = 64 * 1024
-        private const val UPLOAD_CHANNEL_CAPACITY = 2
+        const val CHUNK_SIZE = SocketFileStreamer.BUFFER_BYTES
         private const val PEER_CONNECT_TIMEOUT_MS = 5_000L
         private const val TRANSFER_IDLE_TIMEOUT_MS = 10 * 60 * 1000L
         private const val PEER_REQUEST_TIMEOUT_MS = 15_000L

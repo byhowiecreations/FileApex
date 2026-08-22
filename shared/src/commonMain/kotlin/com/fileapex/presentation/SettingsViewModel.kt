@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.BulletinRemoteFilePurgePreference
 import com.fileapex.data.settings.DriveRelayMaxMb
 
 data class SettingsUiState(
@@ -57,6 +58,7 @@ data class SettingsUiState(
     val googleDriveRelayEnabled: Boolean = false,
     val driveRelayMaxMb: DriveRelayMaxMb = DriveRelayMaxMb.DEFAULT,
     val drivePurgeAfter72Hours: Boolean = true,
+    val allowRemoteFileDeletion: Boolean = false,
     val googleDriveAuthError: String? = null,
     val drivePurgeNowBusy: Boolean = false,
     val drivePurgeNowMessage: String? = null,
@@ -98,6 +100,8 @@ class SettingsViewModel : ViewModel() {
             googleDriveRelayEnabled = settings.googleDriveRelayEnabled.value,
             driveRelayMaxMb = settings.driveRelayMaxMb.value,
             drivePurgeAfter72Hours = settings.drivePurgeAfter72Hours.value,
+            allowRemoteFileDeletion =
+                settings.bulletinRemoteFilePurgePreference.value == BulletinRemoteFilePurgePreference.ENABLED,
             kineticSphereCleanMode = settings.kineticSphereCleanMode.value,
             kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
             kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value,
@@ -147,6 +151,15 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.settingsGroupSecurityAccountExpanded.collect { expanded ->
                 _uiState.update { it.copy(securityAccountExpanded = expanded) }
+            }
+        }
+        viewModelScope.launch {
+            settings.bulletinRemoteFilePurgePreference.collect { preference ->
+                _uiState.update {
+                    it.copy(
+                        allowRemoteFileDeletion = preference == BulletinRemoteFilePurgePreference.ENABLED
+                    )
+                }
             }
         }
     }
@@ -476,6 +489,17 @@ class SettingsViewModel : ViewModel() {
         settings.setCellularEnabled(enabled)
         _uiState.update { it.copy(cellularEnabled = enabled) }
         com.fileapex.cloud.drive.DriveRelayCoordinator.applySchedulerFromSettings()
+    }
+
+    fun setAllowRemoteFileDeletion(enabled: Boolean) {
+        settings.setBulletinRemoteFilePurgePreference(
+            if (enabled) {
+                BulletinRemoteFilePurgePreference.ENABLED
+            } else {
+                BulletinRemoteFilePurgePreference.DISABLED
+            }
+        )
+        _uiState.update { it.copy(allowRemoteFileDeletion = enabled) }
     }
 
     fun setGoogleDriveRelayEnabled(enabled: Boolean) {

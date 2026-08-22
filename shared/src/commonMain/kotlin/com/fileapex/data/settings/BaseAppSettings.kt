@@ -41,6 +41,12 @@ class BaseAppSettings(
         MutableStateFlow(loadNotesNotifications())
     private val notesNotificationPromptShownFlow =
         MutableStateFlow(store.getBoolean(KEY_NOTES_NOTIFICATION_PROMPT_SHOWN, false))
+    private val bulletinRemoteFilePurgePreferenceFlow =
+        MutableStateFlow(
+            BulletinRemoteFilePurgePreference.fromStorage(
+                store.getString(KEY_BULLETIN_REMOTE_FILE_PURGE, "")
+            )
+        )
     private val liveTransferCapsuleFlow =
         MutableStateFlow(store.getBoolean(KEY_LIVE_TRANSFER_CAPSULE, false))
     private val liveTransferShowQueueFlow =
@@ -151,6 +157,8 @@ class BaseAppSettings(
         notesNotificationsFlow.asStateFlow()
     override val notesNotificationPromptShown: StateFlow<Boolean> =
         notesNotificationPromptShownFlow.asStateFlow()
+    override val bulletinRemoteFilePurgePreference: StateFlow<BulletinRemoteFilePurgePreference> =
+        bulletinRemoteFilePurgePreferenceFlow.asStateFlow()
     override val liveTransferCapsuleEnabled: StateFlow<Boolean> =
         liveTransferCapsuleFlow.asStateFlow()
     override val liveTransferShowQueueEnabled: StateFlow<Boolean> =
@@ -252,6 +260,11 @@ class BaseAppSettings(
     override fun setNotesNotificationPromptShown(shown: Boolean) {
         store.putBoolean(KEY_NOTES_NOTIFICATION_PROMPT_SHOWN, shown)
         notesNotificationPromptShownFlow.value = shown
+    }
+
+    override fun setBulletinRemoteFilePurgePreference(preference: BulletinRemoteFilePurgePreference) {
+        store.putString(KEY_BULLETIN_REMOTE_FILE_PURGE, preference.name)
+        bulletinRemoteFilePurgePreferenceFlow.value = preference
     }
 
     override fun setLiveTransferCapsuleEnabled(enabled: Boolean) {
@@ -486,6 +499,7 @@ class BaseAppSettings(
         const val KEY_DRIVE_RELAY_NOTIFICATIONS = "drive_relay_notifications_enabled"
         const val KEY_NOTES_NOTIFICATIONS = "notes_notifications_enabled"
         const val KEY_NOTES_NOTIFICATION_PROMPT_SHOWN = "notes_notification_prompt_shown"
+        const val KEY_BULLETIN_REMOTE_FILE_PURGE = "bulletin_remote_file_purge_preference"
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
         const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
         const val KEY_APP_THEME = "app_theme"

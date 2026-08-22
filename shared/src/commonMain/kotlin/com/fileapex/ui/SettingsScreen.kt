@@ -115,6 +115,7 @@ private enum class SettingsPage {
     DeviceDetails,
     GoogleAccount,
     Cellular,
+    RemoteFileDeletion,
     DesktopLayout,
     WindowsDesign
 }
@@ -190,6 +191,7 @@ fun SettingsScreen(
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenCellular = { page = SettingsPage.Cellular },
+            onOpenRemoteFileDeletion = { page = SettingsPage.RemoteFileDeletion },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
@@ -300,6 +302,12 @@ fun SettingsScreen(
             onPurgeChange = viewModel::setDrivePurgeAfter72Hours,
             onPurgeNow = viewModel::purgeDriveRelayNow
         )
+        SettingsPage.RemoteFileDeletion -> RemoteFileDeletionSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onAllowRemoteFileDeletionChange = viewModel::setAllowRemoteFileDeletion
+        )
         SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
             state = state,
             layoutMode = layoutMode,
@@ -342,6 +350,7 @@ private fun SettingsRootPage(
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onOpenCellular: () -> Unit,
+    onOpenRemoteFileDeletion: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
     onToggleSystemPerformanceGroup: () -> Unit,
@@ -478,6 +487,11 @@ private fun SettingsRootPage(
                             }
                         },
                         onClick = onOpenCellular
+                    )
+                    SettingsNavItem(
+                        title = "Allow remote file deletion",
+                        subtitle = if (state.allowRemoteFileDeletion) "On" else "Off",
+                        onClick = onOpenRemoteFileDeletion
                     )
                 }
             }
@@ -874,6 +888,41 @@ private fun ClipboardSettingsPage(
                     Switch(
                         checked = state.clipboardSharingEnabled,
                         onCheckedChange = onToggle
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun RemoteFileDeletionSettingsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onAllowRemoteFileDeletionChange: (Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = "Allow remote file deletion",
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text("Allow remote file deletion") },
+                supportingContent = {
+                    Text(
+                        "This allows the Bulletin Board to \"delete all\" for files in local storage remotely."
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.allowRemoteFileDeletion,
+                        onCheckedChange = onAllowRemoteFileDeletionChange
                     )
                 }
             )
