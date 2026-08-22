@@ -43,6 +43,17 @@ class DeviceRepository(
 
     suspend fun getDevice(deviceId: String): PairedDeviceEntity? = deviceDao.getDevice(deviceId)
 
+    suspend fun displayNameFor(deviceId: String, incomingName: String = ""): String {
+        val id = deviceId.trim()
+        val roster = if (id.isEmpty()) {
+            null
+        } else {
+            getDevice(id)?.deviceName
+                ?: listDevices().firstOrNull { it.deviceId == id }?.deviceName
+        }
+        return DeviceDisplayNames.resolve(incomingName, roster)
+    }
+
     suspend fun upsert(device: PairedDeviceEntity) {
         mutateMutex.withLock {
             val normalized = normalize(device)

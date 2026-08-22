@@ -113,7 +113,11 @@ fun App(
     requestShowUpdateSheet: Boolean = false,
     onUpdateSheetRequestConsumed: () -> Unit = {},
     pendingOpenNoteId: String? = null,
-    onOpenNoteRequestConsumed: () -> Unit = {}
+    onOpenNoteRequestConsumed: () -> Unit = {},
+    pendingOpenBulletinBoard: Boolean = false,
+    onOpenBulletinBoardConsumed: () -> Unit = {},
+    pendingOpenDeviceId: String? = null,
+    onOpenDeviceRequestConsumed: () -> Unit = {}
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
@@ -159,6 +163,23 @@ fun App(
         val noteId = pendingOpenNoteId?.trim().orEmpty()
         if (noteId.isEmpty()) return@LaunchedEffect
         route = AppRoute.Notes
+    }
+
+    LaunchedEffect(pendingOpenBulletinBoard, setupComplete) {
+        if (!pendingOpenBulletinBoard || !setupComplete) return@LaunchedEffect
+        route = AppRoute.Notes
+        onOpenBulletinBoardConsumed()
+    }
+
+    LaunchedEffect(pendingOpenDeviceId, setupComplete) {
+        val deviceId = pendingOpenDeviceId?.trim().orEmpty()
+        if (deviceId.isEmpty() || !setupComplete) return@LaunchedEffect
+        devicesViewModel.openDeviceOrExplain(deviceId) { target ->
+            wideSelectedTarget = target
+            wideHomeTab = HomeTab.Devices
+            route = AppRoute.Explorer(target)
+        }
+        onOpenDeviceRequestConsumed()
     }
 
     val pendingUpdate by AppUpdateCoordinator.pendingUpdate.collectAsState()

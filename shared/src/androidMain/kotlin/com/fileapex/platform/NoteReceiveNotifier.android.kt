@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.fileapex.data.note.NoteNotifyPolicy
 import com.fileapex.di.FileApexServices
 
 private lateinit var noteNotifierContext: Context
@@ -40,7 +41,7 @@ actual fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId:
         putString(EXTRA_NOTE_ID, noteId)
         putString(EXTRA_NOTE_PREVIEW, content)
     }
-    val title = "Bulletin Board · ${sourceDeviceName.ifBlank { "Paired Device" }}"
+    val title = NoteNotifyPolicy.notificationTitle(sourceDeviceName)
     val notification = NotificationCompat.Builder(noteNotifierContext, AndroidNotificationChannels.NOTE_MESSAGES)
         .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
         .setLargeIcon(

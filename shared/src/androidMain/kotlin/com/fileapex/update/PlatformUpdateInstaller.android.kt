@@ -20,10 +20,19 @@ actual object PlatformUpdateInstaller {
     }
 
     actual fun selectAsset(assets: List<GitHubReleaseAsset>): GitHubReleaseAsset? {
-        val apks = assets.filter { it.name.endsWith(".apk", ignoreCase = true) }
-        return apks.firstOrNull { it.name.contains("release", ignoreCase = true) }
-            ?: apks.firstOrNull { !it.name.contains("debug", ignoreCase = true) }
-            ?: apks.firstOrNull()
+        val apks = assets.filter {
+            it.name.endsWith(".apk", ignoreCase = true) &&
+                !it.name.contains("debug", ignoreCase = true)
+        }
+        return apks.firstOrNull { asset ->
+            val lower = asset.name.lowercase()
+            lower.contains("arm64v8a") || lower.contains("arm64-v8a")
+        } ?: apks.firstOrNull { asset ->
+            val lower = asset.name.lowercase()
+            !lower.contains("armv7") &&
+                !lower.contains("armeabi") &&
+                !lower.contains("x86")
+        } ?: apks.firstOrNull()
     }
 
     actual fun installAndRelaunch(localFilePath: String, remoteVersion: String) {

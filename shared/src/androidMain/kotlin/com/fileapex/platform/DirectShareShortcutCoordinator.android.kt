@@ -3,13 +3,12 @@ package com.fileapex.platform
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.core.app.Person
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.di.FileApexServices
-import com.fileapex.shared.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,9 +31,17 @@ import kotlinx.coroutines.launch
 object DirectShareShortcutCoordinator {
     const val CATEGORY_SHARE_TARGET = "com.fileapex.category.SHARE_TARGET"
     const val EXTRA_TARGET_DEVICE_ID = "com.fileapex.extra.TARGET_DEVICE_ID"
+    const val EXTRA_OPEN_BULLETIN = "com.fileapex.extra.OPEN_BULLETIN"
     /** Matches [android.content.pm.ShortcutManager.EXTRA_SHORTCUT_ID] on API 29+. */
     const val EXTRA_SHORTCUT_ID = "android.intent.extra.shortcut.ID"
     const val BULLETIN_SHORTCUT_ID = "share-bulletin-board"
+    const val OPEN_URI_SCHEME = "fileapex"
+    const val OPEN_URI_HOST = "open"
+
+    sealed class LauncherDestination {
+        data object BulletinBoard : LauncherDestination()
+        data class Device(val deviceId: String) : LauncherDestination()
+    }
 
     private const val SHORTCUT_PREFIX = "share-device-"
     private const val RATE_LIMIT_RETRY_MS = 30_000L
@@ -101,6 +108,48 @@ object DirectShareShortcutCoordinator {
     }
 
     fun isBulletinShortcut(shortcutId: String?): Boolean = shortcutId == BULLETIN_SHORTCUT_ID
+
+    fun bulletinOpenUri(): Uri = Uri.Builder()
+        .scheme(OPEN_URI_SCHEME)
+        .authority(OPEN_URI_HOST)
+        .appendPath("bulletin")
+        .build()
+
+    fun deviceOpenUri(deviceId: String): Uri = Uri.Builder()
+        .scheme(OPEN_URI_SCHEME)
+        .authority(OPEN_URI_HOST)
+        .appendPath("device")
+        .appendPath(deviceId)
+        .build()
+
+    fun parseOpenUri(uri: Uri?): LauncherDestination? {
+        if (uri == null) return null
+        if (uri.scheme?.lowercase() != OPEN_URI_SCHEME) return null
+        if (uri.host?.lowercase() != OPEN_URI_HOST) return null
+        val segments = uri.pathSegments
+        return when (segments.firstOrNull()?.lowercase()) {
+            "bulletin" -> LauncherDestination.BulletinBoard
+            "device" -> {
+                val deviceId = segments.getOrNull(1)?.trim().orEmpty()
+                if (deviceId.isEmpty()) null else LauncherDestination.Device(deviceId)
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * Launcher long-press only. Share-sheet Direct Share stays on ACTION_SEND +
+     * [EXTRA_SHORTCUT_ID] and must not be parsed here.
+     */
+    fun parseLauncherDestination(intent: Intent?): LauncherDestination? {
+        if (intent == null || AndroidShareIntake.isShareAction(intent)) return null
+        parseOpenUri(intent.data)?.let { return it }
+        if (intent.getBooleanExtra(EXTRA_OPEN_BULLETIN, false)) {
+            return LauncherDestination.BulletinBoard
+        }
+        val deviceId = intent.getStringExtra(EXTRA_TARGET_DEVICE_ID)?.trim().orEmpty()
+        return if (deviceId.isEmpty()) null else LauncherDestination.Device(deviceId)
+    }
 
     /** Re-publish after peer discovery or roster changes outside the observe flow. */
     fun refreshFromPeerDiscovery() {
@@ -217,9 +266,8 @@ object DirectShareShortcutCoordinator {
     }
 
     private fun buildBulletinBoardShortcut(): ShortcutInfoCompat {
-        val launchIntent = Intent(Intent.ACTION_DEFAULT).apply {
-            setClassName(appContext, MAIN_ACTIVITY_CLASS)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val launchIntent = launcherOpenIntent(bulletinOpenUri()) {
+            putExtra(EXTRA_OPEN_BULLETIN, true)
         }
         val person = Person.Builder()
             .setName("Bulletin Board")
@@ -230,7 +278,7 @@ object DirectShareShortcutCoordinator {
         return ShortcutInfoCompat.Builder(appContext, BULLETIN_SHORTCUT_ID)
             .setShortLabel("Bulletin Board")
             .setLongLabel("Post to Bulletin Board")
-            .setIcon(shareTargetIcon())
+            .setIcon(ShortcutIconRenderer.bulletinBoard(appContext))
             .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
             .setIntent(launchIntent)
             .setCategories(setOf(CATEGORY_SHARE_TARGET))
@@ -250,13 +298,21 @@ object DirectShareShortcutCoordinator {
         }
     }
 
-    private fun buildShortcut(peer: PairedDeviceEntity, rank: Int): ShortcutInfoCompat {
-        // Launcher long-press uses this intent; Direct Share delivers ACTION_SEND to
-        // MainActivity with EXTRA_SHORTCUT_ID from shortcuts.xml share-target.
-        val launchIntent = Intent(Intent.ACTION_DEFAULT).apply {
+    private fun launcherOpenIntent(uri: Uri, extras: Intent.() -> Unit): Intent {
+        return Intent(Intent.ACTION_VIEW).apply {
             setClassName(appContext, MAIN_ACTIVITY_CLASS)
-            putExtra(EXTRA_TARGET_DEVICE_ID, peer.deviceId)
+            data = uri
+            extras()
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+    }
+
+    private fun buildShortcut(peer: PairedDeviceEntity, rank: Int): ShortcutInfoCompat {
+        // Launcher long-press uses this VIEW + fileapex://open/… intent.
+        // Direct Share still starts ACTION_SEND with EXTRA_SHORTCUT_ID from
+        // shortcuts.xml — it does not use setIntent().
+        val launchIntent = launcherOpenIntent(deviceOpenUri(peer.deviceId)) {
+            putExtra(EXTRA_TARGET_DEVICE_ID, peer.deviceId)
         }
         val person = Person.Builder()
             .setName(peer.deviceName)
@@ -270,7 +326,7 @@ object DirectShareShortcutCoordinator {
         return ShortcutInfoCompat.Builder(appContext, shortcutId(peer.deviceId))
             .setShortLabel(peer.deviceName.take(SHORT_LABEL_MAX))
             .setLongLabel("Send to ${peer.deviceName}".take(LONG_LABEL_MAX))
-            .setIcon(shareTargetIcon())
+            .setIcon(ShortcutIconRenderer.device(appContext, peer))
             .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
             .setIntent(launchIntent)
             .setCategories(setOf(CATEGORY_SHARE_TARGET))
@@ -279,9 +335,6 @@ object DirectShareShortcutCoordinator {
             .setRank(rank)
             .build()
     }
-
-    private fun shareTargetIcon(): IconCompat =
-        IconCompat.createWithResource(appContext, AndroidNotificationChannels.smallIcon)
 
     private const val SHARE_SHEET_VISIBLE_HINT = 4
     private const val SHORT_LABEL_MAX = 25

@@ -183,23 +183,9 @@ fun ShareSendScreen(
                         }
                     }
                 }
-                state.options.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = "No destinations available. Open FileApex, pair a device, and try again.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
                 else -> {
                     Text(
-                        text = "Choose destination devices",
+                        text = "Choose destination",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(bottom = 8.dp)

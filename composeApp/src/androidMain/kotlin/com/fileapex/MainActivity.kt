@@ -34,6 +34,7 @@ import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.network.FileShareServerService
 import com.fileapex.platform.AndroidShareIntake
+import com.fileapex.platform.DirectShareShortcutCoordinator
 import com.fileapex.platform.AndroidOnboardingPermissions
 import com.fileapex.platform.AndroidRuntimePermissions
 import com.fileapex.platform.BackgroundPersistenceGuidance
@@ -77,6 +78,8 @@ class MainActivity : ComponentActivity() {
     private var directShareDeviceId by mutableStateOf<String?>(null)
     private var requestShowUpdateSheet by mutableStateOf(false)
     private var pendingOpenNoteId by mutableStateOf<String?>(null)
+    private var pendingOpenBulletinBoard by mutableStateOf(false)
+    private var pendingOpenDeviceId by mutableStateOf<String?>(null)
     private var isPreparingShare by mutableStateOf(false)
     private var sharePrepareError by mutableStateOf<String?>(null)
 
@@ -178,7 +181,11 @@ class MainActivity : ComponentActivity() {
                     requestShowUpdateSheet = requestShowUpdateSheet,
                     onUpdateSheetRequestConsumed = { requestShowUpdateSheet = false },
                     pendingOpenNoteId = pendingOpenNoteId,
-                    onOpenNoteRequestConsumed = { pendingOpenNoteId = null }
+                    onOpenNoteRequestConsumed = { pendingOpenNoteId = null },
+                    pendingOpenBulletinBoard = pendingOpenBulletinBoard,
+                    onOpenBulletinBoardConsumed = { pendingOpenBulletinBoard = false },
+                    pendingOpenDeviceId = pendingOpenDeviceId,
+                    onOpenDeviceRequestConsumed = { pendingOpenDeviceId = null }
                 )
                 com.fileapex.platform.LiveTransferCapsuleOverlay()
             }
@@ -262,17 +269,17 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        if (applyLauncherShortcutIntent(intent)) return
+
         if (!AndroidShareIntake.isShareAction(intent)) return
         val shareIntent = intent ?: return
 
         val shortcutId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            shareIntent.getStringExtra(
-                com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID
-            )
+            shareIntent.getStringExtra(DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID)
         } else {
             null
         }
-        if (com.fileapex.platform.DirectShareShortcutCoordinator.isBulletinShortcut(shortcutId)) {
+        if (DirectShareShortcutCoordinator.isBulletinShortcut(shortcutId)) {
             openedFromShareSheet = true
             isPreparingShare = false
             sharePrepareError = null
@@ -294,13 +301,11 @@ class MainActivity : ComponentActivity() {
         }
 
         val targetDeviceId = shareIntent.getStringExtra(
-            com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID
+            DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID
         )?.trim()?.takeIf { it.isNotEmpty() }
             ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                com.fileapex.platform.DirectShareShortcutCoordinator.deviceIdFromShortcutId(
-                    shareIntent.getStringExtra(
-                        com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID
-                    )
+                DirectShareShortcutCoordinator.deviceIdFromShortcutId(
+                    shareIntent.getStringExtra(DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID)
                 )
             } else {
                 null
@@ -349,6 +354,22 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+    }
+
+    private fun applyLauncherShortcutIntent(intent: Intent?): Boolean {
+        val destination = DirectShareShortcutCoordinator.parseLauncherDestination(intent)
+            ?: return false
+        when (destination) {
+            DirectShareShortcutCoordinator.LauncherDestination.BulletinBoard -> {
+                pendingOpenBulletinBoard = true
+                pendingOpenDeviceId = null
+            }
+            is DirectShareShortcutCoordinator.LauncherDestination.Device -> {
+                pendingOpenBulletinBoard = false
+                pendingOpenDeviceId = destination.deviceId
+            }
+        }
+        return true
     }
 
     private fun onShareFlowFinished() {

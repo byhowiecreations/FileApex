@@ -84,6 +84,9 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = fileapexVersionCode.toInt()
         versionName = fileapexVersionName
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     base {
@@ -757,9 +760,6 @@ tasks.matching { it.name == "packageReleaseMsi" }.configureEach {
     }
 }
 
-private fun releaseApkDestName(appVersionName: String): String =
-    "FileApex-v$appVersionName.apk"
-
 private fun Project.apkOutputDir(variant: String): File =
     layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
 
@@ -988,7 +988,7 @@ private fun Project.shipToCurrent(
                 )
             }
             val destName = when (variant) {
-                "release" -> releaseApkDestName(appVersionName)
+                "release" -> "FileApex-v$appVersionName.apk"
                 else -> apk.name
             }
             moveToCurrent(dest, apk, destName = destName, logger = logger)

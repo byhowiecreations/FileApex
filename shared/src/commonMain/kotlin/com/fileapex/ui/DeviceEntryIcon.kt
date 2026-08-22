@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DevicesFold
 import androidx.compose.material.icons.filled.FlipCameraAndroid
+import androidx.compose.material.icons.filled.LaptopMac
 import androidx.compose.material.icons.filled.LaptopWindows
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Smartphone
@@ -53,7 +54,7 @@ fun DeviceEntryIcon(
 }
 
 fun deviceIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
-    DeviceIconKind.MacDesktop -> Icons.Filled.Computer
+    DeviceIconKind.MacDesktop -> Icons.Filled.LaptopMac
     DeviceIconKind.WindowsPc -> Icons.Filled.LaptopWindows
     DeviceIconKind.FoldablePhone -> Icons.Filled.DevicesFold
     DeviceIconKind.FlipPhone -> Icons.Filled.FlipCameraAndroid

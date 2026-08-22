@@ -7,6 +7,7 @@ import com.fileapex.data.bulletin.BulletinBoardSyncEngine
 import com.fileapex.data.bulletin.BulletinContentType
 import com.fileapex.data.bulletin.BulletinFileMetadata
 import com.fileapex.data.db.NoteDao
+import com.fileapex.data.device.DeviceDisplayNames
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
@@ -76,26 +77,27 @@ class NoteRepository {
     }
 
     suspend fun addNote(note: NoteRecord): Boolean {
+        val named = note.copy(sourceDeviceName = resolveSenderName(note))
         val bulletin = bulletinRepository
         if (bulletin != null) {
-            if (bulletin.isTombstoned(note.noteId)) return false
+            if (bulletin.isTombstoned(named.noteId)) return false
             val payload = com.fileapex.data.bulletin.BulletinMessagePayload(
-                id = note.noteId,
-                originDeviceId = note.sourceDeviceId,
-                senderName = note.sourceDeviceName,
-                content = encodeBulletinContent(note),
-                contentType = bulletinContentType(note),
-                timestamp = note.epochMs,
-                isPinned = note.attachmentPinned
+                id = named.noteId,
+                originDeviceId = named.sourceDeviceId,
+                senderName = named.sourceDeviceName,
+                content = encodeBulletinContent(named),
+                contentType = bulletinContentType(named),
+                timestamp = named.epochMs,
+                isPinned = named.attachmentPinned
             )
             if (!bulletin.upsertFromSync(payload)) return false
-            maybeNotifyIncoming(note.copy(isMine = note.sourceDeviceId == loadLocalIdentity().deviceId))
-            if (shouldAutoFetchAttachment(note)) {
-                appScope?.launch { fetchAttachmentIfNeeded(note.noteId) }
+            maybeNotifyIncoming(named.copy(isMine = named.sourceDeviceId == loadLocalIdentity().deviceId))
+            if (shouldAutoFetchAttachment(named)) {
+                appScope?.launch { fetchAttachmentIfNeeded(named.noteId) }
             }
             return true
         }
-        return addNoteLegacy(note)
+        return addNoteLegacy(named)
     }
 
     suspend fun sendNote(
@@ -222,14 +224,19 @@ class NoteRepository {
     }
 
     suspend fun setAttachmentLocalPath(noteId: String, localPath: String) {
+        val previous = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
+        val alreadyHadLocalFile = previous?.let { resolveLocalAttachmentPath(it) } != null
         bulletinRepository?.bindLocalPath(noteId, localPath)
         mutex.withLock {
             _notes.value = _notes.value.map { note ->
                 if (note.noteId != noteId) note else note.copy(attachmentLocalPath = localPath)
             }
         }
-        val latest = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
-        if (latest != null) maybeNotifyIncoming(latest)
+        val latest = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } } ?: return
+        val fileName = latest.attachmentFileName.orEmpty()
+        if (NoteNotifyPolicy.shouldNotifyAttachmentReady(latest.isMine, alreadyHadLocalFile, fileName)) {
+            runCatching { com.fileapex.platform.notifyFilesReceived(listOf(fileName)) }
+        }
     }
 
     suspend fun bindDownloadedAttachment(
@@ -360,20 +367,35 @@ class NoteRepository {
         return false
     }
 
-    private fun maybeNotifyIncoming(note: NoteRecord) {
-        if (note.isMine) return
-        if (note.noteId in notifiedNoteIds) return
-        if (attachmentStillDownloading(note)) return
-        val preview = note.content.ifBlank { note.attachmentFileName.orEmpty() }
-        if (preview.isBlank()) return
+    private suspend fun maybeNotifyIncoming(note: NoteRecord) {
+        val preview = NoteNotifyPolicy.incomingPreview(note.content, note.attachmentFileName)
+        if (!NoteNotifyPolicy.shouldNotifyIncomingNote(
+                isMine = note.isMine,
+                alreadyNotified = note.noteId in notifiedNoteIds,
+                preview = preview
+            )
+        ) {
+            return
+        }
         notifiedNoteIds += note.noteId
+        val sender = resolveSenderName(note)
         runCatching {
             com.fileapex.platform.notifyNoteReceived(
-                sourceDeviceName = note.sourceDeviceName,
+                sourceDeviceName = sender,
                 content = preview,
                 noteId = note.noteId
             )
         }
+    }
+
+    private suspend fun resolveSenderName(note: NoteRecord): String {
+        if (note.isMine) return note.sourceDeviceName
+        return runCatching {
+            FileApexServices.deviceRepository.displayNameFor(
+                note.sourceDeviceId,
+                note.sourceDeviceName
+            )
+        }.getOrDefault(DeviceDisplayNames.resolve(note.sourceDeviceName, null))
     }
 
     private fun resolveLocalAttachmentPath(note: NoteRecord): String? {
@@ -383,8 +405,6 @@ class NoteRepository {
 
     private fun shouldAutoFetchAttachment(note: NoteRecord): Boolean =
         !note.driveFileId.isNullOrBlank() && attachmentNeedsDownload(note)
-
-    private fun attachmentStillDownloading(note: NoteRecord): Boolean = attachmentNeedsDownload(note)
 
     private suspend fun hydrateIncomingAttachment(note: NoteRecord) {
         val driveId = note.driveFileId?.takeIf { it.isNotBlank() } ?: return

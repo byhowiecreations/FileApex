@@ -99,12 +99,7 @@ class ShareSendViewModel(
                             isPreparing = false,
                             options = options,
                             onlineDeviceIds = onlineIds,
-                            statusMessage = when {
-                                options.isEmpty() ->
-                                    "No paired destination devices. Pair a device in FileApex first."
-                                else ->
-                                    "${payload.files.size} file(s) · ${options.size} paired device(s)"
-                            }
+                            statusMessage = "${payload.files.size} file(s) · ${options.size} paired device(s)"
                         )
                     }
                 },
@@ -112,6 +107,7 @@ class ShareSendViewModel(
                     _uiState.update {
                         it.copy(
                             isPreparing = false,
+                            options = emptyList(),
                             errorMessage = error.message ?: "Could not load devices"
                         )
                     }

@@ -46,4 +46,13 @@ class DeviceDisplayNamesTest {
         )
         assertEquals("Kitchen Honor", updated)
     }
+
+    @Test
+    fun resolvePrefersIncomingThenRosterThenFallback() {
+        assertEquals("MacBook Pro", DeviceDisplayNames.resolve("MacBook Pro", "Old Name"))
+        assertEquals("Honor X9d", DeviceDisplayNames.resolve("Paired Device", "Honor X9d"))
+        assertEquals("Honor X9d", DeviceDisplayNames.resolve("", "Honor X9d"))
+        assertEquals(DeviceDisplayNames.FALLBACK, DeviceDisplayNames.resolve("", null))
+        assertEquals(DeviceDisplayNames.FALLBACK, DeviceDisplayNames.resolve("Paired Device", ""))
+    }
 }

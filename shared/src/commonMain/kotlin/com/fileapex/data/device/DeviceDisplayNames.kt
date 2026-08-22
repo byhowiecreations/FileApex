@@ -6,12 +6,23 @@ package com.fileapex.data.device
  * rename performed on the device itself replicates.
  */
 object DeviceDisplayNames {
+    const val FALLBACK = "Paired Device"
+
     private val placeholders = setOf(
         "paired device",
         "cloud device",
         "android device",
         "this device"
     )
+
+    fun isPlaceholder(name: String): Boolean = isFactory(name, "", "")
+
+    fun resolve(incomingName: String, rosterName: String?): String {
+        if (!isPlaceholder(incomingName)) return incomingName.trim()
+        val roster = rosterName.orEmpty()
+        if (!isPlaceholder(roster)) return roster.trim()
+        return FALLBACK
+    }
 
     fun isFactory(name: String, make: String, model: String): Boolean {
         val n = name.trim()

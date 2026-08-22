@@ -39,6 +39,7 @@
 -keep class io.ktor.serialization.** { *; }
 -keep class io.ktor.serialization.kotlinx.** { *; }
 -keep class io.ktor.serialization.kotlinx.json.** { *; }
+
 -keep class * implements io.ktor.serialization.kotlinx.KotlinxSerializationExtensionProvider { *; }
 -keepclassmembers class * implements io.ktor.serialization.kotlinx.KotlinxSerializationExtensionProvider {
     public <init>(...);

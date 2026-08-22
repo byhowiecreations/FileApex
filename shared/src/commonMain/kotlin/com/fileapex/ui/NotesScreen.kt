@@ -156,6 +156,9 @@ fun NotesScreen(
         if (hideId.isNullOrBlank()) displayNotes else displayNotes.filterNot { it.noteId == hideId }
     }
     val listRows = remember(notesForList) { notesListRows(notesForList) }
+    val visualRows = remember(listRows) { listRows.asReversed() }
+    val holdingTransportSlot = pendingTransport != null ||
+        (transport != null && transport?.settled != true)
 
     fun acceptPickedAttachment(picked: PickedLocalFile) {
         pendingAttachmentName = picked.displayName
@@ -247,6 +250,12 @@ fun NotesScreen(
 
     val listState = rememberLazyListState()
 
+    suspend fun scrollNotesToLatest() {
+        if (!focusNoteId.isNullOrBlank()) return
+        if (visualRows.isEmpty() && !holdingTransportSlot) return
+        listState.scrollToItem(0)
+    }
+
     LaunchedEffect(pendingAttachmentPath, pendingAttachmentName) {
         attachedPreview = loadNotesAttachmentBitmap(pendingAttachmentPath, pendingAttachmentName)
     }
@@ -298,22 +307,18 @@ fun NotesScreen(
     }
 
     LaunchedEffect(listRows.size, pendingTransport != null, transport?.settled, transport?.streamDone, focusNoteId) {
-        if (!focusNoteId.isNullOrBlank()) return@LaunchedEffect
-        val extra = if (pendingTransport != null || (transport != null && transport?.settled != true)) 1 else 0
-        val count = listRows.size + extra
-        if (count > 0) {
-            listState.animateScrollToItem(count - 1)
-        }
+        scrollNotesToLatest()
     }
 
     LaunchedEffect(focusNoteId, listRows) {
         val id = focusNoteId?.trim().orEmpty()
         if (id.isEmpty()) return@LaunchedEffect
-        val index = listRows.indexOfFirst { row ->
+        val rowIndex = visualRows.indexOfFirst { row ->
             row is NotesListRow.Bubble && row.note.noteId == id
         }
-        if (index < 0) return@LaunchedEffect
-        listState.animateScrollToItem(index)
+        if (rowIndex < 0) return@LaunchedEffect
+        val index = if (holdingTransportSlot) rowIndex + 1 else rowIndex
+        listState.scrollToItem(index)
         highlightedNoteId = id
         onFocusNoteConsumed()
     }
@@ -654,8 +659,6 @@ fun NotesScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            val holdingTransportSlot = pendingTransport != null ||
-                (transport != null && transport?.settled != true)
             if (notesForList.isEmpty() && !holdingTransportSlot) {
                 Box(
                     modifier = Modifier
@@ -695,9 +698,54 @@ fun NotesScreen(
                                 listRect = coords.rectIn(overlay)
                             }
                         },
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    reverseLayout = true
                 ) {
-                    items(listRows, key = { row ->
+                    if (holdingTransportSlot) {
+                        item(key = "notes-transport-reserve") {
+                            val pending = pendingTransport
+                            val session = transport
+                            val assemblingNote = session?.assemblingNoteId?.let { id ->
+                                displayNotes.firstOrNull { it.noteId == id }
+                            }
+                            val outgoingNote = assemblingNote ?: outgoingPlaceholderNote(
+                                fileName = pending?.name ?: session?.fileName,
+                                caption = pending?.caption ?: session?.caption.orEmpty(),
+                                path = pending?.path ?: session?.attachmentPath
+                            )
+                            val outgoingThumb = assemblingNote?.noteId?.let { bubbleThumbs[it] }
+                                ?: pending?.bitmap
+                                ?: session?.bitmap
+                            NoteBubbleItem(
+                                item = outgoingNote,
+                                cardBg = cardBg,
+                                textColor = textColor,
+                                subTextColor = subTextColor,
+                                isCustomGlass = isCustomGlass,
+                                revealed = false,
+                                assembling = session?.streamDone != true,
+                                thumbnail = outgoingThumb,
+                                footerLabel = when {
+                                    session?.settled == true -> null
+                                    session?.deliveryLabel != null -> session.deliveryLabel
+                                    else -> NOTES_SENDING_LABEL
+                                },
+                                gesturesEnabled = false,
+                                onBubblePositioned = { coords ->
+                                    val waiting = pendingTransport ?: return@NoteBubbleItem
+                                    overlayCoords?.let { overlay ->
+                                        lockTransportTarget(coords.rectIn(overlay), waiting)
+                                    }
+                                },
+                                onRevealedChange = {},
+                                onCloseAnyReveal = {},
+                                onDeleteClick = {},
+                                onLockClick = {},
+                                onOpenAttachment = {}
+                            )
+                        }
+                    }
+                    items(visualRows, key = { row ->
                         when (row) {
                             is NotesListRow.DayHeader -> "day-${row.dayKey}"
                             is NotesListRow.Bubble -> row.note.noteId
@@ -768,50 +816,6 @@ fun NotesScreen(
                                     }
                                 )
                             }
-                        }
-                    }
-                    if (holdingTransportSlot) {
-                        item(key = "notes-transport-reserve") {
-                            val pending = pendingTransport
-                            val session = transport
-                            val assemblingNote = session?.assemblingNoteId?.let { id ->
-                                displayNotes.firstOrNull { it.noteId == id }
-                            }
-                            val outgoingNote = assemblingNote ?: outgoingPlaceholderNote(
-                                fileName = pending?.name ?: session?.fileName,
-                                caption = pending?.caption ?: session?.caption.orEmpty(),
-                                path = pending?.path ?: session?.attachmentPath
-                            )
-                            val outgoingThumb = assemblingNote?.noteId?.let { bubbleThumbs[it] }
-                                ?: pending?.bitmap
-                                ?: session?.bitmap
-                            NoteBubbleItem(
-                                item = outgoingNote,
-                                cardBg = cardBg,
-                                textColor = textColor,
-                                subTextColor = subTextColor,
-                                isCustomGlass = isCustomGlass,
-                                revealed = false,
-                                assembling = session?.streamDone != true,
-                                thumbnail = outgoingThumb,
-                                footerLabel = when {
-                                    session?.settled == true -> null
-                                    session?.deliveryLabel != null -> session.deliveryLabel
-                                    else -> NOTES_SENDING_LABEL
-                                },
-                                gesturesEnabled = false,
-                                onBubblePositioned = { coords ->
-                                    val waiting = pendingTransport ?: return@NoteBubbleItem
-                                    overlayCoords?.let { overlay ->
-                                        lockTransportTarget(coords.rectIn(overlay), waiting)
-                                    }
-                                },
-                                onRevealedChange = {},
-                                onCloseAnyReveal = {},
-                                onDeleteClick = {},
-                                onLockClick = {},
-                                onOpenAttachment = {}
-                            )
                         }
                     }
                 }
