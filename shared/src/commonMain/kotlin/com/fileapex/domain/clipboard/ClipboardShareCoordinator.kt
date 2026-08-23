@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,19 +44,26 @@ object ClipboardShareCoordinator {
         ClipboardPushDeduper.beginInitialization()
         monitorJob?.cancel()
         monitorJob = scope.launch {
-            FileApexServices.settings.clipboardSharingEnabled.collect { enabled ->
-                if (enabled) {
+            val settings = FileApexServices.settings
+            combine(
+                settings.clipboardSharingEnabled,
+                settings.clipboardAccessibilityEnabled,
+                settings.clipboardAutoSendEnabled
+            ) { _, _, _ -> shouldWatchLocalClipboard() }.collect { watch ->
+                if (watch) {
                     ClipboardChangeMonitor.start(::onLocalClipboardChanged)
                     publishClipboardPublicKey()
                 } else {
                     ClipboardChangeMonitor.stop()
-                    dropPending()
+                    if (!settings.clipboardSharingEnabled.value) dropPending()
                 }
             }
         }
         if (FileApexServices.settings.clipboardSharingEnabled.value) {
-            ClipboardChangeMonitor.start(::onLocalClipboardChanged)
             scope.launch { publishClipboardPublicKey() }
+        }
+        if (shouldWatchLocalClipboard()) {
+            ClipboardChangeMonitor.start(::onLocalClipboardChanged)
         }
         initJob?.cancel()
         initJob = scope.launch {
@@ -65,8 +73,7 @@ object ClipboardShareCoordinator {
     }
 
     fun onLocalClipboardChanged(text: String) {
-        val android = currentPlatformLabel() == "Android"
-        if (android && !FileApexServices.settings.clipboardAccessibilityEnabled.value) return
+        if (!shouldWatchLocalClipboard()) return
         val trimmed = text.takeIf { it.isNotBlank() } ?: return
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed)) return
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
@@ -74,6 +81,7 @@ object ClipboardShareCoordinator {
             BriefToast.show("Choose All or Specific devices in Clipboard settings")
             return
         }
+        val android = currentPlatformLabel() == "Android"
         scope.launch {
             captureAndBroadcast(trimmed, desktopPeersOnly = android)
         }
@@ -99,6 +107,9 @@ object ClipboardShareCoordinator {
 
     fun pushCurrentClipboard() {
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
+        if (currentPlatformLabel() != "Android" &&
+            !FileApexServices.settings.clipboardAutoSendEnabled.value
+        ) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) return
         val text = PlatformClipboard.getSystemClipboardText()?.takeIf { it.isNotBlank() } ?: return
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(text)) return
@@ -398,6 +409,16 @@ object ClipboardShareCoordinator {
             }
         }
         return key
+    }
+
+    private fun shouldWatchLocalClipboard(): Boolean {
+        val settings = FileApexServices.settings
+        if (!settings.clipboardSharingEnabled.value) return false
+        return if (currentPlatformLabel() == "Android") {
+            settings.clipboardAccessibilityEnabled.value
+        } else {
+            settings.clipboardAutoSendEnabled.value
+        }
     }
 
     private suspend fun publishClipboardPublicKey() {

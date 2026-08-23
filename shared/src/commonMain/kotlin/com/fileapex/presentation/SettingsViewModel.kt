@@ -38,6 +38,7 @@ data class SettingsUiState(
     val clipboardTargetDeviceIds: Set<String> = emptySet(),
     val clipboardViaCellularEnabled: Boolean = false,
     val clipboardAccessibilityEnabled: Boolean = false,
+    val clipboardAutoSendEnabled: Boolean = false,
     val clipboardPeers: List<PairedDeviceEntity> = emptyList(),
     val fileTransferNotificationsEnabled: Boolean = false,
     val driveRelayNotificationsEnabled: Boolean = false,
@@ -89,6 +90,7 @@ class SettingsViewModel : ViewModel() {
             clipboardTargetDeviceIds = settings.clipboardTargetDeviceIds.value,
             clipboardViaCellularEnabled = settings.clipboardViaCellularEnabled.value,
             clipboardAccessibilityEnabled = settings.clipboardAccessibilityEnabled.value,
+            clipboardAutoSendEnabled = settings.clipboardAutoSendEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             driveRelayNotificationsEnabled = settings.driveRelayNotificationsEnabled.value,
             notesNotificationsEnabled = settings.notesNotificationsEnabled.value,
@@ -154,6 +156,11 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.clipboardAccessibilityEnabled.collect { enabled ->
                 _uiState.update { it.copy(clipboardAccessibilityEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardAutoSendEnabled.collect { enabled ->
+                _uiState.update { it.copy(clipboardAutoSendEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -299,6 +306,11 @@ class SettingsViewModel : ViewModel() {
     fun setClipboardViaCellular(enabled: Boolean) {
         settings.setClipboardViaCellularEnabled(enabled)
         _uiState.update { it.copy(clipboardViaCellularEnabled = enabled) }
+    }
+
+    fun setClipboardAutoSend(enabled: Boolean) {
+        settings.setClipboardAutoSendEnabled(enabled)
+        _uiState.update { it.copy(clipboardAutoSendEnabled = enabled) }
     }
 
     fun setClipboardAccessibility(enabled: Boolean) {

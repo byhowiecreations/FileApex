@@ -280,6 +280,7 @@ fun SettingsScreen(
             onTogglePeer = viewModel::setClipboardTargetDevice,
             onToggleViaCellular = viewModel::setClipboardViaCellular,
             onToggleAccessibility = viewModel::setClipboardAccessibility,
+            onToggleAutoSend = viewModel::setClipboardAutoSend,
             onDismissRestrictedHelp = viewModel::dismissAccessibilityRestrictedHelp,
             onOpenAppInfo = viewModel::openAccessibilityAppInfo,
             onOpenAccessibilitySettings = viewModel::openAccessibilitySystemSettings
@@ -866,6 +867,7 @@ private fun ClipboardSettingsPage(
     onTogglePeer: (String, Boolean) -> Unit,
     onToggleViaCellular: (Boolean) -> Unit,
     onToggleAccessibility: (Boolean) -> Unit,
+    onToggleAutoSend: (Boolean) -> Unit,
     onDismissRestrictedHelp: () -> Unit,
     onOpenAppInfo: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit
@@ -916,6 +918,19 @@ private fun ClipboardSettingsPage(
                             Switch(
                                 checked = state.clipboardViaCellularEnabled,
                                 onCheckedChange = onToggleViaCellular
+                            )
+                        }
+                    )
+                } else {
+                    ListItem(
+                        headlineContent = { Text("Automatically send") },
+                        supportingContent = {
+                            Text("Automatically send clipboard content to below selection")
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = state.clipboardAutoSendEnabled,
+                                onCheckedChange = onToggleAutoSend
                             )
                         }
                     )
@@ -1042,6 +1057,7 @@ private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
     }
     val extras = buildList {
         if (currentPlatformLabel() == "Android" && state.clipboardAccessibilityEnabled) add("Accessibility")
+        if (currentPlatformLabel() != "Android" && state.clipboardAutoSendEnabled) add("Auto-send")
         if (state.clipboardViaCellularEnabled && currentPlatformLabel() == "Android") add("Cellular")
     }
     return if (extras.isEmpty()) "On · $mode" else "On · $mode · ${extras.joinToString(" · ")}"

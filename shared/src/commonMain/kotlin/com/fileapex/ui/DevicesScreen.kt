@@ -103,7 +103,6 @@ import com.fileapex.presentation.DeviceDetailsState
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
-import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 
@@ -354,11 +353,7 @@ fun DevicesScreen(
                     onGenerateQr = onGenerateQr,
                     onJoinDevice = onJoinDevice,
                     onCheckBatteries = { viewModel.checkBatteries() },
-                    onSendClipboard = if (currentPlatformLabel() == "Android") {
-                        viewModel::sendClipboardNow
-                    } else {
-                        null
-                    },
+                    onSendClipboard = viewModel::sendClipboardNow,
                     onOpenNotes = onOpenNotes,
                     modifier = Modifier
                         .weight(1f)
@@ -410,10 +405,8 @@ fun DevicesScreen(
                         .padding(top = 8.dp, bottom = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (currentPlatformLabel() == "Android") {
-                        SendClipboardActionChip(onClick = viewModel::sendClipboardNow)
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
+                    SendClipboardActionChip(onClick = viewModel::sendClipboardNow)
+                    Spacer(modifier = Modifier.height(8.dp))
                     Box(modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = { addMenuOpen = true },

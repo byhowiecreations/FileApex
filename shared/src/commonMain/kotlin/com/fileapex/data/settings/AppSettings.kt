@@ -16,6 +16,7 @@ interface AppSettings {
     val clipboardTargetDeviceIds: StateFlow<Set<String>>
     val clipboardViaCellularEnabled: StateFlow<Boolean>
     val clipboardAccessibilityEnabled: StateFlow<Boolean>
+    val clipboardAutoSendEnabled: StateFlow<Boolean>
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
     val driveRelayNotificationsEnabled: StateFlow<Boolean>
     val pinRequiredEnabled: StateFlow<Boolean>
@@ -76,6 +77,7 @@ interface AppSettings {
     fun setClipboardTargetDevice(deviceId: String, selected: Boolean)
     fun setClipboardViaCellularEnabled(enabled: Boolean)
     fun setClipboardAccessibilityEnabled(enabled: Boolean)
+    fun setClipboardAutoSendEnabled(enabled: Boolean)
     fun clipboardPrivateKeyBase64(): String
     fun setClipboardPrivateKeyBase64(value: String)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
