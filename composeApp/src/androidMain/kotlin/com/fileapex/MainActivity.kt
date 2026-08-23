@@ -48,10 +48,15 @@ import com.fileapex.platform.ShareServerPendingStart
 import com.fileapex.platform.ShareServerRestartCoordinator
 import android.util.Log
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.withAppLocale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(newBase.withAppLocale(AppI18n.locale))
+    }
 
     companion object {
         private const val TAG = "MainActivity"
@@ -286,7 +291,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch {
                 runCatching {
                     com.fileapex.platform.AndroidShareBulletin.ingestShareIntent(this@MainActivity, shareIntent)
-                    com.fileapex.platform.BriefToast.show("Posted to Bulletin Board")
+                    com.fileapex.platform.BriefToast.show(com.fileapex.i18n.AppI18n.t("posted_to_bulletin"))
                 }.onFailure { error ->
                     com.fileapex.platform.BriefToast.show(
                         error.message ?: "Could not post to Bulletin Board"
@@ -317,9 +322,9 @@ class MainActivity : ComponentActivity() {
             if (!sharedText.isNullOrBlank()) {
                 com.fileapex.platform.PlatformClipboard.setSystemClipboardText(sharedText)
                 if (targetDeviceId != null) {
-                    com.fileapex.platform.BriefToast.show("Sending shared clipboard…")
+                    com.fileapex.platform.BriefToast.show(com.fileapex.i18n.AppI18n.t("sending_shared_clipboard"))
                 } else {
-                    com.fileapex.platform.BriefToast.show("Text copied to clipboard — select a device to send")
+                    com.fileapex.platform.BriefToast.show(com.fileapex.i18n.AppI18n.t("text_copied_select_device"))
                 }
                 openedFromShareSheet = true
                 isPreparingShare = false

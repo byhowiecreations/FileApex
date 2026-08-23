@@ -1,5 +1,7 @@
 package com.fileapex.ui
 
+import com.fileapex.i18n.stringRes
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,10 +48,10 @@ fun TransferQueueScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Queued Files") },
+                title = { Text(stringRes("queued_files")) },
                 navigationIcon = {
                     TextButton(onClick = onBack) {
-                        Text("Back", color = fileApexChromeContentColor())
+                        Text(stringRes("back"), color = fileApexChromeContentColor())
                     }
                 },
                 colors = fileApexTopAppBarColors()
@@ -63,8 +65,7 @@ fun TransferQueueScreen(
                 .padding(horizontal = 20.dp)
         ) {
             Text(
-                text = "Waiting sends stay here until they finish on local Wi‑Fi or via Google Drive Relay. " +
-                    "Tap remove to cancel.",
+                text = stringRes("queued_files_intro"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp)
@@ -157,7 +158,7 @@ private fun QueuedTransferRow(
         IconButton(onClick = onRemove) {
             Icon(
                 imageVector = Icons.Filled.Delete,
-                contentDescription = "Remove from queue"
+                contentDescription = stringRes("remove_from_queue")
             )
         }
     }

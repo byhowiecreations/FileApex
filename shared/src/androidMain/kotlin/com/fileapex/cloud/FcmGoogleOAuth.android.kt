@@ -12,6 +12,7 @@ import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Base64
+import kotlin.text.Charsets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -68,15 +69,15 @@ internal actual object FcmGoogleOAuth {
         issuedAtSec: Long,
         expiresAtSec: Long
     ): String {
-        val header = base64UrlEncode("""{"alg":"RS256","typ":"JWT"}""".toByteArray())
+        val header = base64UrlEncode("""{"alg":"RS256","typ":"JWT"}""".toByteArray(Charsets.UTF_8))
         val payload = base64UrlEncode(
             (
                 """{"iss":"$clientEmail","scope":"$FCM_SCOPE","aud":"$GOOGLE_TOKEN_URI",""" +
                     """"iat":$issuedAtSec,"exp":$expiresAtSec}"""
-                ).toByteArray()
+                ).toByteArray(Charsets.UTF_8)
         )
         val signingInput = "$header.$payload"
-        val signature = signRs256(signingInput.toByteArray(), parsePrivateKey(privateKeyPem))
+        val signature = signRs256(signingInput.toByteArray(Charsets.UTF_8), parsePrivateKey(privateKeyPem))
         return "$signingInput.${base64UrlEncode(signature)}"
     }
 

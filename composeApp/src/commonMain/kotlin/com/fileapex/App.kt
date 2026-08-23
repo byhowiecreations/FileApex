@@ -73,6 +73,16 @@ import com.fileapex.ui.adaptive.widthSizeClassFor
 import com.fileapex.ui.adaptive.isWide
 import com.fileapex.ui.theme.FileApexTheme
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.AppLocale
+import com.fileapex.i18n.ProvideAppLocale
+import com.fileapex.i18n.applyStoredAppLanguage
+import com.fileapex.i18n.defaultLanguageIfNoPrompt
+import com.fileapex.i18n.detectedPromptLocale
+import com.fileapex.i18n.needsLanguagePrompt
+import com.fileapex.i18n.persistAppLanguage
+import com.fileapex.i18n.stringRes
+import androidx.compose.runtime.key
 import kotlinx.coroutines.flow.MutableStateFlow
 
 @Composable
@@ -226,7 +236,19 @@ fun App(
     val appTheme by FileApexServices.settings.appTheme.collectAsState()
     val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
     val bgBrush = appTheme.backgroundBrush()
+    val appLocale by AppI18n.localeFlowState
+    var showLanguagePrompt by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        applyStoredAppLanguage()
+        if (needsLanguagePrompt()) {
+            showLanguagePrompt = true
+        } else {
+            defaultLanguageIfNoPrompt()
+        }
+    }
 
+    ProvideAppLocale(appLocale) {
+    key(appLocale) {
     FileApexTheme(
         uiStyle = desktopUiStyle,
         appTheme = appTheme
@@ -275,18 +297,18 @@ fun App(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = "FileApex setup",
+                            text = stringRes("fileapex_setup"),
                             style = MaterialTheme.typography.headlineMedium
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Grant storage access to continue.",
+                            text = stringRes("grant_storage_continue"),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = onRequestStoragePermission) {
-                            Text("Grant file access")
+                            Text(stringRes("grant_file_access"))
                         }
                     }
                 } else if (isPreparingShare) {
@@ -298,7 +320,7 @@ fun App(
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Preparing shared files…",
+                            text = stringRes("preparing_shared_files"),
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -315,7 +337,7 @@ fun App(
                             modifier = Modifier.padding(horizontal = 24.dp)
                         )
                         TextButton(onClick = onDismissShareError) {
-                            Text("Close")
+                            Text(stringRes("close"))
                         }
                     }
                 } else {
@@ -492,50 +514,77 @@ fun App(
     if (pendingCellularSend) {
         AlertDialog(
             onDismissRequest = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissSendPrompt() },
-            title = { Text("Send over Cellular?") },
+            title = { Text(stringRes("send_over_cellular")) },
             text = {
                 Text(
                     if (com.fileapex.cloud.currentPlatformLabel() == "Android") {
-                        "FileApex can send via Google Drive Relay using cellular data. Continue?"
+                        stringRes("send_cellular_android")
                     } else {
-                        "This destination is not on local Wi‑Fi. FileApex can send via Google Drive " +
-                            "Relay using cellular data. Continue?"
+                        stringRes("send_cellular_desktop")
                     }
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.acknowledgeSendPrompt() }
-                ) { Text("Send via Drive") }
+                ) { Text(stringRes("send_via_drive")) }
             },
             dismissButton = {
                 TextButton(
                     onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissSendPrompt() }
-                ) { Text("Not Now") }
+                ) { Text(stringRes("not_now")) }
             }
         )
     }
     if (pendingCellularReceive) {
         AlertDialog(
             onDismissRequest = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissReceivePrompt() },
-            title = { Text("Receive over Cellular?") },
+            title = { Text(stringRes("receive_over_cellular")) },
             text = {
-                Text(
-                    "A paired device sent a file through Google Drive Relay. Download it using " +
-                        "cellular data?"
-                )
+                Text(stringRes("receive_cellular_body"))
             },
             confirmButton = {
                 TextButton(
                     onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.acknowledgeReceivePrompt() }
-                ) { Text("Allow") }
+                ) { Text(stringRes("allow")) }
             },
             dismissButton = {
                 TextButton(
                     onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissReceivePrompt() }
-                ) { Text("Not Now") }
+                ) { Text(stringRes("not_now")) }
             }
         )
+    }
+    if (showLanguagePrompt) {
+        val detected = detectedPromptLocale()
+        val body = when (detected) {
+            AppLocale.ES -> stringRes("language_prompt_body_es")
+            AppLocale.ZH_HANS -> stringRes("language_prompt_body_zh")
+            AppLocale.EN -> stringRes("language_prompt_body", detected.nativeName)
+        }
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringRes("language_prompt_title"), softWrap = true) },
+            text = { Text(body, softWrap = true) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        persistAppLanguage(detected)
+                        showLanguagePrompt = false
+                    }
+                ) { Text(stringRes("language_use_detected", detected.nativeName), softWrap = true) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        persistAppLanguage(AppLocale.EN)
+                        showLanguagePrompt = false
+                    }
+                ) { Text(stringRes("language_use_english"), softWrap = true) }
+            }
+        )
+    }
+    }
     }
 }
 
@@ -663,18 +712,18 @@ private fun CompactHomeContent(
     if (confirmExit) {
         AlertDialog(
             onDismissRequest = { confirmExit = false },
-            title = { Text("Exit FileApex?") },
-            text = { Text("Stop sharing and close the app.") },
+            title = { Text(stringRes("exit_fileapex_q")) },
+            text = { Text(stringRes("stop_sharing_close")) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         confirmExit = false
                         onExitApp()
                     }
-                ) { Text("Exit") }
+                ) { Text(stringRes("exit")) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmExit = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmExit = false }) { Text(stringRes("cancel")) }
             }
         )
     }

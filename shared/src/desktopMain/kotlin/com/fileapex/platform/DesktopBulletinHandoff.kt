@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.di.FileApexServices
 import java.io.File
+import kotlin.text.Charsets
 import java.net.URI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,7 +75,7 @@ object DesktopBulletinHandoff {
             ?.filter { it.isFile && it.name.endsWith(".json") }
             ?.mapNotNull { file ->
                 runCatching {
-                    val job = json.decodeFromString<BulletinJobFile>(file.readText())
+                    val job = json.decodeFromString<BulletinJobFile>(file.readText(Charsets.UTF_8))
                     job.id.takeIf { job.status == STATUS_PENDING }
                 }.getOrNull()
             }
@@ -98,7 +99,7 @@ object DesktopBulletinHandoff {
         val file = jobFile(jobId)
         if (!file.isFile) return
         val job = runCatching {
-            json.decodeFromString<BulletinJobFile>(file.readText())
+            json.decodeFromString<BulletinJobFile>(file.readText(Charsets.UTF_8))
         }.getOrElse {
             return
         }
@@ -142,7 +143,7 @@ object DesktopBulletinHandoff {
 
     private fun writeJob(job: BulletinJobFile) {
         jobsDir.mkdirs()
-        jobFile(job.id).writeText(json.encodeToString(job))
+        jobFile(job.id).writeText(json.encodeToString(job), Charsets.UTF_8)
     }
 
     private fun jobFile(jobId: String): File = File(jobsDir, "$jobId.json")

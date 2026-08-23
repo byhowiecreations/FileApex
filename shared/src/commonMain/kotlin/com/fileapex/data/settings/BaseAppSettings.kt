@@ -44,6 +44,7 @@ class BaseAppSettings(
     private val clipboardViaCellularFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_VIA_CELLULAR, false))
     private val clipboardAccessibilityFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_ACCESSIBILITY, false))
     private val clipboardAutoSendFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_AUTO_SEND, false))
+    private val appLanguageTagFlow = MutableStateFlow(store.getString(KEY_APP_LANGUAGE, ""))
     private val clipboardPrivateKeyBase64Stored = MutableStateFlow(
         store.getString(KEY_CLIPBOARD_PRIVATE_KEY, "")
     )
@@ -168,6 +169,7 @@ class BaseAppSettings(
     override val clipboardViaCellularEnabled: StateFlow<Boolean> = clipboardViaCellularFlow.asStateFlow()
     override val clipboardAccessibilityEnabled: StateFlow<Boolean> = clipboardAccessibilityFlow.asStateFlow()
     override val clipboardAutoSendEnabled: StateFlow<Boolean> = clipboardAutoSendFlow.asStateFlow()
+    override val appLanguageTag: StateFlow<String> = appLanguageTagFlow.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
     override val driveRelayNotificationsEnabled: StateFlow<Boolean> =
@@ -296,6 +298,11 @@ class BaseAppSettings(
     override fun setClipboardAutoSendEnabled(enabled: Boolean) {
         store.putBoolean(KEY_CLIPBOARD_AUTO_SEND, enabled)
         clipboardAutoSendFlow.value = enabled
+    }
+
+    override fun setAppLanguageTag(tag: String) {
+        store.putString(KEY_APP_LANGUAGE, tag)
+        appLanguageTagFlow.value = tag
     }
 
     override fun clipboardPrivateKeyBase64(): String = clipboardPrivateKeyBase64Stored.value
@@ -564,6 +571,7 @@ class BaseAppSettings(
         const val KEY_CLIPBOARD_VIA_CELLULAR = "clipboard_via_cellular"
         const val KEY_CLIPBOARD_ACCESSIBILITY = "clipboard_accessibility"
         const val KEY_CLIPBOARD_AUTO_SEND = "clipboard_auto_send"
+        const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_CLIPBOARD_PRIVATE_KEY = "clipboard_private_key_b64"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
         const val KEY_DRIVE_RELAY_NOTIFICATIONS = "drive_relay_notifications_enabled"

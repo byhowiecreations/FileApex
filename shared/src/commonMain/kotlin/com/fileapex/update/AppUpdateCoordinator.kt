@@ -70,12 +70,12 @@ object AppUpdateCoordinator {
     }
 
     fun onCheckForUpdatesDisabled() {
-        _statusMessage.value = "Check for Updates off"
+        _statusMessage.value = com.fileapex.i18n.AppI18n.t("check_updates_off")
     }
 
     /** Immediate network update check that bypasses interval timers. */
     fun checkNowManual() {
-        BriefToast.show("Checking…")
+        BriefToast.show(com.fileapex.i18n.AppI18n.t("checking"))
         scheduleCheck(
             reason = "manual",
             force = true,
@@ -117,7 +117,7 @@ object AppUpdateCoordinator {
         restorePendingOffer()
         val offer = _pendingUpdate.value
         if (offer == null) {
-            BriefToast.show("Update details missing — checking again…")
+            BriefToast.show(com.fileapex.i18n.AppI18n.t("update_details_missing"))
             scheduleCheck(
                 reason = "notification_install",
                 force = true,
@@ -127,7 +127,7 @@ object AppUpdateCoordinator {
             return
         }
         if (downloadInFlight) {
-            BriefToast.show("Update download already in progress…")
+            BriefToast.show(com.fileapex.i18n.AppI18n.t("update_download_progress"))
             return
         }
         scope.launch {
@@ -216,23 +216,23 @@ object AppUpdateCoordinator {
             if (!shouldRun) return@launch
             try {
                 if (!toastFeedback) {
-                    _statusMessage.value = "Checking for updates…"
+                    _statusMessage.value = com.fileapex.i18n.AppI18n.t("checking_for_updates")
                 }
                 println("AppUpdateCoordinator: starting update check ($reason)")
                 when (val outcome = AppUpdater.probeForUpdates()) {
                     is UpdateCheckOutcome.AlreadyCurrent -> {
                         settings.setLastUpdateCheckEpochMs(TimeUtils.now())
-                        _statusMessage.value = "On Current Version"
+                        _statusMessage.value = com.fileapex.i18n.AppI18n.t("on_current_version")
                         if (toastFeedback) {
-                            BriefToast.show("On Current Version")
+                            BriefToast.show(com.fileapex.i18n.AppI18n.t("on_current_version"))
                         }
                     }
                     is UpdateCheckOutcome.Available -> {
                         settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                         if (isOfferSkipped(outcome.offer)) {
-                            _statusMessage.value = "On Current Version"
+                            _statusMessage.value = com.fileapex.i18n.AppI18n.t("on_current_version")
                             if (toastFeedback) {
-                                BriefToast.show("On Current Version")
+                                BriefToast.show(com.fileapex.i18n.AppI18n.t("on_current_version"))
                             }
                             return@launch
                         }

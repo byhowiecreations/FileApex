@@ -27,7 +27,7 @@ actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
         return
     }
 
-    val title = "FileApex ${offer.remoteVersion} available"
+    val title = com.fileapex.i18n.AppI18n.t("update_available_title", offer.remoteVersion)
     val body = offer.notificationDetail()
 
     // Activity PendingIntents — BroadcastReceiver startActivity is blocked by BAL on Samsung/API 31+.

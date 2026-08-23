@@ -117,8 +117,8 @@ fun LiveTransferCapsuleOverlay(
             capsuleData.state == CapsuleState.Transferring && !isTransferActive -> {
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Completed,
-                    title = "Transfer Complete",
-                    subtitle = "All files transmitted",
+                    title = com.fileapex.i18n.AppI18n.t("transfer_complete"),
+                    subtitle = com.fileapex.i18n.AppI18n.t("all_files_transmitted"),
                     progress = 1f,
                     pendingCount = 0
                 )

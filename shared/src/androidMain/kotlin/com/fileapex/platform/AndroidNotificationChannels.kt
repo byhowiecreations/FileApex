@@ -34,10 +34,10 @@ object AndroidNotificationChannels {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             APP_UPDATES,
-            "App updates",
+            com.fileapex.i18n.AppI18n.t("channel_app_updates"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Alerts when a newer FileApex build is available"
+            description = com.fileapex.i18n.AppI18n.t("channel_app_updates_desc")
         }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)
@@ -47,10 +47,10 @@ object AndroidNotificationChannels {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             NOTE_MESSAGES,
-            "Bulletin Board",
+            com.fileapex.i18n.AppI18n.t("bulletin_board"),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Alerts when shared messages, files, or device alerts arrive from paired devices"
+            description = com.fileapex.i18n.AppI18n.t("channel_notes_desc")
             enableVibration(true)
         }
         context.getSystemService(NotificationManager::class.java)
@@ -61,10 +61,10 @@ object AndroidNotificationChannels {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             TRANSFER_RECEIVE,
-            "File transfers",
+            com.fileapex.i18n.AppI18n.t("channel_transfers"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Alerts when FileApex receives files from paired devices"
+            description = com.fileapex.i18n.AppI18n.t("channel_transfers_desc")
         }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)
@@ -74,10 +74,10 @@ object AndroidNotificationChannels {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             DRIVE_RELAY,
-            "Google Drive Relay",
+            com.fileapex.i18n.AppI18n.t("google_drive_relay"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Alerts when FileApex posts or retrieves files through Google Drive Relay"
+            description = com.fileapex.i18n.AppI18n.t("channel_drive_desc")
         }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)
@@ -93,10 +93,10 @@ object AndroidNotificationChannels {
         migrateLegacyShareServerChannels(context)
         val channel = NotificationChannel(
             SHARE_SERVER_ACTIVE,
-            "FileApex Server",
+            com.fileapex.i18n.AppI18n.t("channel_server"),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Persistent alert while the FileApex share server is running"
+            description = com.fileapex.i18n.AppI18n.t("channel_server_desc")
             setShowBadge(false)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             enableVibration(false)

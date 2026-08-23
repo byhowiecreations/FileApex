@@ -14,6 +14,7 @@ import com.sun.management.OperatingSystemMXBean
 import java.awt.GraphicsEnvironment
 import java.awt.Toolkit
 import java.io.File
+import kotlin.text.Charsets
 import java.lang.management.ManagementFactory
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -698,7 +699,7 @@ private fun readCommandOutput(vararg command: String): String? {
             .redirectErrorStream(true)
             .start()
             .inputStream
-            .bufferedReader()
+            .bufferedReader(Charsets.UTF_8)
             .use { it.readText().trim() }
             .takeIf { it.isNotEmpty() }
     }.getOrNull()

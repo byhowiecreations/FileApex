@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FileApex</string>
+    <string name="paired_devices_title">Dispositivos emparejados</string>
+    <string name="ready">Listo</string>
+    <string name="tap_to_wake">Toca para activar</string>
+    <string name="bulletin_board_share_label">Tablón</string>
+    <string name="send_with_fileapex_share_label">Enviar con FileApex</string>
+    <string name="clipboard_tile_label">Enviar portapapeles</string>
+    <string name="clipboard_accessibility_label">Portapapeles de FileApex</string>
+    <string name="clipboard_accessibility_description">FileApex usa Accesibilidad para detectar copias y sincronizar el portapapeles en segundo plano. No lee el contenido de la pantalla para ningún otro fin.</string>
+</resources>

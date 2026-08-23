@@ -77,6 +77,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.dnd.deviceFileDropTarget
 import kotlin.math.PI
@@ -369,20 +370,26 @@ fun KineticSphereDevicesView(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Add,
-                        contentDescription = "Add New Device",
+                        contentDescription = stringRes("add_new_device"),
                         tint = Color(0xFF00E5FF),
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Add New\nDevice",
+                        text = stringRes("add_new_device"),
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
                             lineHeight = 13.sp
                         ),
                         color = Color.White,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        softWrap = true,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .width(94.dp)
                     )
                 }
             }
@@ -401,7 +408,7 @@ fun KineticSphereDevicesView(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(text = "Generate QR Code", color = Color.White)
+                            Text(text = stringRes("generate_qr"), color = Color.White)
                         }
                     },
                     onClick = {
@@ -419,7 +426,7 @@ fun KineticSphereDevicesView(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(text = "Join device", color = Color.White)
+                            Text(text = stringRes("join_device"), color = Color.White)
                         }
                     },
                     onClick = {
@@ -451,7 +458,11 @@ fun KineticSphereDevicesView(
         }
 
         if (deviceRows.isNotEmpty() && onCheckBatteries != null) {
-            val batteryText = if (deviceRows.size <= 1) "Check Battery" else "Check Batteries"
+            val batteryText = if (deviceRows.size <= 1) {
+                stringRes("check_battery")
+            } else {
+                stringRes("check_batteries")
+            }
             Box(
                 modifier = Modifier
                     .offset {
@@ -491,7 +502,8 @@ fun KineticSphereDevicesView(
                                 fontSize = 11.5.sp
                             ),
                             color = Color.White,
-                            maxLines = 1
+                            softWrap = true,
+                            maxLines = 2
                         )
                     }
                 }
@@ -630,11 +642,12 @@ fun KineticSphereDevicesView(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = row.subtitle,
+                            text = DeviceListRow.localizedSubtitle(row),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             color = statusColor,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
+                            softWrap = true,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -686,7 +699,7 @@ fun KineticSphereDevicesView(
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Text(
-                    text = "No Paired Devices Yet\nTap Central Hub (+) to Pair",
+                    text = stringRes("kinetic_empty_hint"),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Medium,
                         fontSize = 14.sp
@@ -805,9 +818,12 @@ private fun KineticGlassActionCapsule(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (row.online) "Ready" else "Wake",
+                        text = if (row.online) stringRes("ready") else stringRes("tap_to_wake"),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                        color = statusColor
+                        color = statusColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = true
                     )
                 }
             }
@@ -824,17 +840,17 @@ private fun KineticGlassActionCapsule(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CapsuleActionButton("Browse", Icons.Filled.Folder, Color(0xFF00E676), onOpen)
-                CapsuleActionButton("Clipboard", Icons.AutoMirrored.Filled.Assignment, Color(0xFF00E5FF), onSendClipboard)
-                CapsuleActionButton("Rename", Icons.Filled.Edit, Color(0xFFFFC107), onRename)
+                CapsuleActionButton(stringRes("browse"), Icons.Filled.Folder, Color(0xFF00E676), onOpen)
+                CapsuleActionButton(stringRes("clipboard"), Icons.AutoMirrored.Filled.Assignment, Color(0xFF00E5FF), onSendClipboard)
+                CapsuleActionButton(stringRes("rename"), Icons.Filled.Edit, Color(0xFFFFC107), onRename)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CapsuleActionButton("Info", Icons.Filled.Info, Color(0xFF40C4FF), onInfo)
-                CapsuleActionButton("Remove", Icons.Filled.Delete, Color(0xFFFF5252), onRemove)
+                CapsuleActionButton(stringRes("info"), Icons.Filled.Info, Color(0xFF40C4FF), onInfo)
+                CapsuleActionButton(stringRes("remove"), Icons.Filled.Delete, Color(0xFFFF5252), onRemove)
             }
         }
     }
@@ -877,7 +893,9 @@ private fun CapsuleActionButton(
                 fontWeight = FontWeight.SemiBold
             ),
             color = Color.White,
-            maxLines = 1
+            softWrap = true,
+            maxLines = 2,
+            textAlign = TextAlign.Center
         )
     }
 }

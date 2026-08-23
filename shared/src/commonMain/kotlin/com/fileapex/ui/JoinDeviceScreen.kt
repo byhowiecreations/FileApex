@@ -1,5 +1,7 @@
 package com.fileapex.ui
 
+import com.fileapex.i18n.stringRes
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -69,9 +71,9 @@ fun JoinDeviceScreen(
     }
     val working = joinAttempt == JoinAttemptState.Working
     val statusTitle = when {
-        matchedPayload != null -> "Code received from ${matchedPayload.deviceName}"
-        discoveredPeers.isEmpty() -> "Listening for a nearby pairing broadcast…"
-        else -> "Enter the 6-digit code"
+        matchedPayload != null -> stringRes("code_received_from", matchedPayload.deviceName)
+        discoveredPeers.isEmpty() -> stringRes("listening_broadcast")
+        else -> stringRes("enter_six_digit")
     }
 
     FileApexBackHandler(onBack = onBack, enabled = !working)
@@ -128,9 +130,9 @@ fun JoinDeviceScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Join device") },
+                title = { Text(stringRes("join_device")) },
                 navigationIcon = {
-                    TextButton(onClick = onBack, enabled = !working) { Text("Back") }
+                    TextButton(onClick = onBack, enabled = !working) { Text(stringRes("back")) }
                 }
             )
         }
@@ -183,7 +185,7 @@ fun JoinDeviceScreen(
                         },
                         readOnly = keypadOnlyEntry,
                         enabled = !working,
-                        label = { Text("Pairing code") },
+                        label = { Text(stringRes("pairing_code")) },
                         placeholder = { Text("000000") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -241,10 +243,10 @@ fun JoinDeviceScreen(
                                     modifier = Modifier.size(18.dp),
                                     strokeWidth = 2.dp
                                 )
-                                Text("Pairing…")
+                                Text(stringRes("pairing"))
                             }
                         } else {
-                            Text("Confirm")
+                            Text(stringRes("confirm"))
                         }
                     }
                 }
@@ -259,18 +261,18 @@ fun JoinDeviceScreen(
                 viewModel.cancelPinPairing()
                 joinAttempt = JoinAttemptState.Idle
             },
-            title = { Text("Enter device PIN") },
+            title = { Text(stringRes("enter_device_pin")) },
             text = {
                 Column {
                     Text(
-                        text = "Enter the PIN for ${pending.deviceName} to finish pairing.",
+                        text = stringRes("enter_pin_pair", pending.deviceName),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     OutlinedTextField(
                         value = pinText,
                         onValueChange = { pinText = it.filter { ch -> ch.isDigit() }.take(8) },
                         singleLine = true,
-                        label = { Text("PIN") },
+                        label = { Text(stringRes("pin")) },
                         modifier = Modifier.padding(top = 12.dp)
                     )
                 }
@@ -284,7 +286,7 @@ fun JoinDeviceScreen(
                     },
                     enabled = pinText.isNotBlank()
                 ) {
-                    Text("Pair")
+                    Text(stringRes("pair"))
                 }
             },
             dismissButton = {
@@ -295,7 +297,7 @@ fun JoinDeviceScreen(
                         joinAttempt = JoinAttemptState.Idle
                     }
                 ) {
-                    Text("Cancel")
+                    Text(stringRes("cancel"))
                 }
             }
         )

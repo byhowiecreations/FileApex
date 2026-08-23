@@ -42,6 +42,7 @@ object FileApexAndroidBootstrap {
             if (fullyInitialized && FileApexServices.isDatabaseReady()) return true
             Log.i(TAG, "Running deferred Android process init")
             initAndroidAppSettings(appContext)
+            com.fileapex.i18n.applyStoredAppLanguage()
             AndroidNotificationChannels.migrateLegacyShareServerChannels(appContext)
             AndroidNotificationChannels.ensureShareServerChannel(appContext)
             initAndroidLocalIdentity(appContext)

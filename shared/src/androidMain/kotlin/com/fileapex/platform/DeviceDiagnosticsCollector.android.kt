@@ -17,6 +17,7 @@ import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
 import android.net.wifi.WifiManager
 import android.view.Display
+import kotlin.text.Charsets
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.DeviceIdentityDiagnostics
@@ -455,7 +456,7 @@ private fun readMemory(context: Context?): MemoryDiagnostics {
 
 private fun readOnlineCpuCount(): Int? {
     return runCatching {
-        val online = File("/sys/devices/system/cpu/online").readText().trim()
+        val online = File("/sys/devices/system/cpu/online").readText(Charsets.UTF_8).trim()
         parseCpuRangeCount(online)
     }.getOrNull()
 }
@@ -478,7 +479,7 @@ private fun readCpuFrequencyMhz(cpuIndex: Int): Int? {
     val freqKhz = runCatching {
         File("/sys/devices/system/cpu/cpu$cpuIndex/cpufreq/scaling_cur_freq")
             .takeIf { it.canRead() }
-            ?.readText()
+            ?.readText(Charsets.UTF_8)
             ?.trim()
             ?.toLongOrNull()
     }.getOrNull() ?: return null
@@ -489,7 +490,7 @@ private fun readCpuGovernor(): String {
     return runCatching {
         File("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
             .takeIf { it.canRead() }
-            ?.readText()
+            ?.readText(Charsets.UTF_8)
             ?.trim()
             .orEmpty()
     }.getOrDefault("")

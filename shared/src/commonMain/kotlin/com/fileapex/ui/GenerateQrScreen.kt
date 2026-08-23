@@ -1,5 +1,7 @@
 package com.fileapex.ui
 
+import com.fileapex.i18n.stringRes
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,14 +56,14 @@ fun GenerateQrScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Generate QR Code") },
+                title = { Text(stringRes("generate_qr")) },
                 navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Back") }
+                    TextButton(onClick = onBack) { Text(stringRes("back")) }
                 },
                 actions = {
                     if (!state.broadcast.timedOut) {
                         TextButton(onClick = viewModel::retry, enabled = !state.preparingShareServer) {
-                            Text("Refresh")
+                            Text(stringRes("refresh"))
                         }
                     }
                 }
@@ -75,13 +77,12 @@ fun GenerateQrScreen(
                 .padding(16.dp)
         ) {
             Text(
-                text = "Show this code on one device. On the other, scan with the Camera app and tap Open FileApex, " +
-                    "or use Add New Device → Join device. Nearby devices can auto-fill the 6-digit code.",
+                text = stringRes("qr_intro"),
                 modifier = Modifier.padding(bottom = 16.dp)
             )
             state.pairedDeviceName?.let { name ->
                 Text(
-                    text = "Paired with $name.",
+                    text = stringRes("paired_with", name),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -92,7 +93,7 @@ fun GenerateQrScreen(
             }
             if (state.preparingShareServer && state.payload != null) {
                 Text(
-                    text = "Starting share server… pairing will work once ready.",
+                    text = stringRes("starting_share_server"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -100,7 +101,7 @@ fun GenerateQrScreen(
             }
             if (state.broadcast.timedOut) {
                 Text(
-                    text = "No device confirmed in time. Tap Retry for a new QR code, 6-digit code, and local broadcast.",
+                    text = stringRes("qr_timeout"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -109,14 +110,19 @@ fun GenerateQrScreen(
                     onClick = viewModel::retry,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Retry")
+                    Text(stringRes("retry"))
                 }
             } else {
                 state.payload?.let { payload ->
                     if (state.broadcast.active) {
                         Text(
-                            text = "Broadcasting on ${PairingBeacon.MULTICAST_ADDRESS}:${PairingBeacon.PORT} " +
-                                "(${1000 / PairingBeacon.BROADCAST_INTERVAL_MS}×/sec) for ${state.broadcast.remainingLabel}",
+                            text = stringRes(
+                                "broadcasting_on",
+                                PairingBeacon.MULTICAST_ADDRESS,
+                                PairingBeacon.PORT,
+                                1000 / PairingBeacon.BROADCAST_INTERVAL_MS,
+                                state.broadcast.remainingLabel
+                            ),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center,

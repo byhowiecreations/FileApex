@@ -149,6 +149,6 @@ object DeviceDiagnosticsFormatter {
                     else -> true
                 }
             }
-            .map { field -> field.label to valueFor(field) }
+            .map { field -> com.fileapex.i18n.AppI18n.t("field_${field.name}") to valueFor(field) }
     }
 }

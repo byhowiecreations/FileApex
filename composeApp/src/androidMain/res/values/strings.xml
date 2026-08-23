@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FileApex</string>
+    <string name="paired_devices_title">Paired Devices</string>
+    <string name="ready">Ready</string>
+    <string name="tap_to_wake">Tap to wake</string>
     <string name="bulletin_board_share_label">Bulletin Board</string>
     <string name="send_with_fileapex_share_label">Send with FileApex</string>
     <string name="clipboard_tile_label">Send clipboard</string>

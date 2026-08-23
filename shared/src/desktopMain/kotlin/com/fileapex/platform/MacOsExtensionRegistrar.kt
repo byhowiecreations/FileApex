@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.util.TimeUtils
 import java.io.File
+import kotlin.text.Charsets
 import java.time.Instant
 
 /**
@@ -137,13 +138,13 @@ object MacOsExtensionRegistrar {
     private fun readStamp(): String? {
         val file = DesktopPlatformPaths.extensionRegistrarStampFile()
         if (!file.isFile) return null
-        return runCatching { file.readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
+        return runCatching { file.readText(Charsets.UTF_8).trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     private fun writeStamp(stamp: String) {
         runCatching {
             DesktopPlatformPaths.applicationSupportDirectory()
-            DesktopPlatformPaths.extensionRegistrarStampFile().writeText(stamp)
+            DesktopPlatformPaths.extensionRegistrarStampFile().writeText(stamp, Charsets.UTF_8)
         }
     }
 
@@ -224,7 +225,7 @@ object MacOsExtensionRegistrar {
             val process = ProcessBuilder(*args)
                 .redirectErrorStream(true)
                 .start()
-            val text = process.inputStream.bufferedReader().readText().trim()
+            val text = process.inputStream.bufferedReader(Charsets.UTF_8).readText().trim()
             val code = process.waitFor()
             if (code != 0) "exit=$code ${text.take(200)}" else "ok${if (text.isEmpty()) "" else " $text"}"
         } catch (error: Exception) {

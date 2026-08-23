@@ -13,7 +13,7 @@ internal actual fun localizeNoteListStamp(epochMs: Long, zoneId: String): NoteLi
     val zoned = Instant.ofEpochMilli(epochMs).atZone(ZoneId.of(zoneId))
     return NoteListStamp(
         dayKey = zoned.toLocalDate().toString(),
-        dateHeader = DateTimeFormatter.ofPattern("MM/dd").format(zoned),
-        timeLabel = DateTimeFormatter.ofPattern("h:mm a").format(zoned)
+        dateHeader = com.fileapex.i18n.formatLocalizedDate(epochMs, zoneId),
+        timeLabel = com.fileapex.i18n.formatLocalizedTime(epochMs, zoneId)
     )
 }

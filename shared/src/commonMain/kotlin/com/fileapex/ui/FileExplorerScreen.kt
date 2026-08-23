@@ -1,5 +1,8 @@
 package com.fileapex.ui
 
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.stringRes
+
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 import androidx.compose.ui.graphics.Color
@@ -88,7 +91,7 @@ fun FileExplorerScreen(
     val showCopyFabs = state.isSelectionMode && state.selectedFileIds.isNotEmpty() && !state.isMultiCopying
     var pinText by remember { mutableStateOf("") }
     val topBarTitle = titleOverride
-        ?: if (target is BrowseTarget.Local) "Local Files" else state.deviceTitle
+        ?: if (target is BrowseTarget.Local) stringRes("local_files") else state.deviceTitle
 
     FileApexBackHandler(enabled = true) {
         when {
@@ -248,7 +251,7 @@ fun FileExplorerScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Ready to paste: ${state.clipboardLabel ?: "file(s)"}",
+                                        text = stringRes("ready_to_paste", state.clipboardLabel ?: stringRes("file_s")),
                                         modifier = Modifier
                                             .weight(1f)
                                             .padding(start = 8.dp),
@@ -258,7 +261,7 @@ fun FileExplorerScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     TextButton(onClick = viewModel::pasteHere) {
-                                        Text("Paste here")
+                                        Text(stringRes("paste_here"))
                                     }
                                 }
                             }
@@ -329,11 +332,11 @@ fun FileExplorerScreen(
                 pinText = ""
                 viewModel.cancelPinUnlock()
             },
-            title = { Text("Enter device PIN") },
+            title = { Text(stringRes("enter_device_pin")) },
             text = {
                 Column {
                     Text(
-                        text = "PIN session expired for ${state.deviceTitle}. Enter the PIN to keep browsing.",
+                        text = stringRes("pin_session_expired", state.deviceTitle),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -341,7 +344,7 @@ fun FileExplorerScreen(
                         value = pinText,
                         onValueChange = { pinText = it.filter { ch -> ch.isDigit() }.take(8) },
                         singleLine = true,
-                        label = { Text("PIN") },
+                        label = { Text(stringRes("pin")) },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         isError = state.pinUnlockError != null,
@@ -361,7 +364,7 @@ fun FileExplorerScreen(
                     },
                     enabled = pinText.isNotBlank()
                 ) {
-                    Text("Unlock")
+                    Text(stringRes("unlock"))
                 }
             },
             dismissButton = {
@@ -370,7 +373,7 @@ fun FileExplorerScreen(
                         pinText = ""
                         viewModel.cancelPinUnlock()
                     }
-                ) { Text("Cancel") }
+                ) { Text(stringRes("cancel")) }
             }
         )
     }
@@ -384,12 +387,12 @@ fun FileExplorerScreen(
             },
             confirmButton = {
                 TextButton(onClick = viewModel::acknowledgeMultiCopyIntro) {
-                    Text("OK")
+                    Text(stringRes("ok"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = viewModel::dismissMultiCopyIntro) {
-                    Text("Cancel")
+                    Text(stringRes("cancel"))
                 }
             }
         )
@@ -413,7 +416,7 @@ fun FileExplorerScreen(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Files land in ${DownloadsPaths.displayLabel()} on each selected device. Leave This device unchecked to skip local storage.",
+                    text = stringRes("files_land_in", DownloadsPaths.displayLabel()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -445,9 +448,9 @@ fun FileExplorerScreen(
                                 Text(option.deviceName, style = MaterialTheme.typography.bodyLarge)
                                 Text(
                                     text = if (option.isLocal) {
-                                        "Local device"
+                                        stringRes("local_device")
                                     } else {
-                                        DeviceListRow.peerStatusSubtitle(
+                                        DeviceListRow.localizedPeerStatus(
                                             online = true,
                                             appVersion = option.appVersion
                                         )
@@ -475,7 +478,7 @@ fun FileExplorerScreen(
     if (preview != null || state.isPreviewLoading) {
         AlertDialog(
             onDismissRequest = viewModel::dismissPreview,
-            title = { Text(preview?.name ?: "Preview") },
+            title = { Text(preview?.name ?: stringRes("preview")) },
             text = {
                 when {
                     state.isPreviewLoading -> {
@@ -508,12 +511,12 @@ fun FileExplorerScreen(
                         }
                     }
                     else -> {
-                        Text("No preview available.")
+                        Text(stringRes("no_preview"))
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = viewModel::dismissPreview) { Text("Close") }
+                TextButton(onClick = viewModel::dismissPreview) { Text(stringRes("close")) }
             },
             dismissButton = {
                 if (state.canDownloadPreview) {
@@ -521,7 +524,7 @@ fun FileExplorerScreen(
                         onClick = viewModel::downloadPreview,
                         enabled = !state.isDownloading && !state.isPreviewLoading
                     ) {
-                        Text(if (state.isDownloading) "Downloading…" else "Download")
+                        Text(if (state.isDownloading) stringRes("downloading") else stringRes("download"))
                     }
                 }
             }
@@ -532,7 +535,7 @@ fun FileExplorerScreen(
 private fun explorerSubtitle(state: ExplorerUiState): String =
     if (state.isSelectionMode) {
         val count = state.selectedFileIds.size
-        if (count == 0) "Select files" else "$count selected"
+        if (count == 0) AppI18n.t("select_files") else AppI18n.plural("selected_count", count)
     } else {
         state.currentPath
     }
@@ -545,10 +548,10 @@ private fun ExplorerNavigationAction(
     onBack: () -> Unit
 ) {
     val label = when {
-        state.isSelectionMode -> "Cancel"
-        state.canNavigateUp -> "Up"
+        state.isSelectionMode -> stringRes("cancel")
+        state.canNavigateUp -> stringRes("up")
         embeddedInCompactShell -> null
-        else -> "Devices"
+        else -> stringRes("devices")
     }
     if (label != null) {
         TextButton(onClick = onNavigate) {
@@ -565,7 +568,7 @@ private fun ExplorerTopBarActions(
     viewModel: ExplorerViewModel
 ) {
     if (!embeddedInCompactShell && state.canNavigateUp && !state.isSelectionMode) {
-        TextButton(onClick = onBack) { Text("Devices") }
+        TextButton(onClick = onBack) { Text(stringRes("devices")) }
     }
     when {
         state.isSelectionMode -> {
@@ -574,7 +577,7 @@ private fun ExplorerTopBarActions(
                     onClick = viewModel::downloadSelected,
                     enabled = state.canDownloadSelection && !state.isDownloading
                 ) {
-                    Text(if (state.isDownloading) "…" else "Download")
+                    Text(if (state.isDownloading) "…" else stringRes("download"))
                 }
             }
         }
@@ -584,10 +587,10 @@ private fun ExplorerTopBarActions(
                 onToggle = viewModel::toggleViewMode
             )
             TextButton(onClick = { viewModel.enterSelectionMode() }) {
-                Text("Select")
+                Text(stringRes("select"))
             }
             if (state.canPaste) {
-                TextButton(onClick = viewModel::pasteHere) { Text("Paste") }
+                TextButton(onClick = viewModel::pasteHere) { Text(stringRes("paste")) }
             }
         }
 

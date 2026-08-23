@@ -10,6 +10,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
+import com.fileapex.util.TimeUtils
 import com.fileapex.util.TimestampDiagnostics
 import com.fileapex.update.currentAppVersionCode
 import com.fileapex.update.currentAppVersionName
@@ -378,7 +379,7 @@ object GoogleLinkCoordinator {
         val selfId = loadLocalIdentity().deviceId
         val selfFingerprint = com.fileapex.platform.localHardwareFingerprint()
         val selfName = LocalDeviceNameStore.current().ifBlank { loadLocalIdentity().deviceName }
-        val now = System.currentTimeMillis()
+        val now = TimeUtils.now()
         val fourteenDaysMs = 14L * 24 * 3600 * 1000L
         val staleCutoffMs = now - fourteenDaysMs
 

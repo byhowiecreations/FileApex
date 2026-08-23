@@ -1,5 +1,9 @@
 package com.fileapex.ui
 
+import com.fileapex.i18n.stringRes
+
+import com.fileapex.i18n.AppI18n
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,7 +82,7 @@ fun ShareSendScreen(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Send with FileApex") },
+                title = { Text(stringRes("send_with_fileapex")) },
                 navigationIcon = {
                     TextButton(
                         onClick = {
@@ -87,7 +91,7 @@ fun ShareSendScreen(
                         },
                         enabled = !state.isSending
                     ) {
-                        Text("Cancel", color = fileApexChromeContentColor())
+                        Text(stringRes("cancel"), color = fileApexChromeContentColor())
                     }
                 },
                 colors = fileApexTopAppBarColors()
@@ -104,8 +108,8 @@ fun ShareSendScreen(
             Text(
                 text = when {
                     state.fileNames.size == 1 -> state.fileNames.first()
-                    state.fileNames.isEmpty() -> "Shared files"
-                    else -> "${state.fileNames.size} files"
+                    state.fileNames.isEmpty() -> stringRes("shared_files")
+                    else -> AppI18n.plural("files_count", state.fileNames.size)
                 },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
@@ -151,7 +155,7 @@ fun ShareSendScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Text(
-                                text = state.statusMessage ?: "Sending…",
+                                text = state.statusMessage ?: stringRes("sending"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(top = 12.dp)
                             )
@@ -176,7 +180,7 @@ fun ShareSendScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Text(
-                                text = "Loading devices…",
+                                text = stringRes("loading_devices"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(top = 12.dp)
                             )
@@ -185,7 +189,7 @@ fun ShareSendScreen(
                 }
                 else -> {
                     Text(
-                        text = "Choose destination",
+                        text = stringRes("choose_destination"),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(bottom = 8.dp)
@@ -229,9 +233,9 @@ fun ShareSendScreen(
                                     )
                                     Text(
                                         text = if (option.isLocal) {
-                                            "Save to ${DownloadsPaths.displayLabel()}"
+                                            stringRes("save_to", DownloadsPaths.displayLabel())
                                         } else {
-                                            DeviceListRow.peerStatusSubtitle(
+                                            DeviceListRow.localizedPeerStatus(
                                                 online = option.deviceId in state.onlineDeviceIds,
                                                 appVersion = option.appVersion
                                             )
@@ -256,7 +260,7 @@ fun ShareSendScreen(
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(28.dp))
                     Text(
-                        text = "Sending…",
+                        text = stringRes("sending"),
                         modifier = Modifier.padding(start = 12.dp)
                     )
                 }
@@ -270,7 +274,7 @@ fun ShareSendScreen(
                     !state.isPreparing,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Send")
+                Text(stringRes("send"))
             }
         }
     }

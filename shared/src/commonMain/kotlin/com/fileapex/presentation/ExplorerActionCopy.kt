@@ -1,26 +1,21 @@
 package com.fileapex.presentation
 
-/**
- * Explorer selection / send action strings for toolbar and picker copy.
- * Internal types remain MultiCopy* in the domain layer.
- */
+import com.fileapex.i18n.AppI18n
+
 object ExplorerActionCopy {
-    const val SEND_TO_ACTION = "Send To"
-    const val COPY_ACTION = "Copy"
+    val SEND_TO_ACTION get() = AppI18n.t("send_to")
+    val COPY_ACTION get() = AppI18n.t("copy_action")
 
-    const val SELECTION_MODE_HELPER =
-        "Copy = save for Paste later · Send To = send files to paired devices now"
+    val SELECTION_MODE_HELPER get() = AppI18n.t("selection_mode_helper")
 
-    const val SEND_TO_INTRO_TITLE = "Send To"
-    const val SEND_TO_INTRO_BODY =
-        "Send To delivers the selected file(s) to one or more paired devices immediately. " +
-            "Copy only stores a clipboard entry for Paste on this device."
+    val SEND_TO_INTRO_TITLE get() = AppI18n.t("send_to")
+    val SEND_TO_INTRO_BODY get() = AppI18n.t("send_to_intro_body")
 
-    const val SEND_TO_PICKER_TITLE = "Send To devices"
-    const val SEND_TO_PICKER_CONFIRM = "Send To selected devices"
-    const val SEND_TO_IN_PROGRESS = "Sending to devices…"
+    val SEND_TO_PICKER_TITLE get() = AppI18n.t("send_to_picker_title")
+    val SEND_TO_PICKER_CONFIRM get() = AppI18n.t("send_to_picker_confirm")
+    val SEND_TO_IN_PROGRESS get() = AppI18n.t("send_to_in_progress")
 
-    const val ERROR_SELECT_FILES = "Select at least one file to send"
-    const val ERROR_SEND_FAILED = "Send To failed for all destinations"
-    fun sendFinishedWithErrors(count: Int): String = "Send To finished with $count error(s)"
+    val ERROR_SELECT_FILES get() = AppI18n.t("error_select_files")
+    val ERROR_SEND_FAILED get() = AppI18n.t("error_send_failed")
+    fun sendFinishedWithErrors(count: Int): String = AppI18n.t("send_to_finished_errors", count)
 }

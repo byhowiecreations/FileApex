@@ -1,5 +1,9 @@
 package com.fileapex.ui
 
+import com.fileapex.i18n.stringRes
+
+import com.fileapex.i18n.AppI18n
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -210,7 +214,7 @@ fun NotesScreen(
                     showDrivePermission = true
                 }
             }.onFailure { error ->
-                attachError = error.message ?: "Google link failed"
+                attachError = error.message ?: AppI18n.t("google_link_failed")
                 pendingAcceptAfterRelay = null
             }
         }
@@ -450,7 +454,7 @@ fun NotesScreen(
             }.onFailure { error ->
                 session.streamDone = true
                 session.settled = true
-                attachError = error.message ?: "Failed to send attachment"
+                attachError = error.message ?: AppI18n.t("failed_send_attachment")
             }
         }
     }
@@ -637,7 +641,7 @@ fun NotesScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "Bulletin Board",
+                        text = stringRes("bulletin_board"),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
@@ -645,7 +649,7 @@ fun NotesScreen(
                         color = textColor
                     )
                     Text(
-                        text = "Sync messages, files, and device alerts across paired devices",
+                        text = stringRes("notes_subtitle"),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         color = subTextColor
                     )
@@ -675,13 +679,13 @@ fun NotesScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "No notes yet",
+                            text = stringRes("no_notes_yet"),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = textColor
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Type a note below to save & send to your paired devices.",
+                            text = stringRes("notes_empty_hint"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = subTextColor
                         )
@@ -810,7 +814,7 @@ fun NotesScreen(
                                                 row.note.noteId !in downloadingAttachmentIds &&
                                                 FileApexServices.noteRepository.attachmentNeedsDownload(row.note)
                                             ) {
-                                                BriefToast.show("Could not download attachment")
+                                                BriefToast.show(AppI18n.t("could_not_download_attachment"))
                                             }
                                         }
                                     }
@@ -857,7 +861,7 @@ fun NotesScreen(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Attached: $chipName",
+                        text = stringRes("attached_name", chipName),
                         style = MaterialTheme.typography.labelMedium,
                         color = subTextColor,
                         maxLines = 1,
@@ -889,7 +893,7 @@ fun NotesScreen(
                 IconButton(onClick = { pickAttachment() }) {
                     Icon(
                         imageVector = Icons.Filled.AttachFile,
-                        contentDescription = "Attach file",
+                        contentDescription = stringRes("attach_file"),
                         tint = if (pendingAttachmentPath != null) {
                             if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
                         } else {
@@ -922,7 +926,7 @@ fun NotesScreen(
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (inputContent.isEmpty()) {
                                     Text(
-                                        text = "Broadcast message or attach file",
+                                        text = stringRes("broadcast_or_attach"),
                                         color = subTextColor,
                                         fontSize = 13.sp,
                                         maxLines = 1,
@@ -950,7 +954,7 @@ fun NotesScreen(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send note",
+                            contentDescription = stringRes("send_note"),
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
@@ -979,8 +983,8 @@ fun NotesScreen(
                 showNotesPermissionPrompt = false
                 flushPendingSend(text)
             },
-            title = { Text("Enable Note Notifications?") },
-            text = { Text("Would you like to receive notifications when new notes or shared messages arrive from your paired devices?") },
+            title = { Text(stringRes("enable_note_notifications")) },
+            text = { Text(stringRes("note_notifications_prompt")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -992,7 +996,7 @@ fun NotesScreen(
                         flushPendingSend(text)
                     }
                 ) {
-                    Text("Enable Notifications")
+                    Text(stringRes("enable_notifications"))
                 }
             },
             dismissButton = {
@@ -1006,7 +1010,7 @@ fun NotesScreen(
                         flushPendingSend(text)
                     }
                 ) {
-                    Text("Not Now")
+                    Text(stringRes("not_now"))
                 }
             }
         )
@@ -1015,10 +1019,10 @@ fun NotesScreen(
     attachError?.let { message ->
         AlertDialog(
             onDismissRequest = { attachError = null },
-            title = { Text("Attachment") },
+            title = { Text(stringRes("attachment")) },
             text = { Text(message) },
             confirmButton = {
-                TextButton(onClick = { attachError = null }) { Text("OK") }
+                TextButton(onClick = { attachError = null }) { Text(stringRes("ok")) }
             }
         )
     }
@@ -1031,12 +1035,15 @@ fun NotesScreen(
                 relayOptIn = null
                 pendingRelayPick = null
             },
-            title = { Text("File too large for offline Notes") },
+            title = { Text(stringRes("file_too_large_offline_notes")) },
             text = {
                 Text(
-                    "${offer.fileLabel} is over the ${offer.lanLimitLabel} Wi‑Fi Notes limit. " +
-                        "Google Drive Relay can send files up to ${offer.relayLimitLabel}. " +
-                        "Enable Relay to send this attachment?"
+                    stringRes(
+                        "file_over_notes_limit",
+                        offer.fileLabel,
+                        offer.lanLimitLabel,
+                        offer.relayLimitLabel
+                    )
                 )
             },
             confirmButton = {
@@ -1045,7 +1052,7 @@ fun NotesScreen(
                         relayOptIn = null
                         if (picked != null) beginRelayOptIn(picked)
                     }
-                ) { Text("Enable Drive Relay") }
+                ) { Text(stringRes("enable_drive_relay")) }
             },
             dismissButton = {
                 TextButton(
@@ -1054,7 +1061,7 @@ fun NotesScreen(
                         relayOptIn = null
                         pendingRelayPick = null
                     }
-                ) { Text("Not Now") }
+                ) { Text(stringRes("not_now")) }
             }
         )
     }
@@ -1080,8 +1087,7 @@ fun NotesScreen(
             title = { Text(deleteKind.dialogTitle) },
             text = {
                 Text(
-                    "Do you want to delete this ${deleteKind.entryLabel} from this device only, " +
-                        "or delete it from all paired devices?"
+                    stringRes("delete_entry_scope", deleteKind.entryLabel)
                 )
             },
             confirmButton = {
@@ -1098,7 +1104,7 @@ fun NotesScreen(
                         }
                     }
                 ) {
-                    Text("All Devices", color = MaterialTheme.colorScheme.error)
+                    Text(stringRes("all_devices_title"), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -1112,11 +1118,11 @@ fun NotesScreen(
                             }
                         }
                     ) {
-                        Text("This Device Only")
+                        Text(stringRes("this_device_only"))
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                     TextButton(onClick = { noteToDelete = null }) {
-                        Text("Cancel")
+                        Text(stringRes("cancel"))
                     }
                 }
             }
@@ -1127,9 +1133,9 @@ fun NotesScreen(
     if (remotePurgeDeleteTarget != null) {
         AlertDialog(
             onDismissRequest = { pendingRemotePurgeDelete = null },
-            title = { Text("Remove From Remote Storage?") },
+            title = { Text(stringRes("remove_from_remote")) },
             text = {
-                Text("Also remove the file from remote device storage?")
+                Text(stringRes("also_remove_remote"))
             },
             confirmButton = {
                 TextButton(
@@ -1144,7 +1150,7 @@ fun NotesScreen(
                         }
                     }
                 ) {
-                    Text("Remove File", color = MaterialTheme.colorScheme.error)
+                    Text(stringRes("remove_file"), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -1161,11 +1167,11 @@ fun NotesScreen(
                             }
                         }
                     ) {
-                        Text("Keep File")
+                        Text(stringRes("keep_file"))
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                     TextButton(onClick = { pendingRemotePurgeDelete = null }) {
-                        Text("Cancel")
+                        Text(stringRes("cancel"))
                     }
                 }
             }
@@ -1182,13 +1188,10 @@ fun NotesScreen(
                 )
                 remotePurgePrompt = null
             },
-            title = { Text("Remote File Delete Request") },
+            title = { Text(stringRes("remote_delete_request")) },
             text = {
                 Text(
-                    "Another device asked to delete \"${incomingRemotePurgePrompt.fileName}\" and " +
-                        "remove its copy from this device. Choose whether FileApex should delete " +
-                        "shared bulletin files from local storage when requested. This choice is saved " +
-                        "and won't be asked again."
+                    stringRes("remote_delete_prompt_body", incomingRemotePurgePrompt.fileName)
                 )
             },
             confirmButton = {
@@ -1201,7 +1204,7 @@ fun NotesScreen(
                         remotePurgePrompt = null
                     }
                 ) {
-                    Text("Delete Files", color = MaterialTheme.colorScheme.error)
+                    Text(stringRes("delete_files"), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -1214,7 +1217,7 @@ fun NotesScreen(
                         remotePurgePrompt = null
                     }
                 ) {
-                    Text("Keep Files")
+                    Text(stringRes("keep_files"))
                 }
             }
         )
@@ -1286,9 +1289,9 @@ private fun NoteBubbleItem(
                     NoteRevealAction(
                         icon = if (item.attachmentPinned) Icons.Filled.Lock else Icons.Filled.LockOpen,
                         contentDescription = if (item.attachmentPinned) {
-                            "Unlock attachment"
+                            stringRes("unlock_attachment")
                         } else {
-                            "Lock attachment"
+                            stringRes("lock_attachment")
                         },
                         containerColor = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
                         onClick = onLockClick
@@ -1296,7 +1299,7 @@ private fun NoteBubbleItem(
                 }
                 NoteRevealAction(
                     icon = Icons.Filled.DeleteOutline,
-                    contentDescription = "Delete note",
+                    contentDescription = stringRes("delete_note"),
                     containerColor = MaterialTheme.colorScheme.error,
                     onClick = onDeleteClick
                 )
@@ -1366,7 +1369,7 @@ private fun NoteBubbleItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isMine) "This Device" else item.sourceDeviceName,
+                            text = if (isMine) stringRes("this_device") else item.sourceDeviceName,
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
                         )
@@ -1377,7 +1380,7 @@ private fun NoteBubbleItem(
                                 color = Color(0x3300E5FF)
                             ) {
                                 Text(
-                                    text = "Drive Sync",
+                                    text = stringRes("drive_sync"),
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
                                     color = Color(0xFF00E5FF),
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -1416,7 +1419,7 @@ private fun NoteBubbleItem(
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Image(
                                         bitmap = thumbnail,
-                                        contentDescription = "Open image",
+                                        contentDescription = stringRes("open_image"),
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .heightIn(min = 120.dp, max = 220.dp)
@@ -1455,7 +1458,7 @@ private fun NoteBubbleItem(
                                 ) {
                                     Icon(
                                         imageVector = ExplorerEntryIcons.iconForFile(attachmentName, ""),
-                                        contentDescription = "Open attachment",
+                                        contentDescription = stringRes("open_attachment"),
                                         tint = subTextColor,
                                         modifier = Modifier.size(14.dp)
                                     )
@@ -1494,7 +1497,7 @@ private fun NoteBubbleItem(
                             color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
                         )
                         Text(
-                            text = "Downloading…",
+                            text = stringRes("downloading"),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             color = subTextColor
                         )
@@ -1572,7 +1575,7 @@ private fun outgoingPlaceholderNote(
     return NoteRecord(
         noteId = "notes-outgoing-placeholder",
         sourceDeviceId = "",
-        sourceDeviceName = "This Device",
+        sourceDeviceName = AppI18n.t("this_device"),
         content = caption,
         epochMs = TimeUtils.now(),
         isMine = true,

@@ -1,6 +1,7 @@
 package com.fileapex.update
 
 import java.io.File
+import kotlin.text.Charsets
 import kotlin.system.exitProcess
 
 actual object PlatformUpdateInstaller {
@@ -32,7 +33,8 @@ actual object PlatformUpdateInstaller {
             buildMacUpdateScript(
                 assetPath = asset.absolutePath,
                 targetAppPath = targetApp.absolutePath
-            )
+            ),
+            Charsets.UTF_8
         )
         scriptFile.setExecutable(true)
 

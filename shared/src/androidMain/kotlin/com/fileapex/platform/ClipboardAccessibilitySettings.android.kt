@@ -64,7 +64,7 @@ actual object ClipboardAccessibilitySettings {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
             ?: return AppOpsManager.MODE_ALLOWED
         return runCatching {
-            appOps.unsafeCheckOpNoThrow(
+            appOps.checkOpNoThrow(
                 OP_ACCESS_RESTRICTED_SETTINGS,
                 Process.myUid(),
                 context.packageName

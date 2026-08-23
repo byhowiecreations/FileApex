@@ -19,7 +19,7 @@ class BulletinShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!FileApexAndroidBootstrap.ensureInitialized(this)) {
-            BriefToast.show("FileApex is still starting…")
+            BriefToast.show(com.fileapex.i18n.AppI18n.t("fileapex_still_starting"))
             finish()
             return
         }
@@ -40,12 +40,12 @@ class BulletinShareActivity : ComponentActivity() {
         scope.launch {
             runCatching {
                 val text = AndroidShareIntake.extractSharedText(textIntent)
-                if (text.isNullOrBlank()) error("Nothing to post")
+                if (text.isNullOrBlank()) error(com.fileapex.i18n.AppI18n.t("nothing_to_post"))
                 AndroidShareBulletin.ingestShareIntent(this@BulletinShareActivity, textIntent)
             }.onSuccess {
-                BriefToast.show("Posted to Bulletin Board")
+                BriefToast.show(com.fileapex.i18n.AppI18n.t("posted_to_bulletin"))
             }.onFailure { error ->
-                BriefToast.show(error.message ?: "Could not post to Bulletin Board")
+                BriefToast.show(error.message ?: com.fileapex.i18n.AppI18n.t("could_not_post_bulletin"))
             }
             finish()
         }

@@ -25,7 +25,7 @@ class ClipboardPushActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!FileApexAndroidBootstrap.ensureInitialized(this)) {
-            BriefToast.show("FileApex is still starting…")
+            BriefToast.show(com.fileapex.i18n.AppI18n.t("fileapex_still_starting"))
             finish()
             return
         }
@@ -37,7 +37,7 @@ class ClipboardPushActivity : ComponentActivity() {
                         .background(MaterialTheme.colorScheme.surface),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Sending clipboard…")
+                    Text(com.fileapex.i18n.AppI18n.t("sending_clipboard"))
                 }
             }
         }
@@ -46,7 +46,7 @@ class ClipboardPushActivity : ComponentActivity() {
             if (hasWindowFocus()) {
                 pushAndFinish()
             } else {
-                BriefToast.show("Open FileApex and tap Send Clipboard")
+                BriefToast.show(com.fileapex.i18n.AppI18n.t("open_fileapex_send_clipboard"))
                 finish()
             }
         }, 2_500)

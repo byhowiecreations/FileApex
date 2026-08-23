@@ -1,5 +1,7 @@
 package com.fileapex.platform
 
+import kotlin.text.Charsets
+
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.presentation.DeviceHardwareProfile
 
@@ -31,7 +33,7 @@ private fun readDesktopHardwareModel(): String {
             .redirectErrorStream(true)
             .start()
             .inputStream
-            .bufferedReader()
+            .bufferedReader(Charsets.UTF_8)
             .use { it.readText().trim() }
             .takeIf { it.isNotEmpty() }
     }.getOrNull()

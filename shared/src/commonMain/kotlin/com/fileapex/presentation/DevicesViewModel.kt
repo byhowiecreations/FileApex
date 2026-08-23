@@ -276,7 +276,7 @@ class DevicesViewModel : ViewModel() {
         val remainingMs = if (skipMinDelay) {
             0L
         } else {
-            LanPresenceTiming.DEVICE_CONNECT_HANDSHAKE_MS - TimeUtils.millisSince(startedAt)
+            TimeUtils.remainingMs(startedAt, LanPresenceTiming.DEVICE_CONNECT_HANDSHAKE_MS)
         }
         if (remainingMs > 0L) {
             delay(remainingMs)

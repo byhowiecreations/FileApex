@@ -1,5 +1,7 @@
 package com.fileapex.ui
 
+import com.fileapex.i18n.stringRes
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,7 +31,7 @@ fun UpdateAvailableSheet(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "FileApex ${offer.remoteVersion} available",
+                text = stringRes("update_available_title", offer.remoteVersion),
                 fontWeight = FontWeight.SemiBold
             )
         },
@@ -52,7 +54,7 @@ fun UpdateAvailableSheet(
                     }
                 Text(
                     text = offer.releaseNotes?.trim()?.takeIf { it.isNotEmpty() }
-                        ?: "A newer FileApex build is ready to install.",
+                        ?: stringRes("update_ready_body"),
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -64,7 +66,7 @@ fun UpdateAvailableSheet(
                     AppUpdateCoordinator.downloadPendingUpdate()
                 }
             ) {
-                Text("Download & install")
+                Text(stringRes("download_install"))
             }
         },
         dismissButton = {
@@ -73,7 +75,7 @@ fun UpdateAvailableSheet(
                     AppUpdateCoordinator.skipPendingUpdate()
                 }
             ) {
-                Text("Skip")
+                Text(stringRes("skip"))
             }
         }
     )

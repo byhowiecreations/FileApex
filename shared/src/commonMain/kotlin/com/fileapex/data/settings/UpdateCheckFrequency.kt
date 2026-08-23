@@ -41,11 +41,11 @@ object UpdateCheckFrequency {
 
     fun label(unit: UpdateCheckUnit, amount: Int): String {
         val safe = sanitizeAmount(unit, amount)
-        val unitLabel = when (unit) {
-            UpdateCheckUnit.Hours -> if (safe == 1) "hour" else "hours"
-            UpdateCheckUnit.Days -> if (safe == 1) "day" else "days"
-            UpdateCheckUnit.Weeks -> if (safe == 1) "week" else "weeks"
+        val key = when (unit) {
+            UpdateCheckUnit.Hours -> "update_every_hours"
+            UpdateCheckUnit.Days -> "update_every_days"
+            UpdateCheckUnit.Weeks -> "update_every_weeks"
         }
-        return "Every $safe $unitLabel"
+        return com.fileapex.i18n.AppI18n.t(key, safe)
     }
 }

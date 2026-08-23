@@ -1,6 +1,7 @@
 package com.fileapex.data.bulletin
 
 import com.fileapex.data.note.NoteRecord
+import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.textContainsWebUrl
 
 enum class BulletinDeleteContentKind {
@@ -11,18 +12,18 @@ enum class BulletinDeleteContentKind {
 
     val dialogTitle: String
         get() = when (this) {
-            MESSAGE -> "Delete Message"
-            LINK -> "Delete Web Link"
-            FILE -> "Delete File"
-            IMAGE -> "Delete Image"
+            MESSAGE -> AppI18n.t("delete_message")
+            LINK -> AppI18n.t("delete_web_link")
+            FILE -> AppI18n.t("delete_file")
+            IMAGE -> AppI18n.t("delete_image")
         }
 
     val entryLabel: String
         get() = when (this) {
-            MESSAGE -> "message"
-            LINK -> "web link"
-            FILE -> "file"
-            IMAGE -> "image"
+            MESSAGE -> AppI18n.t("entry_message")
+            LINK -> AppI18n.t("entry_web_link")
+            FILE -> AppI18n.t("entry_file")
+            IMAGE -> AppI18n.t("entry_image")
         }
 }
 

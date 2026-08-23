@@ -97,6 +97,10 @@ import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.util.TimeUtils
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.AppLocale
+import com.fileapex.i18n.persistAppLanguage
+import com.fileapex.i18n.stringRes
 import com.fileapex.platform.rememberGoogleSignInLauncher
 import com.fileapex.platform.rememberGoogleDriveAuthLauncher
 import com.fileapex.cloud.drive.GoogleDriveAuth
@@ -123,7 +127,8 @@ private enum class SettingsPage {
     GoogleAccount,
     RemoteFileDeletion,
     DesktopLayout,
-    WindowsDesign
+    WindowsDesign,
+    Language
 }
 
 
@@ -190,6 +195,7 @@ fun SettingsScreen(
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
+            onOpenLanguage = { page = SettingsPage.Language },
             onOpenNotifications = { page = SettingsPage.Notifications },
             onOpenThemes = { page = SettingsPage.Themes },
             onOpenClipboard = { page = SettingsPage.Clipboard },
@@ -336,6 +342,10 @@ fun SettingsScreen(
                 )
             }
         )
+        SettingsPage.Language -> LanguageSettingsPage(
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root }
+        )
     }
 }
 
@@ -351,6 +361,7 @@ private fun SettingsRootPage(
     onOpenPinRequired: () -> Unit,
     onOpenBackgroundPersistence: () -> Unit,
     onOpenAutoLaunchOnReboot: () -> Unit,
+    onOpenLanguage: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenThemes: () -> Unit,
     onOpenClipboard: () -> Unit,
@@ -373,7 +384,7 @@ private fun SettingsRootPage(
     val versionTapInteraction = remember { MutableInteractionSource() }
 
     SettingsPageShell(
-        title = "Settings",
+        title = stringRes("settings"),
         layoutMode = layoutMode,
         onBack = onBack.takeIf { showBackNavigation },
         onOpenTransferQueue = onOpenTransferQueue
@@ -386,24 +397,24 @@ private fun SettingsRootPage(
                     .padding(bottom = 48.dp)
             ) {
                 SettingsCategoryGroup(
-                    title = "System & App Performance",
+                    title = stringRes("system_app_performance"),
                     expanded = state.systemPerformanceExpanded,
                     onToggle = onToggleSystemPerformanceGroup
                 ) {
                     SettingsNavItem(
-                        title = "Check for Updates",
+                        title = stringRes("check_for_updates"),
                         subtitle = if (state.checkForUpdatesEnabled) {
                             UpdateCheckFrequency.label(
                                 state.checkForUpdatesIntervalUnit,
                                 state.checkForUpdatesIntervalAmount
                             )
                         } else {
-                            "Off"
+                            stringRes("off")
                         },
                         onClick = onOpenCheckForUpdates
                     )
                     SettingsNavItem(
-                        title = "Background Persistence",
+                        title = stringRes("background_persistence"),
                         subtitle = backgroundPersistenceSubtitle(
                             watchdogEnabled = state.enableServiceWatchdog,
                             backgroundPersistence = backgroundPersistence,
@@ -413,81 +424,86 @@ private fun SettingsRootPage(
                     )
                     if (!usesDesktopFileSelection()) {
                         SettingsNavItem(
-                            title = "Auto launch on reboot",
-                            subtitle = if (state.autoLaunchOnReboot) "On" else "Off",
+                            title = stringRes("auto_launch_on_reboot"),
+                            subtitle = if (state.autoLaunchOnReboot) stringRes("on") else stringRes("off"),
                             onClick = onOpenAutoLaunchOnReboot
                         )
                     }
+                    SettingsNavItem(
+                        title = stringRes("language"),
+                        subtitle = AppI18n.languageRowLabel(AppI18n.locale),
+                        onClick = onOpenLanguage
+                    )
                 }
 
                 SettingsCategoryGroup(
-                    title = "Appearance & Behavior",
+                    title = stringRes("appearance_behavior"),
                     expanded = state.appearanceBehaviorExpanded,
                     onToggle = onToggleAppearanceBehaviorGroup
                 ) {
                     SettingsNavItem(
-                        title = "Themes",
-                        subtitle = state.appTheme.displayName,
+                        title = stringRes("themes"),
+                        subtitle = localizedThemeName(state.appTheme),
                         onClick = onOpenThemes
                     )
                     SettingsNavItem(
-                        title = "Notifications",
+                        title = stringRes("notifications"),
                         subtitle = if (
                             state.notesNotificationsEnabled ||
                             state.driveRelayNotificationsEnabled ||
                             state.fileTransferNotificationsEnabled ||
                             state.liveTransferCapsuleEnabled
-                        ) "On" else "Off",
+                        ) stringRes("on") else stringRes("off"),
                         onClick = onOpenNotifications
                     )
                     SettingsNavItem(
-                        title = "Clipboard",
+                        title = stringRes("clipboard"),
                         subtitle = clipboardSettingsSubtitle(state),
                         onClick = onOpenClipboard
                     )
                     SettingsNavItem(
-                        title = "Device Details",
-                        subtitle = "Peer telemetry fields",
+                        title = stringRes("device_details"),
+                        subtitle = stringRes("peer_telemetry_fields"),
                         onClick = onOpenDeviceDetails
                     )
                     if (usesDesktopFileSelection()) {
                         SettingsNavItem(
-                            title = "Desktop Layout",
-                            subtitle = state.desktopLayoutMode.label,
+                            title = stringRes("desktop_layout"),
+                            subtitle = localizedDesktopLayout(state.desktopLayoutMode),
                             onClick = onOpenDesktopLayout
                         )
                     }
                     if (supportsWindowsFluentDesign()) {
                         SettingsNavItem(
-                            title = "Windows Design",
-                            subtitle = state.desktopUiStyle.label,
+                            title = stringRes("windows_design"),
+                            subtitle = localizedDesktopUiStyle(state.desktopUiStyle),
                             onClick = onOpenWindowsDesign
                         )
                     }
                 }
 
                 SettingsCategoryGroup(
-                    title = "Security & Account",
+                    title = stringRes("security_account"),
                     expanded = state.securityAccountExpanded,
                     onToggle = onToggleSecurityAccountGroup
                 ) {
                     SettingsNavItem(
-                        title = "PIN required",
-                        subtitle = buildString {
-                            append(if (state.pinRequiredEnabled) "On" else "Off")
-                            append(" · Browse unlock: ")
-                            append(state.pinIdleTimeout.label)
-                        },
+                        title = stringRes("pin_required"),
+                        subtitle = AppI18n.t(
+                            "pin_subtitle",
+                            if (state.pinRequiredEnabled) AppI18n.t("on") else AppI18n.t("off"),
+                            localizedPinIdle(state.pinIdleTimeout)
+                        ),
                         onClick = onOpenPinRequired
                     )
                     SettingsNavItem(
-                        title = "Google Account",
+                        title = stringRes("google_account"),
                         subtitle = googleAccountSubtitle(state),
                         onClick = onOpenGoogleAccount
                     )
                     SettingsNavItem(
-                        title = "Allow remote file deletion",
-                        subtitle = if (state.allowRemoteFileDeletion) "On" else "Off",
+                        title = stringRes("allow_remote_file_deletion"),
+                        subtitle = if (state.allowRemoteFileDeletion) stringRes("on") else stringRes("off"),
                         onClick = onOpenRemoteFileDeletion
                     )
                 }
@@ -563,7 +579,7 @@ private fun BackgroundPersistenceSettingsPage(
     onOpenAppDetailsSettings: () -> Unit
 ) {
     SettingsPageShell(
-        title = "Background Persistence",
+        title = stringRes("background_persistence"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -573,14 +589,9 @@ private fun BackgroundPersistenceSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Service watchdog") },
+                headlineContent = { Text(stringRes("service_watchdog"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "Enable background watchdog to automatically restart the FileApex " +
-                            "file server daemon if aggressive OEM battery management " +
-                            "terminates it in the background. Peer UDP wake only works while " +
-                            "the share-server notification is active."
-                    )
+                    Text(stringRes("watchdog_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -591,17 +602,13 @@ private fun BackgroundPersistenceSettingsPage(
             )
             if (backgroundPersistence.backgroundRestricted) {
                 ListItem(
-                    headlineContent = { Text("Background running restricted") },
+                    headlineContent = { Text(stringRes("background_restricted"), softWrap = true) },
                     supportingContent = {
                         Text(
                             backgroundPersistence.oemGuidance?.appBatteryUsageSteps?.let { steps ->
-                                "Android is blocking FileApex from running in the background. " +
-                                    "Tap to open system settings, then choose: $steps"
-                            } ?: (
-                                "Android is blocking FileApex from running in the background. " +
-                                    "Tap to open App battery usage and set FileApex to " +
-                                    "Unrestricted or Always allow."
-                                )
+                                stringRes("background_restricted_desc_steps", steps)
+                            } ?: stringRes("background_restricted_desc"),
+                            softWrap = true
                         )
                     },
                     modifier = Modifier.clickable { onOpenAppBatteryUsageSettings() }
@@ -609,26 +616,18 @@ private fun BackgroundPersistenceSettingsPage(
             }
             if (backgroundPersistence.batteryOptimizationRestricted) {
                 ListItem(
-                    headlineContent = { Text("Battery optimization active") },
+                    headlineContent = { Text(stringRes("battery_optimization_active"), softWrap = true) },
                     supportingContent = {
-                        Text(
-                            "FileApex is not exempt from classic battery optimization. Tap to " +
-                                "request unrestricted battery. On many phones you must also set " +
-                                "App battery usage to Unrestricted or Always allow."
-                        )
+                        Text(stringRes("battery_optimization_desc"), softWrap = true)
                     },
                     modifier = Modifier.clickable { onRequestBatteryUnrestricted() }
                 )
             }
             if (backgroundPersistence.unusedAppRestrictionsActive) {
                 ListItem(
-                    headlineContent = { Text("Pause app activity if unused") },
+                    headlineContent = { Text(stringRes("pause_unused"), softWrap = true) },
                     supportingContent = {
-                        Text(
-                            "Android may hibernate FileApex when you have not opened it recently. " +
-                                "Tap to turn off this restriction so the share server stays running " +
-                                "overnight."
-                        )
+                        Text(stringRes("pause_unused_desc"), softWrap = true)
                     },
                     modifier = Modifier.clickable { onOpenUnusedAppRestrictionsSettings() }
                 )
@@ -638,7 +637,7 @@ private fun BackgroundPersistenceSettingsPage(
                     backgroundPersistence.unusedAppRestrictionsActive
                 ) {
                     ListItem(
-                        headlineContent = { Text("${guidance.vendorLabel} setup") },
+                        headlineContent = { Text(stringRes("vendor_setup", guidance.vendorLabel), softWrap = true) },
                         supportingContent = {
                             Text(
                                 buildString {
@@ -657,24 +656,17 @@ private fun BackgroundPersistenceSettingsPage(
             }
             if (exactAlarmWarningActive) {
                 ListItem(
-                    headlineContent = { Text("Exact alarms disabled") },
+                    headlineContent = { Text(stringRes("exact_alarms_disabled"), softWrap = true) },
                     supportingContent = {
-                        Text(
-                            "Alarms & reminders permission is off. The service watchdog may " +
-                                "fire late or miss restarts after OEM kills. Tap to open " +
-                                "system alarm settings and allow FileApex."
-                        )
+                        Text(stringRes("exact_alarms_desc"), softWrap = true)
                     },
                     modifier = Modifier.clickable { onOpenExactAlarmSettings() }
                 )
             }
             ListItem(
-                headlineContent = { Text("System app settings") },
+                headlineContent = { Text(stringRes("system_app_settings"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "Opens FileApex in Android app settings. After an app update, open " +
-                            "FileApex once so the share server can restart."
-                    )
+                    Text(stringRes("system_app_settings_desc"), softWrap = true)
                 },
                 modifier = Modifier.clickable { onOpenAppDetailsSettings() }
             )
@@ -691,7 +683,7 @@ private fun AutoLaunchOnRebootSettingsPage(
     onToggle: (Boolean) -> Unit
 ) {
     SettingsPageShell(
-        title = "Auto launch on reboot",
+        title = stringRes("auto_launch_on_reboot"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -701,13 +693,9 @@ private fun AutoLaunchOnRebootSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Start share server after reboot") },
+                headlineContent = { Text(stringRes("start_share_after_reboot"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "When on, FileApex starts its share server automatically after your " +
-                            "device finishes rebooting. Off leaves the server stopped until you " +
-                            "open the app."
-                    )
+                    Text(stringRes("start_share_after_reboot_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -733,7 +721,7 @@ private fun NotificationsSettingsPage(
 ) {
     val driveRelayReady = state.googleDriveRelayEnabled
     SettingsPageShell(
-        title = "Notifications",
+        title = stringRes("notifications"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -742,14 +730,12 @@ private fun NotificationsSettingsPage(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            FileApexPaneSectionHeader(title = "Notifications")
+            FileApexPaneSectionHeader(title = stringRes("notifications"))
 
             ListItem(
-                headlineContent = { Text("Bulletin Board") },
+                headlineContent = { Text(stringRes("bulletin_board"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "Show a notification when new shared messages, files, or alerts arrive from paired devices."
-                    )
+                    Text(stringRes("bulletin_board_notif_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -762,14 +748,15 @@ private fun NotificationsSettingsPage(
             HorizontalDivider()
 
             ListItem(
-                headlineContent = { Text("Drive Relay") },
+                headlineContent = { Text(stringRes("drive_relay"), softWrap = true) },
                 supportingContent = {
                     Text(
                         if (driveRelayReady) {
-                            "Alerts when FileApex posts or retrieves files through Google Drive Relay."
+                            stringRes("drive_relay_notif_desc")
                         } else {
-                            "Turns on after Google Drive Relay is enabled under Google Account."
-                        }
+                            stringRes("drive_relay_notif_off")
+                        },
+                        softWrap = true
                     )
                 },
                 trailingContent = {
@@ -784,9 +771,9 @@ private fun NotificationsSettingsPage(
             HorizontalDivider()
 
             ListItem(
-                headlineContent = { Text("File Transfer") },
+                headlineContent = { Text(stringRes("file_transfer"), softWrap = true) },
                 supportingContent = {
-                    Text("Show a notification after files are successfully received from paired devices.")
+                    Text(stringRes("file_transfer_notif_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -799,9 +786,9 @@ private fun NotificationsSettingsPage(
             if (!usesDesktopFileSelection()) {
                 ListItem(
                     modifier = Modifier.padding(start = 16.dp),
-                    headlineContent = { Text("Live Activity") },
+                    headlineContent = { Text(stringRes("live_activity"), softWrap = true) },
                     supportingContent = {
-                        Text("Shows progress of active file transfers in a floating capsule. Queued items use the header clock icon.")
+                        Text(stringRes("live_activity_desc"), softWrap = true)
                     },
                     trailingContent = {
                         Switch(
@@ -827,7 +814,7 @@ private fun FileTransferNotificationsSettingsPage(
     onToggle: (Boolean) -> Unit
 ) {
     SettingsPageShell(
-        title = "File Transfer Notifications",
+        title = stringRes("file_transfer_notifications"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -837,13 +824,9 @@ private fun FileTransferNotificationsSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Show receive notifications") },
+                headlineContent = { Text(stringRes("show_receive_notifications"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "When on, this device shows a notification after files are received " +
-                            "successfully (includes filenames). Off keeps transfers silent. " +
-                            "Applies only when receiving, not when sending. Default is off."
-                    )
+                    Text(stringRes("show_receive_notif_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -874,7 +857,7 @@ private fun ClipboardSettingsPage(
 ) {
     val isAndroid = currentPlatformLabel() == "Android"
     SettingsPageShell(
-        title = "Clipboard",
+        title = stringRes("clipboard"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -884,9 +867,9 @@ private fun ClipboardSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Clipboard Sharing") },
+                headlineContent = { Text(stringRes("clipboard_sharing"), softWrap = true) },
                 supportingContent = {
-                    Text("Enable or disable clipboard syncing. Payloads are encrypted before they leave this device.")
+                    Text(stringRes("clipboard_sharing_subtitle"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -898,9 +881,9 @@ private fun ClipboardSettingsPage(
             if (state.clipboardSharingEnabled) {
                 if (isAndroid) {
                     ListItem(
-                        headlineContent = { Text("Accessibility") },
+                        headlineContent = { Text(stringRes("accessibility"), softWrap = true) },
                         supportingContent = {
-                            Text("Allows background clipboard detection for auto-sync.")
+                            Text(stringRes("accessibility_subtitle"), softWrap = true)
                         },
                         trailingContent = {
                             Switch(
@@ -910,9 +893,9 @@ private fun ClipboardSettingsPage(
                         }
                     )
                     ListItem(
-                        headlineContent = { Text("Via Cellular") },
+                        headlineContent = { Text(stringRes("via_cellular"), softWrap = true) },
                         supportingContent = {
-                            Text("Allows syncing over cellular using secure cloud relay.")
+                            Text(stringRes("via_cellular_subtitle"), softWrap = true)
                         },
                         trailingContent = {
                             Switch(
@@ -923,9 +906,9 @@ private fun ClipboardSettingsPage(
                     )
                 } else {
                     ListItem(
-                        headlineContent = { Text("Automatically send") },
+                        headlineContent = { Text(stringRes("automatically_send"), softWrap = true) },
                         supportingContent = {
-                            Text("Automatically send clipboard content to below selection")
+                            Text(stringRes("automatically_send_subtitle"), softWrap = true)
                         },
                         trailingContent = {
                             Switch(
@@ -935,10 +918,10 @@ private fun ClipboardSettingsPage(
                         }
                     )
                 }
-                FileApexPaneSectionHeader(title = "Share clipboard with:")
+                FileApexPaneSectionHeader(title = stringRes("share_clipboard_with"))
                 if (state.clipboardShareMode == ClipboardShareMode.UNSET) {
                     Text(
-                        text = "Choose All devices or Specific devices. Clipboard is not sent until you pick one.",
+                        text = stringRes("choose_all_or_specific"),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -946,14 +929,14 @@ private fun ClipboardSettingsPage(
                 }
                 Column(modifier = Modifier.selectableGroup()) {
                     ClipboardShareModeRow(
-                        title = "All devices",
-                        subtitle = "Broadcast clipboard to paired peers on the same Wi-Fi.",
+                        title = stringRes("all_devices"),
+                        subtitle = stringRes("broadcast_clipboard_wifi"),
                         selected = state.clipboardShareMode == ClipboardShareMode.ALL,
                         onClick = { onShareModeChange(ClipboardShareMode.ALL) }
                     )
                     ClipboardShareModeRow(
-                        title = "Specific devices",
-                        subtitle = "Only the devices you check below.",
+                        title = stringRes("specific_devices"),
+                        subtitle = stringRes("only_checked_devices"),
                         selected = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
                         onClick = { onShareModeChange(ClipboardShareMode.SPECIFIC) }
                     )
@@ -961,7 +944,7 @@ private fun ClipboardSettingsPage(
                 if (state.clipboardShareMode == ClipboardShareMode.SPECIFIC) {
                     if (state.clipboardPeers.isEmpty()) {
                         Text(
-                            text = "No paired devices yet.",
+                            text = stringRes("no_paired_devices"),
                             modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -993,13 +976,9 @@ private fun ClipboardSettingsPage(
         if (state.showAccessibilityRestrictedHelp) {
             AlertDialog(
                 onDismissRequest = onDismissRestrictedHelp,
-                title = { Text("Allow restricted settings") },
+                title = { Text(stringRes("allow_restricted_settings")) },
                 text = {
-                    Text(
-                        "Android is blocking Accessibility for this sideloaded build. " +
-                            "Open App Info, tap the ⋮ menu, then Allow restricted settings. " +
-                            "After that, turn on FileApex clipboard in Accessibility."
-                    )
+                    Text(stringRes("restricted_settings_body"))
                 },
                 confirmButton = {
                     TextButton(
@@ -1007,7 +986,7 @@ private fun ClipboardSettingsPage(
                             onOpenAppInfo()
                             onDismissRestrictedHelp()
                         }
-                    ) { Text("Open App Info") }
+                    ) { Text(stringRes("open_app_info")) }
                 },
                 dismissButton = {
                     TextButton(
@@ -1015,7 +994,7 @@ private fun ClipboardSettingsPage(
                             onOpenAccessibilitySettings()
                             onDismissRestrictedHelp()
                         }
-                    ) { Text("Open Accessibility") }
+                    ) { Text(stringRes("open_accessibility")) }
                 }
             )
         }
@@ -1049,18 +1028,103 @@ private fun ClipboardShareModeRow(
 }
 
 private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
-    if (!state.clipboardSharingEnabled) return "Off"
+    if (!state.clipboardSharingEnabled) return AppI18n.t("off")
     val mode = when (state.clipboardShareMode) {
-        ClipboardShareMode.SPECIFIC -> "Specific devices"
-        ClipboardShareMode.ALL -> "All devices"
-        ClipboardShareMode.UNSET -> "Choose devices"
+        ClipboardShareMode.SPECIFIC -> AppI18n.t("specific_devices")
+        ClipboardShareMode.ALL -> AppI18n.t("all_devices")
+        ClipboardShareMode.UNSET -> AppI18n.t("choose_devices")
     }
     val extras = buildList {
-        if (currentPlatformLabel() == "Android" && state.clipboardAccessibilityEnabled) add("Accessibility")
-        if (currentPlatformLabel() != "Android" && state.clipboardAutoSendEnabled) add("Auto-send")
-        if (state.clipboardViaCellularEnabled && currentPlatformLabel() == "Android") add("Cellular")
+        if (currentPlatformLabel() == "Android" && state.clipboardAccessibilityEnabled) add(AppI18n.t("accessibility"))
+        if (currentPlatformLabel() != "Android" && state.clipboardAutoSendEnabled) add(AppI18n.t("auto_send"))
+        if (state.clipboardViaCellularEnabled && currentPlatformLabel() == "Android") add(AppI18n.t("cellular"))
     }
-    return if (extras.isEmpty()) "On · $mode" else "On · $mode · ${extras.joinToString(" · ")}"
+    return if (extras.isEmpty()) {
+        AppI18n.t("clipboard_on_mode", mode)
+    } else {
+        AppI18n.t("clipboard_on_mode_extras", mode, extras.joinToString(" · "))
+    }
+}
+
+@Composable
+private fun localizedThemeName(theme: AppTheme): String = when (theme) {
+    AppTheme.CLEAN -> stringRes("theme_clean")
+    AppTheme.FLUX_GLASS -> stringRes("theme_flux")
+    AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic")
+}
+
+@Composable
+private fun localizedThemeDescription(theme: AppTheme): String = when (theme) {
+    AppTheme.CLEAN -> stringRes("theme_clean_desc")
+    AppTheme.FLUX_GLASS -> stringRes("theme_flux_desc")
+    AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic_desc")
+}
+
+@Composable
+private fun localizedUpdateUnit(unit: UpdateCheckUnit): String = when (unit) {
+    UpdateCheckUnit.Hours -> stringRes("unit_hours")
+    UpdateCheckUnit.Days -> stringRes("unit_days")
+    UpdateCheckUnit.Weeks -> stringRes("unit_weeks")
+}
+
+@Composable
+private fun localizedDesktopLayout(mode: DesktopLayoutMode): String = when (mode) {
+    DesktopLayoutMode.Compact -> stringRes("layout_compact")
+    DesktopLayoutMode.Expanded -> stringRes("layout_expanded")
+}
+
+@Composable
+private fun localizedDesktopUiStyle(style: DesktopUiStyle): String = when (style) {
+    DesktopUiStyle.Standard -> stringRes("windows_standard")
+    DesktopUiStyle.WindowsFluent -> stringRes("windows_fluent")
+}
+
+private fun localizedPinIdle(timeout: PinIdleTimeout): String = when (timeout) {
+    PinIdleTimeout.Immediate -> AppI18n.t("pin_idle_immediate")
+    PinIdleTimeout.OneMinute -> AppI18n.t("pin_idle_1m")
+    PinIdleTimeout.FiveMinutes -> AppI18n.t("pin_idle_5m")
+    PinIdleTimeout.TenMinutes -> AppI18n.t("pin_idle_10m")
+}
+
+@Composable
+private fun LanguageSettingsPage(
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit
+) {
+    val selected = AppI18n.locale
+    SettingsPageShell(
+        title = stringRes("language"),
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            AppLocale.entries.forEach { locale ->
+                val label = AppI18n.languageRowLabel(locale)
+                ListItem(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = locale == selected,
+                            onClick = { persistAppLanguage(locale) },
+                            role = Role.RadioButton
+                        ),
+                    headlineContent = {
+                        Text(label, softWrap = true, modifier = Modifier.fillMaxWidth())
+                    },
+                    trailingContent = {
+                        RadioButton(
+                            selected = locale == selected,
+                            onClick = { persistAppLanguage(locale) }
+                        )
+                    }
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -1071,7 +1135,7 @@ private fun RemoteFileDeletionSettingsPage(
     onAllowRemoteFileDeletionChange: (Boolean) -> Unit
 ) {
     SettingsPageShell(
-        title = "Allow remote file deletion",
+        title = stringRes("allow_remote_file_deletion"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1081,11 +1145,9 @@ private fun RemoteFileDeletionSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Allow remote file deletion") },
+                headlineContent = { Text(stringRes("allow_remote_file_deletion"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "This allows the Bulletin Board to \"delete all\" for files in local storage remotely."
-                    )
+                    Text(stringRes("remote_delete_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -1114,15 +1176,11 @@ private fun DriveRelaySettingsSection(
     val relayOn = state.googleDriveRelayEnabled && GoogleDriveAuth.hasGrant()
 
     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-    FileApexPaneSectionHeader(title = "Google Drive Relay")
+    FileApexPaneSectionHeader(title = stringRes("google_drive_relay"))
     ListItem(
-        headlineContent = { Text("Google Drive Relay") },
+        headlineContent = { Text(stringRes("google_drive_relay"), softWrap = true) },
         supportingContent = {
-            Text(
-                "Store relayed files in a FileApex Relay folder on your Google Drive. " +
-                    "Works on Wi‑Fi. FileApex cannot see your other Drive files. Desktop has no FCM, so it " +
-                    "checks that folder on launch and every 15 minutes when off Wi‑Fi."
-            )
+            Text(stringRes("drive_relay_desc"), softWrap = true)
         },
         trailingContent = {
             Switch(
@@ -1142,12 +1200,9 @@ private fun DriveRelaySettingsSection(
     )
     if (relayOn) {
         ListItem(
-            headlineContent = { Text("Cellular") },
+            headlineContent = { Text(stringRes("cellular"), softWrap = true) },
             supportingContent = {
-                Text(
-                    "Also use Google Drive Relay when this device is off local Wi‑Fi. " +
-                        "Separate from clipboard Via Cellular."
-                )
+                Text(stringRes("drive_cellular_desc"), softWrap = true)
             },
             trailingContent = {
                 Switch(
@@ -1157,17 +1212,17 @@ private fun DriveRelaySettingsSection(
             }
         )
         ListItem(
-            headlineContent = { Text("Relay size limit") },
+            headlineContent = { Text(stringRes("relay_size_limit"), softWrap = true) },
             supportingContent = {
                 Text(
-                    "Max size for one Google Drive Relay send — a single file, or a selected " +
-                        "group at once. Default is ${DriveRelayMaxMb.DEFAULT.label}."
+                    stringRes("relay_size_limit_desc", stringRes("size_mb", DriveRelayMaxMb.DEFAULT.megabytes)),
+                    softWrap = true
                 )
             },
             trailingContent = {
                 Box {
                     TextButton(onClick = { relayLimitExpanded = true }) {
-                        Text(state.driveRelayMaxMb.label)
+                        Text(stringRes("size_mb", state.driveRelayMaxMb.megabytes))
                     }
                     DropdownMenu(
                         expanded = relayLimitExpanded,
@@ -1175,7 +1230,7 @@ private fun DriveRelaySettingsSection(
                     ) {
                         DriveRelayMaxMb.entries.forEach { option ->
                             DropdownMenuItem(
-                                text = { Text(option.label) },
+                                text = { Text(stringRes("size_mb", option.megabytes)) },
                                 onClick = {
                                     onDriveRelayMaxMbSelected(option)
                                     relayLimitExpanded = false
@@ -1187,12 +1242,9 @@ private fun DriveRelaySettingsSection(
             }
         )
         ListItem(
-            headlineContent = { Text("Purge File(s) after 72 hours") },
+            headlineContent = { Text(stringRes("purge_after_72h"), softWrap = true) },
             supportingContent = {
-                Text(
-                    "Delete unpinned Drive relay files 72 hours after upload. Direct " +
-                        "transfers are also removed as soon as the destination device retrieves them."
-                )
+                Text(stringRes("purge_after_72h_desc"), softWrap = true)
             },
             trailingContent = {
                 Switch(
@@ -1202,12 +1254,11 @@ private fun DriveRelaySettingsSection(
             }
         )
         ListItem(
-            headlineContent = { Text("Delete relay files now") },
+            headlineContent = { Text(stringRes("delete_relay_now"), softWrap = true) },
             supportingContent = {
                 Text(
-                    state.drivePurgeNowMessage
-                        ?: "Remove every file in FileApex Relay immediately, including " +
-                        "uploads that never downloaded. Does not wait 72 hours."
+                    state.drivePurgeNowMessage ?: stringRes("delete_relay_now_desc"),
+                    softWrap = true
                 )
             },
             trailingContent = {
@@ -1215,7 +1266,7 @@ private fun DriveRelaySettingsSection(
                     onClick = onPurgeNow,
                     enabled = GoogleDriveAuth.hasGrant() && !state.drivePurgeNowBusy
                 ) {
-                    Text(if (state.drivePurgeNowBusy) "Deleting…" else "Delete")
+                    Text(if (state.drivePurgeNowBusy) stringRes("deleting") else stringRes("delete"))
                 }
             }
         )
@@ -1273,7 +1324,7 @@ private fun DeviceDetailsSettingsPage(
     )
 
     SettingsPageShell(
-        title = "Device Details",
+        title = stringRes("device_details"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1283,21 +1334,15 @@ private fun DeviceDetailsSettingsPage(
                 .verticalScroll(scrollState)
         ) {
             Text(
-                text = "Configure which telemetry fields appear when you open Device Details " +
-                    "for a paired device. Wi-Fi and cellular rows are shown only when the peer " +
-                    "is on that network type.",
+                text = stringRes("device_details_intro"),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             ListItem(
-                headlineContent = { Text("Allow over cellular") },
+                headlineContent = { Text(stringRes("allow_over_cellular"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "When off-LAN, fetch or share encrypted Device Details via Firebase. " +
-                            "Both devices must enable this and link a Google Account. " +
-                            "Same Wi-Fi still uses local network (not encrypted)."
-                    )
+                    Text(stringRes("allow_over_cellular_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -1324,16 +1369,16 @@ private fun DeviceDetailsSettingsPage(
                 )
                 ListItem(
                     modifier = Modifier.offset { IntOffset(0, visualOffsetPx.roundToInt()) },
-                    headlineContent = { Text(fieldId.label) },
+                    headlineContent = { Text(stringRes("field_${fieldId.name}"), softWrap = true) },
                     supportingContent = when {
                         fieldId.wifiOnly -> {
                             {
-                                Text("Shown when peer is on Wi-Fi")
+                                Text(stringRes("shown_when_wifi"), softWrap = true)
                             }
                         }
                         fieldId.cellularOnly -> {
                             {
-                                Text("Shown when peer is on cellular")
+                                Text(stringRes("shown_when_cellular"), softWrap = true)
                             }
                         }
                         else -> null
@@ -1361,7 +1406,7 @@ private fun DeviceDetailsSettingsPage(
                 onClick = onReset,
                 modifier = Modifier.padding(horizontal = 8.dp)
             ) {
-                Text("Reset to defaults")
+                Text(stringRes("reset_to_defaults"))
             }
             Spacer(modifier = Modifier.height(48.dp))
         }
@@ -1377,7 +1422,7 @@ private fun DesktopLayoutSettingsPage(
     onExpanded: (Boolean) -> Unit
 ) {
     SettingsPageShell(
-        title = "Desktop Layout",
+        title = stringRes("desktop_layout"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1387,13 +1432,9 @@ private fun DesktopLayoutSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Expanded layout") },
+                headlineContent = { Text(stringRes("expanded_layout"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "When on, always uses the adaptive multi-pane layout with navigation " +
-                            "rail and list-detail, regardless of window size. When off, uses " +
-                            "the compact single-column layout. Default is Compact."
-                    )
+                    Text(stringRes("expanded_layout_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -1415,7 +1456,7 @@ private fun WindowsDesignSettingsPage(
     onFluent: (Boolean) -> Unit
 ) {
     SettingsPageShell(
-        title = "Windows Design",
+        title = stringRes("windows_design"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1425,13 +1466,9 @@ private fun WindowsDesignSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Windows 11 Modern") },
+                headlineContent = { Text(stringRes("windows_11_modern"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "Standard keeps the cross-platform look (same as Android). " +
-                            "Modern uses native Windows styling and a Mica title bar. " +
-                            "Saved on this PC; applies immediately."
-                    )
+                    Text(stringRes("windows_fluent_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -1459,7 +1496,7 @@ private fun CheckForUpdatesSettingsPage(
     val requestInstallUnknownAppsPermission = rememberRequestInstallUnknownAppsPermission()
 
     SettingsPageShell(
-        title = "Check for Updates",
+        title = stringRes("check_for_updates"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1469,12 +1506,9 @@ private fun CheckForUpdatesSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Enable Check for Updates") },
+                headlineContent = { Text(stringRes("enable_check_for_updates"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "When on, FileApex checks GitHub Releases on your schedule and " +
-                            "installs newer builds for this platform. Default is off."
-                    )
+                    Text(stringRes("check_updates_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -1533,7 +1567,7 @@ private fun PinRequiredSettingsPage(
     var timeoutExpanded by remember { mutableStateOf(false) }
 
     SettingsPageShell(
-        title = "PIN required",
+        title = stringRes("pin_required"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1543,13 +1577,9 @@ private fun PinRequiredSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Require PIN") },
+                headlineContent = { Text(stringRes("require_pin"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "When on, other devices must enter this device's PIN to pair and to " +
-                            "browse files. Sending files to this device does not require PIN. " +
-                            "Default is off. Only this device stores the PIN."
-                    )
+                    Text(stringRes("require_pin_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -1566,7 +1596,7 @@ private fun PinRequiredSettingsPage(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     singleLine = true,
-                    label = { Text("Device PIN (4–8 digits)") },
+                    label = { Text(stringRes("device_pin")) },
                     supportingText = state.pinError?.let { err ->
                         {
                             Text(
@@ -1582,20 +1612,19 @@ private fun PinRequiredSettingsPage(
             }
 
             Text(
-                text = "Browse unlock idle timeout",
+                text = stringRes("browse_unlock_idle"),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.titleSmall
             )
             Text(
-                text = "How long this device stays unlocked when browsing a PIN-protected peer. " +
-                    "Returning to the device list always re-locks. Default is 5 Minutes.",
+                text = stringRes("browse_unlock_idle_desc"),
                 modifier = Modifier.padding(horizontal = 16.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                 TextButton(onClick = { timeoutExpanded = true }) {
-                    Text(state.pinIdleTimeout.label)
+                    Text(localizedPinIdle(state.pinIdleTimeout))
                 }
                 DropdownMenu(
                     expanded = timeoutExpanded,
@@ -1603,7 +1632,7 @@ private fun PinRequiredSettingsPage(
                 ) {
                     PinIdleTimeout.entries.forEach { option ->
                         DropdownMenuItem(
-                            text = { Text(option.label) },
+                            text = { Text(localizedPinIdle(option)) },
                             onClick = {
                                 onIdleTimeoutSelected(option)
                                 timeoutExpanded = false
@@ -1635,7 +1664,7 @@ private fun GoogleAccountSettingsPage(
     val launchSignIn = rememberGoogleSignInLauncher(onResult = onIdToken)
 
     SettingsPageShell(
-        title = "Google Account",
+        title = stringRes("google_account"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1645,14 +1674,9 @@ private fun GoogleAccountSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text("Link Google Account") },
+                headlineContent = { Text(stringRes("link_google_account"), softWrap = true) },
                 supportingContent = {
-                    Text(
-                        "Opt-in only. Signs in with Google and registers this device’s public ID " +
-                            "and LAN address in your private Firebase registry so other FileApex " +
-                            "apps on the same account can discover you. Files are uploaded only " +
-                            "when Google Drive Relay is also enabled."
-                    )
+                    Text(stringRes("link_google_desc"), softWrap = true)
                 },
                 trailingContent = {
                     Switch(
@@ -1669,7 +1693,7 @@ private fun GoogleAccountSettingsPage(
             )
             if (state.googleAccountLinkEnabled && state.googleAccountEmail.isNotBlank()) {
                 Text(
-                    text = "Linked: ${state.googleAccountEmail}",
+                    text = stringRes("linked_email", state.googleAccountEmail),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1707,11 +1731,11 @@ private fun GoogleAccountSettingsPage(
 }
 
 private fun googleAccountSubtitle(state: SettingsUiState): String {
-    if (!state.googleAccountLinkEnabled) return "Not Connected"
+    if (!state.googleAccountLinkEnabled) return AppI18n.t("google_unlinked")
     return if (state.googleDriveRelayEnabled) {
-        "Connected · Drive Relay"
+        "${AppI18n.t("google_linked")} · ${AppI18n.t("drive_relay")}"
     } else {
-        "Connected"
+        AppI18n.t("google_linked")
     }
 }
 
@@ -1788,9 +1812,11 @@ private fun SettingsNavItem(
     onClick: () -> Unit
 ) {
     ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        headlineContent = { Text(title) },
-        supportingContent = { Text(subtitle) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        headlineContent = { Text(title, softWrap = true) },
+        supportingContent = { Text(subtitle, softWrap = true) },
         trailingContent = {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -1822,13 +1848,13 @@ private fun UpdateFrequencyRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Check every",
+                text = stringRes("check_every"),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Box {
                 TextButton(onClick = { unitExpanded = true }) {
-                    Text(unit.name)
+                    Text(localizedUpdateUnit(unit))
                 }
                 DropdownMenu(
                     expanded = unitExpanded,
@@ -1836,7 +1862,7 @@ private fun UpdateFrequencyRow(
                 ) {
                     UpdateCheckUnit.entries.forEach { option ->
                         DropdownMenuItem(
-                            text = { Text(option.name) },
+                            text = { Text(localizedUpdateUnit(option)) },
                             onClick = {
                                 onUnitSelected(option)
                                 unitExpanded = false
@@ -1851,7 +1877,7 @@ private fun UpdateFrequencyRow(
             UpdateCheckUnit.Weeks -> {
                 Column(modifier = Modifier.width(112.dp)) {
                     Text(
-                        text = "Weeks",
+                        text = stringRes("unit_weeks"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1882,7 +1908,7 @@ private fun UpdateFrequencyRow(
                     onValueChange = onAmountTextChange,
                     modifier = Modifier.width(112.dp),
                     singleLine = true,
-                    label = { Text("1–24") },
+                    label = { Text(stringRes("range_1_24")) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
             }
@@ -1892,7 +1918,7 @@ private fun UpdateFrequencyRow(
                     onValueChange = onAmountTextChange,
                     modifier = Modifier.width(112.dp),
                     singleLine = true,
-                    label = { Text("1–30") },
+                    label = { Text(stringRes("range_1_30")) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
             }
@@ -1911,7 +1937,7 @@ private fun ThemesSettingsPage(
     onToggleOrbitalRings: (Boolean) -> Unit
 ) {
     SettingsPageShell(
-        title = "Themes",
+        title = stringRes("themes"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1921,10 +1947,10 @@ private fun ThemesSettingsPage(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp)
         ) {
-            FileApexPaneSectionHeader(title = "App Theme")
+            FileApexPaneSectionHeader(title = stringRes("app_theme"))
 
             Text(
-                text = "Select your preferred visual style for FileApex. Changes apply immediately across all screens and windows.",
+                text = stringRes("themes_intro"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -1967,7 +1993,7 @@ private fun ThemesSettingsPage(
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = theme.displayName,
+                                    text = localizedThemeName(theme),
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSurface
                                 )
@@ -1978,7 +2004,7 @@ private fun ThemesSettingsPage(
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Text(
-                                            text = "DEFAULT",
+                                            text = stringRes("default_badge"),
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                             color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSecondaryContainer
@@ -1988,7 +2014,7 @@ private fun ThemesSettingsPage(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = theme.description,
+                                text = localizedThemeDescription(theme),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isCustomTheme) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -2011,14 +2037,12 @@ private fun ThemesSettingsPage(
             if (state.appTheme == AppTheme.KINETIC_SPHERE) {
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                FileApexPaneSectionHeader(title = "Kinetic Sphere Elements")
+                FileApexPaneSectionHeader(title = stringRes("kinetic_sphere_elements"))
 
                 ListItem(
-                    headlineContent = { Text("Connected Device Lines") },
+                    headlineContent = { Text(stringRes("connected_device_lines"), softWrap = true) },
                     supportingContent = {
-                        Text(
-                            "Draw dashed spoke connector lines from the central hub to each device node."
-                        )
+                        Text(stringRes("theme_lines_desc"), softWrap = true)
                     },
                     trailingContent = {
                         Switch(
@@ -2029,11 +2053,9 @@ private fun ThemesSettingsPage(
                 )
 
                 ListItem(
-                    headlineContent = { Text("Orbital Background Rings") },
+                    headlineContent = { Text(stringRes("orbital_background_rings"), softWrap = true) },
                     supportingContent = {
-                        Text(
-                            "Draw 3D elliptical orbital rings in deep space around the central hub."
-                        )
+                        Text(stringRes("theme_rings_desc"), softWrap = true)
                     },
                     trailingContent = {
                         Switch(

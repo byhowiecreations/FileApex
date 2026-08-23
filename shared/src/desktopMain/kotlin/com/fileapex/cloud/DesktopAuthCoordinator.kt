@@ -11,6 +11,7 @@ import io.ktor.http.isSuccess
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import kotlin.text.Charsets
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -228,7 +229,7 @@ object DesktopAuthCoordinator {
     }
 
     private fun sha256Base64Url(value: String): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
+        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         return Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
 

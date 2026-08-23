@@ -3,6 +3,7 @@ package com.fileapex.platform
 import com.fileapex.di.FileApexServices
 import java.awt.Desktop
 import java.io.File
+import kotlin.text.Charsets
 import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -114,7 +115,7 @@ object DesktopSendHandoff {
             ?.filter { it.isFile && it.name.endsWith(".json") }
             ?.mapNotNull { file ->
                 runCatching {
-                    val job = json.decodeFromString<SendJobFile>(file.readText())
+                    val job = json.decodeFromString<SendJobFile>(file.readText(Charsets.UTF_8))
                     job.id.takeIf { job.status == STATUS_PENDING }
                 }.getOrNull()
             }
@@ -141,7 +142,7 @@ object DesktopSendHandoff {
             return
         }
         val job = runCatching {
-            json.decodeFromString<SendJobFile>(file.readText())
+            json.decodeFromString<SendJobFile>(file.readText(Charsets.UTF_8))
         }.getOrElse { error ->
             println("DesktopSendHandoff: bad job JSON $jobId :: ${error.message}")
             return
@@ -191,7 +192,7 @@ object DesktopSendHandoff {
     }
 
     private fun writeJob(job: SendJobFile) {
-        jobFile(job.id).writeText(json.encodeToString(job))
+        jobFile(job.id).writeText(json.encodeToString(job), Charsets.UTF_8)
     }
 
     private fun jobFile(jobId: String): File = File(jobsDir, "$jobId.json")

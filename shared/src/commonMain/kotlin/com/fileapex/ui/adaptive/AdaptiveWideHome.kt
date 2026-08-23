@@ -1,5 +1,7 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.i18n.stringRes
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,16 +116,16 @@ fun AdaptiveWideHome(
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         if (editMode) {
             TextButton(onClick = devicesViewModel::revertDeviceOrderInEditMode) {
-                Text("Revert", color = fileApexChromeContentColor())
+                Text(stringRes("revert"), color = fileApexChromeContentColor())
             }
             TextButton(onClick = devicesViewModel::saveDeviceOrderAndExitEditMode) {
-                Text("Done", color = fileApexChromeContentColor())
+                Text(stringRes("done"), color = fileApexChromeContentColor())
             }
         } else if (deviceRows.isNotEmpty()) {
             IconButton(onClick = devicesViewModel::enterDeviceOrderEditMode) {
                 Icon(
                     imageVector = Icons.Filled.Edit,
-                    contentDescription = "Reorder devices",
+                    contentDescription = stringRes("reorder_devices"),
                     tint = fileApexChromeContentColor()
                 )
             }
@@ -279,7 +281,7 @@ fun AdaptiveWideHome(
                         FileExplorerScreen(
                             target = localTarget,
                             onBack = onClearDetail,
-                            titleOverride = "Local Files"
+                            titleOverride = com.fileapex.i18n.AppI18n.t("local_files")
                         )
                     }
                 }
@@ -324,9 +326,11 @@ private fun WideTopBar(
             if (selectedTab == HomeTab.Devices && !hasActiveDetail) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Paired Devices",
+                    text = stringRes("paired_devices_title"),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = fileApexChromeContentColor().copy(alpha = 0.85f)
+                    color = fileApexChromeContentColor().copy(alpha = 0.85f),
+                    softWrap = true,
+                    maxLines = 2
                 )
             }
         }
@@ -405,13 +409,13 @@ fun FileApexNavigationRail(
                 selected = selected == HomeTab.Files,
                 onClick = onFiles,
                 icon = Icons.Filled.Folder,
-                label = "Local Files"
+                label = com.fileapex.i18n.AppI18n.t("local_files")
             )
             RailItem(
                 selected = selected == HomeTab.Settings,
                 onClick = onSettings,
                 icon = Icons.Filled.Settings,
-                label = "Settings"
+                label = com.fileapex.i18n.AppI18n.t("settings")
             )
             if (isPortrait) {
                 Spacer(modifier = Modifier.weight(1f))
@@ -456,7 +460,9 @@ private fun RailItem(
                     fileApexNavSelectedTextColor()
                 } else {
                     fileApexNavUnselectedTextColor()
-                }
+                },
+                softWrap = true,
+                maxLines = 2
             )
         },
         colors = fileApexNavigationRailItemColors()
@@ -480,12 +486,12 @@ private fun DetailEmptyState() {
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Select a device to view files",
+            text = stringRes("select_device_files"),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "Choose a paired peer from the list, or open Local Files from the navigation bar.",
+            text = stringRes("select_device_files_hint"),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp)

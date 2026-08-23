@@ -1,6 +1,7 @@
 package com.fileapex.util
 
 import com.fileapex.platform.currentTimeMillis
+import com.fileapex.i18n.formatLocalizedDateTime
 
 /**
  * Prefer [now] instead of [System.currentTimeMillis] / platform [currentTimeMillis].
@@ -9,6 +10,9 @@ object TimeUtils {
     fun now(): Long = currentTimeMillis()
 
     fun millisSince(epochMs: Long): Long = (now() - epochMs).coerceAtLeast(0L)
+
+    fun remainingMs(startedAtEpochMs: Long, minDurationMs: Long): Long =
+        (minDurationMs - millisSince(startedAtEpochMs)).coerceAtLeast(0L)
 
     fun isWithinWindow(epochMs: Long, windowMs: Long): Boolean =
         epochMs > 0L && millisSince(epochMs) <= windowMs
@@ -48,7 +52,7 @@ object TimeUtils {
     /** Pre-localized so ViewModels do not do time-math. */
     fun formatLastSeenLabel(epochMs: Long, zoneId: String = DEFAULT_ZONE_ID): String? {
         if (epochMs <= 0L) return null
-        return "Last seen ${formatUtcToLocal(epochMs, zoneId)}"
+        return com.fileapex.i18n.AppI18n.t("last_seen", formatLocalizedDateTime(epochMs, zoneId))
     }
 
     const val DEFAULT_ZONE_ID: String = "America/New_York"

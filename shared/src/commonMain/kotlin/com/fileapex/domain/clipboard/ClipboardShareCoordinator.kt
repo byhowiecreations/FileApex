@@ -78,14 +78,14 @@ object ClipboardShareCoordinator {
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed)) return
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
-            BriefToast.show("Choose All or Specific devices in Clipboard settings")
+            BriefToast.show(com.fileapex.i18n.AppI18n.t("choose_all_or_specific_toast"))
             return
         }
         val android = currentPlatformLabel() == "Android"
         scope.launch {
             captureAndBroadcast(trimmed, desktopPeersOnly = android)
         }
-        BriefToast.show("Sending clipboard…")
+        BriefToast.show(com.fileapex.i18n.AppI18n.t("sending_clipboard"))
     }
 
     fun onAppForegrounded() {
@@ -124,25 +124,25 @@ object ClipboardShareCoordinator {
     suspend fun pushCurrentClipboardNow(prefetchedText: String? = null): String {
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) {
-            return "Clipboard sharing is off"
+            return com.fileapex.i18n.AppI18n.t("clipboard_sharing_off")
         }
         if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
-            return "Choose All or Specific devices first"
+            return com.fileapex.i18n.AppI18n.t("choose_devices_first")
         }
         val text = prefetchedText?.trim()?.takeIf { it.isNotBlank() }
             ?: withContext(Dispatchers.Main.immediate) {
                 PlatformClipboard.getSystemClipboardText()?.takeIf { it.isNotBlank() }
             }
-            ?: return "Clipboard is empty"
+            ?: return com.fileapex.i18n.AppI18n.t("clipboard_empty")
         if (!ClipboardPushDeduper.shouldAllowManualPush(text)) {
-            return "Already sent"
+            return com.fileapex.i18n.AppI18n.t("already_sent")
         }
         ClipboardPushDeduper.remember(text)
         captureAndBroadcast(
             text,
             desktopPeersOnly = currentPlatformLabel() == "Android"
         )
-        return "Sending clipboard…"
+        return com.fileapex.i18n.AppI18n.t("sending_clipboard")
     }
 
     suspend fun sendToDevice(deviceId: String): ClipboardSendResponse {

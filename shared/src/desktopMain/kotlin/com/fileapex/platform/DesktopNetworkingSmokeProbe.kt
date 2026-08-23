@@ -1,5 +1,7 @@
 package com.fileapex.platform
 
+import kotlin.text.Charsets
+
 import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.network.FileApexMdns
 import com.fileapex.network.FileApexMdnsAdvertiser
@@ -79,7 +81,7 @@ object DesktopNetworkingSmokeProbe {
         val dir = DesktopPlatformPaths.applicationSupportDirectory()
         val probe = java.io.File(dir, ".smoke-write")
         val writable = runCatching {
-            probe.writeText("ok")
+            probe.writeText("ok", Charsets.UTF_8)
             probe.delete()
             true
         }.getOrDefault(false)

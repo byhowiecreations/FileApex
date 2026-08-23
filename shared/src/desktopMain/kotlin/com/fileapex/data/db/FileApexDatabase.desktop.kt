@@ -14,6 +14,7 @@ import com.fileapex.data.db.MIGRATION_9_10
 import com.fileapex.platform.DesktopPlatformPaths
 import kotlinx.coroutines.Dispatchers
 import java.io.File
+import kotlin.text.Charsets
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -89,7 +90,7 @@ internal fun resolveDesktopDatabaseFile(): File {
         }
 
         runCatching {
-            rosterResolvedMarker.writeText("ok")
+            rosterResolvedMarker.writeText("ok", Charsets.UTF_8)
         }.onFailure { error ->
             println("FileApexDatabase: roster marker write failed - ${error.message}")
         }

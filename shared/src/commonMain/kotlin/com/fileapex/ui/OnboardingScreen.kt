@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.fileapex.i18n.stringRes
 import com.fileapex.platform.OnboardingPermissionStep
 
 /**
@@ -66,7 +67,7 @@ fun OnboardingScreen(
                     Spacer(modifier = Modifier.height(20.dp))
                 } else {
                     Text(
-                        text = "Permissions (${pageIndex + 1} of ${pages.size})",
+                        text = stringRes("permissions_of", pageIndex + 1, pages.size),
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -95,23 +96,21 @@ fun OnboardingScreen(
 @Composable
 private fun OnboardingIntroHeader() {
     Text(
-        text = "Welcome to FileApex",
+        text = stringRes("onboarding_intro_title"),
         style = MaterialTheme.typography.headlineMedium,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(modifier = Modifier.height(10.dp))
     Text(
-        text = "FileApex sends and receives files between your devices on Wi‑Fi — " +
-            "directly, with no cloud upload. You can also browse folders on paired " +
-            "phones and computers when you need to pick files remotely.",
+        text = stringRes("onboarding_wifi_intro"),
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(modifier = Modifier.height(14.dp))
     Text(
-        text = "Tap Grant on each card below. We only ask for permissions you must approve.",
+        text = stringRes("onboarding_tap_grant"),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth()
@@ -152,7 +151,7 @@ private fun OnboardingPermissionCard(
             if (step.granted) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Granted",
+                    text = stringRes("granted"),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
@@ -164,7 +163,7 @@ private fun OnboardingPermissionCard(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = focused
                 ) {
-                    Text(if (focused) "Grant" else "Grant next")
+                    Text(if (focused) stringRes("grant") else stringRes("grant_next"))
                 }
                 if (denied) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -178,7 +177,7 @@ private fun OnboardingPermissionCard(
                 } else if (!focused) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Complete the highlighted permission first.",
+                        text = stringRes("complete_highlighted_first"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -197,14 +196,14 @@ private fun OnboardingPageIndicator(pageIndex: Int, pageCount: Int) {
         horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Page ${pageIndex + 1} of $pageCount",
+            text = stringRes("page_of", pageIndex + 1, pageCount),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         if (pageIndex + 1 < pageCount) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Grant permissions on this page, then continue on the next.",
+                text = stringRes("onboarding_grant_then_continue"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

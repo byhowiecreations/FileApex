@@ -25,25 +25,34 @@ actual object DriveRelayNotifier {
 
     actual fun notifyPosted(fileNames: List<String>, targetNames: List<String>) {
         if (fileNames.isEmpty()) return
-        val targets = targetNames.filter { it.isNotBlank() }.joinToString(", ").ifBlank { "paired devices" }
-        val title = if (fileNames.size == 1) "Sent via Google Drive Relay" else "${fileNames.size} files sent via Drive Relay"
+        val targets = targetNames.filter { it.isNotBlank() }.joinToString(", ").ifBlank { com.fileapex.i18n.AppI18n.t("paired_devices_lower") }
+        val title = if (fileNames.size == 1) {
+            com.fileapex.i18n.AppI18n.t("sent_via_drive")
+        } else {
+            com.fileapex.i18n.AppI18n.t("n_files_sent_via_drive", fileNames.size)
+        }
         val body = "${fileNames.joinToString(", ")} → $targets"
         post(title, body)
     }
 
     actual fun notifyFailed(fileName: String, queued: Boolean) {
-        val title = "Google Drive Relay failed"
+        val title = com.fileapex.i18n.AppI18n.t("drive_relay_failed")
+        val safeName = fileName.ifBlank { com.fileapex.i18n.AppI18n.t("file_generic") }
         val body = if (queued) {
-            "${fileName.ifBlank { "File" }} queued until Drive is available"
+            com.fileapex.i18n.AppI18n.t("file_queued_until_drive", safeName)
         } else {
-            "${fileName.ifBlank { "File" }} could not be posted to Drive"
+            com.fileapex.i18n.AppI18n.t("file_could_not_post", safeName)
         }
         post(title, body)
     }
 
     actual fun notifyRetrieved(fileNames: List<String>) {
         if (fileNames.isEmpty()) return
-        val title = if (fileNames.size == 1) "Received via Google Drive Relay" else "${fileNames.size} files received via Drive Relay"
+        val title = if (fileNames.size == 1) {
+            com.fileapex.i18n.AppI18n.t("received_via_drive")
+        } else {
+            com.fileapex.i18n.AppI18n.t("n_files_received_via_drive", fileNames.size)
+        }
         post(title, fileNames.joinToString(", "), DRIVE_RETRIEVE_TAG, NOTIFICATION_ID_RETRIEVED)
     }
 

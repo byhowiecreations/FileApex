@@ -105,6 +105,8 @@ import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.stringRes
 
 import com.fileapex.ui.adaptive.FluxGlassHeader
 import com.fileapex.ui.adaptive.CompactDevicesTitleBand
@@ -214,7 +216,7 @@ fun isMainHomeScreen(selectedTab: HomeTab, hasActiveDetail: Boolean = false): Bo
     selectedTab == HomeTab.Devices && !hasActiveDetail
 
 fun devicesNavLabel(onMainHomeScreen: Boolean): String =
-    if (onMainHomeScreen) "Devices" else "Home"
+    if (onMainHomeScreen) AppI18n.t("devices") else AppI18n.t("home")
 
 enum class DevicesScreenLayoutMode {
     /** Phone / folded: full scaffold with bottom bar. */
@@ -261,16 +263,16 @@ fun DevicesScreen(
         if (LocalAppTheme.current != AppTheme.KINETIC_SPHERE) {
             if (editMode) {
                 TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
-                    Text("Revert")
+                    Text(stringRes("revert"))
                 }
                 TextButton(onClick = viewModel::saveDeviceOrderAndExitEditMode) {
-                    Text("Done")
+                    Text(stringRes("done"))
                 }
             } else if (deviceRows.isNotEmpty()) {
                 IconButton(onClick = viewModel::enterDeviceOrderEditMode) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
-                        contentDescription = "Reorder devices"
+                        contentDescription = stringRes("reorder_devices")
                     )
                 }
             }
@@ -440,8 +442,10 @@ fun DevicesScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Add New Device",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                                text = stringRes("add_new_device"),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                softWrap = true,
+                                maxLines = 2
                             )
                         }
                         DropdownMenu(
@@ -449,14 +453,14 @@ fun DevicesScreen(
                             onDismissRequest = { addMenuOpen = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Generate QR Code") },
+                                text = { Text(stringRes("generate_qr")) },
                                 onClick = {
                                     addMenuOpen = false
                                     onGenerateQr()
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Join device") },
+                                text = { Text(stringRes("join_device")) },
                                 onClick = {
                                     addMenuOpen = false
                                     onJoinDevice()
@@ -473,22 +477,22 @@ fun DevicesScreen(
     if (renameId != null) {
         AlertDialog(
             onDismissRequest = viewModel::cancelRename,
-            title = { Text("Rename device") },
+            title = { Text(stringRes("rename_device")) },
             text = {
                 OutlinedTextField(
                     value = renameText,
                     onValueChange = { renameText = it },
                     singleLine = true,
-                    label = { Text("Name") }
+                    label = { Text(stringRes("name")) }
                 )
             },
             confirmButton = {
                 TextButton(onClick = { viewModel.confirmRename(renameId, renameText) }) {
-                    Text("Save")
+                    Text(stringRes("save"))
                 }
             },
             dismissButton = {
-                TextButton(onClick = viewModel::cancelRename) { Text("Cancel") }
+                TextButton(onClick = viewModel::cancelRename) { Text(stringRes("cancel")) }
             }
         )
     }
@@ -499,11 +503,11 @@ fun DevicesScreen(
                 pinText = ""
                 viewModel.cancelPinPairing()
             },
-            title = { Text("Enter device PIN") },
+            title = { Text(stringRes("enter_device_pin")) },
             text = {
                 Column {
                     Text(
-                        text = "Enter the PIN for ${pending.deviceName} to finish pairing.",
+                        text = stringRes("enter_pin_pair", pending.deviceName),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -511,7 +515,7 @@ fun DevicesScreen(
                         value = pinText,
                         onValueChange = { pinText = it.filter { ch -> ch.isDigit() }.take(8) },
                         singleLine = true,
-                        label = { Text("PIN") }
+                        label = { Text(stringRes("pin")) }
                     )
                 }
             },
@@ -523,7 +527,7 @@ fun DevicesScreen(
                     },
                     enabled = pinText.isNotBlank()
                 ) {
-                    Text("Pair")
+                    Text(stringRes("pair"))
                 }
             },
             dismissButton = {
@@ -532,7 +536,7 @@ fun DevicesScreen(
                         pinText = ""
                         viewModel.cancelPinPairing()
                     }
-                ) { Text("Cancel") }
+                ) { Text(stringRes("cancel")) }
             }
         )
     }
@@ -543,11 +547,11 @@ fun DevicesScreen(
                 pinText = ""
                 viewModel.cancelPinUnlock()
             },
-            title = { Text("Enter device PIN") },
+            title = { Text(stringRes("enter_device_pin")) },
             text = {
                 Column {
                     Text(
-                        text = "Enter the PIN for ${pending.displayName} to browse files.",
+                        text = stringRes("enter_pin_browse", pending.displayName),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -555,7 +559,7 @@ fun DevicesScreen(
                         value = pinText,
                         onValueChange = { pinText = it.filter { ch -> ch.isDigit() }.take(8) },
                         singleLine = true,
-                        label = { Text("PIN") }
+                        label = { Text(stringRes("pin")) }
                     )
                 }
             },
@@ -567,7 +571,7 @@ fun DevicesScreen(
                     },
                     enabled = pinText.isNotBlank()
                 ) {
-                    Text("Unlock")
+                    Text(stringRes("unlock"))
                 }
             },
             dismissButton = {
@@ -576,7 +580,7 @@ fun DevicesScreen(
                         pinText = ""
                         viewModel.cancelPinUnlock()
                     }
-                ) { Text("Cancel") }
+                ) { Text(stringRes("cancel")) }
             }
         )
     }
@@ -584,12 +588,9 @@ fun DevicesScreen(
     pendingDelete?.let { device ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("Remove device?") },
+            title = { Text(stringRes("remove_device")) },
             text = {
-                Text(
-                    "Remove ${device.deviceName} from paired devices? " +
-                        "It will stay gone until you pair again."
-                )
+                Text(stringRes("remove_device_body", device.deviceName))
             },
             confirmButton = {
                 TextButton(
@@ -597,10 +598,10 @@ fun DevicesScreen(
                         viewModel.removeDevice(device.deviceId)
                         pendingDelete = null
                     }
-                ) { Text("Remove") }
+                ) { Text(stringRes("remove")) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringRes("cancel")) }
             }
         )
     }
@@ -623,18 +624,18 @@ fun DevicesScreen(
     if (confirmExit) {
         AlertDialog(
             onDismissRequest = { confirmExit = false },
-            title = { Text("Exit FileApex?") },
-            text = { Text("Stop sharing and close the app.") },
+            title = { Text(stringRes("exit_fileapex_q")) },
+            text = { Text(stringRes("stop_sharing_close")) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         confirmExit = false
                         onExitApp()
                     }
-                ) { Text("Exit") }
+                ) { Text(stringRes("exit")) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmExit = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmExit = false }) { Text(stringRes("cancel")) }
             }
         )
     }
@@ -670,7 +671,7 @@ internal fun SendClipboardActionChip(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = "Send Clipboard",
+                text = stringRes("send_clipboard"),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.5.sp
@@ -804,7 +805,7 @@ private fun PairedDevicesEditReorderList(
         ) {
             if (deviceRows.isEmpty()) {
                 Text(
-                    text = "No paired devices yet. Tap Add New Device to generate a QR code or join a device.",
+                    text = stringRes("no_paired_devices_hint"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
@@ -903,7 +904,7 @@ private fun PairedDevicesBrowseList(
                 contentType = "empty"
             ) {
                 Text(
-                    text = "No paired devices yet. Tap Add New Device to generate a QR code or join a device.",
+                    text = stringRes("no_paired_devices_hint"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier
@@ -980,7 +981,7 @@ private fun PairedDevicesGridBrowseList(
             if (deviceRows.isEmpty()) {
                 item(key = "empty", span = { GridItemSpan(grid.columnCount) }) {
                     Text(
-                        text = "No paired devices yet. Tap Add New Device to generate a QR code or join a device.",
+                        text = stringRes("no_paired_devices_hint"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
@@ -1113,7 +1114,7 @@ private fun DeviceGridCell(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Connecting…",
+                            text = stringRes("connecting"),
                             style = subtitleStyle.copy(textAlign = TextAlign.Center),
                             color = FileApexTeal,
                             maxLines = 1,
@@ -1122,11 +1123,12 @@ private fun DeviceGridCell(
                     }
                 } else {
                     Text(
-                        text = row.subtitle,
+                        text = DeviceListRow.localizedSubtitle(row),
                         style = subtitleStyle.copy(textAlign = TextAlign.Center),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1142,35 +1144,35 @@ private fun DeviceGridCell(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.MoreHoriz,
-                        contentDescription = "Device options",
+                        contentDescription = stringRes("device_options"),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(if (grid.compactTypography) 16.dp else 18.dp)
                     )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
-                        text = { Text("Rename") },
+                        text = { Text(stringRes("rename")) },
                         onClick = {
                             menuOpen = false
                             onRename()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Device Details") },
+                        text = { Text(stringRes("device_details")) },
                         onClick = {
                             menuOpen = false
                             onDeviceDetails()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Send Clipboard") },
+                        text = { Text(stringRes("send_clipboard")) },
                         onClick = {
                             menuOpen = false
                             onSendClipboard()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Remove") },
+                        text = { Text(stringRes("remove")) },
                         onClick = {
                             menuOpen = false
                             onRemove()
@@ -1181,7 +1183,7 @@ private fun DeviceGridCell(
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
-                    contentDescription = "Selected",
+                    contentDescription = stringRes("selected"),
                     tint = FileApexTeal,
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -1206,7 +1208,7 @@ private fun HomeTopBar(
     if (isCustomGlass) {
         FluxGlassHeader(
             primaryTitle = "FileApex",
-            secondaryTitle = "Paired Devices",
+            secondaryTitle = stringRes("paired_devices_title"),
             showLayoutView = allowLayoutView,
             onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
             showCloseService = true,
@@ -1280,14 +1282,14 @@ fun FileApexBottomBar(
                         selected = selected == HomeTab.Files,
                         onClick = onFiles,
                         icon = Icons.Filled.Folder,
-                        label = "Local Files",
+                        label = stringRes("local_files"),
                         modifier = Modifier.weight(1f)
                     )
                     CustomGlassNavItem(
                         selected = selected == HomeTab.Settings,
                         onClick = onSettings,
                         icon = Icons.Filled.Settings,
-                        label = "Settings",
+                        label = stringRes("settings"),
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1331,12 +1333,12 @@ fun FileApexBottomBar(
                     NavIcon(
                         selected = selected == HomeTab.Files,
                         imageVector = Icons.Filled.Folder,
-                        contentDescription = "Local Files"
+                        contentDescription = stringRes("local_files")
                     )
                 },
                 label = {
                     Text(
-                        "Local Files",
+                        stringRes("local_files"),
                         color = if (selected == HomeTab.Files) {
                             fileApexNavSelectedTextColor()
                         } else {
@@ -1353,12 +1355,14 @@ fun FileApexBottomBar(
                     NavIcon(
                         selected = selected == HomeTab.Settings,
                         imageVector = Icons.Filled.Settings,
-                        contentDescription = "Settings"
+                        contentDescription = stringRes("settings")
                     )
                 },
                 label = {
                     Text(
-                        "Settings",
+                        stringRes("settings"),
+                        maxLines = 2,
+                        softWrap = true,
                         color = if (selected == HomeTab.Settings) {
                             fileApexNavSelectedTextColor()
                         } else {
@@ -1415,8 +1419,8 @@ private fun CustomGlassNavItem(
                 lineHeight = 13.sp
             ),
             color = if (selected) Color.White else inactiveTint,
-            maxLines = 1,
-            softWrap = false,
+            maxLines = 2,
+            softWrap = true,
             textAlign = TextAlign.Center
         )
     }
@@ -1552,7 +1556,7 @@ private fun DeviceCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Connecting…",
+                            text = stringRes("connecting"),
                             style = MaterialTheme.typography.bodySmall,
                             color = FileApexTeal,
                             maxLines = 1,
@@ -1561,18 +1565,19 @@ private fun DeviceCard(
                     }
                 } else {
                     Text(
-                        text = row.subtitle,
+                        text = DeviceListRow.localizedSubtitle(row),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = true
                     )
                 }
             }
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
-                    contentDescription = "Selected",
+                    contentDescription = stringRes("selected"),
                     tint = FileApexTeal,
                     modifier = Modifier
                         .padding(end = 4.dp)
@@ -1586,14 +1591,14 @@ private fun DeviceCard(
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
                             imageVector = Icons.Filled.MoreHoriz,
-                            contentDescription = "Device options",
+                            contentDescription = stringRes("device_options"),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         if (onRename != null) {
                             DropdownMenuItem(
-                                text = { Text("Rename") },
+                                text = { Text(stringRes("rename")) },
                                 onClick = {
                                     menuOpen = false
                                     onRename()
@@ -1602,7 +1607,7 @@ private fun DeviceCard(
                         }
                         if (onDeviceDetails != null) {
                             DropdownMenuItem(
-                                text = { Text("Device Details") },
+                                text = { Text(stringRes("device_details")) },
                                 onClick = {
                                     menuOpen = false
                                     onDeviceDetails()
@@ -1611,7 +1616,7 @@ private fun DeviceCard(
                         }
                         if (onSendClipboard != null) {
                             DropdownMenuItem(
-                                text = { Text("Send Clipboard") },
+                                text = { Text(stringRes("send_clipboard")) },
                                 onClick = {
                                     menuOpen = false
                                     onSendClipboard()
@@ -1620,7 +1625,7 @@ private fun DeviceCard(
                         }
                         if (onRemove != null) {
                             DropdownMenuItem(
-                                text = { Text("Remove") },
+                                text = { Text(stringRes("remove")) },
                                 onClick = {
                                     menuOpen = false
                                     onRemove()
@@ -1644,7 +1649,7 @@ private fun DeviceDetailsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Device Details — ${details.deviceName}") },
+        title = { Text(stringRes("device_details_title", details.deviceName), softWrap = true) },
         text = {
             when {
                 details.loading -> {
@@ -1655,7 +1660,7 @@ private fun DeviceDetailsDialog(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(28.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Fetching snapshot…")
+                        Text(stringRes("fetching_snapshot"))
                     }
                 }
                 details.errorMessage != null -> {
@@ -1694,7 +1699,7 @@ private fun DeviceDetailsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text(stringRes("close")) }
         }
     )
 }
@@ -1729,7 +1734,7 @@ private fun BatteryStatusOverlay(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Device Battery Levels",
+                        text = stringRes("device_battery_levels"),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 17.sp
@@ -1755,14 +1760,14 @@ private fun BatteryStatusOverlay(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Polling battery levels...",
+                            text = stringRes("polling_batteries"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.85f)
                         )
                     }
                 } else if (items.isEmpty()) {
                     Text(
-                        text = "No paired devices found.",
+                        text = stringRes("no_paired_devices_found"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.padding(vertical = 16.dp)
@@ -1790,7 +1795,7 @@ private fun BatteryStatusOverlay(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 val batteryText = when {
-                                    !item.online -> "Offline"
+                                    !item.online -> stringRes("offline")
                                     item.levelPercent != null -> {
                                         val stateLower = item.chargingState.trim().lowercase()
                                         val isCharging = when {
@@ -1801,7 +1806,7 @@ private fun BatteryStatusOverlay(
                                         }
                                         if (isCharging) "⚡ ${item.levelPercent}%" else "${item.levelPercent}%"
                                     }
-                                    else -> "Unknown"
+                                    else -> stringRes("unknown")
                                 }
                                 val textColor = when {
                                     !item.online -> Color.White.copy(alpha = 0.5f)

@@ -129,7 +129,7 @@ fun AdaptiveExplorerView(
                         pathsEqual(dir.absolutePath, selectedFolderPath)
                     ExplorerListRow(
                         title = dir.name,
-                        subtitle = "Folder",
+                        subtitle = com.fileapex.i18n.AppI18n.t("folder"),
                         selected = selected,
                         leading = {
                             ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
@@ -324,7 +324,7 @@ private fun ExplorerListContent(
         items(directories, key = { "dir-${it.id}" }) { dir ->
             ExplorerListRow(
                 title = dir.name,
-                subtitle = "Folder",
+                subtitle = com.fileapex.i18n.AppI18n.t("folder"),
                 selected = false,
                 leading = {
                     ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
@@ -391,7 +391,7 @@ private fun ExplorerGridContent(
         items(directories, key = { "gdir-${it.id}" }) { dir ->
             ExplorerGridCell(
                 item = dir,
-                subtitle = "Folder",
+                subtitle = com.fileapex.i18n.AppI18n.t("folder"),
                 isSelectionMode = false,
                 isSelected = false,
                 desktopSelection = desktopSelection,

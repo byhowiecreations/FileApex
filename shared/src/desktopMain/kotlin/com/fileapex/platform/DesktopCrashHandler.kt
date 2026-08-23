@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.update.FileApexAppVersion
 import java.io.File
+import kotlin.text.Charsets
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.text.SimpleDateFormat
@@ -86,7 +87,7 @@ object DesktopCrashHandler {
             if (targetLogFile.exists()) {
                 targetLogFile.appendText("\n\n$logContent")
             } else {
-                targetLogFile.writeText(logContent)
+                targetLogFile.writeText(logContent, Charsets.UTF_8)
             }
         }
 

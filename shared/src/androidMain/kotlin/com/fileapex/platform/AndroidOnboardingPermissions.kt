@@ -22,8 +22,8 @@ object AndroidOnboardingPermissions {
             OnboardingPermissionStep(
                 id = ID_MANAGE_EXTERNAL_STORAGE,
                 permissionName = "MANAGE_EXTERNAL_STORAGE",
-                reason = "Browse folders on this device and share files with paired devices on your Wi‑Fi.",
-                deniedHint = "File access is required — FileApex cannot browse or send local files without it.",
+                reason = com.fileapex.i18n.AppI18n.t("onboard_storage_reason"),
+                deniedHint = com.fileapex.i18n.AppI18n.t("onboard_storage_denied"),
                 granted = hasAllFilesAccess(context)
             )
         )
@@ -32,8 +32,8 @@ object AndroidOnboardingPermissions {
                 OnboardingPermissionStep(
                     id = ID_NEARBY_WIFI_DEVICES,
                     permissionName = "NEARBY_WIFI_DEVICES",
-                    reason = "Discover and connect to other FileApex devices on your local network.",
-                    deniedHint = "Nearby device access is required for LAN pairing and file sharing.",
+                    reason = com.fileapex.i18n.AppI18n.t("onboard_nearby_reason"),
+                    deniedHint = com.fileapex.i18n.AppI18n.t("onboard_nearby_denied"),
                     granted = AndroidRuntimePermissions.hasNearbyWifiDevices(context)
                 )
             )
@@ -41,8 +41,8 @@ object AndroidOnboardingPermissions {
                 OnboardingPermissionStep(
                     id = ID_POST_NOTIFICATIONS,
                     permissionName = "POST_NOTIFICATIONS",
-                    reason = "Show the persistent share-server notification while FileApex runs in the background.",
-                    deniedHint = "Notifications keep the LAN share service alive — allow them for reliable background sharing.",
+                    reason = com.fileapex.i18n.AppI18n.t("onboard_notify_reason"),
+                    deniedHint = com.fileapex.i18n.AppI18n.t("onboard_notify_denied"),
                     granted = AndroidRuntimePermissions.hasPostNotifications(context)
                 )
             )
@@ -51,8 +51,8 @@ object AndroidOnboardingPermissions {
             OnboardingPermissionStep(
                 id = ID_IGNORE_BATTERY_OPTIMIZATIONS,
                 permissionName = "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-                reason = "Let FileApex keep sharing files when the screen is off or you switch apps.",
-                deniedHint = "Without unrestricted battery, Android may stop background file sharing.",
+                reason = com.fileapex.i18n.AppI18n.t("onboard_battery_reason"),
+                deniedHint = com.fileapex.i18n.AppI18n.t("onboard_battery_denied"),
                 granted = !isBatteryOptimizationRestricted(context)
             )
         )

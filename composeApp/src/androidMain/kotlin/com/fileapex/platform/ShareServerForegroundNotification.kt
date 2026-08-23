@@ -104,8 +104,8 @@ object ShareServerForegroundNotification {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
         val contentIntent = PendingIntent.getActivity(context, CONTENT_REQUEST_CODE, launch, pendingFlags)
         val builder = NotificationCompat.Builder(context, AndroidNotificationChannels.SHARE_SERVER_ACTIVE)
-            .setContentTitle("FileApex Server Active")
-            .setContentText("Local WiFi secure ecosystem running...")
+            .setContentTitle(com.fileapex.i18n.AppI18n.t("fileapex_server_active"))
+            .setContentText(com.fileapex.i18n.AppI18n.t("wifi_ecosystem"))
             .setSmallIcon(AndroidNotificationChannels.smallIcon)
             .setContentIntent(contentIntent)
             .setOngoing(true)

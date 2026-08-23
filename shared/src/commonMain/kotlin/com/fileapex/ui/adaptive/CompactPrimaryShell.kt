@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fileapex.i18n.stringRes
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.QueuedFilesButton
@@ -118,7 +119,7 @@ enum class CompactHomeTitleStyle {
 @Composable
 fun FluxGlassHeader(
     primaryTitle: String = "FileApex",
-    secondaryTitle: String? = "Paired Devices",
+    secondaryTitle: String? = null,
     showLayoutView: Boolean = false,
     onToggleLayoutView: (() -> Unit)? = null,
     showCloseService: Boolean = false,
@@ -132,6 +133,7 @@ fun FluxGlassHeader(
     val titleColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isCustomGlass) Color.White.copy(alpha = 0.72f) else MaterialTheme.colorScheme.onSurfaceVariant
     val accentTint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+    val resolvedSecondary = secondaryTitle ?: stringRes("paired_devices_title")
 
     Row(
         modifier = Modifier
@@ -154,16 +156,17 @@ fun FluxGlassHeader(
                 softWrap = false,
                 overflow = TextOverflow.Clip
             )
-            if (!secondaryTitle.isNullOrBlank()) {
+            if (resolvedSecondary.isNotBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = secondaryTitle,
+                    text = resolvedSecondary,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Medium,
                         fontSize = 16.sp
                     ),
                     color = subtitleColor,
-                    maxLines = 1,
+                    maxLines = 2,
+                    softWrap = true,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -232,7 +235,7 @@ fun CompactDevicesTitleBand(
     val allowLayoutView = showLayoutView && currentTheme != AppTheme.KINETIC_SPHERE
     FluxGlassHeader(
         primaryTitle = "FileApex",
-        secondaryTitle = "Paired Devices",
+        secondaryTitle = stringRes("paired_devices_title"),
         showLayoutView = allowLayoutView,
         onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
         showCloseService = showCloseService,
@@ -257,7 +260,11 @@ fun CompactHomeTitleBand(
     if (isCustomGlass && style == CompactHomeTitleStyle.Prominent) {
         FluxGlassHeader(
             primaryTitle = "FileApex",
-            secondaryTitle = if (primaryLine == "FileApex") secondaryLine ?: "Paired Devices" else primaryLine,
+            secondaryTitle = if (primaryLine == "FileApex") {
+                secondaryLine ?: stringRes("paired_devices_title")
+            } else {
+                primaryLine
+            },
             onOpenTransferQueue = onOpenTransferQueue,
             actions = actions
         )
@@ -276,10 +283,16 @@ fun CompactHomeTitleBand(
                     )
                     Spacer(modifier = Modifier.height(CompactHomeChrome.eyebrowHeadlineGap))
                     Text(
-                        text = if (primaryLine == "FileApex") secondaryLine ?: "Paired Devices" else primaryLine,
+                        text = if (primaryLine == "FileApex") {
+                            secondaryLine ?: stringRes("paired_devices_title")
+                        } else {
+                            primaryLine
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                        color = if (isCustomGlass) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (isCustomGlass) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        softWrap = true,
+                        maxLines = 2
                     )
                 }
 

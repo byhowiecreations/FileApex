@@ -1,5 +1,7 @@
 package com.fileapex.ui.dialogs
 
+import com.fileapex.i18n.stringRes
+
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -18,13 +20,13 @@ fun GoogleDrivePermissionDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Grant Google Drive Access",
+                text = stringRes("grant_drive_access"),
                 style = MaterialTheme.typography.titleMedium
             )
         },
         text = {
             Text(
-                text = "FileApex will create a FileApex Relay folder in your Drive for off‑LAN transfers. It cannot see your other Drive files.",
+                text = stringRes("grant_drive_body"),
                 style = MaterialTheme.typography.bodyMedium
             )
         },
@@ -36,12 +38,12 @@ fun GoogleDrivePermissionDialog(
                     contentColor = Color.Black
                 )
             ) {
-                Text("Grant Access")
+                Text(stringRes("grant_access"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Not Now")
+                Text(stringRes("not_now"))
             }
         }
     )

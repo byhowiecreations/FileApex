@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FileApex</string>
+    <string name="paired_devices_title">已配对设备</string>
+    <string name="ready">就绪</string>
+    <string name="tap_to_wake">点按唤醒</string>
+    <string name="bulletin_board_share_label">公告板</string>
+    <string name="send_with_fileapex_share_label">用 FileApex 发送</string>
+    <string name="clipboard_tile_label">发送剪贴板</string>
+    <string name="clipboard_accessibility_label">FileApex 剪贴板</string>
+    <string name="clipboard_accessibility_description">FileApex 使用无障碍功能检测复制事件，以便在后台同步剪贴板。不会将屏幕内容用于其他目的。</string>
+</resources>
