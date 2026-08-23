@@ -1,5 +1,6 @@
 package com.fileapex.data.settings
 
+import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import kotlinx.coroutines.flow.StateFlow
@@ -11,6 +12,10 @@ interface AppSettings {
     val googleAccountUid: StateFlow<String>
     val multiCopyIntroAcknowledged: StateFlow<Boolean>
     val clipboardSharingEnabled: StateFlow<Boolean>
+    val clipboardShareMode: StateFlow<ClipboardShareMode>
+    val clipboardTargetDeviceIds: StateFlow<Set<String>>
+    val clipboardViaCellularEnabled: StateFlow<Boolean>
+    val clipboardAccessibilityEnabled: StateFlow<Boolean>
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
     val driveRelayNotificationsEnabled: StateFlow<Boolean>
     val pinRequiredEnabled: StateFlow<Boolean>
@@ -66,6 +71,13 @@ interface AppSettings {
     fun setGoogleAccountUid(uid: String)
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
     fun setClipboardSharingEnabled(enabled: Boolean)
+    fun setClipboardShareMode(mode: ClipboardShareMode)
+    fun setClipboardTargetDeviceIds(deviceIds: Set<String>)
+    fun setClipboardTargetDevice(deviceId: String, selected: Boolean)
+    fun setClipboardViaCellularEnabled(enabled: Boolean)
+    fun setClipboardAccessibilityEnabled(enabled: Boolean)
+    fun clipboardPrivateKeyBase64(): String
+    fun setClipboardPrivateKeyBase64(value: String)
     fun setFileTransferNotificationsEnabled(enabled: Boolean)
     fun setDriveRelayNotificationsEnabled(enabled: Boolean)
     fun setNotesNotificationsEnabled(enabled: Boolean)

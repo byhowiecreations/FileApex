@@ -432,6 +432,8 @@ class DeviceRepository(
                 else -> primary.port
             },
             publicKeyHash = primary.publicKeyHash.ifBlank { secondary.publicKeyHash },
+            publicKey = firstNonBlank(incoming.publicKey, primary.publicKey, secondary.publicKey),
+            e2eeEnabled = incoming.e2eeEnabled || primary.e2eeEnabled || secondary.e2eeEnabled,
             rootPath = primary.rootPath.ifBlank {
                 secondary.rootPath.ifBlank { "/" }
             },

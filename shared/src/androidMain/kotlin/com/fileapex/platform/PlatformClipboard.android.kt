@@ -10,10 +10,20 @@ import com.fileapex.data.settings.androidAppContextOrNull
 actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
         val context = androidAppContextOrNull() ?: return null
+        return readClipboardText(context)
+    }
+
+    fun readClipboardText(context: Context): String? {
         return runCatching {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            val item = clipboard?.primaryClip?.getItemAt(0)
-            item?.text?.toString() ?: item?.uri?.toString()
+                ?: return@runCatching null
+            val clip = clipboard.primaryClip ?: return@runCatching null
+            if (clip.itemCount <= 0) return@runCatching null
+            val item = clip.getItemAt(0)
+            val coerced = item.coerceToText(context)?.toString()?.trim()
+            if (!coerced.isNullOrBlank()) return@runCatching coerced
+            item.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: item.uri?.toString()?.takeIf { it.isNotBlank() }
         }.getOrNull()
     }
 
@@ -23,6 +33,15 @@ actual object PlatformClipboard {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             val clip = ClipData.newPlainText("FileApex", text)
             clipboard?.setPrimaryClip(clip)
+        }
+    }
+
+    actual fun applyRemoteText(text: String) {
+        ClipboardShareSuppressor.isApplyingRemote = true
+        try {
+            setSystemClipboardText(text)
+        } finally {
+            ClipboardShareSuppressor.isApplyingRemote = false
         }
     }
 

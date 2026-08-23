@@ -3,4 +3,7 @@
     <string name="app_name">FileApex</string>
     <string name="bulletin_board_share_label">Bulletin Board</string>
     <string name="send_with_fileapex_share_label">Send with FileApex</string>
+    <string name="clipboard_tile_label">Send clipboard</string>
+    <string name="clipboard_accessibility_label">FileApex clipboard</string>
+    <string name="clipboard_accessibility_description">FileApex uses Accessibility to detect copy events so clipboard can sync while the app is in the background. FileApex does not read screen content for any other purpose.</string>
 </resources>

@@ -192,6 +192,18 @@ class DevicesViewModel : ViewModel() {
         return row.online
     }
 
+    fun sendClipboardNow() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(statusMessage = "Sending Clipboard…") }
+            val message = com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboardNow()
+            if (message == "Sending clipboard…") {
+                _uiState.update { it.copy(statusMessage = "Sending Clipboard…") }
+            } else {
+                _uiState.update { it.copy(statusMessage = null, errorMessage = message) }
+            }
+        }
+    }
+
     fun sendClipboardToDevice(deviceId: String) {
         viewModelScope.launch {
             val settings = FileApexServices.settings
@@ -210,16 +222,8 @@ class DevicesViewModel : ViewModel() {
                 return@launch
             }
             _uiState.update { it.copy(statusMessage = "Sending Clipboard…") }
-            val client = FileApexServices.client
-            val localId = identity
             try {
-                val response = client.sendClipboard(
-                    host = device.lastKnownIp,
-                    port = device.port,
-                    senderDeviceId = localId.deviceId,
-                    senderDeviceName = localId.deviceName,
-                    text = text
-                )
+                val response = com.fileapex.domain.clipboard.ClipboardShareCoordinator.sendToDevice(deviceId)
                 val targetName = if (response.recipientDeviceName.isNotBlank()) response.recipientDeviceName else device.deviceName
                 _uiState.update {
                     it.copy(

@@ -263,6 +263,29 @@ actual object CloudAuthBackend {
         )
     }
 
+    actual suspend fun patchDeviceClipboardPublicKey(uid: String, deviceId: String, clipboardPublicKey: String) {
+        val token = requireIdToken()
+        val project = firebaseProjectId()
+        val parent =
+            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
+                "users/$uid/devices"
+        val body = buildJsonObject {
+            put(
+                "fields",
+                buildJsonObject {
+                    put("clipboardPublicKey", buildJsonObject { put("stringValue", clipboardPublicKey.trim()) })
+                }
+            )
+        }
+        patchOrCreateDocument(
+            token = token,
+            parent = parent,
+            documentId = deviceId,
+            body = body,
+            fieldPaths = listOf("clipboardPublicKey")
+        )
+    }
+
     actual suspend fun patchDeviceDiagnosticsCloud(
         uid: String,
         deviceId: String,
@@ -742,6 +765,7 @@ actual object CloudAuthBackend {
             put("updatedAtEpochMs", integerField(fields, "updatedAtEpochMs"))
             put("fcmToken", stringField(fields, "fcmToken"))
             put("diagnosticsPublicKey", stringField(fields, "diagnosticsPublicKey"))
+            put("clipboardPublicKey", stringField(fields, "clipboardPublicKey"))
             put("deviceDetailsCloudEnabled", booleanField(fields, "deviceDetailsCloudEnabled"))
             put("hardwareFingerprint", parseHardwareFingerprintFromFirestore(fields))
         }

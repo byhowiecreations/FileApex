@@ -10,6 +10,7 @@ object FcmWakeProtocol {
     const val TYPE_NOTE_RETRACT = "retract_message"
     const val ACTION_RETRACT_MESSAGE = "RETRACT_MESSAGE"
     const val TYPE_DRIVE_RELAY = "drive_relay"
+    const val TYPE_CLIPBOARD_SHARE = "clipboard_share"
 
     const val KEY_TYPE = "type"
     const val KEY_SOURCE_DEVICE_ID = "sourceDeviceId"
@@ -23,6 +24,10 @@ object FcmWakeProtocol {
     const val KEY_ATTACHMENT_NAME = "attachmentName"
     const val KEY_ATTACHMENT_SIZE = "attachmentSize"
     const val KEY_ACTION = "action"
+    const val KEY_SENDER_PUBLIC_KEY = "senderPublicKey"
+    const val KEY_CIPHERTEXT = "ciphertext"
+    const val KEY_CAPTURED_AT = "capturedAtEpochMs"
+    const val KEY_SENDER_DEVICE_NAME = "senderDeviceName"
 
     object Keys {
         const val TYPE = "type"
@@ -37,5 +42,9 @@ object FcmWakeProtocol {
         const val ATTACHMENT_NAME = "attachmentName"
         const val ATTACHMENT_SIZE = "attachmentSize"
         const val ACTION = "action"
+        const val SENDER_PUBLIC_KEY = "senderPublicKey"
+        const val CIPHERTEXT = "ciphertext"
+        const val CAPTURED_AT = "capturedAtEpochMs"
+        const val SENDER_DEVICE_NAME = "senderDeviceName"
     }
 }

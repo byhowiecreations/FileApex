@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.data.identity.loadLocalIdentity
+import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
 import com.fileapex.platform.BootLaunchPreference
@@ -32,6 +34,11 @@ data class SettingsUiState(
     val googleAccountLinkEnabled: Boolean = false,
     val googleAccountEmail: String = "",
     val clipboardSharingEnabled: Boolean = false,
+    val clipboardShareMode: ClipboardShareMode = ClipboardShareMode.UNSET,
+    val clipboardTargetDeviceIds: Set<String> = emptySet(),
+    val clipboardViaCellularEnabled: Boolean = false,
+    val clipboardAccessibilityEnabled: Boolean = false,
+    val clipboardPeers: List<PairedDeviceEntity> = emptyList(),
     val fileTransferNotificationsEnabled: Boolean = false,
     val driveRelayNotificationsEnabled: Boolean = false,
     val notesNotificationsEnabled: Boolean = false,
@@ -67,7 +74,8 @@ data class SettingsUiState(
     val kineticSphereOrbitalRingsEnabled: Boolean = true,
     val systemPerformanceExpanded: Boolean = true,
     val appearanceBehaviorExpanded: Boolean = true,
-    val securityAccountExpanded: Boolean = true
+    val securityAccountExpanded: Boolean = true,
+    val showAccessibilityRestrictedHelp: Boolean = false
 )
 
 class SettingsViewModel : ViewModel() {
@@ -77,6 +85,10 @@ class SettingsViewModel : ViewModel() {
             googleAccountLinkEnabled = settings.googleAccountLinkEnabled.value,
             googleAccountEmail = settings.googleAccountEmail.value,
             clipboardSharingEnabled = settings.clipboardSharingEnabled.value,
+            clipboardShareMode = settings.clipboardShareMode.value,
+            clipboardTargetDeviceIds = settings.clipboardTargetDeviceIds.value,
+            clipboardViaCellularEnabled = settings.clipboardViaCellularEnabled.value,
+            clipboardAccessibilityEnabled = settings.clipboardAccessibilityEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             driveRelayNotificationsEnabled = settings.driveRelayNotificationsEnabled.value,
             notesNotificationsEnabled = settings.notesNotificationsEnabled.value,
@@ -113,6 +125,37 @@ class SettingsViewModel : ViewModel() {
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            FileApexServices.awaitBootstrap()
+            FileApexServices.deviceRepository.observeDevices().collect { devices ->
+                _uiState.update { it.copy(clipboardPeers = devices) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardSharingEnabled.collect { enabled ->
+                _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardShareMode.collect { mode ->
+                _uiState.update { it.copy(clipboardShareMode = mode) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardTargetDeviceIds.collect { ids ->
+                _uiState.update { it.copy(clipboardTargetDeviceIds = ids) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardViaCellularEnabled.collect { enabled ->
+                _uiState.update { it.copy(clipboardViaCellularEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardAccessibilityEnabled.collect { enabled ->
+                _uiState.update { it.copy(clipboardAccessibilityEnabled = enabled) }
+            }
+        }
         viewModelScope.launch {
             settings.notesNotificationsEnabled.collect { enabled ->
                 _uiState.update { it.copy(notesNotificationsEnabled = enabled) }
@@ -234,6 +277,63 @@ class SettingsViewModel : ViewModel() {
     fun setClipboardSharing(enabled: Boolean) {
         settings.setClipboardSharingEnabled(enabled)
         _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
+        if (enabled) {
+            com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
+        }
+    }
+
+    fun setClipboardShareMode(mode: ClipboardShareMode) {
+        settings.setClipboardShareMode(mode)
+        _uiState.update { it.copy(clipboardShareMode = mode) }
+        com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
+    }
+
+    fun setClipboardTargetDevice(deviceId: String, selected: Boolean) {
+        settings.setClipboardTargetDevice(deviceId, selected)
+        _uiState.update { it.copy(clipboardTargetDeviceIds = settings.clipboardTargetDeviceIds.value) }
+        if (selected) {
+            com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
+        }
+    }
+
+    fun setClipboardViaCellular(enabled: Boolean) {
+        settings.setClipboardViaCellularEnabled(enabled)
+        _uiState.update { it.copy(clipboardViaCellularEnabled = enabled) }
+    }
+
+    fun setClipboardAccessibility(enabled: Boolean) {
+        settings.setClipboardAccessibilityEnabled(enabled)
+        val restricted = enabled &&
+            com.fileapex.platform.ClipboardAccessibilitySettings.isRestrictedSettingsBlocked()
+        _uiState.update {
+            it.copy(
+                clipboardAccessibilityEnabled = enabled,
+                showAccessibilityRestrictedHelp = restricted
+            )
+        }
+        if (enabled && !restricted) {
+            com.fileapex.platform.ClipboardAccessibilitySettings.openSystemPrompt()
+        }
+    }
+
+    fun dismissAccessibilityRestrictedHelp() {
+        _uiState.update { it.copy(showAccessibilityRestrictedHelp = false) }
+    }
+
+    fun openAccessibilityAppInfo() {
+        com.fileapex.platform.ClipboardAccessibilitySettings.openAppInfo()
+    }
+
+    fun openAccessibilitySystemSettings() {
+        com.fileapex.platform.ClipboardAccessibilitySettings.openSystemPrompt()
+    }
+
+    fun sendClipboardNow() {
+        viewModelScope.launch {
+            com.fileapex.platform.BriefToast.show(
+                com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboardNow()
+            )
+        }
     }
 
     fun setFileTransferNotifications(enabled: Boolean) {

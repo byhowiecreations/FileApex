@@ -6,7 +6,11 @@ import kotlinx.serialization.Serializable
 data class ClipboardSendRequest(
     val senderDeviceId: String,
     val senderDeviceName: String,
-    val text: String
+    val senderPublicKey: String = "",
+    val ciphertext: String = "",
+    val capturedAtEpochMs: Long = 0L,
+    /** Always empty on the wire. Kept so older clients can decode the payload. */
+    val text: String = ""
 )
 
 @Serializable

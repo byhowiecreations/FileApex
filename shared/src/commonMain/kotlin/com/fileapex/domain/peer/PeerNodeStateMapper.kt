@@ -45,6 +45,7 @@ object PeerNodeStateMapper {
             lastSeenTimestamp = lastSeenTimestamp,
             rootPath = identity.rootPath,
             publicKeyHash = DeviceIdentityMarkers.fingerprint(identity.deviceId),
+            publicKey = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64(),
             pinRequired = pinRequired,
             downloadsPath = defaultDownloadsDir()
         )
@@ -67,6 +68,8 @@ object PeerNodeStateMapper {
             lastKnownIp = state.resolvedIpAddress.ifBlank { existing?.lastKnownIp.orEmpty() },
             port = state.port.takeIf { it > 0 } ?: existing?.port ?: 0,
             publicKeyHash = state.publicKeyHash.trim().ifBlank { existing?.publicKeyHash.orEmpty() },
+            publicKey = state.publicKey.trim().ifBlank { existing?.publicKey.orEmpty() },
+            e2eeEnabled = state.publicKey.trim().isNotEmpty() || existing?.e2eeEnabled == true,
             rootPath = state.rootPath.ifBlank { existing?.rootPath?.ifBlank { "/" } ?: "/" },
             clientVersion = state.resolvedClientVersion.ifBlank { existing?.clientVersion.orEmpty() },
             clientVersionCode = state.resolvedClientVersionCode.takeIf { it > 0 }
@@ -100,7 +103,8 @@ object PeerNodeStateMapper {
             supportedProtocols = decodeProtocols(entity.supportedProtocolsJson),
             lastSeenTimestamp = entity.lastSeenEpochMs,
             rootPath = entity.rootPath,
-            publicKeyHash = entity.publicKeyHash
+            publicKeyHash = entity.publicKeyHash,
+            publicKey = entity.publicKey
         )
     }
 

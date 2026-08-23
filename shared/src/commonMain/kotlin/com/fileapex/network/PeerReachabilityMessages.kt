@@ -27,7 +27,7 @@ object PeerReachabilityMessages {
             deviceNames.size == 1 -> deviceNames.first()
             else -> deviceNames.joinToString(", ")
         }
-        return "$targets is off local Wi‑Fi. Enable Cellular → Google Drive Relay on this device to send now."
+        return "$targets is off local Wi‑Fi. Enable Google Drive Relay and Cellular under Google Account to send now."
     }
 
     fun localWifiRequired(): String =

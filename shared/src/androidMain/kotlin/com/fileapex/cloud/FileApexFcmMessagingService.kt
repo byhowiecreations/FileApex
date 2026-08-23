@@ -43,7 +43,7 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
         }
     }
 
-    private fun dispatch(data: Map<String, String>, type: String?) {
+    private suspend fun dispatch(data: Map<String, String>, type: String?) {
         val noteId = data[FcmWakeProtocol.Keys.NOTE_ID] ?: data[FcmWakeProtocol.KEY_NOTE_ID]
         val sourceDeviceId = data[FcmWakeProtocol.Keys.SOURCE_DEVICE_ID]
             ?: data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID]
@@ -101,6 +101,20 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
             FcmWakeCoordinator.isDriveRelay(type) -> {
                 Log.i(TAG, "Drive relay pointer from $sourceDeviceId")
                 DriveRelayCoordinator.onFcmRelayPointer()
+            }
+            FcmWakeCoordinator.isClipboardShare(type) -> {
+                Log.i(TAG, "Clipboard share from $sourceDeviceId")
+                com.fileapex.domain.clipboard.ClipboardShareCoordinator.applyFcmInbound(
+                    senderDeviceId = sourceDeviceId.orEmpty(),
+                    senderDeviceName = data[FcmWakeProtocol.Keys.SENDER_DEVICE_NAME]
+                        ?: data[FcmWakeProtocol.KEY_SENDER_DEVICE_NAME].orEmpty(),
+                    senderPublicKey = data[FcmWakeProtocol.Keys.SENDER_PUBLIC_KEY]
+                        ?: data[FcmWakeProtocol.KEY_SENDER_PUBLIC_KEY].orEmpty(),
+                    ciphertext = data[FcmWakeProtocol.Keys.CIPHERTEXT]
+                        ?: data[FcmWakeProtocol.KEY_CIPHERTEXT].orEmpty(),
+                    capturedAtEpochMs = data[FcmWakeProtocol.Keys.CAPTURED_AT]
+                        ?: data[FcmWakeProtocol.KEY_CAPTURED_AT]
+                )
             }
             else -> Log.w(TAG, "FCM ignored unknown type=$type")
         }

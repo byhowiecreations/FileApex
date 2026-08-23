@@ -75,9 +75,6 @@ object DesktopDriveGrantRuntime {
         }.onSuccess {
             val settings = FileApexServices.settings
             settings.setGoogleDriveRelayEnabled(true)
-            if (!settings.cellularEnabled.value) {
-                settings.setCellularEnabled(true)
-            }
             DriveRelayNotifier.onDriveEnabledAndGranted()
             DriveRelayCoordinator.applySchedulerFromSettings()
             runCatching { FileApexServices.transferQueue.scheduleDrain() }

@@ -9,6 +9,7 @@ import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.PointerByReference
 import com.fileapex.network.PeerBoundHttpResponse
 import java.io.File
+import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 /**
@@ -40,6 +41,11 @@ object DesktopMacTrayBridge {
     private var lanPeerCallback: LanPeerCallback? = null
     @Volatile
     private var lanPeerListener: ((String, Int, String?) -> Unit)? = null
+    @Volatile
+    private var clipboardCallback: ClipboardTextCallback? = null
+    private val clipboardCallbackExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "fileapex-clipboard-native").apply { isDaemon = true }
+    }
 
     val isLoaded: Boolean
         get() = DesktopPlatformPaths.isMacOs() && native != null
@@ -341,6 +347,56 @@ object DesktopMacTrayBridge {
         native?.fileapex_tray_close_dropbox()
     }
 
+    fun startClipboardWatch(onText: (String) -> Unit): Boolean {
+        if (!DesktopPlatformPaths.isMacOs()) return false
+        if (native == null) load()
+        val lib = native ?: return false
+        val callback = ClipboardTextCallback { pointer ->
+            val text = runCatching { pointer?.getString(0).orEmpty() }.getOrDefault("")
+            if (text.isBlank()) return@ClipboardTextCallback
+            clipboardCallbackExecutor.execute {
+                runCatching { onText(text) }
+            }
+        }
+        clipboardCallback = callback
+        return runCatching {
+            lib.fileapex_clipboard_start_watch(callback)
+            true
+        }.getOrElse { error ->
+            println("DesktopMacTrayBridge: clipboard watch unavailable - ${error.message}")
+            clipboardCallback = null
+            false
+        }
+    }
+
+    fun noteClipboardApplied() {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        runCatching { native?.fileapex_clipboard_note_applied() }
+    }
+
+    fun stopClipboardWatch() {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        native?.fileapex_clipboard_stop_watch()
+        clipboardCallback = null
+    }
+
+    fun readClipboardText(): String? {
+        if (!DesktopPlatformPaths.isMacOs()) return null
+        if (native == null) load()
+        val lib = native ?: return null
+        val outText = PointerByReference()
+        val ok = runCatching {
+            lib.fileapex_clipboard_read_text(outText)
+        }.getOrDefault(0)
+        if (ok == 0) return null
+        val pointer = outText.value ?: return null
+        return try {
+            pointer.getString(0)?.takeIf { it.isNotBlank() }
+        } finally {
+            lib.fileapex_lan_http_free(pointer)
+        }
+    }
+
     private fun resolveDylib(): File? {
         val fromBundle = resolveRunningAppBundle()?.let { bundle ->
             File(bundle, "Contents/Frameworks/libFileApexTray.dylib").takeIf { it.isFile }
@@ -460,6 +516,10 @@ object DesktopMacTrayBridge {
             initialDir: String?,
             outPath: PointerByReference
         ): Int
+        fun fileapex_clipboard_start_watch(callback: ClipboardTextCallback?)
+        fun fileapex_clipboard_stop_watch()
+        fun fileapex_clipboard_note_applied()
+        fun fileapex_clipboard_read_text(outText: PointerByReference): Int
     }
 
     private fun interface SendCallback : Callback {
@@ -488,5 +548,9 @@ object DesktopMacTrayBridge {
 
     private fun interface LanPeerCallback : Callback {
         fun invoke(host: Pointer?, port: Int, serviceName: Pointer?)
+    }
+
+    private fun interface ClipboardTextCallback : Callback {
+        fun invoke(text: Pointer?)
     }
 }

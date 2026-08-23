@@ -35,6 +35,8 @@ expect object CloudAuthBackend {
     /** Patches the Android FCM token for silent background wake — never touches [deviceName]. */
     suspend fun patchDeviceFcmToken(uid: String, deviceId: String, fcmToken: String)
 
+    suspend fun patchDeviceClipboardPublicKey(uid: String, deviceId: String, clipboardPublicKey: String)
+
     /**
      * Patches diagnostics relay opt-in + public key — never part of presence heartbeats.
      */

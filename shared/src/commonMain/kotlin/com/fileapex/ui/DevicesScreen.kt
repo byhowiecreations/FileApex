@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.RowScope
@@ -102,6 +103,7 @@ import com.fileapex.presentation.DeviceDetailsState
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 
@@ -352,6 +354,11 @@ fun DevicesScreen(
                     onGenerateQr = onGenerateQr,
                     onJoinDevice = onJoinDevice,
                     onCheckBatteries = { viewModel.checkBatteries() },
+                    onSendClipboard = if (currentPlatformLabel() == "Android") {
+                        viewModel::sendClipboardNow
+                    } else {
+                        null
+                    },
                     onOpenNotes = onOpenNotes,
                     modifier = Modifier
                         .weight(1f)
@@ -396,69 +403,75 @@ fun DevicesScreen(
 
             // Always pinned above bottom navigation — not overlapping the list.
             if (!editMode && !isKineticSphere) {
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 8.dp, bottom = 10.dp)
-            ) {
-                Button(
-                    onClick = { addMenuOpen = true },
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(40.dp),
-                    shape = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
-                        MaterialTheme.shapes.medium
-                    } else {
-                        RoundedCornerShape(20.dp)
-                    },
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = FileApexTeal,
-                        contentColor = Color.White
-                    ),
-                    elevation = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
-                        ButtonDefaults.buttonElevation(
-                            defaultElevation = 0.dp,
-                            pressedElevation = 0.dp,
-                            hoveredElevation = 0.dp
-                        )
-                    } else {
-                        ButtonDefaults.buttonElevation()
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 8.dp, bottom = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (currentPlatformLabel() == "Android") {
+                        SendClipboardActionChip(onClick = viewModel::sendClipboardNow)
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Add New Device",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-                DropdownMenu(
-                    expanded = addMenuOpen,
-                    onDismissRequest = { addMenuOpen = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Generate QR Code") },
-                        onClick = {
-                            addMenuOpen = false
-                            onGenerateQr()
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { addMenuOpen = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp),
+                            shape = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
+                                MaterialTheme.shapes.medium
+                            } else {
+                                RoundedCornerShape(20.dp)
+                            },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = FileApexTeal,
+                                contentColor = Color.White
+                            ),
+                            elevation = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
+                                ButtonDefaults.buttonElevation(
+                                    defaultElevation = 0.dp,
+                                    pressedElevation = 0.dp,
+                                    hoveredElevation = 0.dp
+                                )
+                            } else {
+                                ButtonDefaults.buttonElevation()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Add New Device",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                            )
                         }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Join device") },
-                        onClick = {
-                            addMenuOpen = false
-                            onJoinDevice()
+                        DropdownMenu(
+                            expanded = addMenuOpen,
+                            onDismissRequest = { addMenuOpen = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Generate QR Code") },
+                                onClick = {
+                                    addMenuOpen = false
+                                    onGenerateQr()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Join device") },
+                                onClick = {
+                                    addMenuOpen = false
+                                    onJoinDevice()
+                                }
+                            )
                         }
-                    )
+                    }
                 }
-            }
             }
         }
     }
@@ -631,6 +644,48 @@ fun DevicesScreen(
                 TextButton(onClick = { confirmExit = false }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+internal fun SendClipboardActionChip(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val glass = isFileApexCustomGlassTheme()
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = if (glass) Color(0xDD0D1C22) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            if (glass) Color(0xFF00E5FF).copy(alpha = 0.50f) else FileApexTeal.copy(alpha = 0.55f)
+        ),
+        shadowElevation = if (glass) 8.dp else 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ContentPaste,
+                contentDescription = null,
+                tint = if (glass) Color(0xFF00E676) else FileApexTeal,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "Send Clipboard",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.5.sp
+                ),
+                color = if (glass) Color.White else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 package com.fileapex.data.settings
 
+import com.fileapex.domain.clipboard.ClipboardShareMode
+import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.util.TimestampDiagnostics
@@ -33,6 +35,17 @@ class BaseAppSettings(
     private val googleUid = MutableStateFlow(store.getString(KEY_GOOGLE_UID, ""))
     private val multiCopyIntro = MutableStateFlow(store.getBoolean(KEY_MULTI_COPY_INTRO, false))
     private val clipboardSharing = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHARING, false))
+    private val clipboardShareModeFlow = MutableStateFlow(
+        ClipboardShareMode.fromStorage(store.getString(KEY_CLIPBOARD_SHARE_MODE, ""))
+    )
+    private val clipboardTargetDeviceIdsFlow = MutableStateFlow(
+        ClipboardSharePolicy.parseDeviceIdSet(store.getString(KEY_CLIPBOARD_TARGET_DEVICES, ""))
+    )
+    private val clipboardViaCellularFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_VIA_CELLULAR, false))
+    private val clipboardAccessibilityFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_ACCESSIBILITY, false))
+    private val clipboardPrivateKeyBase64Stored = MutableStateFlow(
+        store.getString(KEY_CLIPBOARD_PRIVATE_KEY, "")
+    )
     private val transferNotifications =
         MutableStateFlow(store.getBoolean(KEY_TRANSFER_NOTIFICATIONS, false))
     private val driveRelayNotificationsFlow =
@@ -149,6 +162,10 @@ class BaseAppSettings(
     override val googleAccountUid: StateFlow<String> = googleUid.asStateFlow()
     override val multiCopyIntroAcknowledged: StateFlow<Boolean> = multiCopyIntro.asStateFlow()
     override val clipboardSharingEnabled: StateFlow<Boolean> = clipboardSharing.asStateFlow()
+    override val clipboardShareMode: StateFlow<ClipboardShareMode> = clipboardShareModeFlow.asStateFlow()
+    override val clipboardTargetDeviceIds: StateFlow<Set<String>> = clipboardTargetDeviceIdsFlow.asStateFlow()
+    override val clipboardViaCellularEnabled: StateFlow<Boolean> = clipboardViaCellularFlow.asStateFlow()
+    override val clipboardAccessibilityEnabled: StateFlow<Boolean> = clipboardAccessibilityFlow.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
         transferNotifications.asStateFlow()
     override val driveRelayNotificationsEnabled: StateFlow<Boolean> =
@@ -240,6 +257,46 @@ class BaseAppSettings(
     override fun setClipboardSharingEnabled(enabled: Boolean) {
         store.putBoolean(KEY_CLIPBOARD_SHARING, enabled)
         clipboardSharing.value = enabled
+    }
+
+    override fun setClipboardShareMode(mode: ClipboardShareMode) {
+        store.putString(KEY_CLIPBOARD_SHARE_MODE, mode.name)
+        clipboardShareModeFlow.value = mode
+    }
+
+    override fun setClipboardTargetDeviceIds(deviceIds: Set<String>) {
+        val encoded = ClipboardSharePolicy.encodeDeviceIdSet(deviceIds)
+        store.putString(KEY_CLIPBOARD_TARGET_DEVICES, encoded)
+        clipboardTargetDeviceIdsFlow.value = ClipboardSharePolicy.parseDeviceIdSet(encoded)
+    }
+
+    override fun setClipboardTargetDevice(deviceId: String, selected: Boolean) {
+        val trimmed = deviceId.trim()
+        if (trimmed.isEmpty()) return
+        val next = if (selected) {
+            clipboardTargetDeviceIdsFlow.value + trimmed
+        } else {
+            clipboardTargetDeviceIdsFlow.value - trimmed
+        }
+        setClipboardTargetDeviceIds(next)
+    }
+
+    override fun setClipboardViaCellularEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_VIA_CELLULAR, enabled)
+        clipboardViaCellularFlow.value = enabled
+    }
+
+    override fun setClipboardAccessibilityEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_ACCESSIBILITY, enabled)
+        clipboardAccessibilityFlow.value = enabled
+    }
+
+    override fun clipboardPrivateKeyBase64(): String = clipboardPrivateKeyBase64Stored.value
+
+    override fun setClipboardPrivateKeyBase64(value: String) {
+        val cleaned = value.trim()
+        store.putString(KEY_CLIPBOARD_PRIVATE_KEY, cleaned)
+        clipboardPrivateKeyBase64Stored.value = cleaned
     }
 
     override fun setFileTransferNotificationsEnabled(enabled: Boolean) {
@@ -495,6 +552,11 @@ class BaseAppSettings(
         const val KEY_GOOGLE_UID = "google_account_uid"
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
         const val KEY_CLIPBOARD_SHARING = "clipboard_sharing_enabled"
+        const val KEY_CLIPBOARD_SHARE_MODE = "clipboard_share_mode"
+        const val KEY_CLIPBOARD_TARGET_DEVICES = "clipboard_target_device_ids"
+        const val KEY_CLIPBOARD_VIA_CELLULAR = "clipboard_via_cellular"
+        const val KEY_CLIPBOARD_ACCESSIBILITY = "clipboard_accessibility"
+        const val KEY_CLIPBOARD_PRIVATE_KEY = "clipboard_private_key_b64"
         const val KEY_TRANSFER_NOTIFICATIONS = "file_transfer_notifications"
         const val KEY_DRIVE_RELAY_NOTIFICATIONS = "drive_relay_notifications_enabled"
         const val KEY_NOTES_NOTIFICATIONS = "notes_notifications_enabled"

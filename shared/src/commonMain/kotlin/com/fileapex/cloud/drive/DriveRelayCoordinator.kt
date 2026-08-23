@@ -82,8 +82,7 @@ object DriveRelayCoordinator {
     }
 
     fun applySchedulerFromSettings() {
-        if (FileApexServices.settings.cellularEnabled.value &&
-            FileApexServices.settings.googleDriveRelayEnabled.value &&
+        if (FileApexServices.settings.googleDriveRelayEnabled.value &&
             FileApexServices.settings.googleAccountLinkEnabled.value &&
             GoogleDriveAuth.hasGrant()
         ) {

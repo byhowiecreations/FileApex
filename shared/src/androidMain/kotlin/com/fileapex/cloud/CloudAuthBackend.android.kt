@@ -113,6 +113,16 @@ actual object CloudAuthBackend {
         }
     }
 
+    actual suspend fun patchDeviceClipboardPublicKey(uid: String, deviceId: String, clipboardPublicKey: String) {
+        val fields = mapOf("clipboardPublicKey" to clipboardPublicKey.trim())
+        val ref = deviceDoc(uid, deviceId)
+        runCatching {
+            ref.update(fields).await()
+        }.onFailure {
+            ref.set(fields, SetOptions.merge()).await()
+        }
+    }
+
     actual suspend fun patchDeviceDiagnosticsCloud(
         uid: String,
         deviceId: String,

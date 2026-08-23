@@ -139,6 +139,7 @@ object FileApexServices {
         presenceMonitor.ensureLanPollLoop()
         presenceMonitor.scheduleColdLaunchProbeOnce()
         transferQueue.ensureDrainWatcher()
+        com.fileapex.domain.clipboard.ClipboardShareCoordinator.ensureStarted()
         bootstrapScope.launch {
             runCatching {
                 recoverEmptyRosterIfNeeded(deviceRepository)

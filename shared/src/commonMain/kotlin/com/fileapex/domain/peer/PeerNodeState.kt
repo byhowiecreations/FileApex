@@ -31,6 +31,7 @@ data class PeerNodeState(
     val lastSeenTimestamp: Long = 0L,
     val rootPath: String = "/",
     val publicKeyHash: String = "",
+    val publicKey: String = "",
     val pinRequired: Boolean = false,
     val downloadsPath: String = ""
 ) {

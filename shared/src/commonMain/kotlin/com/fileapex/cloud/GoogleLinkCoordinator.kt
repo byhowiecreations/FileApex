@@ -115,6 +115,20 @@ object GoogleLinkCoordinator {
     fun linkedPeerFcmTargets(selfDeviceId: String): List<FcmWakeTarget> =
         cachedCloudRecords.mapNotNull { it.toFcmTargetOrNull(selfDeviceId) }
 
+    suspend fun publishClipboardPublicKey(publicKeyBase64: String) {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!cloudOpsActive) return
+        val uid = FileApexServices.settings.googleAccountUid.value
+        if (uid.isBlank()) return
+        val trimmed = publicKeyBase64.trim()
+        if (trimmed.isEmpty()) return
+        runCatching {
+            CloudAuthBackend.patchDeviceClipboardPublicKey(uid, loadLocalIdentity().deviceId, trimmed)
+        }.onFailure { error ->
+            println("GoogleLinkCoordinator: clipboard public key patch failed - ${error.message}")
+        }
+    }
+
     /**
      * Drive-relay FCM targets for [deviceIds]. Cache first, then a live Firestore read.
      * A token is enough — do not drop Honor/other Android rows whose platform string is not
@@ -306,6 +320,16 @@ object GoogleLinkCoordinator {
         val epoch = sessionEpoch
         val selfId = loadLocalIdentity().deviceId
         val scope = sessionScope
+
+        scope.launch {
+            if (!isSessionLive(epoch)) return@launch
+            runCatching {
+                val key = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64()
+                CloudAuthBackend.patchDeviceClipboardPublicKey(uid, selfId, key)
+            }.onFailure { error ->
+                println("GoogleLinkCoordinator: clipboard key publish failed - ${error.message}")
+            }
+        }
 
         scope.launch {
             if (!isSessionLive(epoch)) return@launch
@@ -563,6 +587,11 @@ object GoogleLinkCoordinator {
                                 lastKnownIp = mergedIp,
                                 port = mergedPort,
                                 publicKeyHash = remote.publicKeyHash,
+                                publicKey = remote.clipboardPublicKey.trim().ifBlank {
+                                    local?.publicKey.orEmpty()
+                                },
+                                e2eeEnabled = remote.clipboardPublicKey.isNotBlank() ||
+                                    local?.publicKey?.isNotBlank() == true,
                                 rootPath = remote.rootPath.ifBlank { "/" },
                                 clientVersion = remote.clientVersion.ifBlank {
                                     local?.clientVersion.orEmpty()

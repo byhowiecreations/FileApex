@@ -82,6 +82,35 @@ object FcmWakeCoordinator {
 
     fun isDriveRelay(type: String?): Boolean = type == FcmWakeProtocol.TYPE_DRIVE_RELAY
 
+    fun isClipboardShare(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_SHARE
+
+    suspend fun dispatchClipboardShare(
+        targetDeviceId: String,
+        senderPublicKey: String,
+        ciphertext: String,
+        capturedAtEpochMs: Long,
+        senderDeviceName: String
+    ): Boolean {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
+        if (!FcmWakeBackend.isConfigured()) return false
+        val selfId = loadLocalIdentity().deviceId
+        return runCatching {
+            val targets = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(targetDeviceId))
+            val target = targets.firstOrNull() ?: return false
+            FcmWakeBackend.sendClipboardShare(
+                targetFcmToken = target.fcmToken,
+                sourceDeviceId = selfId,
+                senderDeviceName = senderDeviceName,
+                senderPublicKey = senderPublicKey,
+                ciphertext = ciphertext,
+                capturedAtEpochMs = capturedAtEpochMs
+            )
+        }.getOrElse { error ->
+            println("FcmWakeCoordinator: clipboard FCM failed - ${error.message}")
+            false
+        }
+    }
+
     suspend fun dispatchDriveRelayPointer(entryId: String, targetDeviceIds: List<String> = emptyList()) {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) {
             println("FcmWakeCoordinator: Drive FCM skipped - Google Account not linked")

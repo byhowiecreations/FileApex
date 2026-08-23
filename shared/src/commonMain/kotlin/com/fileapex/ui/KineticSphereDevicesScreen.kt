@@ -116,6 +116,7 @@ fun KineticSphereDevicesView(
     onGenerateQr: () -> Unit = {},
     onJoinDevice: () -> Unit = {},
     onCheckBatteries: (() -> Unit)? = null,
+    onSendClipboard: (() -> Unit)? = null,
     onOpenNotes: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -426,6 +427,26 @@ fun KineticSphereDevicesView(
                         onJoinDevice()
                     }
                 )
+            }
+        }
+
+        if (onSendClipboard != null) {
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            centerX.roundToInt(),
+                            (centerY - hubPx / 2f - 16.dp.toPx()).roundToInt()
+                        )
+                    }
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, placeable.height) {
+                            placeable.placeRelative(-placeable.width / 2, -placeable.height)
+                        }
+                    }
+            ) {
+                SendClipboardActionChip(onClick = onSendClipboard)
             }
         }
 

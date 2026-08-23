@@ -56,10 +56,17 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
+import com.fileapex.cloud.currentPlatformLabel
+import com.fileapex.domain.clipboard.ClipboardShareMode
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -114,7 +121,6 @@ private enum class SettingsPage {
     Clipboard,
     DeviceDetails,
     GoogleAccount,
-    Cellular,
     RemoteFileDeletion,
     DesktopLayout,
     WindowsDesign
@@ -190,7 +196,6 @@ fun SettingsScreen(
 
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
-            onOpenCellular = { page = SettingsPage.Cellular },
             onOpenRemoteFileDeletion = { page = SettingsPage.RemoteFileDeletion },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
@@ -270,7 +275,14 @@ fun SettingsScreen(
             state = state,
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
-            onToggle = viewModel::setClipboardSharing
+            onToggle = viewModel::setClipboardSharing,
+            onShareModeChange = viewModel::setClipboardShareMode,
+            onTogglePeer = viewModel::setClipboardTargetDevice,
+            onToggleViaCellular = viewModel::setClipboardViaCellular,
+            onToggleAccessibility = viewModel::setClipboardAccessibility,
+            onDismissRestrictedHelp = viewModel::dismissAccessibilityRestrictedHelp,
+            onOpenAppInfo = viewModel::openAccessibilityAppInfo,
+            onOpenAccessibilitySettings = viewModel::openAccessibilitySystemSettings
         )
         SettingsPage.DeviceDetails -> DeviceDetailsSettingsPage(
             preferences = state.deviceDetailsDisplayPreferences,
@@ -289,12 +301,7 @@ fun SettingsScreen(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onDisable = viewModel::disableGoogleAccountLink,
-            onIdToken = viewModel::onGoogleIdToken
-        )
-        SettingsPage.Cellular -> CellularSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onIdToken = viewModel::onGoogleIdToken,
             onCellularChange = viewModel::setCellularEnabled,
             onDriveRelayChange = viewModel::setGoogleDriveRelayEnabled,
             onDriveRelayMaxMbSelected = viewModel::setDriveRelayMaxMb,
@@ -349,7 +356,6 @@ private fun SettingsRootPage(
 
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
-    onOpenCellular: () -> Unit,
     onOpenRemoteFileDeletion: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
@@ -435,7 +441,7 @@ private fun SettingsRootPage(
                     )
                     SettingsNavItem(
                         title = "Clipboard",
-                        subtitle = if (state.clipboardSharingEnabled) "On" else "Off",
+                        subtitle = clipboardSettingsSubtitle(state),
                         onClick = onOpenClipboard
                     )
                     SettingsNavItem(
@@ -475,18 +481,8 @@ private fun SettingsRootPage(
                     )
                     SettingsNavItem(
                         title = "Google Account",
-                        subtitle = if (state.googleAccountLinkEnabled) "Connected" else "Not Connected",
+                        subtitle = googleAccountSubtitle(state),
                         onClick = onOpenGoogleAccount
-                    )
-                    SettingsNavItem(
-                        title = "Cellular",
-                        subtitle = buildString {
-                            append(if (state.cellularEnabled) "On" else "Off")
-                            if (state.cellularEnabled && state.googleDriveRelayEnabled) {
-                                append(" · Drive Relay")
-                            }
-                        },
-                        onClick = onOpenCellular
                     )
                     SettingsNavItem(
                         title = "Allow remote file deletion",
@@ -771,7 +767,7 @@ private fun NotificationsSettingsPage(
                         if (driveRelayReady) {
                             "Alerts when FileApex posts or retrieves files through Google Drive Relay."
                         } else {
-                            "Turns on after Google Drive Relay is enabled and granted in Cellular settings."
+                            "Turns on after Google Drive Relay is enabled under Google Account."
                         }
                     )
                 },
@@ -865,8 +861,16 @@ private fun ClipboardSettingsPage(
     state: SettingsUiState,
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    onShareModeChange: (ClipboardShareMode) -> Unit,
+    onTogglePeer: (String, Boolean) -> Unit,
+    onToggleViaCellular: (Boolean) -> Unit,
+    onToggleAccessibility: (Boolean) -> Unit,
+    onDismissRestrictedHelp: () -> Unit,
+    onOpenAppInfo: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit
 ) {
+    val isAndroid = currentPlatformLabel() == "Android"
     SettingsPageShell(
         title = "Clipboard",
         layoutMode = layoutMode,
@@ -880,9 +884,7 @@ private fun ClipboardSettingsPage(
             ListItem(
                 headlineContent = { Text("Clipboard Sharing") },
                 supportingContent = {
-                    Text(
-                        "Opting in would allow FileApex to read from or write to the clipboard of any devices with that setting enabled."
-                    )
+                    Text("Enable or disable clipboard syncing. Payloads are encrypted before they leave this device.")
                 },
                 trailingContent = {
                     Switch(
@@ -891,8 +893,158 @@ private fun ClipboardSettingsPage(
                     )
                 }
             )
+            if (state.clipboardSharingEnabled) {
+                if (isAndroid) {
+                    ListItem(
+                        headlineContent = { Text("Accessibility") },
+                        supportingContent = {
+                            Text("Allows background clipboard detection for auto-sync.")
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = state.clipboardAccessibilityEnabled,
+                                onCheckedChange = onToggleAccessibility
+                            )
+                        }
+                    )
+                    ListItem(
+                        headlineContent = { Text("Via Cellular") },
+                        supportingContent = {
+                            Text("Allows syncing over cellular using secure cloud relay.")
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = state.clipboardViaCellularEnabled,
+                                onCheckedChange = onToggleViaCellular
+                            )
+                        }
+                    )
+                }
+                FileApexPaneSectionHeader(title = "Share clipboard with:")
+                if (state.clipboardShareMode == ClipboardShareMode.UNSET) {
+                    Text(
+                        text = "Choose All devices or Specific devices. Clipboard is not sent until you pick one.",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Column(modifier = Modifier.selectableGroup()) {
+                    ClipboardShareModeRow(
+                        title = "All devices",
+                        subtitle = "Broadcast clipboard to paired peers on the same Wi-Fi.",
+                        selected = state.clipboardShareMode == ClipboardShareMode.ALL,
+                        onClick = { onShareModeChange(ClipboardShareMode.ALL) }
+                    )
+                    ClipboardShareModeRow(
+                        title = "Specific devices",
+                        subtitle = "Only the devices you check below.",
+                        selected = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
+                        onClick = { onShareModeChange(ClipboardShareMode.SPECIFIC) }
+                    )
+                }
+                if (state.clipboardShareMode == ClipboardShareMode.SPECIFIC) {
+                    if (state.clipboardPeers.isEmpty()) {
+                        Text(
+                            text = "No paired devices yet.",
+                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        state.clipboardPeers.forEach { peer ->
+                            val checked = peer.deviceId in state.clipboardTargetDeviceIds
+                            ListItem(
+                                modifier = Modifier.padding(start = 16.dp),
+                                headlineContent = { Text(peer.deviceName.ifBlank { "Paired device" }) },
+                                supportingContent = {
+                                    val platform = peer.platform.ifBlank { peer.os }.ifBlank { null }
+                                    if (platform != null) {
+                                        Text(platform)
+                                    }
+                                },
+                                trailingContent = {
+                                    Checkbox(
+                                        checked = checked,
+                                        onCheckedChange = { onTogglePeer(peer.deviceId, it) }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (state.showAccessibilityRestrictedHelp) {
+            AlertDialog(
+                onDismissRequest = onDismissRestrictedHelp,
+                title = { Text("Allow restricted settings") },
+                text = {
+                    Text(
+                        "Android is blocking Accessibility for this sideloaded build. " +
+                            "Open App Info, tap the ⋮ menu, then Allow restricted settings. " +
+                            "After that, turn on FileApex clipboard in Accessibility."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            onOpenAppInfo()
+                            onDismissRestrictedHelp()
+                        }
+                    ) { Text("Open App Info") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            onOpenAccessibilitySettings()
+                            onDismissRestrictedHelp()
+                        }
+                    ) { Text("Open Accessibility") }
+                }
+            )
         }
     }
+}
+
+@Composable
+private fun ClipboardShareModeRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    ListItem(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton
+            ),
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        trailingContent = {
+            RadioButton(
+                selected = selected,
+                onClick = onClick
+            )
+        }
+    )
+}
+
+private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
+    if (!state.clipboardSharingEnabled) return "Off"
+    val mode = when (state.clipboardShareMode) {
+        ClipboardShareMode.SPECIFIC -> "Specific devices"
+        ClipboardShareMode.ALL -> "All devices"
+        ClipboardShareMode.UNSET -> "Choose devices"
+    }
+    val extras = buildList {
+        if (currentPlatformLabel() == "Android" && state.clipboardAccessibilityEnabled) add("Accessibility")
+        if (state.clipboardViaCellularEnabled && currentPlatformLabel() == "Android") add("Cellular")
+    }
+    return if (extras.isEmpty()) "On · $mode" else "On · $mode · ${extras.joinToString(" · ")}"
 }
 
 @Composable
@@ -931,10 +1083,8 @@ private fun RemoteFileDeletionSettingsPage(
 }
 
 @Composable
-private fun CellularSettingsPage(
+private fun DriveRelaySettingsSection(
     state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
     onCellularChange: (Boolean) -> Unit,
     onDriveRelayChange: (Boolean) -> Unit,
     onDriveRelayMaxMbSelected: (DriveRelayMaxMb) -> Unit,
@@ -945,150 +1095,122 @@ private fun CellularSettingsPage(
     val launchDriveAuth = rememberGoogleDriveAuthLauncher(onResult = onDriveAuthResult)
     var showDrivePermission by remember { mutableStateOf(false) }
     var relayLimitExpanded by remember { mutableStateOf(false) }
+    val relayOn = state.googleDriveRelayEnabled && GoogleDriveAuth.hasGrant()
 
-    SettingsPageShell(
-        title = "Cellular",
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text("Cellular") },
-                supportingContent = {
-                    Text(
-                        "Allow FileApex to send and receive files when this device is off local " +
-                            "Wi‑Fi, using Google Drive Relay. Requires a linked Google Account."
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.cellularEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled && !state.googleAccountLinkEnabled) {
-                                onCellularChange(false)
-                            } else {
-                                onCellularChange(enabled)
-                            }
-                        }
-                    )
-                }
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    FileApexPaneSectionHeader(title = "Google Drive Relay")
+    ListItem(
+        headlineContent = { Text("Google Drive Relay") },
+        supportingContent = {
+            Text(
+                "Store relayed files in a FileApex Relay folder on your Google Drive. " +
+                    "Works on Wi‑Fi. FileApex cannot see your other Drive files. Desktop has no FCM, so it " +
+                    "checks that folder on launch and every 15 minutes when off Wi‑Fi."
             )
-            ListItem(
-                headlineContent = { Text("Google Drive Relay") },
-                supportingContent = {
-                    Text(
-                        "Store relayed files in a FileApex Relay folder on your Google Drive. " +
-                            "FileApex cannot see your other Drive files. Desktop has no FCM, so it " +
-                            "checks that folder on launch and every 15 minutes when off Wi‑Fi."
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.googleDriveRelayEnabled && GoogleDriveAuth.hasGrant(),
-                        enabled = state.cellularEnabled && state.googleAccountLinkEnabled,
-                        onCheckedChange = { enabled ->
-                            if (!enabled) {
-                                onDriveRelayChange(false)
-                            } else if (GoogleDriveAuth.hasGrant()) {
-                                onDriveRelayChange(true)
-                            } else {
-                                showDrivePermission = true
-                            }
-                        }
-                    )
-                }
-            )
-            val relayControlsEnabled = state.cellularEnabled && state.googleAccountLinkEnabled
-            ListItem(
-                headlineContent = { Text("Relay size limit") },
-                supportingContent = {
-                    Text(
-                        "Max size for one Google Drive Relay send — a single file, or a selected " +
-                            "group at once. Default is ${DriveRelayMaxMb.DEFAULT.label}."
-                    )
-                },
-                trailingContent = {
-                    Box {
-                        TextButton(
-                            onClick = { relayLimitExpanded = true },
-                            enabled = relayControlsEnabled
-                        ) {
-                            Text(state.driveRelayMaxMb.label)
-                        }
-                        DropdownMenu(
-                            expanded = relayLimitExpanded,
-                            onDismissRequest = { relayLimitExpanded = false }
-                        ) {
-                            DriveRelayMaxMb.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.label) },
-                                    onClick = {
-                                        onDriveRelayMaxMbSelected(option)
-                                        relayLimitExpanded = false
-                                    }
-                                )
-                            }
-                        }
+        },
+        trailingContent = {
+            Switch(
+                checked = relayOn,
+                enabled = state.googleAccountLinkEnabled,
+                onCheckedChange = { enabled ->
+                    if (!enabled) {
+                        onDriveRelayChange(false)
+                    } else if (GoogleDriveAuth.hasGrant()) {
+                        onDriveRelayChange(true)
+                    } else {
+                        showDrivePermission = true
                     }
                 }
             )
-            ListItem(
-                headlineContent = { Text("Purge File(s) after 72 hours") },
-                supportingContent = {
-                    Text(
-                        "Delete unpinned Drive relay files 72 hours after upload. Direct " +
-                            "transfers are also removed as soon as the destination device retrieves them."
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.drivePurgeAfter72Hours,
-                        enabled = state.cellularEnabled,
-                        onCheckedChange = onPurgeChange
-                    )
-                }
-            )
-            ListItem(
-                headlineContent = { Text("Delete relay files now") },
-                supportingContent = {
-                    Text(
-                        state.drivePurgeNowMessage
-                            ?: "Remove every file in FileApex Relay immediately, including " +
-                            "uploads that never downloaded. Does not wait 72 hours."
-                    )
-                },
-                trailingContent = {
-                    TextButton(
-                        onClick = onPurgeNow,
-                        enabled = state.googleAccountLinkEnabled &&
-                            GoogleDriveAuth.hasGrant() &&
-                            !state.drivePurgeNowBusy
-                    ) {
-                        Text(if (state.drivePurgeNowBusy) "Deleting…" else "Delete")
-                    }
-                }
-            )
-            if (!state.googleAccountLinkEnabled) {
-                Text(
-                    text = "Link a Google Account under Security & Account before enabling Cellular.",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-            state.googleDriveAuthError?.let { err ->
-                Text(
-                    text = err,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
         }
+    )
+    if (relayOn) {
+        ListItem(
+            headlineContent = { Text("Cellular") },
+            supportingContent = {
+                Text(
+                    "Also use Google Drive Relay when this device is off local Wi‑Fi. " +
+                        "Separate from clipboard Via Cellular."
+                )
+            },
+            trailingContent = {
+                Switch(
+                    checked = state.cellularEnabled,
+                    onCheckedChange = onCellularChange
+                )
+            }
+        )
+        ListItem(
+            headlineContent = { Text("Relay size limit") },
+            supportingContent = {
+                Text(
+                    "Max size for one Google Drive Relay send — a single file, or a selected " +
+                        "group at once. Default is ${DriveRelayMaxMb.DEFAULT.label}."
+                )
+            },
+            trailingContent = {
+                Box {
+                    TextButton(onClick = { relayLimitExpanded = true }) {
+                        Text(state.driveRelayMaxMb.label)
+                    }
+                    DropdownMenu(
+                        expanded = relayLimitExpanded,
+                        onDismissRequest = { relayLimitExpanded = false }
+                    ) {
+                        DriveRelayMaxMb.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                onClick = {
+                                    onDriveRelayMaxMbSelected(option)
+                                    relayLimitExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        )
+        ListItem(
+            headlineContent = { Text("Purge File(s) after 72 hours") },
+            supportingContent = {
+                Text(
+                    "Delete unpinned Drive relay files 72 hours after upload. Direct " +
+                        "transfers are also removed as soon as the destination device retrieves them."
+                )
+            },
+            trailingContent = {
+                Switch(
+                    checked = state.drivePurgeAfter72Hours,
+                    onCheckedChange = onPurgeChange
+                )
+            }
+        )
+        ListItem(
+            headlineContent = { Text("Delete relay files now") },
+            supportingContent = {
+                Text(
+                    state.drivePurgeNowMessage
+                        ?: "Remove every file in FileApex Relay immediately, including " +
+                        "uploads that never downloaded. Does not wait 72 hours."
+                )
+            },
+            trailingContent = {
+                TextButton(
+                    onClick = onPurgeNow,
+                    enabled = GoogleDriveAuth.hasGrant() && !state.drivePurgeNowBusy
+                ) {
+                    Text(if (state.drivePurgeNowBusy) "Deleting…" else "Delete")
+                }
+            }
+        )
+    }
+    state.googleDriveAuthError?.let { err ->
+        Text(
+            text = err,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
     }
 
     if (showDrivePermission) {
@@ -1486,7 +1608,13 @@ private fun GoogleAccountSettingsPage(
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onDisable: () -> Unit,
-    onIdToken: (idToken: String?, email: String?, errorMessage: String?) -> Unit
+    onIdToken: (idToken: String?, email: String?, errorMessage: String?) -> Unit,
+    onCellularChange: (Boolean) -> Unit,
+    onDriveRelayChange: (Boolean) -> Unit,
+    onDriveRelayMaxMbSelected: (DriveRelayMaxMb) -> Unit,
+    onDriveAuthResult: (Boolean, String?) -> Unit,
+    onPurgeChange: (Boolean) -> Unit,
+    onPurgeNow: () -> Unit
 ) {
     val launchSignIn = rememberGoogleSignInLauncher(onResult = onIdToken)
 
@@ -1507,7 +1635,7 @@ private fun GoogleAccountSettingsPage(
                         "Opt-in only. Signs in with Google and registers this device’s public ID " +
                             "and LAN address in your private Firebase registry so other FileApex " +
                             "apps on the same account can discover you. Files are uploaded only " +
-                            "when Cellular → Google Drive Relay is also enabled."
+                            "when Google Drive Relay is also enabled."
                     )
                 },
                 trailingContent = {
@@ -1547,7 +1675,27 @@ private fun GoogleAccountSettingsPage(
                     color = MaterialTheme.colorScheme.error
                 )
             }
+            if (state.googleAccountLinkEnabled) {
+                DriveRelaySettingsSection(
+                    state = state,
+                    onCellularChange = onCellularChange,
+                    onDriveRelayChange = onDriveRelayChange,
+                    onDriveRelayMaxMbSelected = onDriveRelayMaxMbSelected,
+                    onDriveAuthResult = onDriveAuthResult,
+                    onPurgeChange = onPurgeChange,
+                    onPurgeNow = onPurgeNow
+                )
+            }
         }
+    }
+}
+
+private fun googleAccountSubtitle(state: SettingsUiState): String {
+    if (!state.googleAccountLinkEnabled) return "Not Connected"
+    return if (state.googleDriveRelayEnabled) {
+        "Connected · Drive Relay"
+    } else {
+        "Connected"
     }
 }
 

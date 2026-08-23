@@ -3,6 +3,7 @@ package com.fileapex.platform
 expect object PlatformClipboard {
     fun getSystemClipboardText(): String?
     fun setSystemClipboardText(text: String)
+    fun applyRemoteText(text: String)
     fun openUrlInDefaultBrowser(url: String)
 }
 

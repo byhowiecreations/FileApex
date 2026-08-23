@@ -6,6 +6,7 @@ public typealias FileApexSendCallback = @convention(c) (UnsafePointer<CChar>?, U
 public typealias FileApexBoolCallback = @convention(c) (Bool) -> Void
 public typealias FileApexVoidCallback = @convention(c) () -> Void
 public typealias FileApexSaveDropBoxFrameCallback = @convention(c) (Double, Double, Double, Double) -> Void
+public typealias FileApexClipboardCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 
 private var sendCallback: FileApexSendCallback?
 private var popoverCallback: FileApexBoolCallback?
@@ -16,6 +17,9 @@ private var saveDropBoxFrameCallback: FileApexSaveDropBoxFrameCallback?
 private var refreshDevicesCallback: FileApexVoidCallback?
 private var prepareDropBoxCallback: FileApexVoidCallback?
 private var backgroundActivityToken: NSObjectProtocol?
+private var clipboardCallback: FileApexClipboardCallback?
+private var clipboardTimer: Timer?
+private var lastPasteboardChangeCount = -1
 
 private func onMainThread(_ block: @escaping () -> Void) {
     if Thread.isMainThread {
@@ -267,5 +271,83 @@ public func fileapex_pick_open_file(
         buf.initialize(from: src, count: count)
     }
     outPath.pointee = buf
+    return 1
+}
+
+private func currentPasteboardText() -> String? {
+    let pasteboard = NSPasteboard.general
+    if let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !text.isEmpty {
+        return text
+    }
+    if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+       let first = urls.first {
+        return first.absoluteString
+    }
+    return nil
+}
+
+private func strdupClipboard(_ text: String) -> UnsafeMutablePointer<CChar> {
+    let count = text.utf8.count + 1
+    let buf = UnsafeMutablePointer<CChar>.allocate(capacity: count)
+    text.withCString { src in
+        buf.initialize(from: src, count: count)
+    }
+    return buf
+}
+
+@_cdecl("fileapex_clipboard_start_watch")
+public func fileapex_clipboard_start_watch(_ callback: FileApexClipboardCallback?) {
+    clipboardCallback = callback
+    DispatchQueue.main.async {
+        clipboardTimer?.invalidate()
+        lastPasteboardChangeCount = NSPasteboard.general.changeCount
+        let timer = Timer(timeInterval: 0.45, repeats: true) { _ in
+            let count = NSPasteboard.general.changeCount
+            guard count != lastPasteboardChangeCount else { return }
+            lastPasteboardChangeCount = count
+            guard let text = currentPasteboardText(), !text.isEmpty else { return }
+            // JNA must not run on the AppKit/AWT main thread — that SIGABRTs the JVM.
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let callback = clipboardCallback else { return }
+                text.withCString { ptr in
+                    callback(ptr)
+                }
+            }
+        }
+        clipboardTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+}
+
+@_cdecl("fileapex_clipboard_note_applied")
+public func fileapex_clipboard_note_applied() {
+    onMainThread {
+        lastPasteboardChangeCount = NSPasteboard.general.changeCount
+    }
+}
+
+@_cdecl("fileapex_clipboard_stop_watch")
+public func fileapex_clipboard_stop_watch() {
+    DispatchQueue.main.async {
+        clipboardTimer?.invalidate()
+        clipboardTimer = nil
+    }
+    clipboardCallback = nil
+}
+
+@_cdecl("fileapex_clipboard_read_text")
+public func fileapex_clipboard_read_text(
+    _ outText: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+) -> Int32 {
+    var result: String?
+    onMainThread {
+        result = currentPasteboardText()
+    }
+    guard let text = result, !text.isEmpty else {
+        outText.pointee = nil
+        return 0
+    }
+    outText.pointee = strdupClipboard(text)
     return 1
 }

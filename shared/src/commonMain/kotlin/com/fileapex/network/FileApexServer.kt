@@ -14,8 +14,6 @@ import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.domain.clipboard.ClipboardSendRequest
 import com.fileapex.domain.clipboard.ClipboardSendResponse
-import com.fileapex.platform.PlatformClipboard
-import com.fileapex.platform.isWebUrl
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.collectDeviceDiagnostics
 import com.fileapex.platform.collectDeviceDiagnosticsFallback
@@ -535,15 +533,18 @@ class FileApexServer(
                         }
                         val body = call.receiveText()
                         val request = json.decodeFromString(ClipboardSendRequest.serializer(), body)
-                        if (request.text.isBlank()) {
-                            call.respond(HttpStatusCode.BadRequest, "empty_text")
+                        if (request.ciphertext.isBlank() || request.senderPublicKey.isBlank()) {
+                            call.respond(HttpStatusCode.BadRequest, "clipboard_ciphertext_required")
                             return@runCatching
                         }
                         withContext(Dispatchers.Main) {
-                            PlatformClipboard.setSystemClipboardText(request.text)
-                            if (isWebUrl(request.text)) {
-                                PlatformClipboard.openUrlInDefaultBrowser(request.text)
-                            }
+                            com.fileapex.domain.clipboard.ClipboardShareCoordinator.applyInbound(
+                                senderDeviceId = request.senderDeviceId,
+                                senderDeviceName = request.senderDeviceName,
+                                senderPublicKey = request.senderPublicKey,
+                                ciphertext = request.ciphertext,
+                                capturedAtEpochMs = request.capturedAtEpochMs
+                            )
                         }
                         val response = ClipboardSendResponse(
                             status = "ok",
@@ -554,8 +555,20 @@ class FileApexServer(
                             contentType = ContentType.Application.Json
                         )
                     }.onFailure { error ->
-                        onLog("POST /api/v1/clipboard/send failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "clipboard_failed")
+                        val message = error.message.orEmpty()
+                        when {
+                            message.contains("clipboard_disabled") ->
+                                call.respondText("clipboard_disabled", status = HttpStatusCode.Forbidden)
+                            message.contains("clipboard_expired") ->
+                                call.respond(HttpStatusCode.BadRequest, "clipboard_expired")
+                            message.contains("clipboard_ciphertext_required") ||
+                                message.contains("empty_text") ->
+                                call.respond(HttpStatusCode.BadRequest, "clipboard_ciphertext_required")
+                            else -> {
+                                onLog("POST /api/v1/clipboard/send failed", error)
+                                call.respond(HttpStatusCode.InternalServerError, "clipboard_failed")
+                            }
+                        }
                     }
                 }
 
@@ -734,13 +747,8 @@ class FileApexServer(
                             return@runCatching
                         }
 
-                        val client = FileApexServices.client
-                        val identity = identityProvider()
-                        val result = client.sendClipboard(
-                            host = targetDevice.lastKnownIp,
-                            port = targetDevice.port,
-                            senderDeviceId = identity.deviceId,
-                            senderDeviceName = identity.deviceName,
+                        val result = com.fileapex.domain.clipboard.ClipboardShareCoordinator.sendPlaintextToDevice(
+                            deviceId = targetDeviceId,
                             text = text
                         )
                         val respJson = json.encodeToString(ClipboardSendResponse.serializer(), result)

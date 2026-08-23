@@ -19,6 +19,8 @@ data class CloudDeviceRecord(
     val fcmToken: String = "",
     /** Base64 X25519 public key for encrypted diagnostics relay — optional. */
     val diagnosticsPublicKey: String = "",
+    /** Base64 X25519 public key for encrypted clipboard payloads. */
+    val clipboardPublicKey: String = "",
     /** Peer opted in to encrypted cloud Device Details when LAN is unavailable. */
     val deviceDetailsCloudEnabled: Boolean = false,
     /** Static hardware parameters (manufacturer, model, device, board) for reconciliation. */

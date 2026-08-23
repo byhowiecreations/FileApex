@@ -158,6 +158,33 @@ object FcmWakeBackend {
             data = dataObj
         )
     }
+
+    suspend fun sendClipboardShare(
+        targetFcmToken: String,
+        sourceDeviceId: String,
+        senderDeviceName: String,
+        senderPublicKey: String,
+        ciphertext: String,
+        capturedAtEpochMs: Long
+    ): Boolean {
+        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (targetFcmToken.isBlank() || ciphertext.isBlank() || senderPublicKey.isBlank()) return false
+        val dataObj = buildJsonObject {
+            put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_CLIPBOARD_SHARE)
+            put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_CLIPBOARD_SHARE)
+            put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
+            put(FcmWakeProtocol.Keys.SENDER_DEVICE_NAME, senderDeviceName)
+            put(FcmWakeProtocol.Keys.SENDER_PUBLIC_KEY, senderPublicKey)
+            put(FcmWakeProtocol.Keys.CIPHERTEXT, ciphertext)
+            put(FcmWakeProtocol.Keys.CAPTURED_AT, capturedAtEpochMs.toString())
+            put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
+        }
+        return FcmHttpV1Client.sendDataWake(
+            config = config,
+            targetToken = targetFcmToken,
+            data = dataObj
+        )
+    }
 }
 
 internal object FcmHttpV1Client {

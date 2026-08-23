@@ -9,10 +9,12 @@ object PresenceForegroundRefresh {
         FileApexServices.presenceMonitor.setAppInForeground(true)
         FileApexServices.presenceMonitor.refreshPeersOnForeground()
         FileApexServices.transferQueue.scheduleDrain()
+        com.fileapex.domain.clipboard.ClipboardShareCoordinator.onAppForegrounded()
     }
 
     fun onAppBackgrounded() {
         if (!FileApexServices.isDatabaseReady()) return
         FileApexServices.presenceMonitor.setAppInForeground(false)
+        com.fileapex.domain.clipboard.ClipboardShareCoordinator.onAppBackgrounded()
     }
 }

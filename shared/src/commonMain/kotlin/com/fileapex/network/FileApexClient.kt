@@ -109,12 +109,16 @@ class FileApexClient(
         port: Int,
         senderDeviceId: String,
         senderDeviceName: String,
-        text: String
+        senderPublicKey: String,
+        ciphertext: String,
+        capturedAtEpochMs: Long
     ): com.fileapex.domain.clipboard.ClipboardSendResponse {
         val request = com.fileapex.domain.clipboard.ClipboardSendRequest(
             senderDeviceId = senderDeviceId,
             senderDeviceName = senderDeviceName,
-            text = text
+            senderPublicKey = senderPublicKey,
+            ciphertext = ciphertext,
+            capturedAtEpochMs = capturedAtEpochMs
         )
         val bodyStr = json.encodeToString(com.fileapex.domain.clipboard.ClipboardSendRequest.serializer(), request)
         val response = boundPost(
