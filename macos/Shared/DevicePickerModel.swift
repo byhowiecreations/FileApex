@@ -39,15 +39,16 @@ public final class DevicePickerModel: ObservableObject {
     }
 
     public func reload() {
+        AppCopy.shared.loadFromDisk()
         isLoading = true
         errorMessage = nil
         do {
             devices = try PairedDeviceStore.loadDevices()
             let fileCount = preStagedPaths?.count ?? fileURLs.count
             if devices.isEmpty {
-                statusMessage = "No paired devices. Open FileApex and pair a device first."
+                statusMessage = AppCopy.shared.t("no_paired_open_fileapex")
             } else {
-                statusMessage = "\(fileCount) item(s) · \(devices.count) paired device(s)"
+                statusMessage = "\(AppCopy.shared.plural("file_count", count: fileCount)) · \(AppCopy.shared.plural("n_paired_devices", count: devices.count))"
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -69,7 +70,7 @@ public final class DevicePickerModel: ObservableObject {
         guard canSend else { return false }
         isSending = true
         errorMessage = nil
-        statusMessage = "Handing off to FileApex…"
+        statusMessage = AppCopy.shared.t("handing_off_to_fileapex")
         do {
             let deviceIds = selectedDevices.map(\.deviceId)
             let finished = try await FileApexSendHandoff.submitSend(
@@ -79,7 +80,7 @@ public final class DevicePickerModel: ObservableObject {
                 preStagedPaths: preStagedPaths
             )
             statusMessage = finished.message
-                ?? "Sent to \(deviceIds.count) device(s)."
+                ?? AppCopy.shared.plural("sent_to_n_devices", count: deviceIds.count, "\(deviceIds.count)")
             isSending = false
             return true
         } catch {

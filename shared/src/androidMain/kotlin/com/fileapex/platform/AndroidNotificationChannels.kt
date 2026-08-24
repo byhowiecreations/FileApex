@@ -87,10 +87,21 @@ object AndroidNotificationChannels {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val existing = manager.getNotificationChannel(SHARE_SERVER_ACTIVE)
-        if (existing != null && existing.importance == NotificationManager.IMPORTANCE_LOW) {
-            return
+        if (existing == null || existing.importance != NotificationManager.IMPORTANCE_LOW) {
+            migrateLegacyShareServerChannels(context)
         }
-        migrateLegacyShareServerChannels(context)
+        applyShareServerChannelCopy(manager)
+    }
+
+    fun refreshLocalized(context: Context) {
+        ensureAppUpdatesChannel(context)
+        ensureNoteMessagesChannel(context)
+        ensureTransferReceiveChannel(context)
+        ensureDriveRelayChannel(context)
+        ensureShareServerChannel(context)
+    }
+
+    private fun applyShareServerChannelCopy(manager: NotificationManager) {
         val channel = NotificationChannel(
             SHARE_SERVER_ACTIVE,
             com.fileapex.i18n.AppI18n.t("channel_server"),

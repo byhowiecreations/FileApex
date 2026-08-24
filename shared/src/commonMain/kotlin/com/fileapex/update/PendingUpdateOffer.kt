@@ -1,5 +1,7 @@
 package com.fileapex.update
 
+import com.fileapex.i18n.AppI18n
+
 /**
  * A newer FileApex build detected on GitHub Releases, awaiting user action on Android
  * or immediate install on desktop.
@@ -28,7 +30,7 @@ data class PendingUpdateOffer(
                 append(notes)
             }
             if (isEmpty()) {
-                append("Tap to review release notes and install.")
+                append(AppI18n.t("update_review_notes"))
             }
         }
     }

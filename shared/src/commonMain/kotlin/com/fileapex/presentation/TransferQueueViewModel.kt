@@ -3,6 +3,7 @@ package com.fileapex.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +45,7 @@ class TransferQueueViewModel : ViewModel() {
         viewModelScope.launch {
             runCatching { queue.remove(id) }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: "Could not remove queued file")
+                it.copy(errorMessage = error.message ?: AppI18n.t("no_queued_remove"))
                 }
             }
         }

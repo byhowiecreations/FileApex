@@ -87,6 +87,8 @@ class PeerPresenceMonitor(
         appInForeground = inForeground
     }
 
+    fun isAppInForeground(): Boolean = appInForeground
+
     fun isDeviceOnline(device: PairedDeviceEntity): Boolean {
         if (!hasUsableEndpoint(device)) return false
         val probeEpoch = _reachabilityEpochMs.value[device.deviceId] ?: 0L

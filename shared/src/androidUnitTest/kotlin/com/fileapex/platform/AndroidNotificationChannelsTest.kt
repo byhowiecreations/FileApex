@@ -26,6 +26,7 @@ class AndroidNotificationChannelsTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext<Application>()
         notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        com.fileapex.data.settings.initAndroidAppSettings(context)
     }
 
     @Test

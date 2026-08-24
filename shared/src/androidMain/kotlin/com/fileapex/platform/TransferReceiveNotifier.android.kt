@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 
 private lateinit var notifierContext: Context
 
@@ -30,11 +31,7 @@ actual fun notifyFilesReceived(fileNames: List<String>) {
         return
     }
 
-    val title = if (fileNames.size == 1) {
-        "File received"
-    } else {
-        "${fileNames.size} files received"
-    }
+    val title = AppI18n.plural("n_files_received", fileNames.size, fileNames.size.toString())
     val body = fileNames.joinToString(separator = ", ")
 
     val notification = NotificationCompat.Builder(notifierContext, AndroidNotificationChannels.TRANSFER_RECEIVE)

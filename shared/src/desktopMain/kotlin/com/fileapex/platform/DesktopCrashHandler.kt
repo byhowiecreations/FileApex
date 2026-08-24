@@ -95,26 +95,31 @@ object DesktopCrashHandler {
     }
 
     private fun showCrashDialog(logFile: File, throwable: Throwable) {
-        val detailMessage = throwable.message?.takeIf { it.isNotBlank() } ?: throwable::class.simpleName ?: "Unknown error"
-        val dialogMessage = """
-            FileApex encountered a critical startup error:
-            $detailMessage
-
-            A detailed diagnostic log has been saved to your Desktop:
-            ${logFile.absolutePath}
-        """.trimIndent()
+        val detailMessage = throwable.message?.takeIf { it.isNotBlank() }
+            ?: throwable::class.simpleName
+            ?: crashCopy("crash_unknown_error", "Unknown error")
+        val dialogMessage = crashCopy(
+            "crash_startup_body",
+            "FileApex encountered a critical startup error:\n$detailMessage\n\nA detailed diagnostic log has been saved to your Desktop:\n${logFile.absolutePath}",
+            detailMessage,
+            logFile.absolutePath
+        )
+        val dialogTitle = crashCopy("crash_startup_title", "FileApex Startup Error")
 
         runCatching {
             JOptionPane.showMessageDialog(
                 null,
                 dialogMessage,
-                "FileApex Startup Error",
+                dialogTitle,
                 JOptionPane.ERROR_MESSAGE
             )
         }.onFailure {
-            // Fallback for headless or AWT failure: output to stderr
             System.err.println("FileApex Error Log generated at: ${logFile.absolutePath}")
             System.err.println(dialogMessage)
         }
+    }
+
+    private fun crashCopy(key: String, fallback: String, vararg args: Any): String {
+        return runCatching { com.fileapex.i18n.AppI18n.t(key, *args) }.getOrDefault(fallback)
     }
 }

@@ -3,6 +3,7 @@ package com.fileapex.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.pairing.HostPairingBroadcastState
 import com.fileapex.domain.pairing.LanPairingDiscovery
 import com.fileapex.domain.pairing.PairingPayload
@@ -107,7 +108,7 @@ class GenerateQrViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         payload = null,
-                        errorMessage = "No LAN IPv4 address found. Join Wi‑Fi and retry.",
+                        errorMessage = AppI18n.t("no_lan_ipv4"),
                         broadcast = HostPairingBroadcastState(remainingLabel = "0:00"),
                         preparingShareServer = false
                     )

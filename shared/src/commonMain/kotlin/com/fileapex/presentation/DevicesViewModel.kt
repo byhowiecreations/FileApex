@@ -23,6 +23,7 @@ import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.platform.purgeDirectShareTarget
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.i18n.AppI18n
 import com.fileapex.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,7 +71,8 @@ data class DevicesUiState(
     val editOrderRows: List<DeviceListRow> = emptyList(),
     val deviceDetails: DeviceDetailsState? = null,
     val batteryOverlayState: BatteryCheckOverlayState? = null,
-    val discoveredPairingPeers: List<PairingBeacon> = emptyList()
+    val discoveredPairingPeers: List<PairingBeacon> = emptyList(),
+    val pairingSucceeded: Boolean = false
 )
 
 data class DeviceDetailsState(
@@ -194,10 +196,11 @@ class DevicesViewModel : ViewModel() {
 
     fun sendClipboardNow() {
         viewModelScope.launch {
-            _uiState.update { it.copy(statusMessage = "Sending Clipboard…") }
+            val sending = AppI18n.t("sending_clipboard")
+            _uiState.update { it.copy(statusMessage = sending) }
             val message = com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboardNow()
-            if (message == "Sending clipboard…") {
-                _uiState.update { it.copy(statusMessage = "Sending Clipboard…") }
+            if (message == sending) {
+                _uiState.update { it.copy(statusMessage = sending) }
             } else {
                 _uiState.update { it.copy(statusMessage = null, errorMessage = message) }
             }
@@ -208,32 +211,32 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             val settings = FileApexServices.settings
             if (!settings.clipboardSharingEnabled.value) {
-                _uiState.update { it.copy(errorMessage = "Clipboard sharing is disabled in Settings.") }
+                _uiState.update { it.copy(errorMessage = AppI18n.t("clipboard_sharing_disabled_settings")) }
                 return@launch
             }
             val text = PlatformClipboard.getSystemClipboardText()
             if (text.isNullOrBlank()) {
-                _uiState.update { it.copy(errorMessage = "Clipboard is empty.") }
+                _uiState.update { it.copy(errorMessage = AppI18n.t("clipboard_empty")) }
                 return@launch
             }
             val device = repository.getDevice(deviceId)
             if (device == null) {
-                _uiState.update { it.copy(errorMessage = "Device not found.") }
+                _uiState.update { it.copy(errorMessage = AppI18n.t("device_not_found")) }
                 return@launch
             }
-            _uiState.update { it.copy(statusMessage = "Sending Clipboard…") }
+            _uiState.update { it.copy(statusMessage = AppI18n.t("sending_clipboard")) }
             try {
                 val response = com.fileapex.domain.clipboard.ClipboardShareCoordinator.sendToDevice(deviceId)
                 val targetName = if (response.recipientDeviceName.isNotBlank()) response.recipientDeviceName else device.deviceName
                 _uiState.update {
                     it.copy(
-                        statusMessage = "Successfully received by $targetName"
+                        statusMessage = AppI18n.t("clipboard_send_success", targetName)
                     )
                 }
             } catch (error: Throwable) {
                 _uiState.update {
                     it.copy(
-                        errorMessage = error.message ?: "Failed to send clipboard to ${device.deviceName}"
+                        errorMessage = error.message ?: AppI18n.t("clipboard_send_failed", device.deviceName)
                     )
                 }
             }
@@ -270,7 +273,7 @@ class DevicesViewModel : ViewModel() {
                 performDeviceConnectHandshake(device)
             }
         }.getOrElse { error ->
-            DeviceConnectOutcome.Unreachable(error.message ?: "Unable to reach device")
+            DeviceConnectOutcome.Unreachable(error.message ?: AppI18n.t("unable_to_reach_device"))
         }
         val skipMinDelay = outcome is DeviceConnectOutcome.Unreachable && outcome.quickFail
         val remainingMs = if (skipMinDelay) {
@@ -292,7 +295,7 @@ class DevicesViewModel : ViewModel() {
                             device = outcome.device,
                             displayName = outcome.displayName
                         ),
-                        statusMessage = "Enter PIN for ${outcome.displayName}"
+                        statusMessage = AppI18n.t("enter_pin_for", outcome.displayName)
                     )
                 }
             }
@@ -377,7 +380,7 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             runCatching {
                 if (payload.deviceId == identity.deviceId) {
-                    error("You scanned this device's own QR code")
+                    error(AppI18n.t("pairing_scan_own_qr"))
                 }
                 val verified = runCatching {
                     FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
@@ -387,7 +390,7 @@ class DevicesViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             pendingPinPairing = payload.copy(pinRequired = true),
-                            statusMessage = "Enter PIN for ${verified?.deviceName ?: payload.deviceName}"
+                            statusMessage = AppI18n.t("enter_pin_for", verified?.deviceName ?: payload.deviceName)
                         )
                     }
                     return@launch
@@ -395,7 +398,7 @@ class DevicesViewModel : ViewModel() {
                 completePairing(payload, pin = null)
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: "Pairing failed")
+                    it.copy(errorMessage = error.message ?: AppI18n.t("pairing_failed"))
                 }
             }
         }
@@ -425,7 +428,7 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             val trimmed = input.trim()
             if (trimmed.isBlank()) {
-                _uiState.update { it.copy(errorMessage = "Please enter a pairing code") }
+                _uiState.update { it.copy(errorMessage = AppI18n.t("enter_pairing_code")) }
                 return@launch
             }
 
@@ -437,8 +440,7 @@ class DevicesViewModel : ViewModel() {
 
             _uiState.update {
                 it.copy(
-                    errorMessage = "No nearby device is broadcasting that code. " +
-                        "Make sure the other device is on the pairing screen and on the same Wi-Fi."
+                    errorMessage = AppI18n.t("no_nearby_broadcast")
                 )
             }
         }
@@ -452,12 +454,12 @@ class DevicesViewModel : ViewModel() {
         val payload = _uiState.value.pendingPinPairing ?: return
         viewModelScope.launch {
             runCatching {
-                require(pin.isNotBlank()) { "PIN is required" }
+                require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 completePairing(payload, pin = pin.trim())
                 _uiState.update { it.copy(pendingPinPairing = null) }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: "Pairing failed")
+                    it.copy(errorMessage = error.message ?: AppI18n.t("pairing_failed"))
                 }
             }
         }
@@ -472,7 +474,7 @@ class DevicesViewModel : ViewModel() {
         val pending = _uiState.value.pendingPinUnlock ?: return
         viewModelScope.launch {
             runCatching {
-                require(pin.isNotBlank()) { "PIN is required" }
+                require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 FileApexServices.client.verifyPin(
                     host = pending.device.lastKnownIp,
                     port = pending.device.port,
@@ -485,7 +487,7 @@ class DevicesViewModel : ViewModel() {
                 action?.invoke(browseTargetFor(pending.device, pinRequired = true))
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: "Incorrect PIN")
+                    it.copy(errorMessage = error.message ?: AppI18n.t("incorrect_pin"))
                 }
             }
         }
@@ -515,7 +517,7 @@ class DevicesViewModel : ViewModel() {
 
         val scannerHost = NetworkUtils.preferredLanIpv4()
         if (!NetworkUtils.isUsableLanIpv4(scannerHost)) {
-            error("No LAN IPv4 address available for reverse pairing")
+            error(AppI18n.t("no_lan_ipv4_reverse"))
         }
         val scannerEntity = PairedDeviceEntity(
             deviceId = identity.deviceId,
@@ -540,7 +542,10 @@ class DevicesViewModel : ViewModel() {
 
         // Navigate back immediately — roster import / cluster announce can take seconds on cold LAN.
         _uiState.update {
-            it.copy(statusMessage = "Paired with $broadcasterName")
+            it.copy(
+                statusMessage = AppI18n.t("paired_with", broadcasterName),
+                pairingSucceeded = true
+            )
         }
 
         viewModelScope.launch {
@@ -557,8 +562,8 @@ class DevicesViewModel : ViewModel() {
                 if (importedCount > 0) {
                     _uiState.update {
                         it.copy(
-                            statusMessage = "Paired with $broadcasterName " +
-                                "(+$importedCount cluster ${if (importedCount == 1) "device" else "devices"})"
+                            statusMessage = "${AppI18n.t("paired_with", broadcasterName)} ${AppI18n.plural("paired_cluster_extra", importedCount)}",
+                            pairingSucceeded = true
                         )
                     }
                 }
@@ -579,13 +584,13 @@ class DevicesViewModel : ViewModel() {
     fun confirmRename(deviceId: String, newName: String) {
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Name cannot be empty") }
+            _uiState.update { it.copy(errorMessage = AppI18n.t("name_cannot_be_empty")) }
             return
         }
         _uiState.update {
             it.copy(
                 renameTargetId = null,
-                statusMessage = "Updating device name…",
+                statusMessage = AppI18n.t("updating_device_name"),
                 errorMessage = null
             )
         }
@@ -602,12 +607,12 @@ class DevicesViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             localDeviceName = trimmed,
-                            statusMessage = "Renamed to $trimmed — synced to cluster"
+                            statusMessage = AppI18n.t("renamed_synced", trimmed)
                         )
                     }
                 } else {
                     val peer = repository.getDevice(deviceId)
-                        ?: error("Device not found")
+                        ?: error(AppI18n.t("device_not_found"))
                     runCatching {
                         FileApexServices.client.postRemoteRename(
                             host = peer.lastKnownIp,
@@ -621,12 +626,12 @@ class DevicesViewModel : ViewModel() {
                     }
                     presence.refreshOnlineSnapshot()
                     _uiState.update {
-                        it.copy(statusMessage = "Renamed to $trimmed — synced to cluster")
+                        it.copy(statusMessage = AppI18n.t("renamed_synced", trimmed))
                     }
                 }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: "Rename failed")
+                    it.copy(errorMessage = error.message ?: AppI18n.t("rename_failed"))
                 }
             }
         }
@@ -637,7 +642,7 @@ class DevicesViewModel : ViewModel() {
             val device = repository.getDevice(deviceId)
             if (device == null) {
                 _uiState.update {
-                    it.copy(errorMessage = "Device is no longer in the paired list")
+                    it.copy(errorMessage = AppI18n.t("device_not_in_list"))
                 }
                 return@launch
             }
@@ -653,14 +658,14 @@ class DevicesViewModel : ViewModel() {
                 onSuccess = {
                     _uiState.update {
                         it.copy(
-                            statusMessage = "${device.deviceName} removed — pair again to restore",
+                            statusMessage = AppI18n.t("device_removed_restore", device.deviceName),
                             errorMessage = null
                         )
                     }
                 },
                 onFailure = { error ->
                     _uiState.update {
-                        it.copy(errorMessage = error.message ?: "Remove failed")
+                        it.copy(errorMessage = error.message ?: AppI18n.t("remove_failed"))
                     }
                 }
             )
@@ -677,7 +682,7 @@ class DevicesViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         statusMessage = null,
-                        errorMessage = "Can't send to this device — drop onto a paired peer"
+                        errorMessage = AppI18n.t("cannot_send_to_self")
                     )
                 }
                 return@launch
@@ -694,7 +699,7 @@ class DevicesViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         statusMessage = null,
-                        errorMessage = "Drop one or more files or folders"
+                        errorMessage = AppI18n.t("drop_files_or_folders")
                     )
                 }
                 return@launch
@@ -702,13 +707,13 @@ class DevicesViewModel : ViewModel() {
             val target = repository.getDevice(deviceId)
             if (target == null) {
                 _uiState.update {
-                    it.copy(errorMessage = "Device is no longer paired")
+                    it.copy(errorMessage = AppI18n.t("device_no_longer_paired"))
                 }
                 return@launch
             }
             _uiState.update {
                 it.copy(
-                    statusMessage = "Sending to ${target.deviceName}…",
+                    statusMessage = AppI18n.t("sending_to_device", target.deviceName),
                     errorMessage = null
                 )
             }
@@ -738,7 +743,7 @@ class DevicesViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             statusMessage = null,
-                            errorMessage = error.message ?: "Send failed"
+                            errorMessage = error.message ?: AppI18n.t("send_failed")
                         )
                     }
                 }
@@ -755,7 +760,7 @@ class DevicesViewModel : ViewModel() {
     fun thisDeviceTarget(): BrowseTarget {
         return BrowseTarget.Local(
             deviceId = LocalIdentity.LOCAL_DEVICE_ID,
-            displayName = "This device (${LocalDeviceNameStore.current()})",
+            displayName = AppI18n.t("this_device_named", LocalDeviceNameStore.current()),
             rootPath = identity.rootPath
         )
     }
@@ -777,7 +782,9 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun dismissMessages() {
-        _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+        _uiState.update {
+            it.copy(statusMessage = null, errorMessage = null, pairingSucceeded = false)
+        }
     }
 
     override fun onCleared() {
@@ -869,7 +876,7 @@ class DevicesViewModel : ViewModel() {
 
                 val thisDeviceItem = BatteryStatusItem(
                     deviceId = "this_device_local",
-                    deviceName = "This Device",
+                    deviceName = AppI18n.t("this_device"),
                     levelPercent = localDiag?.battery?.levelPercent,
                     chargingState = localDiag?.battery?.chargingState ?: "",
                     online = true

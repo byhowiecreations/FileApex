@@ -11,6 +11,7 @@ import com.fileapex.domain.transfer.MultiCopyDestination
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.MultiCopyResult
 import com.fileapex.domain.transfer.MultiCopySource
+import com.fileapex.i18n.AppI18n
 import com.fileapex.network.FileApexClient
 import com.fileapex.util.PathUtils
 import com.fileapex.platform.UniqueFileNames
@@ -58,8 +59,8 @@ class FileTransferService(
         items: List<RemoteFileItem>,
         hostForPeers: String
     ) {
-        require(items.isNotEmpty()) { "Select at least one file to copy" }
-        require(items.none { it.isDirectory }) { "Directories are not supported for COPY yet" }
+        require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_copy") }
+        require(items.none { it.isDirectory }) { AppI18n.t("directories_not_supported_copy") }
         TransferClipboard.copyAll(
             items.map { item ->
                 ClipboardPayload(
@@ -94,8 +95,8 @@ class FileTransferService(
         port: Int,
         items: List<RemoteFileItem>
     ) {
-        require(items.isNotEmpty()) { "Select at least one file to copy" }
-        require(items.none { it.isDirectory }) { "Directories are not supported for COPY yet" }
+        require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_copy") }
+        require(items.none { it.isDirectory }) { AppI18n.t("directories_not_supported_copy") }
         TransferClipboard.copyAll(
             items.map { item ->
                 ClipboardPayload(
@@ -121,8 +122,8 @@ class FileTransferService(
         sources: List<MultiCopySource>,
         selectedDevices: List<MultiCopyDeviceOption>
     ): List<MultiCopyResult> = withContext(Dispatchers.IO) {
-        require(sources.isNotEmpty()) { "Select at least one file" }
-        require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
+        require(sources.isNotEmpty()) { AppI18n.t("select_at_least_one_file") }
+        require(selectedDevices.isNotEmpty()) { AppI18n.t("select_destination_device") }
         coroutineScope {
             sources.map { source ->
                 async {
@@ -228,7 +229,7 @@ class FileTransferService(
         port: Int,
         items: List<RemoteFileItem>
     ): List<String> = withContext(Dispatchers.IO) {
-        require(items.isNotEmpty()) { "Select at least one file to download" }
+        require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_download") }
         require(items.none { it.isDirectory }) { "Directories cannot be downloaded yet" }
         val downloadsRoot = defaultDownloadsDir()
         SystemFileSystem.createDirectories(Path(downloadsRoot))

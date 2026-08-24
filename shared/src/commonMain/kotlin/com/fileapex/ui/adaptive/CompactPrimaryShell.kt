@@ -189,7 +189,7 @@ fun FluxGlassHeader(
             if (showLayoutView && onToggleLayoutView != null) {
                 Icon(
                     imageVector = Icons.Filled.GridView,
-                    contentDescription = "Layout View",
+                    contentDescription = stringRes("layout_view"),
                     tint = accentTint,
                     modifier = Modifier
                         .size(24.dp)
@@ -210,7 +210,7 @@ fun FluxGlassHeader(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Filled.PowerSettingsNew,
-                            contentDescription = "Exit FileApex",
+                            contentDescription = stringRes("exit_fileapex"),
                             tint = Color(0xFF00E676),
                             modifier = Modifier.size(18.dp)
                         )

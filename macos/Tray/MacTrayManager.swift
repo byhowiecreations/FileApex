@@ -188,14 +188,14 @@ import SwiftUI
     private func showRightClickMenu(around button: NSStatusBarButton) {
         let menu = NSMenu()
         let showItem = NSMenuItem(
-            title: "Show FileApex",
+            title: AppCopy.shared.t("show_fileapex"),
             action: #selector(showMainWindowFromMenu(_:)),
             keyEquivalent: ""
         )
         showItem.target = self
         menu.addItem(showItem)
         menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitAppFromMenu(_:)), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: AppCopy.shared.t("quit"), action: #selector(quitAppFromMenu(_:)), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 

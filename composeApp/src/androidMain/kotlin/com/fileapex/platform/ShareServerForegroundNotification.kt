@@ -69,6 +69,18 @@ object ShareServerForegroundNotification {
 
     fun isPosted(): Boolean = posted
 
+    /**
+     * Rebuilds the persistent FGS alert after a language change.
+     * Uses [NotificationManager.notify] — never [Service.startForeground] (Motorola ~5s / re-assert).
+     */
+    fun refreshLocalizedCopy(context: Context) {
+        if (!posted) return
+        AndroidNotificationChannels.ensureShareServerChannel(context)
+        val manager = context.getSystemService(android.app.NotificationManager::class.java) ?: return
+        manager.notify(NOTIFICATION_ID, buildStaticNotification(context, includeLargeIcon = true))
+        Log.i(TAG, "Refreshed server notification copy for locale")
+    }
+
     private fun invokeStartForeground(service: Service, notification: Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val preferred = preferredForegroundServiceType()

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.browse.BrowserCoordinator
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.preview.FilePreviewManager
@@ -156,7 +157,7 @@ class ExplorerViewModel(
         if (_uiState.value.isSelectionMode) return
         if (!browser.isWithinRoot(item.absolutePath)) {
             _uiState.update {
-                it.copy(statusMessage = "That folder is outside this device's browsable root")
+                it.copy(statusMessage = AppI18n.t("folder_outside_root"))
             }
             return
         }
@@ -185,7 +186,7 @@ class ExplorerViewModel(
         if (_uiState.value.isSelectionMode) return
         if (!browser.isWithinRoot(item.absolutePath)) {
             _uiState.update {
-                it.copy(statusMessage = "That folder is outside this device's browsable root")
+                it.copy(statusMessage = AppI18n.t("folder_outside_root"))
             }
             return
         }
@@ -270,7 +271,7 @@ class ExplorerViewModel(
                     it.copy(
                         isLoading = false,
                         isRefreshing = false,
-                        errorMessage = retryError.message ?: "Unable to open folder"
+                        errorMessage = retryError.message ?: AppI18n.t("unable_to_open_folder")
                     )
                 }
             }
@@ -288,7 +289,7 @@ class ExplorerViewModel(
         val remote = target as? BrowseTarget.Remote ?: return
         viewModelScope.launch {
             runCatching {
-                require(pin.isNotBlank()) { "PIN is required" }
+                require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 FileApexServices.client.verifyPin(
                     host = remote.host,
                     port = remote.port,
@@ -303,7 +304,7 @@ class ExplorerViewModel(
                 resume?.invoke()
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(pinUnlockError = error.message ?: "Incorrect PIN")
+                    it.copy(pinUnlockError = error.message ?: AppI18n.t("incorrect_pin"))
                 }
             }
         }
@@ -478,7 +479,7 @@ class ExplorerViewModel(
             preview.assertPreviewAllowed(item, FilePreviewManager.MAX_PREVIEW_BYTES)
         }.onFailure { error ->
             _uiState.update {
-                it.copy(errorMessage = error.message ?: "Preview failed")
+                it.copy(errorMessage = error.message ?: AppI18n.t("preview_failed"))
             }
             return
         }
@@ -516,7 +517,7 @@ class ExplorerViewModel(
                             previewImage = null,
                             isPreviewLoading = false,
                             canDownloadPreview = false,
-                            errorMessage = error.message ?: "Preview failed"
+                            errorMessage = error.message ?: AppI18n.t("preview_failed")
                         )
                     }
                 }
@@ -529,7 +530,7 @@ class ExplorerViewModel(
             preview.assertPreviewAllowed(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
         }.onFailure { error ->
             _uiState.update {
-                it.copy(errorMessage = error.message ?: "Text file is too large to preview")
+                it.copy(errorMessage = error.message ?: AppI18n.t("text_preview_too_large"))
             }
             return
         }
@@ -566,7 +567,7 @@ class ExplorerViewModel(
                             previewItem = null,
                             isPreviewLoading = false,
                             canDownloadPreview = false,
-                            errorMessage = error.message ?: "Preview failed"
+                            errorMessage = error.message ?: AppI18n.t("preview_failed")
                         )
                     }
                 }
@@ -682,7 +683,7 @@ class ExplorerViewModel(
                 )
             }
         }.onFailure { error ->
-            _uiState.update { it.copy(errorMessage = error.message ?: "COPY failed") }
+            _uiState.update { it.copy(errorMessage = error.message ?: AppI18n.t("copy_failed")) }
         }
     }
 
@@ -738,7 +739,7 @@ class ExplorerViewModel(
         val selectedIds = _uiState.value.selectedMultiCopyDeviceIds
         val selectedDevices = _uiState.value.multiCopyOptions.filter { it.deviceId in selectedIds }
         if (selectedDevices.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Select at least one destination device") }
+            _uiState.update { it.copy(errorMessage = AppI18n.t("select_destination_device")) }
             return
         }
         val sources = transfers.sourcesFrom(items)
@@ -756,12 +757,12 @@ class ExplorerViewModel(
                             val deviceLabel = if (selectedDevices.size == 1) {
                                 selectedDevices.first().deviceName
                             } else {
-                                "${selectedDevices.size} devices"
+                                AppI18n.plural("device_count", selectedDevices.size)
                             }
                             if (items.size == 1) {
-                                "File sent to $deviceLabel"
+                                AppI18n.t("file_sent_to", deviceLabel)
                             } else {
-                                "Files sent to $deviceLabel"
+                                AppI18n.t("files_sent_to", deviceLabel)
                             }.let { base ->
                                 if (outcome.hadQueue) "$base ${outcome.message}" else base
                             }
@@ -834,9 +835,9 @@ class ExplorerViewModel(
                             canDownloadSelection = false,
                             canPaste = TransferClipboard.hasContent(),
                             statusMessage = if (paths.size == 1) {
-                                "Downloaded to ${paths.first()}"
+                                AppI18n.t("downloaded_to", paths.first())
                             } else {
-                                "Downloaded ${paths.size} files to ${DownloadsPaths.displayLabel()}"
+                                AppI18n.t("downloaded_files_to", paths.size, DownloadsPaths.displayLabel())
                             }
                         )
                     }
@@ -845,7 +846,7 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            errorMessage = error.message ?: "Download failed"
+                            errorMessage = error.message ?: AppI18n.t("download_failed")
                         )
                     }
                 }
@@ -864,7 +865,7 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            statusMessage = "Downloaded to ${paths.first()}"
+                            statusMessage = AppI18n.t("downloaded_to", paths.first())
                         )
                     }
                 },
@@ -872,7 +873,7 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            errorMessage = error.message ?: "Download failed"
+                            errorMessage = error.message ?: AppI18n.t("download_failed")
                         )
                     }
                 }
@@ -887,15 +888,15 @@ class ExplorerViewModel(
                 _uiState.update {
                     it.copy(
                         statusMessage = if (paths.size == 1) {
-                            "Pasted to ${paths.first()}"
+                            AppI18n.t("pasted_to", paths.first())
                         } else {
-                            "Pasted ${paths.size} files"
+                            AppI18n.t("pasted_files", paths.size)
                         }
                     )
                 }
                 refresh()
             }.onFailure { error ->
-                _uiState.update { it.copy(errorMessage = error.message ?: "PASTE failed") }
+                _uiState.update { it.copy(errorMessage = error.message ?: AppI18n.t("paste_failed")) }
             }
         }
     }

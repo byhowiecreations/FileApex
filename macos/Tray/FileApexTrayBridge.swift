@@ -173,6 +173,16 @@ public func fileapex_tray_update_devices(_ json: UnsafePointer<CChar>?) {
     }
 }
 
+@_cdecl("fileapex_tray_set_copy")
+public func fileapex_tray_set_copy(_ json: UnsafePointer<CChar>?) {
+    guard let json else { return }
+    let payload = String(cString: json)
+    AppCopy.shared.apply(json: payload)
+    DispatchQueue.main.async {
+        DropBoxWindowManager.shared.relocalize()
+    }
+}
+
 @_cdecl("fileapex_tray_show_main_window")
 public func fileapex_tray_show_main_window() {
     DispatchQueue.main.async {

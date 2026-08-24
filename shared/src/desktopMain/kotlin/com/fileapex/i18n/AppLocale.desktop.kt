@@ -6,6 +6,10 @@ actual fun applyPlatformLocale(locale: AppLocale) {
     JvmLocaleSupport.apply(locale)
 }
 
+internal actual fun onAppLocaleChanged() {
+    DesktopI18nRuntime.sync()
+}
+
 actual fun formatLocalizedDateTime(epochMs: Long, zoneId: String): String =
     JvmLocaleSupport.dateTime(epochMs, zoneId, AppI18n.locale)
 

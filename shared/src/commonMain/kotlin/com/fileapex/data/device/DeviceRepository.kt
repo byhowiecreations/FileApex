@@ -87,10 +87,9 @@ class DeviceRepository(
         }
 
     /**
-     * Cloud registry seed — clears a stale blocklist entry and upserts the peer.
-     * Used when Firestore still lists a device that was mistakenly blocklisted after
-     * dropping off a transient snapshot (offline / listener gap). Explicit user removal
-     * also deletes the cloud doc, so presence here means the peer should stay paired.
+     * Cloud registry seed — upserts peers still listed in Firestore.
+     * Does not undo an explicit user/cluster removal; those stay blocklisted until
+     * the user pairs again via [adoptFromPairing].
      */
     suspend fun reinstateFromCloudSeed(device: PairedDeviceEntity): Boolean =
         mutateMutex.withLock {
@@ -98,11 +97,7 @@ class DeviceRepository(
             if (isLocalDevice(normalized)) {
                 return purgeLocalRowsLocked()
             }
-            deviceDao.clearRemovedDevice(normalized.deviceId)
-            val hash = normalized.publicKeyHash.trim()
-            if (hash.isNotEmpty()) {
-                deviceDao.clearRemovedByPublicKeyHash(hash)
-            }
+            if (isBlocklistedLocked(normalized)) return false
             upsertReplacingAliasesLocked(normalized)
         }
 
@@ -192,16 +187,21 @@ class DeviceRepository(
                 return false
             }
             val device = deviceDao.getDevice(trimmedId) ?: return false
-            deviceDao.insertRemovedDevice(
-                RemovedDeviceEntity(
-                    deviceId = device.deviceId,
-                    publicKeyHash = device.publicKeyHash.trim(),
-                    lastKnownIp = device.lastKnownIp.trim(),
-                    port = device.port,
-                    removedAtEpochMs = TimeUtils.now()
+            val victims = (listOf(device) + findAliasesLocked(device))
+                .distinctBy { it.deviceId }
+            val now = TimeUtils.now()
+            for (victim in victims) {
+                deviceDao.insertRemovedDevice(
+                    RemovedDeviceEntity(
+                        deviceId = victim.deviceId,
+                        publicKeyHash = victim.publicKeyHash.trim(),
+                        lastKnownIp = victim.lastKnownIp.trim(),
+                        port = victim.port,
+                        removedAtEpochMs = now
+                    )
                 )
-            )
-            deviceDao.deleteDevice(trimmedId)
+                deviceDao.deleteDevice(victim.deviceId)
+            }
             true
         }
 
@@ -221,23 +221,40 @@ class DeviceRepository(
             }
             val existing = deviceDao.getDevice(trimmedId)
             val hash = record.publicKeyHash.trim().ifBlank { existing?.publicKeyHash?.trim().orEmpty() }
+            val now = TimeUtils.now()
             deviceDao.insertRemovedDevice(
                 RemovedDeviceEntity(
                     deviceId = trimmedId,
                     publicKeyHash = hash,
                     lastKnownIp = record.lastKnownIp.trim().ifBlank { existing?.lastKnownIp?.trim().orEmpty() },
                     port = record.port.takeIf { it > 0 } ?: existing?.port ?: 0,
-                    removedAtEpochMs = TimeUtils.now()
+                    removedAtEpochMs = now
                 )
             )
+            val extraRows = if (existing != null) {
+                findAliasesLocked(existing)
+            } else if (hash.isNotEmpty()) {
+                deviceDao.getAllDevicesOnce().filter { row ->
+                    row.publicKeyHash.trim() == hash && row.deviceId != trimmedId
+                }
+            } else {
+                emptyList()
+            }
+            extraRows.forEach { row ->
+                deviceDao.insertRemovedDevice(
+                    RemovedDeviceEntity(
+                        deviceId = row.deviceId,
+                        publicKeyHash = row.publicKeyHash.trim(),
+                        lastKnownIp = row.lastKnownIp.trim(),
+                        port = row.port,
+                        removedAtEpochMs = now
+                    )
+                )
+            }
             if (existing != null) {
                 deviceDao.deleteDevice(trimmedId)
             }
-            if (hash.isNotEmpty()) {
-                deviceDao.getAllDevicesOnce()
-                    .filter { row -> row.publicKeyHash.trim() == hash && row.deviceId != trimmedId }
-                    .forEach { row -> deviceDao.deleteDevice(row.deviceId) }
-            }
+            extraRows.forEach { row -> deviceDao.deleteDevice(row.deviceId) }
             true
         }
 

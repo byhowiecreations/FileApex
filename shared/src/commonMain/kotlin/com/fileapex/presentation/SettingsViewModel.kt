@@ -12,6 +12,7 @@ import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
@@ -398,7 +399,7 @@ class SettingsViewModel : ViewModel() {
             it.copy(
                 pinRequiredEnabled = enabled,
                 pinError = when {
-                    enabled && pin.length < 4 -> "Enter a 4–8 digit PIN"
+                    enabled && pin.length < 4 -> AppI18n.t("enter_pin_4_8")
                     else -> null
                 }
             )
@@ -412,7 +413,7 @@ class SettingsViewModel : ViewModel() {
             _uiState.update {
                 it.copy(
                     devicePin = pin,
-                    pinError = "PIN must be 4–8 digits"
+                    pinError = AppI18n.t("pin_must_4_8")
                 )
             }
             return
@@ -489,7 +490,7 @@ class SettingsViewModel : ViewModel() {
     fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?) {
         if (idToken.isNullOrBlank()) {
             _uiState.update {
-                it.copy(googleAccountError = errorMessage ?: "Google sign-in cancelled")
+                it.copy(googleAccountError = errorMessage ?: AppI18n.t("google_signin_cancelled"))
             }
             return
         }
@@ -506,7 +507,7 @@ class SettingsViewModel : ViewModel() {
                 }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(googleAccountError = error.message ?: "Google link failed")
+                    it.copy(googleAccountError = error.message ?: AppI18n.t("google_link_failed"))
                 }
             }
         }
@@ -646,7 +647,7 @@ class SettingsViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             drivePurgeNowBusy = false,
-                            drivePurgeNowMessage = "Deleted $deleted file(s) from FileApex Relay"
+                            drivePurgeNowMessage = AppI18n.t("deleted_relay_files", deleted)
                         )
                     }
                 }
@@ -654,7 +655,7 @@ class SettingsViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             drivePurgeNowBusy = false,
-                            drivePurgeNowMessage = "Could not delete relay files. Try Grant Access again."
+                            drivePurgeNowMessage = AppI18n.t("could_not_delete_relay")
                         )
                     }
                     println("SettingsViewModel: Drive purge failed - ${error.message}")

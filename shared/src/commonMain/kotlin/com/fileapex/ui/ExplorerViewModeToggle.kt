@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.i18n.stringRes
 
 import com.fileapex.ui.theme.fileApexChromeContentColor
 
@@ -23,7 +24,7 @@ fun ExplorerViewModeToggle(
     IconButton(onClick = onToggle, modifier = modifier) {
         Icon(
             imageVector = if (showGridNext) Icons.Filled.GridView else Icons.AutoMirrored.Filled.ViewList,
-            contentDescription = if (showGridNext) "Switch to grid view" else "Switch to list view",
+            contentDescription = if (showGridNext) stringRes("switch_to_grid") else stringRes("switch_to_list"),
             tint = iconTint
         )
     }

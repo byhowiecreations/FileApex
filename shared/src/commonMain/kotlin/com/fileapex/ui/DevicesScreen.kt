@@ -1835,7 +1835,7 @@ private fun BatteryStatusOverlay(
                     modifier = Modifier.fillMaxWidth(0.5f)
                 ) {
                     Text(
-                        text = "OK",
+                        text = stringRes("ok"),
                         fontWeight = FontWeight.Bold
                     )
                 }

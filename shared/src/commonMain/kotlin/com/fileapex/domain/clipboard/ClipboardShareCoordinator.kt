@@ -78,14 +78,14 @@ object ClipboardShareCoordinator {
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed)) return
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
-            BriefToast.show(com.fileapex.i18n.AppI18n.t("choose_all_or_specific_toast"))
+            showClipboardToast(com.fileapex.i18n.AppI18n.t("choose_all_or_specific_toast"))
             return
         }
         val android = currentPlatformLabel() == "Android"
         scope.launch {
             captureAndBroadcast(trimmed, desktopPeersOnly = android)
         }
-        BriefToast.show(com.fileapex.i18n.AppI18n.t("sending_clipboard"))
+        showClipboardToast(com.fileapex.i18n.AppI18n.t("sending_clipboard"))
     }
 
     fun onAppForegrounded() {
@@ -148,16 +148,16 @@ object ClipboardShareCoordinator {
     suspend fun sendToDevice(deviceId: String): ClipboardSendResponse {
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) {
-            error("Clipboard sharing is disabled in Settings.")
+            error(com.fileapex.i18n.AppI18n.t("clipboard_sharing_disabled_settings"))
         }
         val text = PlatformClipboard.getSystemClipboardText()?.takeIf { it.isNotBlank() }
-            ?: error("Clipboard is empty.")
+            ?: error(com.fileapex.i18n.AppI18n.t("clipboard_empty"))
         val device = FileApexServices.deviceRepository.getDevice(deviceId)
-            ?: error("Device not found.")
+            ?: error(com.fileapex.i18n.AppI18n.t("device_not_found"))
         val capturedAt = TimeUtils.now()
         val delivered = deliverToDevice(device, text, capturedAt)
         if (!delivered) {
-            error("Failed to send clipboard to ${device.deviceName}")
+            error(com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName))
         }
         ClipboardPushDeduper.remember(text)
         val name = device.deviceName.ifBlank { "device" }
@@ -165,17 +165,17 @@ object ClipboardShareCoordinator {
     }
 
     suspend fun sendPlaintextToDevice(deviceId: String, text: String): ClipboardSendResponse {
-        val trimmed = text.takeIf { it.isNotBlank() } ?: error("Clipboard is empty.")
+        val trimmed = text.takeIf { it.isNotBlank() } ?: error(com.fileapex.i18n.AppI18n.t("clipboard_empty"))
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) {
-            error("Clipboard sharing is disabled in Settings.")
+            error(com.fileapex.i18n.AppI18n.t("clipboard_sharing_disabled_settings"))
         }
         val device = FileApexServices.deviceRepository.getDevice(deviceId)
-            ?: error("Device not found.")
+            ?: error(com.fileapex.i18n.AppI18n.t("device_not_found"))
         val capturedAt = TimeUtils.now()
         val delivered = deliverToDevice(device, trimmed, capturedAt)
         if (!delivered) {
-            error("Failed to send clipboard to ${device.deviceName}")
+            error(com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName))
         }
         ClipboardPushDeduper.remember(trimmed)
         val name = device.deviceName.ifBlank { "device" }
@@ -432,4 +432,12 @@ object ClipboardShareCoordinator {
         val capturedAtEpochMs: Long,
         val remainingIds: MutableSet<String>
     )
+}
+
+private fun showClipboardToast(message: String) {
+    val inForeground = runCatching {
+        FileApexServices.presenceMonitor.isAppInForeground()
+    }.getOrDefault(false)
+    if (inForeground) return
+    BriefToast.show(message)
 }

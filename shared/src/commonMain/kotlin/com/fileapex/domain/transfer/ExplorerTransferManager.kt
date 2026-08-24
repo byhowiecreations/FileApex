@@ -3,6 +3,7 @@ package com.fileapex.domain.transfer
 import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.i18n.AppI18n
 import com.fileapex.util.NetworkUtils
 import com.fileapex.presentation.BrowseTarget
 
@@ -15,7 +16,7 @@ class ExplorerTransferManager(
     private val identityProvider: () -> LocalIdentity
 ) {
     fun copySelected(items: List<RemoteFileItem>): String {
-        require(items.isNotEmpty()) { "Select at least one file to copy" }
+        require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_copy") }
         when (target) {
             is BrowseTarget.Local -> {
                 val host = NetworkUtils.preferredLanIpv4()
@@ -32,9 +33,9 @@ class ExplorerTransferManager(
             }
         }
         return if (items.size == 1) {
-            "Copied ${items.first().name} — open a folder and tap Paste here"
+            AppI18n.t("copied_file_paste_hint", items.first().name)
         } else {
-            "Copied ${items.size} files — open a folder and tap Paste here"
+            AppI18n.t("copied_files_paste_hint", items.size.toString())
         }
     }
 
@@ -51,8 +52,8 @@ class ExplorerTransferManager(
 
     suspend fun downloadRemote(items: List<RemoteFileItem>): List<String> {
         val remote = target as? BrowseTarget.Remote
-            ?: error("Download is only available for remote devices")
-        require(items.isNotEmpty()) { "Select at least one file to download" }
+            ?: error(AppI18n.t("download_remote_only"))
+        require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_download") }
         return transferManager.downloadRemoteToDownloads(remote.host, remote.port, items)
     }
 

@@ -1,5 +1,6 @@
 package com.fileapex.domain.pairing
 
+import com.fileapex.i18n.AppI18n
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -87,8 +88,7 @@ data class PairingPayload(
                 ?.let { normalizeScannedText(it).replace(CONTROL_CHARS, "").take(56) }
                 ?.ifBlank { null }
                 ?: "(empty)"
-            return "Not a FileApex pairing code — scan with Camera and tap Open FileApex, " +
-                "or use Scan QR Code inside FileApex. Scanner saw: $preview"
+            return AppI18n.t("pairing_not_fileapex", preview)
         }
 
         fun parseFailureMessage(raw: String): String = parseFailureMessage(listOf(raw))

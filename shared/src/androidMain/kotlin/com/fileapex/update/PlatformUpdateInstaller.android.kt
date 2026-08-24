@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.FileProvider
 import com.fileapex.data.settings.androidAppContextOrNull
+import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.FileApexFileProvider
 import java.io.File
 import java.io.RandomAccessFile
@@ -38,15 +39,12 @@ actual object PlatformUpdateInstaller {
     actual fun installAndRelaunch(localFilePath: String, remoteVersion: String) {
         val context = requireContext()
         val apkFile = File(localFilePath)
-        check(apkFile.isFile) { "APK missing at $localFilePath" }
+        check(apkFile.isFile) { AppI18n.t("update_file_missing") }
         validateApkFile(apkFile)
 
         // Never launch system Settings from install/update paths (BAL). Read-only check only.
         if (!PlatformInstallPermission.canRequestPackageInstalls()) {
-            error(
-                "Allow “Install unknown apps” for FileApex via Settings → Check for Updates, " +
-                    "then retry the update"
-            )
+            error(AppI18n.t("update_allow_unknown_apps"))
         }
 
         val uri = FileProvider.getUriForFile(
@@ -113,18 +111,17 @@ actual object PlatformUpdateInstaller {
 
     private fun validateApkFile(apkFile: File) {
         check(apkFile.length() > 1_024L) {
-            "Downloaded APK is too small (${apkFile.length()} bytes) — download may be corrupt"
+            AppI18n.t("update_too_small")
         }
         RandomAccessFile(apkFile, "r").use { raf ->
             val magic = ByteArray(4)
-            check(raf.read(magic) == 4) { "Unable to read APK header" }
+            check(raf.read(magic) == 4) { AppI18n.t("update_invalid_package") }
             val isZip =
                 magic[0] == 0x50.toByte() &&
                     magic[1] == 0x4B.toByte() &&
                     (magic[2] == 0x03.toByte() || magic[2] == 0x05.toByte() || magic[2] == 0x07.toByte())
             check(isZip) {
-                "Downloaded file is not a valid APK (bad magic). " +
-                    "The update link may have returned an HTML error page."
+                AppI18n.t("update_html_download")
             }
         }
         val context = androidAppContextOrNull()
@@ -134,12 +131,12 @@ actual object PlatformUpdateInstaller {
                 PackageManager.GET_ACTIVITIES
             )
             check(archiveInfo != null) {
-                "Downloaded APK could not be parsed — the file may be incomplete or corrupt"
+                AppI18n.t("update_invalid_package")
             }
         }
     }
 
     private fun requireContext() =
         androidAppContextOrNull()
-            ?: error("Android application context not initialized for update install")
+            ?: error(AppI18n.t("initialization_incomplete"))
 }

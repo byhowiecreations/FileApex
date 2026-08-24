@@ -44,3 +44,4 @@ expect fun formatLocalizedDateTime(epochMs: Long, zoneId: String): String
 expect fun formatLocalizedDate(epochMs: Long, zoneId: String): String
 expect fun formatLocalizedTime(epochMs: Long, zoneId: String): String
 expect fun formatLocalizedNumber(value: Number): String
+internal expect fun onAppLocaleChanged()

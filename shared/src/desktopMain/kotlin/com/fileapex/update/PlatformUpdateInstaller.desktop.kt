@@ -1,5 +1,6 @@
 package com.fileapex.update
 
+import com.fileapex.i18n.AppI18n
 import java.io.File
 import kotlin.text.Charsets
 import kotlin.system.exitProcess
@@ -22,10 +23,10 @@ actual object PlatformUpdateInstaller {
     actual fun installAndRelaunch(localFilePath: String, remoteVersion: String) {
         val osName = System.getProperty("os.name").orEmpty().lowercase()
         check(osName.contains("mac")) {
-            "Desktop auto-update install is only implemented for macOS (os=$osName)"
+            AppI18n.t("update_mac_only")
         }
         val asset = File(localFilePath)
-        check(asset.isFile) { "Update package missing at $localFilePath" }
+        check(asset.isFile) { AppI18n.t("update_file_missing") }
 
         val targetApp = resolveInstallTargetApp()
         val scriptFile = File(updateCacheDirectory(), "fileapex-apply-update.sh")

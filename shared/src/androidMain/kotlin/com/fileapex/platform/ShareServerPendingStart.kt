@@ -62,6 +62,13 @@ object ShareServerPendingStart {
     fun isPending(context: Context): Boolean =
         directBootPrefs(context).getBoolean(KEY_PENDING, false)
 
+    fun refreshLocalized(context: Context) {
+        ensureChannel(context)
+        if (isPending(context)) {
+            postRecoveryNotification(context.applicationContext)
+        }
+    }
+
     private fun postRecoveryNotification(context: Context) {
         ensureChannel(context)
         val manager = NotificationManagerCompat.from(context)
@@ -104,10 +111,10 @@ object ShareServerPendingStart {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Server recovery",
+            com.fileapex.i18n.AppI18n.t("channel_recovery"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Prompts to restore the FileApex share server after background limits"
+            description = com.fileapex.i18n.AppI18n.t("channel_recovery_desc")
             setShowBadge(false)
         }
         context.getSystemService(NotificationManager::class.java)

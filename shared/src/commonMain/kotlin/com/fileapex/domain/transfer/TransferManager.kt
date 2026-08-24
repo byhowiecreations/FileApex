@@ -1,6 +1,7 @@
 package com.fileapex.domain.transfer
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.transfer.FileTransferService
@@ -113,10 +114,10 @@ class TransferManager(
         deviceIds: List<String>
     ): List<MultiCopyDeviceOption> {
         awaitReady()
-        require(deviceIds.isNotEmpty()) { "Select at least one destination device" }
+        require(deviceIds.isNotEmpty()) { AppI18n.t("select_destination_device") }
         val wanted = deviceIds.toSet()
         val peers = deviceRepository().listDevices().filter { it.deviceId in wanted }
-        check(peers.isNotEmpty()) { "Selected devices are not in the paired roster" }
+        check(peers.isNotEmpty()) { AppI18n.t("selected_devices_not_paired") }
         return peers.map { peer ->
             resolveRemoteOptionFromRoster(
                 deviceId = peer.deviceId,
@@ -136,10 +137,10 @@ class TransferManager(
      */
     suspend fun resolveRemoteDeviceOptions(deviceIds: List<String>): List<MultiCopyDeviceOption> {
         awaitReady()
-        require(deviceIds.isNotEmpty()) { "Select at least one destination device" }
+        require(deviceIds.isNotEmpty()) { AppI18n.t("select_destination_device") }
         val wanted = deviceIds.toSet()
         val peers = deviceRepository().listDevices().filter { it.deviceId in wanted }
-        check(peers.isNotEmpty()) { "Selected devices are not in the paired roster" }
+        check(peers.isNotEmpty()) { AppI18n.t("selected_devices_not_paired") }
         return peers.map { peer ->
             resolveRemoteOption(
                 deviceId = peer.deviceId,
@@ -163,10 +164,10 @@ class TransferManager(
         port: Int
     ): List<MultiCopyDeviceOption> {
         awaitReady()
-        require(deviceIds.isNotEmpty()) { "Select at least one destination device" }
+        require(deviceIds.isNotEmpty()) { AppI18n.t("select_destination_device") }
         val wanted = deviceIds.toSet()
         val peers = deviceRepository().listDevices().filter { it.deviceId in wanted }
-        check(peers.isNotEmpty()) { "Selected devices are not in the paired roster" }
+        check(peers.isNotEmpty()) { AppI18n.t("selected_devices_not_paired") }
         return peers.map { peer ->
             resolveRemoteOption(
                 deviceId = peer.deviceId,
@@ -189,8 +190,8 @@ class TransferManager(
         skipTransferPrepare: Boolean = false
     ): TransferBatchResult {
         awaitReady()
-        require(sources.isNotEmpty()) { "Select at least one file" }
-        require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
+        require(sources.isNotEmpty()) { AppI18n.t("select_at_least_one_file") }
+        require(selectedDevices.isNotEmpty()) { AppI18n.t("select_destination_device") }
         TransferActivityGuard.beginTransfer()
         try {
             val verifiedSources = sources.verifiedFromDisk()
@@ -362,16 +363,16 @@ data class TransferBatchResult(
                     val deviceLabel = if (selectedDevices.size == 1) {
                         selectedDevices.first().deviceName
                     } else {
-                        "${selectedDevices.size} devices"
+                        AppI18n.plural("n_devices", selectedDevices.size, selectedDevices.size.toString())
                     }
                     if (sources.size == 1) {
-                        "Sent ${sources.first().fileName} to $deviceLabel"
+                        AppI18n.t("sent_named_to", sources.first().fileName, deviceLabel)
                     } else {
-                        "Sent ${sources.size} files to $deviceLabel"
+                        AppI18n.t("sent_n_files_to", sources.size.toString(), deviceLabel)
                     }
                 }
-                allFailed -> "Send failed for all destinations"
-                else -> "Send finished with $failCount error(s)"
+                allFailed -> AppI18n.t("send_failed_all_destinations")
+                else -> AppI18n.plural("send_finished_errors", failCount, failCount.toString())
             }
             return TransferBatchResult(
                 results = results,

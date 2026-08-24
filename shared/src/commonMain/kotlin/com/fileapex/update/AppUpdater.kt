@@ -1,6 +1,7 @@
 package com.fileapex.update
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -51,10 +52,7 @@ object AppUpdater {
                 )
             }
             val asset = PlatformUpdateInstaller.selectAsset(release.assets)
-                ?: error(
-                    "No platform asset found in release ${release.tagName} " +
-                        "(assets=${release.assets.map { it.name }})"
-                )
+                ?: error(AppI18n.t("update_no_platform_asset"))
             return UpdateCheckOutcome.Available(
                 offer = PendingUpdateOffer(
                     remoteVersion = remoteTag,
@@ -129,7 +127,7 @@ object AppUpdater {
             header(HttpHeaders.Accept, "application/vnd.github+json")
         }
         if (!response.status.isSuccess()) {
-            error("GitHub latest release failed (${response.status})")
+            error(AppI18n.t("update_github_failed"))
         }
         return response.body()
     }
@@ -149,14 +147,11 @@ object AppUpdater {
             header(HttpHeaders.Accept, "*/*")
         }.execute { response ->
             if (!response.status.isSuccess()) {
-                error("Download failed (${response.status}) for $url")
+                error(AppI18n.t("update_download_failed"))
             }
             val contentType = response.headers[HttpHeaders.ContentType].orEmpty()
             if (contentType.contains("text/html", ignoreCase = true)) {
-                error(
-                    "Update download returned HTML instead of an APK " +
-                        "(content-type=$contentType). Check the release asset link."
-                )
+                error(AppI18n.t("update_html_download"))
             }
             val channel = response.bodyAsChannel()
             SystemFileSystem.sink(target).buffered().use { sink ->
@@ -191,16 +186,13 @@ object AppUpdater {
 
     private fun validateDownloadedAsset(target: Path, expectedSizeBytes: Long) {
         val metadata = SystemFileSystem.metadataOrNull(target)
-            ?: error("Downloaded update file missing at $target")
+            ?: error(AppI18n.t("update_file_missing"))
         val size = metadata.size
         check(size > 1_024L) {
-            "Downloaded update is too small ($size bytes) — likely a failed download"
+            AppI18n.t("update_too_small")
         }
         if (expectedSizeBytes > 0L && size != expectedSizeBytes) {
-            error(
-                "Downloaded update size mismatch " +
-                    "(got $size bytes, expected $expectedSizeBytes) — incomplete download"
-            )
+            error(AppI18n.t("update_size_mismatch"))
         }
     }
 

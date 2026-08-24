@@ -64,12 +64,12 @@ actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
         .setContentIntent(contentIntent)
         .addAction(
             android.R.drawable.stat_sys_download,
-            "Install",
+            com.fileapex.i18n.AppI18n.t("install"),
             downloadIntent
         )
         .addAction(
             android.R.drawable.ic_menu_close_clear_cancel,
-            "Skip",
+            com.fileapex.i18n.AppI18n.t("skip"),
             skipIntent
         )
         .setAutoCancel(true)

@@ -31,6 +31,5 @@ object PeerLanHttpPolicy {
         PeerReachabilityMessages.localWifiRequired()
 
     fun unreachableMessage(host: String, port: Int): String =
-        "Peer unreachable over Wi-Fi at $host:$port. " +
-            "Confirm both devices are on the same local network."
+        com.fileapex.i18n.AppI18n.t("peer_unreachable_wifi", host, port.toString())
 }

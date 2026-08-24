@@ -3,6 +3,7 @@ package com.fileapex.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
@@ -85,7 +86,7 @@ class ShareSendViewModel(
     private fun prepareDestinations() {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(isPreparing = true, errorMessage = null, statusMessage = "Preparing…")
+                it.copy(isPreparing = true, errorMessage = null, statusMessage = AppI18n.t("preparing"))
             }
             runCatching {
                 transferManager.awaitReady()
@@ -99,7 +100,7 @@ class ShareSendViewModel(
                             isPreparing = false,
                             options = options,
                             onlineDeviceIds = onlineIds,
-                            statusMessage = "${payload.files.size} file(s) · ${options.size} paired device(s)"
+                            statusMessage = "${AppI18n.plural("file_count", payload.files.size, payload.files.size.toString())} · ${AppI18n.plural("n_paired_devices", options.size, options.size.toString())}"
                         )
                     }
                 },
@@ -108,7 +109,7 @@ class ShareSendViewModel(
                         it.copy(
                             isPreparing = false,
                             options = emptyList(),
-                            errorMessage = error.message ?: "Could not load devices"
+                            errorMessage = error.message ?: AppI18n.t("could_not_load_devices")
                         )
                     }
                 }
@@ -123,7 +124,7 @@ class ShareSendViewModel(
                     isPreparing = true,
                     isSending = true,
                     errorMessage = null,
-                    statusMessage = "Sending…"
+                    statusMessage = AppI18n.t("sending")
                 )
             }
             runCatching {
@@ -142,7 +143,7 @@ class ShareSendViewModel(
                         it.copy(
                             isPreparing = false,
                             isSending = false,
-                            errorMessage = error.message ?: "Send failed"
+                            errorMessage = error.message ?: AppI18n.t("send_failed")
                         )
                     }
                 }
@@ -156,7 +157,7 @@ class ShareSendViewModel(
         skipTransferPrepare: Boolean = false
     ) {
         _uiState.update {
-            it.copy(isSending = true, errorMessage = null, statusMessage = "Sending…")
+            it.copy(isSending = true, errorMessage = null, statusMessage = AppI18n.t("sending"))
         }
         runCatching {
             transferManager.awaitReady()
@@ -172,7 +173,7 @@ class ShareSendViewModel(
                     recordDirectShareOnSuccess?.let { recordDirectShareTargetUsed(it) }
                 }
                 val allFailed = batch?.allFailed == true && !outcome.hadQueue && !outcome.hadRelay
-                val confirmOnly = outcome.message.startsWith("Confirm Cellular")
+                val confirmOnly = outcome.needsCellularConfirm
                 _uiState.update {
                     it.copy(
                         isPreparing = false,
@@ -188,7 +189,7 @@ class ShareSendViewModel(
                     it.copy(
                         isPreparing = false,
                         isSending = false,
-                        errorMessage = error.message ?: "Send failed"
+                        errorMessage = error.message ?: AppI18n.t("send_failed")
                     )
                 }
             }

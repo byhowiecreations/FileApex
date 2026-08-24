@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
+import com.fileapex.i18n.AppI18n
 import java.awt.MenuItem
 import java.awt.Point
 import java.awt.PopupMenu
@@ -41,8 +42,20 @@ object DesktopAwtTrayCoordinator {
     private var onQuitApp: (() -> Unit)? = null
     private var devices: List<DesktopTrayDeviceSnapshot> = emptyList()
     private var trayPopover: DesktopWindowsTrayPopover? = null
+    private var showMenuItem: MenuItem? = null
+    private var exitMenuItem: MenuItem? = null
 
     fun isInstalled(): Boolean = installed
+
+    fun rebuildLocalizedChrome() {
+        if (!DesktopPlatformPaths.isWindows() || !installed) return
+        SwingUtilities.invokeLater {
+            showMenuItem?.label = AppI18n.t("show_fileapex")
+            exitMenuItem?.label = AppI18n.t("exit")
+            trayPopover?.applyLocalizedCopy()
+            DesktopWindowsDropBox.applyLocalizedCopy()
+        }
+    }
 
     fun attachMainWindow(
         window: Window,
@@ -67,6 +80,7 @@ object DesktopAwtTrayCoordinator {
             installed = true
             minimizeToTrayOnClose = true
             println("DesktopAwtTrayCoordinator: AWT tray installed")
+            com.fileapex.i18n.DesktopI18nRuntime.sync()
         }.onFailure { error ->
             println("DesktopAwtTrayCoordinator: tray setup failed - ${error.message}")
         }
@@ -78,7 +92,7 @@ object DesktopAwtTrayCoordinator {
             return false
         }
         hideMainWindow()
-        showBalloon("FileApex is still running in the system tray.")
+        showBalloon(AppI18n.t("still_running_in_tray"))
         return true
     }
 
@@ -152,16 +166,16 @@ object DesktopAwtTrayCoordinator {
         )
 
         val popup = PopupMenu()
-        popup.add(
-            MenuItem("Show FileApex").apply {
-                addActionListener { showMainWindow() }
-            }
-        )
-        popup.add(
-            MenuItem("Exit").apply {
-                addActionListener { quitFromTray() }
-            }
-        )
+        val showItem = MenuItem(AppI18n.t("show_fileapex")).apply {
+            addActionListener { showMainWindow() }
+        }
+        val exitItem = MenuItem(AppI18n.t("exit")).apply {
+            addActionListener { quitFromTray() }
+        }
+        popup.add(showItem)
+        popup.add(exitItem)
+        showMenuItem = showItem
+        exitMenuItem = exitItem
 
         val icon = TrayIcon(createTrayImage(), "FileApex", popup).apply {
             isImageAutoSize = true
@@ -256,12 +270,11 @@ object DesktopAwtTrayCoordinator {
                         outcome.hadQueue && (batch == null || batch.allFailed) -> outcome.message
                         batch?.allFailed == true -> outcome.message
                         outcome.hadQueue -> outcome.message
-                        paths.size > 1 -> "${paths.size} Files Sent"
-                        else -> "File Sent"
+                        else -> AppI18n.plural("n_files_sent_short", paths.size, paths.size.toString())
                     }
                     showBalloon(message)
                 } catch (error: Exception) {
-                    showBalloon(error.message ?: "Send failed")
+                    showBalloon(error.message ?: AppI18n.t("send_failed"))
                 } finally {
                     DesktopWindowsDropBox.onSendFinished()
                 }

@@ -1,6 +1,7 @@
 package com.fileapex.update
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.BriefToast
 import com.fileapex.platform.dismissAppUpdateNotification
 import com.fileapex.platform.notifyAppUpdateAvailable
@@ -109,7 +110,7 @@ object AppUpdateCoordinator {
         FileApexServices.settings.setSkippedUpdateVersion(offer.remoteVersion)
         setPendingOffer(null)
         _showUpdateSheet.value = false
-        _statusMessage.value = "Skipped FileApex ${offer.remoteVersion}"
+        _statusMessage.value = AppI18n.t("skipped_update", offer.remoteVersion)
         dismissAppUpdateNotification()
     }
 
@@ -133,15 +134,15 @@ object AppUpdateCoordinator {
         scope.launch {
             downloadInFlight = true
             try {
-                _statusMessage.value = "Downloading FileApex ${offer.remoteVersion}…"
+                _statusMessage.value = AppI18n.t("downloading_update", offer.remoteVersion)
                 dismissAppUpdateNotification()
                 AppUpdater.downloadAndInstall(offer)
                 FileApexServices.settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                 setPendingOffer(null)
                 _showUpdateSheet.value = false
-                _statusMessage.value = "Installing FileApex ${offer.remoteVersion}…"
+                _statusMessage.value = AppI18n.t("installing_update", offer.remoteVersion)
             } catch (error: Throwable) {
-                val message = error.message ?: "Update download failed"
+                val message = error.message ?: AppI18n.t("update_download_failed")
                 _statusMessage.value = message
                 BriefToast.show(message)
                 println("AppUpdateCoordinator: download failed - $message")
@@ -242,7 +243,7 @@ object AppUpdateCoordinator {
                 }
             } catch (error: Throwable) {
                 settings.setLastUpdateCheckEpochMs(TimeUtils.now())
-                val message = error.message ?: "Update check failed"
+                val message = error.message ?: AppI18n.t("update_check_failed")
                 _statusMessage.value = message
                 if (toastFeedback) {
                     BriefToast.show(message)
@@ -259,13 +260,13 @@ object AppUpdateCoordinator {
         if (shouldDeferUpdateInstallToUser()) {
             setPendingOffer(offer)
             notifyAppUpdateAvailable(offer)
-            _statusMessage.value = "FileApex ${offer.remoteVersion} available"
+            _statusMessage.value = AppI18n.t("update_available_title", offer.remoteVersion)
             if (toastFeedback) {
                 _showUpdateSheet.value = true
             }
             return
         }
-        _statusMessage.value = "FileApex ${offer.remoteVersion} available — installing…"
+        _statusMessage.value = AppI18n.t("update_available_installing", offer.remoteVersion)
         notifyAppUpdateAvailable(offer)
         AppUpdater.downloadAndInstall(offer)
         setPendingOffer(null)

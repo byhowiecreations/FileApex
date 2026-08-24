@@ -61,6 +61,10 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
         onVisibilityChanged?(true)
     }
 
+    public func relocalize() {
+        dropBoxWindow?.title = AppCopy.shared.t("drop_files")
+    }
+
     public func closeDropBox() {
         persistFrameImmediately()
         dropBoxWindow?.orderOut(nil)
@@ -87,7 +91,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.title = "Drop Files"
+        window.title = AppCopy.shared.t("drop_files")
         window.isFloatingPanel = true
         window.level = .floating
         window.hidesOnDeactivate = false
@@ -116,7 +120,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
         guard !targetDeviceIds.isEmpty else { return false }
         let paths = stagedFilePaths
         guard !paths.isEmpty else {
-            NSApp.showNativeToast(message: "Drop one or more files first")
+            NSApp.showNativeToast(message: AppCopy.shared.t("drop_files_first"))
             return false
         }
 
@@ -126,7 +130,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
             let deviceJson = String(data: deviceData, encoding: .utf8),
             let pathJson = String(data: pathData, encoding: .utf8)
         else {
-            NSApp.showNativeToast(message: "Send failed")
+            NSApp.showNativeToast(message: AppCopy.shared.t("send_failed"))
             return false
         }
 
@@ -182,6 +186,7 @@ struct DropBoxContentView: View {
     let onFilesChanged: ([String]) -> Void
     let onSend: () -> Bool
 
+    @ObservedObject private var copy = AppCopy.shared
     @State private var filePaths: [String] = []
     @State private var isTargeted = false
     @State private var isSending = false
@@ -191,11 +196,11 @@ struct DropBoxContentView: View {
             Image(systemName: "arrow.down.doc.fill")
                 .font(.system(size: 32))
                 .foregroundStyle(Color.accentColor)
-            Text(filePaths.isEmpty ? "Drag & drop files here" : "\(filePaths.count) file(s) ready")
+            Text(filePaths.isEmpty ? copy.t("drag_drop_files_here") : copy.plural("n_files_ready", count: filePaths.count))
                 .font(.subheadline)
                 .bold()
                 .multilineTextAlignment(.center)
-            Text("\(targetDeviceCount) destination(s)")
+            Text(copy.plural("n_destinations", count: targetDeviceCount))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -207,7 +212,7 @@ struct DropBoxContentView: View {
                         isSending = false
                     }
                 } label: {
-                    Text(isSending ? "Sending" : "Send")
+                    Text(isSending ? copy.t("sending_short") : copy.t("send"))
                         .frame(minWidth: 120)
                 }
                 .buttonStyle(.borderedProminent)

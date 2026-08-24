@@ -103,8 +103,16 @@ fun LiveTransferCapsuleOverlay(
         when {
             isTransferActive || activeSendingItem != null -> {
                 val isSingle = (activeSendingItem?.sourceSummary?.contains(",") != true) && pendingCount <= 1
-                val title = if (isSingle) "Sending File" else "Sending Files"
-                val subtitle = if (pendingCount > 1) "$pendingCount items in queue" else "Active transfer"
+                val title = if (isSingle) {
+                    com.fileapex.i18n.AppI18n.t("sending_file")
+                } else {
+                    com.fileapex.i18n.AppI18n.t("sending_files")
+                }
+                val subtitle = if (pendingCount > 1) {
+                    com.fileapex.i18n.AppI18n.plural("items_in_queue", pendingCount, pendingCount.toString())
+                } else {
+                    com.fileapex.i18n.AppI18n.t("active_transfer")
+                }
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Transferring,
                     title = title,

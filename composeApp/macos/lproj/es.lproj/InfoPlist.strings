@@ -1,0 +1,2 @@
+/* Localized permission rationale shown by macOS before the Local Network prompt. */
+"NSLocalNetworkUsageDescription" = "FileApex se comunica directamente con dispositivos locales en tu red para sincronizar archivos y descubrir nodos.";

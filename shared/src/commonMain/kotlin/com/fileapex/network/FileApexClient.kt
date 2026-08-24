@@ -6,6 +6,7 @@ import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.peer.PeerNodeState
+import com.fileapex.i18n.AppI18n
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -135,11 +136,11 @@ class FileApexClient(
         )
         if (response.statusCode == 403) {
             val message = if (response.body.contains("clipboard_disabled")) {
-                "Clipboard sharing is disabled on destination device"
+                AppI18n.t("clipboard_disabled_on_peer")
             } else if (response.body.contains("pin_required")) {
-                "PIN required — open the device and enter its PIN"
+                AppI18n.t("pin_required_open_device")
             } else {
-                response.body.ifBlank { "Clipboard sharing is disabled on destination device" }
+                response.body.ifBlank { AppI18n.t("clipboard_disabled_on_peer") }
             }
             error(message)
         }
@@ -149,7 +150,7 @@ class FileApexClient(
 
     suspend fun verifyPin(host: String, port: Int, pin: String) {
         val trimmed = pin.trim()
-        require(trimmed.isNotEmpty()) { "PIN is required" }
+        require(trimmed.isNotEmpty()) { AppI18n.t("pin_required_error") }
         val response = boundPost(
             host = host,
             port = port,
@@ -164,7 +165,7 @@ class FileApexClient(
             timeoutMs = PEER_REQUEST_TIMEOUT_MS
         )
         if (response.statusCode == 403) {
-            error("Incorrect PIN")
+            error(AppI18n.t("incorrect_pin"))
         }
         requireSuccess(response, "PIN check failed (${response.statusCode})")
         rememberSessionPin(host, port, trimmed)
@@ -217,11 +218,11 @@ class FileApexClient(
         if (response.statusCode == 403) {
             val body = response.body.lowercase()
             if (body.contains("pairing_code")) {
-                error("Pairing code expired or incorrect. Ask the other device to tap Retry.")
+                error(AppI18n.t("pairing_code_expired"))
             }
-            error("Incorrect PIN — pairing rejected")
+            error(AppI18n.t("incorrect_pin_pairing"))
         }
-        requireSuccess(response, "Pairing handshake failed (${response.statusCode})")
+        requireSuccess(response, AppI18n.t("pairing_handshake_failed", response.statusCode.toString()))
     }
 
     suspend fun postRemoteRename(

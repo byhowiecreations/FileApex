@@ -2,6 +2,7 @@ package com.fileapex.ui
 
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.i18n.stringRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -156,9 +157,9 @@ fun AdaptiveExplorerView(
                 files = rightFiles,
                 isEmpty = rightEmpty,
                 emptyHint = if (showingPaneRootFiles) {
-                    "Select a folder on the left, or browse files below"
+                    stringRes("select_folder_or_browse")
                 } else {
-                    "This folder is empty"
+                    stringRes("folder_empty")
                 },
                 isSelectionMode = isSelectionMode,
                 selectedFileIds = selectedFileIds,
@@ -187,7 +188,7 @@ fun AdaptiveExplorerView(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "This folder is empty",
+                text = stringRes("folder_empty"),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -201,7 +202,7 @@ fun AdaptiveExplorerView(
         directories = contentDirectories,
         files = contentFiles,
         isEmpty = false,
-        emptyHint = "This folder is empty",
+        emptyHint = stringRes("folder_empty"),
         isSelectionMode = isSelectionMode,
         selectedFileIds = selectedFileIds,
         desktopSelection = desktopSelection,
@@ -433,7 +434,7 @@ private fun ParentRow(onClick: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Filled.Folder,
-            contentDescription = "Up",
+            contentDescription = stringRes("up"),
             tint = if (isFluxGlass) Color(0xFF00E676) else FileApexTeal,
             modifier = Modifier.size(28.dp)
         )
@@ -449,7 +450,7 @@ private fun ParentRow(onClick: () -> Unit) {
                 maxLines = 1
             )
             Text(
-                text = "Up one folder",
+                text = stringRes("up_one_folder"),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
             )

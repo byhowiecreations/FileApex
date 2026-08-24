@@ -23,10 +23,11 @@ final class ShareViewController: NSViewController {
     }
 
     private func prepareAndPresent() async {
+        AppCopy.shared.loadFromDisk()
         let urls = await resolveAttachmentURLs()
         guard !urls.isEmpty else {
             await MainActor.run {
-                self.presentStagingFailure("No files were provided to share.")
+                self.presentStagingFailure(AppCopy.shared.t("handoff_no_files"))
             }
             return
         }
@@ -52,7 +53,7 @@ final class ShareViewController: NSViewController {
                 preStagedJobId: jobId,
                 preStagedPaths: stagedPaths
             )
-            let root = DevicePickerView(model: model, title: "Share with FileApex") { [weak self] success in
+            let root = DevicePickerView(model: model, title: AppCopy.shared.t("share_with_fileapex")) { [weak self] success in
                 self?.finish(success: success)
             }
             let host = NSHostingController(rootView: root)
@@ -74,7 +75,7 @@ final class ShareViewController: NSViewController {
         alert.messageText = "FileApex"
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: AppCopy.shared.t("ok"))
         alert.runModal()
         finish(success: false)
     }

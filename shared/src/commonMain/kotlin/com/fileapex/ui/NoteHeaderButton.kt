@@ -12,6 +12,7 @@ import com.fileapex.data.settings.AppTheme
 import com.fileapex.di.FileApexServices
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.i18n.stringRes
 
 @Composable
 fun NoteHeaderButton(
@@ -35,7 +36,7 @@ fun NoteHeaderButton(
     ) {
         Image(
             painter = painter,
-            contentDescription = "Bulletin Board",
+            contentDescription = stringRes("bulletin_board"),
             modifier = Modifier.size(24.dp)
         )
     }

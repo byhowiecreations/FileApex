@@ -2,6 +2,7 @@ package com.fileapex.ui.adaptive
 
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.i18n.stringRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Row
 
@@ -48,7 +49,7 @@ fun FileApexPaneSectionHeader(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringRes("back"),
                     tint = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface
                 )
             }

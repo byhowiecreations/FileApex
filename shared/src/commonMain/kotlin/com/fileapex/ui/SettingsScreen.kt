@@ -548,17 +548,17 @@ private fun backgroundPersistenceSubtitle(
     backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean
 ): String {
-    val status = if (watchdogEnabled) "On" else "Off"
+    val status = if (watchdogEnabled) AppI18n.t("on") else AppI18n.t("off")
     val warnings = buildList {
-        if (backgroundPersistence.backgroundRestricted) add("background restricted")
-        if (backgroundPersistence.batteryOptimizationRestricted) add("battery optimized")
-        if (backgroundPersistence.unusedAppRestrictionsActive) add("hibernation on")
-        if (exactAlarmWarningActive) add("alarms off")
+        if (backgroundPersistence.backgroundRestricted) add(AppI18n.t("warn_background_restricted"))
+        if (backgroundPersistence.batteryOptimizationRestricted) add(AppI18n.t("warn_battery_optimized"))
+        if (backgroundPersistence.unusedAppRestrictionsActive) add(AppI18n.t("warn_hibernation"))
+        if (exactAlarmWarningActive) add(AppI18n.t("warn_alarms_off"))
     }
     return if (warnings.isEmpty()) {
         status
     } else {
-        "$status · ${warnings.joinToString(", ")}"
+        AppI18n.t("status_on_warnings", status, warnings.joinToString(", "))
     }
 }
 
@@ -605,8 +605,11 @@ private fun BackgroundPersistenceSettingsPage(
                     headlineContent = { Text(stringRes("background_restricted"), softWrap = true) },
                     supportingContent = {
                         Text(
-                            backgroundPersistence.oemGuidance?.appBatteryUsageSteps?.let { steps ->
-                                stringRes("background_restricted_desc_steps", steps)
+                            backgroundPersistence.oemGuidance?.let { guidance ->
+                                stringRes(
+                                    "background_restricted_desc_steps",
+                                    stringRes(guidance.batteryStepsKey)
+                                )
                             } ?: stringRes("background_restricted_desc"),
                             softWrap = true
                         )
@@ -641,13 +644,13 @@ private fun BackgroundPersistenceSettingsPage(
                         supportingContent = {
                             Text(
                                 buildString {
-                                    append(guidance.appBatteryUsageSteps)
-                                    append('.')
-                                    guidance.autoStartHint?.let { hint ->
-                                        append(' ')
-                                        append(hint)
+                                    append(stringRes(guidance.batteryStepsKey))
+                                    guidance.autoStartHintKey?.let { hintKey ->
+                                        append('\n')
+                                        append(stringRes(hintKey))
                                     }
-                                }
+                                },
+                                softWrap = true
                             )
                         },
                         modifier = Modifier.clickable { onOpenBackgroundPersistenceSettings() }
@@ -1796,7 +1799,7 @@ private fun SettingsTopBar(title: String, onBack: (() -> Unit)?) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back"
+                        contentDescription = stringRes("back")
                     )
                 }
             }
@@ -2106,7 +2109,11 @@ private fun CollapsibleCategoryHeader(
         )
         Icon(
             imageVector = Icons.Default.KeyboardArrowDown,
-            contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+            contentDescription = if (expanded) {
+                stringRes("collapse_section", title)
+            } else {
+                stringRes("expand_section", title)
+            },
             modifier = Modifier.rotate(rotationAngle),
             tint = if (isFluxGlass) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
         )

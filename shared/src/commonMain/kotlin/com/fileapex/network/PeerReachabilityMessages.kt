@@ -1,15 +1,16 @@
 package com.fileapex.network
 
+import com.fileapex.i18n.AppI18n
+
 /**
  * User-facing copy when direct LAN is unavailable — shared across transfer, navigation,
  * and Device Details entry points.
  */
 object PeerReachabilityMessages {
-    fun fileNavigationOffWifi(): String =
-        "File navigation unavailable until back on local Wi‑Fi."
+    fun fileNavigationOffWifi(): String = AppI18n.t("file_nav_off_wifi")
 
     fun fileTransferOffWifiQueued(deviceName: String): String =
-        "$deviceName is off local Wi‑Fi — transfer queued until back on Wi‑Fi."
+        AppI18n.t("file_transfer_off_wifi_queued", deviceName)
 
     fun fileTransferOffWifiQueuedMultiple(deviceNames: List<String>): String {
         if (deviceNames.isEmpty()) return ""
@@ -18,20 +19,19 @@ object PeerReachabilityMessages {
         } else {
             deviceNames.joinToString(", ")
         }
-        return "$targets off local Wi‑Fi — transfer(s) queued until back on Wi‑Fi."
+        return AppI18n.t("file_transfer_off_wifi_queued_multiple", targets)
     }
 
     fun fileTransferOffWifiDriveNotReady(deviceNames: List<String>): String {
         val targets = when {
-            deviceNames.isEmpty() -> "Device"
+            deviceNames.isEmpty() -> AppI18n.t("file_generic")
             deviceNames.size == 1 -> deviceNames.first()
             else -> deviceNames.joinToString(", ")
         }
-        return "$targets is off local Wi‑Fi. Enable Google Drive Relay and Cellular under Google Account to send now."
+        return AppI18n.t("file_transfer_off_wifi_drive_not_ready", targets)
     }
 
-    fun localWifiRequired(): String =
-        "Connect to Wi‑Fi or Ethernet to reach paired devices on your local network."
+    fun localWifiRequired(): String = AppI18n.t("local_wifi_required")
 
-    fun peerOffline(): String = "Unable to reach device"
+    fun peerOffline(): String = AppI18n.t("unable_to_reach_device")
 }

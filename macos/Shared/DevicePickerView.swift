@@ -8,7 +8,7 @@ public struct DevicePickerView: View {
 
     public init(
         model: DevicePickerModel,
-        title: String = "Send with FileApex",
+        title: String = AppCopy.shared.t("send_with_fileapex"),
         onFinished: @escaping (Bool) -> Void
     ) {
         self.model = model
@@ -29,7 +29,7 @@ public struct DevicePickerView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 120)
             } else if model.devices.isEmpty {
-                Text("Pair devices in the FileApex app, then try again.")
+                Text(AppCopy.shared.t("pair_devices_then_retry"))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
             } else {
@@ -73,7 +73,7 @@ public struct DevicePickerView: View {
             }
 
             HStack {
-                Button("Cancel") {
+                Button(AppCopy.shared.t("cancel")) {
                     onFinished(false)
                 }
                 .keyboardShortcut(.cancelAction)
@@ -94,7 +94,7 @@ public struct DevicePickerView: View {
                             .controlSize(.small)
                             .padding(.horizontal, 8)
                     } else {
-                        Text("Send")
+                        Text(AppCopy.shared.t("send"))
                     }
                 }
                 .keyboardShortcut(.defaultAction)

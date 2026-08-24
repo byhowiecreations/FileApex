@@ -6,6 +6,8 @@ import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.AppLocale
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.pairing.LanPairingDiscovery
@@ -56,6 +58,8 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Persistent Ktor CIO host. Engine lifecycle is owned by the platform share controller
@@ -711,11 +715,11 @@ class FileApexServer(
                 }
 
                 get("/") {
-                    call.respondText(WEB_SHARE_HTML, ContentType.Text.Html)
+                    call.respondText(webShareHtml(), ContentType.Text.Html)
                 }
 
                 get("/share") {
-                    call.respondText(WEB_SHARE_HTML, ContentType.Text.Html)
+                    call.respondText(webShareHtml(), ContentType.Text.Html)
                 }
 
                 post("/api/v1/web/send-clipboard") {
@@ -740,9 +744,11 @@ class FileApexServer(
                         val devices = withContext(Dispatchers.IO) { onListDevices() }
                         val targetDevice = devices.firstOrNull { it.deviceId == targetDeviceId }
                         if (targetDevice == null) {
-                            call.respond(
-                                HttpStatusCode.NotFound,
-                                """{"status":"error","message":"Target device not found"}"""
+                            val missing = json.encodeToString(AppI18n.t("web_share_target_not_found"))
+                            call.respondText(
+                                """{"status":"error","message":$missing}""",
+                                ContentType.Application.Json,
+                                HttpStatusCode.NotFound
                             )
                             return@runCatching
                         }
@@ -755,7 +761,7 @@ class FileApexServer(
                         call.respondText(respJson, ContentType.Application.Json)
                     }.onFailure { error ->
                         onLog("POST /api/v1/web/send-clipboard failed", error)
-                        val errMsg = error.message ?: "Failed to send clipboard"
+                        val errMsg = error.message ?: AppI18n.t("web_share_failed")
                         val safeMsg = json.encodeToString(errMsg)
                         call.respondText(
                             """{"status":"error","message":$safeMsg}""",
@@ -926,13 +932,35 @@ class FileApexServer(
 
     companion object {
         private const val UPLOAD_IDLE_TIMEOUT_MS = 60_000L
-        private val WEB_SHARE_HTML = """
+        private fun webShareHtml(): String {
+            val i18n = buildJsonObject {
+                put("title", AppI18n.t("web_share_title"))
+                put("selectDevice", AppI18n.t("web_share_select_device"))
+                put("textLabel", AppI18n.t("web_share_text_label"))
+                put("placeholder", AppI18n.t("web_share_placeholder"))
+                put("send", AppI18n.t("web_share_send"))
+                put("loading", AppI18n.t("web_share_loading"))
+                put("empty", AppI18n.t("no_paired_devices_found"))
+                put("errorLoading", AppI18n.t("web_share_error_loading"))
+                put("selectDest", AppI18n.t("web_share_select_dest"))
+                put("enterText", AppI18n.t("web_share_enter_text"))
+                put("sending", AppI18n.t("web_share_sending"))
+                put("receivedBy", AppI18n.t("web_share_received_by", "{name}"))
+                put("failed", AppI18n.t("web_share_failed"))
+                put("errorSending", AppI18n.t("web_share_error_sending", "{err}"))
+            }
+            val lang = when (AppI18n.locale) {
+                AppLocale.ES -> "es"
+                AppLocale.ZH_HANS -> "zh-CN"
+                else -> "en"
+            }
+            return """
             <!DOCTYPE html>
-            <html lang="en">
+            <html lang="$lang">
             <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>FileApex Web Share</title>
+            <title></title>
             <style>
               body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
               .card { background: #1e293b; border-radius: 16px; padding: 24px; max-width: 480px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
@@ -950,15 +978,23 @@ class FileApexServer(
             </head>
             <body>
             <div class="card">
-              <h1>FileApex Web Share</h1>
-              <label for="deviceSelect">Select Destination Device:</label>
-              <select id="deviceSelect"><option value="">Loading devices...</option></select>
-              <label for="shareText">Text or Link to Share:</label>
-              <textarea id="shareText" placeholder="Paste link or text here..."></textarea>
-              <button id="sendBtn" onclick="sendClipboard()">Send Clipboard</button>
+              <h1 id="pageTitle"></h1>
+              <label id="deviceLabel" for="deviceSelect"></label>
+              <select id="deviceSelect"></select>
+              <label id="textLabel" for="shareText"></label>
+              <textarea id="shareText"></textarea>
+              <button id="sendBtn" onclick="sendClipboard()"></button>
             </div>
             <div id="snackbar" class="snackbar"></div>
             <script>
+              const I18N = $i18n;
+              document.title = I18N.title;
+              document.getElementById("pageTitle").innerText = I18N.title;
+              document.getElementById("deviceLabel").innerText = I18N.selectDevice;
+              document.getElementById("textLabel").innerText = I18N.textLabel;
+              document.getElementById("shareText").placeholder = I18N.placeholder;
+              document.getElementById("sendBtn").innerText = I18N.send;
+              document.getElementById("deviceSelect").innerHTML = '<option value="">' + I18N.loading + '</option>';
               let snackbarTimer;
               function showSnackbar(msg) {
                 const sb = document.getElementById("snackbar");
@@ -974,7 +1010,7 @@ class FileApexServer(
                   const select = document.getElementById('deviceSelect');
                   select.innerHTML = '';
                   if (!devices || devices.length === 0) {
-                    select.innerHTML = '<option value="">No paired devices found</option>';
+                    select.innerHTML = '<option value="">' + I18N.empty + '</option>';
                     return;
                   }
                   devices.forEach(d => {
@@ -984,15 +1020,15 @@ class FileApexServer(
                     select.appendChild(opt);
                   });
                 } catch (e) {
-                  document.getElementById('deviceSelect').innerHTML = '<option value="">Error loading devices</option>';
+                  document.getElementById('deviceSelect').innerHTML = '<option value="">' + I18N.errorLoading + '</option>';
                 }
               }
               async function sendClipboard() {
                 const deviceId = document.getElementById('deviceSelect').value;
                 const text = document.getElementById('shareText').value;
-                if (!deviceId) { alert('Please select a destination device.'); return; }
-                if (!text.trim()) { alert('Please enter text or link to send.'); return; }
-                showSnackbar("Sending Clipboard…");
+                if (!deviceId) { alert(I18N.selectDest); return; }
+                if (!text.trim()) { alert(I18N.enterText); return; }
+                showSnackbar(I18N.sending);
                 try {
                   const res = await fetch('/api/v1/web/send-clipboard', {
                     method: 'POST',
@@ -1001,19 +1037,20 @@ class FileApexServer(
                   });
                   const data = await res.json();
                   if (res.ok && data.status === 'ok') {
-                    showSnackbar("Successfully received by " + data.recipientDeviceName);
+                    showSnackbar(I18N.receivedBy.replace('{name}', data.recipientDeviceName));
                     document.getElementById('shareText').value = '';
                   } else {
-                    showSnackbar(data.message || "Failed to send clipboard");
+                    showSnackbar(data.message || I18N.failed);
                   }
                 } catch (e) {
-                  showSnackbar("Error sending clipboard: " + e.message);
+                  showSnackbar(I18N.errorSending.replace('{err}', e.message));
                 }
               }
               loadDevices();
             </script>
             </body>
             </html>
-        """.trimIndent()
+            """.trimIndent()
+        }
     }
 }

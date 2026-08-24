@@ -12,11 +12,13 @@
 		A30000000000000000000013 /* FileApexSendHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* FileApexSendHandoff.swift */; };
 		A30000000000000000000014 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
 		A30000000000000000000015 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
+		A30000000000000000000016 /* AppCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppCopy.swift */; };
 		A30000000000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ShareViewController.swift */; };
 		B30000000000000000000011 /* FileApexPaths.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* FileApexPaths.swift */; };
 		B30000000000000000000012 /* FileApexSendHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* FileApexSendHandoff.swift */; };
 		B30000000000000000000013 /* FileApexBulletinHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* FileApexBulletinHandoff.swift */; };
 		B30000000000000000000014 /* BulletinShareViewController.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000030 /* BulletinShareViewController.swift */; };
+		B30000000000000000000015 /* AppCopy.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppCopy.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +30,7 @@
 		A20000000000000000000004 /* DevicePickerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerModel.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* FileApexBulletinHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileApexBulletinHandoff.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* AppCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCopy.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000022 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
@@ -82,6 +85,7 @@
 				A20000000000000000000004 /* DevicePickerModel.swift */,
 				A20000000000000000000005 /* DevicePickerView.swift */,
 				A20000000000000000000006 /* FileApexBulletinHandoff.swift */,
+				A20000000000000000000007 /* AppCopy.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -199,6 +203,7 @@
 				A30000000000000000000013 /* FileApexSendHandoff.swift in Sources */,
 				A30000000000000000000014 /* DevicePickerModel.swift in Sources */,
 				A30000000000000000000015 /* DevicePickerView.swift in Sources */,
+				A30000000000000000000016 /* AppCopy.swift in Sources */,
 				A30000000000000000000020 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -211,6 +216,7 @@
 				B30000000000000000000012 /* FileApexSendHandoff.swift in BulletinSources */,
 				B30000000000000000000013 /* FileApexBulletinHandoff.swift in BulletinSources */,
 				B30000000000000000000014 /* BulletinShareViewController.swift in BulletinSources */,
+				B30000000000000000000015 /* AppCopy.swift in BulletinSources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

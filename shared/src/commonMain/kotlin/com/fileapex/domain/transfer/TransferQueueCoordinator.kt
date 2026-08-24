@@ -12,6 +12,7 @@ import com.fileapex.data.db.PendingTransferStatus
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.QueuedSourceSnapshot
 import com.fileapex.data.db.QueuedTransferSourceKind
+import com.fileapex.i18n.AppI18n
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
@@ -52,7 +53,8 @@ data class QueueAwareSendResult(
     val queuedDeviceNames: List<String>,
     val message: String,
     val relayedDeviceNames: List<String> = emptyList(),
-    val pendingDesktopSyncNames: List<String> = emptyList()
+    val pendingDesktopSyncNames: List<String> = emptyList(),
+    val needsCellularConfirm: Boolean = false
 ) {
     val hadImmediateSend: Boolean get() = batch != null && !batch.allFailed
     val hadQueue: Boolean get() = queuedDeviceNames.isNotEmpty()
@@ -116,8 +118,8 @@ class TransferQueueCoordinator(
         skipTransferPrepare: Boolean = false
     ): QueueAwareSendResult {
         transferManager.awaitReady()
-        require(sources.isNotEmpty()) { "Select at least one file" }
-        require(selectedDevices.isNotEmpty()) { "Select at least one destination device" }
+        require(sources.isNotEmpty()) { AppI18n.t("select_at_least_one_file") }
+        require(selectedDevices.isNotEmpty()) { AppI18n.t("select_destination_device") }
 
         val localDevices = selectedDevices.filter { it.isLocal }
         val remoteDevices = selectedDevices.filter { !it.isLocal }
@@ -166,7 +168,7 @@ class TransferQueueCoordinator(
     suspend fun enqueueLocalPaths(absolutePaths: List<String>, deviceIds: List<String>) {
         transferManager.awaitReady()
         require(absolutePaths.isNotEmpty()) { "Nothing to queue" }
-        require(deviceIds.isNotEmpty()) { "Select at least one destination device" }
+        require(deviceIds.isNotEmpty()) { AppI18n.t("select_destination_device") }
         val names = deviceNames(deviceIds)
         val label = buildDisplayLabel(pathSummary(absolutePaths), names)
         insertEntity(
@@ -248,7 +250,7 @@ class TransferQueueCoordinator(
         val pendingOnlineOrFresh = hasFreshSignal || pendingIds.any { id ->
             deviceRepository.getDevice(id)?.let { presenceMonitor.isDeviceOnline(it) } == true
         }
-        val grantJustCompleted = entity.lastError == WAITING_DRIVE_GRANT && driveReady
+        val grantJustCompleted = isWaitingDriveGrant(entity.lastError) && driveReady
         if (entity.lastAttemptEpochMs > 0L &&
             now - entity.lastAttemptEpochMs < DRAIN_RETRY_BACKOFF_MS &&
             !pendingOnlineOrFresh &&
@@ -287,7 +289,7 @@ class TransferQueueCoordinator(
                 startDriveGrantIfNeeded()
                 lastError = WAITING_DRIVE_GRANT
             } else if (outcome.queueIds.isNotEmpty()) {
-                lastError = "Drive relay did not finish"
+                lastError = AppI18n.t("drive_relay_did_not_finish")
             }
         }
 
@@ -330,7 +332,7 @@ class TransferQueueCoordinator(
                 attemptCount = entity.attemptCount + 1
             )
         )
-        if (lastError != WAITING_DRIVE_GRANT && offLanIds.any { it in stillPending }) {
+        if (!isWaitingDriveGrant(lastError) && offLanIds.any { it in stillPending }) {
             scope.launch {
                 delay(DRAIN_RETRY_BACKOFF_MS)
                 scheduleDrain()
@@ -498,21 +500,23 @@ class TransferQueueCoordinator(
         pendingDesktopSyncNames: List<String> = emptyList(),
         queueReason: String? = null
     ): QueueAwareSendResult {
-        val sentPart = batch?.summaryMessage ?: "Sent"
+        val sentPart = batch?.summaryMessage ?: AppI18n.t("sent")
         val relayPart = relayMessage(relayedNames, pendingDesktopSyncNames)
         val queuedPart = when (queueReason) {
             "drive_not_ready" ->
                 PeerReachabilityMessages.fileTransferOffWifiDriveNotReady(queuedNames)
             "relay_too_large" ->
-                "This send exceeds the Google Drive Relay limit " +
-                    "(${DriveRelayPolicy.relayLimitLabel()} per file or group). " +
-                    "Queued until Wi‑Fi: ${queuedNames.joinToString(", ")}"
+                AppI18n.t(
+                    "relay_too_large_queued",
+                    DriveRelayPolicy.relayLimitLabel(),
+                    queuedNames.joinToString(", ")
+                )
             else -> queueOnlyMessage(queuedNames)
         }
+        val needsConfirm = queuedNames.isEmpty() && relayedNames.isEmpty() &&
+            DriveRelayCoordinator.pendingSendPrompt.value
         val message = when {
-            queuedNames.isEmpty() && relayedNames.isEmpty() &&
-                DriveRelayCoordinator.pendingSendPrompt.value ->
-                "Confirm Cellular send to deliver via Google Drive Relay"
+            needsConfirm -> AppI18n.t("confirm_cellular_send")
             queuedNames.isEmpty() && relayedNames.isEmpty() -> sentPart
             relayedNames.isNotEmpty() && queuedNames.isEmpty() && !hadImmediateTargets ->
                 relayPart
@@ -526,14 +530,15 @@ class TransferQueueCoordinator(
             queuedDeviceNames = queuedNames,
             message = message,
             relayedDeviceNames = relayedNames,
-            pendingDesktopSyncNames = pendingDesktopSyncNames
+            pendingDesktopSyncNames = pendingDesktopSyncNames,
+            needsCellularConfirm = needsConfirm
         )
     }
 
     private fun relayMessage(relayedNames: List<String>, desktopNames: List<String>): String {
-        val sent = "Sent via Google Drive Relay to ${relayedNames.joinToString(", ")}"
+        val sent = AppI18n.t("sent_via_drive_to", relayedNames.joinToString(", "))
         if (desktopNames.isEmpty()) return sent
-        return "$sent. Waiting for desktop Drive sync."
+        return "$sent. ${AppI18n.t("waiting_desktop_drive_sync")}"
     }
 
     private fun queueOnlyMessage(deviceNames: List<String>): String =
@@ -554,7 +559,7 @@ class TransferQueueCoordinator(
             pendingDeviceIds = pendingIds,
             pendingDeviceNames = listOf(targetLabel),
             sourceSummary = sourceSummaryFromEntity(this),
-            lastError = lastError,
+            lastError = localizeQueueError(lastError),
             isSending = statusEnum == PendingTransferStatus.Sending
         )
     }
@@ -647,7 +652,18 @@ class TransferQueueCoordinator(
     companion object {
         private const val DRAIN_TRIGGER_DEBOUNCE_MS = 750L
         private const val DRAIN_RETRY_BACKOFF_MS = 30_000L
-        private const val WAITING_DRIVE_GRANT = "Waiting for Google Drive grant"
+        private const val WAITING_DRIVE_GRANT = "waiting_drive_grant"
+        private const val WAITING_DRIVE_GRANT_LEGACY = "Waiting for Google Drive grant"
+
+        private fun isWaitingDriveGrant(error: String?): Boolean =
+            error == WAITING_DRIVE_GRANT || error == WAITING_DRIVE_GRANT_LEGACY
+
+        private fun localizeQueueError(raw: String?): String? = when (raw) {
+            null, "" -> raw
+            WAITING_DRIVE_GRANT, WAITING_DRIVE_GRANT_LEGACY -> AppI18n.t("waiting_drive_grant")
+            "Drive relay did not finish" -> AppI18n.t("drive_relay_did_not_finish")
+            else -> raw
+        }
     }
 }
 

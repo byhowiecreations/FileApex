@@ -558,6 +558,26 @@ private fun Project.embedMacTrayBridgeIn(appBundle: File) {
     logger.lifecycle("Embedded native tray bridge at ${dest.absolutePath}")
 }
 
+private fun Project.embedMacInfoPlistStrings(appBundle: File) {
+    if (!isMacHost()) return
+    val srcRoot = project.file("macos/lproj")
+    if (!srcRoot.isDirectory) return
+    val resources = appBundle.resolve("Contents/Resources")
+    resources.mkdirs()
+    srcRoot.listFiles()?.filter { it.isDirectory && it.name.endsWith(".lproj") }?.forEach { lproj ->
+        val src = lproj.resolve("InfoPlist.strings")
+        if (!src.isFile) return@forEach
+        val destDir = resources.resolve(lproj.name)
+        destDir.mkdirs()
+        Files.copy(
+            src.toPath(),
+            destDir.resolve("InfoPlist.strings").toPath(),
+            StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+    logger.lifecycle("Embedded localized InfoPlist.strings for Local Network usage")
+}
+
 private fun Project.patchMacRuntimeLocalNetworkPlist(appBundle: File) {
     if (!isMacHost()) return
     val runtimePlist = appBundle.resolve("Contents/runtime/Contents/Info.plist")
@@ -593,6 +613,7 @@ tasks.register("embedMacExtensions") {
     doLast {
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/FileApex.app").get().asFile
         embedMacTrayBridgeIn(appBundle)
+        embedMacInfoPlistStrings(appBundle)
         patchMacRuntimeLocalNetworkPlist(appBundle)
         val script = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
         check(script.exists()) { "Missing ${script.absolutePath}" }
@@ -935,6 +956,7 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         return
     }
     embedMacTrayBridgeIn(appBundle)
+    embedMacInfoPlistStrings(appBundle)
     patchMacRuntimeLocalNetworkPlist(appBundle)
     val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
     ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")

@@ -1,5 +1,6 @@
 package com.fileapex.domain.transfer
 
+import com.fileapex.i18n.AppI18n
 import com.fileapex.network.FileApexClient
 import com.fileapex.network.SocketFileStreamer
 import com.fileapex.network.TransferResumeProtocol
@@ -26,8 +27,8 @@ class MultiCopyBroadcastEngine(
         sources: List<MultiCopySource>,
         destinations: List<MultiCopyDestination>
     ): List<MultiCopyResult> = withContext(Dispatchers.IO) {
-        require(sources.isNotEmpty()) { "Select at least one file" }
-        require(destinations.isNotEmpty()) { "Select at least one destination device" }
+        require(sources.isNotEmpty()) { AppI18n.t("select_at_least_one_file") }
+        require(destinations.isNotEmpty()) { AppI18n.t("select_destination_device") }
         sources.map { source ->
             broadcastOne(source, destinations)
         }
@@ -128,7 +129,7 @@ class MultiCopyBroadcastEngine(
                     WriterOutcome(
                         deviceId = destination.deviceId,
                         errorMessage = error.message
-                            ?: "Transfer failed on ${destination.deviceName}"
+                            ?: AppI18n.t("transfer_failed_on", destination.deviceName)
                     )
                 }
             }
@@ -247,7 +248,7 @@ class MultiCopyBroadcastEngine(
                 return WriterOutcome(destination.deviceId, errorMessage = null)
             }
             lastError = result.exceptionOrNull()?.message
-                ?: "Transfer failed on ${destination.deviceName}"
+                ?: AppI18n.t("transfer_failed_on", destination.deviceName)
             if (attempt < TransferResumeProtocol.MAX_ATTEMPTS - 1) {
                 delay(TransferResumeProtocol.RETRY_DELAY_MS)
             }

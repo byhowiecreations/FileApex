@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.domain.pairing.PairingPayload
+import com.fileapex.i18n.stringRes
 import io.github.alexzhirkevich.qrose.options.QrErrorCorrectionLevel
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 
@@ -56,7 +57,7 @@ fun PairingQrPanel(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            text = "Pair with this node",
+            text = stringRes("pair_with_this_node"),
             style = MaterialTheme.typography.titleMedium
         )
         Text(
@@ -68,7 +69,7 @@ fun PairingQrPanel(
         Spacer(modifier = Modifier.height(4.dp))
         Image(
             painter = painter,
-            contentDescription = "FileApex pairing QR code",
+            contentDescription = stringRes("fileapex_pairing_qr"),
             modifier = Modifier
                 .size(200.dp)
                 .clip(RoundedCornerShape(12.dp))
@@ -87,7 +88,7 @@ fun PairingQrPanel(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "MANUAL PAIRING CODE",
+                    text = stringRes("manual_pairing_code"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
@@ -102,7 +103,7 @@ fun PairingQrPanel(
         }
 
         Text(
-            text = "Scan QR with Camera or FileApex, or choose Join device on the other device to auto-fill from this broadcast.",
+            text = stringRes("scan_qr_pairing_hint"),
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -15,6 +15,10 @@ internal class StringCatalog(
 ) {
     fun string(key: String): String? = strings[key]
 
+    fun snapshotStrings(): Map<String, String> = strings
+
+    fun snapshotPlurals(): Map<String, PluralForms> = plurals
+
     fun plural(key: String, count: Int, locale: AppLocale): String? {
         val forms = plurals[key] ?: return null
         val quantity = pluralQuantity(count, locale)

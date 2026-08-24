@@ -192,14 +192,14 @@ fun NotesScreen(
         if (granted) {
             finishRelayGrant(pendingAcceptAfterRelay)
         } else {
-            attachError = errorMessage ?: "Google Drive Relay was not enabled."
+            attachError = errorMessage ?: AppI18n.t("drive_relay_not_enabled")
             pendingAcceptAfterRelay = null
         }
     }
 
     val launchSignIn = rememberGoogleSignInLauncher { idToken, email, errorMessage ->
         if (idToken.isNullOrBlank()) {
-            attachError = errorMessage ?: "Google sign-in cancelled"
+            attachError = errorMessage ?: AppI18n.t("google_signin_cancelled")
             pendingAcceptAfterRelay = null
             return@rememberGoogleSignInLauncher
         }
@@ -634,7 +634,7 @@ fun NotesScreen(
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = stringRes("back"),
                         tint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
                     )
                 }

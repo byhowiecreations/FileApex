@@ -3,6 +3,7 @@ import SwiftUI
 
 struct TrayMenuView: View {
     @ObservedObject private var deviceBridge = TrayDeviceBridge.shared
+    @ObservedObject private var copy = AppCopy.shared
     @State private var selectedDeviceIds: Set<String> = []
 
     let onLaunchApp: () -> Void
@@ -13,13 +14,13 @@ struct TrayMenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Devices")
+                Text(copy.t("devices"))
                     .font(.headline)
                 Spacer()
-                headerIcon(systemName: "power", help: "Quit Application", action: onQuitApp)
+                headerIcon(systemName: "power", help: copy.t("quit_application"), action: onQuitApp)
                 headerIcon(
                     systemName: "arrow.up.forward.square",
-                    help: "Launch full app",
+                    help: copy.t("launch_full_app"),
                     action: onLaunchApp
                 )
             }
@@ -28,7 +29,7 @@ struct TrayMenuView: View {
             Divider()
 
             if deviceBridge.devices.isEmpty {
-                Text("No paired devices")
+                Text(copy.t("no_paired_devices"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
@@ -48,13 +49,13 @@ struct TrayMenuView: View {
 
             if selectedDeviceIds.count > 1 {
                 Button(action: openDropBoxForSelected) {
-                    Text("Send to \(selectedDeviceIds.count) Devices")
+                    Text(copy.t("send_to_n_devices", "\(selectedDeviceIds.count)"))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 4)
             } else {
-                Text("⌘-click to multi-select · click to send")
+                Text(copy.t("cmd_click_multi_select"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -104,6 +105,7 @@ struct DeviceRowView: View {
     let isSelected: Bool
     let onTap: (Bool) -> Void
 
+    @ObservedObject private var copy = AppCopy.shared
     @State private var isHovered = false
 
     var body: some View {
@@ -115,7 +117,7 @@ struct DeviceRowView: View {
                     .font(.subheadline)
                     .bold()
                     .lineLimit(1)
-                Text(device.isOnline ? "Online" : "Offline")
+                Text(device.isOnline ? copy.t("online") : copy.t("offline"))
                     .font(.caption)
                     .foregroundStyle(device.isOnline ? Color.secondary : Color.red)
             }

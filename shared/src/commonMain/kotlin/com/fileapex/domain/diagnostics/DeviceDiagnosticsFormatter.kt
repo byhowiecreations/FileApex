@@ -1,5 +1,7 @@
 package com.fileapex.domain.diagnostics
 
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.formatLocalizedNumber
 import com.fileapex.util.TimeUtils
 import kotlin.math.roundToInt
 
@@ -41,9 +43,9 @@ object DeviceDiagnosticsFormatter {
         val hours = (totalMinutes % (24 * 60)) / 60
         val minutes = totalMinutes % 60
         return buildList {
-            if (days > 0) add("${days}d")
-            if (hours > 0) add("${hours}h")
-            add("${minutes}m")
+            if (days > 0) add(AppI18n.t("diag_uptime_d", days.toString()))
+            if (hours > 0) add(AppI18n.t("diag_uptime_h", hours.toString()))
+            add(AppI18n.t("diag_uptime_m", minutes.toString()))
         }.joinToString(" ")
     }
 
@@ -58,7 +60,7 @@ object DeviceDiagnosticsFormatter {
         if (used == null || total == null || total <= 0L) {
             return "—"
         }
-        return "${formatBytes(used)} of ${formatBytes(total)} used"
+        return AppI18n.t("storage_used", formatBytes(used), formatBytes(total))
     }
 
     fun memorySummary(memory: MemoryDiagnostics): String {
@@ -68,7 +70,12 @@ object DeviceDiagnosticsFormatter {
             return "—"
         }
         val used = memory.usedBytes ?: (total - available).coerceAtLeast(0L)
-        return "${formatBytes(available)} free of ${formatBytes(total)} (${formatBytes(used)} used)"
+        return AppI18n.t(
+            "memory_free_of",
+            formatBytes(available),
+            formatBytes(total),
+            formatBytes(used)
+        )
     }
 
     fun formatRefreshRate(hz: Float?): String =
@@ -77,8 +84,13 @@ object DeviceDiagnosticsFormatter {
     fun processorSummary(processor: ProcessorDiagnostics): String {
         val cores = when {
             processor.activeCoreCount != null && processor.totalCoreCount != null ->
-                "${processor.activeCoreCount} active / ${processor.totalCoreCount} total"
-            processor.totalCoreCount != null -> "${processor.totalCoreCount} cores"
+                AppI18n.t(
+                    "cores_active_total",
+                    formatLocalizedNumber(processor.activeCoreCount),
+                    formatLocalizedNumber(processor.totalCoreCount)
+                )
+            processor.totalCoreCount != null ->
+                AppI18n.plural("n_cores", processor.totalCoreCount, formatLocalizedNumber(processor.totalCoreCount))
             else -> "—"
         }
         val arch = processor.architecture.ifBlank { "—" }
@@ -108,9 +120,13 @@ object DeviceDiagnosticsFormatter {
             DeviceDetailsFieldId.CpuCores -> when {
                 snapshot.processor.activeCoreCount != null &&
                     snapshot.processor.totalCoreCount != null ->
-                    "${snapshot.processor.activeCoreCount} active / ${snapshot.processor.totalCoreCount} total"
+                    AppI18n.t(
+                        "cores_active_total",
+                        formatLocalizedNumber(snapshot.processor.activeCoreCount),
+                        formatLocalizedNumber(snapshot.processor.totalCoreCount)
+                    )
                 snapshot.processor.totalCoreCount != null ->
-                    "${snapshot.processor.totalCoreCount} total"
+                    AppI18n.t("n_total", formatLocalizedNumber(snapshot.processor.totalCoreCount))
                 else -> "—"
             }
             DeviceDetailsFieldId.CpuFrequency -> snapshot.processor.frequencyScaling.ifBlank { "—" }
@@ -118,10 +134,10 @@ object DeviceDiagnosticsFormatter {
             DeviceDetailsFieldId.RefreshRate -> formatRefreshRate(snapshot.display.refreshRateHz)
             DeviceDetailsFieldId.Brightness -> formatPercent(snapshot.display.brightnessPercent)
             DeviceDetailsFieldId.BatteryLevel -> formatPercent(snapshot.battery.levelPercent)
-            DeviceDetailsFieldId.Charging -> snapshot.battery.chargingState.ifBlank { "—" }
+            DeviceDetailsFieldId.Charging -> localizeCharging(snapshot.battery.chargingState)
             DeviceDetailsFieldId.BatteryTemp -> formatTemperature(snapshot.battery.temperatureCelsius)
             DeviceDetailsFieldId.Storage -> storageSummary(snapshot.storage)
-            DeviceDetailsFieldId.NetworkType -> networkType.ifBlank { "—" }
+            DeviceDetailsFieldId.NetworkType -> localizeNetworkType(networkType)
             DeviceDetailsFieldId.Ssid -> snapshot.network.ssid.ifBlank { "—" }
             DeviceDetailsFieldId.Signal -> formatDbm(snapshot.network.signalDbm)
             DeviceDetailsFieldId.LinkSpeed ->
@@ -136,7 +152,7 @@ object DeviceDiagnosticsFormatter {
             DeviceDetailsFieldId.CellularBand -> snapshot.network.cellBand.ifBlank { "—" }
             DeviceDetailsFieldId.Uptime -> formatUptime(snapshot.uptime.uptimeMs)
             DeviceDetailsFieldId.LastBoot -> formatBootEpoch(snapshot.uptime.bootEpochMs)
-            DeviceDetailsFieldId.ThermalState -> snapshot.thermal.state.ifBlank { "—" }
+            DeviceDetailsFieldId.ThermalState -> localizeThermal(snapshot.thermal.state)
             DeviceDetailsFieldId.ThermalTemp -> formatTemperature(snapshot.thermal.temperatureCelsius)
             DeviceDetailsFieldId.Memory -> memorySummary(snapshot.memory)
         }
@@ -150,5 +166,46 @@ object DeviceDiagnosticsFormatter {
                 }
             }
             .map { field -> com.fileapex.i18n.AppI18n.t("field_${field.name}") to valueFor(field) }
+    }
+
+    private fun localizeCharging(raw: String): String {
+        val token = raw.trim()
+        if (token.isEmpty()) return "—"
+        return when (token.lowercase()) {
+            "full" -> AppI18n.t("charge_full")
+            "ac" -> AppI18n.t("charge_ac")
+            "usb" -> AppI18n.t("charge_usb")
+            "wireless" -> AppI18n.t("charge_wireless")
+            "discharging" -> AppI18n.t("charge_discharging")
+            "unknown" -> AppI18n.t("unknown")
+            "not available" -> AppI18n.t("not_available")
+            else -> token
+        }
+    }
+
+    private fun localizeNetworkType(raw: String): String {
+        val token = raw.trim()
+        if (token.isEmpty()) return "—"
+        return when (token.lowercase()) {
+            "wi-fi", "wifi" -> AppI18n.t("net_wifi")
+            "ethernet" -> AppI18n.t("net_ethernet")
+            "cellular" -> AppI18n.t("net_cellular")
+            "unknown" -> AppI18n.t("unknown")
+            else -> token
+        }
+    }
+
+    private fun localizeThermal(raw: String): String {
+        val token = raw.trim()
+        if (token.isEmpty()) return "—"
+        return when (token.lowercase()) {
+            "nominal" -> AppI18n.t("thermal_nominal")
+            "fair" -> AppI18n.t("thermal_fair")
+            "serious" -> AppI18n.t("thermal_serious")
+            "critical" -> AppI18n.t("thermal_critical")
+            "unknown" -> AppI18n.t("unknown")
+            "not available" -> AppI18n.t("not_available")
+            else -> token
+        }
     }
 }

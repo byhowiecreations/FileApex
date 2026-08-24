@@ -29,6 +29,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.ResultPoint
+import com.fileapex.i18n.stringRes
 import com.journeyapps.barcodescanner.BarcodeCallback
 import com.journeyapps.barcodescanner.BarcodeResult
 import com.journeyapps.barcodescanner.BarcodeView
@@ -115,8 +116,8 @@ actual fun PairingQrScanner(
             )
         } else {
             ColumnPrompt(
-                message = "Camera access is needed to scan pairing QR codes.",
-                actionLabel = "Allow camera",
+                message = stringRes("camera_scan_reason"),
+                actionLabel = stringRes("allow_camera"),
                 onAction = { permissionLauncher.launch(Manifest.permission.CAMERA) }
             )
         }

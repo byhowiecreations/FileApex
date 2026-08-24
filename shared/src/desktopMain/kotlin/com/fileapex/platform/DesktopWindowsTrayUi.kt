@@ -35,6 +35,7 @@ import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 import javax.swing.WindowConstants
+import com.fileapex.i18n.AppI18n
 
 /**
  * Windows "Drop Files" panel — Mac [DropBoxWindowManager] parity (drag/drop + Send).
@@ -66,7 +67,7 @@ object DesktopWindowsDropBox {
             stagedPaths = emptyList()
             isSending = false
             ensureFrame()
-            destinationsLabel.text = "${deviceIds.size} destination(s)"
+            destinationsLabel.text = AppI18n.plural("n_destinations", deviceIds.size, deviceIds.size.toString())
             refreshFileUi()
             val window = frame ?: return@invokeLater
             applySavedOrDefaultBounds(window)
@@ -101,14 +102,14 @@ object DesktopWindowsDropBox {
 
     private fun ensureFrame() {
         if (frame != null) return
-        statusLabel = JLabel("Drag & drop files here", SwingConstants.CENTER).apply {
+        statusLabel = JLabel(AppI18n.t("drag_drop_files_here"), SwingConstants.CENTER).apply {
             font = font.deriveFont(Font.BOLD, 13f)
         }
-        destinationsLabel = JLabel("1 destination(s)", SwingConstants.CENTER).apply {
+        destinationsLabel = JLabel(AppI18n.plural("n_destinations", 1, "1"), SwingConstants.CENTER).apply {
             foreground = Color.GRAY
             font = font.deriveFont(Font.PLAIN, 11f)
         }
-        sendButton = JButton("Send").apply {
+        sendButton = JButton(AppI18n.t("send")).apply {
             isVisible = false
             setUI(javax.swing.plaf.basic.BasicButtonUI())
             background = teal
@@ -180,7 +181,7 @@ object DesktopWindowsDropBox {
             )
         }
 
-        frame = JFrame("Drop Files").apply {
+        frame = JFrame(AppI18n.t("drop_files")).apply {
             defaultCloseOperation = WindowConstants.HIDE_ON_CLOSE
             isAlwaysOnTop = true
             isResizable = true
@@ -209,22 +210,37 @@ object DesktopWindowsDropBox {
     private fun refreshFileUi() {
         if (!::statusLabel.isInitialized) return
         statusLabel.text = if (stagedPaths.isEmpty()) {
-            "Drag & drop files here"
+            AppI18n.t("drag_drop_files_here")
         } else {
-            "${stagedPaths.size} file(s) ready"
+            AppI18n.plural("n_files_ready", stagedPaths.size, stagedPaths.size.toString())
         }
         sendButton.isVisible = stagedPaths.isNotEmpty()
-        sendButton.text = if (isSending) "Sending" else "Send"
+        sendButton.text = if (isSending) AppI18n.t("sending_short") else AppI18n.t("send")
         sendButton.isEnabled = !isSending && stagedPaths.isNotEmpty()
         dropPanel.revalidate()
         dropPanel.repaint()
+    }
+
+    fun applyLocalizedCopy() {
+        SwingUtilities.invokeLater {
+            if (!::statusLabel.isInitialized) return@invokeLater
+            frame?.title = AppI18n.t("drop_files")
+            if (targetDeviceIds.isNotEmpty()) {
+                destinationsLabel.text = AppI18n.plural(
+                    "n_destinations",
+                    targetDeviceIds.size,
+                    targetDeviceIds.size.toString()
+                )
+            }
+            refreshFileUi()
+        }
     }
 
     private fun submitSend() {
         if (isSending) return
         if (targetDeviceIds.isEmpty()) return
         if (stagedPaths.isEmpty()) {
-            DesktopAwtTrayCoordinator.showBalloon("Drop one or more files first")
+            DesktopAwtTrayCoordinator.showBalloon(AppI18n.t("drop_files_first"))
             return
         }
         isSending = true
@@ -309,7 +325,7 @@ internal class DesktopWindowsTrayPopover(
                     // Defer so Ctrl-click / button presses inside the panel still complete.
                     SwingUtilities.invokeLater {
                         if (!frame.isFocused && frame.isVisible && !suppressFocusDismiss) {
-                            hide()
+                            this@DesktopWindowsTrayPopover.hide()
                         }
                     }
                 }
@@ -324,11 +340,17 @@ internal class DesktopWindowsTrayPopover(
         alignmentX = Component.LEFT_ALIGNMENT
     }
 
-    private val hintLabel = JLabel("Ctrl-click to multi-select · click to send").apply {
+    private val hintLabel = JLabel(AppI18n.t("ctrl_click_multi_select")).apply {
         foreground = Color.GRAY
         font = font.deriveFont(Font.PLAIN, 11f)
         border = BorderFactory.createEmptyBorder(8, 4, 0, 4)
     }
+
+    private val titleLabel = JLabel(AppI18n.t("devices")).apply {
+        font = font.deriveFont(Font.BOLD, 14f)
+    }
+    private val quitButton = iconButton("X", AppI18n.t("quit_application")) { onQuitApp() }
+    private val launchButton = iconButton("↗", AppI18n.t("launch_full_app")) { onLaunchApp() }
 
     private val sendMultiButton = JButton().apply {
         isVisible = false
@@ -433,22 +455,27 @@ internal class DesktopWindowsTrayPopover(
         window.pack()
     }
 
+    fun applyLocalizedCopy() {
+        titleLabel.text = AppI18n.t("devices")
+        quitButton.toolTipText = AppI18n.t("quit_application")
+        launchButton.toolTipText = AppI18n.t("launch_full_app")
+        hintLabel.text = AppI18n.t("ctrl_click_multi_select")
+        rebuildDeviceRows()
+        updateFooter()
+        if (window.isVisible) window.pack()
+    }
+
     private fun buildHeader(): JPanel {
-        val title = JLabel("Devices").apply {
-            font = font.deriveFont(Font.BOLD, 14f)
-        }
-        val quit = iconButton("X", "Quit Application") { onQuitApp() }
-        val launch = iconButton("↗", "Launch full app") { onLaunchApp() }
         return JPanel(BorderLayout()).apply {
             isOpaque = true
             background = Color.WHITE
-            add(title, BorderLayout.WEST)
+            add(titleLabel, BorderLayout.WEST)
             add(
                 JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
                     isOpaque = true
                     background = Color.WHITE
-                    add(quit)
-                    add(launch)
+                    add(quitButton)
+                    add(launchButton)
                 },
                 BorderLayout.EAST
             )
@@ -465,7 +492,7 @@ internal class DesktopWindowsTrayPopover(
             isContentAreaFilled = false
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addActionListener {
-                hide()
+                this@DesktopWindowsTrayPopover.hide()
                 onClick()
             }
         }
@@ -474,7 +501,7 @@ internal class DesktopWindowsTrayPopover(
         deviceListPanel.removeAll()
         if (roster.isEmpty()) {
             deviceListPanel.add(
-                JLabel("No paired devices").apply {
+                JLabel(AppI18n.t("no_paired_devices")).apply {
                     foreground = Color.GRAY
                     font = font.deriveFont(Font.PLAIN, 12f)
                     border = BorderFactory.createEmptyBorder(8, 4, 8, 4)
@@ -496,7 +523,9 @@ internal class DesktopWindowsTrayPopover(
         val nameLabel = JLabel(device.name).apply {
             font = font.deriveFont(Font.BOLD, 12f)
         }
-        val statusLabel = JLabel(if (device.isOnline) "Online" else "Offline").apply {
+        val statusLabel = JLabel(
+            if (device.isOnline) AppI18n.t("online") else AppI18n.t("offline")
+        ).apply {
             foreground = statusColor
             font = font.deriveFont(Font.PLAIN, 11f)
         }
@@ -593,7 +622,7 @@ internal class DesktopWindowsTrayPopover(
     private fun updateFooter() {
         val count = selectedDeviceIds.size
         if (count > 1) {
-            sendMultiButton.text = "Send to $count Devices"
+            sendMultiButton.text = com.fileapex.i18n.AppI18n.t("send_to_n_devices", count)
             sendMultiButton.isVisible = true
             hintLabel.isVisible = false
         } else {

@@ -1,8 +1,9 @@
 package com.fileapex.platform
 
 /**
- * OEM-specific copy for Android background / battery setup.
+ * OEM-specific copy keys for Android background / battery setup.
  * Detection lives in [BackgroundPersistenceGuidance] (androidMain).
+ * Step text is resolved via AppI18n at display time.
  */
 enum class OemVendor {
     Motorola,
@@ -19,10 +20,8 @@ enum class OemVendor {
 data class OemBackgroundGuidance(
     val vendor: OemVendor,
     val vendorLabel: String,
-    /** Primary path to allow background / unrestricted app battery usage. */
-    val appBatteryUsageSteps: String,
-    /** Optional second step (auto-start, sleeping apps, etc.). */
-    val autoStartHint: String?
+    val batteryStepsKey: String,
+    val autoStartHintKey: String?
 ) {
     companion object {
         fun forVendor(vendor: OemVendor): OemBackgroundGuidance? = when (vendor) {
@@ -34,68 +33,50 @@ data class OemBackgroundGuidance(
             OemVendor.Motorola -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "Motorola",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → App battery usage → Always allow",
-                autoStartHint =
-                    "If radios do not respond after an update, also check Settings → Battery → " +
-                        "Manage background apps and set FileApex to Always allow."
+                batteryStepsKey = "oem_motorola_battery_steps",
+                autoStartHintKey = "oem_motorola_autostart"
             )
             OemVendor.Samsung -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "Samsung",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → Battery → Unrestricted",
-                autoStartHint =
-                    "Also add FileApex under Settings → Battery → Background usage limits → " +
-                        "Never sleeping apps, and disable Sleeping apps if listed."
+                batteryStepsKey = "oem_samsung_battery_steps",
+                autoStartHintKey = "oem_samsung_autostart"
             )
             OemVendor.Pixel -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "Pixel",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → App battery usage → Unrestricted",
-                autoStartHint = null
+                batteryStepsKey = "oem_pixel_battery_steps",
+                autoStartHintKey = null
             )
             OemVendor.Oppo -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "Oppo",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → Battery → Allow background activity",
-                autoStartHint =
-                    "Enable auto-launch: Settings → Apps → App management → Auto launch → FileApex."
+                batteryStepsKey = "oem_oppo_battery_steps",
+                autoStartHintKey = "oem_oppo_autostart"
             )
             OemVendor.OnePlus -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "OnePlus",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → Battery → Don't optimize",
-                autoStartHint =
-                    "Enable auto-launch: Settings → Apps → App management → Auto launch → FileApex."
+                batteryStepsKey = "oem_oneplus_battery_steps",
+                autoStartHintKey = "oem_oneplus_autostart"
             )
             OemVendor.Xiaomi -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "Xiaomi",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → Battery saver → No restrictions",
-                autoStartHint =
-                    "Enable Autostart: Settings → Apps → Manage apps → FileApex → Autostart."
+                batteryStepsKey = "oem_xiaomi_battery_steps",
+                autoStartHintKey = "oem_xiaomi_autostart"
             )
             OemVendor.Poco -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "Poco",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → Battery saver → No restrictions",
-                autoStartHint =
-                    "Enable Autostart: Settings → Apps → Manage apps → FileApex → Autostart."
+                batteryStepsKey = "oem_xiaomi_battery_steps",
+                autoStartHintKey = "oem_xiaomi_autostart"
             )
             OemVendor.Vivo -> OemBackgroundGuidance(
                 vendor = vendor,
                 vendorLabel = "Vivo",
-                appBatteryUsageSteps =
-                    "Settings → Apps → FileApex → Battery → Allow background activity",
-                autoStartHint =
-                    "Allow high background power: Settings → Battery → Background power " +
-                        "consumption management → FileApex."
+                batteryStepsKey = "oem_vivo_battery_steps",
+                autoStartHintKey = "oem_vivo_autostart"
             )
             OemVendor.Other -> error("Other has no guidance")
         }

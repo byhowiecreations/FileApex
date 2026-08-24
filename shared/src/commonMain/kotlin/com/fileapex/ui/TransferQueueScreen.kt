@@ -96,7 +96,7 @@ fun TransferQueueScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No queued files.",
+                        text = stringRes("no_queued_files"),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -140,9 +140,9 @@ private fun QueuedTransferRow(
             )
             Text(
                 text = if (item.isSending) {
-                    "Sending now…"
+                    stringRes("sending")
                 } else {
-                    "Waiting for: ${item.pendingDeviceNames.joinToString(", ")}"
+                    stringRes("waiting_for_devices", item.pendingDeviceNames.joinToString(", "))
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

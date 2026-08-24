@@ -69,7 +69,11 @@ class PairingCoordinator(
             }
             if (request.eventKind == PeerSyncEventKind.PAIRING_INTRO) {
                 runCatching {
-                    repository.adoptFromPairing(PeerNodeStateMapper.toEntity(state))
+                    val entity = PeerNodeStateMapper.toEntity(state)
+                    if (repository.isBlocklisted(entity)) {
+                        return@runCatching
+                    }
+                    repository.adoptFromPairing(entity)
                 }.onFailure { error ->
                     println(
                         "PairingCoordinator: pairing intro adopt failed for ${state.deviceId} - ${error.message}"

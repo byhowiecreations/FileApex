@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import java.awt.Desktop
 import java.io.File
 import kotlin.text.Charsets
@@ -157,13 +158,16 @@ object DesktopSendHandoff {
         val transferManager = FileApexServices.transferManager
         runCatching { transferManager.awaitReady() }
             .onFailure { error ->
-                val message = "FileApex not ready: ${error.message ?: "initialization incomplete"}"
+                val message = AppI18n.t(
+                    "fileapex_not_ready",
+                    error.message ?: AppI18n.t("initialization_incomplete")
+                )
                 writeJob(job.copy(status = STATUS_FAILED, message = message))
                 println("DesktopSendHandoff: $jobId :: $message")
                 return
             }
 
-        writeJob(job.copy(status = STATUS_RUNNING, message = "Sending…"))
+        writeJob(job.copy(status = STATUS_RUNNING, message = AppI18n.t("sending")))
         runCatching {
             val outcome = FileApexServices.transferQueue.sendLocalPathsOrQueue(
                 absolutePaths = job.filePaths,
@@ -178,7 +182,7 @@ object DesktopSendHandoff {
             }
             println("DesktopSendHandoff: $status - ${outcome.message}")
         }.onFailure { error ->
-            val message = error.message ?: "Send failed"
+            val message = error.message ?: AppI18n.t("send_failed")
             writeJob(job.copy(status = STATUS_FAILED, message = message))
             println("DesktopSendHandoff: failed $jobId :: $message")
         }

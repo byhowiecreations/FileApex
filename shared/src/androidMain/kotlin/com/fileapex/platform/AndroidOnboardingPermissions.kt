@@ -21,9 +21,9 @@ object AndroidOnboardingPermissions {
         add(
             OnboardingPermissionStep(
                 id = ID_MANAGE_EXTERNAL_STORAGE,
-                permissionName = "MANAGE_EXTERNAL_STORAGE",
-                reason = com.fileapex.i18n.AppI18n.t("onboard_storage_reason"),
-                deniedHint = com.fileapex.i18n.AppI18n.t("onboard_storage_denied"),
+                titleKey = "onboard_perm_storage",
+                reasonKey = "onboard_storage_reason",
+                deniedHintKey = "onboard_storage_denied",
                 granted = hasAllFilesAccess(context)
             )
         )
@@ -31,18 +31,18 @@ object AndroidOnboardingPermissions {
             add(
                 OnboardingPermissionStep(
                     id = ID_NEARBY_WIFI_DEVICES,
-                    permissionName = "NEARBY_WIFI_DEVICES",
-                    reason = com.fileapex.i18n.AppI18n.t("onboard_nearby_reason"),
-                    deniedHint = com.fileapex.i18n.AppI18n.t("onboard_nearby_denied"),
+                    titleKey = "onboard_perm_nearby",
+                    reasonKey = "onboard_nearby_reason",
+                    deniedHintKey = "onboard_nearby_denied",
                     granted = AndroidRuntimePermissions.hasNearbyWifiDevices(context)
                 )
             )
             add(
                 OnboardingPermissionStep(
                     id = ID_POST_NOTIFICATIONS,
-                    permissionName = "POST_NOTIFICATIONS",
-                    reason = com.fileapex.i18n.AppI18n.t("onboard_notify_reason"),
-                    deniedHint = com.fileapex.i18n.AppI18n.t("onboard_notify_denied"),
+                    titleKey = "onboard_perm_notify",
+                    reasonKey = "onboard_notify_reason",
+                    deniedHintKey = "onboard_notify_denied",
                     granted = AndroidRuntimePermissions.hasPostNotifications(context)
                 )
             )
@@ -50,9 +50,9 @@ object AndroidOnboardingPermissions {
         add(
             OnboardingPermissionStep(
                 id = ID_IGNORE_BATTERY_OPTIMIZATIONS,
-                permissionName = "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-                reason = com.fileapex.i18n.AppI18n.t("onboard_battery_reason"),
-                deniedHint = com.fileapex.i18n.AppI18n.t("onboard_battery_denied"),
+                titleKey = "onboard_perm_battery",
+                reasonKey = "onboard_battery_reason",
+                deniedHintKey = "onboard_battery_denied",
                 granted = !isBatteryOptimizationRestricted(context)
             )
         )

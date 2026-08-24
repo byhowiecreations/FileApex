@@ -11,7 +11,10 @@ object NoteNotifyPolicy {
         content.trim().ifBlank { attachmentFileName?.trim().orEmpty() }
 
     fun notificationTitle(sourceDeviceName: String): String =
-        "Bulletin Board · ${DeviceDisplayNames.resolve(sourceDeviceName, null)}"
+        com.fileapex.i18n.AppI18n.t(
+            "bulletin_board_from",
+            DeviceDisplayNames.resolve(sourceDeviceName, null)
+        )
 
     fun shouldNotifyIncomingNote(
         isMine: Boolean,

@@ -9,7 +9,14 @@ internal actual fun readI18nXml(locale: AppLocale): String {
         AppLocale.ES -> "i18n/es.xml"
         AppLocale.ZH_HANS -> "i18n/zh-rCN.xml"
     }
-    val context = androidAppContextOrNull()
-        ?: error("App context missing while loading $name")
-    return context.assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    androidAppContextOrNull()?.let { context ->
+        runCatching {
+            return context.assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }
+    }
+    val loader = Thread.currentThread().contextClassLoader ?: AppI18n::class.java.classLoader
+    val stream = loader?.getResourceAsStream(name)
+        ?: loader?.getResourceAsStream("files/$name")
+        ?: error("Missing i18n catalog $name")
+    return stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
 }

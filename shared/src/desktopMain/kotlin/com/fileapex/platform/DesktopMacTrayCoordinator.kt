@@ -62,6 +62,7 @@ object DesktopMacTrayCoordinator {
             onShowMainWindow = { syncMainWindowOnSwing() }
         )
         DesktopMacTrayBridge.setup()
+        com.fileapex.i18n.DesktopI18nRuntime.sync()
         scheduleMainWindowBinding(window)
         startDeviceSync()
         installed = true
@@ -191,12 +192,15 @@ object DesktopMacTrayCoordinator {
                     outcome.hadQueue && (batch == null || batch.allFailed) -> outcome.message
                     batch?.allFailed == true -> outcome.message
                     outcome.hadQueue -> outcome.message
-                    filePaths.size > 1 -> "${filePaths.size} Files Sent"
-                    else -> "File Sent"
+                    else -> com.fileapex.i18n.AppI18n.plural(
+                        "n_files_sent_short",
+                        filePaths.size,
+                        filePaths.size.toString()
+                    )
                 }
                 DesktopMacTrayBridge.showToast(toastMessage)
             } catch (error: Exception) {
-                DesktopMacTrayBridge.showToast(error.message ?: "Send failed")
+                DesktopMacTrayBridge.showToast(error.message ?: com.fileapex.i18n.AppI18n.t("send_failed"))
             } finally {
                 DesktopMacTrayBridge.endBackgroundActivity()
                 DesktopMacTrayBridge.closeDropBox()

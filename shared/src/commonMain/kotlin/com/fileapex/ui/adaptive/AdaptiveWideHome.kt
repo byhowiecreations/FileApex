@@ -369,7 +369,7 @@ private fun WideTopBar(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Filled.PowerSettingsNew,
-                    contentDescription = "Exit FileApex",
+                    contentDescription = stringRes("exit_fileapex"),
                     tint = Color(0xFF00E676),
                     modifier = Modifier.size(20.dp)
                 )

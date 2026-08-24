@@ -120,7 +120,7 @@ enum FileApexSendHandoff {
         preStagedPaths: [String]? = nil
     ) async throws -> FileApexSendJob {
         guard !deviceIds.isEmpty else {
-            throw HandoffError.failed("Select at least one destination device")
+            throw HandoffError.failed(AppCopy.shared.t("select_destination_device"))
         }
         let jobId = preStagedJobId ?? UUID().uuidString
         let stagedPaths: [String]
@@ -135,7 +135,7 @@ enum FileApexSendHandoff {
         }
         let finished = try await waitForCompletion(jobId: jobId)
         if finished.status == FileApexSendJob.statusFailed {
-            throw HandoffError.failed(finished.message ?? "Send failed")
+            throw HandoffError.failed(finished.message ?? AppCopy.shared.t("send_failed"))
         }
         return finished
     }
@@ -198,13 +198,13 @@ enum FileApexSendHandoff {
         var errorDescription: String? {
             switch self {
             case .timeout:
-                return "Timed out waiting for FileApex to finish sending."
+                return AppCopy.shared.t("handoff_timeout")
             case .mainAppDidNotOpen:
-                return "Could not open FileApex. Install it in /Applications and try again."
+                return AppCopy.shared.t("handoff_open_failed")
             case .failed(let message):
                 return message
             case .noSendableFiles:
-                return "Select one or more files (folders are not supported)."
+                return AppCopy.shared.t("handoff_no_files")
             }
         }
     }

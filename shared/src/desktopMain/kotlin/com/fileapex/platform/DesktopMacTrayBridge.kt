@@ -322,6 +322,11 @@ object DesktopMacTrayBridge {
         native?.fileapex_tray_update_devices(json)
     }
 
+    fun setCopyJson(json: String) {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        native?.fileapex_tray_set_copy(json)
+    }
+
     fun showMainWindow() {
         if (!DesktopPlatformPaths.isMacOs()) return
         native?.fileapex_tray_show_main_window()
@@ -507,6 +512,7 @@ object DesktopMacTrayBridge {
         fun fileapex_tray_close_dropbox()
         fun fileapex_tray_dropbox_seed_frame(x: Double, y: Double, width: Double, height: Double)
         fun fileapex_tray_update_devices(json: String)
+        fun fileapex_tray_set_copy(json: String)
         fun fileapex_tray_show_main_window()
         fun fileapex_tray_show_toast(message: String)
         fun fileapex_tray_begin_background_activity()

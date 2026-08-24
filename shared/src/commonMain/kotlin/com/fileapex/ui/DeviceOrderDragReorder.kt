@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.FileApexTeal
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -143,7 +144,7 @@ fun DeviceOrderDragHandle(
     ) {
         Icon(
             imageVector = Icons.Filled.DragHandle,
-            contentDescription = "Drag to reorder",
+            contentDescription = stringRes("drag_to_reorder"),
             tint = if (isDragging) FileApexTeal else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

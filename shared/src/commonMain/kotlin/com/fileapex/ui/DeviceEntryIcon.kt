@@ -20,6 +20,7 @@ import com.fileapex.presentation.DeviceIconKind
 import com.fileapex.presentation.DeviceIconProfile
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.resolveDeviceIconKind
+import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.FileApexTealDark
 
 @Composable
@@ -47,7 +48,7 @@ fun DeviceEntryIcon(
 ) {
     Icon(
         imageVector = deviceIconVector(resolveDeviceIconKind(profile)),
-        contentDescription = deviceIconContentDescription(resolveDeviceIconKind(profile)),
+        contentDescription = stringRes(deviceIconDescriptionKey(resolveDeviceIconKind(profile))),
         modifier = modifier,
         tint = tint
     )
@@ -65,16 +66,16 @@ fun deviceIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
     DeviceIconKind.GenericDesktop -> Icons.Filled.Computer
 }
 
-private fun deviceIconContentDescription(kind: DeviceIconKind): String = when (kind) {
-    DeviceIconKind.MacDesktop -> "Mac"
-    DeviceIconKind.WindowsPc -> "Windows PC"
-    DeviceIconKind.FoldablePhone -> "Foldable phone"
-    DeviceIconKind.FlipPhone -> "Flip phone"
-    DeviceIconKind.PixelPhone -> "Google Pixel phone"
-    DeviceIconKind.SamsungPhone -> "Samsung phone"
-    DeviceIconKind.AndroidTablet -> "Tablet"
-    DeviceIconKind.AndroidPhone -> "Android phone"
-    DeviceIconKind.GenericDesktop -> "Desktop"
+private fun deviceIconDescriptionKey(kind: DeviceIconKind): String = when (kind) {
+    DeviceIconKind.MacDesktop -> "icon_mac"
+    DeviceIconKind.WindowsPc -> "icon_windows_pc"
+    DeviceIconKind.FoldablePhone -> "icon_foldable_phone"
+    DeviceIconKind.FlipPhone -> "icon_flip_phone"
+    DeviceIconKind.PixelPhone -> "icon_pixel_phone"
+    DeviceIconKind.SamsungPhone -> "icon_samsung_phone"
+    DeviceIconKind.AndroidTablet -> "icon_tablet"
+    DeviceIconKind.AndroidPhone -> "icon_android_phone"
+    DeviceIconKind.GenericDesktop -> "icon_desktop"
 }
 
 @Composable

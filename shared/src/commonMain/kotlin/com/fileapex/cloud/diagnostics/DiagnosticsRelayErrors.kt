@@ -1,42 +1,30 @@
 package com.fileapex.cloud.diagnostics
 
+import com.fileapex.i18n.AppI18n
+
 /** User-facing errors for encrypted cloud Device Details relay. */
 object DiagnosticsRelayErrors {
-    fun localOptInRequired(): String =
-        "Enable \"Allow over cellular\" in Settings → Device Details on this device."
+    fun localOptInRequired(): String = AppI18n.t("relay_local_opt_in")
 
-    fun peerOptInRequired(): String =
-        "That device has not enabled cloud Device Details (Settings → Device Details)."
+    fun peerOptInRequired(): String = AppI18n.t("relay_peer_opt_in")
 
-    fun googleLinkRequired(): String =
-        "Link a Google Account on both devices to fetch Device Details over cellular."
+    fun googleLinkRequired(): String = AppI18n.t("relay_google_link_required")
 
-    fun peerNotCloudLinked(): String =
-        "That device is not in your Google-linked device registry."
+    fun peerNotCloudLinked(): String = AppI18n.t("relay_peer_not_cloud_linked")
 
-    fun peerKeyMissing(): String =
-        "That device has not published diagnostics encryption keys yet. " +
-            "Ask the peer to toggle \"Allow over cellular\" on and off."
+    fun peerKeyMissing(): String = AppI18n.t("relay_peer_key_missing")
 
-    fun timedOut(): String =
-        "Peer did not respond within 15 seconds. Open FileApex on that device briefly and retry."
+    fun timedOut(): String = AppI18n.t("relay_timed_out")
 
-    fun peerFcmTokenMissing(): String =
-        "That Android device has no cloud wake token. Open FileApex on it while Google-linked."
+    fun peerFcmTokenMissing(): String = AppI18n.t("relay_peer_fcm_token_missing")
 
-    fun peerWakeFailed(): String =
-        "Could not wake that device. Open FileApex on it and retry."
+    fun peerWakeFailed(): String = AppI18n.t("relay_peer_wake_failed")
 
-    fun peerRespondedFailed(): String =
-        "That device could not prepare device details. Ensure cloud Device Details is enabled."
+    fun peerRespondedFailed(): String = AppI18n.t("relay_peer_responded_failed")
 
-    fun lanAndCloudUnavailable(): String =
-        "Device details require the same Wi-Fi network, or cloud relay with \"Allow over cellular\" " +
-            "enabled on both devices."
+    fun lanAndCloudUnavailable(): String = AppI18n.t("relay_lan_and_cloud_unavailable")
 
-    fun firestorePermissionDenied(): String =
-        "Cloud Device Details is blocked by Firestore security rules. " +
-            "In Firebase Console → Firestore → Rules, add a diagnosticsRelay block and publish."
+    fun firestorePermissionDenied(): String = AppI18n.t("relay_firestore_permission_denied")
 
     /** Maps raw backend/Firestore failures to a short user message. */
     fun fromThrowable(error: Throwable): String {
@@ -47,6 +35,6 @@ object DiagnosticsRelayErrors {
         ) {
             return firestorePermissionDenied()
         }
-        return raw.ifBlank { "Could not load device details over cellular" }
+        return raw.ifBlank { AppI18n.t("relay_load_failed") }
     }
 }

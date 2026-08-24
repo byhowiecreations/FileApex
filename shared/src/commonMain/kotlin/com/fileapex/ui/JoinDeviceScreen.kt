@@ -93,13 +93,11 @@ fun JoinDeviceScreen(
         }
     }
 
-    LaunchedEffect(state.statusMessage, state.errorMessage, joinAttempt) {
+    LaunchedEffect(state.pairingSucceeded, state.errorMessage, joinAttempt) {
         if (joinAttempt != JoinAttemptState.Working) return@LaunchedEffect
-        state.statusMessage?.let { message ->
-            if (message.contains("Paired with", ignoreCase = true)) {
-                viewModel.dismissMessages()
-                onBack()
-            }
+        if (state.pairingSucceeded) {
+            viewModel.dismissMessages()
+            onBack()
         }
         state.errorMessage?.let { message ->
             joinAttempt = JoinAttemptState.Failed

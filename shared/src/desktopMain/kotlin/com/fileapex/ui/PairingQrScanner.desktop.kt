@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.fileapex.i18n.stringRes
 
 @Composable
 actual fun PairingQrScanner(
@@ -44,12 +45,12 @@ actual fun PairingQrScanner(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             Text(
-                text = "Live QR camera is available on Android",
+                text = stringRes("live_qr_android_only"),
                 style = MaterialTheme.typography.titleSmall,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "Use the 6-digit code from the host device below, or paste a pairing link into the code field.",
+                text = stringRes("live_qr_desktop_hint"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

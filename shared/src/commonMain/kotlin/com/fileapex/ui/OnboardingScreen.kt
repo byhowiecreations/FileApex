@@ -18,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -137,14 +136,14 @@ private fun OnboardingPermissionCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = step.permissionName,
-                style = MaterialTheme.typography.labelLarge,
-                fontFamily = FontFamily.Monospace,
+                text = stringRes(step.titleKey),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = step.reason,
+                text = stringRes(step.reasonKey),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -168,7 +167,7 @@ private fun OnboardingPermissionCard(
                 if (denied) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = step.deniedHint,
+                        text = stringRes(step.deniedHintKey),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Start,

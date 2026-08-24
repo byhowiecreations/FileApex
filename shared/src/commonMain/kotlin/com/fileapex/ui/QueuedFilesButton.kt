@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.fileApexChromeContentColor
 
 object QueueBadgeAnchor {
@@ -67,7 +68,7 @@ fun QueuedFilesButton(
         IconButton(onClick = onClick) {
             Icon(
                 imageVector = Icons.Filled.Schedule,
-                contentDescription = "Queued files",
+                contentDescription = stringRes("queued_files"),
                 tint = iconTint,
                 modifier = Modifier.size(24.dp)
             )

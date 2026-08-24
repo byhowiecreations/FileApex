@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 object AppI18n {
     @Volatile
@@ -28,8 +31,40 @@ object AppI18n {
         localeValue = next
         localeState.value = next
         applyPlatformLocale(next)
+        onAppLocaleChanged()
     }
 
+    /** Catalog snapshot for native tray / share-extension chrome that cannot call [t] directly. */
+    fun runtimeOverlayJson(): String {
+        ensureLoaded()
+        val catalog = catalogs[locale] ?: catalogs[AppLocale.EN] ?: return "{}"
+        val stringsObj = buildJsonObject {
+            catalog.snapshotStrings().forEach { (key, value) -> put(key, value) }
+        }
+        val pluralsObj = buildJsonObject {
+            catalog.snapshotPlurals().forEach { (key, forms) ->
+                put(
+                    key,
+                    buildJsonObject {
+                        forms.zero?.let { put("zero", it) }
+                        forms.one?.let { put("one", it) }
+                        forms.two?.let { put("two", it) }
+                        forms.few?.let { put("few", it) }
+                        forms.many?.let { put("many", it) }
+                        put("other", forms.other)
+                    }
+                )
+            }
+        }
+        return JsonObject(
+            mapOf(
+                "strings" to stringsObj,
+                "plurals" to pluralsObj
+            )
+        ).toString()
+    }
+
+    /** Localized UI copy. Dialogs, toasts, banners, and labels must use this (or [stringRes]) — never hardcoded English. */
     fun t(key: String, vararg args: Any): String {
         ensureLoaded()
         val raw = catalogs[locale]?.string(key)
