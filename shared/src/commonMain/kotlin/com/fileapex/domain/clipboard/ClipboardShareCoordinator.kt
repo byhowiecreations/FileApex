@@ -74,7 +74,7 @@ object ClipboardShareCoordinator {
 
     fun onLocalClipboardChanged(text: String) {
         if (!shouldWatchLocalClipboard()) return
-        val trimmed = text.takeIf { it.isNotBlank() } ?: return
+        val trimmed = preparedAutomaticText(text) ?: return
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed)) return
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
@@ -88,6 +88,9 @@ object ClipboardShareCoordinator {
         showClipboardToast(com.fileapex.i18n.AppI18n.t("sending_clipboard"))
     }
 
+    @Volatile
+    private var pendingAndroidFocusPush = false
+
     fun onAppForegrounded() {
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
         ClipboardChangeMonitor.onAppForegrounded()
@@ -97,11 +100,26 @@ object ClipboardShareCoordinator {
             return
         }
         if (currentPlatformLabel() == "Android") {
-            pushCurrentClipboard()
+            pendingAndroidFocusPush = true
+            return
+        }
+    }
+
+    fun onWindowFocusChanged(hasFocus: Boolean) {
+        ClipboardChangeMonitor.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || currentPlatformLabel() != "Android") return
+        if (!pendingAndroidFocusPush) return
+        pendingAndroidFocusPush = false
+        scope.launch {
+            ClipboardSharePolicy.ANDROID_FOCUS_CLIP_RETRY_MS.forEach { delayMs ->
+                delay(delayMs)
+                pushCurrentClipboard()
+            }
         }
     }
 
     fun onAppBackgrounded() {
+        pendingAndroidFocusPush = false
         ClipboardChangeMonitor.onAppBackgrounded()
     }
 
@@ -111,7 +129,7 @@ object ClipboardShareCoordinator {
             !FileApexServices.settings.clipboardAutoSendEnabled.value
         ) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) return
-        val text = PlatformClipboard.getSystemClipboardText()?.takeIf { it.isNotBlank() } ?: return
+        val text = preparedAutomaticText(PlatformClipboard.getSystemClipboardText()) ?: return
         if (!ClipboardPushDeduper.shouldAllowAutomaticPush(text)) return
         scope.launch {
             captureAndBroadcast(
@@ -129,11 +147,12 @@ object ClipboardShareCoordinator {
         if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
             return com.fileapex.i18n.AppI18n.t("choose_devices_first")
         }
-        val text = prefetchedText?.trim()?.takeIf { it.isNotBlank() }
+        val raw = prefetchedText?.trim()?.takeIf { it.isNotBlank() }
             ?: withContext(Dispatchers.Main.immediate) {
                 PlatformClipboard.getSystemClipboardText()?.takeIf { it.isNotBlank() }
             }
-            ?: return com.fileapex.i18n.AppI18n.t("clipboard_empty")
+        val text = preparedManualText(raw)
+            ?: return preparedManualError(raw)
         if (!ClipboardPushDeduper.shouldAllowManualPush(text)) {
             return com.fileapex.i18n.AppI18n.t("already_sent")
         }
@@ -150,8 +169,8 @@ object ClipboardShareCoordinator {
         if (!settings.clipboardSharingEnabled.value) {
             error(com.fileapex.i18n.AppI18n.t("clipboard_sharing_disabled_settings"))
         }
-        val text = PlatformClipboard.getSystemClipboardText()?.takeIf { it.isNotBlank() }
-            ?: error(com.fileapex.i18n.AppI18n.t("clipboard_empty"))
+        val raw = PlatformClipboard.getSystemClipboardText()
+        val text = preparedManualText(raw) ?: error(preparedManualError(raw))
         val device = FileApexServices.deviceRepository.getDevice(deviceId)
             ?: error(com.fileapex.i18n.AppI18n.t("device_not_found"))
         val capturedAt = TimeUtils.now()
@@ -160,12 +179,13 @@ object ClipboardShareCoordinator {
             error(com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName))
         }
         ClipboardPushDeduper.remember(text)
-        val name = device.deviceName.ifBlank { "device" }
+        val name = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
         return ClipboardSendResponse(status = "ok", recipientDeviceName = name)
     }
 
     suspend fun sendPlaintextToDevice(deviceId: String, text: String): ClipboardSendResponse {
-        val trimmed = text.takeIf { it.isNotBlank() } ?: error(com.fileapex.i18n.AppI18n.t("clipboard_empty"))
+        val trimmed = preparedManualText(text)
+            ?: error(preparedManualError(text))
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) {
             error(com.fileapex.i18n.AppI18n.t("clipboard_sharing_disabled_settings"))
@@ -178,7 +198,7 @@ object ClipboardShareCoordinator {
             error(com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName))
         }
         ClipboardPushDeduper.remember(trimmed)
-        val name = device.deviceName.ifBlank { "device" }
+        val name = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
         return ClipboardSendResponse(status = "ok", recipientDeviceName = name)
     }
 
@@ -206,14 +226,15 @@ object ClipboardShareCoordinator {
             peerDeviceId = senderDeviceId,
             peerPublicKeyBase64 = senderPublicKey
         ).decodeToString()
-        if (plaintext.isBlank()) {
+        val prepared = ClipboardCopySignals.prepare(plaintext)
+        if (prepared !is ClipboardCopySignals.Prepared.Ok) {
             error("empty_text")
         }
-        ClipboardPushDeduper.remember(plaintext)
+        ClipboardPushDeduper.remember(prepared.text)
         withContext(Dispatchers.Main) {
-            PlatformClipboard.applyRemoteText(plaintext)
-            if (isWebUrl(plaintext)) {
-                PlatformClipboard.openUrlInDefaultBrowser(plaintext)
+            PlatformClipboard.applyRemoteText(prepared.text)
+            if (isWebUrl(prepared.text)) {
+                PlatformClipboard.openUrlInDefaultBrowser(prepared.text)
             }
         }
     }
@@ -415,7 +436,7 @@ object ClipboardShareCoordinator {
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) return false
         return if (currentPlatformLabel() == "Android") {
-            settings.clipboardAccessibilityEnabled.value
+            true
         } else {
             settings.clipboardAutoSendEnabled.value
         }
@@ -424,6 +445,33 @@ object ClipboardShareCoordinator {
     private suspend fun publishClipboardPublicKey() {
         runCatching {
             GoogleLinkCoordinator.publishClipboardPublicKey(ClipboardE2ee.publicKeyBase64())
+        }
+    }
+
+    private fun preparedAutomaticText(raw: String?): String? {
+        return when (val prepared = ClipboardCopySignals.prepare(raw)) {
+            is ClipboardCopySignals.Prepared.Ok -> prepared.text
+            ClipboardCopySignals.Prepared.Empty -> null
+            ClipboardCopySignals.Prepared.TooLarge -> {
+                showClipboardToast(com.fileapex.i18n.AppI18n.t("clipboard_too_large"))
+                null
+            }
+            ClipboardCopySignals.Prepared.NotText -> {
+                showClipboardToast(com.fileapex.i18n.AppI18n.t("clipboard_not_text"))
+                null
+            }
+        }
+    }
+
+    private fun preparedManualText(raw: String?): String? =
+        (ClipboardCopySignals.prepare(raw) as? ClipboardCopySignals.Prepared.Ok)?.text
+
+    private fun preparedManualError(raw: String?): String {
+        return when (ClipboardCopySignals.prepare(raw)) {
+            is ClipboardCopySignals.Prepared.Ok,
+            ClipboardCopySignals.Prepared.Empty -> com.fileapex.i18n.AppI18n.t("clipboard_empty")
+            ClipboardCopySignals.Prepared.TooLarge -> com.fileapex.i18n.AppI18n.t("clipboard_too_large")
+            ClipboardCopySignals.Prepared.NotText -> com.fileapex.i18n.AppI18n.t("clipboard_not_text")
         }
     }
 

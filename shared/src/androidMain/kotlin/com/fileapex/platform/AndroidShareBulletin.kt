@@ -30,7 +30,7 @@ object AndroidShareBulletin {
             sharedText.isNotBlank() -> {
                 FileApexServices.bulletinSyncEngine.ingestSharedText(sharedText)
             }
-            else -> error("Nothing to post on the Bulletin Board")
+            else -> error(com.fileapex.i18n.AppI18n.t("nothing_to_post_bulletin"))
         }
     }
 }

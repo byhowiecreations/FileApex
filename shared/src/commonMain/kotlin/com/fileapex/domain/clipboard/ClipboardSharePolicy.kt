@@ -7,6 +7,14 @@ object ClipboardSharePolicy {
     const val RETRY_INTERVAL_MS = 4_000L
     const val INIT_GUARD_MS = 1_500L
     const val FCM_MAX_DATA_CHARS = 3_000
+    const val ANDROID_FOREGROUND_CLIP_POLL_MS = 700L
+    // MIUI/Android: onResume reads clipboard before window focus → ClipboardService deny.
+    val ANDROID_FOCUS_CLIP_RETRY_MS = longArrayOf(350L, 700L, 1_200L)
+
+    fun showSendClipboardNotificationAction(
+        sharingEnabled: Boolean,
+        sendClipboardNotificationEnabled: Boolean
+    ): Boolean = sharingEnabled && sendClipboardNotificationEnabled
 
     data class PeerRef(
         val deviceId: String,

@@ -40,9 +40,18 @@ object AppUpdateCoordinator {
     private val _showUpdateSheet = MutableStateFlow(false)
     val showUpdateSheet: StateFlow<Boolean> = _showUpdateSheet.asStateFlow()
 
+    /** Re-post the update notification after a locale change, never for an older stored tag. */
+    fun republishPendingNotificationIfNeeded() {
+        restorePendingOffer()
+        dropStalePendingOffer()
+        val offer = _pendingUpdate.value ?: return
+        notifyAppUpdateAvailable(offer)
+    }
+
     /** Call once after [FileApexServices.init] when the process starts. */
     fun onAppLaunch() {
         restorePendingOffer()
+        dropStalePendingOffer()
         ensureSchedulerRunning()
         if (FileApexServices.settings.checkForUpdatesEnabled.value) {
             scheduleCheck(
@@ -87,6 +96,7 @@ object AppUpdateCoordinator {
 
     fun requestShowUpdateSheet() {
         restorePendingOffer()
+        dropStalePendingOffer()
         if (_pendingUpdate.value != null) {
             _showUpdateSheet.value = true
             return
@@ -116,6 +126,7 @@ object AppUpdateCoordinator {
 
     fun downloadPendingUpdate() {
         restorePendingOffer()
+        dropStalePendingOffer()
         val offer = _pendingUpdate.value
         if (offer == null) {
             BriefToast.show(com.fileapex.i18n.AppI18n.t("update_details_missing"))
@@ -223,6 +234,7 @@ object AppUpdateCoordinator {
                 when (val outcome = AppUpdater.probeForUpdates()) {
                     is UpdateCheckOutcome.AlreadyCurrent -> {
                         settings.setLastUpdateCheckEpochMs(TimeUtils.now())
+                        dropStalePendingOffer()
                         _statusMessage.value = com.fileapex.i18n.AppI18n.t("on_current_version")
                         if (toastFeedback) {
                             BriefToast.show(com.fileapex.i18n.AppI18n.t("on_current_version"))
@@ -281,6 +293,18 @@ object AppUpdateCoordinator {
         if (_pendingUpdate.value != null) return
         val stored = PendingUpdateStore.load() ?: return
         _pendingUpdate.value = stored
+    }
+
+    private fun dropStalePendingOffer() {
+        val offer = _pendingUpdate.value ?: PendingUpdateStore.load() ?: return
+        if (isRemoteVersionNewer(currentAppVersionName(), offer.remoteVersion)) {
+            if (_pendingUpdate.value == null) {
+                _pendingUpdate.value = offer
+            }
+            return
+        }
+        setPendingOffer(null)
+        dismissAppUpdateNotification()
     }
 
     private fun isOfferSkipped(offer: PendingUpdateOffer): Boolean {

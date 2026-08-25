@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
@@ -31,9 +32,11 @@ import com.fileapex.platform.DesktopAppIcon
 import com.fileapex.platform.DesktopCrashHandler
 import com.fileapex.platform.DesktopJvmStartup
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.platform.MacLaunchSplash
 import com.fileapex.platform.DesktopScreenGeometry
 import com.fileapex.platform.DesktopTraySupport
 import com.fileapex.platform.DesktopWindowBoundsStore
+import com.fileapex.platform.MacOsExtensionRegistrar
 import com.fileapex.platform.DesktopSendHandoff
 import com.fileapex.platform.DesktopBulletinHandoff
 import com.fileapex.platform.DesktopWindowsBackdrop
@@ -80,6 +83,7 @@ fun main(args: Array<String>) {
 }
 
 private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload?) {
+    MacLaunchSplash.show()
 
     application {
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
@@ -215,6 +219,16 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             state = windowState,
             visible = mainWindowVisible,
         ) {
+            LaunchedEffect(window) {
+                run {
+                    repeat(60) {
+                        if (window.isShowing) return@run
+                        withFrameNanos { }
+                    }
+                }
+                MacLaunchSplash.hide()
+            }
+
             if (!servicesReady) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -227,6 +241,16 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
 
             LaunchedEffect(window) {
                 DesktopAppIcon.loadTrayImage()?.let { window.iconImage = it }
+                // NSStatusItem is AppKit-cheap; the first Skiko frame is not. Attach only
+                // after the real window has presented or the tray wins the race.
+                run {
+                    repeat(60) {
+                        if (window.isShowing) return@run
+                        withFrameNanos { }
+                    }
+                }
+                withFrameNanos { }
+                withFrameNanos { }
                 DesktopTraySupport.attachMainWindow(
                     window = window,
                     onShowWindow = { mainWindowVisible = true },
@@ -235,6 +259,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                     shutdownDesktop()
                     exitApplication()
                 }
+                MacOsExtensionRegistrar.registerOnLaunchDeferred()
             }
 
             LaunchedEffect(window, desktopUiStyle) {

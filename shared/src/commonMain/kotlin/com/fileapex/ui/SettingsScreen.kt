@@ -71,6 +71,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -93,6 +94,9 @@ import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.platform.BackgroundPersistenceUiState
+import com.fileapex.platform.ClipboardDiagnosticsPolicy
+import com.fileapex.platform.ClipboardRuntimeDiagnostics
+import com.fileapex.platform.ClipboardShizukuPolicy
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
@@ -112,6 +116,7 @@ import com.fileapex.ui.adaptive.CompactHomeTitleStyle
 import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
 import com.fileapex.ui.theme.fileApexTopAppBarColors
 import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
+import kotlinx.coroutines.delay
 
 private enum class SettingsPage {
     Root,
@@ -123,6 +128,8 @@ private enum class SettingsPage {
     FileTransferNotifications,
     Themes,
     Clipboard,
+    ClipboardShareTargets,
+    ClipboardDiagnostics,
     DeviceDetails,
     GoogleAccount,
     RemoteFileDeletion,
@@ -172,10 +179,12 @@ fun SettingsScreen(
     var page by remember { mutableStateOf(SettingsPage.Root) }
 
     val leavePage: () -> Unit = {
-        if (page == SettingsPage.Root) {
-            if (showRootBackNavigation) onBack()
-        } else {
-            page = SettingsPage.Root
+        when (page) {
+            SettingsPage.Root -> if (showRootBackNavigation) onBack()
+            SettingsPage.FileTransferNotifications -> page = SettingsPage.Notifications
+            SettingsPage.ClipboardDiagnostics,
+            SettingsPage.ClipboardShareTargets -> page = SettingsPage.Clipboard
+            else -> page = SettingsPage.Root
         }
     }
 
@@ -282,15 +291,49 @@ fun SettingsScreen(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onToggle = viewModel::setClipboardSharing,
-            onShareModeChange = viewModel::setClipboardShareMode,
-            onTogglePeer = viewModel::setClipboardTargetDevice,
             onToggleViaCellular = viewModel::setClipboardViaCellular,
             onToggleAccessibility = viewModel::setClipboardAccessibility,
+            onToggleSendNotification = viewModel::setClipboardSendNotification,
+            onToggleShizuku = viewModel::setClipboardShizuku,
             onToggleAutoSend = viewModel::setClipboardAutoSend,
             onDismissRestrictedHelp = viewModel::dismissAccessibilityRestrictedHelp,
             onOpenAppInfo = viewModel::openAccessibilityAppInfo,
-            onOpenAccessibilitySettings = viewModel::openAccessibilitySystemSettings
+            onOpenAccessibilitySettings = viewModel::openAccessibilitySystemSettings,
+            onOpenShareTargets = { page = SettingsPage.ClipboardShareTargets },
+            onOpenDiagnostics = { page = SettingsPage.ClipboardDiagnostics }
         )
+        SettingsPage.ClipboardShareTargets -> ClipboardShareTargetsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Clipboard },
+            onShareModeChange = viewModel::setClipboardShareMode,
+            onTogglePeer = viewModel::setClipboardTargetDevice
+        )
+        SettingsPage.ClipboardDiagnostics -> SettingsPageShell(
+            title = stringRes("clipboard_diagnostics"),
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Clipboard }
+        ) { contentModifier ->
+            Column(
+                modifier = contentModifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                ClipboardDiagnosticsContent(
+                    sharingEnabled = state.clipboardSharingEnabled,
+                    recipientsChosen = ClipboardDiagnosticsPolicy.recipientsChosen(
+                        shareModeAll = state.clipboardShareMode == ClipboardShareMode.ALL,
+                        shareModeSpecific = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
+                        specificTargetCount = state.clipboardTargetDeviceIds.size
+                    ),
+                    accessibilityEnabled = state.clipboardAccessibilityEnabled,
+                    shizukuOptedIn = state.clipboardShizukuEnabled,
+                    onOpenAccessibility = viewModel::openAccessibilitySystemSettings,
+                    onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                    onOpenAppInfo = viewModel::openAccessibilityAppInfo
+                )
+            }
+        }
         SettingsPage.DeviceDetails -> DeviceDetailsSettingsPage(
             preferences = state.deviceDetailsDisplayPreferences,
             allowOverCellular = state.deviceDetailsAllowOverCellular,
@@ -849,14 +892,16 @@ private fun ClipboardSettingsPage(
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onToggle: (Boolean) -> Unit,
-    onShareModeChange: (ClipboardShareMode) -> Unit,
-    onTogglePeer: (String, Boolean) -> Unit,
     onToggleViaCellular: (Boolean) -> Unit,
     onToggleAccessibility: (Boolean) -> Unit,
+    onToggleSendNotification: (Boolean) -> Unit,
+    onToggleShizuku: (Boolean) -> Unit,
     onToggleAutoSend: (Boolean) -> Unit,
     onDismissRestrictedHelp: () -> Unit,
     onOpenAppInfo: () -> Unit,
-    onOpenAccessibilitySettings: () -> Unit
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenShareTargets: () -> Unit,
+    onOpenDiagnostics: () -> Unit
 ) {
     val isAndroid = currentPlatformLabel() == "Android"
     SettingsPageShell(
@@ -884,6 +929,19 @@ private fun ClipboardSettingsPage(
             if (state.clipboardSharingEnabled) {
                 if (isAndroid) {
                     ListItem(
+                        modifier = Modifier.padding(start = 16.dp),
+                        headlineContent = { Text(stringRes("send_clipboard"), softWrap = true) },
+                        supportingContent = {
+                            Text(stringRes("send_clipboard_notification_subtitle"), softWrap = true)
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = state.clipboardSendNotificationEnabled,
+                                onCheckedChange = onToggleSendNotification
+                            )
+                        }
+                    )
+                    ListItem(
                         headlineContent = { Text(stringRes("accessibility"), softWrap = true) },
                         supportingContent = {
                             Text(stringRes("accessibility_subtitle"), softWrap = true)
@@ -894,6 +952,13 @@ private fun ClipboardSettingsPage(
                                 onCheckedChange = onToggleAccessibility
                             )
                         }
+                    )
+                    ClipboardAccessibilityBanner(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ClipboardShizukuToggle(
+                        enabled = state.clipboardShizukuEnabled,
+                        onToggle = onToggleShizuku
                     )
                     ListItem(
                         headlineContent = { Text(stringRes("via_cellular"), softWrap = true) },
@@ -921,58 +986,22 @@ private fun ClipboardSettingsPage(
                         }
                     )
                 }
-                FileApexPaneSectionHeader(title = stringRes("share_clipboard_with"))
-                if (state.clipboardShareMode == ClipboardShareMode.UNSET) {
-                    Text(
-                        text = stringRes("choose_all_or_specific"),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                SettingsNavItem(
+                    title = stringRes("share_clipboard_with"),
+                    subtitle = clipboardShareTargetsSubtitle(state),
+                    onClick = onOpenShareTargets
+                )
+                if (isAndroid) {
+                    ClipboardDiagnosticsEntry(
+                        accessibilityEnabled = state.clipboardAccessibilityEnabled,
+                        shizukuOptedIn = state.clipboardShizukuEnabled,
+                        recipientsChosen = ClipboardDiagnosticsPolicy.recipientsChosen(
+                            shareModeAll = state.clipboardShareMode == ClipboardShareMode.ALL,
+                            shareModeSpecific = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
+                            specificTargetCount = state.clipboardTargetDeviceIds.size
+                        ),
+                        onOpenDiagnostics = onOpenDiagnostics
                     )
-                }
-                Column(modifier = Modifier.selectableGroup()) {
-                    ClipboardShareModeRow(
-                        title = stringRes("all_devices"),
-                        subtitle = stringRes("broadcast_clipboard_wifi"),
-                        selected = state.clipboardShareMode == ClipboardShareMode.ALL,
-                        onClick = { onShareModeChange(ClipboardShareMode.ALL) }
-                    )
-                    ClipboardShareModeRow(
-                        title = stringRes("specific_devices"),
-                        subtitle = stringRes("only_checked_devices"),
-                        selected = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
-                        onClick = { onShareModeChange(ClipboardShareMode.SPECIFIC) }
-                    )
-                }
-                if (state.clipboardShareMode == ClipboardShareMode.SPECIFIC) {
-                    if (state.clipboardPeers.isEmpty()) {
-                        Text(
-                            text = stringRes("no_paired_devices"),
-                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        state.clipboardPeers.forEach { peer ->
-                            val checked = peer.deviceId in state.clipboardTargetDeviceIds
-                            ListItem(
-                                modifier = Modifier.padding(start = 16.dp),
-                                headlineContent = { Text(peer.deviceName.ifBlank { "Paired device" }) },
-                                supportingContent = {
-                                    val platform = peer.platform.ifBlank { peer.os }.ifBlank { null }
-                                    if (platform != null) {
-                                        Text(platform)
-                                    }
-                                },
-                                trailingContent = {
-                                    Checkbox(
-                                        checked = checked,
-                                        onCheckedChange = { onTogglePeer(peer.deviceId, it) }
-                                    )
-                                }
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -1004,6 +1033,123 @@ private fun ClipboardSettingsPage(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClipboardShareTargetsPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onShareModeChange: (ClipboardShareMode) -> Unit,
+    onTogglePeer: (String, Boolean) -> Unit
+) {
+    SettingsPageShell(
+        title = stringRes("share_clipboard_with"),
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (state.clipboardShareMode == ClipboardShareMode.UNSET) {
+                Text(
+                    text = stringRes("choose_all_or_specific"),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Column(modifier = Modifier.selectableGroup()) {
+                ClipboardShareModeRow(
+                    title = stringRes("all_devices"),
+                    subtitle = stringRes("broadcast_clipboard_wifi"),
+                    selected = state.clipboardShareMode == ClipboardShareMode.ALL,
+                    onClick = { onShareModeChange(ClipboardShareMode.ALL) }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                ClipboardShareModeRow(
+                    title = stringRes("specific_devices"),
+                    subtitle = stringRes("only_checked_devices"),
+                    selected = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
+                    onClick = { onShareModeChange(ClipboardShareMode.SPECIFIC) }
+                )
+            }
+            if (state.clipboardShareMode == ClipboardShareMode.SPECIFIC) {
+                if (state.clipboardPeers.isEmpty()) {
+                    Text(
+                        text = stringRes("no_paired_devices"),
+                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    state.clipboardPeers.forEach { peer ->
+                        val checked = peer.deviceId in state.clipboardTargetDeviceIds
+                        ListItem(
+                            modifier = Modifier.padding(start = 16.dp),
+                            headlineContent = { Text(peer.deviceName.ifBlank { stringRes("paired_device") }) },
+                            supportingContent = {
+                                val platform = peer.platform.ifBlank { peer.os }.ifBlank { null }
+                                if (platform != null) {
+                                    Text(platform)
+                                }
+                            },
+                            trailingContent = {
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = { onTogglePeer(peer.deviceId, it) }
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClipboardShizukuToggle(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    var snapshot by remember { mutableStateOf(ClipboardRuntimeDiagnostics.snapshot()) }
+    LaunchedEffect(enabled) {
+        while (true) {
+            snapshot = ClipboardRuntimeDiagnostics.snapshot()
+            delay(1_500)
+        }
+    }
+    val supporting = when (
+        ClipboardShizukuPolicy.toggleHint(
+            optedIn = enabled,
+            installed = snapshot.shizukuInstalled,
+            running = snapshot.shizukuRunning,
+            active = snapshot.shizukuActive
+        )
+    ) {
+        ClipboardShizukuPolicy.ToggleHint.USING -> stringRes("shizuku_using")
+        ClipboardShizukuPolicy.ToggleHint.CONNECTED_UNUSED -> stringRes("shizuku_connected_unused")
+        ClipboardShizukuPolicy.ToggleHint.AUTHORIZE -> stringRes("shizuku_step_authorize")
+        ClipboardShizukuPolicy.ToggleHint.START -> stringRes("shizuku_step_start")
+        ClipboardShizukuPolicy.ToggleHint.SUBTITLE -> stringRes("shizuku_subtitle")
+    }
+    ListItem(
+        headlineContent = { Text(stringRes("diag_shizuku_active"), softWrap = true) },
+        supportingContent = { Text(supporting, softWrap = true) },
+        trailingContent = {
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle
+            )
+        }
+    )
+}
+
 @Composable
 private fun ClipboardShareModeRow(
     title: String,
@@ -1030,15 +1176,20 @@ private fun ClipboardShareModeRow(
     )
 }
 
-private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
-    if (!state.clipboardSharingEnabled) return AppI18n.t("off")
-    val mode = when (state.clipboardShareMode) {
+private fun clipboardShareTargetsSubtitle(state: SettingsUiState): String {
+    return when (state.clipboardShareMode) {
         ClipboardShareMode.SPECIFIC -> AppI18n.t("specific_devices")
         ClipboardShareMode.ALL -> AppI18n.t("all_devices")
         ClipboardShareMode.UNSET -> AppI18n.t("choose_devices")
     }
+}
+
+private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
+    if (!state.clipboardSharingEnabled) return AppI18n.t("off")
+    val mode = clipboardShareTargetsSubtitle(state)
     val extras = buildList {
         if (currentPlatformLabel() == "Android" && state.clipboardAccessibilityEnabled) add(AppI18n.t("accessibility"))
+        if (currentPlatformLabel() == "Android" && state.clipboardShizukuEnabled) add(AppI18n.t("diag_shizuku_active"))
         if (currentPlatformLabel() != "Android" && state.clipboardAutoSendEnabled) add(AppI18n.t("auto_send"))
         if (state.clipboardViaCellularEnabled && currentPlatformLabel() == "Android") add(AppI18n.t("cellular"))
     }
@@ -1805,6 +1956,43 @@ private fun SettingsTopBar(title: String, onBack: (() -> Unit)?) {
             }
         },
         colors = fileApexTopAppBarColors()
+    )
+}
+
+@Composable
+private fun ClipboardDiagnosticsEntry(
+    accessibilityEnabled: Boolean,
+    shizukuOptedIn: Boolean,
+    recipientsChosen: Boolean,
+    onOpenDiagnostics: () -> Unit
+) {
+    var snapshot by remember { mutableStateOf(ClipboardRuntimeDiagnostics.snapshot()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            snapshot = ClipboardRuntimeDiagnostics.snapshot()
+            delay(1_500)
+        }
+    }
+    if (!ClipboardDiagnosticsPolicy.shouldShowEntry(sharingEnabled = true)) return
+    val ready = ClipboardDiagnosticsPolicy.allRequiredGranted(
+        ClipboardDiagnosticsPolicy.checks(
+            sharingEnabled = true,
+            recipientsChosen = recipientsChosen,
+            accessibilitySettingEnabled = accessibilityEnabled,
+            accessibilityListed = snapshot.accessibilityListed,
+            accessibilityBound = snapshot.accessibilityBound,
+            batteryWhitelisted = snapshot.batteryWhitelisted,
+            notificationsEnabled = snapshot.notificationsEnabled,
+            restrictedSettingsRelevant = snapshot.restrictedSettingsRelevant,
+            restrictedSettingsBlocked = snapshot.restrictedSettingsBlocked,
+            shizukuActive = snapshot.shizukuActive,
+            shizukuOptedIn = shizukuOptedIn
+        )
+    )
+    SettingsNavItem(
+        title = stringRes("clipboard_diagnostics"),
+        subtitle = if (ready) stringRes("diag_all_granted") else stringRes("diag_missing_required"),
+        onClick = onOpenDiagnostics
     )
 }
 

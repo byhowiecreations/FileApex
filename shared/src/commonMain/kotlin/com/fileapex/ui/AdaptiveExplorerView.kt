@@ -140,7 +140,7 @@ fun AdaptiveExplorerView(
                 }
                 if (paneDirectories.isEmpty() && !canNavigateUp) {
                     item(key = "pane-empty") {
-                        EmptyHint("No folders")
+                        EmptyHint(stringRes("no_folders"))
                     }
                 }
             }

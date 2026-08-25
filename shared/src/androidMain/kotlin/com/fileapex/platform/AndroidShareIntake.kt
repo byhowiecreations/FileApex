@@ -74,7 +74,7 @@ object AndroidShareIntake {
         context: Context,
         uris: List<Uri>
     ): IncomingSharePayload = withContext(Dispatchers.IO) {
-        require(uris.isNotEmpty()) { "No shared files" }
+        require(uris.isNotEmpty()) { com.fileapex.i18n.AppI18n.t("no_shared_file") }
         val sessionId = UUID.randomUUID().toString()
         val stagingDir = File(context.filesDir, "share-staging/$sessionId").also {
             it.mkdirs()
@@ -113,7 +113,7 @@ object AndroidShareIntake {
         }
         val copiedBytes = resolver.openInputStream(uri)?.use { input ->
             dest.outputStream().use { output -> input.copyTo(output) }
-        } ?: error("Cannot read shared file: $displayName")
+        } ?: error("${com.fileapex.i18n.AppI18n.t("could_not_read_shared_files")}: $displayName")
         check(copiedBytes > 0L) { "Shared file is empty: $displayName" }
         return IncomingShareFile(
             fileName = dest.name,

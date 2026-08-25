@@ -98,9 +98,9 @@ enum FileApexBulletinHandoff {
         var errorDescription: String? {
             switch self {
             case .nothingToPost:
-                return "Nothing to post on the Bulletin Board."
+                return AppCopy.shared.t("nothing_to_post_bulletin")
             case .mainAppDidNotOpen:
-                return "Could not open FileApex."
+                return AppCopy.shared.t("handoff_open_failed")
             }
         }
     }

@@ -14,11 +14,19 @@
 		A30000000000000000000015 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
 		A30000000000000000000016 /* AppCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppCopy.swift */; };
 		A30000000000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ShareViewController.swift */; };
+		C30000000000000000000001 /* en.xml in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* en.xml */; };
+		C30000000000000000000002 /* es.xml in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* es.xml */; };
+		C30000000000000000000003 /* zh-rCN.xml in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* zh-rCN.xml */; };
+		C30000000000000000000004 /* InfoPlist.strings in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000010 /* InfoPlist.strings */; };
 		B30000000000000000000011 /* FileApexPaths.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* FileApexPaths.swift */; };
 		B30000000000000000000012 /* FileApexSendHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* FileApexSendHandoff.swift */; };
 		B30000000000000000000013 /* FileApexBulletinHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* FileApexBulletinHandoff.swift */; };
 		B30000000000000000000014 /* BulletinShareViewController.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000030 /* BulletinShareViewController.swift */; };
 		B30000000000000000000015 /* AppCopy.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppCopy.swift */; };
+		C30000000000000000000011 /* en.xml in BulletinResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* en.xml */; };
+		C30000000000000000000012 /* es.xml in BulletinResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* es.xml */; };
+		C30000000000000000000013 /* zh-rCN.xml in BulletinResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* zh-rCN.xml */; };
+		C30000000000000000000014 /* InfoPlist.strings in BulletinResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000020 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +45,15 @@
 		A20000000000000000000030 /* BulletinShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulletinShareViewController.swift; sourceTree = "<group>"; };
 		B20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20000000000000000000022 /* BulletinShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BulletinShareExtension.entitlements; sourceTree = "<group>"; };
+		C20000000000000000000001 /* en.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = en.xml; sourceTree = "<group>"; };
+		C20000000000000000000002 /* es.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = es.xml; sourceTree = "<group>"; };
+		C20000000000000000000003 /* zh-rCN.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "zh-rCN.xml"; sourceTree = "<group>"; };
+		C20000000000000000000011 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		C20000000000000000000012 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		C20000000000000000000013 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		C20000000000000000000021 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		C20000000000000000000022 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		C20000000000000000000023 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000004 /* Shared */,
+				C20000000000000000000000 /* i18n */,
 				A10000000000000000000006 /* ShareExtension */,
 				B10000000000000000000006 /* BulletinShareExtension */,
 				A10000000000000000000003 /* Products */,
@@ -90,11 +108,23 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
+		C20000000000000000000000 /* i18n */ = {
+			isa = PBXGroup;
+			children = (
+				C20000000000000000000001 /* en.xml */,
+				C20000000000000000000002 /* es.xml */,
+				C20000000000000000000003 /* zh-rCN.xml */,
+			);
+			name = i18n;
+			path = ../shared/src/desktopMain/resources/i18n;
+			sourceTree = "<group>";
+		};
 		A10000000000000000000006 /* ShareExtension */ = {
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000020 /* ShareViewController.swift */,
 				A20000000000000000000021 /* Info.plist */,
+				C20000000000000000000010 /* InfoPlist.strings */,
 				A20000000000000000000022 /* ShareExtension.entitlements */,
 			);
 			path = ShareExtension;
@@ -105,6 +135,7 @@
 			children = (
 				A20000000000000000000030 /* BulletinShareViewController.swift */,
 				B20000000000000000000021 /* Info.plist */,
+				C20000000000000000000020 /* InfoPlist.strings */,
 				B20000000000000000000022 /* BulletinShareExtension.entitlements */,
 			);
 			path = BulletinShareExtension;
@@ -163,6 +194,8 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				es,
+				"zh-Hans",
 				Base,
 			);
 			mainGroup = A10000000000000000000002;
@@ -181,6 +214,10 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C30000000000000000000001 /* en.xml in ShareResources */,
+				C30000000000000000000002 /* es.xml in ShareResources */,
+				C30000000000000000000003 /* zh-rCN.xml in ShareResources */,
+				C30000000000000000000004 /* InfoPlist.strings in ShareResources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -188,6 +225,10 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C30000000000000000000011 /* en.xml in BulletinResources */,
+				C30000000000000000000012 /* es.xml in BulletinResources */,
+				C30000000000000000000013 /* zh-rCN.xml in BulletinResources */,
+				C30000000000000000000014 /* InfoPlist.strings in BulletinResources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -221,6 +262,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		C20000000000000000000010 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C20000000000000000000011 /* en */,
+				C20000000000000000000012 /* es */,
+				C20000000000000000000013 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		C20000000000000000000020 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C20000000000000000000021 /* en */,
+				C20000000000000000000022 /* es */,
+				C20000000000000000000023 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		A10000000000000000000030 /* Debug */ = {

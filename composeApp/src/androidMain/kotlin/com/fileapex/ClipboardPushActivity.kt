@@ -43,7 +43,7 @@ class ClipboardPushActivity : ComponentActivity() {
         }
         window.decorView.postDelayed({
             if (started.get()) return@postDelayed
-            if (hasWindowFocus()) {
+            if (hasWindowFocus() || com.fileapex.platform.ClipboardShizukuAccess.isReady()) {
                 pushAndFinish()
             } else {
                 BriefToast.show(com.fileapex.i18n.AppI18n.t("open_fileapex_send_clipboard"))
@@ -64,15 +64,20 @@ class ClipboardPushActivity : ComponentActivity() {
     private fun pushAndFinish() {
         if (!started.compareAndSet(false, true)) return
         lifecycleScope.launch {
-            var text = PlatformClipboard.readClipboardText(this@ClipboardPushActivity)
+            var text = readClipText()
             var attempt = 0
             while (text.isNullOrBlank() && attempt < 6) {
                 delay(150)
-                text = PlatformClipboard.readClipboardText(this@ClipboardPushActivity)
+                text = readClipText()
                 attempt++
             }
             BriefToast.show(ClipboardShareCoordinator.pushCurrentClipboardNow(text))
             finish()
         }
+    }
+
+    private fun readClipText(): String? {
+        PlatformClipboard.readClipboardText(this)?.takeIf { it.isNotBlank() }?.let { return it }
+        return com.fileapex.platform.ClipboardShizukuAccess.tryReadText()
     }
 }

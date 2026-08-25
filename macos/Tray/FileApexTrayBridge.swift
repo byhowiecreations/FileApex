@@ -245,7 +245,7 @@ public func fileapex_pick_open_file(
         panel.resolvesAliases = true
         panel.canCreateDirectories = false
         panel.allowedContentTypes = [.item]
-        panel.prompt = "Open"
+        panel.prompt = AppCopy.shared.t("open")
         if let title {
             panel.title = String(cString: title)
         }

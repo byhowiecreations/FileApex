@@ -1,5 +1,6 @@
 package com.fileapex.data.identity
 
+import com.fileapex.i18n.AppI18n
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,7 +30,7 @@ object LocalDeviceNameStore {
     /** Persist and publish a new local display name. */
     fun apply(newName: String) {
         val trimmed = newName.trim()
-        require(trimmed.isNotEmpty()) { "Device name cannot be empty" }
+        require(trimmed.isNotEmpty()) { AppI18n.t("device_name_empty") }
         updateLocalDeviceName(trimmed)
         _deviceName.value = trimmed
     }

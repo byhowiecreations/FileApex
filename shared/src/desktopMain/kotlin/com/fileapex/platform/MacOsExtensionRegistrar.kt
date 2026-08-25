@@ -9,9 +9,9 @@ import java.time.Instant
  * Registers the Share Extension with pluginkit **only** when FileApex is
  * running from `/Applications/FileApex.app`. Never registers project/`current/` builds.
  *
- * Also re-signs the PlugIn with the sandbox entitlements shipped under
- * `Contents/Resources/ExtensionEntitlements/` — without `app-sandbox`, pluginkit
- * accepts `-a` then silently drops the plugin (Share menu disappears).
+ * Appexes are signed with sandbox entitlements at package time. This registrar
+ * must not codesign or xattr the installed bundle — that invalidates the host
+ * signature and makes Gatekeeper re-scan on every launch.
  *
  * Deprecated Finder Sync (`com.fileapex.FinderSync`) is unregistered on every launch.
  */
@@ -24,9 +24,8 @@ object MacOsExtensionRegistrar {
     private const val ShareAppexName = "FileApexShareExtension.appex"
     private const val BulletinShareAppexName = "FileApexBulletinShareExtension.appex"
     private const val Pluginkit = "/usr/bin/pluginkit"
-    private const val Codesign = "/usr/bin/codesign"
 
-    /** Runs pluginkit/codesign off the critical path so the window can appear first. */
+    /** Runs pluginkit off the critical path so the window can appear first. */
     fun registerOnLaunchDeferred() {
         if (!DesktopPlatformPaths.isMacOs()) return
         Thread(
@@ -44,13 +43,11 @@ object MacOsExtensionRegistrar {
     fun registerOnLaunch() {
         if (!DesktopPlatformPaths.isMacOs()) return
 
-        // Always purge the deprecated Finder Sync extension (any install location).
-        removeAllRegistrations(DeprecatedFinderSyncId)
-        removeNonApplicationsRegistrations(ShareExtensionId)
-        removeNonApplicationsRegistrations(BulletinShareExtensionId)
-
         val bundle = resolveRunningAppBundle()
         if (bundle == null || !isApplicationsBundle(bundle)) {
+            removeAllRegistrations(DeprecatedFinderSyncId)
+            removeNonApplicationsRegistrations(ShareExtensionId)
+            removeNonApplicationsRegistrations(BulletinShareExtensionId)
             log(
                 "skip pluginkit - not running from $ApplicationsAppPath " +
                     "(running=${bundle?.absolutePath ?: "unknown"})"
@@ -65,7 +62,6 @@ object MacOsExtensionRegistrar {
         val entsDir = File(appsRoot, "Contents/Resources/ExtensionEntitlements")
         val shareEnts = File(entsDir, "ShareExtension.entitlements")
         val bulletinEnts = File(entsDir, "BulletinShareExtension.entitlements")
-        val hostEnts = File(entsDir, "FileApex.entitlements")
 
         if (legacyFinder.isDirectory) {
             log("removing deprecated $DeprecatedFinderAppexName from $ApplicationsAppPath")
@@ -89,29 +85,15 @@ object MacOsExtensionRegistrar {
             return
         }
 
-        val stamp = registrationStamp(appsRoot, share, bulletin, shareEnts, bulletinEnts)
+        val stamp = registrationStamp(share, bulletin, shareEnts, bulletinEnts)
         if (readStamp() == stamp) {
             log("skip pluginkit - unchanged since last successful registration")
             return
         }
 
-        // Restore sandbox entitlements before pluginkit (adhoc).
-        val signShare = runCapture(
-            Codesign, "--force", "--sign", "-",
-            "--entitlements", shareEnts.absolutePath, share.absolutePath
-        )
-        val signBulletin = runCapture(
-            Codesign, "--force", "--sign", "-",
-            "--entitlements", bulletinEnts.absolutePath, bulletin.absolutePath
-        )
-        if (hostEnts.isFile) {
-            runCapture(
-                Codesign, "--force", "--sign", "-",
-                "--entitlements", hostEnts.absolutePath, appsRoot.absolutePath
-            )
-        }
-        runCapture("/usr/bin/xattr", "-cr", appsRoot.absolutePath)
-
+        // Never codesign or xattr the host/appexes here. Packaging already signed them;
+        // mutating nested code invalidates the host signature and makes Gatekeeper
+        // re-scan the bundle on every launch.
         val addShare = runCapture(Pluginkit, "-a", share.absolutePath)
         val addBulletin = runCapture(Pluginkit, "-a", bulletin.absolutePath)
         val useShare = runCapture(Pluginkit, "-e", "use", "-i", ShareExtensionId)
@@ -119,20 +101,23 @@ object MacOsExtensionRegistrar {
         val ignoreFinder = runCapture(Pluginkit, "-e", "ignore", "-i", DeprecatedFinderSyncId)
         log(
             "registered Share + Bulletin from $ApplicationsAppPath " +
-                "(signShare=$signShare signBulletin=$signBulletin addShare=$addShare addBulletin=$addBulletin " +
+                "(addShare=$addShare addBulletin=$addBulletin " +
                 "useShare=$useShare useBulletin=$useBulletin ignoreFinder=$ignoreFinder)"
         )
-        writeStamp(stamp)
+        writeStamp(registrationStamp(share, bulletin, shareEnts, bulletinEnts))
     }
 
-    private fun registrationStamp(appsRoot: File, shareAppex: File, bulletinAppex: File, shareEnts: File, bulletinEnts: File): String =
+    private fun registrationStamp(
+        shareAppex: File,
+        bulletinAppex: File,
+        shareEnts: File,
+        bulletinEnts: File
+    ): String =
         listOf(
-            appsRoot.lastModified(),
             shareAppex.lastModified(),
             bulletinAppex.lastModified(),
             shareEnts.lastModified(),
-            bulletinEnts.lastModified(),
-            appsRoot.length()
+            bulletinEnts.lastModified()
         ).joinToString(":")
 
     private fun readStamp(): String? {

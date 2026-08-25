@@ -9,19 +9,10 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.platform.AndroidNotificationChannels
 import com.fileapex.platform.DirectShareShortcutCoordinator
 import com.fileapex.platform.ShareServerPendingStart
-import java.util.Locale
 
 actual fun systemLanguageTag(): String {
-    val context = androidAppContextOrNull()
-    val configLocale = context?.resources?.configuration?.let { config ->
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            config.locales[0]
-        } else {
-            @Suppress("DEPRECATION")
-            config.locale
-        }
-    }
-    return (configLocale ?: Locale.getDefault()).toLanguageTag()
+    val configLocale = android.content.res.Resources.getSystem().configuration.locales[0]
+    return configLocale?.toLanguageTag() ?: JvmLocaleSupport.systemTag()
 }
 
 actual fun applyPlatformLocale(locale: AppLocale) {
@@ -45,6 +36,7 @@ internal actual fun onAppLocaleChanged() {
     LocaleChromeRefresh.fire()
     if (FileApexServices.isDatabaseReady()) {
         DirectShareShortcutCoordinator.refreshFromPeerDiscovery()
+        com.fileapex.update.AppUpdateCoordinator.republishPendingNotificationIfNeeded()
     }
 }
 

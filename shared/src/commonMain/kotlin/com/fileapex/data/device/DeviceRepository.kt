@@ -4,6 +4,7 @@ import com.fileapex.data.db.DeviceDao
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.RemovedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
+import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
@@ -583,7 +584,7 @@ class DeviceRepository(
     suspend fun rename(deviceId: String, newName: String) {
         mutateMutex.withLock {
             val trimmed = newName.trim()
-            require(trimmed.isNotEmpty()) { "Device name cannot be empty" }
+            require(trimmed.isNotEmpty()) { AppI18n.t("device_name_empty") }
             val existing = deviceDao.getDevice(deviceId) ?: return
             if (existing.deviceName == trimmed) return
             deviceDao.renameDevice(deviceId, trimmed)

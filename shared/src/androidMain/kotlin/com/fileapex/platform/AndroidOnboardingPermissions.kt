@@ -1,12 +1,8 @@
 package com.fileapex.platform
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Environment
 import android.os.PowerManager
-import androidx.core.content.ContextCompat
 
 /**
  * Builds the ordered onboarding grant list — runtime/special permissions only.
@@ -24,7 +20,7 @@ object AndroidOnboardingPermissions {
                 titleKey = "onboard_perm_storage",
                 reasonKey = "onboard_storage_reason",
                 deniedHintKey = "onboard_storage_denied",
-                granted = hasAllFilesAccess(context)
+                granted = AndroidStorageAccess.hasFullAccess(context)
             )
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -65,19 +61,4 @@ object AndroidOnboardingPermissions {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         return !powerManager.isIgnoringBatteryOptimizations(context.packageName)
     }
-
-    private fun hasAllFilesAccess(context: Context): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            val read = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-            val write = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-            read && write
-        }
 }

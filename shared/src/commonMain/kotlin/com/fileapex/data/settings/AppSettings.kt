@@ -16,6 +16,8 @@ interface AppSettings {
     val clipboardTargetDeviceIds: StateFlow<Set<String>>
     val clipboardViaCellularEnabled: StateFlow<Boolean>
     val clipboardAccessibilityEnabled: StateFlow<Boolean>
+    val clipboardSendNotificationEnabled: StateFlow<Boolean>
+    val clipboardShizukuEnabled: StateFlow<Boolean>
     val clipboardAutoSendEnabled: StateFlow<Boolean>
     val appLanguageTag: StateFlow<String>
     val fileTransferNotificationsEnabled: StateFlow<Boolean>
@@ -78,6 +80,8 @@ interface AppSettings {
     fun setClipboardTargetDevice(deviceId: String, selected: Boolean)
     fun setClipboardViaCellularEnabled(enabled: Boolean)
     fun setClipboardAccessibilityEnabled(enabled: Boolean)
+    fun setClipboardSendNotificationEnabled(enabled: Boolean)
+    fun setClipboardShizukuEnabled(enabled: Boolean)
     fun setClipboardAutoSendEnabled(enabled: Boolean)
     fun setAppLanguageTag(tag: String)
     fun clipboardPrivateKeyBase64(): String

@@ -919,4 +919,4 @@ class ExplorerViewModel(
 }
 
 /** Thrown when a PIN-protected peer needs (re)unlock before folder navigation. */
-class PinSessionRequiredException : Exception("PIN required to browse this device")
+class PinSessionRequiredException : Exception(AppI18n.t("pin_required_open_device"))

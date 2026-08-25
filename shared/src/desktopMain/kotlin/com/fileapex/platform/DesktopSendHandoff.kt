@@ -151,7 +151,7 @@ object DesktopSendHandoff {
         if (job.status == STATUS_DONE || job.status == STATUS_FAILED) return
         // STATUS_RUNNING with no in-flight owner = crashed mid-send; retry below.
         if (job.filePaths.isEmpty() || job.deviceIds.isEmpty()) {
-            writeJob(job.copy(status = STATUS_FAILED, message = "Nothing to send"))
+            writeJob(job.copy(status = STATUS_FAILED, message = AppI18n.t("nothing_to_send")))
             return
         }
 

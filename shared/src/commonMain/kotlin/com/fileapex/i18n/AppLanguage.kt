@@ -8,7 +8,7 @@ fun applyStoredAppLanguage() {
     if (stored != null) {
         AppI18n.setLocale(stored)
     } else {
-        AppI18n.setLocale(AppLocale.EN)
+        AppI18n.setLocale(detectedPromptLocale())
     }
 }
 
@@ -29,5 +29,5 @@ fun detectedPromptLocale(): AppLocale {
 
 fun defaultLanguageIfNoPrompt() {
     if (FileApexServices.settings.appLanguageTag.value.isNotBlank()) return
-    persistAppLanguage(AppLocale.EN)
+    persistAppLanguage(AppI18n.locale)
 }

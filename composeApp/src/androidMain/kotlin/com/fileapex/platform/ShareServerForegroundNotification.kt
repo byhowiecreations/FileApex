@@ -28,6 +28,7 @@ object ShareServerForegroundNotification {
     private const val TAG = "ShareServerFgNotify"
     const val NOTIFICATION_ID = 1
     private const val CONTENT_REQUEST_CODE = 1_101
+    private const val CLIP_REQUEST_CODE = 1_102
 
     @Volatile
     private var posted = false
@@ -131,6 +132,20 @@ object ShareServerForegroundNotification {
             builder.setLargeIcon(
                 BitmapFactory.decodeResource(context.resources, AndroidNotificationChannels.largeIcon)
             )
+        }
+        if (
+            com.fileapex.di.FileApexServices.isDatabaseReady() &&
+            com.fileapex.domain.clipboard.ClipboardSharePolicy.showSendClipboardNotificationAction(
+                sharingEnabled = com.fileapex.di.FileApexServices.settings.clipboardSharingEnabled.value,
+                sendClipboardNotificationEnabled =
+                    com.fileapex.di.FileApexServices.settings.clipboardSendNotificationEnabled.value
+            )
+        ) {
+            val clipIntent = Intent().setClassName(context, "com.fileapex.ClipboardPushActivity").apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val clipPending = PendingIntent.getActivity(context, CLIP_REQUEST_CODE, clipIntent, pendingFlags)
+            builder.addAction(0, com.fileapex.i18n.AppI18n.t("send_clipboard"), clipPending)
         }
         return builder.build()
     }

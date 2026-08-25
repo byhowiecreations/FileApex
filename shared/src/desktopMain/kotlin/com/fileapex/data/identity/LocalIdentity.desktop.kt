@@ -24,7 +24,7 @@ actual fun loadLocalIdentity(): LocalIdentity {
 
 actual fun updateLocalDeviceName(newName: String) {
     val trimmed = newName.trim()
-    require(trimmed.isNotEmpty()) { "Device name cannot be empty" }
+    require(trimmed.isNotEmpty()) { com.fileapex.i18n.AppI18n.t("device_name_empty") }
     val props = loadProps()
     if (props.getProperty("deviceId").isNullOrBlank()) {
         props.setProperty("deviceId", generateDeviceId())

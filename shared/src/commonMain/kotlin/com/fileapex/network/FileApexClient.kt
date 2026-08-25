@@ -69,7 +69,7 @@ class FileApexClient(
             ),
             timeoutMs = PEER_REQUEST_TIMEOUT_MS
         )
-        rejectPinRequired(response, "PIN required — open the device and enter its PIN")
+        rejectPinRequired(response, com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
         requireSuccess(response, "List failed (${response.statusCode}): $host:$port$path")
         return json.decodeFromString(ListSerializer(RemoteFileItem.serializer()), response.body)
     }
@@ -100,7 +100,7 @@ class FileApexClient(
             ),
             timeoutMs = DIAGNOSTICS_TIMEOUT_MS
         )
-        rejectPinRequired(response, "PIN required — open the device and enter its PIN")
+        rejectPinRequired(response, com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
         requireSuccess(response, "Device details failed (${response.statusCode})")
         return json.decodeFromString(PeerDeviceDiagnostics.serializer(), response.body)
     }
@@ -292,7 +292,7 @@ class FileApexClient(
             uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
         ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
         if (response.statusCode == 403) {
-            error("PIN required — open the device and enter its PIN")
+            error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
         }
         require(response.statusCode in 200..299) {
             "Note attachment upload failed (${response.statusCode})"
@@ -386,7 +386,7 @@ class FileApexClient(
                 }
             ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
             if (result.statusCode == 403) {
-                error("PIN required — open the device and enter its PIN")
+                error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
             }
             require(result.statusCode in 200..299) {
                 "Bulletin file pull failed (${result.statusCode})"
@@ -447,7 +447,7 @@ class FileApexClient(
         streamRemoteFile(host, port, remotePath) { buffer, length ->
             total += length.toLong()
             if (total > maxBytes) {
-                error("File is too large to preview (>${maxBytes / (1024 * 1024)} MB)")
+                error(AppI18n.t("file_too_large_preview_mb", (maxBytes / (1024 * 1024)).toString()))
             }
             sink.write(buffer, startIndex = 0, endIndex = length)
         }
@@ -546,7 +546,7 @@ class FileApexClient(
             onStatus = onStatus
         ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
         if (result.statusCode == 403) {
-            error("PIN required — open the device and enter its PIN")
+            error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
         }
         require(result.statusCode in 200..299) {
             "Stream failed (${result.statusCode})"
@@ -616,10 +616,10 @@ class FileApexClient(
                     uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
                 ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
                 if (response.statusCode == 403) {
-                    error("PIN required — open the device and enter its PIN")
+                    error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
                 }
                 require(response.statusCode in 200..299) {
-                    "Upload failed (${response.statusCode})"
+                    "${AppI18n.t("upload_failed")} (${response.statusCode})"
                 }
                 return
             } catch (error: Throwable) {
@@ -630,7 +630,7 @@ class FileApexClient(
                 delay(TransferResumeProtocol.RETRY_DELAY_MS)
             }
         }
-        throw lastError ?: error("Upload failed")
+        throw lastError ?: error(AppI18n.t("upload_failed"))
     }
 
     suspend fun uploadFromChunkChannel(
@@ -657,10 +657,10 @@ class FileApexClient(
             contentLength = remaining
         ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
         if (response.statusCode == 403) {
-            error("PIN required — open the device and enter its PIN")
+            error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
         }
         require(response.statusCode in 200..299) {
-            "Upload failed (${response.statusCode})"
+            "${AppI18n.t("upload_failed")} (${response.statusCode})"
         }
     }
 

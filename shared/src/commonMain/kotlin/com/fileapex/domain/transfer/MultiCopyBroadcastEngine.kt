@@ -179,7 +179,7 @@ class MultiCopyBroadcastEngine(
             destinations.forEach { dest ->
                 failures.putIfAbsent(
                     dest.deviceId,
-                    producerError.message ?: "Source read failed"
+                    producerError.message ?: AppI18n.t("source_read_failed")
                 )
             }
         }

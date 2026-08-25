@@ -50,6 +50,15 @@ object DesktopMacTrayBridge {
     val isLoaded: Boolean
         get() = DesktopPlatformPaths.isMacOs() && native != null
 
+    fun preload() {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        Thread({ load() }, "FileApex-TrayPreload").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    @Synchronized
     fun load(): Boolean {
         if (!DesktopPlatformPaths.isMacOs()) return false
         native?.let { return true }

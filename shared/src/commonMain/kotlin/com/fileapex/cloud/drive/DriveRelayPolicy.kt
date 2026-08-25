@@ -3,6 +3,7 @@ package com.fileapex.cloud.drive
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.DriveRelayNotifier
 import kotlin.random.Random
 
@@ -44,15 +45,13 @@ object DriveRelayPolicy {
     }
 
     fun relayLimitExceededMessage(sizeBytes: Long): String =
-        "This file is ${formatBytesLabel(sizeBytes)}. Google Drive Relay is set to " +
-            "${relayLimitLabel()} per file or group at once."
+        AppI18n.t("drive_relay_limit_file", formatBytesLabel(sizeBytes), relayLimitLabel())
 
     fun relayLimitExceededMessage(sizeBytesList: List<Long>): String {
         val sizes = sizeBytesList.map { it.coerceAtLeast(0L) }
         val total = sizes.sum()
         if (sizes.size <= 1) return relayLimitExceededMessage(total)
-        return "This send is ${formatBytesLabel(total)}. Google Drive Relay is set to " +
-            "${relayLimitLabel()} per file or group at once."
+        return AppI18n.t("drive_relay_limit_group", formatBytesLabel(total), relayLimitLabel())
     }
 
     fun evaluateNotesAttachment(sizeBytes: Long): NotesAttachmentDecision {

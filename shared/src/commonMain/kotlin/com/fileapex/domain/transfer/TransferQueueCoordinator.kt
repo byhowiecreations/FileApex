@@ -160,14 +160,14 @@ class TransferQueueCoordinator(
     ): QueueAwareSendResult {
         transferManager.awaitReady()
         val sources = LocalTransferTree.expandAbsolutePaths(absolutePaths)
-        check(sources.isNotEmpty()) { "Nothing to send — empty folder or missing files" }
+        check(sources.isNotEmpty()) { AppI18n.t("nothing_to_send_empty_folder") }
         val options = transferManager.resolveRemoteDeviceOptions(deviceIds)
         return sendOrQueue(sources, options, skipTransferPrepare)
     }
 
     suspend fun enqueueLocalPaths(absolutePaths: List<String>, deviceIds: List<String>) {
         transferManager.awaitReady()
-        require(absolutePaths.isNotEmpty()) { "Nothing to queue" }
+        require(absolutePaths.isNotEmpty()) { AppI18n.t("nothing_to_queue") }
         require(deviceIds.isNotEmpty()) { AppI18n.t("select_destination_device") }
         val names = deviceNames(deviceIds)
         val label = buildDisplayLabel(pathSummary(absolutePaths), names)
@@ -202,7 +202,7 @@ class TransferQueueCoordinator(
             dao.upsert(
                 entity.copy(
                     status = PendingTransferStatus.Queued.name,
-                    lastError = entity.lastError ?: "Send did not finish — retrying"
+                    lastError = entity.lastError ?: AppI18n.t("send_did_not_finish_retrying")
                 )
             )
         }
@@ -662,6 +662,11 @@ class TransferQueueCoordinator(
             null, "" -> raw
             WAITING_DRIVE_GRANT, WAITING_DRIVE_GRANT_LEGACY -> AppI18n.t("waiting_drive_grant")
             "Drive relay did not finish" -> AppI18n.t("drive_relay_did_not_finish")
+            "Nothing to send — empty folder or missing files",
+            "Nothing to send" -> AppI18n.t("nothing_to_send_empty_folder")
+            "Nothing to queue" -> AppI18n.t("nothing_to_queue")
+            "Send did not finish — retrying" -> AppI18n.t("send_did_not_finish_retrying")
+            "Source read failed" -> AppI18n.t("source_read_failed")
             else -> raw
         }
     }

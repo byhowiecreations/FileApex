@@ -4,6 +4,7 @@ import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.transfer.MultiCopySource
 import com.fileapex.platform.DriveRelayNotifier
 import com.fileapex.platform.UniqueFileNames
@@ -198,10 +199,10 @@ object DriveRelayCoordinator {
         sources: List<MultiCopySource>,
         targetDeviceIds: List<String>
     ): List<DriveLedgerEntry> {
-        require(DriveRelayPolicy.canSend()) { "Cellular Google Drive Relay is not enabled" }
+        require(DriveRelayPolicy.canSend()) { AppI18n.t("drive_relay_not_enabled") }
         val selfId = loadLocalIdentity().deviceId
         val created = mutableListOf<DriveLedgerEntry>()
-        require(sources.isNotEmpty()) { "Nothing to send via Google Drive Relay" }
+        require(sources.isNotEmpty()) { AppI18n.t("nothing_to_send_drive_relay") }
         require(!DriveRelayPolicy.payloadExceedsRelayLimit(sources.map { it.sizeBytes })) {
             DriveRelayPolicy.relayLimitExceededMessage(sources.map { it.sizeBytes })
         }

@@ -148,7 +148,7 @@ final class ShareViewController: NSViewController {
             let error = NSError(
                 domain: "com.fileapex.ShareExtension",
                 code: NSUserCancelledError,
-                userInfo: [NSLocalizedDescriptionKey: "Cancelled"]
+                userInfo: [NSLocalizedDescriptionKey: AppCopy.shared.t("cancelled")]
             )
             extensionContext?.cancelRequest(withError: error)
         }

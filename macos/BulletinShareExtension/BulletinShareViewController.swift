@@ -24,6 +24,7 @@ final class BulletinShareViewController: NSViewController {
     }
 
     private func postAndFinish() async {
+        AppCopy.shared.loadFromDisk()
         let payload = await resolvePayload()
         guard payload.hasContent else {
             await MainActor.run { finish(success: false) }
@@ -137,7 +138,7 @@ final class BulletinShareViewController: NSViewController {
             let error = NSError(
                 domain: "com.fileapex.BulletinShareExtension",
                 code: NSUserCancelledError,
-                userInfo: [NSLocalizedDescriptionKey: "Cancelled"]
+                userInfo: [NSLocalizedDescriptionKey: AppCopy.shared.t("cancelled")]
             )
             extensionContext?.cancelRequest(withError: error)
         }

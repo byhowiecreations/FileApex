@@ -13,6 +13,42 @@ private fun isWindowsHost(): Boolean =
     System.getProperty("os.name").orEmpty().contains("windows", ignoreCase = true)
 
 /**
+ * jlink modules for the bundled JRE. `includeAllModules` packed a ~120MB `modules` file
+ * (plus `ct.sym` / JFR) for a Compose + Ktor + Room desktop app that does not need it.
+ */
+private val fileapexJlinkModules = listOf(
+    "java.base",
+    "java.datatransfer",
+    "java.desktop",
+    "java.instrument",
+    "java.logging",
+    "java.management",
+    "java.naming",
+    "java.net.http",
+    "java.prefs",
+    "java.scripting",
+    "java.security.jgss",
+    "java.security.sasl",
+    "java.sql",
+    "java.xml",
+    "jdk.charsets",
+    "jdk.crypto.cryptoki",
+    "jdk.crypto.ec",
+    "jdk.localedata",
+    "jdk.management",
+    "jdk.net",
+    "jdk.unsupported",
+    "jdk.unsupported.desktop",
+    "jdk.zipfs",
+)
+
+private fun pruneJlinkRuntime(runtimeHome: java.io.File) {
+    val lib = runtimeHome.resolve("lib")
+    lib.resolve("ct.sym").takeIf { it.isFile }?.delete()
+    lib.resolve("jfr").takeIf { it.exists() }?.deleteRecursively()
+}
+
+/**
  * Register only the installer format for the current OS so Gradle never schedules
  * Mac DMG work on Windows (or MSI work on macOS).
  */
@@ -378,7 +414,8 @@ compose.desktop {
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
             // Marketing version stays version.md name=; installers are renamed on copy.
             packageVersion = "1.0.$fileapexVersionCode"
-            includeAllModules = true
+            includeAllModules = false
+            modules(*fileapexJlinkModules.toTypedArray())
 
             // Pin the bundled JRE to the correct architecture for each Mac build type.
             // The Intel packageIntelDmg task sets JAVA_HOME to jdk-21-x64 before invoking Gradle,
@@ -505,6 +542,7 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
 
         if (producedArch == needsArch) {
             logger.lifecycle("Runtime image arch: $producedArch ✓")
+            pruneJlinkRuntime(stagingRuntime)
             return@doLast
         }
 
@@ -527,12 +565,15 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
         val jlinkResult = ProcessBuilder(
             jlink.absolutePath,
             "--module-path", jmodsDir.absolutePath,
-            "--add-modules", "ALL-MODULE-PATH",
+            "--add-modules", fileapexJlinkModules.joinToString(","),
+            "--include-locales=en,es,zh",
             "--no-header-files", "--no-man-pages",
             "--compress=1", "--strip-debug",
+            "--generate-cds-archive",
             "--output", stagingRuntime.absolutePath
         ).inheritIO().start().waitFor()
         check(jlinkResult == 0) { "jlink failed with exit code $jlinkResult" }
+        pruneJlinkRuntime(stagingRuntime)
         logger.lifecycle("Runtime image rebuilt as $needsArch ✓")
     }
 }
@@ -610,31 +651,10 @@ tasks.register("embedMacExtensions") {
     description = "Build Share Extension and embed into FileApex.app"
     dependsOn("createDistributable")
     onlyIf { isMacHost() }
+    outputs.upToDateWhen { false }
     doLast {
         val appBundle = layout.buildDirectory.dir("compose/binaries/main/app/FileApex.app").get().asFile
-        embedMacTrayBridgeIn(appBundle)
-        embedMacInfoPlistStrings(appBundle)
-        patchMacRuntimeLocalNetworkPlist(appBundle)
-        val script = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
-        check(script.exists()) { "Missing ${script.absolutePath}" }
-        val process = ProcessBuilder("bash", script.absolutePath, appBundle.absolutePath, "Release")
-            .directory(rootProject.projectDir)
-            .inheritIO()
-            .start()
-        val code = process.waitFor()
-        // Non-zero is OK when Xcode is unavailable — script warns and exits 0;
-        // treat hard failures as warnings so Android-only machines still build.
-        if (code != 0) {
-            logger.warn("embed_extensions.sh exited $code (extensions may be missing)")
-        }
-        val uuidScript = rootProject.layout.projectDirectory.file("macos/scripts/unique_main_uuid.sh").asFile
-        check(uuidScript.isFile) { "Missing ${uuidScript.absolutePath}" }
-        val uuidCode = ProcessBuilder("bash", uuidScript.absolutePath, appBundle.absolutePath)
-            .directory(rootProject.projectDir)
-            .inheritIO()
-            .start()
-            .waitFor()
-        check(uuidCode == 0) { "unique_main_uuid.sh exited $uuidCode — Local Network UUID patch failed" }
+        embedMacExtensionsIn(appBundle)
     }
 }
 
@@ -648,6 +668,26 @@ tasks.matching { it.name == "packageDmg" || it.name == "packageReleaseDmg" }.con
  * Runs a command, failing the build with its combined output if it exits non-zero.
  * Kept minimal (no plist parsing) by always driving hdiutil with an explicit `-mountpoint`.
  */
+private fun Project.runPackagingSubprocess(
+    logName: String,
+    cmd: String,
+    extraPrefix: List<String> = emptyList()
+): Int {
+    val logFile = layout.buildDirectory.file(logName).get().asFile
+    logFile.parentFile.mkdirs()
+    val process = ProcessBuilder(extraPrefix + listOf("bash", "-c", cmd))
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .redirectOutput(logFile)
+        .start()
+    val exit = process.waitFor()
+    if (exit != 0) {
+        logger.error(logFile.readText())
+        logger.error("Packaging subprocess log: ${logFile.absolutePath}")
+    }
+    return exit
+}
+
 private fun runOrFail(vararg command: String) {
     val process = ProcessBuilder(*command).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().readText()
@@ -937,17 +977,50 @@ private fun prepareCurrentDirectory(
     }
 }
 
-private fun patchShippedAppMarketingVersion(dest: File, appVersionName: String, versionCode: String) {
-    val shippedInfoPlist = dest.resolve("FileApex.app/Contents/Info.plist")
-    if (!shippedInfoPlist.exists()) return
+private fun patchAppInfoPlistVersions(appBundle: File, appVersionName: String, versionCode: String) {
+    val infoPlist = appBundle.resolve("Contents/Info.plist")
+    if (!infoPlist.isFile) return
     ProcessBuilder(
         "plutil", "-replace", "CFBundleShortVersionString",
-        "-string", appVersionName, shippedInfoPlist.absolutePath
+        "-string", appVersionName, infoPlist.absolutePath
     ).start().waitFor()
     ProcessBuilder(
         "plutil", "-replace", "CFBundleVersion",
-        "-string", versionCode, shippedInfoPlist.absolutePath
+        "-string", versionCode, infoPlist.absolutePath
     ).start().waitFor()
+}
+
+private fun Project.finalizeMacAppSignature(appBundle: File) {
+    val hostEnts = rootProject.layout.projectDirectory.file("composeApp/macos/FileApex.entitlements").asFile
+    val signArgs = mutableListOf(
+        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none"
+    )
+    if (hostEnts.isFile) {
+        signArgs += listOf("--entitlements", hostEnts.absolutePath)
+    }
+    signArgs += appBundle.absolutePath
+    val sign = ProcessBuilder(signArgs).redirectErrorStream(true).start()
+    val signOut = sign.inputStream.bufferedReader().readText()
+    check(sign.waitFor() == 0) { "codesign host failed:\n$signOut" }
+    val verify = ProcessBuilder("/usr/bin/codesign", "--verify", "--verbose=2", appBundle.absolutePath)
+        .redirectErrorStream(true)
+        .start()
+    val verifyOut = verify.inputStream.bufferedReader().readText()
+    check(verify.waitFor() == 0) {
+        "FileApex.app signature invalid after packaging:\n$verifyOut"
+    }
+    logger.lifecycle("Verified FileApex.app code signature")
+}
+
+private fun Project.requireMacShareCatalogs(appBundle: File) {
+    val shareXml = appBundle.resolve(
+        "Contents/PlugIns/FileApexShareExtension.appex/Contents/Resources/en.xml"
+    )
+    val bulletinXml = appBundle.resolve(
+        "Contents/PlugIns/FileApexBulletinShareExtension.appex/Contents/Resources/en.xml"
+    )
+    check(shareXml.isFile) { "Share extension catalog missing at $shareXml" }
+    check(bulletinXml.isFile) { "Bulletin extension catalog missing at $bulletinXml" }
 }
 
 private fun Project.embedMacExtensionsIn(appBundle: File) {
@@ -959,11 +1032,15 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
     embedMacInfoPlistStrings(appBundle)
     patchMacRuntimeLocalNetworkPlist(appBundle)
     val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
-    ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
+    check(embedScript.isFile) { "Missing ${embedScript.absolutePath}" }
+    val embedCode = ProcessBuilder("bash", embedScript.absolutePath, appBundle.absolutePath, "Release")
         .directory(rootProject.projectDir)
         .inheritIO()
         .start()
         .waitFor()
+    check(embedCode == 0) { "embed_extensions.sh exited $embedCode — Share PlugIns were not embedded" }
+    patchAppInfoPlistVersions(appBundle, fileapexVersionName, fileapexVersionCode)
+    logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$fileapexVersionName before final codesign")
     val uuidScript = rootProject.layout.projectDirectory.file("macos/scripts/unique_main_uuid.sh").asFile
     check(uuidScript.isFile) { "Missing ${uuidScript.absolutePath}" }
     logger.lifecycle("Uniquing FileApex launcher Mach-O UUID for Local Network policy")
@@ -973,6 +1050,8 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         .start()
         .waitFor()
     check(uuidCode == 0) { "unique_main_uuid.sh exited $uuidCode — Local Network UUID patch failed" }
+    finalizeMacAppSignature(appBundle)
+    requireMacShareCatalogs(appBundle)
 }
 
 private fun Project.shipToCurrent(
@@ -996,7 +1075,6 @@ private fun Project.shipToCurrent(
 
     val logger = logger
     val appVersionName = fileapexVersionName
-    val versionCode = fileapexVersionCode
 
     fun moveApksFrom(variant: String) {
         val apks = apkOutputDir(variant).listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
@@ -1045,9 +1123,6 @@ private fun Project.shipToCurrent(
         }
         embedMacExtensionsIn(buildAppBundle)
         moveToCurrent(dest, buildAppBundle, logger = logger)
-
-        patchShippedAppMarketingVersion(dest, appVersionName, versionCode)
-        logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$appVersionName")
 
         val launchedBinary = dest.resolve("FileApex.app/Contents/MacOS/FileApex")
         check(launchedBinary.exists() && launchedBinary.canExecute()) {
@@ -1312,11 +1387,44 @@ tasks.register("packageSiliconDmg") {
         val cmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
             " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon embedMacExtensions" +
             " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
-        val exit = ProcessBuilder("bash", "-c", cmd)
-            .directory(rootProject.projectDir)
-            .inheritIO()
-            .start().waitFor()
+        val exit = runPackagingSubprocess("package-silicon-subprocess.log", cmd)
         check(exit == 0) { "Silicon DMG packaging failed with exit code $exit" }
+
+        val stagingApp = stagingAppDir.resolve("FileApex.app")
+        check(stagingApp.isDirectory) {
+            "Silicon .app missing at ${stagingApp.absolutePath}"
+        }
+        val shareXml = stagingApp.resolve(
+            "Contents/PlugIns/FileApexShareExtension.appex/Contents/Resources/en.xml"
+        )
+        if (!shareXml.isFile) {
+            logger.lifecycle("Share PlugIns missing after packageDmg; embedding into staging .app")
+            embedMacExtensionsIn(stagingApp)
+            val dmgCmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
+                " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon" +
+                " -x createDistributable -x embedMacExtensions" +
+                " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+            val dmgExit = runPackagingSubprocess("package-silicon-repack-subprocess.log", dmgCmd)
+            check(dmgExit == 0) { "Silicon DMG re-pack after embed failed with exit code $dmgExit" }
+        }
+        requireMacShareCatalogs(stagingApp)
+        val stagingVerify = ProcessBuilder(
+            "/usr/bin/codesign", "--verify", "--verbose=2", stagingApp.absolutePath
+        ).redirectErrorStream(true).start()
+        val stagingOut = stagingVerify.inputStream.bufferedReader().readText()
+        if (stagingVerify.waitFor() != 0) {
+            logger.lifecycle("Staging .app signature invalid after packageDmg; re-signing")
+            logger.lifecycle(stagingOut)
+            patchAppInfoPlistVersions(stagingApp, fileapexVersionName, fileapexVersionCode)
+            finalizeMacAppSignature(stagingApp)
+            val dmgCmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
+                " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon" +
+                " -x createDistributable -x embedMacExtensions" +
+                " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+            val dmgExit = runPackagingSubprocess("package-silicon-resign-dmg.log", dmgCmd)
+            check(dmgExit == 0) { "Silicon DMG re-pack after re-sign failed with exit code $dmgExit" }
+            finalizeMacAppSignature(stagingApp)
+        }
 
         // Ship DMG first (embeds staging .app), then move .app out of build/ into current/.
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
@@ -1326,13 +1434,16 @@ tasks.register("packageSiliconDmg") {
         if (siliconDmg != null) {
             moveToCurrent(dest, siliconDmg, destName = "FileApex-v$fileapexVersionName-Silicon.dmg", logger = logger)
         }
-        val stagingApp = stagingAppDir.resolve("FileApex.app")
-        check(stagingApp.isDirectory) {
-            "Silicon .app missing at ${stagingApp.absolutePath}"
-        }
         moveToCurrent(dest, stagingApp, logger = logger)
-        patchShippedAppMarketingVersion(dest, fileapexVersionName, fileapexVersionCode)
-        logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$fileapexVersionName")
+        requireMacShareCatalogs(dest.resolve("FileApex.app"))
+        val shippedVerify = ProcessBuilder(
+            "/usr/bin/codesign", "--verify", "--verbose=2",
+            dest.resolve("FileApex.app").absolutePath
+        ).redirectErrorStream(true).start()
+        val shippedOut = shippedVerify.inputStream.bufferedReader().readText()
+        check(shippedVerify.waitFor() == 0) {
+            "Shipped current/FileApex.app signature invalid:\n$shippedOut"
+        }
     }
 }
 
@@ -1355,12 +1466,13 @@ tasks.register("packageIntelDmg") {
         if (stagingRuntime.exists()) stagingRuntime.deleteRecursively()
 
         val cmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${x64Jdk.absolutePath}' &&" +
-            " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon" +
+            " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon embedMacExtensions" +
             " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
-        val exit = ProcessBuilder("arch", "-x86_64", "bash", "-c", cmd)
-            .directory(rootProject.projectDir)
-            .inheritIO()
-            .start().waitFor()
+        val exit = runPackagingSubprocess(
+            "package-intel-subprocess.log",
+            cmd,
+            extraPrefix = listOf("arch", "-x86_64")
+        )
         check(exit == 0) { "Intel DMG packaging failed with exit code $exit" }
 
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile

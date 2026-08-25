@@ -15,13 +15,10 @@ PRODUCTS="$ROOT/macos/build/DerivedData/Build/Products/$CONFIGURATION"
 SHARE_APPEX="$PRODUCTS/FileApexShareExtension.appex"
 BULLETIN_APPEX="$PRODUCTS/FileApexBulletinShareExtension.appex"
 
-if [[ ! -d "$SHARE_APPEX" || ! -d "$BULLETIN_APPEX" ]]; then
-  echo "Extension product missing — running build_extensions.sh…"
-  "$ROOT/macos/scripts/build_extensions.sh" "$CONFIGURATION" || {
-    echo "WARNING: Could not build Share extensions (Xcode required). Skipping PlugIns embed."
-    exit 0
-  }
-fi
+echo "Rebuilding Share extensions…"
+# Always rebuild. Reusing DerivedData .appex left Contents/Resources empty
+# (Xcode skipped the resource phase; embed then ditto'd the stale bundle).
+bash "$ROOT/macos/scripts/build_extensions.sh" "$CONFIGURATION"
 
 PLUGINS="$APP_BUNDLE/Contents/PlugIns"
 mkdir -p "$PLUGINS"

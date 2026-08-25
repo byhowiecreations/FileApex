@@ -163,4 +163,35 @@ class ClipboardSharePolicyTest {
             )
         )
     }
+
+    @Test
+    fun sendClipboardNotificationActionNeedsSharingAndOptIn() {
+        assertFalse(
+            ClipboardSharePolicy.showSendClipboardNotificationAction(
+                sharingEnabled = true,
+                sendClipboardNotificationEnabled = false
+            )
+        )
+        assertFalse(
+            ClipboardSharePolicy.showSendClipboardNotificationAction(
+                sharingEnabled = false,
+                sendClipboardNotificationEnabled = true
+            )
+        )
+        assertTrue(
+            ClipboardSharePolicy.showSendClipboardNotificationAction(
+                sharingEnabled = true,
+                sendClipboardNotificationEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun androidFocusClipRetriesWaitPastResumeRace() {
+        val retries = ClipboardSharePolicy.ANDROID_FOCUS_CLIP_RETRY_MS
+        assertTrue(retries.size >= 3)
+        assertEquals(350L, retries.first())
+        assertTrue(retries.last() >= 1_200L)
+        assertEquals(700L, ClipboardSharePolicy.ANDROID_FOREGROUND_CLIP_POLL_MS)
+    }
 }

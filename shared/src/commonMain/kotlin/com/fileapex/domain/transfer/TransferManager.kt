@@ -66,7 +66,7 @@ class TransferManager(
         val options = mutableListOf(
             MultiCopyDeviceOption(
                 deviceId = LocalIdentity.LOCAL_DEVICE_ID,
-                deviceName = "This device (${identity.deviceName})",
+                deviceName = AppI18n.t("this_device_named", identity.deviceName),
                 isLocal = true,
                 host = localHost,
                 port = identity.sharePort,
@@ -251,10 +251,10 @@ class TransferManager(
         deviceIds: List<String>
     ): TransferBatchResult {
         awaitReady()
-        require(absolutePaths.isNotEmpty()) { "Nothing to send" }
+        require(absolutePaths.isNotEmpty()) { AppI18n.t("nothing_to_send") }
         val sources = LocalTransferTree.expandAbsolutePaths(absolutePaths)
         check(sources.isNotEmpty()) {
-            "Nothing to send — empty folder or missing files"
+            AppI18n.t("nothing_to_send_empty_folder")
         }
         val options = resolveRemoteDeviceOptions(deviceIds)
         return sendToDevices(sources, options)

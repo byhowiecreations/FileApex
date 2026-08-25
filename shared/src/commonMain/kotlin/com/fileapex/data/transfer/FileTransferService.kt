@@ -166,7 +166,7 @@ class FileTransferService(
 
     suspend fun pasteIntoLocal(targetDirectory: String): List<String> = withContext(Dispatchers.IO) {
         val payloads = TransferClipboard.peekAll()
-        check(payloads.isNotEmpty()) { "Clipboard is empty" }
+        check(payloads.isNotEmpty()) { AppI18n.t("clipboard_empty") }
         payloads.map { payload ->
             val targetPath = UniqueFileNames.resolveInDirectory(targetDirectory, payload.fileName)
             when {
@@ -189,7 +189,7 @@ class FileTransferService(
         targetDirectory: String
     ): List<String> = withContext(Dispatchers.IO) {
         val payloads = TransferClipboard.peekAll()
-        check(payloads.isNotEmpty()) { "Clipboard is empty" }
+        check(payloads.isNotEmpty()) { AppI18n.t("clipboard_empty") }
         payloads.map { payload ->
             val remoteTarget = PathUtils.join(targetDirectory, payload.fileName)
             val tempLocal = PathUtils.join(defaultTempDir(), "fileapex-paste-${payload.fileName}")

@@ -64,7 +64,7 @@ object PeerNodeStateMapper {
         )
         return PairedDeviceEntity(
             deviceId = deviceId,
-            deviceName = name.ifBlank { "Paired device" },
+            deviceName = name.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") },
             lastKnownIp = state.resolvedIpAddress.ifBlank { existing?.lastKnownIp.orEmpty() },
             port = state.port.takeIf { it > 0 } ?: existing?.port ?: 0,
             publicKeyHash = state.publicKeyHash.trim().ifBlank { existing?.publicKeyHash.orEmpty() },

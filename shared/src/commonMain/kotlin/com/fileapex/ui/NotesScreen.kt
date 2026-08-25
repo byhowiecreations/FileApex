@@ -587,7 +587,7 @@ fun NotesScreen(
         val files = paths.mapNotNull { pickedFileFromDroppedPath(it) }
         if (files.isEmpty()) {
             if (paths.isNotEmpty()) {
-                attachError = "Drop a file onto Notes. Folders are not sent as attachments."
+                attachError = AppI18n.t("notes_drop_file_only")
             }
             return
         }

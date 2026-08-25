@@ -1,6 +1,7 @@
 package com.fileapex.domain.preview
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.presentation.BrowseTarget
 import kotlinx.io.buffered
@@ -16,13 +17,13 @@ class FilePreviewManager(
 ) {
     fun assertPreviewAllowed(item: RemoteFileItem, maxBytes: Long) {
         if (item.sizeBytes <= 0L) {
-            error("Cannot preview file of unknown size")
+            error(AppI18n.t("preview_unknown_size"))
         }
         if (item.sizeBytes > maxBytes) {
             if (maxBytes >= 1024L * 1024L) {
-                error("File is too large to preview (>${maxBytes / (1024L * 1024L)} MB)")
+                error(AppI18n.t("file_too_large_preview_mb", (maxBytes / (1024L * 1024L)).toString()))
             } else {
-                error("File is too large to preview")
+                error(AppI18n.t("file_too_large_preview"))
             }
         }
     }
@@ -93,14 +94,14 @@ class FilePreviewManager(
                     val read = input.readAtMostTo(buffer)
                     if (read <= 0) continue
                     if (total + read > maxInt) {
-                        error("File exceeds preview limit")
+                        error(AppI18n.t("file_too_large_preview"))
                     }
                     parts.add(buffer.copyOf(read))
                     total += read
                 }
             }
             if (total == 0) {
-                error("Cannot preview file of unknown size")
+                error(AppI18n.t("preview_unknown_size"))
             }
             val result = ByteArray(total)
             var offset = 0

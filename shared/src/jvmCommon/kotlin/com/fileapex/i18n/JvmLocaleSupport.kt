@@ -14,11 +14,15 @@ internal object JvmLocaleSupport {
         AppLocale.ZH_HANS -> Locale.SIMPLIFIED_CHINESE
     }
 
+        // Captured before [apply] overwrites Locale.getDefault — landing/onboarding must
+    // still see the OS language after the user has not picked an app language.
+    private val hostLanguageTag: String = Locale.getDefault().toLanguageTag()
+
     fun apply(locale: AppLocale) {
         Locale.setDefault(javaLocale(locale))
     }
 
-    fun systemTag(): String = Locale.getDefault().toLanguageTag()
+    fun systemTag(): String = hostLanguageTag
 
     fun dateTime(epochMs: Long, zoneId: String, locale: AppLocale): String {
         val zoned = Instant.ofEpochMilli(epochMs).atZone(ZoneId.of(zoneId))

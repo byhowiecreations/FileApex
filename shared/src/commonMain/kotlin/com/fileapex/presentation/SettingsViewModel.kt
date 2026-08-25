@@ -39,6 +39,8 @@ data class SettingsUiState(
     val clipboardTargetDeviceIds: Set<String> = emptySet(),
     val clipboardViaCellularEnabled: Boolean = false,
     val clipboardAccessibilityEnabled: Boolean = false,
+    val clipboardSendNotificationEnabled: Boolean = false,
+    val clipboardShizukuEnabled: Boolean = false,
     val clipboardAutoSendEnabled: Boolean = false,
     val clipboardPeers: List<PairedDeviceEntity> = emptyList(),
     val fileTransferNotificationsEnabled: Boolean = false,
@@ -91,6 +93,8 @@ class SettingsViewModel : ViewModel() {
             clipboardTargetDeviceIds = settings.clipboardTargetDeviceIds.value,
             clipboardViaCellularEnabled = settings.clipboardViaCellularEnabled.value,
             clipboardAccessibilityEnabled = settings.clipboardAccessibilityEnabled.value,
+            clipboardSendNotificationEnabled = settings.clipboardSendNotificationEnabled.value,
+            clipboardShizukuEnabled = settings.clipboardShizukuEnabled.value,
             clipboardAutoSendEnabled = settings.clipboardAutoSendEnabled.value,
             fileTransferNotificationsEnabled = settings.fileTransferNotificationsEnabled.value,
             driveRelayNotificationsEnabled = settings.driveRelayNotificationsEnabled.value,
@@ -157,6 +161,16 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.clipboardAccessibilityEnabled.collect { enabled ->
                 _uiState.update { it.copy(clipboardAccessibilityEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardSendNotificationEnabled.collect { enabled ->
+                _uiState.update { it.copy(clipboardSendNotificationEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardShizukuEnabled.collect { enabled ->
+                _uiState.update { it.copy(clipboardShizukuEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -285,6 +299,7 @@ class SettingsViewModel : ViewModel() {
     fun setClipboardSharing(enabled: Boolean) {
         settings.setClipboardSharingEnabled(enabled)
         _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
+        com.fileapex.platform.ClipboardShareChrome.fire()
         if (enabled) {
             com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
         }
@@ -327,6 +342,20 @@ class SettingsViewModel : ViewModel() {
         if (enabled && !restricted) {
             com.fileapex.platform.ClipboardAccessibilitySettings.openSystemPrompt()
         }
+    }
+
+    fun setClipboardSendNotification(enabled: Boolean) {
+        settings.setClipboardSendNotificationEnabled(enabled)
+        _uiState.update { it.copy(clipboardSendNotificationEnabled = enabled) }
+    }
+
+    fun setClipboardShizuku(enabled: Boolean) {
+        if (enabled) {
+            com.fileapex.platform.ClipboardRuntimeDiagnostics.activateShizuku()
+        } else {
+            settings.setClipboardShizukuEnabled(false)
+        }
+        _uiState.update { it.copy(clipboardShizukuEnabled = enabled) }
     }
 
     fun dismissAccessibilityRestrictedHelp() {

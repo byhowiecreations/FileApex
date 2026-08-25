@@ -43,6 +43,9 @@ class BaseAppSettings(
     )
     private val clipboardViaCellularFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_VIA_CELLULAR, false))
     private val clipboardAccessibilityFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_ACCESSIBILITY, false))
+    private val clipboardSendNotificationFlow =
+        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SEND_NOTIFICATION, false))
+    private val clipboardShizukuFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHIZUKU, false))
     private val clipboardAutoSendFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_AUTO_SEND, false))
     private val appLanguageTagFlow = MutableStateFlow(store.getString(KEY_APP_LANGUAGE, ""))
     private val clipboardPrivateKeyBase64Stored = MutableStateFlow(
@@ -168,6 +171,8 @@ class BaseAppSettings(
     override val clipboardTargetDeviceIds: StateFlow<Set<String>> = clipboardTargetDeviceIdsFlow.asStateFlow()
     override val clipboardViaCellularEnabled: StateFlow<Boolean> = clipboardViaCellularFlow.asStateFlow()
     override val clipboardAccessibilityEnabled: StateFlow<Boolean> = clipboardAccessibilityFlow.asStateFlow()
+    override val clipboardSendNotificationEnabled: StateFlow<Boolean> = clipboardSendNotificationFlow.asStateFlow()
+    override val clipboardShizukuEnabled: StateFlow<Boolean> = clipboardShizukuFlow.asStateFlow()
     override val clipboardAutoSendEnabled: StateFlow<Boolean> = clipboardAutoSendFlow.asStateFlow()
     override val appLanguageTag: StateFlow<String> = appLanguageTagFlow.asStateFlow()
     override val fileTransferNotificationsEnabled: StateFlow<Boolean> =
@@ -261,6 +266,8 @@ class BaseAppSettings(
     override fun setClipboardSharingEnabled(enabled: Boolean) {
         store.putBoolean(KEY_CLIPBOARD_SHARING, enabled)
         clipboardSharing.value = enabled
+        com.fileapex.platform.ClipboardAccessibilityHealth.refresh()
+        com.fileapex.platform.ClipboardShareChrome.fire()
     }
 
     override fun setClipboardShareMode(mode: ClipboardShareMode) {
@@ -293,6 +300,20 @@ class BaseAppSettings(
     override fun setClipboardAccessibilityEnabled(enabled: Boolean) {
         store.putBoolean(KEY_CLIPBOARD_ACCESSIBILITY, enabled)
         clipboardAccessibilityFlow.value = enabled
+        com.fileapex.platform.ClipboardAccessibilityHealth.refresh()
+        com.fileapex.platform.ClipboardShareChrome.fire()
+    }
+
+    override fun setClipboardSendNotificationEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_SEND_NOTIFICATION, enabled)
+        clipboardSendNotificationFlow.value = enabled
+        com.fileapex.platform.ClipboardShareChrome.fire()
+    }
+
+    override fun setClipboardShizukuEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_SHIZUKU, enabled)
+        clipboardShizukuFlow.value = enabled
+        com.fileapex.platform.ClipboardChangeMonitor.onShizukuOptInChanged()
     }
 
     override fun setClipboardAutoSendEnabled(enabled: Boolean) {
@@ -570,6 +591,8 @@ class BaseAppSettings(
         const val KEY_CLIPBOARD_TARGET_DEVICES = "clipboard_target_device_ids"
         const val KEY_CLIPBOARD_VIA_CELLULAR = "clipboard_via_cellular"
         const val KEY_CLIPBOARD_ACCESSIBILITY = "clipboard_accessibility"
+        const val KEY_CLIPBOARD_SEND_NOTIFICATION = "clipboard_send_notification"
+        const val KEY_CLIPBOARD_SHIZUKU = "clipboard_shizuku"
         const val KEY_CLIPBOARD_AUTO_SEND = "clipboard_auto_send"
         const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_CLIPBOARD_PRIVATE_KEY = "clipboard_private_key_b64"

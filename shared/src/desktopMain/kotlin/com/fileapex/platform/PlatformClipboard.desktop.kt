@@ -7,16 +7,19 @@ import java.awt.datatransfer.StringSelection
 import java.io.Reader
 import java.net.URI
 import java.net.URL
+import com.fileapex.domain.clipboard.ClipboardCopySignals
 
 actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
-        if (!java.awt.EventQueue.isDispatchThread()) {
+        val raw = if (!java.awt.EventQueue.isDispatchThread()) {
             val appKit = DesktopMacTrayBridge.readClipboardText()
-            if (!appKit.isNullOrBlank()) return appKit
+            if (!appKit.isNullOrBlank()) appKit else null
+        } else {
+            null
         }
-        val pasted = MacPasteboard.readPlainText()
-        if (!pasted.isNullOrBlank()) return pasted
-        return readAwtClipboardText()
+        val pasted = raw ?: MacPasteboard.readPlainText()?.takeIf { it.isNotBlank() }
+        val text = pasted ?: readAwtClipboardText()
+        return ClipboardCopySignals.boundedRaw(text)
     }
 
     actual fun setSystemClipboardText(text: String) {

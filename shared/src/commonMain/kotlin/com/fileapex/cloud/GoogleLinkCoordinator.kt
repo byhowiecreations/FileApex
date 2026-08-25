@@ -7,6 +7,7 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
@@ -260,7 +261,7 @@ object GoogleLinkCoordinator {
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
         val trimmed = newName.trim()
-        require(trimmed.isNotEmpty()) { "Device name cannot be empty" }
+        require(trimmed.isNotEmpty()) { AppI18n.t("device_name_empty") }
         val cloudDeviceId = resolveCloudDeviceId(deviceId)
         CloudAuthBackend.patchDeviceName(
             uid = uid,

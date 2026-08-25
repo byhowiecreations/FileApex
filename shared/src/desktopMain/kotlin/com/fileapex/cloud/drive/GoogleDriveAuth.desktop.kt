@@ -35,7 +35,7 @@ actual object GoogleDriveAuth {
         if (refreshOnUnauthorized()) {
             return prefs.get(KEY_ACCESS, "").ifBlank { error("Drive access token missing") }
         }
-        error("Google Drive sign-in expired. Tap Grant Access again.")
+        error(com.fileapex.i18n.AppI18n.t("drive_signin_expired"))
     }
 
     actual suspend fun persistGrant(

@@ -1,5 +1,7 @@
 package com.fileapex.cloud.drive
 
+import com.fileapex.i18n.AppI18n
+
 /**
  * Drive API v3 over HTTPS — single I/O surface for relay uploads, downloads, and [log.md].
  */
@@ -49,15 +51,14 @@ fun driveGrantUserMessage(error: Throwable): String {
         "SERVICE_DISABLED" in raw ||
             "accessNotConfigured" in raw ||
             "has not been used in project" in raw ->
-            "Google Drive API is disabled on this Cloud project. Enable it in Google Cloud Console " +
-                "(APIs & Services → Google Drive API), wait a few minutes, then tap Grant Access again."
+            AppI18n.t("drive_api_disabled")
         error is DriveUnauthorizedException || "401" in raw ->
-            "Google Drive sign-in expired. Tap Grant Access again."
+            AppI18n.t("drive_signin_expired")
         error is DriveHttpException && error.status == 403 ->
-            "Google Drive denied access. Allow FileApex on the Google permission page and try again."
+            AppI18n.t("drive_access_denied")
         "Drive authorization cancelled" in raw ->
-            "Drive authorization cancelled"
+            AppI18n.t("drive_auth_cancelled")
         else ->
-            "Drive authorization failed. Tap Grant Access and allow FileApex on the Google page."
+            AppI18n.t("drive_auth_failed")
     }
 }

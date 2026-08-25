@@ -17,6 +17,7 @@ actual object ClipboardChangeMonitor {
     private val pollTask = AtomicReference<ScheduledFuture<*>?>(null)
     private val pollInFlight = AtomicBoolean(false)
     private val nativeWatch = AtomicBoolean(false)
+    private val windowFocused = AtomicBoolean(true)
     private val pollExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "fileapex-clipboard-poll").apply { isDaemon = true }
     }
@@ -70,6 +71,15 @@ actual object ClipboardChangeMonitor {
     }
 
     actual fun onAppBackgrounded() = Unit
+
+    actual fun onWindowFocusChanged(hasFocus: Boolean) {
+        windowFocused.set(hasFocus)
+        if (hasFocus) emitCurrentIfChanged()
+    }
+
+    actual fun hasWindowFocus(): Boolean = windowFocused.get()
+
+    actual fun onShizukuOptInChanged() = Unit
 
     private fun emitCurrentIfChanged() {
         if (!pollInFlight.compareAndSet(false, true)) return

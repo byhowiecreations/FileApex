@@ -237,6 +237,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.play.services)
             implementation(libs.androidx.work.runtime)
             implementation(libs.play.services.auth)
+            implementation(libs.shizuku.api)
+            implementation(libs.shizuku.provider)
         }
 
         val androidUnitTest by getting {

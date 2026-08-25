@@ -12,6 +12,9 @@ class FileApexApplication : Application() {
         com.fileapex.i18n.LocaleChromeRefresh.listener = {
             ShareServerForegroundNotification.refreshLocalizedCopy(this)
         }
+        com.fileapex.platform.ClipboardShareChrome.listener = {
+            ShareServerForegroundNotification.refreshLocalizedCopy(this)
+        }
         if (!isUserStorageUnlocked(this)) {
             // Pre-unlock process start (should be rare now that LOCKED_BOOT_COMPLETED is not
             // registered). Credential-encrypted storage throws until unlock — skip full init.

@@ -42,6 +42,7 @@ actual fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId:
         putString(EXTRA_NOTE_PREVIEW, content)
     }
     val title = NoteNotifyPolicy.notificationTitle(sourceDeviceName)
+    val openIntent = noteOpenPendingIntent(noteId)
     val notification = NotificationCompat.Builder(noteNotifierContext, AndroidNotificationChannels.NOTE_MESSAGES)
         .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
         .setLargeIcon(
@@ -53,7 +54,12 @@ actual fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId:
         .setContentTitle(title)
         .setContentText(content)
         .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-        .setContentIntent(noteOpenPendingIntent(noteId))
+        .setContentIntent(openIntent)
+        .addAction(
+            0,
+            com.fileapex.i18n.AppI18n.t("open"),
+            openIntent
+        )
         .setAutoCancel(true)
         .setCategory(NotificationCompat.CATEGORY_MESSAGE)
         .setPriority(NotificationCompat.PRIORITY_HIGH)

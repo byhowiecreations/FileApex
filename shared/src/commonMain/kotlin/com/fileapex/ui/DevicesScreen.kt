@@ -326,6 +326,9 @@ fun DevicesScreen(
                     onOpenTransferQueue = onOpenTransferQueue
                 )
             }
+            ClipboardAccessibilityBanner(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
             if (isKineticSphere && !editMode) {
                 KineticSphereDevicesView(
                     deviceRows = listRows,

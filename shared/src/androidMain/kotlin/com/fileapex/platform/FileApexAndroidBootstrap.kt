@@ -68,6 +68,8 @@ object FileApexAndroidBootstrap {
             com.fileapex.cloud.FcmTokenRegistrar.start()
             com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
             fullyInitialized = true
+            ClipboardAccessibilityHealth.start()
+            ClipboardShizukuAccess.start()
             BatteryBulletinCoordinator.onProcessStart(appContext)
             Log.i(TAG, "Android process init complete")
             return true

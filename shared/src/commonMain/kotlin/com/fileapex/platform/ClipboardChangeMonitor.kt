@@ -5,4 +5,7 @@ expect object ClipboardChangeMonitor {
     fun stop()
     fun onAppForegrounded()
     fun onAppBackgrounded()
+    fun onWindowFocusChanged(hasFocus: Boolean)
+    fun hasWindowFocus(): Boolean
+    fun onShizukuOptInChanged()
 }

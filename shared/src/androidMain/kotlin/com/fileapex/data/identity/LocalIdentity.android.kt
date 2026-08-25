@@ -33,7 +33,7 @@ actual fun updateLocalDeviceName(newName: String) {
         "Call initAndroidLocalIdentity(context) before updateLocalDeviceName()"
     }
     val trimmed = newName.trim()
-    require(trimmed.isNotEmpty()) { "Device name cannot be empty" }
+    require(trimmed.isNotEmpty()) { com.fileapex.i18n.AppI18n.t("device_name_empty") }
     identityContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .edit()
         .putString(KEY_NAME, trimmed)

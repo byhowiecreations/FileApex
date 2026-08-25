@@ -4,11 +4,9 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ForegroundServiceStartNotAllowedException
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -37,6 +35,7 @@ import com.fileapex.platform.AndroidShareIntake
 import com.fileapex.platform.DirectShareShortcutCoordinator
 import com.fileapex.platform.AndroidOnboardingPermissions
 import com.fileapex.platform.AndroidRuntimePermissions
+import com.fileapex.platform.AndroidStorageAccess
 import com.fileapex.platform.BackgroundPersistenceGuidance
 import com.fileapex.platform.BatteryBulletinCoordinator
 import com.fileapex.platform.FileApexAndroidBootstrap
@@ -215,6 +214,11 @@ class MainActivity : ComponentActivity() {
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppForegrounded()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        com.fileapex.domain.presence.PresenceForegroundRefresh.onWindowFocusChanged(hasFocus)
+    }
+
     override fun onStop() {
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppBackgrounded()
         super.onStop()
@@ -331,7 +335,7 @@ class MainActivity : ComponentActivity() {
                 sharePrepareError = null
                 return
             }
-            sharePrepareError = "No shared file was provided"
+            sharePrepareError = com.fileapex.i18n.AppI18n.t("no_shared_file")
             isPreparingShare = false
             openedFromShareSheet = true
             return
@@ -355,7 +359,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onFailure = { error ->
                     isPreparingShare = false
-                    sharePrepareError = error.message ?: "Could not read shared file(s)"
+                    sharePrepareError = error.message ?: com.fileapex.i18n.AppI18n.t("could_not_read_shared_files")
                 }
             )
         }
@@ -429,7 +433,7 @@ class MainActivity : ComponentActivity() {
         hasStoragePermission = onboardingSteps
             .firstOrNull { it.id == AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE }
             ?.granted
-            ?: hasFullStorageAccess()
+            ?: AndroidStorageAccess.hasFullAccess(this)
         persistenceSnapshot = BackgroundPersistenceGuidance.evaluate(this)
         ServiceWatchdogScheduler.syncBatteryOptimizationWarning(
             this,
@@ -444,7 +448,7 @@ class MainActivity : ComponentActivity() {
             pendingStorageOnboardingReturn = false
             refreshOnboardingAfterExternalReturn(
                 stepId = AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE,
-                granted = hasFullStorageAccess()
+                granted = AndroidStorageAccess.hasFullAccess(this)
             )
         }
         if (pendingBatteryOnboardingReturn) {
@@ -490,22 +494,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun hasFullStorageAccess(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            val read = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-            val write = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-            read && write
-        }
-    }
-
     @SuppressLint("BatteryLife")
     private fun requestBatteryUnrestricted() {
         BackgroundPersistenceGuidance.launchBatteryOptimizationRequest(this)
@@ -527,12 +515,12 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             openStorageSettings()
         } else {
-            legacyStoragePermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                )
-            )
+            val permissions = AndroidStorageAccess.runtimePermissionsToRequest()
+            if (permissions.isEmpty()) {
+                openStorageSettings()
+            } else {
+                legacyStoragePermissionLauncher.launch(permissions)
+            }
         }
     }
 

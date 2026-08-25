@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import java.io.File
 import kotlin.text.Charsets
 import java.net.URI
@@ -108,7 +109,7 @@ object DesktopBulletinHandoff {
         val text = job.sharedText?.trim().orEmpty()
         val paths = job.filePaths.filter { it.isNotBlank() }
         if (text.isEmpty() && paths.isEmpty()) {
-            writeJob(job.copy(status = STATUS_FAILED, message = "Nothing to post"))
+            writeJob(job.copy(status = STATUS_FAILED, message = AppI18n.t("nothing_to_post")))
             return
         }
 
@@ -127,10 +128,10 @@ object DesktopBulletinHandoff {
                 }
                 text.isNotEmpty() -> engine.ingestSharedText(text)
             }
-            writeJob(job.copy(status = STATUS_DONE, message = "Posted to Bulletin Board"))
+            writeJob(job.copy(status = STATUS_DONE, message = AppI18n.t("posted_to_bulletin")))
             cleanupStaging(jobId)
         }.onFailure { error ->
-            writeJob(job.copy(status = STATUS_FAILED, message = error.message ?: "Post failed"))
+            writeJob(job.copy(status = STATUS_FAILED, message = error.message ?: AppI18n.t("could_not_post_bulletin")))
         }
     }
 

@@ -41,6 +41,24 @@ PRODUCTS="$OUT/DerivedData/Build/Products/$CONFIGURATION"
 SHARE="$PRODUCTS/FileApexShareExtension.appex"
 BULLETIN="$PRODUCTS/FileApexBulletinShareExtension.appex"
 
+copy_extension_catalogs() {
+  local appex="$1"
+  local plist_src="$2"
+  local res="$appex/Contents/Resources"
+  mkdir -p "$res"
+  # Xcode Resources phase is unreliable for these .appex targets; copy after build.
+  cp "$ROOT/shared/src/desktopMain/resources/i18n/en.xml" "$res/"
+  cp "$ROOT/shared/src/desktopMain/resources/i18n/es.xml" "$res/"
+  cp "$ROOT/shared/src/desktopMain/resources/i18n/zh-rCN.xml" "$res/"
+  for loc in en es zh-Hans; do
+    mkdir -p "$res/${loc}.lproj"
+    cp "$plist_src/${loc}.lproj/InfoPlist.strings" "$res/${loc}.lproj/"
+  done
+}
+
+copy_extension_catalogs "$SHARE" "$MACOS/ShareExtension"
+copy_extension_catalogs "$BULLETIN" "$MACOS/BulletinShareExtension"
+
 codesign --force --sign - --entitlements "$MACOS/ShareExtension/ShareExtension.entitlements" "$SHARE"
 codesign --force --sign - --entitlements "$MACOS/BulletinShareExtension/BulletinShareExtension.entitlements" "$BULLETIN"
 

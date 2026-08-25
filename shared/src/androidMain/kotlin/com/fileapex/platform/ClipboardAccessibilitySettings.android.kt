@@ -36,15 +36,27 @@ actual object ClipboardAccessibilitySettings {
 
     actual fun isServiceEnabled(): Boolean {
         val context = androidAppContextOrNull() ?: return false
-        val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
-            ?: return false
-        val enabled = manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC)
         val expected = ComponentName(context, ClipboardAccessibilityService::class.java).flattenToString()
-        return enabled.any { info ->
+        val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+        val enabled = manager?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .orEmpty()
+        val listed = enabled.any { info ->
             val id = info.resolveInfo?.serviceInfo?.let { service ->
                 ComponentName(service.packageName, service.name).flattenToString()
             }.orEmpty()
             id.equals(expected, ignoreCase = true)
+        }
+        if (listed) return true
+        val raw = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty()
+        if (raw.isBlank()) return false
+        return raw.split(':', ';').any { token ->
+            val id = token.trim()
+            id.equals(expected, ignoreCase = true) ||
+                id.endsWith("/${ClipboardAccessibilityService::class.java.name}", ignoreCase = true) ||
+                id.endsWith("/ClipboardAccessibilityService", ignoreCase = true)
         }
     }
 

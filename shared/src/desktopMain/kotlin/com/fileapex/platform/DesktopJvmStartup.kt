@@ -10,8 +10,7 @@ object DesktopJvmStartup {
         sanitizeTempDirectories()
         configureWindowsSkikoRendering()
         if (DesktopPlatformPaths.isMacOs()) {
-            MacOsExtensionRegistrar.registerOnLaunchDeferred()
-            DesktopMacTrayBridge.load()
+            DesktopMacTrayBridge.preload()
         }
         if (DesktopPlatformPaths.isWindows()) {
             DesktopWindowsRegistration.registerWindowsContextMenuAndSendTo()

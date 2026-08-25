@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.fileapex.data.settings.androidAppContextOrNull
+import com.fileapex.domain.clipboard.ClipboardCopySignals
 
 actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
@@ -14,26 +15,49 @@ actual object PlatformClipboard {
     }
 
     fun readClipboardText(context: Context): String? {
+        val focused = ClipboardChangeMonitor.hasWindowFocus()
+        if (focused) {
+            readLocalClipboardText(context)?.let { return it }
+        }
+        ClipboardShizukuAccess.tryReadText()?.let { return it }
+        return readLocalClipboardText(context)
+    }
+
+    private fun readLocalClipboardText(context: Context): String? {
         return runCatching {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                 ?: return@runCatching null
             val clip = clipboard.primaryClip ?: return@runCatching null
             if (clip.itemCount <= 0) return@runCatching null
+            val description = clip.description
+            val mimes = if (description == null) {
+                emptyList()
+            } else {
+                (0 until description.mimeTypeCount).map { description.getMimeType(it) }
+            }
+            if (!ClipboardCopySignals.clipHasShareableText(mimes)) return@runCatching null
             val item = clip.getItemAt(0)
-            val coerced = item.coerceToText(context)?.toString()?.trim()
+            val direct = ClipboardCopySignals.boundedRaw(item.text?.toString())
+            if (!direct.isNullOrBlank()) return@runCatching direct
+            val html = item.htmlText
+            if (html != null && html.length > ClipboardCopySignals.MAX_RAW_HTML_CHARS) {
+                return@runCatching null
+            }
+            val coerced = ClipboardCopySignals.boundedRaw(item.coerceToText(context)?.toString())
             if (!coerced.isNullOrBlank()) return@runCatching coerced
-            item.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: item.uri?.toString()?.takeIf { it.isNotBlank() }
+            item.uri?.toString()?.takeIf { it.startsWith("http") }
         }.getOrNull()
     }
 
     actual fun setSystemClipboardText(text: String) {
         val context = androidAppContextOrNull() ?: return
-        runCatching {
+        val wrote = runCatching {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             val clip = ClipData.newPlainText("FileApex", text)
             clipboard?.setPrimaryClip(clip)
-        }
+            true
+        }.getOrDefault(false)
+        if (!wrote) ClipboardShizukuAccess.tryWriteText(text)
     }
 
     actual fun applyRemoteText(text: String) {
