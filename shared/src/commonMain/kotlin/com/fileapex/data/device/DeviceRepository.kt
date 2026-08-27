@@ -284,9 +284,20 @@ class DeviceRepository(
         for (row in deviceDao.getAllDevicesOnce()) {
             if (row.deviceId == normalized.deviceId) continue
             val sameEndpoint = endpoint != null && endpointKey(row.lastKnownIp, row.port) == endpoint
-            val staleRoster = rosterId.isNotEmpty() && row.deviceId == rosterId
-            if (sameEndpoint || staleRoster) {
-                deviceDao.deleteDevice(row.deviceId)
+            val sameDevice = RosterIdentity.samePhysicalDevice(
+                incomingId = normalized.deviceId,
+                incomingPublicKeyHash = normalized.publicKeyHash,
+                otherId = row.deviceId,
+                otherPublicKeyHash = row.publicKeyHash,
+                staleRosterId = rosterId
+            )
+            when {
+                RosterIdentity.shouldDetachStolenEndpoint(sameEndpoint, sameDevice) -> {
+                    deviceDao.updateEndpoint(row.deviceId, "", row.port)
+                }
+                sameDevice && (sameEndpoint || row.deviceId == rosterId) -> {
+                    deviceDao.deleteDevice(row.deviceId)
+                }
             }
         }
         val purgedSelf = purgeLocalRowsLocked()
@@ -397,18 +408,14 @@ class DeviceRepository(
     private fun areAliases(a: PairedDeviceEntity, b: PairedDeviceEntity): Boolean {
         if (a.deviceId == b.deviceId) return true
 
-        val endpointA = endpointKey(a.lastKnownIp, a.port)
-        val endpointB = endpointKey(b.lastKnownIp, b.port)
-        if (endpointA != null && endpointA == endpointB) {
-            return true
-        }
-
         val hashA = a.publicKeyHash.trim()
         val hashB = b.publicKeyHash.trim()
         if (hashA.isNotEmpty() && hashA == hashB) {
             return true
         }
 
+        val endpointA = endpointKey(a.lastKnownIp, a.port)
+        val endpointB = endpointKey(b.lastKnownIp, b.port)
         val nameA = normalizeName(a.deviceName)
         val nameB = normalizeName(b.deviceName)
         if (nameA.isNotEmpty() && nameA == nameB && (endpointA == null || endpointB == null)) {

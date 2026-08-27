@@ -237,6 +237,9 @@ kotlin {
             implementation(libs.kotlinx.coroutines.play.services)
             implementation(libs.androidx.work.runtime)
             implementation(libs.play.services.auth)
+            implementation(libs.androidx.credentials)
+            implementation(libs.androidx.credentials.play.services)
+            implementation(libs.google.id)
             implementation(libs.shizuku.api)
             implementation(libs.shizuku.provider)
         }

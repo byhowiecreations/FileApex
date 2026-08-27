@@ -71,9 +71,8 @@ object GoogleLinkCoordinator {
     val status: StateFlow<String?> = _status.asStateFlow()
 
     fun onAppLaunch() {
-        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
         bootstrapScope.launch {
-            runCatching { restoreSessionAndListen() }
+            runCatching { restoreSessionZeroTap() }
                 .onFailure { error ->
                     _status.value = error.message ?: "Cloud link restore failed"
                     println("GoogleLinkCoordinator: restore failed - ${error.message}")
@@ -197,6 +196,7 @@ object GoogleLinkCoordinator {
 
     /**
      * Complete link after platform OAuth / Credential Manager yields a Google ID token.
+     * Android also stores a restore key for zero-tap sign-in on a new device.
      */
     suspend fun linkWithGoogleIdToken(idToken: String, emailHint: String?): GoogleAuthSession {
         gate.withLock {
@@ -214,6 +214,8 @@ object GoogleLinkCoordinator {
             settings.setGoogleAccountLinkEnabled(true)
             registerSelf(session.firebaseUid)
             startCloudSessionLocked(session.firebaseUid)
+            RestoreCredentials.markProbedThisInstall()
+            RestoreCredentials.createForSignedInUser(session.firebaseUid, email)
             _status.value = "Linked as ${email.ifBlank { session.firebaseUid }}"
             return session.copy(email = email)
         }
@@ -233,6 +235,9 @@ object GoogleLinkCoordinator {
                 runCatching { CloudAuthBackend.deleteDevice(uid, deviceId) }
             }
             runCatching { CloudAuthBackend.signOut() }
+            runCatching { RestoreCredentials.clear() }
+            FileApexServices.settings.setGoogleAccountEmail("")
+            FileApexServices.settings.setGoogleAccountUid("")
             FileApexServices.settings.setGoogleAccountLinkEnabled(false)
             com.fileapex.cloud.drive.DriveRelayCoordinator.clearGrantOnUnlink()
             _status.value = "Google Account unlinked"
@@ -271,6 +276,46 @@ object GoogleLinkCoordinator {
                 "GoogleLinkCoordinator.publishUserRenamedDevice.updatedAtEpochMs"
             )
         )
+    }
+
+    private suspend fun restoreSessionZeroTap() {
+        val existing = CloudAuthBackend.currentSession()
+        if (existing != null) {
+            restoreSessionAndListen()
+            val email = existing.email.ifBlank {
+                FileApexServices.settings.googleAccountEmail.value
+            }
+            RestoreCredentials.markProbedThisInstall()
+            RestoreCredentials.createForSignedInUser(existing.firebaseUid, email)
+            return
+        }
+        val settings = FileApexServices.settings
+        val linked = settings.googleAccountLinkEnabled.value
+        val restoredIdToken: Boolean
+        if (GoogleLinkRestorePolicy.shouldProbeRestoreKey(
+                linkedFlag = linked,
+                alreadyProbedThisInstall = RestoreCredentials.alreadyProbedThisInstall()
+            )
+        ) {
+            val restored = RestoreCredentials.restoreGoogleIdToken()
+            RestoreCredentials.markProbedThisInstall()
+            if (restored != null) {
+                linkWithGoogleIdToken(restored.first, restored.second)
+                return
+            }
+            restoredIdToken = false
+        } else {
+            restoredIdToken = false
+        }
+        if (GoogleLinkRestorePolicy.shouldClearLinkedFlag(
+                linkedFlag = linked,
+                hasFirebaseSession = false,
+                restoredIdToken = restoredIdToken
+            )
+        ) {
+            println("GoogleLinkCoordinator: linked flag without session or restore key - signing out")
+            settings.setGoogleAccountLinkEnabled(false)
+        }
     }
 
     private suspend fun restoreSessionAndListen() {

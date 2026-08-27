@@ -33,4 +33,23 @@ object UniqueFileNames {
             index++
         }
     }
+
+    fun matchesOriginalOrCollision(originalFileName: String, candidateName: String): Boolean {
+        if (originalFileName.isBlank() || candidateName.isBlank()) return false
+        if (candidateName == originalFileName) return true
+        val dot = originalFileName.lastIndexOf('.')
+        val base = if (dot > 0) originalFileName.substring(0, dot) else originalFileName
+        val ext = if (dot > 0) originalFileName.substring(dot) else ""
+        if (!candidateName.startsWith(base) || (ext.isNotEmpty() && !candidateName.endsWith(ext))) {
+            return false
+        }
+        val middle = if (ext.isEmpty()) {
+            candidateName.removePrefix(base)
+        } else {
+            candidateName.removePrefix(base).removeSuffix(ext)
+        }
+        return COLLISION_MIDDLE.matches(middle)
+    }
+
+    private val COLLISION_MIDDLE = Regex(""" \([0-9]+\)""")
 }

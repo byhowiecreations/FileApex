@@ -1,13 +1,16 @@
 package com.fileapex.data.bulletin
 
+import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.network.PeerLanHttpPolicy
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.textContainsWebUrl
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -34,8 +37,11 @@ class BulletinBoardSyncEngine(
 
     @Volatile
     private var drainWatcherStarted = false
+    @Volatile
+    private var drainQueued = false
     private var pendingDrainJob: Job? = null
     private var maintenanceJob: Job? = null
+    private val drainScheduleLock = Any()
 
     fun ensureStarted() {
         if (drainWatcherStarted) return
@@ -87,6 +93,7 @@ class BulletinBoardSyncEngine(
             )
             requestDrain()
         }
+        FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
         val snapshot = repository.getMessage(messageId)?.toNoteRecord()
         BulletinLegacyRelay.dispatchTombstone(messageId, legacyPeers, snapshot)
     }
@@ -128,7 +135,10 @@ class BulletinBoardSyncEngine(
                         id = payload.id,
                         originDeviceId = payload.originDeviceId,
                         senderName = payload.senderName,
-                        content = payload.content,
+                        content = repository.stripMissingLocalPath(
+                            payload.content,
+                            payload.contentType
+                        ),
                         contentType = payload.contentType,
                         timestamp = payload.timestamp,
                         isDeleted = false,
@@ -205,10 +215,24 @@ class BulletinBoardSyncEngine(
     }
 
     private fun requestDrain() {
-        pendingDrainJob?.cancel()
-        pendingDrainJob = scope.launch {
-            delay(DRAIN_DEBOUNCE_MS)
-            drainOutbox()
+        drainQueued = true
+        synchronized(drainScheduleLock) {
+            val running = pendingDrainJob
+            if (running != null && running.isActive) return
+            pendingDrainJob = scope.launch {
+                try {
+                    do {
+                        drainQueued = false
+                        delay(DRAIN_DEBOUNCE_MS)
+                        drainOutbox()
+                    } while (drainQueued)
+                } finally {
+                    synchronized(drainScheduleLock) {
+                        pendingDrainJob = null
+                    }
+                    if (drainQueued) requestDrain()
+                }
+            }
         }
     }
 
@@ -217,32 +241,58 @@ class BulletinBoardSyncEngine(
             repository.pruneStaleOutbox()
             val selfId = loadLocalIdentity().deviceId
             val devices = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
+            val presence = FileApexServices.presenceMonitor
+            val pending = mutableListOf<PeerDrainJob>()
             for (device in devices) {
                 if (device.deviceId == selfId) continue
-                if (!device.supportsBulletinSync()) continue
                 val host = device.lastKnownIp
                 val port = device.port
-                if (host.isBlank() || port <= 0) continue
+                if (!BulletinOutboxDrainPolicy.shouldAttemptPeer(
+                        supportsBulletinSync = device.supportsBulletinSync(),
+                        host = host,
+                        port = port,
+                        isOnline = presence.isDeviceOnline(device)
+                    )
+                ) {
+                    continue
+                }
+                if (!PeerLanHttpPolicy.canRoute(host)) continue
                 val entries = repository.getOutboxForDevice(
                     device.deviceId,
                     BulletinBoardPolicy.SYNC_BATCH_LIMIT
                 )
                 if (entries.isEmpty()) continue
                 val batch = buildBatch(entries)
-                runCatching {
-                    ServerLifecycleManager.ensureRunning()
-                    val ack = FileApexServices.client.postBulletinSyncBatch(host, port, batch)
-                    processIncomingAck(ack)
-                    for (entry in entries) {
-                        if (ack.acceptedPayloadIds.contains(entry.payloadId)) {
-                            repository.removeOutboxEntry(entry.outboxId)
-                        } else {
-                            outboxDao.incrementRetry(entry.outboxId)
-                        }
+                if (batch.items.isEmpty()) continue
+                pending += PeerDrainJob(device.deviceName, host, port, entries, batch)
+            }
+            if (pending.isEmpty()) return@withLock
+            ServerLifecycleManager.ensureRunning()
+            coroutineScope {
+                for (job in pending) {
+                    launch(Dispatchers.IO) {
+                        drainPeer(job)
                     }
-                }.onFailure { error ->
-                    println("BulletinBoardSyncEngine: drain to ${device.deviceName} failed - ${error.message}")
                 }
+            }
+        }
+    }
+
+    private suspend fun drainPeer(job: PeerDrainJob) {
+        runCatching {
+            val ack = FileApexServices.client.postBulletinSyncBatch(job.host, job.port, job.batch)
+            processIncomingAck(ack)
+            for (entry in job.entries) {
+                if (ack.acceptedPayloadIds.contains(entry.payloadId)) {
+                    repository.removeOutboxEntry(entry.outboxId)
+                } else {
+                    outboxDao.incrementRetry(entry.outboxId)
+                }
+            }
+        }.onFailure { error ->
+            println("BulletinBoardSyncEngine: drain to ${job.deviceName} failed - ${error.message}")
+            for (entry in job.entries) {
+                outboxDao.incrementRetry(entry.outboxId)
             }
         }
     }
@@ -306,3 +356,11 @@ class BulletinBoardSyncEngine(
         private const val MAINTENANCE_INTERVAL_MS = 6L * 60 * 60 * 1000
     }
 }
+
+private data class PeerDrainJob(
+    val deviceName: String,
+    val host: String,
+    val port: Int,
+    val entries: List<OutboxEntity>,
+    val batch: BulletinSyncBatch
+)

@@ -118,7 +118,7 @@ class BulletinBoardRepository(
                 id = payload.id,
                 originDeviceId = payload.originDeviceId,
                 senderName = payload.senderName,
-                content = payload.content,
+                content = stripMissingLocalPath(payload.content, payload.contentType),
                 contentType = payload.contentType,
                 timestamp = payload.timestamp,
                 isDeleted = false,
@@ -230,6 +230,24 @@ class BulletinBoardRepository(
         return runCatching {
             json.decodeFromString<BulletinFileMetadata>(extractMetadataJson(message.content))
         }.getOrNull()
+    }
+
+    fun stripMissingLocalPath(content: String, contentType: Int): String {
+        if (contentType != BulletinContentType.FILE_METADATA &&
+            contentType != BulletinContentType.IMAGE_PREVIEW
+        ) {
+            return content
+        }
+        val meta = runCatching {
+            json.decodeFromString<BulletinFileMetadata>(extractMetadataJson(content))
+        }.getOrNull() ?: return content
+        val stored = meta.localPath?.trim().orEmpty()
+        if (stored.isEmpty()) return content
+        val exists = runCatching {
+            kotlinx.io.files.SystemFileSystem.exists(kotlinx.io.files.Path(stored))
+        }.getOrDefault(false)
+        if (exists) return content
+        return rebuildContent(content, meta.copy(localPath = null))
     }
 
     private fun extractMetadataJson(content: String): String {

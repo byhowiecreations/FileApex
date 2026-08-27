@@ -30,6 +30,8 @@ robolectric = "4.14.1"
 androidx-test-core = "1.6.1"
 work = "2.10.2"
 play-services-auth = "21.3.0"
+androidx-credentials = "1.5.0"
+google-id = "1.1.1"
 shizuku = "13.1.5"
 
 [libraries]
@@ -82,6 +84,9 @@ firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "play-services-auth" }
+androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "androidx-credentials" }
+androidx-credentials-play-services = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "androidx-credentials" }
+google-id = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "google-id" }
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
 shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }

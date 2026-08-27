@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!--
+      Google Backup must not clone this phone's identity (Room DBs, deviceId, PIN,
+      clipboard keys). Restore Credentials live in Credential Manager, not these files.
+      The only useful app-data payload is the Google link trio so a restored install
+      has email/uid to complete zero-tap Sign in with Google.
+    -->
+    <cloud-backup>
+        <include domain="sharedpref" path="fileapex_google_backup.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="fileapex_google_backup.xml" />
+    </device-transfer>
+</data-extraction-rules>
