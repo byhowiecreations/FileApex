@@ -1,6 +1,12 @@
 #ifndef AppVersion
 #define AppVersion "0.6.26b"
 #endif
+#ifndef LZMANumBlockThreads
+#define LZMANumBlockThreads 4
+#endif
+#ifndef CompressionThreads
+#define CompressionThreads 2
+#endif
 
 [Setup]
 AppId={{7C4F8A2E-9B1D-4E6A-C3F5-8D2E1A0B9C7F}
@@ -14,6 +20,8 @@ DefaultGroupName=FileApex
 UninstallDisplayIcon={app}\FileApex.exe
 Compression=lzma2/ultra64
 SolidCompression=yes
+LZMANumBlockThreads={#LZMANumBlockThreads}
+CompressionThreads={#CompressionThreads}
 OutputDir=..\composeApp\build\compose\binaries\main-release\exe
 OutputBaseFilename=FileApex-v{#AppVersion}
 SetupIconFile=..\composeApp\icons\FileApex.ico

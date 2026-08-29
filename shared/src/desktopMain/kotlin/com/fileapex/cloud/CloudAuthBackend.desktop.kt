@@ -452,19 +452,39 @@ actual object CloudAuthBackend {
         return parseCloudDeviceDocument(doc)
     }
 
-    actual suspend fun fetchAllUserDevices(uid: String): List<CloudDeviceRecord> {
+    actual suspend fun fetchAllUserDevices(uid: String): List<CloudDeviceRecord> =
+        listAllUserDevices(uid)
+
+    private suspend fun listAllUserDevices(uid: String): List<CloudDeviceRecord> {
         val token = requireIdToken()
         val project = firebaseProjectId()
-        val url =
+        val baseUrl =
             "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
                 "users/$uid/devices"
-        val response = client.get(url) {
-            header(HttpHeaders.Authorization, "Bearer $token")
-        }
-        if (!response.status.isSuccess()) return emptyList()
-        val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
-        val docsEl = body["documents"] as? JsonArray ?: return emptyList()
-        return docsEl.mapNotNull { el -> parseCloudDeviceDocument(el.jsonObject) }
+        val records = mutableListOf<CloudDeviceRecord>()
+        var pageToken: String? = null
+        do {
+            val url = buildString {
+                append(baseUrl)
+                if (!pageToken.isNullOrBlank()) {
+                    append("?pageToken=")
+                    append(java.net.URLEncoder.encode(pageToken, Charsets.UTF_8))
+                }
+            }
+            val response = client.get(url) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+            if (!response.status.isSuccess()) {
+                error("Firestore list failed (${response.status}): ${response.bodyAsText()}")
+            }
+            val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
+            val docsEl = body["documents"] as? JsonArray
+            docsEl?.forEach { el ->
+                parseCloudDeviceDocument(el.jsonObject)?.let { records += it }
+            }
+            pageToken = body["nextPageToken"]?.jsonPrimitive?.contentOrNull
+        } while (!pageToken.isNullOrBlank())
+        return records
     }
 
     actual fun observeDiagnosticsRelayInbox(
@@ -533,25 +553,7 @@ actual object CloudAuthBackend {
             try {
                 while (isActive && !state.stopped) {
                     runCatching {
-                        val token = requireIdToken()
-                        val project = firebaseProjectId()
-                        val url =
-                            "https://firestore.googleapis.com/v1/projects/$project/databases/(default)/documents/" +
-                                "users/$uid/devices"
-                        val response = client.get(url) {
-                            header(HttpHeaders.Authorization, "Bearer $token")
-                        }
-                        if (!response.status.isSuccess()) {
-                            error("Firestore list failed (${response.status}): ${response.bodyAsText()}")
-                        }
-                        val body = desktopJson.parseToJsonElement(response.bodyAsText()).jsonObject
-                        val docsEl = body["documents"]
-                        val list = mutableListOf<CloudDeviceRecord>()
-                        val arr = docsEl as? kotlinx.serialization.json.JsonArray
-                        arr?.forEach { el ->
-                            val record = parseCloudDeviceDocument(el.jsonObject) ?: return@forEach
-                            list += record
-                        }
+                        val list = listAllUserDevices(uid)
                         if (!state.stopped) {
                             onDevices(list)
                         }
@@ -670,7 +672,10 @@ actual object CloudAuthBackend {
             contentType(ContentType.Application.FormUrlEncoded)
             setBody("grant_type=refresh_token&refresh_token=$refresh")
         }
-        if (!response.status.isSuccess()) return
+        if (!response.status.isSuccess()) {
+            prefs.remove(KEY_ID_TOKEN)
+            error("Firebase token refresh failed (${response.status}): ${response.bodyAsText().take(200)}")
+        }
         val body = response.bodyAsText()
         val obj = desktopJson.parseToJsonElement(body).jsonObject
         val idToken = obj["id_token"]?.jsonPrimitive?.contentOrNull

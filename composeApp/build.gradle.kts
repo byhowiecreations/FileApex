@@ -12,6 +12,14 @@ private fun isMacHost(): Boolean =
 private fun isWindowsHost(): Boolean =
     System.getProperty("os.name").orEmpty().contains("windows", ignoreCase = true)
 
+/** Inno LZMA2 block threads: ~2 logical CPUs per block (see LZMANumBlockThreads help). */
+private fun innoLzmaBlockThreads(): Int {
+    val logical = Runtime.getRuntime().availableProcessors().coerceAtLeast(2)
+    return (logical / 2).coerceIn(2, 32)
+}
+
+private const val INNO_COMPRESSION_THREADS = 2
+
 /**
  * jlink modules for the bundled JRE. `includeAllModules` packed a ~120MB `modules` file
  * (plus `ct.sym` / JFR) for a Compose + Ktor + Room desktop app that does not need it.
@@ -368,9 +376,12 @@ afterEvaluate {
             dependsOn("verifyReleaseSigning")
         }
     }
-    listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsReleaseBuilds").forEach { taskName ->
-        tasks.matching { it.name == taskName }.configureEach {
-            dependsOn("verifyReleaseSigning", "verifyReleaseApkSigned")
+    // Android release APK is built on macOS only; Windows ships desktop EXE.
+    if (!isWindowsHost()) {
+        listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsReleaseBuilds").forEach { taskName ->
+            tasks.matching { it.name == taskName }.configureEach {
+                dependsOn("verifyReleaseSigning", "verifyReleaseApkSigned")
+            }
         }
     }
 }
@@ -1209,21 +1220,22 @@ private fun Project.shipToCurrent(
 }
 
 /**
- * Final release ship into `current/`. Mac: .app + DMG. Windows: release MSI only.
+ * Final release ship into `current/`. Mac: APK + DMG. Windows: EXE only.
  */
 tasks.register("copyReleaseBuilds") {
     group = "distribution"
-    description = "Release APK + desktop ship into current/ (Mac .app+DMG or Windows EXE)"
-    dependsOn("verifyReleaseApkSigned")
+    description = "Release ship into current/ (Mac: APK + DMG; Windows: EXE only)"
     if (isMacHost()) {
-        dependsOn("embedMacExtensions", "fixDmgVolumeIcon")
+        dependsOn("verifyReleaseApkSigned", "embedMacExtensions", "fixDmgVolumeIcon")
     } else if (isWindowsHost()) {
         dependsOn("createReleaseDistributable", "packageInnoExe")
+    } else {
+        dependsOn("verifyReleaseApkSigned")
     }
 
     doLast {
         shipToCurrent(
-            includeReleaseApk = apkOutputDir("release").listFiles()?.any { it.isFile && it.extension == "apk" } == true,
+            includeReleaseApk = isMacHost(),
             includeDmg = isMacHost(),
             includeMsi = false,
             includeMacApp = isMacHost(),
@@ -1256,9 +1268,6 @@ tasks.register("copyWindowsBuilds") {
     }
 }
 
-/**
- * Windows release ship: release APK + release EXE into `current/`.
- */
 tasks.register("packageInnoExe") {
     group = "distribution"
     description = "Compile Inno Setup EXE installer using ISCC"
@@ -1272,14 +1281,22 @@ tasks.register("packageInnoExe") {
         check(isccExe.exists()) { "ISCC.exe not found at ${isccExe.absolutePath}" }
         check(issFile.exists()) { "FileApex.iss not found at ${issFile.absolutePath}" }
 
-        exec {
-            commandLine(isccExe.absolutePath, "/DAppVersion=$fileapexVersionName", issFile.absolutePath)
-        }
-        val dest = currentBuildsDest()
-        dest.mkdirs()
-        shipExeToCurrent(dest, fileapexVersionName, logger, release = true)
+        val lzmaBlockThreads = innoLzmaBlockThreads()
+        logger.lifecycle(
+            "Inno Setup: ${Runtime.getRuntime().availableProcessors()} logical CPUs → " +
+                "LZMANumBlockThreads=$lzmaBlockThreads, CompressionThreads=$INNO_COMPRESSION_THREADS"
+        )
 
-        // Prune app-image staging dirs so files are not left on disk
+        exec {
+            commandLine(
+                isccExe.absolutePath,
+                "/DAppVersion=$fileapexVersionName",
+                "/DLZMANumBlockThreads=$lzmaBlockThreads",
+                "/DCompressionThreads=$INNO_COMPRESSION_THREADS",
+                issFile.absolutePath
+            )
+        }
+
         listOf(
             layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile,
             layout.buildDirectory.dir("compose/binaries/main/app").get().asFile,
@@ -1292,15 +1309,18 @@ tasks.register("packageInnoExe") {
     }
 }
 
+/**
+ * Windows desktop ship (alias of copyWindowsBuilds).
+ */
 tasks.register("copyWindowsReleaseBuilds") {
     group = "distribution"
-    description = "Release APK + release EXE into current/ (Windows host only)"
-    dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageInnoExe")
+    description = "Release EXE into current/ (Windows host only; APK is macOS-only)"
+    dependsOn("createReleaseDistributable", "packageInnoExe")
     onlyIf { isWindowsHost() }
 
     doLast {
         shipToCurrent(
-            includeReleaseApk = true,
+            includeReleaseApk = false,
             includeDmg = false,
             includeMsi = false,
             includeMacApp = false,
@@ -1561,27 +1581,26 @@ tasks.register("packageIntelDmg") {
 /**
  * Full ship into `current/`.
  * Mac: release APK → packageSiliconDmg → packageIntelDmg (each with their own explicit JAVA_HOME).
- * Windows: release APK + MSI.
+ * Windows: release EXE only (Inno Setup).
  */
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Ship into current/ (Mac: APK + Silicon DMG + Intel DMG each with explicit JDK; Windows: APK + MSI)"
+    description = "Ship into current/ (Mac: APK + Silicon DMG + Intel DMG; Windows: EXE only)"
     if (isMacHost()) {
         // Only build the APK in-process; desktop DMGs are spawned as explicit subprocesses.
         dependsOn("assembleRelease", "verifyReleaseApkSigned")
         finalizedBy("packageSiliconDmg")
     } else if (isWindowsHost()) {
-        dependsOn("verifyReleaseApkSigned", "createReleaseDistributable", "packageReleaseMsi")
+        dependsOn("createReleaseDistributable", "packageInnoExe")
     } else {
         dependsOn("assembleRelease", "verifyReleaseApkSigned")
     }
 
     doLast {
-        // Ship release APK only; Mac .app + DMGs are handled by packageSiliconDmg / packageIntelDmg.
         shipToCurrent(
-            includeReleaseApk = true,
+            includeReleaseApk = isMacHost(),
             includeDmg = false,
-            includeMsi = isWindowsHost(),
+            includeMsi = isWindowsHost() && tasks.findByName("packageReleaseMsi") != null,
             includeMacApp = false,
             mountDmg = false,
             preserveExistingDmgOnWipe = true,

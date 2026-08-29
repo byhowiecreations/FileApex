@@ -48,6 +48,7 @@ object PresenceNetworkRevalidator {
                 continue
             }
             runCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
+            GoogleLinkCoordinator.refreshCloudRegistry()
             FileApexServices.presenceMonitor.runSingleShotRevalidation()
             runCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
                 println("PresenceNetworkRevalidator: queue drain failed - ${error.message}")

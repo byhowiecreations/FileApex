@@ -99,6 +99,12 @@ class DeviceRepository(
                 return purgeLocalRowsLocked()
             }
             if (isBlocklistedLocked(normalized)) return false
+            if (!hasUsableEndpoint(normalized)) {
+                val existing = deviceDao.getDevice(normalized.deviceId)
+                if (existing == normalized) return false
+                deviceDao.upsertDevice(normalized)
+                return true
+            }
             upsertReplacingAliasesLocked(normalized)
         }
 

@@ -113,6 +113,30 @@ object GoogleLinkCoordinator {
         lastPublishedPresence = null
     }
 
+    /** Force a Firestore roster read into Room (desktop poll gap / after reconnect). */
+    fun refreshCloudRegistry() {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        bootstrapScope.launch {
+            runCatching { refreshCloudRegistryLocked() }
+                .onFailure { error ->
+                    println("GoogleLinkCoordinator: cloud registry refresh failed - ${error.message}")
+                }
+        }
+    }
+
+    private suspend fun refreshCloudRegistryLocked() {
+        if (!cloudOpsActive) {
+            restoreSessionAndListen()
+            return
+        }
+        val uid = FileApexServices.settings.googleAccountUid.value
+        if (uid.isBlank()) return
+        val selfId = loadLocalIdentity().deviceId
+        val epoch = sessionEpoch
+        val records = CloudAuthBackend.fetchAllUserDevices(uid)
+        applyRemoteDevices(records, selfId, epoch)
+    }
+
     fun linkedPeerFcmTargets(selfDeviceId: String): List<FcmWakeTarget> =
         cachedCloudRecords.mapNotNull { it.toFcmTargetOrNull(selfDeviceId) }
 
@@ -384,9 +408,7 @@ object GoogleLinkCoordinator {
                 reconcileAndSyncDevices(uid)
                 FileApexServices.deviceRepositoryOrNull()?.reconcileDuplicateEndpoints()
                 val records = CloudAuthBackend.fetchAllUserDevices(uid)
-                if (records.isNotEmpty()) {
-                    applyRemoteDevices(records, selfId, epoch)
-                }
+                applyRemoteDevices(records, selfId, epoch)
             }.onFailure { error ->
                 println("GoogleLinkCoordinator: reconcile failed - ${error.message}")
             }
