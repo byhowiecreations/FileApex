@@ -1,5 +1,4 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 import groovy.json.JsonSlurper
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.ByteArrayOutputStream
@@ -12,13 +11,13 @@ private fun isMacHost(): Boolean =
 private fun isWindowsHost(): Boolean =
     System.getProperty("os.name").orEmpty().contains("windows", ignoreCase = true)
 
-/** Inno LZMA2 block threads: ~2 logical CPUs per block (see LZMANumBlockThreads help). */
-private fun innoLzmaBlockThreads(): Int {
-    val logical = Runtime.getRuntime().availableProcessors().coerceAtLeast(2)
-    return (logical / 2).coerceIn(2, 32)
-}
+/** Inno LZMA2 thread budget — scale with CPU, cap at 6 (Inno compresses faster above that with diminishing returns). */
+private val innoThreadCap = 6
 
-private const val INNO_COMPRESSION_THREADS = 2
+private fun innoSetupThreadCount(): Int {
+    val logical = Runtime.getRuntime().availableProcessors().coerceAtLeast(2)
+    return (logical / 4).coerceIn(2, innoThreadCap)
+}
 
 /**
  * jlink modules for the bundled JRE. `includeAllModules` packed a ~120MB `modules` file
@@ -58,7 +57,7 @@ private fun pruneJlinkRuntime(runtimeHome: java.io.File) {
 
 /**
  * Register only the installer format for the current OS so Gradle never schedules
- * Mac DMG work on Windows (or MSI work on macOS).
+ * Mac DMG work on Windows (or jpackage EXE work on macOS — Windows ships Inno EXE only).
  */
 private fun desktopInstallerFormats(): Array<TargetFormat> = when {
     isMacHost() -> arrayOf(TargetFormat.Dmg)
@@ -495,10 +494,8 @@ compose.desktop {
                 menu = true
                 dirChooser = true
                 shortcut = false
-                // Stable upgrade UUID — required for in-place MSI upgrades across releases.
-                // msiPackageVersion (1.0.${code}) must increase each Windows MSI ship; marketing name stays separate.
+                // Same upgrade UUID as windows/FileApex.iss AppId (Inno in-place upgrades).
                 upgradeUuid = "7c4f8a2e-9b1d-4e6a-c3f5-8d2e1a0b9c7f"
-                msiPackageVersion = "1.0.$fileapexVersionCode"
             }
         }
     }
@@ -790,46 +787,13 @@ afterEvaluate {
         }
     }
 
-    tasks.matching { it.name == "packageMsi" || it.name == "packageReleaseMsi" }.configureEach {
-        outputs.upToDateWhen {
-            val release = name == "packageReleaseMsi"
-            msiOutputDir(release).listFiles()?.any { it.isFile && it.extension.equals("msi", ignoreCase = true) } == true
-        }
-    }
-
     if (isWindowsHost()) {
-        // Windows ships release EXE only — no debug app-image or debug installer.
-        tasks.matching { it.name == "createDistributable" || it.name == "packageMsi" || it.name == "packageExe" }.configureEach {
+        // Windows ships release Inno EXE only — disable jpackage debug app-image / EXE tasks.
+        tasks.matching { it.name == "createDistributable" || it.name == "packageExe" }.configureEach {
             enabled = false
         }
     }
 
-}
-
-/**
- * Release MSI embeds the app-image; delete staging folders afterward so they are not left on disk.
- */
-tasks.register("pruneWindowsAppImageStaging") {
-    group = "distribution"
-    description = "Remove Windows app-image staging dirs after MSI packaging (Windows host only)"
-    onlyIf { isWindowsHost() }
-    doLast {
-        listOf(
-            layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile,
-            layout.buildDirectory.dir("compose/binaries/main/app").get().asFile,
-        ).forEach { dir ->
-            if (dir.exists()) {
-                dir.deleteRecursively()
-                logger.lifecycle("Pruned app-image staging dir ${dir.absolutePath}")
-            }
-        }
-    }
-}
-
-tasks.matching { it.name == "packageReleaseMsi" }.configureEach {
-    if (isWindowsHost()) {
-        finalizedBy("pruneWindowsAppImageStaging")
-    }
 }
 
 private fun Project.apkOutputDir(variant: String): File =
@@ -843,29 +807,6 @@ private fun Project.distributableWindowsAppDir(): File =
 
 private fun Project.distributableDesktopApp(): File =
     if (isMacHost()) distributableMacAppBundle() else distributableWindowsAppDir()
-
-private fun Project.msiOutputDir(release: Boolean = false): File =
-    layout.buildDirectory.dir(
-        if (release) "compose/binaries/main-release/msi" else "compose/binaries/main/msi"
-    ).get().asFile
-
-private fun Project.shipMsiToCurrent(
-    dest: File,
-    appVersionName: String,
-    logger: org.gradle.api.logging.Logger,
-    release: Boolean = false
-) {
-    val msiDir = msiOutputDir(release)
-    val msis = msiDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("msi", ignoreCase = true) }
-    check(msis.isNotEmpty()) {
-        "No MSI found in ${msiDir.absolutePath}. Run ${if (release) "packageReleaseMsi" else "packageMsi"} on a Windows host with WiX installed."
-    }
-    val preferred = msis.maxByOrNull { it.lastModified() } ?: msis.first()
-    patchMsiMetadata(preferred)
-    val shippedFile = dest.resolve("FileApex-v$appVersionName.msi")
-    moveToCurrent(dest, preferred, destName = "FileApex-v$appVersionName.msi", logger = logger)
-    patchMsiMetadata(shippedFile)
-}
 
 private fun Project.exeOutputDir(release: Boolean = false): File =
     layout.buildDirectory.dir(
@@ -883,28 +824,6 @@ private fun Project.shipExeToCurrent(
     if (exes.isEmpty()) return
     val preferred = exes.maxByOrNull { it.lastModified() } ?: exes.first()
     moveToCurrent(dest, preferred, destName = "FileApex-v$appVersionName.exe", logger = logger)
-}
-
-private fun patchMsiMetadata(msiFile: File) {
-    if (!isWindowsHost() || !msiFile.isFile) return
-    runCatching {
-        val path = msiFile.absolutePath.replace("\\", "/")
-        val psScript = """
-            ${'$'}msiPath = "$path"
-            ${'$'}comObj = New-Object -ComObject WindowsInstaller.Installer
-            ${'$'}database = ${'$'}comObj.GetType().InvokeMember("OpenDatabase", "InvokeMethod", ${'$'}null, ${'$'}comObj, @(${'$'}msiPath, 1))
-            ${'$'}sumInfo = ${'$'}database.GetType().InvokeMember("SummaryInformation", "GetProperty", ${'$'}null, ${'$'}database, @(20))
-            ${'$'}sumInfo.GetType().InvokeMember("Property", "SetProperty", ${'$'}null, ${'$'}sumInfo, @(2, "FileApex"))
-            ${'$'}sumInfo.GetType().InvokeMember("Property", "SetProperty", ${'$'}null, ${'$'}sumInfo, @(4, "ByHowieCreations"))
-            ${'$'}sumInfo.GetType().InvokeMember("Property", "SetProperty", ${'$'}null, ${'$'}sumInfo, @(6, "A local-first P2P file sharing app"))
-            ${'$'}sumInfo.GetType().InvokeMember("Persist", "InvokeMethod", ${'$'}null, ${'$'}sumInfo, ${'$'}null)
-            ${'$'}database.GetType().InvokeMember("Commit", "InvokeMethod", ${'$'}null, ${'$'}database, ${'$'}null)
-        """.trimIndent()
-        ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-            .redirectErrorStream(true)
-            .start()
-            .waitFor()
-    }
 }
 
 /**
@@ -1043,7 +962,6 @@ private fun detachFileApexDmgVolumes() {
 private fun prepareCurrentDirectory(
     dest: File,
     preserveDmgFiles: Boolean,
-    preserveMsiFiles: Boolean = false,
     preserveMacApp: Boolean = false
 ) {
     if (!dest.exists()) {
@@ -1052,9 +970,6 @@ private fun prepareCurrentDirectory(
     }
     dest.listFiles().orEmpty().forEach { entry ->
         if (preserveDmgFiles && entry.isFile && entry.extension.equals("dmg", ignoreCase = true)) {
-            return@forEach
-        }
-        if (preserveMsiFiles && entry.isFile && entry.extension.equals("msi", ignoreCase = true)) {
             return@forEach
         }
         if (preserveMacApp && entry.name == "FileApex.app") {
@@ -1135,11 +1050,9 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
 private fun Project.shipToCurrent(
     includeReleaseApk: Boolean,
     includeDmg: Boolean,
-    includeMsi: Boolean,
     includeMacApp: Boolean,
     mountDmg: Boolean,
-    preserveExistingDmgOnWipe: Boolean,
-    preserveExistingMsiOnWipe: Boolean = false
+    preserveExistingDmgOnWipe: Boolean
 ) {
     if (!preserveExistingDmgOnWipe) {
         detachFileApexDmgVolumes()
@@ -1148,7 +1061,6 @@ private fun Project.shipToCurrent(
     prepareCurrentDirectory(
         dest,
         preserveDmgFiles = preserveExistingDmgOnWipe,
-        preserveMsiFiles = preserveExistingMsiOnWipe,
         preserveMacApp = !includeMacApp
     )
 
@@ -1191,7 +1103,6 @@ private fun Project.shipToCurrent(
 
 
     if (isWindowsHost()) {
-        if (includeMsi) shipMsiToCurrent(dest, appVersionName, logger, release = true)
         shipExeToCurrent(dest, appVersionName, logger, release = true)
     }
 
@@ -1237,11 +1148,9 @@ tasks.register("copyReleaseBuilds") {
         shipToCurrent(
             includeReleaseApk = isMacHost(),
             includeDmg = isMacHost(),
-            includeMsi = false,
             includeMacApp = isMacHost(),
             mountDmg = false,
-            preserveExistingDmgOnWipe = false,
-            preserveExistingMsiOnWipe = false
+            preserveExistingDmgOnWipe = false
         )
     }
 }
@@ -1259,11 +1168,9 @@ tasks.register("copyWindowsBuilds") {
         shipToCurrent(
             includeReleaseApk = false,
             includeDmg = false,
-            includeMsi = false,
             includeMacApp = false,
             mountDmg = false,
-            preserveExistingDmgOnWipe = true,
-            preserveExistingMsiOnWipe = false
+            preserveExistingDmgOnWipe = true
         )
     }
 }
@@ -1281,18 +1188,18 @@ tasks.register("packageInnoExe") {
         check(isccExe.exists()) { "ISCC.exe not found at ${isccExe.absolutePath}" }
         check(issFile.exists()) { "FileApex.iss not found at ${issFile.absolutePath}" }
 
-        val lzmaBlockThreads = innoLzmaBlockThreads()
+        val threadCount = innoSetupThreadCount()
         logger.lifecycle(
             "Inno Setup: ${Runtime.getRuntime().availableProcessors()} logical CPUs → " +
-                "LZMANumBlockThreads=$lzmaBlockThreads, CompressionThreads=$INNO_COMPRESSION_THREADS"
+                "LZMANumBlockThreads=$threadCount, CompressionThreads=$threadCount (cap $innoThreadCap)"
         )
 
         exec {
             commandLine(
                 isccExe.absolutePath,
                 "/DAppVersion=$fileapexVersionName",
-                "/DLZMANumBlockThreads=$lzmaBlockThreads",
-                "/DCompressionThreads=$INNO_COMPRESSION_THREADS",
+                "/DLZMANumBlockThreads=$threadCount",
+                "/DCompressionThreads=$threadCount",
                 issFile.absolutePath
             )
         }
@@ -1322,11 +1229,9 @@ tasks.register("copyWindowsReleaseBuilds") {
         shipToCurrent(
             includeReleaseApk = false,
             includeDmg = false,
-            includeMsi = false,
             includeMacApp = false,
             mountDmg = false,
-            preserveExistingDmgOnWipe = true,
-            preserveExistingMsiOnWipe = false
+            preserveExistingDmgOnWipe = true
         )
     }
 }
@@ -1344,11 +1249,7 @@ tasks.register("verifyDesktopPackagingTasks") {
             }
             if (isWindowsHost()) {
                 add("createReleaseDistributable")
-                if (tasks.findByName("packageReleaseMsi") != null) {
-                    add("packageReleaseMsi")
-                } else {
-                    add("packageInnoExe")
-                }
+                add("packageInnoExe")
             }
         }
         requiredTasks.forEach { taskName ->
@@ -1357,8 +1258,8 @@ tasks.register("verifyDesktopPackagingTasks") {
         logger.lifecycle(
             "Desktop packaging tasks registered (host=${System.getProperty("os.name")}). " +
                 when {
-                    isMacHost() -> "DMG packaging enabled; MSI tasks not registered on macOS."
-                    isWindowsHost() -> "MSI packaging enabled; DMG tasks not registered on Windows."
+                    isMacHost() -> "Mac: APK + DMG (Android/desktop ship via copyAllBuilds on macOS)."
+                    isWindowsHost() -> "Windows: Inno EXE only (copyAllBuilds / copyWindowsBuilds)."
                     else -> "No native installer format registered for this host."
                 }
         )
@@ -1588,7 +1489,7 @@ tasks.register("copyAllBuilds") {
     description = "Ship into current/ (Mac: APK + Silicon DMG + Intel DMG; Windows: EXE only)"
     if (isMacHost()) {
         // Only build the APK in-process; desktop DMGs are spawned as explicit subprocesses.
-        dependsOn("assembleRelease", "verifyReleaseApkSigned")
+        dependsOn("assembleRelease", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
         finalizedBy("packageSiliconDmg")
     } else if (isWindowsHost()) {
         dependsOn("createReleaseDistributable", "packageInnoExe")
@@ -1600,11 +1501,9 @@ tasks.register("copyAllBuilds") {
         shipToCurrent(
             includeReleaseApk = isMacHost(),
             includeDmg = false,
-            includeMsi = isWindowsHost() && tasks.findByName("packageReleaseMsi") != null,
             includeMacApp = false,
             mountDmg = false,
-            preserveExistingDmgOnWipe = true,
-            preserveExistingMsiOnWipe = false
+            preserveExistingDmgOnWipe = true
         )
     }
 }
@@ -1616,28 +1515,4 @@ tasks.matching { it.name == "packageSiliconDmg" }.configureEach {
 tasks.matching { it.name == "packageIntelDmg" }.configureEach {
     mustRunAfter("packageSiliconDmg")
 }
-
-
-
-
-/**
- * Inject custom WiX (finish-dialog checkboxes) into jpackage's resource dir after it is cleared.
- */
-private fun Project.configureWindowsInstallerResources() {
-    if (!isWindowsHost()) return
-    val overlayDir = layout.projectDirectory.dir("windows/jpackage-resources").asFile
-    if (!overlayDir.isDirectory) return
-
-    tasks.withType<AbstractJPackageTask>().configureEach {
-        if (name != "packageMsi" && name != "packageReleaseMsi") return@configureEach
-        val resourcesDir = layout.buildDirectory.dir("compose/tmp/resources").get().asFile
-        doFirst {
-            resourcesDir.mkdirs()
-            overlayDir.copyRecursively(resourcesDir, overwrite = true)
-            logger.lifecycle("Synchronously copied WiX overlay resources to ${resourcesDir.absolutePath}")
-        }
-    }
-}
-
-configureWindowsInstallerResources()
 

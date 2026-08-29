@@ -2,10 +2,10 @@
 #define AppVersion "0.6.26b"
 #endif
 #ifndef LZMANumBlockThreads
-#define LZMANumBlockThreads 4
+#define LZMANumBlockThreads 6
 #endif
 #ifndef CompressionThreads
-#define CompressionThreads 2
+#define CompressionThreads 6
 #endif
 
 [Setup]
