@@ -75,27 +75,8 @@ object BackgroundPersistenceGuidance {
         return future.javaClass.getMethod("get").invoke(future) as Int
     }
 
-    fun detectOemVendor(): OemVendor {
-        val manufacturer = Build.MANUFACTURER.orEmpty()
-        val brand = Build.BRAND.orEmpty()
-        return when {
-            manufacturer.equals("motorola", ignoreCase = true) -> OemVendor.Motorola
-            manufacturer.equals("samsung", ignoreCase = true) -> OemVendor.Samsung
-            manufacturer.equals("google", ignoreCase = true) -> OemVendor.Pixel
-            manufacturer.equals("oneplus", ignoreCase = true) ||
-                brand.equals("oneplus", ignoreCase = true) -> OemVendor.OnePlus
-            manufacturer.equals("oppo", ignoreCase = true) ||
-                brand.equals("oppo", ignoreCase = true) ||
-                manufacturer.equals("realme", ignoreCase = true) -> OemVendor.Oppo
-            brand.equals("poco", ignoreCase = true) -> OemVendor.Poco
-            manufacturer.equals("xiaomi", ignoreCase = true) ||
-                brand.equals("redmi", ignoreCase = true) ||
-                brand.equals("xiaomi", ignoreCase = true) -> OemVendor.Xiaomi
-            manufacturer.equals("vivo", ignoreCase = true) ||
-                brand.equals("iqoo", ignoreCase = true) -> OemVendor.Vivo
-            else -> OemVendor.Other
-        }
-    }
+    fun detectOemVendor(): OemVendor =
+        com.fileapex.platform.detectOemVendor(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())
 
     @SuppressLint("BatteryLife")
     fun createBatteryOptimizationIntent(context: Context): Intent =
@@ -131,7 +112,8 @@ object BackgroundPersistenceGuidance {
                 return intent
             }
         }
-        return null
+        val actionFallback = oemBackgroundActionFallback(vendor) ?: return null
+        return actionFallback.takeIf { it.resolveActivity(packageManager) != null }
     }
 
     private fun oemBackgroundComponents(vendor: OemVendor): List<ComponentName> = when (vendor) {
@@ -181,7 +163,35 @@ object BackgroundPersistenceGuidance {
                 "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"
             )
         )
+        OemVendor.Honor -> listOf(
+            ComponentName(
+                "com.hihonor.systemmanager",
+                "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+            ),
+            ComponentName(
+                "com.hihonor.systemmanager",
+                "com.hihonor.systemmanager.power.ui.HwPowerManagerActivity"
+            )
+        )
+        OemVendor.Huawei -> listOf(
+            ComponentName(
+                "com.huawei.systemmanager",
+                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+            ),
+            ComponentName(
+                "com.huawei.systemmanager",
+                "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"
+            )
+        )
         OemVendor.Pixel, OemVendor.Other -> emptyList()
+    }
+
+    private fun oemBackgroundActionFallback(vendor: OemVendor): Intent? = when (vendor) {
+        OemVendor.Honor -> Intent("hihonor.intent.action.HSM_STARTUPAPP_MANAGER")
+            .setPackage("com.hihonor.systemmanager")
+        OemVendor.Huawei -> Intent("huawei.intent.action.HSM_STARTUPAPP_MANAGER")
+            .setPackage("com.huawei.systemmanager")
+        else -> null
     }
 
     @SuppressLint("BatteryLife")

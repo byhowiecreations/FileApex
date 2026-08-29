@@ -281,6 +281,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="warn_battery_optimized">battery optimized</string>
     <string name="warn_hibernation">hibernation on</string>
     <string name="warn_alarms_off">alarms off</string>
+    <string name="warn_oem_app_launch">set App launch to Manage manually</string>
     <string name="google_unlinked">Not linked</string>
     <string name="google_linked">Linked</string>
     <string name="clipboard_on_mode">On · %1$s</string>
@@ -535,6 +536,10 @@ Tap Central Hub (+) to Pair</string>
     <string name="oem_xiaomi_autostart">Enable Autostart: Settings → Apps → Manage apps → FileApex → Autostart.</string>
     <string name="oem_vivo_battery_steps">Settings → Apps → FileApex → Battery → Allow background activity</string>
     <string name="oem_vivo_autostart">Allow high background power: Settings → Battery → Background power consumption management → FileApex.</string>
+    <string name="oem_honor_battery_steps">Settings → Battery → App launch → FileApex → Manage manually. Enable Auto-launch, Secondary launch, and Run in background.</string>
+    <string name="oem_honor_autostart">Also lock FileApex in Recents (swipe down on the card until the lock appears) so MagicOS does not sweep it.</string>
+    <string name="oem_huawei_battery_steps">Settings → Battery → App launch → FileApex → Manage manually. Enable Auto-launch, Secondary launch, and Run in background.</string>
+    <string name="oem_huawei_autostart">Also lock FileApex in Recents (swipe down on the card until the lock appears) so EMUI does not sweep it.</string>
     <string name="pair_with_this_node">Pair with this node</string>
     <string name="manual_pairing_code">MANUAL PAIRING CODE</string>
     <string name="scan_qr_pairing_hint">Scan QR with Camera or FileApex, or choose Join device on the other device to auto-fill from this broadcast.</string>

@@ -12,4 +12,10 @@ data class BackgroundPersistenceUiState(
 ) {
     val persistenceRestricted: Boolean
         get() = batteryOptimizationRestricted || backgroundRestricted
+
+    val showOemSetup: Boolean
+        get() {
+            val guidance = oemGuidance ?: return false
+            return persistenceRestricted || unusedAppRestrictionsActive || guidance.alwaysShowSetup
+        }
 }

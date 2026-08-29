@@ -597,6 +597,12 @@ private fun backgroundPersistenceSubtitle(
         if (backgroundPersistence.batteryOptimizationRestricted) add(AppI18n.t("warn_battery_optimized"))
         if (backgroundPersistence.unusedAppRestrictionsActive) add(AppI18n.t("warn_hibernation"))
         if (exactAlarmWarningActive) add(AppI18n.t("warn_alarms_off"))
+        if (backgroundPersistence.showOemSetup &&
+            !backgroundPersistence.persistenceRestricted &&
+            !backgroundPersistence.unusedAppRestrictionsActive
+        ) {
+            add(AppI18n.t("warn_oem_app_launch"))
+        }
     }
     return if (warnings.isEmpty()) {
         status
@@ -679,9 +685,7 @@ private fun BackgroundPersistenceSettingsPage(
                 )
             }
             backgroundPersistence.oemGuidance?.let { guidance ->
-                if (backgroundPersistence.persistenceRestricted ||
-                    backgroundPersistence.unusedAppRestrictionsActive
-                ) {
+                if (backgroundPersistence.showOemSetup) {
                     ListItem(
                         headlineContent = { Text(stringRes("vendor_setup", guidance.vendorLabel), softWrap = true) },
                         supportingContent = {
