@@ -25,6 +25,9 @@ mkdir -p "$PLUGINS"
 rm -rf "$PLUGINS/FileApexFinderSync.appex" "$PLUGINS/FileApexShareExtension.appex" "$PLUGINS/FileApexBulletinShareExtension.appex"
 ditto "$SHARE_APPEX" "$PLUGINS/FileApexShareExtension.appex"
 ditto "$BULLETIN_APPEX" "$PLUGINS/FileApexBulletinShareExtension.appex"
+chmod -R a+rX \
+  "$PLUGINS/FileApexShareExtension.appex" \
+  "$PLUGINS/FileApexBulletinShareExtension.appex"
 
 SHARE_ENTS="$ROOT/macos/ShareExtension/ShareExtension.entitlements"
 BULLETIN_ENTS="$ROOT/macos/BulletinShareExtension/BulletinShareExtension.entitlements"

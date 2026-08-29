@@ -59,8 +59,12 @@ copy_extension_catalogs() {
 copy_extension_catalogs "$SHARE" "$MACOS/ShareExtension"
 copy_extension_catalogs "$BULLETIN" "$MACOS/BulletinShareExtension"
 
+# PluginKit / ShareKit cannot load a 0700 .appex (Info.plist unreadable to helpers).
+chmod -R a+rX "$SHARE" "$BULLETIN"
+
 codesign --force --sign - --entitlements "$MACOS/ShareExtension/ShareExtension.entitlements" "$SHARE"
 codesign --force --sign - --entitlements "$MACOS/BulletinShareExtension/BulletinShareExtension.entitlements" "$BULLETIN"
+chmod -R a+rX "$SHARE" "$BULLETIN"
 
 echo "Built + ad-hoc signed:"
 ls -la "$SHARE" "$BULLETIN"

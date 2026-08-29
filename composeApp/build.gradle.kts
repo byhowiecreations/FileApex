@@ -921,10 +921,82 @@ private fun moveToCurrent(
     if (isMacHost()) {
         ProcessBuilder("xattr", "-cr", target.absolutePath).start().waitFor()
         if (target.name.endsWith(".app")) {
-            ProcessBuilder("codesign", "--force", "--deep", "--sign", "-", target.absolutePath).start().waitFor()
+            // Never `codesign --deep` the host. That re-signs nested Share .appex
+            // bundles without their sandbox entitlements, and pluginkit then
+            // silently ignores them (Settings still shows the PlugIns).
+            signMacAppWithPluginEntitlements(target, logger)
+            requireMacShareEntitlements(target)
         }
     }
     logger.lifecycle("Moved ${source.name} -> current/$destName")
+}
+
+private fun runCodesign(vararg args: String) {
+    val process = ProcessBuilder(*args).redirectErrorStream(true).start()
+    val output = process.inputStream.bufferedReader().readText()
+    check(process.waitFor() == 0) {
+        "codesign failed:\n${args.joinToString(" ")}\n$output"
+    }
+}
+
+/** Sign Share/Bulletin PlugIns with sandbox entitlements, then the host (no --deep). */
+private fun signMacAppWithPluginEntitlements(
+    appBundle: File,
+    logger: org.gradle.api.logging.Logger
+) {
+    val entsDir = appBundle.resolve("Contents/Resources/ExtensionEntitlements")
+    val share = appBundle.resolve("Contents/PlugIns/FileApexShareExtension.appex")
+    val bulletin = appBundle.resolve("Contents/PlugIns/FileApexBulletinShareExtension.appex")
+    val tray = appBundle.resolve("Contents/Frameworks/libFileApexTray.dylib")
+    val shareEnts = entsDir.resolve("ShareExtension.entitlements")
+    val bulletinEnts = entsDir.resolve("BulletinShareExtension.entitlements")
+    val hostEnts = entsDir.resolve("FileApex.entitlements")
+    check(share.isDirectory) { "Missing Share PlugIn at $share" }
+    check(bulletin.isDirectory) { "Missing Bulletin PlugIn at $bulletin" }
+    check(shareEnts.isFile) { "Missing $shareEnts" }
+    check(bulletinEnts.isFile) { "Missing $bulletinEnts" }
+    check(hostEnts.isFile) { "Missing $hostEnts" }
+    runCodesign(
+        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+        "--entitlements", shareEnts.absolutePath, share.absolutePath
+    )
+    runCodesign(
+        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+        "--entitlements", bulletinEnts.absolutePath, bulletin.absolutePath
+    )
+    if (tray.isFile) {
+        runCodesign(
+            "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+            tray.absolutePath
+        )
+    }
+    runCodesign(
+        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+        "--entitlements", hostEnts.absolutePath, appBundle.absolutePath
+    )
+    logger.lifecycle("Signed FileApex.app PlugIns with sandbox entitlements")
+}
+
+private fun requireMacShareEntitlements(appBundle: File) {
+    listOf(
+        appBundle.resolve("Contents/PlugIns/FileApexShareExtension.appex"),
+        appBundle.resolve("Contents/PlugIns/FileApexBulletinShareExtension.appex")
+    ).forEach { appex ->
+        check(appex.isDirectory) { "Missing $appex" }
+        val dump = Files.createTempFile("fileapex-ents-", ".plist").toFile()
+        dump.deleteOnExit()
+        val process = ProcessBuilder(
+            "/usr/bin/codesign", "--display", "--entitlements", dump.absolutePath,
+            appex.absolutePath
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        check(process.waitFor() == 0) {
+            "codesign entitlements dump failed for $appex:\n$output"
+        }
+        check(dump.isFile && dump.length() > 0L) {
+            "$appex has no embedded entitlements — pluginkit will ignore it"
+        }
+    }
 }
 
 private fun Project.pruneMacComposeStaging(reason: String) {
@@ -960,7 +1032,8 @@ private fun detachFileApexDmgVolumes() {
 private fun prepareCurrentDirectory(
     dest: File,
     preserveDmgFiles: Boolean,
-    preserveMsiFiles: Boolean = false
+    preserveMsiFiles: Boolean = false,
+    preserveMacApp: Boolean = false
 ) {
     if (!dest.exists()) {
         dest.mkdirs()
@@ -971,6 +1044,9 @@ private fun prepareCurrentDirectory(
             return@forEach
         }
         if (preserveMsiFiles && entry.isFile && entry.extension.equals("msi", ignoreCase = true)) {
+            return@forEach
+        }
+        if (preserveMacApp && entry.name == "FileApex.app") {
             return@forEach
         }
         entry.deleteRecursively()
@@ -991,17 +1067,8 @@ private fun patchAppInfoPlistVersions(appBundle: File, appVersionName: String, v
 }
 
 private fun Project.finalizeMacAppSignature(appBundle: File) {
-    val hostEnts = rootProject.layout.projectDirectory.file("composeApp/macos/FileApex.entitlements").asFile
-    val signArgs = mutableListOf(
-        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none"
-    )
-    if (hostEnts.isFile) {
-        signArgs += listOf("--entitlements", hostEnts.absolutePath)
-    }
-    signArgs += appBundle.absolutePath
-    val sign = ProcessBuilder(signArgs).redirectErrorStream(true).start()
-    val signOut = sign.inputStream.bufferedReader().readText()
-    check(sign.waitFor() == 0) { "codesign host failed:\n$signOut" }
+    signMacAppWithPluginEntitlements(appBundle, logger)
+    requireMacShareEntitlements(appBundle)
     val verify = ProcessBuilder("/usr/bin/codesign", "--verify", "--verbose=2", appBundle.absolutePath)
         .redirectErrorStream(true)
         .start()
@@ -1070,7 +1137,8 @@ private fun Project.shipToCurrent(
     prepareCurrentDirectory(
         dest,
         preserveDmgFiles = preserveExistingDmgOnWipe,
-        preserveMsiFiles = preserveExistingMsiOnWipe
+        preserveMsiFiles = preserveExistingMsiOnWipe,
+        preserveMacApp = !includeMacApp
     )
 
     val logger = logger
@@ -1436,6 +1504,7 @@ tasks.register("packageSiliconDmg") {
         }
         moveToCurrent(dest, stagingApp, logger = logger)
         requireMacShareCatalogs(dest.resolve("FileApex.app"))
+        requireMacShareEntitlements(dest.resolve("FileApex.app"))
         val shippedVerify = ProcessBuilder(
             "/usr/bin/codesign", "--verify", "--verbose=2",
             dest.resolve("FileApex.app").absolutePath
@@ -1515,7 +1584,7 @@ tasks.register("copyAllBuilds") {
             includeMsi = isWindowsHost(),
             includeMacApp = false,
             mountDmg = false,
-            preserveExistingDmgOnWipe = false,
+            preserveExistingDmgOnWipe = true,
             preserveExistingMsiOnWipe = false
         )
     }

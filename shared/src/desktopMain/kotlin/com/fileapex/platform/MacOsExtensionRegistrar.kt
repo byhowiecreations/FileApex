@@ -86,9 +86,22 @@ object MacOsExtensionRegistrar {
         }
 
         val stamp = registrationStamp(share, bulletin, shareEnts, bulletinEnts)
-        if (readStamp() == stamp) {
+        val shareListed = isPluginkitListed(ShareExtensionId)
+        val bulletinListed = isPluginkitListed(BulletinShareExtensionId)
+        if (MacOsExtensionRegistrationPolicy.shouldSkipPluginkit(
+                stampUnchanged = readStamp() == stamp,
+                shareListed = shareListed,
+                bulletinListed = bulletinListed
+            )
+        ) {
             log("skip pluginkit - unchanged since last successful registration")
             return
+        }
+        if (readStamp() == stamp && (!shareListed || !bulletinListed)) {
+            log(
+                "re-registering - stamp unchanged but pluginkit missing " +
+                    "share=$shareListed bulletin=$bulletinListed"
+            )
         }
 
         // Never codesign or xattr the host/appexes here. Packaging already signed them;
@@ -99,12 +112,27 @@ object MacOsExtensionRegistrar {
         val useShare = runCapture(Pluginkit, "-e", "use", "-i", ShareExtensionId)
         val useBulletin = runCapture(Pluginkit, "-e", "use", "-i", BulletinShareExtensionId)
         val ignoreFinder = runCapture(Pluginkit, "-e", "ignore", "-i", DeprecatedFinderSyncId)
+        val listedShare = isPluginkitListed(ShareExtensionId)
+        val listedBulletin = isPluginkitListed(BulletinShareExtensionId)
         log(
             "registered Share + Bulletin from $ApplicationsAppPath " +
                 "(addShare=$addShare addBulletin=$addBulletin " +
-                "useShare=$useShare useBulletin=$useBulletin ignoreFinder=$ignoreFinder)"
+                "useShare=$useShare useBulletin=$useBulletin ignoreFinder=$ignoreFinder " +
+                "listedShare=$listedShare listedBulletin=$listedBulletin)"
         )
-        writeStamp(registrationStamp(share, bulletin, shareEnts, bulletinEnts))
+        if (listedShare && listedBulletin) {
+            writeStamp(registrationStamp(share, bulletin, shareEnts, bulletinEnts))
+        } else {
+            log("pluginkit add returned ok but extensions are still not listed")
+        }
+    }
+
+    private fun isPluginkitListed(bundleId: String): Boolean {
+        val listing = runCapture(Pluginkit, "-m", "-i", bundleId)
+        if (listing.startsWith("failed:") || listing.startsWith("exit=")) return false
+        val body = listing.removePrefix("ok").trim()
+        if (body.isEmpty() || body.contains("no matches", ignoreCase = true)) return false
+        return body.contains(bundleId)
     }
 
     private fun registrationStamp(
