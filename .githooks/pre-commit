@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Keep wrapper/scripts at 100755 in Git's index even when committed from Windows.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+bash "$ROOT/scripts/ensure-git-executable-bits.sh"
