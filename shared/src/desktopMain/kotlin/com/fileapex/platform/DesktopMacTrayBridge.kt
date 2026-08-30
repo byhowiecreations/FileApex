@@ -69,6 +69,7 @@ object DesktopMacTrayBridge {
         return runCatching {
             native = Native.load(dylib.absolutePath, FileApexTrayNative::class.java)
             println("DesktopMacTrayBridge: loaded ${dylib.absolutePath}")
+            installAppLifecycle()
             startLocalNetworkProbe()
             true
         }.getOrElse { error ->
@@ -80,6 +81,11 @@ object DesktopMacTrayBridge {
     fun startLocalNetworkProbe() {
         if (!DesktopPlatformPaths.isMacOs()) return
         runCatching { native?.fileapex_tray_start_local_network_probe() }
+    }
+
+    fun installAppLifecycle() {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        runCatching { native?.fileapex_tray_install_app_lifecycle() }
     }
 
     /**
@@ -474,6 +480,7 @@ object DesktopMacTrayBridge {
 
 
     private interface FileApexTrayNative : Library {
+        fun fileapex_tray_install_app_lifecycle()
         fun fileapex_tray_setup()
         fun fileapex_tray_start_local_network_probe()
         fun fileapex_lan_set_peer_callback(callback: LanPeerCallback?)

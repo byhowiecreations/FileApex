@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.i18n.stringRes
+import com.fileapex.util.NetworkUtils
 import io.github.alexzhirkevich.qrose.options.QrErrorCorrectionLevel
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 
@@ -61,7 +62,7 @@ fun PairingQrPanel(
             style = MaterialTheme.typography.titleMedium
         )
         Text(
-            text = "${payload.deviceName}\n${payload.host}:${payload.port}",
+            text = "${payload.deviceName}\n${NetworkUtils.formatEndpointDisplay(payload.host, payload.port)}",
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant

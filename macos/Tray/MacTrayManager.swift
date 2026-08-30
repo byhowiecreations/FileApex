@@ -22,11 +22,22 @@ import SwiftUI
         super.init()
     }
 
+    /// Re-chain after Skiko/Compose init — they replace NSApp.delegate and default to quit-on-last-window.
+    public func installApplicationLifecycle() {
+        MacApplicationLifecycle.shared.install(trayManager: self)
+    }
+
+    func handleDockReopen(hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+        return true
+    }
+
     public func ensureTrayInstalled() {
         guard !trayInstalled else { return }
         trayInstalled = true
-
-        NSApp.setActivationPolicy(.regular)
+        installApplicationLifecycle()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -221,6 +232,7 @@ import SwiftUI
     }
 
     private func requestQuit() {
+        MacApplicationLifecycle.shared.permitTerminateForQuit()
         onQuitRequested?()
     }
 

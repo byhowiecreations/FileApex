@@ -50,7 +50,7 @@ public struct DevicePickerView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(device.deviceName)
                                         .foregroundStyle(.primary)
-                                    Text("\(device.lastKnownIp):\(device.port)")
+                                    Text(verbatim: device.endpointDisplayLabel)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }

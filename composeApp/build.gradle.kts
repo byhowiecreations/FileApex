@@ -1,9 +1,12 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 private fun isMacHost(): Boolean =
     System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
@@ -77,6 +80,7 @@ plugins {
 // Loaded from committed version.md via settings.gradle.kts (beforeProject).
 val fileapexVersionName = extra["fileapex.version.name"] as String
 val fileapexVersionCode = extra["fileapex.version.code"] as String
+val fileapexExtensionVersion = extra["fileapex.extension.version"] as String
 
 kotlin {
     androidTarget {
@@ -861,6 +865,58 @@ private fun moveToCurrent(
     logger.lifecycle("Moved ${source.name} -> current/$destName")
 }
 
+private val firefoxExtensionFiles = listOf(
+    "manifest.json",
+    "background.js",
+    "lib/browser-polyfill.min.js",
+    "icons/icon-16.png",
+    "icons/icon-32.png",
+    "icons/icon-48.png",
+    "icons/icon-96.png",
+    "icons/icon-128.png",
+)
+
+private fun Project.stageFirefoxExtension(stageDir: File) {
+    val srcDir = rootProject.file("browser-extension")
+    check(srcDir.isDirectory) { "Missing browser-extension at ${srcDir.absolutePath}" }
+    stageDir.deleteRecursively()
+    firefoxExtensionFiles.forEach { rel ->
+        val src = srcDir.resolve(rel)
+        check(src.isFile) { "Missing extension file: ${src.absolutePath}" }
+        val dest = stageDir.resolve(rel)
+        dest.parentFile.mkdirs()
+        if (rel == "manifest.json") {
+            @Suppress("UNCHECKED_CAST")
+            val manifest = JsonSlurper().parseText(src.readText()) as MutableMap<String, Any?>
+            manifest["version"] = fileapexExtensionVersion
+            dest.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)))
+        } else {
+            Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+}
+
+private fun zipDirectoryContents(sourceDir: File, zipFile: File) {
+    zipFile.parentFile.mkdirs()
+    if (zipFile.exists()) {
+        zipFile.delete()
+    }
+    ZipOutputStream(zipFile.outputStream()).use { zos ->
+        sourceDir.walkTopDown().filter { it.isFile }.forEach { file ->
+            val entryName = file.relativeTo(sourceDir).invariantSeparatorsPath
+            zos.putNextEntry(ZipEntry(entryName))
+            file.inputStream().use { input -> input.copyTo(zos) }
+            zos.closeEntry()
+        }
+    }
+}
+
+private fun Project.packageFirefoxExtensionXpi(output: File) {
+    val stageDir = layout.buildDirectory.dir("firefox-extension/staging").get().asFile
+    stageFirefoxExtension(stageDir)
+    zipDirectoryContents(stageDir, output)
+}
+
 private fun runCodesign(vararg args: String) {
     val process = ProcessBuilder(*args).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().readText()
@@ -1363,6 +1419,7 @@ tasks.register("packageSiliconDmg") {
     group = "distribution"
     description = "Package Silicon arm64 Mac DMG — explicitly sets JAVA_HOME to arm64 JDK"
     onlyIf { isMacHost() }
+    dependsOn("buildMacTrayBridge")
     doLast {
         val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
         check(arm64Jdk.isDirectory) { "arm64 JDK not found at ${arm64Jdk.absolutePath}" }
@@ -1414,6 +1471,11 @@ tasks.register("packageSiliconDmg") {
             check(dmgExit == 0) { "Silicon DMG re-pack after re-sign failed with exit code $dmgExit" }
             finalizeMacAppSignature(stagingApp)
         }
+
+        // Fresh dylib — buildMacTrayBridge may have run after createDistributable cached the .app.
+        embedMacTrayBridgeIn(stagingApp)
+        patchAppInfoPlistVersions(stagingApp, fileapexVersionName, fileapexVersionCode)
+        finalizeMacAppSignature(stagingApp)
 
         // Ship DMG first (embeds staging .app), then move .app out of build/ into current/.
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
@@ -1483,10 +1545,29 @@ tasks.register("packageIntelDmg") {
  * Full ship into `current/`.
  * Mac: release APK → packageSiliconDmg → packageIntelDmg (each with their own explicit JAVA_HOME).
  * Windows: release EXE only (Inno Setup).
+ * All hosts: Firefox extension `.xpi`.
  */
+tasks.register("shipFirefoxExtension") {
+    group = "distribution"
+    description = "Package browser-extension/ as FileApex-v{version}.xpi and move to current/"
+    doLast {
+        val xpi = layout.buildDirectory.file("firefox-extension/FileApex-v$fileapexVersionName.xpi").get().asFile
+        packageFirefoxExtensionXpi(xpi)
+        val dest = currentBuildsDest()
+        dest.mkdirs()
+        moveToCurrent(
+            dest = dest,
+            source = xpi,
+            destName = "FileApex-v$fileapexVersionName.xpi",
+            logger = logger
+        )
+    }
+}
+
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Ship into current/ (Mac: APK + Silicon DMG + Intel DMG; Windows: EXE only)"
+    description = "Ship into current/ (Mac: APK + Silicon DMG + Intel DMG + Firefox XPI; Windows: EXE + Firefox XPI)"
+    dependsOn("shipFirefoxExtension")
     if (isMacHost()) {
         // Only build the APK in-process; desktop DMGs are spawned as explicit subprocesses.
         dependsOn("assembleRelease", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")

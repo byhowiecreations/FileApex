@@ -1,2 +1,3 @@
-name=0.9.5b
-code=139
+name=0.9.6b
+code=141
+extension_version=1.0.4

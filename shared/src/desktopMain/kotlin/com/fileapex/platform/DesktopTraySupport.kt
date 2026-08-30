@@ -30,6 +30,21 @@ object DesktopTraySupport {
         }
     }
 
+    /** Hides the main window without quitting (menu-bar tray / dock stay alive). */
+    fun hideMainWindow() {
+        when {
+            DesktopPlatformPaths.isMacOs() -> DesktopMacTrayCoordinator.hideMainWindow()
+            DesktopPlatformPaths.isWindows() -> DesktopAwtTrayCoordinator.hideMainWindow()
+        }
+    }
+
+    fun showMainWindow() {
+        when {
+            DesktopPlatformPaths.isMacOs() -> DesktopMacTrayCoordinator.showMainWindow()
+            DesktopPlatformPaths.isWindows() -> DesktopAwtTrayCoordinator.showMainWindow()
+        }
+    }
+
     /** Returns true when the close request was consumed (hide-to-tray). */
     fun handleCloseRequest(): Boolean = when {
         DesktopPlatformPaths.isMacOs() -> DesktopMacTrayCoordinator.handleCloseRequest()

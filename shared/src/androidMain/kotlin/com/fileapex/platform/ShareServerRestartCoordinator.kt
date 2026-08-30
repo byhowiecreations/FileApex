@@ -63,7 +63,9 @@ object ShareServerRestartCoordinator {
      */
     fun attemptWatchdogRestart(context: Context, trigger: RestartTrigger) {
         val appContext = context.applicationContext
-        if (ServiceWatchdogScheduler.isShareServerRunning(appContext)) {
+        if (trigger == RestartTrigger.BOOT_COMPLETED) {
+            ServiceWatchdogScheduler.clearShareServerHeartbeat(appContext)
+        } else if (ServiceWatchdogScheduler.isShareServerRunning(appContext)) {
             Log.i(TAG, "Share server heartbeat fresh - skip restart ($trigger)")
             ShareServerPendingStart.clear(appContext)
             return

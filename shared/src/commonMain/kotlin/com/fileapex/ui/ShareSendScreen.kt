@@ -45,8 +45,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.FileApexBackHandler
-import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ShareSendViewModel
+import com.fileapex.util.NetworkUtils
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.fileApexTopAppBarColors
@@ -235,10 +235,7 @@ fun ShareSendScreen(
                                         text = if (option.isLocal) {
                                             stringRes("save_to", DownloadsPaths.displayLabel())
                                         } else {
-                                            DeviceListRow.localizedPeerStatus(
-                                                online = option.deviceId in state.onlineDeviceIds,
-                                                appVersion = option.appVersion
-                                            )
+                                            NetworkUtils.formatEndpointDisplay(option.host, option.port)
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant

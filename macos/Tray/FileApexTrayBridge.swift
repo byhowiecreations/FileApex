@@ -122,6 +122,13 @@ public func fileapex_tray_hide_main_window() {
     }
 }
 
+@_cdecl("fileapex_tray_install_app_lifecycle")
+public func fileapex_tray_install_app_lifecycle() {
+    onMainThread {
+        MacTrayManager.shared.installApplicationLifecycle()
+    }
+}
+
 @_cdecl("fileapex_tray_setup")
 public func fileapex_tray_setup() {
     DispatchQueue.main.async {

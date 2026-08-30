@@ -39,7 +39,10 @@ object DesktopMacTrayCoordinator {
         onQuit: () -> Unit,
     ) {
         if (!DesktopPlatformPaths.isMacOs() || installed) return
-        if (!DesktopMacTrayBridge.load()) return
+        if (!DesktopMacTrayBridge.load()) {
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: tray dylib load failed")
+            return
+        }
 
         mainWindow = window
         this.onShowWindow = onShowWindow
@@ -67,6 +70,7 @@ object DesktopMacTrayCoordinator {
         startDeviceSync()
         installed = true
         refreshDeviceSnapshotFromTray()
+        DesktopLifecycleLog.log("DesktopMacTrayCoordinator: native tray installed")
         println("DesktopMacTrayCoordinator: native tray installed")
     }
 
@@ -79,10 +83,16 @@ object DesktopMacTrayCoordinator {
 
     fun hideMainWindow() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        onHideWindow?.invoke()
+        DesktopLifecycleLog.log("DesktopMacTrayCoordinator: hideMainWindow (awt+native)")
+        // Mac must NOT call onHideWindow / Compose visible=false — single-window apps exit
+        // when the sole Window composable is hidden (Compose #1897). Pre-0094704 path only.
+        scope.launch(Dispatchers.Swing) {
+            mainWindow?.isVisible = false
+        }
         if (nativeMainWindowBound) {
             DesktopMacTrayBridge.hideMainWindow()
         }
+        DesktopMacTrayBridge.installAppLifecycle()
     }
 
     fun showMainWindow() {
@@ -101,8 +111,8 @@ object DesktopMacTrayCoordinator {
     }
 
     private fun syncMainWindowOnSwing() {
-        onShowWindow?.invoke()
         scope.launch(Dispatchers.Swing) {
+            mainWindow?.isVisible = true
             mainWindow?.toFront()
             mainWindow?.requestFocus()
         }
@@ -126,11 +136,14 @@ object DesktopMacTrayCoordinator {
                 if (ptr != null) {
                     DesktopMacTrayBridge.bindMainWindow(ptr)
                     nativeMainWindowBound = true
+                    DesktopMacTrayBridge.installAppLifecycle()
+                    DesktopLifecycleLog.log("DesktopMacTrayCoordinator: bound NSWindow delegate")
                     println("DesktopMacTrayCoordinator: bound NSWindow delegate")
                     return@launch
                 }
                 delay(100)
             }
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: NSWindow bind skipped - using Compose hide-on-close")
             println("DesktopMacTrayCoordinator: NSWindow bind skipped - using Compose hide-on-close")
         }
     }

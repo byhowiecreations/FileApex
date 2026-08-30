@@ -20,6 +20,7 @@ mkdir -p "$OUT"
 
 SWIFT_SOURCES=(
   "$TRAY/FileApexTrayBridge.swift"
+  "$TRAY/MacApplicationLifecycle.swift"
   "$TRAY/MacTrayManager.swift"
   "$TRAY/TrayMenuView.swift"
   "$TRAY/DropBoxWindowManager.swift"

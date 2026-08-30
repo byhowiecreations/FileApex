@@ -13,6 +13,7 @@
 		A30000000000000000000014 /* DevicePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DevicePickerModel.swift */; };
 		A30000000000000000000015 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
 		A30000000000000000000016 /* AppCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppCopy.swift */; };
+		A30000000000000000000017 /* EndpointDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* EndpointDisplay.swift */; };
 		A30000000000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ShareViewController.swift */; };
 		C30000000000000000000001 /* en.xml in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* en.xml */; };
 		C30000000000000000000002 /* es.xml in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* es.xml */; };
@@ -38,6 +39,7 @@
 		A20000000000000000000004 /* DevicePickerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerModel.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* FileApexBulletinHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileApexBulletinHandoff.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* EndpointDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointDisplay.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* AppCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCopy.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 				A20000000000000000000004 /* DevicePickerModel.swift */,
 				A20000000000000000000005 /* DevicePickerView.swift */,
 				A20000000000000000000006 /* FileApexBulletinHandoff.swift */,
+				A20000000000000000000008 /* EndpointDisplay.swift */,
 				A20000000000000000000007 /* AppCopy.swift */,
 			);
 			path = Shared;
@@ -244,6 +247,7 @@
 				A30000000000000000000013 /* FileApexSendHandoff.swift in Sources */,
 				A30000000000000000000014 /* DevicePickerModel.swift in Sources */,
 				A30000000000000000000015 /* DevicePickerView.swift in Sources */,
+				A30000000000000000000017 /* EndpointDisplay.swift in Sources */,
 				A30000000000000000000016 /* AppCopy.swift in Sources */,
 				A30000000000000000000020 /* ShareViewController.swift in Sources */,
 			);

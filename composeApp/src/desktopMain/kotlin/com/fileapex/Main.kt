@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -31,6 +32,9 @@ import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.platform.DesktopAppIcon
 import com.fileapex.platform.DesktopCrashHandler
 import com.fileapex.platform.DesktopJvmStartup
+import com.fileapex.platform.DesktopLifecycleLog
+import com.fileapex.platform.DesktopMacTrayBridge
+import com.fileapex.platform.DesktopMacWindowClosePolicy
 import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.MacLaunchSplash
 import com.fileapex.platform.DesktopScreenGeometry
@@ -85,7 +89,8 @@ fun main(args: Array<String>) {
 private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload?) {
     MacLaunchSplash.show()
 
-    application {
+    // Mac: never System.exit when Compose scope ends — native tray + share server keep running.
+    application(exitProcessOnExit = !DesktopPlatformPaths.isMacOs()) {
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
         var mainWindowVisible by remember { mutableStateOf(true) }
         var desktopIncomingShare by remember { mutableStateOf(initialCliSharePayload) }
@@ -93,7 +98,11 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         LaunchedEffect(Unit) {
             DesktopSingleInstance.incomingCliShares.collect { payload ->
                 desktopIncomingShare = payload
-                mainWindowVisible = true
+                if (DesktopPlatformPaths.isMacOs()) {
+                    DesktopTraySupport.showMainWindow()
+                } else {
+                    mainWindowVisible = true
+                }
             }
         }
 
@@ -201,6 +210,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         }
 
         fun shutdownDesktop() {
+            DesktopLifecycleLog.log("shutdownDesktop")
             if (!windowState.isMinimized) {
                 DesktopWindowBoundsStore.persist(windowState.size, windowState.position)
             }
@@ -209,15 +219,38 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             DesktopTraySupport.dispose()
         }
 
+        // Compose #1897: a sole hidden top-level Window ends application{}; keeper stays composed.
+        if (DesktopPlatformPaths.isMacOs()) {
+            val keeperState = rememberWindowState(
+                width = 1.dp,
+                height = 1.dp,
+                placement = WindowPlacement.Floating,
+                position = WindowPosition(0.dp, 0.dp),
+            )
+            Window(
+                onCloseRequest = { DesktopLifecycleLog.log("keeper: close ignored") },
+                state = keeperState,
+                undecorated = true,
+                transparent = true,
+                resizable = false,
+                focusable = false,
+                visible = true,
+                title = "",
+            ) { }
+        }
+
         Window(
             onCloseRequest = {
+                DesktopLifecycleLog.log("onCloseRequest")
                 if (DesktopTraySupport.handleCloseRequest()) return@Window
                 shutdownDesktop()
                 exitApplication()
             },
             title = "FileApex",
             state = windowState,
-            visible = mainWindowVisible,
+            // Mac: never bind Compose visible to hide — sole Window hidden => application{} exits (#1897).
+            // Windows: visible=false is the supported hide-to-tray path (CMP #2928).
+            visible = if (DesktopPlatformPaths.isMacOs()) true else mainWindowVisible,
         ) {
             LaunchedEffect(window) {
                 run {
@@ -227,6 +260,30 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                     }
                 }
                 MacLaunchSplash.hide()
+            }
+
+            LaunchedEffect(window) {
+                DesktopAppIcon.loadTrayImage()?.let { window.iconImage = it }
+                if (DesktopPlatformPaths.isMacOs()) {
+                    DesktopMacWindowClosePolicy.install(window)
+                }
+                withFrameNanos { }
+                withFrameNanos { }
+                DesktopTraySupport.attachMainWindow(
+                    window = window,
+                    onShowWindow = {
+                        if (!DesktopPlatformPaths.isMacOs()) mainWindowVisible = true
+                    },
+                    onHideWindow = {
+                        if (!DesktopPlatformPaths.isMacOs()) mainWindowVisible = false
+                    },
+                ) {
+                    shutdownDesktop()
+                    exitApplication()
+                }
+                if (DesktopPlatformPaths.isMacOs()) {
+                    DesktopMacTrayBridge.installAppLifecycle()
+                }
             }
 
             if (!servicesReady) {
@@ -239,26 +296,8 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 return@Window
             }
 
-            LaunchedEffect(window) {
-                DesktopAppIcon.loadTrayImage()?.let { window.iconImage = it }
-                // NSStatusItem is AppKit-cheap; the first Skiko frame is not. Attach only
-                // after the real window has presented or the tray wins the race.
-                run {
-                    repeat(60) {
-                        if (window.isShowing) return@run
-                        withFrameNanos { }
-                    }
-                }
-                withFrameNanos { }
-                withFrameNanos { }
-                DesktopTraySupport.attachMainWindow(
-                    window = window,
-                    onShowWindow = { mainWindowVisible = true },
-                    onHideWindow = { mainWindowVisible = false },
-                ) {
-                    shutdownDesktop()
-                    exitApplication()
-                }
+            LaunchedEffect(servicesReady) {
+                if (!servicesReady) return@LaunchedEffect
                 MacOsExtensionRegistrar.registerOnLaunchDeferred()
             }
 

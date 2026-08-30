@@ -64,10 +64,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.presentation.BrowseTarget
-import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ExplorerActionCopy
 import com.fileapex.presentation.ExplorerUiState
 import com.fileapex.presentation.ExplorerViewModel
+import com.fileapex.util.NetworkUtils
 import com.fileapex.ui.adaptive.CompactHomeTitleBand
 import com.fileapex.ui.adaptive.CompactHomeTitleStyle
 import com.fileapex.ui.theme.FileApexTeal
@@ -450,10 +450,7 @@ fun FileExplorerScreen(
                                     text = if (option.isLocal) {
                                         stringRes("local_device")
                                     } else {
-                                        DeviceListRow.localizedPeerStatus(
-                                            online = true,
-                                            appVersion = option.appVersion
-                                        )
+                                        NetworkUtils.formatEndpointDisplay(option.host, option.port)
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant

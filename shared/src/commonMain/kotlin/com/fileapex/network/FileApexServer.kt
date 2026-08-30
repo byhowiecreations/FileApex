@@ -771,6 +771,51 @@ class FileApexServer(
                     }
                 }
 
+                post("/api/v1/web/post-bulletin") {
+                    runCatching {
+                        val body = call.receiveText()
+                        val jsonObj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
+                        val url = jsonObj?.get("url")?.let {
+                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        }.orEmpty().trim()
+                        val title = jsonObj?.get("title")?.let {
+                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        }.orEmpty().trim()
+                        val text = jsonObj?.get("text")?.let {
+                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        }.orEmpty().trim()
+
+                        val payload = when {
+                            text.isNotBlank() -> text
+                            url.isNotBlank() && title.isNotBlank() -> "$title\n$url"
+                            url.isNotBlank() -> url
+                            title.isNotBlank() -> title
+                            else -> ""
+                        }
+                        if (payload.isBlank()) {
+                            call.respond(
+                                HttpStatusCode.BadRequest,
+                                """{"status":"error","message":"url_or_text_required"}"""
+                            )
+                            return@runCatching
+                        }
+
+                        withContext(Dispatchers.IO) {
+                            FileApexServices.bulletinSyncEngine.ingestSharedText(payload)
+                        }
+                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/web/post-bulletin failed", error)
+                        val errMsg = error.message ?: AppI18n.t("could_not_post_bulletin")
+                        val safeMsg = json.encodeToString(errMsg)
+                        call.respondText(
+                            """{"status":"error","message":$safeMsg}""",
+                            ContentType.Application.Json,
+                            HttpStatusCode.InternalServerError
+                        )
+                    }
+                }
+
                 get("/api/v1/health") {
                     call.respondText("ok", ContentType.Text.Plain)
                 }

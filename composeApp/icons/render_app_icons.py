@@ -18,6 +18,7 @@ ANDROID_NOTIFICATION = ROOT / "composeApp" / "src" / "androidMain" / "res" / "dr
 SHARED_NOTIFICATION = ROOT / "shared" / "src" / "androidMain" / "res" / "drawable" / "ic_fileapex_notification.png"
 SHARED_NOTIFICATION_LARGE = ROOT / "shared" / "src" / "androidMain" / "res" / "drawable" / "ic_fileapex_large.png"
 TRAY_PNG = ROOT / "shared" / "src" / "desktopMain" / "resources" / "icons" / "fileapex-tray.png"
+BROWSER_EXTENSION_ICONS = ROOT / "browser-extension" / "icons"
 PNG_1024 = COMPOSE_ICONS / "FileApex-1024.png"
 ICNS = COMPOSE_ICONS / "FileApex.icns"
 ICO = COMPOSE_ICONS / "FileApex.ico"
@@ -119,6 +120,8 @@ def main() -> int:
     save_square_png(source, 256, SHARED_NOTIFICATION_LARGE)
     save_square_png(source, 256, TRAY_PNG)
     write_ico(ICO, source)
+    for size in (16, 32, 48, 96, 128):
+        save_square_png(source, size, BROWSER_EXTENSION_ICONS / f"icon-{size}.png")
     if sys.platform == "darwin":
         write_icns(ICNS, source)
     else:
@@ -131,6 +134,8 @@ def main() -> int:
     print(f"Wrote {SHARED_NOTIFICATION_LARGE}")
     print(f"Wrote {TRAY_PNG}")
     print(f"Wrote {ICO}")
+    for size in (16, 32, 48, 96, 128):
+        print(f"Wrote {BROWSER_EXTENSION_ICONS / f'icon-{size}.png'}")
     if ICNS.exists():
         print(f"Wrote {ICNS}")
     return 0

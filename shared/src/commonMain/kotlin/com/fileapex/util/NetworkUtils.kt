@@ -105,6 +105,19 @@ object NetworkUtils {
     }
 
     /**
+     * User-facing `host:port` label for device subtitles.
+     * Ports must never pass through [com.fileapex.i18n.formatLocalizedNumber] — grouping breaks LAN endpoints.
+     */
+    fun formatEndpointDisplay(host: String, port: Int): String {
+        val cleanedHost = host.trim()
+        return if (cleanedHost.isEmpty() || port <= 0) {
+            cleanedHost
+        } else {
+            "$cleanedHost:$port"
+        }
+    }
+
+    /**
      * Non-loopback `ip:port` endpoints for local-device identity in the repository.
      */
     fun shareEndpoints(identity: LocalIdentity): Set<String> {
