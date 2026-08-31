@@ -87,6 +87,18 @@ class NoteNotifyPolicyTest {
     }
 
     @Test
+    fun criticalBulletinDetectsLowBatteryText() {
+        assertTrue(
+            NoteNotifyPolicy.isCriticalBulletin("The battery level is 12% on Pixel 8")
+        )
+        assertTrue(
+            NoteNotifyPolicy.isCriticalBulletin("The battery is low on MacBook Pro")
+        )
+        assertFalse(NoteNotifyPolicy.isCriticalBulletin("Hello from the office"))
+        assertFalse(NoteNotifyPolicy.isCriticalBulletin(""))
+    }
+
+    @Test
     fun notificationTitleUsesSenderDeviceName() {
         assertTrue(NoteNotifyPolicy.notificationTitle("MacBook Pro").contains("MacBook Pro"))
         val emptyTitle = NoteNotifyPolicy.notificationTitle("")

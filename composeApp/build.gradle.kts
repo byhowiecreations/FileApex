@@ -1028,6 +1028,9 @@ private fun prepareCurrentDirectory(
         if (preserveDmgFiles && entry.isFile && entry.extension.equals("dmg", ignoreCase = true)) {
             return@forEach
         }
+        if (preserveDmgFiles && entry.isFile && entry.extension.equals("xpi", ignoreCase = true)) {
+            return@forEach
+        }
         if (preserveMacApp && entry.name == "FileApex.app") {
             return@forEach
         }
@@ -1432,7 +1435,8 @@ tasks.register("packageSiliconDmg") {
 
         val cmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
             " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon embedMacExtensions" +
-            " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+            " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning" +
+            " -x shipFirefoxExtension -x copyAllBuildsFinalize"
         val exit = runPackagingSubprocess("package-silicon-subprocess.log", cmd)
         check(exit == 0) { "Silicon DMG packaging failed with exit code $exit" }
 
@@ -1449,7 +1453,8 @@ tasks.register("packageSiliconDmg") {
             val dmgCmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
                 " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon" +
                 " -x createDistributable -x embedMacExtensions" +
-                " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+                " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning" +
+                " -x shipFirefoxExtension -x copyAllBuildsFinalize"
             val dmgExit = runPackagingSubprocess("package-silicon-repack-subprocess.log", dmgCmd)
             check(dmgExit == 0) { "Silicon DMG re-pack after embed failed with exit code $dmgExit" }
         }
@@ -1466,7 +1471,8 @@ tasks.register("packageSiliconDmg") {
             val dmgCmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
                 " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon" +
                 " -x createDistributable -x embedMacExtensions" +
-                " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+                " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning" +
+                " -x shipFirefoxExtension -x copyAllBuildsFinalize"
             val dmgExit = runPackagingSubprocess("package-silicon-resign-dmg.log", dmgCmd)
             check(dmgExit == 0) { "Silicon DMG re-pack after re-sign failed with exit code $dmgExit" }
             finalizeMacAppSignature(stagingApp)
@@ -1519,7 +1525,8 @@ tasks.register("packageIntelDmg") {
 
         val cmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${x64Jdk.absolutePath}' &&" +
             " ./gradlew --no-daemon packageDmg fixDmgVolumeIcon embedMacExtensions" +
-            " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning"
+            " -x assembleRelease -x verifyReleaseApkSigned -x verifyReleaseSigning" +
+            " -x shipFirefoxExtension -x copyAllBuildsFinalize"
         val exit = runPackagingSubprocess(
             "package-intel-subprocess.log",
             cmd,
@@ -1542,14 +1549,13 @@ tasks.register("packageIntelDmg") {
 }
 
 /**
- * Full ship into `current/`.
- * Mac: release APK → packageSiliconDmg → packageIntelDmg (each with their own explicit JAVA_HOME).
- * Windows: release EXE only (Inno Setup).
- * All hosts: Firefox extension `.xpi`.
+ * Package browser-extension/ as FileApex-v{version}.xpi and move to current/.
+ * Invoked only by [copyAllBuildsFinalize] (full ship) or when run directly:
+ *   ./gradlew shipFirefoxExtension
  */
 tasks.register("shipFirefoxExtension") {
     group = "distribution"
-    description = "Package browser-extension/ as FileApex-v{version}.xpi and move to current/"
+    description = "Package Firefox extension XPI into current/ (standalone or via copyAllBuilds only)"
     doLast {
         val xpi = layout.buildDirectory.file("firefox-extension/FileApex-v$fileapexVersionName.xpi").get().asFile
         packageFirefoxExtensionXpi(xpi)
@@ -1566,16 +1572,17 @@ tasks.register("shipFirefoxExtension") {
 
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Ship into current/ (Mac: APK + Silicon DMG + Intel DMG + Firefox XPI; Windows: EXE + Firefox XPI)"
-    dependsOn("shipFirefoxExtension")
+    description = "Full ship into current/ (Mac: APK + DMGs + XPI; Windows: EXE + XPI). Platform-only builds skip XPI."
     if (isMacHost()) {
         // Only build the APK in-process; desktop DMGs are spawned as explicit subprocesses.
         dependsOn("assembleRelease", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
-        finalizedBy("packageSiliconDmg")
+        finalizedBy("packageSiliconDmg", "copyAllBuildsFinalize")
     } else if (isWindowsHost()) {
         dependsOn("createReleaseDistributable", "packageInnoExe")
+        finalizedBy("copyAllBuildsFinalize")
     } else {
         dependsOn("assembleRelease", "verifyReleaseApkSigned")
+        finalizedBy("copyAllBuildsFinalize")
     }
 
     doLast {
@@ -1586,6 +1593,20 @@ tasks.register("copyAllBuilds") {
             mountDmg = false,
             preserveExistingDmgOnWipe = true
         )
+    }
+}
+
+/** Ships one XPI at the end of copyAllBuilds only — not Mac/Android/Windows partial builds. */
+tasks.register("copyAllBuildsFinalize") {
+    group = "distribution"
+    description = "Ship Firefox XPI once at the end of copyAllBuilds"
+    dependsOn("shipFirefoxExtension")
+    onlyIf {
+        val requested = gradle.startParameter.taskNames
+        requested.any { it.endsWith("copyAllBuilds") }
+    }
+    if (isMacHost()) {
+        mustRunAfter("packageIntelDmg")
     }
 }
 

@@ -219,32 +219,20 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             DesktopTraySupport.dispose()
         }
 
-        // Compose #1897: a sole hidden top-level Window ends application{}; keeper stays composed.
-        if (DesktopPlatformPaths.isMacOs()) {
-            val keeperState = rememberWindowState(
-                width = 1.dp,
-                height = 1.dp,
-                placement = WindowPlacement.Floating,
-                position = WindowPosition(0.dp, 0.dp),
-            )
-            Window(
-                onCloseRequest = { DesktopLifecycleLog.log("keeper: close ignored") },
-                state = keeperState,
-                undecorated = true,
-                transparent = true,
-                resizable = false,
-                focusable = false,
-                visible = true,
-                title = "",
-            ) { }
+        fun quitDesktop() {
+            shutdownDesktop()
+            if (DesktopPlatformPaths.isMacOs()) {
+                DesktopMacTrayBridge.requestAppTerminate()
+            } else {
+                exitApplication()
+            }
         }
 
         Window(
             onCloseRequest = {
                 DesktopLifecycleLog.log("onCloseRequest")
                 if (DesktopTraySupport.handleCloseRequest()) return@Window
-                shutdownDesktop()
-                exitApplication()
+                quitDesktop()
             },
             title = "FileApex",
             state = windowState,
@@ -278,8 +266,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                         if (!DesktopPlatformPaths.isMacOs()) mainWindowVisible = false
                     },
                 ) {
-                    shutdownDesktop()
-                    exitApplication()
+                    quitDesktop()
                 }
                 if (DesktopPlatformPaths.isMacOs()) {
                     DesktopMacTrayBridge.installAppLifecycle()
@@ -315,10 +302,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 onRequestBatteryUnrestricted = {},
                 onStartShareServer = DesktopShareServerController::start,
                 onStopShareServer = DesktopShareServerController::stop,
-                onExitApp = {
-                    shutdownDesktop()
-                    exitApplication()
-                },
+                onExitApp = { quitDesktop() },
                 appVersionName = FileApexAppVersion.NAME,
                 incomingShare = desktopIncomingShare,
                 onIncomingShareConsumed = { desktopIncomingShare = null }

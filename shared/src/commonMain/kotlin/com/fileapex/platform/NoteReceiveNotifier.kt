@@ -1,6 +1,11 @@
 package com.fileapex.platform
 
-expect fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId: String)
+expect fun notifyNoteReceived(
+    sourceDeviceName: String,
+    content: String,
+    noteId: String,
+    critical: Boolean = false,
+)
 
 expect fun retractNoteNotification(noteId: String)
 

@@ -6,6 +6,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
 import androidx.core.app.NotificationCompat
@@ -18,9 +20,15 @@ private lateinit var noteNotifierContext: Context
 fun initAndroidNoteReceiveNotifier(context: Context) {
     noteNotifierContext = context.applicationContext
     AndroidNotificationChannels.ensureNoteMessagesChannel(noteNotifierContext)
+    AndroidNotificationChannels.ensureBulletinCriticalChannel(noteNotifierContext)
 }
 
-actual fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId: String) {
+actual fun notifyNoteReceived(
+    sourceDeviceName: String,
+    content: String,
+    noteId: String,
+    critical: Boolean,
+) {
     if (content.isBlank() || noteId.isBlank()) return
     if (!FileApexServices.settings.notesNotificationsEnabled.value) {
         println("NoteReceiveNotifier: skipped - note notifications disabled in Settings")
@@ -37,13 +45,20 @@ actual fun notifyNoteReceived(sourceDeviceName: String, content: String, noteId:
         return
     }
 
+    val useCritical = critical || NoteNotifyPolicy.isCriticalBulletin(content)
+    val channelId = if (useCritical) {
+        AndroidNotificationChannels.BULLETIN_CRITICAL
+    } else {
+        AndroidNotificationChannels.NOTE_MESSAGES
+    }
+
     val extras = Bundle().apply {
         putString(EXTRA_NOTE_ID, noteId)
         putString(EXTRA_NOTE_PREVIEW, content)
     }
     val title = NoteNotifyPolicy.notificationTitle(sourceDeviceName)
     val openIntent = noteOpenPendingIntent(noteId)
-    val notification = NotificationCompat.Builder(noteNotifierContext, AndroidNotificationChannels.NOTE_MESSAGES)
+    val notification = NotificationCompat.Builder(noteNotifierContext, channelId)
         .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
         .setLargeIcon(
             BitmapFactory.decodeResource(
@@ -113,7 +128,12 @@ actual fun retractNoteNotifications(noteIds: List<String>, previewTexts: List<St
 
 private fun isNoteNotification(tag: String?, id: Int, notification: Notification): Boolean {
     if (tag == NOTE_NOTIFICATION_TAG) return true
-    if (notification.channelId == AndroidNotificationChannels.NOTE_MESSAGES) return true
+    val channel = notification.channelId
+    if (channel == AndroidNotificationChannels.NOTE_MESSAGES ||
+        channel == AndroidNotificationChannels.BULLETIN_CRITICAL
+    ) {
+        return true
+    }
     return id >= NOTE_NOTIFICATION_ID_BASE && id < NOTE_NOTIFICATION_ID_BASE + 0x10000
 }
 

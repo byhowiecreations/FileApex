@@ -161,6 +161,7 @@ class BulletinBoardSyncEngine(
                 }
             }
         }
+        val newlyArrived = incomingMessages.filter { messageDao.getById(it.id) == null }
         transactionDao.ingestSyncBatch(
             messages = incomingMessages,
             tombstones = incomingTombstones,
@@ -171,6 +172,9 @@ class BulletinBoardSyncEngine(
         )
         for (messageId in remotePurgeMessageIds.distinct()) {
             BulletinRemoteFilePurgeHandler.handle(messageId)
+        }
+        if (newlyArrived.isNotEmpty() || incomingTombstones.isNotEmpty()) {
+            FileApexServices.noteRepository.onPeerBulletinBatchIngested(newlyArrived, incomingTombstones)
         }
         return BulletinSyncAck(
             packetId = batch.packetId,

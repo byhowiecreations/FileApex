@@ -83,15 +83,9 @@ object DesktopMacTrayCoordinator {
 
     fun hideMainWindow() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        DesktopLifecycleLog.log("DesktopMacTrayCoordinator: hideMainWindow (awt+native)")
-        // Mac must NOT call onHideWindow / Compose visible=false — single-window apps exit
-        // when the sole Window composable is hidden (Compose #1897). Pre-0094704 path only.
-        scope.launch(Dispatchers.Swing) {
-            mainWindow?.isVisible = false
-        }
-        if (nativeMainWindowBound) {
-            DesktopMacTrayBridge.hideMainWindow()
-        }
+        DesktopLifecycleLog.log("DesktopMacTrayCoordinator: hideMainWindow (native orderOut)")
+        // Never toggle AWT isVisible on Mac — Compose disposes the window panel and restore crashes.
+        DesktopMacTrayBridge.hideMainWindow()
         DesktopMacTrayBridge.installAppLifecycle()
     }
 
@@ -112,9 +106,11 @@ object DesktopMacTrayCoordinator {
 
     private fun syncMainWindowOnSwing() {
         scope.launch(Dispatchers.Swing) {
-            mainWindow?.isVisible = true
-            mainWindow?.toFront()
-            mainWindow?.requestFocus()
+            val window = mainWindow ?: return@launch
+            if (window.isVisible) {
+                window.toFront()
+                window.requestFocus()
+            }
         }
         refreshDeviceSnapshotFromTray()
         PresenceForegroundRefresh.onAppForegrounded()

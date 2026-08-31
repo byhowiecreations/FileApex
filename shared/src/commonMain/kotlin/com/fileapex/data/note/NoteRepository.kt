@@ -6,6 +6,7 @@ import com.fileapex.data.bulletin.BulletinBoardRepository
 import com.fileapex.data.bulletin.BulletinBoardSyncEngine
 import com.fileapex.data.bulletin.BulletinContentType
 import com.fileapex.data.bulletin.BulletinFileMetadata
+import com.fileapex.data.bulletin.toNoteRecord
 import com.fileapex.data.db.NoteDao
 import com.fileapex.data.device.DeviceDisplayNames
 import com.fileapex.data.identity.LocalDeviceNameStore
@@ -367,6 +368,24 @@ class NoteRepository {
         return false
     }
 
+    suspend fun onPeerBulletinBatchIngested(
+        newMessages: List<com.fileapex.data.bulletin.MessageEntity>,
+        tombstones: List<com.fileapex.data.bulletin.TombstoneEntity>,
+    ) {
+        for (message in newMessages) {
+            val note = message.toNoteRecord()
+            maybeNotifyIncoming(note)
+            if (shouldAutoFetchAttachment(note)) {
+                appScope?.launch { fetchAttachmentIfNeeded(note.noteId) }
+            }
+        }
+        for (tombstone in tombstones) {
+            retractedKeys += tombstone.id
+            val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == tombstone.id } }
+            retractNotifications(snapshot, tombstone.id)
+        }
+    }
+
     private suspend fun maybeNotifyIncoming(note: NoteRecord) {
         val preview = NoteNotifyPolicy.incomingPreview(note.content, note.attachmentFileName)
         if (!NoteNotifyPolicy.shouldNotifyIncomingNote(
@@ -379,11 +398,13 @@ class NoteRepository {
         }
         notifiedNoteIds += note.noteId
         val sender = resolveSenderName(note)
+        val critical = NoteNotifyPolicy.isCriticalBulletin(preview)
         runCatching {
             com.fileapex.platform.notifyNoteReceived(
                 sourceDeviceName = sender,
                 content = preview,
-                noteId = note.noteId
+                noteId = note.noteId,
+                critical = critical,
             )
         }
     }

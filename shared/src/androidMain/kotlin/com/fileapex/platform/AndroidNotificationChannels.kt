@@ -24,6 +24,7 @@ object AndroidNotificationChannels {
     const val APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
     const val NOTE_MESSAGES = "fileapex_note_messages"
+    const val BULLETIN_CRITICAL = "fileapex_bulletin_critical_v2"
     const val DRIVE_RELAY = "fileapex_drive_relay"
     /** Persistent share-server FGS alert — static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
@@ -51,6 +52,20 @@ object AndroidNotificationChannels {
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = com.fileapex.i18n.AppI18n.t("channel_notes_desc")
+            enableVibration(true)
+        }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureBulletinCriticalChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            BULLETIN_CRITICAL,
+            com.fileapex.i18n.AppI18n.t("channel_bulletin_critical"),
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = com.fileapex.i18n.AppI18n.t("channel_bulletin_critical_desc")
             enableVibration(true)
         }
         context.getSystemService(NotificationManager::class.java)
@@ -96,6 +111,7 @@ object AndroidNotificationChannels {
     fun refreshLocalized(context: Context) {
         ensureAppUpdatesChannel(context)
         ensureNoteMessagesChannel(context)
+        ensureBulletinCriticalChannel(context)
         ensureTransferReceiveChannel(context)
         ensureDriveRelayChannel(context)
         ensureShareServerChannel(context)

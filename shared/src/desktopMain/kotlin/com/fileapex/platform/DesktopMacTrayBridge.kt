@@ -88,6 +88,11 @@ object DesktopMacTrayBridge {
         runCatching { native?.fileapex_tray_install_app_lifecycle() }
     }
 
+    fun requestAppTerminate() {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        runCatching { native?.fileapex_tray_request_app_terminate() }
+    }
+
     /**
      * Native Bonjour resolve — Finder/Dock Local Network permission applies here, not to Java sockets.
      */
@@ -481,6 +486,7 @@ object DesktopMacTrayBridge {
 
     private interface FileApexTrayNative : Library {
         fun fileapex_tray_install_app_lifecycle()
+        fun fileapex_tray_request_app_terminate()
         fun fileapex_tray_setup()
         fun fileapex_tray_start_local_network_probe()
         fun fileapex_lan_set_peer_callback(callback: LanPeerCallback?)

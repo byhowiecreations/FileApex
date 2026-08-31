@@ -18,6 +18,10 @@ echo ""
 bash "$SCRIPT_DIR/build_intel.sh"
 
 echo ""
+# Step 3: Firefox extension (once, full build only)
+bash "$SCRIPT_DIR/build_firefox_extension.sh"
+
+echo ""
 echo "========================================================"
 echo " Verifying Output Artifacts in current/"
 echo "========================================================"

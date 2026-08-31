@@ -413,6 +413,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="channel_app_updates">应用更新</string>
     <string name="channel_app_updates_desc">有较新的 FileApex 版本时发出提醒</string>
     <string name="channel_notes_desc">当配对设备发来共享消息、文件或提醒时发出通知</string>
+    <string name="channel_bulletin_critical">紧急提醒</string>
+    <string name="channel_bulletin_critical_desc">来自配对设备的紧急提醒，例如低电量警告</string>
     <string name="channel_transfers">文件传输</string>
     <string name="channel_transfers_desc">FileApex 从配对设备接收文件时发出提醒</string>
     <string name="channel_drive_desc">FileApex 通过 Google Drive Relay 发布或取回文件时发出提醒</string>

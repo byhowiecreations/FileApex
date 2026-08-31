@@ -414,6 +414,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="channel_app_updates">App updates</string>
     <string name="channel_app_updates_desc">Alerts when a newer FileApex build is available</string>
     <string name="channel_notes_desc">Alerts when shared messages, files, or device alerts arrive from paired devices</string>
+    <string name="channel_bulletin_critical">Critical alerts</string>
+    <string name="channel_bulletin_critical_desc">Urgent device alerts such as low battery warnings from paired devices</string>
     <string name="channel_transfers">File transfers</string>
     <string name="channel_transfers_desc">Alerts when FileApex receives files from paired devices</string>
     <string name="channel_drive_desc">Alerts when FileApex posts or retrieves files through Google Drive Relay</string>

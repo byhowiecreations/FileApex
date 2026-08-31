@@ -129,6 +129,14 @@ public func fileapex_tray_install_app_lifecycle() {
     }
 }
 
+@_cdecl("fileapex_tray_request_app_terminate")
+public func fileapex_tray_request_app_terminate() {
+    onMainThread {
+        MacApplicationLifecycle.shared.permitTerminateForQuit()
+        NSApp.terminate(nil)
+    }
+}
+
 @_cdecl("fileapex_tray_setup")
 public func fileapex_tray_setup() {
     DispatchQueue.main.async {
