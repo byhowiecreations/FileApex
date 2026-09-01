@@ -52,3 +52,10 @@ data class BulletinTombstonePayload(
     val originDeviceId: String,
     val remotePurge: Boolean = false
 )
+
+@Serializable
+data class BulletinRetractByKindPayload(
+    val originDeviceId: String,
+    val contentType: Int,
+    val deletedAt: Long
+)

@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
+import com.fileapex.data.identity.LocalDeviceNameStore
+import com.fileapex.data.identity.PeerDeviceNameLabel
+import com.fileapex.data.identity.DeviceNamePeerLabelsStore
+import com.fileapex.domain.device.DeviceNameCoordinator
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.settings.PinIdleTimeout
@@ -79,7 +83,14 @@ data class SettingsUiState(
     val systemPerformanceExpanded: Boolean = true,
     val appearanceBehaviorExpanded: Boolean = true,
     val securityAccountExpanded: Boolean = true,
-    val showAccessibilityRestrictedHelp: Boolean = false
+    val showAccessibilityRestrictedHelp: Boolean = false,
+    val deviceNameBroadcasting: String = "",
+    val deviceNameDraft: String = "",
+    val deviceNamePeerLabels: List<PeerDeviceNameLabel> = emptyList(),
+    val deviceNameClusterSync: String = "",
+    val deviceNameError: String? = null,
+    val deviceNameStatus: String? = null,
+    val deviceNameSaveBusy: Boolean = false
 )
 
 class SettingsViewModel : ViewModel() {
@@ -134,8 +145,32 @@ class SettingsViewModel : ViewModel() {
     init {
         viewModelScope.launch {
             FileApexServices.awaitBootstrap()
+            DeviceNamePeerLabelsStore.ensureLoaded()
+            LocalDeviceNameStore.deviceName.collect { name ->
+                _uiState.update { state ->
+                    val syncedDraft = state.deviceNameDraft == state.deviceNameBroadcasting
+                    state.copy(
+                        deviceNameBroadcasting = name,
+                        deviceNameDraft = if (syncedDraft) name else state.deviceNameDraft
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            DeviceNamePeerLabelsStore.labels.collect { labels ->
+                _uiState.update { it.copy(deviceNamePeerLabels = labels) }
+            }
+        }
+        viewModelScope.launch {
+            settings.googleAccountLinkEnabled.collect {
+                refreshDeviceNameClusterSync()
+            }
+        }
+        viewModelScope.launch {
+            FileApexServices.awaitBootstrap()
             FileApexServices.deviceRepository.observeDevices().collect { devices ->
                 _uiState.update { it.copy(clipboardPeers = devices) }
+                refreshDeviceNameClusterSync()
             }
         }
         viewModelScope.launch {
@@ -704,5 +739,56 @@ class SettingsViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    fun setDeviceNameDraft(value: String) {
+        val filtered = buildString {
+            for (ch in value) {
+                if (ch.isLetterOrDigit() || ch == ' ' || ch == '-') append(ch)
+            }
+        }
+        _uiState.update { it.copy(deviceNameDraft = filtered, deviceNameError = null) }
+    }
+
+    fun saveDeviceName() {
+        val draft = _uiState.value.deviceNameDraft.trim()
+        DeviceNameCoordinator.validate(draft)?.let { message ->
+            _uiState.update { it.copy(deviceNameError = message) }
+            return
+        }
+        _uiState.update {
+            it.copy(deviceNameSaveBusy = true, deviceNameError = null, deviceNameStatus = null)
+        }
+        viewModelScope.launch {
+            runCatching {
+                DeviceNameCoordinator.saveLocalBroadcastName(draft)
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        deviceNameSaveBusy = false,
+                        deviceNameStatus = AppI18n.t("device_name_saved", draft),
+                        deviceNameError = null
+                    )
+                }
+                refreshDeviceNameClusterSync()
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        deviceNameSaveBusy = false,
+                        deviceNameError = error.message ?: AppI18n.t("rename_failed")
+                    )
+                }
+            }
+        }
+    }
+
+    private fun refreshDeviceNameClusterSync() {
+        if (!settings.googleAccountLinkEnabled.value) {
+            _uiState.update { it.copy(deviceNameClusterSync = "") }
+            return
+        }
+        val selfId = loadLocalIdentity().deviceId
+        val cluster = GoogleLinkCoordinator.cloudRecordFor(selfId)?.deviceName.orEmpty().trim()
+        _uiState.update { it.copy(deviceNameClusterSync = cluster) }
     }
 }

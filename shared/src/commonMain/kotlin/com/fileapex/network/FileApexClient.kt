@@ -228,11 +228,17 @@ class FileApexClient(
     suspend fun postRemoteRename(
         host: String,
         port: Int,
-        newName: String
+        newName: String,
+        renamedByDeviceId: String = "",
+        renamedByDeviceName: String = ""
     ) {
         val payload = json.encodeToString(
             RenameDeviceRequest.serializer(),
-            RenameDeviceRequest(deviceName = newName.trim())
+            RenameDeviceRequest(
+                deviceName = newName.trim(),
+                renamedByDeviceId = renamedByDeviceId.trim(),
+                renamedByDeviceName = renamedByDeviceName.trim()
+            )
         )
         val response = boundPost(
             host = host,
@@ -664,6 +670,33 @@ class FileApexClient(
         }
     }
 
+    suspend fun createDirectory(
+        host: String,
+        port: Int,
+        remotePath: String
+    ) {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/files/mkdir",
+                host = host,
+                port = port,
+                params = mapOf("targetPath" to remotePath)
+            ),
+            body = "",
+            contentType = "text/plain",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        if (response.statusCode == 403) {
+            error(AppI18n.t("pin_required_open_device"))
+        }
+        if (response.statusCode == 404) {
+            return
+        }
+        requireSuccess(response, "Create directory failed (${response.statusCode}): $remotePath")
+    }
+
     fun close() = Unit
 
     private suspend fun boundGet(
@@ -777,5 +810,7 @@ class FileApexClient(
 
 @kotlinx.serialization.Serializable
 data class RenameDeviceRequest(
-    val deviceName: String
+    val deviceName: String,
+    val renamedByDeviceId: String = "",
+    val renamedByDeviceName: String = ""
 )

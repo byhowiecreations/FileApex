@@ -20,6 +20,8 @@ class BulletinBoardRepository(
         encodeDefaults = true
     }
 
+    private val pendingRetractByKind = mutableMapOf<String, BulletinRetractByKindPayload>()
+
     private val messageDao = database.messageDao()
     private val tombstoneDao = database.tombstoneDao()
     private val outboxDao = database.outboxDao()
@@ -32,6 +34,55 @@ class BulletinBoardRepository(
     }
 
     suspend fun getMessage(id: String): MessageEntity? = messageDao.getById(id)
+
+    suspend fun ingestLocalBatteryAlert(levelPercent: Int?): MessageEntity {
+        val identity = loadLocalIdentity()
+        val selfName = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
+        val message = MessageEntity(
+            id = "msg-" + TimeUtils.now() + "-" + (1000..9999).random(),
+            originDeviceId = identity.deviceId,
+            senderName = selfName,
+            content = BulletinMessageKind.batteryAlertContent(levelPercent),
+            contentType = BulletinContentType.BATTERY_LOW,
+            timestamp = TimeUtils.now(),
+            isDeleted = false,
+            isPinned = false
+        )
+        messageDao.upsert(message)
+        return message
+    }
+
+    suspend fun applyRetractByKind(
+        originDeviceId: String,
+        contentType: Int,
+        deletedAt: Long
+    ): List<String> {
+        val id = originDeviceId.trim()
+        if (id.isEmpty()) return emptyList()
+        val targets = messageDao.getActiveOnce().filter { message ->
+            message.originDeviceId == id &&
+                BulletinMessageKind.matchesRetract(message.contentType, message.content, contentType)
+        }
+        if (targets.isEmpty()) return emptyList()
+        for (message in targets) {
+            transactionDao.applyTombstone(
+                TombstoneEntity(
+                    id = message.id,
+                    deletedAt = deletedAt,
+                    originDeviceId = id
+                )
+            )
+        }
+        return targets.map { it.id }
+    }
+
+    fun rememberRetractByKind(payload: BulletinRetractByKindPayload) {
+        val payloadId = BulletinMessageKind.retractPayloadId(payload.originDeviceId, payload.contentType)
+        pendingRetractByKind[payloadId] = payload
+    }
+
+    fun pendingRetractByKind(payloadId: String): BulletinRetractByKindPayload? =
+        pendingRetractByKind[payloadId]
 
     suspend fun isTombstoned(id: String): Boolean = tombstoneDao.countById(id) > 0
 

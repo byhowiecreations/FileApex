@@ -597,13 +597,7 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             runCatching {
                 if (deviceId == LocalIdentity.LOCAL_DEVICE_ID) {
-                    LocalDeviceNameStore.apply(trimmed)
-                    // Cloud first so peer firestore views update; LAN fan-out next.
-                    // Never refresh presence before publish — peers still hold the old name.
-                    runCatching {
-                        GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
-                    }
-                    FileApexServices.pairingCoordinator.broadcastSelfIdentity()
+                    com.fileapex.domain.device.DeviceNameCoordinator.saveLocalBroadcastName(trimmed)
                     _uiState.update {
                         it.copy(
                             localDeviceName = trimmed,
@@ -611,20 +605,7 @@ class DevicesViewModel : ViewModel() {
                         )
                     }
                 } else {
-                    val peer = repository.getDevice(deviceId)
-                        ?: error(AppI18n.t("device_not_found"))
-                    runCatching {
-                        FileApexServices.client.postRemoteRename(
-                            host = peer.lastKnownIp,
-                            port = peer.port,
-                            newName = trimmed
-                        )
-                    }
-                    repository.rename(deviceId, trimmed)
-                    runCatching {
-                        GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
-                    }
-                    presence.refreshOnlineSnapshot()
+                    com.fileapex.domain.device.DeviceNameCoordinator.renamePeerDevice(deviceId, trimmed)
                     _uiState.update {
                         it.copy(statusMessage = AppI18n.t("renamed_synced", trimmed))
                     }

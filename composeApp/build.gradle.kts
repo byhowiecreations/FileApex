@@ -1031,7 +1031,10 @@ private fun prepareCurrentDirectory(
         if (preserveDmgFiles && entry.isFile && entry.extension.equals("xpi", ignoreCase = true)) {
             return@forEach
         }
-        if (preserveMacApp && entry.name == "FileApex.app") {
+        if (preserveDmgFiles && entry.isFile && entry.extension.equals("apk", ignoreCase = true)) {
+            return@forEach
+        }
+        if ((preserveMacApp || preserveDmgFiles) && entry.name == "FileApex.app") {
             return@forEach
         }
         entry.deleteRecursively()
@@ -1550,12 +1553,12 @@ tasks.register("packageIntelDmg") {
 
 /**
  * Package browser-extension/ as FileApex-v{version}.xpi and move to current/.
- * Invoked only by [copyAllBuildsFinalize] (full ship) or when run directly:
+ * Invoked only by [copyCompleteBuilds] / [copyAllBuildsFinalize], or when run directly:
  *   ./gradlew shipFirefoxExtension
  */
 tasks.register("shipFirefoxExtension") {
     group = "distribution"
-    description = "Package Firefox extension XPI into current/ (standalone or via copyAllBuilds only)"
+    description = "Package Firefox extension XPI into current/ (standalone or copyCompleteBuilds only)"
     doLast {
         val xpi = layout.buildDirectory.file("firefox-extension/FileApex-v$fileapexVersionName.xpi").get().asFile
         packageFirefoxExtensionXpi(xpi)
@@ -1572,17 +1575,15 @@ tasks.register("shipFirefoxExtension") {
 
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Full ship into current/ (Mac: APK + DMGs + XPI; Windows: EXE + XPI). Platform-only builds skip XPI."
+    description = "Ship into current/ (Mac: APK + DMGs; Windows: EXE). Does not build the Firefox XPI."
     if (isMacHost()) {
         // Only build the APK in-process; desktop DMGs are spawned as explicit subprocesses.
         dependsOn("assembleRelease", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
-        finalizedBy("packageSiliconDmg", "copyAllBuildsFinalize")
+        finalizedBy("packageSiliconDmg")
     } else if (isWindowsHost()) {
         dependsOn("createReleaseDistributable", "packageInnoExe")
-        finalizedBy("copyAllBuildsFinalize")
     } else {
         dependsOn("assembleRelease", "verifyReleaseApkSigned")
-        finalizedBy("copyAllBuildsFinalize")
     }
 
     doLast {
@@ -1596,14 +1597,25 @@ tasks.register("copyAllBuilds") {
     }
 }
 
-/** Ships one XPI at the end of copyAllBuilds only — not Mac/Android/Windows partial builds. */
+/**
+ * Full ship: [copyAllBuilds] plus Firefox XPI. Use only when you want every artifact.
+ * For XPI alone: ./gradlew shipFirefoxExtension
+ */
+tasks.register("copyCompleteBuilds") {
+    group = "distribution"
+    description = "Full ship into current/ (platform builds + Firefox XPI)"
+    dependsOn("copyAllBuilds")
+    finalizedBy("copyAllBuildsFinalize")
+}
+
+/** Ships Firefox XPI — wired to [copyCompleteBuilds] only, not Mac/Android/Windows partial builds. */
 tasks.register("copyAllBuildsFinalize") {
     group = "distribution"
-    description = "Ship Firefox XPI once at the end of copyAllBuilds"
+    description = "Ship Firefox XPI (copyCompleteBuilds only)"
     dependsOn("shipFirefoxExtension")
     onlyIf {
         val requested = gradle.startParameter.taskNames
-        requested.any { it.endsWith("copyAllBuilds") }
+        requested.any { it.endsWith("copyCompleteBuilds") }
     }
     if (isMacHost()) {
         mustRunAfter("packageIntelDmg")

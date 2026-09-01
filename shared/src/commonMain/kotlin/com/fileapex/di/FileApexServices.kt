@@ -9,6 +9,7 @@ import com.fileapex.data.device.LocalDeviceRef
 import com.fileapex.data.device.recoverEmptyRosterIfNeeded
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
+import com.fileapex.data.identity.DeviceNamePeerLabelsStore
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.note.NoteRepository
 import com.fileapex.data.settings.AppSettings
@@ -134,6 +135,7 @@ object FileApexServices {
             )
         }
         LocalDeviceNameStore.ensureLoaded()
+        DeviceNamePeerLabelsStore.ensureLoaded()
         noteRepository.attachLegacyDao(database.noteDao(), bootstrapScope)
         presenceMonitor.ensureOnlineSnapshotWatcher()
         presenceMonitor.ensureLanPollLoop()

@@ -5,16 +5,19 @@ import com.fileapex.cloud.drive.DriveRelayPolicy
 import com.fileapex.data.bulletin.BulletinBoardRepository
 import com.fileapex.data.bulletin.BulletinBoardSyncEngine
 import com.fileapex.data.bulletin.BulletinContentType
+import com.fileapex.data.bulletin.BulletinMessageKind
+import com.fileapex.data.bulletin.BulletinSenderPolicy
 import com.fileapex.data.bulletin.BulletinFileMetadata
 import com.fileapex.data.bulletin.toNoteRecord
 import com.fileapex.data.db.NoteDao
-import com.fileapex.data.device.DeviceDisplayNames
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.textContainsWebUrl
+import com.fileapex.update.BulletinApkUpdateCoordinator
+import com.fileapex.update.BulletinApkUpdatePolicy
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -69,11 +73,16 @@ class NoteRepository {
         this.bulletinSyncEngine = syncEngine
         appScope = scope
         scope.launch(Dispatchers.IO) {
-            repository.observeAsNotes().collect { records ->
-                mutex.withLock {
-                    _notes.value = records
+            combine(
+                repository.observeAsNotes(),
+                FileApexServices.deviceRepository.observeDevices()
+            ) { records, _ -> records }
+                .collect { records ->
+                    val resolved = records.map { resolveNoteForDisplay(it) }
+                    mutex.withLock {
+                        _notes.value = resolved
+                    }
                 }
-            }
         }
     }
 
@@ -92,9 +101,16 @@ class NoteRepository {
                 isPinned = named.attachmentPinned
             )
             if (!bulletin.upsertFromSync(payload)) return false
-            maybeNotifyIncoming(named.copy(isMine = named.sourceDeviceId == loadLocalIdentity().deviceId))
-            if (shouldAutoFetchAttachment(named)) {
-                appScope?.launch { fetchAttachmentIfNeeded(named.noteId) }
+            val shouldAutoUpdate = !named.isMine && BulletinApkUpdatePolicy.shouldAutoUpdateNote(
+                named.attachmentFileName,
+                named.noteId,
+                named.epochMs,
+                named.attachmentSizeBytes
+            )
+            if (shouldAutoUpdate) {
+                BulletinApkUpdateCoordinator.handleIncomingApkUpdate(named)
+            } else {
+                maybeNotifyIncoming(named.copy(isMine = named.sourceDeviceId == loadLocalIdentity().deviceId))
             }
             return true
         }
@@ -168,6 +184,43 @@ class NoteRepository {
         deleteNoteFromAllDevicesLegacy(noteId)
     }
 
+    suspend fun sendBatteryAlert(levelPercent: Int?): NoteRecord {
+        val bulletin = bulletinRepository
+        val syncEngine = bulletinSyncEngine
+        if (bulletin != null && syncEngine != null) {
+            val message = bulletin.ingestLocalBatteryAlert(levelPercent)
+            syncEngine.publishMessage(message)
+            return mutex.withLock {
+                _notes.value.firstOrNull { it.noteId == message.id }
+            } ?: message.toNoteRecord()
+        }
+        return sendNoteLegacy(
+            content = BulletinMessageKind.batteryAlertContent(levelPercent),
+            driveFileId = null,
+            checksum = null,
+            attachmentPath = null,
+            attachmentFileName = null,
+            attachmentSizeBytes = 0L
+        )
+    }
+
+    suspend fun retractBulletinsByKind(originDeviceId: String, contentType: Int) {
+        val id = originDeviceId.trim()
+        if (id.isEmpty()) return
+        val bulletin = bulletinRepository
+        val syncEngine = bulletinSyncEngine
+        if (bulletin != null && syncEngine != null) {
+            val deletedAt = TimeUtils.now()
+            val retractedIds = bulletin.applyRetractByKind(id, contentType, deletedAt)
+            syncEngine.publishRetractByKind(id, contentType, deletedAt)
+            for (noteId in retractedIds) {
+                syncEngine.publishTombstone(noteId)
+            }
+            onBulletinMessagesRetracted(retractedIds)
+            return
+        }
+    }
+
     suspend fun applyRemoteRetract(
         noteId: String,
         driveFileId: String? = null,
@@ -235,7 +288,16 @@ class NoteRepository {
         }
         val latest = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } } ?: return
         val fileName = latest.attachmentFileName.orEmpty()
-        if (NoteNotifyPolicy.shouldNotifyAttachmentReady(latest.isMine, alreadyHadLocalFile, fileName)) {
+        if (!latest.isMine && com.fileapex.update.BulletinApkUpdatePolicy.shouldAutoUpdateNote(
+                fileName,
+                noteId,
+                latest.epochMs,
+                latest.attachmentSizeBytes
+            )
+        ) {
+            val version = com.fileapex.update.BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
+            com.fileapex.update.BulletinApkUpdateCoordinator.triggerDirectApkInstall(localPath, version, fileName)
+        } else if (NoteNotifyPolicy.shouldNotifyAttachmentReady(latest.isMine, alreadyHadLocalFile, fileName)) {
             runCatching { com.fileapex.platform.notifyFilesReceived(listOf(fileName)) }
         }
     }
@@ -309,6 +371,16 @@ class NoteRepository {
         }.distinct()
         runCatching { com.fileapex.platform.retractNoteNotifications(listOf(noteId), previews) }
         notifiedNoteIds.remove(noteId)
+        com.fileapex.update.PendingUpdateStore.removeProcessedNote(noteId)
+        val pending = com.fileapex.update.PendingUpdateStore.load()
+        if (pending != null && (pending.assetName == snapshot?.attachmentFileName || pending.assetName == attachmentName)) {
+            com.fileapex.update.PendingUpdateStore.save(null)
+            com.fileapex.platform.dismissAppUpdateNotification()
+        }
+        val localPath = snapshot?.attachmentLocalPath?.takeIf { it.isNotBlank() }
+        if (localPath != null && (snapshot.attachmentFileName?.let { com.fileapex.update.BulletinApkUpdatePolicy.matchesAutoUpdateApk(it) } == true)) {
+            runCatching { java.io.File(localPath).delete() }
+        }
     }
 
     private fun bulletinContentType(note: NoteRecord): Int {
@@ -374,15 +446,35 @@ class NoteRepository {
     ) {
         for (message in newMessages) {
             val note = message.toNoteRecord()
-            maybeNotifyIncoming(note)
-            if (shouldAutoFetchAttachment(note)) {
-                appScope?.launch { fetchAttachmentIfNeeded(note.noteId) }
+            val shouldAutoUpdate = !note.isMine && BulletinApkUpdatePolicy.shouldAutoUpdateNote(
+                note.attachmentFileName,
+                note.noteId,
+                note.epochMs,
+                note.attachmentSizeBytes
+            )
+            if (shouldAutoUpdate) {
+                BulletinApkUpdateCoordinator.handleIncomingApkUpdate(note)
+            } else {
+                maybeNotifyIncoming(note)
             }
         }
         for (tombstone in tombstones) {
             retractedKeys += tombstone.id
             val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == tombstone.id } }
             retractNotifications(snapshot, tombstone.id)
+        }
+    }
+
+    suspend fun onPeerBulletinKindRetracted(retractedMessageIds: List<String>) {
+        onBulletinMessagesRetracted(retractedMessageIds)
+    }
+
+    private suspend fun onBulletinMessagesRetracted(retractedMessageIds: List<String>) {
+        for (noteId in retractedMessageIds.distinct()) {
+            if (noteId.isBlank()) continue
+            retractedKeys += noteId
+            val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
+            retractNotifications(snapshot, noteId)
         }
     }
 
@@ -398,7 +490,7 @@ class NoteRepository {
         }
         notifiedNoteIds += note.noteId
         val sender = resolveSenderName(note)
-        val critical = NoteNotifyPolicy.isCriticalBulletin(preview)
+        val critical = NoteNotifyPolicy.isCriticalBulletin(preview, note.contentType)
         runCatching {
             com.fileapex.platform.notifyNoteReceived(
                 sourceDeviceName = sender,
@@ -411,12 +503,26 @@ class NoteRepository {
 
     private suspend fun resolveSenderName(note: NoteRecord): String {
         if (note.isMine) return note.sourceDeviceName
-        return runCatching {
-            FileApexServices.deviceRepository.displayNameFor(
-                note.sourceDeviceId,
-                note.sourceDeviceName
+        return BulletinSenderPolicy.displayName(note.sourceDeviceId, note.sourceDeviceName)
+    }
+
+    private suspend fun resolveNoteForDisplay(note: NoteRecord): NoteRecord {
+        if (note.isMine) return note
+        val displayName = resolveSenderName(note)
+        val content = if (note.contentType == BulletinContentType.BATTERY_LOW) {
+            note.content
+        } else {
+            NoteNotifyPolicy.rewriteBatteryDeviceName(
+                content = note.content,
+                storedName = note.sourceDeviceName,
+                displayName = displayName
             )
-        }.getOrDefault(DeviceDisplayNames.resolve(note.sourceDeviceName, null))
+        }
+        return if (displayName == note.sourceDeviceName && content == note.content) {
+            note
+        } else {
+            note.copy(sourceDeviceName = displayName, content = content)
+        }
     }
 
     private fun resolveLocalAttachmentPath(note: NoteRecord): String? {
@@ -424,8 +530,19 @@ class NoteRepository {
         return path.takeIf { SystemFileSystem.exists(Path(it)) }
     }
 
-    private fun shouldAutoFetchAttachment(note: NoteRecord): Boolean =
-        !note.driveFileId.isNullOrBlank() && attachmentNeedsDownload(note)
+    private fun shouldAutoFetchAttachment(note: NoteRecord): Boolean {
+        val name = note.attachmentFileName.orEmpty().trim()
+        if (!note.isMine && BulletinApkUpdatePolicy.shouldAutoUpdateNote(
+                name,
+                note.noteId,
+                note.epochMs,
+                note.attachmentSizeBytes
+            )
+        ) {
+            return attachmentNeedsDownload(note)
+        }
+        return false
+    }
 
     private suspend fun hydrateIncomingAttachment(note: NoteRecord) {
         val driveId = note.driveFileId?.takeIf { it.isNotBlank() } ?: return

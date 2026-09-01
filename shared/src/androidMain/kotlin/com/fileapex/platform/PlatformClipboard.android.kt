@@ -14,6 +14,20 @@ actual object PlatformClipboard {
         return readClipboardText(context)
     }
 
+    actual fun getSystemClipboardTimestamp(): Long? {
+        val context = androidAppContextOrNull() ?: return null
+        return runCatching {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                ?: return@runCatching null
+            val clip = clipboard.primaryClip ?: return@runCatching null
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                clip.description?.timestamp?.takeIf { it > 0L }
+            } else {
+                null
+            }
+        }.getOrNull()
+    }
+
     fun readClipboardText(context: Context): String? {
         val focused = ClipboardChangeMonitor.hasWindowFocus()
         if (focused) {

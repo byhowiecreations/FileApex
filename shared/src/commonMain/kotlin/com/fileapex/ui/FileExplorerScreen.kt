@@ -292,6 +292,7 @@ fun FileExplorerScreen(
                                 canNavigateUp = state.canNavigateUp,
                                 isSelectionMode = state.isSelectionMode,
                                 selectedFileIds = state.selectedFileIds,
+                                isRemoteTarget = state.isRemoteTarget,
                                 onNavigateUp = viewModel::navigateUp,
                                 onPaneFolderClick = viewModel::onPaneFolderClick,
                                 onContentDirectoryClick = viewModel::onContentDirectoryClick,
@@ -302,6 +303,9 @@ fun FileExplorerScreen(
                                 onFileToggleSelect = viewModel::toggleFileSelectionDesktop,
                                 onFileExtendSelect = viewModel::extendFileSelection,
                                 onFileActivate = viewModel::activateFile,
+                                onCopyItem = viewModel::copyItem,
+                                onSendItemToDevice = viewModel::sendItemToDevices,
+                                onDownloadItem = viewModel::downloadItem,
                                 contentBottomPadding = if (showCopyFabs) 140.dp else 24.dp,
                                 modifier = Modifier
                                     .weight(1f)
@@ -579,10 +583,12 @@ private fun ExplorerTopBarActions(
             }
         }
         else -> {
-            ExplorerViewModeToggle(
-                viewMode = state.viewMode,
-                onToggle = viewModel::toggleViewMode
-            )
+            if (embeddedInCompactShell) {
+                ExplorerViewModeToggle(
+                    viewMode = state.viewMode,
+                    onToggle = viewModel::toggleViewMode
+                )
+            }
             TextButton(onClick = { viewModel.enterSelectionMode() }) {
                 Text(stringRes("select"))
             }

@@ -22,6 +22,8 @@ actual object PlatformClipboard {
         return ClipboardCopySignals.boundedRaw(text)
     }
 
+    actual fun getSystemClipboardTimestamp(): Long? = null
+
     actual fun setSystemClipboardText(text: String) {
         runCatching {
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard

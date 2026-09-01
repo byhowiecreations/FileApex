@@ -26,5 +26,6 @@ data class ClipboardPayload(
     val fileName: String,
     val sizeBytes: Long,
     val mimeType: String,
-    val isLocalSource: Boolean
+    val isLocalSource: Boolean,
+    val isDirectory: Boolean = false
 )

@@ -46,13 +46,17 @@ class DeviceRepository(
 
     suspend fun displayNameFor(deviceId: String, incomingName: String = ""): String {
         val id = deviceId.trim()
-        val roster = if (id.isEmpty()) {
+        val device = if (id.isEmpty()) {
             null
         } else {
-            getDevice(id)?.deviceName
-                ?: listDevices().firstOrNull { it.deviceId == id }?.deviceName
+            getDevice(id) ?: listDevices().firstOrNull { it.deviceId == id }
         }
-        return DeviceDisplayNames.resolve(incomingName, roster)
+        return DeviceDisplayNames.resolve(
+            incomingName = incomingName,
+            rosterName = device?.deviceName,
+            make = device?.deviceMake.orEmpty(),
+            model = device?.deviceModel.orEmpty()
+        )
     }
 
     suspend fun upsert(device: PairedDeviceEntity) {

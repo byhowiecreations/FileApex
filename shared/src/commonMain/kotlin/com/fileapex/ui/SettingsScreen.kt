@@ -56,7 +56,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.semantics.Role
@@ -115,6 +117,7 @@ import com.fileapex.ui.adaptive.CompactHomeTitleBand
 import com.fileapex.ui.adaptive.CompactHomeTitleStyle
 import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
 import com.fileapex.ui.theme.fileApexTopAppBarColors
+import com.fileapex.platform.supportsDeviceNameSettingsPage
 import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
 import kotlinx.coroutines.delay
 
@@ -135,7 +138,8 @@ private enum class SettingsPage {
     RemoteFileDeletion,
     DesktopLayout,
     WindowsDesign,
-    Language
+    Language,
+    DeviceName
 }
 
 
@@ -204,6 +208,7 @@ fun SettingsScreen(
             onOpenPinRequired = { page = SettingsPage.PinRequired },
             onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
             onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
+            onOpenDeviceName = { page = SettingsPage.DeviceName },
             onOpenLanguage = { page = SettingsPage.Language },
             onOpenNotifications = { page = SettingsPage.Notifications },
             onOpenThemes = { page = SettingsPage.Themes },
@@ -389,6 +394,13 @@ fun SettingsScreen(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root }
         )
+        SettingsPage.DeviceName -> DeviceNameSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root },
+            onDraftChange = viewModel::setDeviceNameDraft,
+            onSave = viewModel::saveDeviceName
+        )
     }
 }
 
@@ -404,6 +416,7 @@ private fun SettingsRootPage(
     onOpenPinRequired: () -> Unit,
     onOpenBackgroundPersistence: () -> Unit,
     onOpenAutoLaunchOnReboot: () -> Unit,
+    onOpenDeviceName: () -> Unit,
     onOpenLanguage: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenThemes: () -> Unit,
@@ -470,6 +483,13 @@ private fun SettingsRootPage(
                             title = stringRes("auto_launch_on_reboot"),
                             subtitle = if (state.autoLaunchOnReboot) stringRes("on") else stringRes("off"),
                             onClick = onOpenAutoLaunchOnReboot
+                        )
+                    }
+                    if (supportsDeviceNameSettingsPage()) {
+                        SettingsNavItem(
+                            title = stringRes("device_name"),
+                            subtitle = state.deviceNameBroadcasting.ifBlank { stringRes("paired_device") },
+                            onClick = onOpenDeviceName
                         )
                     }
                     SettingsNavItem(
@@ -1242,6 +1262,110 @@ private fun localizedPinIdle(timeout: PinIdleTimeout): String = when (timeout) {
     PinIdleTimeout.OneMinute -> AppI18n.t("pin_idle_1m")
     PinIdleTimeout.FiveMinutes -> AppI18n.t("pin_idle_5m")
     PinIdleTimeout.TenMinutes -> AppI18n.t("pin_idle_10m")
+}
+
+@Composable
+private fun DeviceNameSettingsPage(
+    state: com.fileapex.presentation.SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onDraftChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    val broadcast = state.deviceNameBroadcasting.ifBlank { stringRes("paired_device") }
+    SettingsPageShell(
+        title = stringRes("device_name"),
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
+        ) {
+            Text(
+                text = stringRes("device_name_page_desc"),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = AppI18n.t("currently_broadcasting_as", broadcast),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.titleSmall
+            )
+            if (state.deviceNameClusterSync.isNotBlank() &&
+                !state.deviceNameClusterSync.equals(broadcast, ignoreCase = true)
+            ) {
+                Text(
+                    text = AppI18n.t("device_name_cluster_sync", state.deviceNameClusterSync),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            OutlinedTextField(
+                value = state.deviceNameDraft,
+                onValueChange = onDraftChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                singleLine = true,
+                label = { Text(stringRes("device_name_field_label")) },
+                supportingText = state.deviceNameError?.let { err ->
+                    { Text(text = err, color = MaterialTheme.colorScheme.error) }
+                } ?: {
+                    Text(stringRes("device_name_alphanumeric_hint"))
+                },
+                isError = state.deviceNameError != null,
+                keyboardOptions = KeyboardOptions.Default
+            )
+            Button(
+                onClick = onSave,
+                enabled = !state.deviceNameSaveBusy &&
+                    state.deviceNameDraft.trim().isNotEmpty() &&
+                    !state.deviceNameDraft.trim().equals(broadcast, ignoreCase = true),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                if (state.deviceNameSaveBusy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(stringRes("device_name_save"))
+            }
+            state.deviceNameStatus?.let { status ->
+                Text(
+                    text = status,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (state.deviceNamePeerLabels.isNotEmpty()) {
+                Text(
+                    text = stringRes("device_name_peer_labels_title"),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                state.deviceNamePeerLabels.forEach { label ->
+                    val peerLabel = label.peerDeviceName.ifBlank { label.peerDeviceId }
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                AppI18n.t("device_name_peer_label_row", peerLabel, label.assignedName),
+                                softWrap = true
+                            )
+                        }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
 }
 
 @Composable

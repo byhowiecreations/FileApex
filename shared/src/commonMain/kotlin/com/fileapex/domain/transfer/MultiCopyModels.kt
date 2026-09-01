@@ -18,6 +18,7 @@ sealed interface MultiCopySource {
     val fileName: String
     val sizeBytes: Long
     val absolutePath: String
+    val isDirectory: Boolean
     /**
      * Destination path relative to the peer receive root, preserving folder structure.
      * Flat files use [fileName]; folder drops use `FolderName/sub/file.ext`.
@@ -28,6 +29,7 @@ sealed interface MultiCopySource {
         override val fileName: String,
         override val sizeBytes: Long,
         override val absolutePath: String,
+        override val isDirectory: Boolean = false,
         override val relativeDestPath: String = fileName
     ) : MultiCopySource
 
@@ -37,6 +39,7 @@ sealed interface MultiCopySource {
         override val absolutePath: String,
         val host: String,
         val port: Int,
+        override val isDirectory: Boolean = false,
         override val relativeDestPath: String = fileName
     ) : MultiCopySource
 }

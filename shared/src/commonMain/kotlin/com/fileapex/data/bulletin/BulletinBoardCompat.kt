@@ -56,6 +56,7 @@ fun MessageEntity.toNoteRecord(): NoteRecord {
         attachmentSizeBytes = attachmentSizeBytes,
         attachmentPinned = pinned,
         attachmentLocalPath = attachmentLocalPath,
-        attachmentPreviewBase64 = previewBase64
+        attachmentPreviewBase64 = previewBase64,
+        contentType = contentType
     )
 }

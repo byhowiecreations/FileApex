@@ -42,6 +42,33 @@ class MultiCopyBroadcastEngine(
             is MultiCopySource.Local -> source.verifiedFromDisk()
             is MultiCopySource.Remote -> source
         }
+        if (verifiedSource.isDirectory) {
+            val failures = linkedMapOf<String, String>()
+            val succeeded = linkedSetOf<String>()
+            for (destination in destinations) {
+                val outcome = runCatching {
+                    when (destination) {
+                        is MultiCopyDestination.LocalDevice -> {
+                            java.io.File(destination.absolutePath).mkdirs()
+                        }
+                        is MultiCopyDestination.RemoteDevice -> {
+                            client.createDirectory(destination.host, destination.port, destination.absolutePath)
+                        }
+                    }
+                }
+                if (outcome.isSuccess) {
+                    succeeded += destination.deviceId
+                } else {
+                    failures[destination.deviceId] = outcome.exceptionOrNull()?.message
+                        ?: AppI18n.t("transfer_failed_on", destination.deviceName)
+                }
+            }
+            return@coroutineScope MultiCopyResult(
+                fileName = verifiedSource.fileName,
+                succeededDeviceIds = succeeded.toSet(),
+                failures = failures.toMap()
+            )
+        }
         val plans = destinations.map { destination ->
             DestPlan(
                 destination = destination,

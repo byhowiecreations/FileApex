@@ -5,12 +5,14 @@ object BulletinContentType {
     const val LINK = 1
     const val IMAGE_PREVIEW = 2
     const val FILE_METADATA = 3
+    const val BATTERY_LOW = 4
 }
 
 object BulletinPayloadType {
     const val MESSAGE = 0
     const val TOMBSTONE = 1
     const val ACK = 2
+    const val RETRACT_BY_KIND = 3
 }
 
 object BulletinBoardPolicy {

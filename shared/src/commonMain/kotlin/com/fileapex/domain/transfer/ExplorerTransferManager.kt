@@ -2,6 +2,7 @@ package com.fileapex.domain.transfer
 
 import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.data.identity.LocalIdentity
+import com.fileapex.di.FileApexServices
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.i18n.AppI18n
 import com.fileapex.util.NetworkUtils
@@ -65,23 +66,52 @@ class ExplorerTransferManager(
         return transferManager.buildInAppDeviceOptions(sourceDeviceId)
     }
 
-    fun sourcesFrom(items: List<RemoteFileItem>): List<MultiCopySource> {
-        return items.map { item ->
+    suspend fun sourcesFrom(items: List<RemoteFileItem>): List<MultiCopySource> {
+        val result = mutableListOf<MultiCopySource>()
+        for (item in items) {
             when (target) {
-                is BrowseTarget.Local -> MultiCopySource.Local(
-                    fileName = item.name,
-                    sizeBytes = item.sizeBytes,
-                    absolutePath = item.absolutePath
-                )
-                is BrowseTarget.Remote -> MultiCopySource.Remote(
-                    fileName = item.name,
-                    sizeBytes = item.sizeBytes,
-                    absolutePath = item.absolutePath,
-                    host = target.host,
-                    port = target.port
-                )
+                is BrowseTarget.Local -> {
+                    if (item.isDirectory) {
+                        result.addAll(LocalTransferTree.expandAbsolutePaths(listOf(item.absolutePath)))
+                    } else {
+                        result.add(
+                            MultiCopySource.Local(
+                                fileName = item.name,
+                                sizeBytes = item.sizeBytes,
+                                absolutePath = item.absolutePath,
+                                isDirectory = false,
+                                relativeDestPath = item.name
+                            )
+                        )
+                    }
+                }
+                is BrowseTarget.Remote -> {
+                    if (item.isDirectory) {
+                        result.addAll(
+                            FileApexServices.transferService.listRemoteRecursively(
+                                host = target.host,
+                                port = target.port,
+                                baseRemotePath = item.absolutePath,
+                                relativePrefix = item.name
+                            )
+                        )
+                    } else {
+                        result.add(
+                            MultiCopySource.Remote(
+                                fileName = item.name,
+                                sizeBytes = item.sizeBytes,
+                                absolutePath = item.absolutePath,
+                                host = target.host,
+                                port = target.port,
+                                isDirectory = false,
+                                relativeDestPath = item.name
+                            )
+                        )
+                    }
+                }
             }
         }
+        return result
     }
 
     suspend fun sendToDevices(

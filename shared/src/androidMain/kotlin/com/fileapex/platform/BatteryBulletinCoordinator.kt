@@ -5,7 +5,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.fileapex.data.identity.LocalDeviceNameStore
+import com.fileapex.data.bulletin.BulletinContentType
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +30,6 @@ import kotlin.math.roundToInt
 object BatteryBulletinCoordinator {
     private const val TAG = "BatteryBulletin"
     private const val PREFS_NAME = "fileapex_battery_bulletin"
-    private const val KEY_ACTIVE_NOTE_ID = "active_low_battery_note_id"
     private const val KEY_ALERTED_THIS_CYCLE = "alerted_this_discharge_cycle"
     private const val KEY_LAST_ALERTED_LEVEL = "last_alerted_level_percent"
 
@@ -119,11 +118,10 @@ object BatteryBulletinCoordinator {
                     }
                     return@runCatching
                 }
-                val alreadyAlerted = isAlertedThisCycle(context) || readActiveNoteId(context) != null
                 if (!BatteryBulletinPolicy.shouldPostAlert(
                         levelPercent = snapshot.levelPercent,
                         charging = false,
-                        alreadyAlertedThisCycle = alreadyAlerted
+                        alreadyAlertedThisCycle = isAlertedThisCycle(context)
                     )
                 ) {
                     return@runCatching
@@ -138,7 +136,7 @@ object BatteryBulletinCoordinator {
 
     private suspend fun postLowBatteryBulletin(context: Context, knownLevel: Int?) {
         synchronized(lock) {
-            if (postInFlight || readActiveNoteIdLocked(context) != null || isAlertedThisCycleLocked(context)) {
+            if (postInFlight || isAlertedThisCycleLocked(context)) {
                 Log.i(TAG, "Low battery bulletin already active - skipping duplicate")
                 return
             }
@@ -150,20 +148,12 @@ object BatteryBulletinCoordinator {
                 return
             }
             val level = knownLevel ?: readBatteryLevelPercent(context)
-            val deviceName = LocalDeviceNameStore.current()
-                .ifBlank { loadLocalIdentity().deviceName }
-                .ifBlank { "This device" }
-            val message = if (level != null) {
-                "The battery level is $level% on $deviceName"
-            } else {
-                "The battery is low on $deviceName"
-            }
-            val note = FileApexServices.noteRepository.sendNote(content = message)
+            val note = FileApexServices.noteRepository.sendBatteryAlert(level)
             if (isDevicePluggedIn(context)) {
-                FileApexServices.noteRepository.deleteNoteFromAllDevices(note.noteId)
+                retractIfNeeded(context, reason = "charging during post")
                 Log.i(TAG, "Retracted low battery bulletin immediately (charging during post)")
             } else {
-                markAlerted(context, note.noteId, level)
+                markAlerted(context, level)
                 Log.i(TAG, "Posted low battery bulletin noteId=${note.noteId} level=${level ?: "unknown"}")
             }
         } finally {
@@ -172,9 +162,10 @@ object BatteryBulletinCoordinator {
     }
 
     private suspend fun retractIfNeeded(context: Context, reason: String) {
-        val noteId = consumeActiveNoteId(context) ?: return
-        FileApexServices.noteRepository.deleteNoteFromAllDevices(noteId)
-        Log.i(TAG, "Retracted low battery bulletin noteId=$noteId ($reason)")
+        val selfId = runCatching { loadLocalIdentity().deviceId }.getOrDefault("")
+        if (selfId.isEmpty()) return
+        FileApexServices.noteRepository.retractBulletinsByKind(selfId, BulletinContentType.BATTERY_LOW)
+        Log.i(TAG, "Retracted low battery bulletins for $selfId ($reason)")
     }
 
     private fun registerDynamicReceiver(context: Context) {
@@ -207,48 +198,22 @@ object BatteryBulletinCoordinator {
 
     private fun isDevicePluggedIn(context: Context): Boolean = currentSnapshot(context).charging
 
-    private fun readActiveNoteId(context: Context): String? {
-        synchronized(lock) {
-            return readActiveNoteIdLocked(context)
-        }
-    }
-
-    private fun readActiveNoteIdLocked(context: Context): String? {
-        return context.applicationContext
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_ACTIVE_NOTE_ID, null)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-    }
-
     private fun isAlertedThisCycleLocked(context: Context): Boolean {
         return context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_ALERTED_THIS_CYCLE, false)
     }
 
-    private fun markAlerted(context: Context, noteId: String, level: Int?) {
+    private fun markAlerted(context: Context, level: Int?) {
         synchronized(lock) {
             val editor = context.applicationContext
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
-                .putString(KEY_ACTIVE_NOTE_ID, noteId)
                 .putBoolean(KEY_ALERTED_THIS_CYCLE, true)
             if (level != null) {
                 editor.putInt(KEY_LAST_ALERTED_LEVEL, level)
             }
             editor.apply()
-        }
-    }
-
-    private fun consumeActiveNoteId(context: Context): String? {
-        synchronized(lock) {
-            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val noteId = prefs.getString(KEY_ACTIVE_NOTE_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
-            if (noteId != null) {
-                prefs.edit().remove(KEY_ACTIVE_NOTE_ID).apply()
-            }
-            return noteId
         }
     }
 

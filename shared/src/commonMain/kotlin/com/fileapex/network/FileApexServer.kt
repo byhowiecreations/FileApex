@@ -171,8 +171,11 @@ class FileApexServer(
                             return@runCatching
                         }
                         withContext(Dispatchers.IO) {
-                            LocalDeviceNameStore.apply(trimmed)
-                            FileApexServices.pairingCoordinator.broadcastSelfIdentity()
+                            com.fileapex.domain.device.DeviceNameCoordinator.applyRemoteRename(
+                                assignedName = trimmed,
+                                renamedByDeviceId = request.renamedByDeviceId,
+                                renamedByDeviceName = request.renamedByDeviceName
+                            )
                         }
                         onLog("Local device renamed to $trimmed via cluster request", null)
                         call.respond(HttpStatusCode.OK)
@@ -512,12 +515,40 @@ class FileApexServer(
                             .substringAfterLast('/')
                             .substringAfterLast('\\')
                         if (receivedName.isNotBlank()) {
-                            notifyFilesReceived(listOf(receivedName))
+                            val uploadFile = java.io.File(finalPath)
+                            if (com.fileapex.update.BulletinApkUpdatePolicy.shouldAutoUpdateDirectFile(
+                                    receivedName,
+                                    uploadFile.length(),
+                                    uploadFile.lastModified()
+                                )
+                            ) {
+                                val version = com.fileapex.update.BulletinApkUpdatePolicy.extractVersionFromApkName(receivedName) ?: "v0.0.0"
+                                com.fileapex.update.BulletinApkUpdateCoordinator.triggerDirectApkInstall(finalPath, version, receivedName)
+                            } else {
+                                notifyFilesReceived(listOf(receivedName))
+                            }
                         }
                         call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
                     }.onFailure { error ->
                         onLog("POST /api/v1/files/upload failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "upload_failed")
+                    }
+                }
+
+                post("/api/v1/files/mkdir") {
+                    runCatching {
+                        val pathStr = call.request.queryParameters["targetPath"]
+                            ?: return@runCatching call.respond(HttpStatusCode.BadRequest, "Missing targetPath")
+                        if (!isPathAllowed(pathStr)) {
+                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
+                            return@runCatching
+                        }
+                        val dir = java.io.File(pathStr)
+                        dir.mkdirs()
+                        call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/files/mkdir failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "mkdir_failed")
                     }
                 }
 

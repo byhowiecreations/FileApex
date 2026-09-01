@@ -19,6 +19,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
 
 /**
  * Schedules background update checks when Check for Updates is enabled,
@@ -136,6 +138,15 @@ object AppUpdateCoordinator {
                 requireEnabled = false,
                 toastFeedback = true
             )
+            return
+        }
+        val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }
+        if (localPath != null && SystemFileSystem.exists(Path(localPath))) {
+            _statusMessage.value = AppI18n.t("installing_update", offer.remoteVersion)
+            dismissAppUpdateNotification()
+            PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion)
+            setPendingOffer(null)
+            _showUpdateSheet.value = false
             return
         }
         if (downloadInFlight) {
@@ -297,14 +308,21 @@ object AppUpdateCoordinator {
 
     private fun dropStalePendingOffer() {
         val offer = _pendingUpdate.value ?: PendingUpdateStore.load() ?: return
-        if (isRemoteVersionNewer(currentAppVersionName(), offer.remoteVersion)) {
+        if (!isRemoteVersionNewer(currentAppVersionName(), offer.remoteVersion)) {
+            setPendingOffer(null)
+            dismissAppUpdateNotification()
+            return
+        }
+        val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }
+        if (localPath != null && SystemFileSystem.exists(Path(localPath))) {
             if (_pendingUpdate.value == null) {
                 _pendingUpdate.value = offer
             }
             return
         }
-        setPendingOffer(null)
-        dismissAppUpdateNotification()
+        if (_pendingUpdate.value == null) {
+            _pendingUpdate.value = offer
+        }
     }
 
     private fun isOfferSkipped(offer: PendingUpdateOffer): Boolean {

@@ -17,10 +17,24 @@ object DeviceDisplayNames {
 
     fun isPlaceholder(name: String): Boolean = isFactory(name, "", "")
 
-    fun resolve(incomingName: String, rosterName: String?): String {
-        if (!isPlaceholder(incomingName)) return incomingName.trim()
-        val roster = rosterName.orEmpty()
-        if (!isPlaceholder(roster)) return roster.trim()
+    fun resolve(
+        incomingName: String,
+        rosterName: String?,
+        make: String = "",
+        model: String = ""
+    ): String {
+        val incoming = incomingName.trim()
+        val roster = rosterName.orEmpty().trim()
+        if (roster.isNotEmpty() && !isPlaceholder(roster)) {
+            when {
+                incoming.isEmpty() || isPlaceholder(incoming) -> return roster
+                (make.isNotEmpty() || model.isNotEmpty()) &&
+                    isFactory(incoming, make, model) &&
+                    !isFactory(roster, make, model) -> return roster
+            }
+        }
+        if (incoming.isNotEmpty() && !isPlaceholder(incoming)) return incoming
+        if (roster.isNotEmpty() && !isPlaceholder(roster)) return roster
         return FALLBACK
     }
 

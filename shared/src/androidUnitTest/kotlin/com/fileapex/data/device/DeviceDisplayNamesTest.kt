@@ -55,4 +55,17 @@ class DeviceDisplayNamesTest {
         assertEquals(DeviceDisplayNames.FALLBACK, DeviceDisplayNames.resolve("", null))
         assertEquals(DeviceDisplayNames.FALLBACK, DeviceDisplayNames.resolve("Paired Device", ""))
     }
+
+    @Test
+    fun resolvePrefersRosterCustomNameOverIncomingFactory() {
+        assertEquals(
+            "HONOR Magic8 Pro",
+            DeviceDisplayNames.resolve(
+                incomingName = "HONOR MBH-N49",
+                rosterName = "HONOR Magic8 Pro",
+                make = "HONOR",
+                model = "MBH-N49"
+            )
+        )
+    }
 }

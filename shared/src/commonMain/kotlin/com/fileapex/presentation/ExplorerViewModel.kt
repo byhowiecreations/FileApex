@@ -154,7 +154,10 @@ class ExplorerViewModel(
      * Wide left-pane folder: keep sibling list, show that folder's full contents on the right.
      */
     fun onPaneFolderClick(item: RemoteFileItem) {
-        if (_uiState.value.isSelectionMode) return
+        if (_uiState.value.isSelectionMode) {
+            toggleFileSelection(item)
+            return
+        }
         if (!browser.isWithinRoot(item.absolutePath)) {
             _uiState.update {
                 it.copy(statusMessage = AppI18n.t("folder_outside_root"))
@@ -183,7 +186,10 @@ class ExplorerViewModel(
      * Folder inside the content pane (or phone list): drill in; left becomes this folder's parent.
      */
     fun onContentDirectoryClick(item: RemoteFileItem) {
-        if (_uiState.value.isSelectionMode) return
+        if (_uiState.value.isSelectionMode) {
+            toggleFileSelection(item)
+            return
+        }
         if (!browser.isWithinRoot(item.absolutePath)) {
             _uiState.update {
                 it.copy(statusMessage = AppI18n.t("folder_outside_root"))
@@ -363,16 +369,14 @@ class ExplorerViewModel(
         enterSelectionMode(preselect = item)
     }
 
-    /** Desktop: plain click replaces selection with this file. */
+    /** Desktop: plain click replaces selection with this file or folder. */
     fun selectFileExclusive(item: RemoteFileItem) {
-        if (item.isDirectory) return
         selectionAnchorId = item.id
         enterSelectionMode(preselect = item)
     }
 
     /** Desktop: ⌘/Ctrl-click toggles membership in the selection. */
     fun toggleFileSelectionDesktop(item: RemoteFileItem) {
-        if (item.isDirectory) return
         if (!_uiState.value.isSelectionMode) {
             selectionAnchorId = item.id
             enterSelectionMode(preselect = item)
@@ -390,18 +394,17 @@ class ExplorerViewModel(
 
     /** Desktop: Shift-click selects a contiguous range from the anchor. */
     fun extendFileSelection(item: RemoteFileItem) {
-        if (item.isDirectory) return
-        val files = _uiState.value.contentFiles
+        val items = _uiState.value.contentDirectories + _uiState.value.contentFiles
         val anchorId = selectionAnchorId
-        val anchorIndex = anchorId?.let { id -> files.indexOfFirst { it.id == id } } ?: -1
-        val targetIndex = files.indexOfFirst { it.id == item.id }
+        val anchorIndex = anchorId?.let { id -> items.indexOfFirst { it.id == id } } ?: -1
+        val targetIndex = items.indexOfFirst { it.id == item.id }
         if (anchorIndex < 0 || targetIndex < 0) {
             selectFileExclusive(item)
             return
         }
         val from = minOf(anchorIndex, targetIndex)
         val to = maxOf(anchorIndex, targetIndex)
-        val rangeIds = files.subList(from, to + 1).map { it.id }.toSet()
+        val rangeIds = items.subList(from, to + 1).map { it.id }.toSet()
         _uiState.update {
             it.copy(
                 isSelectionMode = true,
@@ -416,6 +419,7 @@ class ExplorerViewModel(
     /** Open / preview a file (Android tap outside selection; desktop double-click). */
     fun activateFile(item: RemoteFileItem) {
         when {
+            item.isDirectory -> onDirectoryClick(item)
             preview.isImageFile(item) -> openImagePreview(item)
             preview.isTextFile(item) -> openTextPreview(item)
             else -> {
@@ -455,7 +459,6 @@ class ExplorerViewModel(
     }
 
     fun toggleFileSelection(item: RemoteFileItem) {
-        if (item.isDirectory) return
         _uiState.update { state ->
             val next = if (item.id in state.selectedFileIds) {
                 state.selectedFileIds - item.id
@@ -469,9 +472,11 @@ class ExplorerViewModel(
         }
     }
 
-    private fun selectedFiles(): List<RemoteFileItem> {
+    fun selectedItems(): List<RemoteFileItem> {
         val ids = _uiState.value.selectedFileIds
-        return _uiState.value.contentFiles.filter { it.id in ids }
+        val all = _uiState.value.contentDirectories + _uiState.value.contentFiles +
+            _uiState.value.paneDirectories + _uiState.value.paneFiles
+        return all.distinctBy { it.id }.filter { it.id in ids }
     }
 
     private fun openImagePreview(item: RemoteFileItem) {
@@ -669,7 +674,30 @@ class ExplorerViewModel(
     }
 
     fun copySelected() {
-        val items = selectedFiles()
+        val items = selectedItems()
+        runCatching {
+            val message = transfers.copySelected(items)
+            _uiState.update {
+                it.copy(
+                    isSelectionMode = false,
+                    selectedFileIds = emptySet(),
+                    canDownloadSelection = false,
+                    canPaste = true,
+                    clipboardLabel = TransferClipboard.label(),
+                    statusMessage = message
+                )
+            }
+        }.onFailure { error ->
+            _uiState.update { it.copy(errorMessage = error.message ?: AppI18n.t("copy_failed")) }
+        }
+    }
+
+    fun copyItem(item: RemoteFileItem) {
+        val items = if (item.id in _uiState.value.selectedFileIds) {
+            selectedItems()
+        } else {
+            listOf(item)
+        }
         runCatching {
             val message = transfers.copySelected(items)
             _uiState.update {
@@ -688,9 +716,25 @@ class ExplorerViewModel(
     }
 
     fun onMultiCopyFabClick() {
-        if (selectedFiles().isEmpty()) {
+        if (selectedItems().isEmpty()) {
             _uiState.update { it.copy(errorMessage = ExplorerActionCopy.ERROR_SELECT_FILES) }
             return
+        }
+        if (!settings.multiCopyIntroAcknowledged.value) {
+            _uiState.update { it.copy(showMultiCopyIntro = true) }
+            return
+        }
+        openMultiCopyPicker()
+    }
+
+    fun sendItemToDevices(item: RemoteFileItem) {
+        if (item.id !in _uiState.value.selectedFileIds) {
+            _uiState.update {
+                it.copy(
+                    isSelectionMode = true,
+                    selectedFileIds = setOf(item.id)
+                )
+            }
         }
         if (!settings.multiCopyIntroAcknowledged.value) {
             _uiState.update { it.copy(showMultiCopyIntro = true) }
@@ -731,7 +775,7 @@ class ExplorerViewModel(
     }
 
     fun confirmMultiCopy() {
-        val items = selectedFiles()
+        val items = selectedItems()
         if (items.isEmpty()) {
             _uiState.update { it.copy(errorMessage = ExplorerActionCopy.ERROR_SELECT_FILES) }
             return
@@ -742,10 +786,10 @@ class ExplorerViewModel(
             _uiState.update { it.copy(errorMessage = AppI18n.t("select_destination_device")) }
             return
         }
-        val sources = transfers.sourcesFrom(items)
         viewModelScope.launch {
             _uiState.update { it.copy(isMultiCopying = true, errorMessage = null) }
             runCatching {
+                val sources = transfers.sourcesFrom(items)
                 transfers.sendOrQueue(sources, selectedDevices)
             }.fold(
                 onSuccess = { outcome ->
@@ -818,9 +862,47 @@ class ExplorerViewModel(
         }
     }
 
+    fun downloadItem(item: RemoteFileItem) {
+        val items = if (item.id in _uiState.value.selectedFileIds) {
+            selectedItems()
+        } else {
+            listOf(item)
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
+            runCatching {
+                transfers.downloadRemote(items)
+            }.fold(
+                onSuccess = { paths ->
+                    _uiState.update {
+                        it.copy(
+                            isDownloading = false,
+                            isSelectionMode = false,
+                            selectedFileIds = emptySet(),
+                            canDownloadSelection = false,
+                            canPaste = TransferClipboard.hasContent(),
+                            statusMessage = if (paths.size == 1) {
+                                AppI18n.t("downloaded_to", paths.first())
+                            } else {
+                                AppI18n.t("downloaded_files_to", paths.size, DownloadsPaths.displayLabel())
+                            }
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isDownloading = false,
+                            errorMessage = error.message ?: AppI18n.t("download_failed")
+                        )
+                    }
+                }
+            )
+        }
+    }
 
     fun downloadSelected() {
-        val items = selectedFiles()
+        val items = selectedItems()
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
             runCatching {

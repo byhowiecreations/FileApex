@@ -2,6 +2,7 @@ package com.fileapex.data.note
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.fileapex.data.bulletin.BulletinContentType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -94,6 +95,15 @@ class NoteNotifyPolicyTest {
         assertTrue(
             NoteNotifyPolicy.isCriticalBulletin("The battery is low on MacBook Pro")
         )
+        assertTrue(
+            NoteNotifyPolicy.isCriticalBulletin("The battery level is 15%.")
+        )
+        assertTrue(
+            NoteNotifyPolicy.isCriticalBulletin(
+                content = "ignored",
+                contentType = BulletinContentType.BATTERY_LOW
+            )
+        )
         assertFalse(NoteNotifyPolicy.isCriticalBulletin("Hello from the office"))
         assertFalse(NoteNotifyPolicy.isCriticalBulletin(""))
     }
@@ -105,5 +115,26 @@ class NoteNotifyPolicyTest {
         assertTrue(emptyTitle.isNotBlank())
         val pairedTitle = NoteNotifyPolicy.notificationTitle("Paired Device")
         assertTrue(pairedTitle.contains("Paired Device"))
+    }
+
+    @Test
+    fun rewriteBatteryDeviceNameSwapsStaleFactoryName() {
+        val original = "The battery level is 15% on HONOR MBH-N49"
+        assertEquals(
+            "The battery level is 15% on HONOR Magic8 Pro",
+            NoteNotifyPolicy.rewriteBatteryDeviceName(
+                content = original,
+                storedName = "HONOR MBH-N49",
+                displayName = "HONOR Magic8 Pro"
+            )
+        )
+        assertEquals(
+            "Hello team",
+            NoteNotifyPolicy.rewriteBatteryDeviceName(
+                content = "Hello team",
+                storedName = "HONOR MBH-N49",
+                displayName = "HONOR Magic8 Pro"
+            )
+        )
     }
 }

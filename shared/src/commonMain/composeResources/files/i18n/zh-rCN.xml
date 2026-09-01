@@ -413,8 +413,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="channel_app_updates">应用更新</string>
     <string name="channel_app_updates_desc">有较新的 FileApex 版本时发出提醒</string>
     <string name="channel_notes_desc">当配对设备发来共享消息、文件或提醒时发出通知</string>
-    <string name="channel_bulletin_critical">紧急提醒</string>
+    <string name="channel_bulletin_critical">电池提醒</string>
     <string name="channel_bulletin_critical_desc">来自配对设备的紧急提醒，例如低电量警告</string>
+    <string name="channel_battery_alerts">电池提醒</string>
+    <string name="channel_battery_alerts_desc">来自配对设备的紧急提醒，例如低电量警告</string>
+    <string name="apk_auto_update_downloading">正在下载 %1$s…</string>
+    <string name="apk_auto_update_ready">更新 %1$s 已准备好安装</string>
     <string name="channel_transfers">文件传输</string>
     <string name="channel_transfers_desc">FileApex 从配对设备接收文件时发出提醒</string>
     <string name="channel_drive_desc">FileApex 通过 Google Drive Relay 发布或取回文件时发出提醒</string>
@@ -564,6 +568,17 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="pin_required_open_device">需要 PIN — 请打开该设备并输入其 PIN</string>
     <string name="name_cannot_be_empty">名称不能为空</string>
     <string name="updating_device_name">正在更新设备名称…</string>
+    <string name="device_name">设备名称</string>
+    <string name="device_name_page_desc">设置本机在设备列表、公告板和已配对设备上的显示名称。重命名会在集群内同步。</string>
+    <string name="currently_broadcasting_as">当前广播名称：%1$s</string>
+    <string name="device_name_field_label">显示名称</string>
+    <string name="device_name_save">保存</string>
+    <string name="device_name_alphanumeric">仅可使用字母和数字（允许空格和连字符）。</string>
+    <string name="device_name_alphanumeric_hint">字母和数字；允许空格和连字符。</string>
+    <string name="device_name_peer_labels_title">来自配对设备的名称</string>
+    <string name="device_name_peer_label_row">%1$s → %2$s</string>
+    <string name="device_name_cluster_sync">集群同步：%1$s</string>
+    <string name="device_name_saved">已保存为 %1$s 并同步到配对设备</string>
     <string name="renamed_synced">已重命名为 %1$s — 已同步到集群</string>
     <string name="rename_failed">重命名失败</string>
     <string name="device_not_found">未找到设备</string>
@@ -727,6 +742,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="diag_uptime_d">%1$s天</string>
     <string name="diag_uptime_h">%1$s小时</string>
     <string name="diag_uptime_m">%1$s分钟</string>
+    <string name="no_handler_saved_to_storage">未找到可打开此文件的应用。已保存到本地存储：%1$s</string>
     <plurals name="paired_cluster_extra">
         <item quantity="other">（+%d 台集群设备）</item>
     </plurals>

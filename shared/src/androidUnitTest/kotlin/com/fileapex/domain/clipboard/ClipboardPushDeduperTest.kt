@@ -52,4 +52,16 @@ class ClipboardPushDeduperTest {
         assertFalse(ClipboardPushDeduper.shouldAllowManualPush("from mac"))
         assertFalse(ClipboardPushDeduper.shouldAllowAutomaticPush("from mac"))
     }
+
+    @Test
+    fun staleClipTimestampIsRejectedFromAutomaticPush() {
+        val oldTimestamp = System.currentTimeMillis() - 300_000L // 5 minutes old
+        val text = "copied long ago"
+        // Fresh clip allowed
+        assertTrue(ClipboardPushDeduper.shouldAllowAutomaticPush("fresh clip", System.currentTimeMillis()))
+        // Stale clip rejected and remembered
+        assertFalse(ClipboardPushDeduper.shouldAllowAutomaticPush(text, oldTimestamp))
+        // Subsequent checks also blocked because it was remembered
+        assertFalse(ClipboardPushDeduper.shouldAllowAutomaticPush(text))
+    }
 }

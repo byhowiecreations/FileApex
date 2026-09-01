@@ -24,10 +24,14 @@ object AndroidNotificationChannels {
     const val APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
     const val NOTE_MESSAGES = "fileapex_note_messages"
-    const val BULLETIN_CRITICAL = "fileapex_bulletin_critical_v2"
+    const val BATTERY_ALERTS = "fileapex_battery_alerts_v1"
+    const val BULLETIN_CRITICAL = BATTERY_ALERTS
     const val DRIVE_RELAY = "fileapex_drive_relay"
     /** Persistent share-server FGS alert — static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
+    private const val LEGACY_BULLETIN_CRITICAL_CHANNEL = "fileapex_bulletin_critical_v2"
+    private const val LEGACY_BULLETIN_CRITICAL_CHANNEL_V1 = "fileapex_bulletin_critical"
+    private const val KEY_BATTERY_ALERTS_MIGRATED = "battery_alerts_v1_channel_migrated"
     private const val LEGACY_SHARE_SERVER_CHANNEL = "fileapex_share_server_active"
     private const val LEGACY_SHARE_SERVER_CHANNEL_V1 = "FileApexServerChannel"
 
@@ -58,18 +62,31 @@ object AndroidNotificationChannels {
             ?.createNotificationChannel(channel)
     }
 
-    fun ensureBulletinCriticalChannel(context: Context) {
+    fun ensureBatteryAlertsChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        migrateLegacyBatteryAlertChannels(context)
         val channel = NotificationChannel(
-            BULLETIN_CRITICAL,
-            com.fileapex.i18n.AppI18n.t("channel_bulletin_critical"),
+            BATTERY_ALERTS,
+            com.fileapex.i18n.AppI18n.t("channel_battery_alerts"),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = com.fileapex.i18n.AppI18n.t("channel_bulletin_critical_desc")
+            description = com.fileapex.i18n.AppI18n.t("channel_battery_alerts_desc")
             enableVibration(true)
         }
-        context.getSystemService(NotificationManager::class.java)
-            ?.createNotificationChannel(channel)
+        manager.createNotificationChannel(channel)
+    }
+
+    fun ensureBulletinCriticalChannel(context: Context) = ensureBatteryAlertsChannel(context)
+
+    fun migrateLegacyBatteryAlertChannels(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_BATTERY_ALERTS_MIGRATED, false)) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        runCatching { manager.deleteNotificationChannel(LEGACY_BULLETIN_CRITICAL_CHANNEL) }
+        runCatching { manager.deleteNotificationChannel(LEGACY_BULLETIN_CRITICAL_CHANNEL_V1) }
+        prefs.edit().putBoolean(KEY_BATTERY_ALERTS_MIGRATED, true).apply()
     }
 
     fun ensureTransferReceiveChannel(context: Context) {

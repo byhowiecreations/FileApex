@@ -9,6 +9,7 @@ private lateinit var identityContext: Context
 
 fun initAndroidLocalIdentity(context: Context) {
     identityContext = context.applicationContext
+    initAndroidDeviceNamePeerLabels(context)
 }
 
 actual fun loadLocalIdentity(): LocalIdentity {

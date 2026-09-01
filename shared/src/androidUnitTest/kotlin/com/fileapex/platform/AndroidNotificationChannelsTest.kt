@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -72,6 +73,14 @@ class AndroidNotificationChannelsTest {
         assertTrue(prefs.getBoolean("share_server_v2_channel_migrated", false))
 
         AndroidNotificationChannels.migrateLegacyShareServerChannels(context)
+    }
+
+    @Test
+    fun testEnsureBatteryAlertsChannelCreated() {
+        AndroidNotificationChannels.ensureBatteryAlertsChannel(context)
+        val channel = notificationManager.getNotificationChannel(AndroidNotificationChannels.BATTERY_ALERTS)
+        assertNotNull(channel)
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
     }
 }
 

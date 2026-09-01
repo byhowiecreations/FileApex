@@ -40,6 +40,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +49,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +60,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +91,7 @@ fun AdaptiveExplorerView(
     canNavigateUp: Boolean,
     isSelectionMode: Boolean,
     selectedFileIds: Set<String>,
+    isRemoteTarget: Boolean = false,
     onNavigateUp: () -> Unit,
     onPaneFolderClick: (RemoteFileItem) -> Unit,
     onContentDirectoryClick: (RemoteFileItem) -> Unit,
@@ -93,6 +101,9 @@ fun AdaptiveExplorerView(
     onFileToggleSelect: (RemoteFileItem) -> Unit = {},
     onFileExtendSelect: (RemoteFileItem) -> Unit = {},
     onFileActivate: (RemoteFileItem) -> Unit = {},
+    onCopyItem: (RemoteFileItem) -> Unit = {},
+    onSendItemToDevice: (RemoteFileItem) -> Unit = {},
+    onDownloadItem: (RemoteFileItem) -> Unit = {},
     onPreviewFirstSplitPaneFolder: () -> Unit = {},
     modifier: Modifier = Modifier,
     contentBottomPadding: Dp = 24.dp
@@ -128,14 +139,23 @@ fun AdaptiveExplorerView(
                 items(paneDirectories, key = { "pane-${it.id}" }) { dir ->
                     val selected = selectedFolderPath != null &&
                         pathsEqual(dir.absolutePath, selectedFolderPath)
-                    ExplorerListRow(
-                        title = dir.name,
-                        subtitle = com.fileapex.i18n.AppI18n.t("folder"),
-                        selected = selected,
-                        leading = {
-                            ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
-                        },
-                        onClick = { onPaneFolderClick(dir) }
+                    val isChecked = dir.id in selectedFileIds
+                    PaneDirectoryRow(
+                        dir = dir,
+                        isSelectedInPane = selected,
+                        isSelectionMode = isSelectionMode,
+                        isChecked = isChecked,
+                        desktopSelection = desktopSelection,
+                        isRemoteTarget = isRemoteTarget,
+                        onClick = { onPaneFolderClick(dir) },
+                        onLongClick = { onFileLongPress(dir) },
+                        onSelectExclusive = { onFileSelectExclusive(dir) },
+                        onToggleSelect = { onFileToggleSelect(dir) },
+                        onExtendSelect = { onFileExtendSelect(dir) },
+                        onActivate = { onPaneFolderClick(dir) },
+                        onCopy = { onCopyItem(dir) },
+                        onSendToDevice = { onSendItemToDevice(dir) },
+                        onDownload = { onDownloadItem(dir) }
                     )
                 }
                 if (paneDirectories.isEmpty() && !canNavigateUp) {
@@ -164,6 +184,7 @@ fun AdaptiveExplorerView(
                 isSelectionMode = isSelectionMode,
                 selectedFileIds = selectedFileIds,
                 desktopSelection = desktopSelection,
+                isRemoteTarget = isRemoteTarget,
                 listPadding = listPadding,
                 modifier = Modifier
                     .weight(0.6f)
@@ -175,7 +196,10 @@ fun AdaptiveExplorerView(
                 onFileSelectExclusive = onFileSelectExclusive,
                 onFileToggleSelect = onFileToggleSelect,
                 onFileExtendSelect = onFileExtendSelect,
-                onFileActivate = onFileActivate
+                onFileActivate = onFileActivate,
+                onCopyItem = onCopyItem,
+                onSendItemToDevice = onSendItemToDevice,
+                onDownloadItem = onDownloadItem
             )
         }
         return
@@ -206,6 +230,7 @@ fun AdaptiveExplorerView(
         isSelectionMode = isSelectionMode,
         selectedFileIds = selectedFileIds,
         desktopSelection = desktopSelection,
+        isRemoteTarget = isRemoteTarget,
         listPadding = listPadding,
         modifier = modifier.fillMaxSize(),
         onNavigateUp = onNavigateUp,
@@ -215,7 +240,10 @@ fun AdaptiveExplorerView(
         onFileSelectExclusive = onFileSelectExclusive,
         onFileToggleSelect = onFileToggleSelect,
         onFileExtendSelect = onFileExtendSelect,
-        onFileActivate = onFileActivate
+        onFileActivate = onFileActivate,
+        onCopyItem = onCopyItem,
+        onSendItemToDevice = onSendItemToDevice,
+        onDownloadItem = onDownloadItem
     )
 }
 
@@ -231,6 +259,7 @@ private fun ExplorerContentPane(
     isSelectionMode: Boolean,
     selectedFileIds: Set<String>,
     desktopSelection: Boolean,
+    isRemoteTarget: Boolean,
     listPadding: PaddingValues,
     modifier: Modifier,
     onNavigateUp: () -> Unit,
@@ -240,7 +269,10 @@ private fun ExplorerContentPane(
     onFileSelectExclusive: (RemoteFileItem) -> Unit,
     onFileToggleSelect: (RemoteFileItem) -> Unit,
     onFileExtendSelect: (RemoteFileItem) -> Unit,
-    onFileActivate: (RemoteFileItem) -> Unit
+    onFileActivate: (RemoteFileItem) -> Unit,
+    onCopyItem: (RemoteFileItem) -> Unit,
+    onSendItemToDevice: (RemoteFileItem) -> Unit,
+    onDownloadItem: (RemoteFileItem) -> Unit
 ) {
     when (viewMode) {
         ExplorerViewMode.List -> ExplorerListContent(
@@ -252,6 +284,7 @@ private fun ExplorerContentPane(
             isSelectionMode = isSelectionMode,
             selectedFileIds = selectedFileIds,
             desktopSelection = desktopSelection,
+            isRemoteTarget = isRemoteTarget,
             listPadding = listPadding,
             modifier = modifier,
             onNavigateUp = onNavigateUp,
@@ -261,7 +294,10 @@ private fun ExplorerContentPane(
             onFileSelectExclusive = onFileSelectExclusive,
             onFileToggleSelect = onFileToggleSelect,
             onFileExtendSelect = onFileExtendSelect,
-            onFileActivate = onFileActivate
+            onFileActivate = onFileActivate,
+            onCopyItem = onCopyItem,
+            onSendItemToDevice = onSendItemToDevice,
+            onDownloadItem = onDownloadItem
         )
         ExplorerViewMode.Grid -> ExplorerGridContent(
             canNavigateUp = canNavigateUp,
@@ -272,6 +308,7 @@ private fun ExplorerContentPane(
             isSelectionMode = isSelectionMode,
             selectedFileIds = selectedFileIds,
             desktopSelection = desktopSelection,
+            isRemoteTarget = isRemoteTarget,
             listPadding = listPadding,
             modifier = modifier,
             onNavigateUp = onNavigateUp,
@@ -281,7 +318,10 @@ private fun ExplorerContentPane(
             onFileSelectExclusive = onFileSelectExclusive,
             onFileToggleSelect = onFileToggleSelect,
             onFileExtendSelect = onFileExtendSelect,
-            onFileActivate = onFileActivate
+            onFileActivate = onFileActivate,
+            onCopyItem = onCopyItem,
+            onSendItemToDevice = onSendItemToDevice,
+            onDownloadItem = onDownloadItem
         )
     }
 }
@@ -297,6 +337,7 @@ private fun ExplorerListContent(
     isSelectionMode: Boolean,
     selectedFileIds: Set<String>,
     desktopSelection: Boolean,
+    isRemoteTarget: Boolean,
     listPadding: PaddingValues,
     modifier: Modifier,
     onNavigateUp: () -> Unit,
@@ -306,7 +347,10 @@ private fun ExplorerListContent(
     onFileSelectExclusive: (RemoteFileItem) -> Unit,
     onFileToggleSelect: (RemoteFileItem) -> Unit,
     onFileExtendSelect: (RemoteFileItem) -> Unit,
-    onFileActivate: (RemoteFileItem) -> Unit
+    onFileActivate: (RemoteFileItem) -> Unit,
+    onCopyItem: (RemoteFileItem) -> Unit,
+    onSendItemToDevice: (RemoteFileItem) -> Unit,
+    onDownloadItem: (RemoteFileItem) -> Unit
 ) {
     LazyColumn(
         modifier = modifier,
@@ -323,14 +367,21 @@ private fun ExplorerListContent(
             }
         }
         items(directories, key = { "dir-${it.id}" }) { dir ->
-            ExplorerListRow(
-                title = dir.name,
-                subtitle = com.fileapex.i18n.AppI18n.t("folder"),
-                selected = false,
-                leading = {
-                    ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
-                },
-                onClick = { onDirectoryClick(dir) }
+            DirectoryListRow(
+                dir = dir,
+                isSelectionMode = isSelectionMode,
+                isSelected = dir.id in selectedFileIds,
+                desktopSelection = desktopSelection,
+                isRemoteTarget = isRemoteTarget,
+                onClick = { onDirectoryClick(dir) },
+                onLongClick = { onFileLongPress(dir) },
+                onSelectExclusive = { onFileSelectExclusive(dir) },
+                onToggleSelect = { onFileToggleSelect(dir) },
+                onExtendSelect = { onFileExtendSelect(dir) },
+                onActivate = { onDirectoryClick(dir) },
+                onCopy = { onCopyItem(dir) },
+                onSendToDevice = { onSendItemToDevice(dir) },
+                onDownload = { onDownloadItem(dir) }
             )
         }
         items(files, key = { "file-${it.id}" }) { file ->
@@ -339,12 +390,16 @@ private fun ExplorerListContent(
                 isSelectionMode = isSelectionMode,
                 isSelected = file.id in selectedFileIds,
                 desktopSelection = desktopSelection,
+                isRemoteTarget = isRemoteTarget,
                 onClick = { onFileOpen(file) },
                 onLongClick = { onFileLongPress(file) },
                 onSelectExclusive = { onFileSelectExclusive(file) },
                 onToggleSelect = { onFileToggleSelect(file) },
                 onExtendSelect = { onFileExtendSelect(file) },
-                onActivate = { onFileActivate(file) }
+                onActivate = { onFileActivate(file) },
+                onCopy = { onCopyItem(file) },
+                onSendToDevice = { onSendItemToDevice(file) },
+                onDownload = { onDownloadItem(file) }
             )
         }
     }
@@ -361,6 +416,7 @@ private fun ExplorerGridContent(
     isSelectionMode: Boolean,
     selectedFileIds: Set<String>,
     desktopSelection: Boolean,
+    isRemoteTarget: Boolean,
     listPadding: PaddingValues,
     modifier: Modifier,
     onNavigateUp: () -> Unit,
@@ -370,7 +426,10 @@ private fun ExplorerGridContent(
     onFileSelectExclusive: (RemoteFileItem) -> Unit,
     onFileToggleSelect: (RemoteFileItem) -> Unit,
     onFileExtendSelect: (RemoteFileItem) -> Unit,
-    onFileActivate: (RemoteFileItem) -> Unit
+    onFileActivate: (RemoteFileItem) -> Unit,
+    onCopyItem: (RemoteFileItem) -> Unit,
+    onSendItemToDevice: (RemoteFileItem) -> Unit,
+    onDownloadItem: (RemoteFileItem) -> Unit
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 108.dp),
@@ -393,15 +452,19 @@ private fun ExplorerGridContent(
             ExplorerGridCell(
                 item = dir,
                 subtitle = com.fileapex.i18n.AppI18n.t("folder"),
-                isSelectionMode = false,
-                isSelected = false,
+                isSelectionMode = isSelectionMode,
+                isSelected = dir.id in selectedFileIds,
                 desktopSelection = desktopSelection,
+                isRemoteTarget = isRemoteTarget,
                 onClick = { onDirectoryClick(dir) },
-                onLongClick = {},
-                onSelectExclusive = {},
-                onToggleSelect = {},
-                onExtendSelect = {},
-                onActivate = { onDirectoryClick(dir) }
+                onLongClick = { onFileLongPress(dir) },
+                onSelectExclusive = { onFileSelectExclusive(dir) },
+                onToggleSelect = { onFileToggleSelect(dir) },
+                onExtendSelect = { onFileExtendSelect(dir) },
+                onActivate = { onDirectoryClick(dir) },
+                onCopy = { onCopyItem(dir) },
+                onSendToDevice = { onSendItemToDevice(dir) },
+                onDownload = { onDownloadItem(dir) }
             )
         }
         items(files, key = { "gfile-${it.id}" }) { file ->
@@ -411,12 +474,16 @@ private fun ExplorerGridContent(
                 isSelectionMode = isSelectionMode,
                 isSelected = file.id in selectedFileIds,
                 desktopSelection = desktopSelection,
+                isRemoteTarget = isRemoteTarget,
                 onClick = { onFileOpen(file) },
                 onLongClick = { onFileLongPress(file) },
                 onSelectExclusive = { onFileSelectExclusive(file) },
                 onToggleSelect = { onFileToggleSelect(file) },
                 onExtendSelect = { onFileExtendSelect(file) },
-                onActivate = { onFileActivate(file) }
+                onActivate = { onFileActivate(file) },
+                onCopy = { onCopyItem(file) },
+                onSendToDevice = { onSendItemToDevice(file) },
+                onDownload = { onDownloadItem(file) }
             )
         }
     }
@@ -470,48 +537,171 @@ private fun EmptyHint(text: String) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ExplorerListRow(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    leading: @Composable () -> Unit,
-    onClick: () -> Unit
+private fun PaneDirectoryRow(
+    dir: RemoteFileItem,
+    isSelectedInPane: Boolean,
+    isSelectionMode: Boolean,
+    isChecked: Boolean,
+    desktopSelection: Boolean,
+    isRemoteTarget: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onSelectExclusive: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onExtendSelect: () -> Unit,
+    onActivate: () -> Unit,
+    onCopy: () -> Unit,
+    onSendToDevice: () -> Unit,
+    onDownload: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .background(
-                if (selected) {
-                    if (isFluxGlass) Color(0x4400E676) else FileApexTeal.copy(alpha = 0.14f)
-                } else Color.Transparent
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        leading()
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+    val rowModifier = explorerItemRowModifier(
+        desktopSelection = desktopSelection,
+        isSelectionMode = isSelectionMode,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        onToggleSelect = onToggleSelect,
+        onExtendSelect = onExtendSelect,
+        onActivate = onActivate,
+        onSecondaryClick = { menuExpanded = true }
+    )
+
+    Box {
+        Row(
+            modifier = rowModifier
+                .background(
+                    if (isFluxGlass) {
+                        if (isChecked) Color(0x4400E676)
+                        else if (isSelectedInPane) Color(0x4400E676)
+                        else Color.Transparent
+                    } else {
+                        if (isChecked) FileApexTeal.copy(alpha = 0.14f)
+                        else if (isSelectedInPane) FileApexTeal.copy(alpha = 0.14f)
+                        else Color.Transparent
+                    }
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                ),
-                color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (isSelectionMode) {
+                SelectionIndicator(selected = isChecked)
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = dir.name,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = if (isSelectedInPane || isChecked) FontWeight.SemiBold else FontWeight.Normal
+                    ),
+                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = com.fileapex.i18n.AppI18n.t("folder"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
+        ItemContextMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            isRemoteTarget = isRemoteTarget,
+            onCopy = onCopy,
+            onSendToDevice = onSendToDevice,
+            onDownload = onDownload
+        )
+    }
+    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DirectoryListRow(
+    dir: RemoteFileItem,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    desktopSelection: Boolean,
+    isRemoteTarget: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onSelectExclusive: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onExtendSelect: () -> Unit,
+    onActivate: () -> Unit,
+    onCopy: () -> Unit,
+    onSendToDevice: () -> Unit,
+    onDownload: () -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val rowModifier = explorerItemRowModifier(
+        desktopSelection = desktopSelection,
+        isSelectionMode = isSelectionMode,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        onToggleSelect = onToggleSelect,
+        onExtendSelect = onExtendSelect,
+        onActivate = onActivate,
+        onSecondaryClick = { menuExpanded = true }
+    )
+
+    Box {
+        Row(
+            modifier = rowModifier
+                .background(
+                    if (isFluxGlass) {
+                        if (isSelected) Color(0x4400E676) else Color.Transparent
+                    } else {
+                        if (isSelected) FileApexTeal.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface
+                    }
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isSelectionMode) {
+                SelectionIndicator(selected = isSelected)
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = dir.name,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                    ),
+                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = com.fileapex.i18n.AppI18n.t("folder"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        ItemContextMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            isRemoteTarget = isRemoteTarget,
+            onCopy = onCopy,
+            onSendToDevice = onSendToDevice,
+            onDownload = onDownload
+        )
     }
     HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
 }
@@ -523,60 +713,75 @@ private fun FileListRow(
     isSelectionMode: Boolean,
     isSelected: Boolean,
     desktopSelection: Boolean,
+    isRemoteTarget: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSelectExclusive: () -> Unit,
     onToggleSelect: () -> Unit,
     onExtendSelect: () -> Unit,
-    onActivate: () -> Unit
+    onActivate: () -> Unit,
+    onCopy: () -> Unit,
+    onSendToDevice: () -> Unit,
+    onDownload: () -> Unit
 ) {
-    val rowModifier = fileRowModifier(
+    var menuExpanded by remember { mutableStateOf(false) }
+    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val rowModifier = explorerItemRowModifier(
         desktopSelection = desktopSelection,
+        isSelectionMode = isSelectionMode,
         onClick = onClick,
         onLongClick = onLongClick,
-        onSelectExclusive = onSelectExclusive,
         onToggleSelect = onToggleSelect,
         onExtendSelect = onExtendSelect,
-        onActivate = onActivate
+        onActivate = onActivate,
+        onSecondaryClick = { menuExpanded = true }
     )
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
 
-    Row(
-        modifier = rowModifier
-            .background(
-                if (isFluxGlass) {
-                    if (isSelected) Color(0x4400E676) else Color.Transparent
-                } else {
-                    if (isSelected) FileApexTeal.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface
-                }
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-
-        if (isSelectionMode) {
-            SelectionIndicator(selected = isSelected)
-            Spacer(modifier = Modifier.width(12.dp))
-        }
-        ExplorerEntryIcon(item = file, modifier = Modifier.size(28.dp))
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+    Box {
+        Row(
+            modifier = rowModifier
+                .background(
+                    if (isFluxGlass) {
+                        if (isSelected) Color(0x4400E676) else Color.Transparent
+                    } else {
+                        if (isSelected) FileApexTeal.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface
+                    }
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = file.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = formatBytes(file.sizeBytes),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (isSelectionMode) {
+                SelectionIndicator(selected = isSelected)
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            ExplorerEntryIcon(item = file, modifier = Modifier.size(28.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = file.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = formatBytes(file.sizeBytes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
+        ItemContextMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            isRemoteTarget = isRemoteTarget,
+            onCopy = onCopy,
+            onSendToDevice = onSendToDevice,
+            onDownload = onDownload
+        )
     }
     HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
 }
@@ -589,97 +794,157 @@ private fun ExplorerGridCell(
     isSelectionMode: Boolean,
     isSelected: Boolean,
     desktopSelection: Boolean,
+    isRemoteTarget: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSelectExclusive: () -> Unit,
     onToggleSelect: () -> Unit,
     onExtendSelect: () -> Unit,
-    onActivate: () -> Unit
+    onActivate: () -> Unit,
+    onCopy: () -> Unit,
+    onSendToDevice: () -> Unit,
+    onDownload: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
-    val interactionModifier = when {
-        item.isDirectory -> Modifier.clickable(onClick = onClick)
-        desktopSelection -> Modifier.desktopFileSelectionClicks(
-            onSelectExclusive = onSelectExclusive,
+    val interactionModifier = if (desktopSelection) {
+        Modifier.desktopItemClicks(
+            isSelectionMode = isSelectionMode,
+            onClick = onClick,
             onToggleSelect = onToggleSelect,
             onExtendSelect = onExtendSelect,
-            onActivate = onActivate
+            onActivate = onActivate,
+            onSecondaryClick = { menuExpanded = true }
         )
-        else -> Modifier.combinedClickable(
+    } else {
+        Modifier.combinedClickable(
             onClick = onClick,
             onLongClick = onLongClick
         )
     }
-    Surface(
-        modifier = interactionModifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(12.dp)),
-        color = if (isFluxGlass) {
-            if (isSelected) Color(0x4400E676) else Color(0x221E2D34)
-        } else {
-            if (isSelected) FileApexTeal.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        },
-        border = if (isFluxGlass) BorderStroke(1.dp, if (isSelected) Color(0xFF00E676) else Color.White.copy(alpha = 0.15f)) else null,
-        tonalElevation = 0.dp
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                ExplorerEntryIcon(item = item, modifier = Modifier.size(40.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-            }
-            if (isSelectionMode && isSelected) {
-                Box(
+
+    Box {
+        Surface(
+            modifier = interactionModifier
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(12.dp)),
+            color = if (isFluxGlass) {
+                if (isSelected) Color(0x4400E676) else Color(0x221E2D34)
+            } else {
+                if (isSelected) FileApexTeal.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            },
+            border = if (isFluxGlass) BorderStroke(1.dp, if (isSelected) Color(0xFF00E676) else Color.White.copy(alpha = 0.15f)) else null,
+            tonalElevation = 0.dp
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    SelectionIndicator(selected = true)
+                    ExplorerEntryIcon(item = item, modifier = Modifier.size(40.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = item.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                if (isSelectionMode && isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                    ) {
+                        SelectionIndicator(selected = true)
+                    }
                 }
             }
+        }
+        ItemContextMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            isRemoteTarget = isRemoteTarget,
+            onCopy = onCopy,
+            onSendToDevice = onSendToDevice,
+            onDownload = onDownload
+        )
+    }
+}
+
+@Composable
+private fun ItemContextMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    isRemoteTarget: Boolean,
+    onCopy: () -> Unit,
+    onSendToDevice: () -> Unit,
+    onDownload: () -> Unit
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest
+    ) {
+        DropdownMenuItem(
+            text = { Text(stringRes("copy_action")) },
+            onClick = {
+                onDismissRequest()
+                onCopy()
+            }
+        )
+        DropdownMenuItem(
+            text = { Text(stringRes("send_to")) },
+            onClick = {
+                onDismissRequest()
+                onSendToDevice()
+            }
+        )
+        if (isRemoteTarget) {
+            DropdownMenuItem(
+                text = { Text(stringRes("download")) },
+                onClick = {
+                    onDismissRequest()
+                    onDownload()
+                }
+            )
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
-private fun fileRowModifier(
+private fun explorerItemRowModifier(
     desktopSelection: Boolean,
+    isSelectionMode: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onSelectExclusive: () -> Unit,
     onToggleSelect: () -> Unit,
     onExtendSelect: () -> Unit,
-    onActivate: () -> Unit
+    onActivate: () -> Unit,
+    onSecondaryClick: () -> Unit
 ): Modifier = if (desktopSelection) {
     Modifier
         .fillMaxWidth()
-        .desktopFileSelectionClicks(
-            onSelectExclusive = onSelectExclusive,
+        .desktopItemClicks(
+            isSelectionMode = isSelectionMode,
+            onClick = onClick,
             onToggleSelect = onToggleSelect,
             onExtendSelect = onExtendSelect,
-            onActivate = onActivate
+            onActivate = onActivate,
+            onSecondaryClick = onSecondaryClick
         )
 } else {
     Modifier
@@ -690,16 +955,20 @@ private fun fileRowModifier(
         )
 }
 
-private fun Modifier.desktopFileSelectionClicks(
-    onSelectExclusive: () -> Unit,
+private fun Modifier.desktopItemClicks(
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
     onToggleSelect: () -> Unit,
     onExtendSelect: () -> Unit,
-    onActivate: () -> Unit
+    onActivate: () -> Unit,
+    onSecondaryClick: () -> Unit
 ): Modifier = pointerInput(
-    onSelectExclusive,
+    isSelectionMode,
+    onClick,
     onToggleSelect,
     onExtendSelect,
-    onActivate
+    onActivate,
+    onSecondaryClick
 ) {
     awaitEachGesture {
         var downEvent = awaitPointerEvent(PointerEventPass.Main)
@@ -707,6 +976,16 @@ private fun Modifier.desktopFileSelectionClicks(
             downEvent = awaitPointerEvent(PointerEventPass.Main)
         }
         val downChange = downEvent.changes.first { it.changedToDown() }
+        val isSecondary = downEvent.buttons.isSecondaryPressed
+        if (isSecondary) {
+            downChange.consume()
+            val up = waitForUpOrCancellation()
+            if (up != null) {
+                up.consume()
+                onSecondaryClick()
+            }
+            return@awaitEachGesture
+        }
         val toggleMulti = downEvent.keyboardModifiers.isMetaPressed ||
             downEvent.keyboardModifiers.isCtrlPressed
         val extendRange = downEvent.keyboardModifiers.isShiftPressed && !toggleMulti
@@ -718,7 +997,8 @@ private fun Modifier.desktopFileSelectionClicks(
         when {
             toggleMulti -> onToggleSelect()
             extendRange -> onExtendSelect()
-            else -> onSelectExclusive()
+            isSelectionMode -> onToggleSelect()
+            else -> onClick()
         }
 
         val secondDown = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {

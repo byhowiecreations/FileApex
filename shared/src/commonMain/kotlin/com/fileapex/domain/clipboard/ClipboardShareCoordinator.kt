@@ -42,6 +42,10 @@ object ClipboardShareCoordinator {
         if (started) return
         started = true
         ClipboardPushDeduper.beginInitialization()
+        val initialText = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+        if (!initialText.isNullOrBlank()) {
+            ClipboardPushDeduper.remember(initialText)
+        }
         monitorJob?.cancel()
         monitorJob = scope.launch {
             val settings = FileApexServices.settings
@@ -75,7 +79,8 @@ object ClipboardShareCoordinator {
     fun onLocalClipboardChanged(text: String) {
         if (!shouldWatchLocalClipboard()) return
         val trimmed = preparedAutomaticText(text) ?: return
-        if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed)) return
+        val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
+        if (!ClipboardPushDeduper.shouldAllowAutomaticPush(trimmed, clipTs)) return
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) {
             showClipboardToast(com.fileapex.i18n.AppI18n.t("choose_all_or_specific_toast"))
@@ -95,6 +100,10 @@ object ClipboardShareCoordinator {
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
         ClipboardChangeMonitor.onAppForegrounded()
         if (ClipboardPushDeduper.isInitializing) {
+            val initClip = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+            if (!initClip.isNullOrBlank()) {
+                ClipboardPushDeduper.remember(initClip)
+            }
             ClipboardPushDeduper.endInitialization()
             initJob?.cancel()
             return
@@ -108,6 +117,15 @@ object ClipboardShareCoordinator {
     fun onWindowFocusChanged(hasFocus: Boolean) {
         ClipboardChangeMonitor.onWindowFocusChanged(hasFocus)
         if (!hasFocus || currentPlatformLabel() != "Android") return
+        if (ClipboardPushDeduper.isInitializing) {
+            val initClip = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+            if (!initClip.isNullOrBlank()) {
+                ClipboardPushDeduper.remember(initClip)
+            }
+            ClipboardPushDeduper.endInitialization()
+            initJob?.cancel()
+            return
+        }
         if (!pendingAndroidFocusPush) return
         pendingAndroidFocusPush = false
         scope.launch {
@@ -130,7 +148,8 @@ object ClipboardShareCoordinator {
         ) return
         if (FileApexServices.settings.clipboardShareMode.value == ClipboardShareMode.UNSET) return
         val text = preparedAutomaticText(PlatformClipboard.getSystemClipboardText()) ?: return
-        if (!ClipboardPushDeduper.shouldAllowAutomaticPush(text)) return
+        val clipTs = PlatformClipboard.getSystemClipboardTimestamp()
+        if (!ClipboardPushDeduper.shouldAllowAutomaticPush(text, clipTs)) return
         scope.launch {
             captureAndBroadcast(
                 text,

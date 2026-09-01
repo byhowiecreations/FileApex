@@ -98,6 +98,28 @@ class BulletinBoardSyncEngine(
         BulletinLegacyRelay.dispatchTombstone(messageId, legacyPeers, snapshot)
     }
 
+    suspend fun publishRetractByKind(originDeviceId: String, contentType: Int, deletedAt: Long) {
+        val peers = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
+        val selfId = loadLocalIdentity().deviceId
+        val remotePeers = peers.filter { it.deviceId != selfId }
+        val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() }
+        if (bulletinPeers.isEmpty()) return
+        val payload = BulletinRetractByKindPayload(
+            originDeviceId = originDeviceId,
+            contentType = contentType,
+            deletedAt = deletedAt
+        )
+        val payloadId = BulletinMessageKind.retractPayloadId(originDeviceId, contentType)
+        repository.rememberRetractByKind(payload)
+        repository.enqueueOutboxForAllPeers(
+            payloadType = BulletinPayloadType.RETRACT_BY_KIND,
+            payloadId = payloadId,
+            peerIds = bulletinPeers.map { it.deviceId }
+        )
+        requestDrain()
+        FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
+    }
+
     suspend fun ingestSharedText(text: String) {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return
@@ -123,6 +145,7 @@ class BulletinBoardSyncEngine(
         val incomingMessages = mutableListOf<MessageEntity>()
         val incomingTombstones = mutableListOf<TombstoneEntity>()
         val remotePurgeMessageIds = mutableListOf<String>()
+        val kindRetractedMessageIds = mutableListOf<String>()
         for (item in batch.items) {
             if (tombstoneDao.countById(item.payloadId) > 0 && item.payloadType == BulletinPayloadType.MESSAGE) {
                 continue
@@ -159,6 +182,15 @@ class BulletinBoardSyncEngine(
                     }
                     accepted += item.payloadId
                 }
+                BulletinPayloadType.RETRACT_BY_KIND -> {
+                    val payload = json.decodeFromString<BulletinRetractByKindPayload>(item.body)
+                    kindRetractedMessageIds += repository.applyRetractByKind(
+                        originDeviceId = payload.originDeviceId,
+                        contentType = payload.contentType,
+                        deletedAt = payload.deletedAt
+                    )
+                    accepted += item.payloadId
+                }
             }
         }
         val newlyArrived = incomingMessages.filter { messageDao.getById(it.id) == null }
@@ -175,6 +207,9 @@ class BulletinBoardSyncEngine(
         }
         if (newlyArrived.isNotEmpty() || incomingTombstones.isNotEmpty()) {
             FileApexServices.noteRepository.onPeerBulletinBatchIngested(newlyArrived, incomingTombstones)
+        }
+        if (kindRetractedMessageIds.isNotEmpty()) {
+            FileApexServices.noteRepository.onPeerBulletinKindRetracted(kindRetractedMessageIds)
         }
         return BulletinSyncAck(
             packetId = batch.packetId,
@@ -336,6 +371,22 @@ class BulletinBoardSyncEngine(
                                 remotePurge = tombstone.remotePurge
                             )
                         )
+                    )
+                }
+                BulletinPayloadType.RETRACT_BY_KIND -> {
+                    val payload = repository.pendingRetractByKind(entry.payloadId)
+                        ?: BulletinMessageKind.decodeRetractPayloadId(entry.payloadId)?.let { (originDeviceId, contentType) ->
+                            BulletinRetractByKindPayload(
+                                originDeviceId = originDeviceId,
+                                contentType = contentType,
+                                deletedAt = TimeUtils.now()
+                            )
+                        }
+                        ?: return@mapNotNull null
+                    BulletinSyncItem(
+                        payloadType = BulletinPayloadType.RETRACT_BY_KIND,
+                        payloadId = entry.payloadId,
+                        body = json.encodeToString(payload)
                     )
                 }
                 else -> null
