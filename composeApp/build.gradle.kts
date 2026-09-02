@@ -868,7 +868,6 @@ private fun moveToCurrent(
 private val firefoxExtensionFiles = listOf(
     "manifest.json",
     "background.js",
-    "lib/browser-polyfill.min.js",
     "icons/icon-16.png",
     "icons/icon-32.png",
     "icons/icon-48.png",

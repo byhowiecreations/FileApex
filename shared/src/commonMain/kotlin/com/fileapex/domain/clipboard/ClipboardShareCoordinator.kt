@@ -251,7 +251,7 @@ object ClipboardShareCoordinator {
         }
         ClipboardPushDeduper.remember(prepared.text)
         withContext(Dispatchers.Main) {
-            PlatformClipboard.applyRemoteText(prepared.text)
+            PlatformClipboard.applyRemoteText(prepared.text, senderDeviceName)
             if (isWebUrl(prepared.text)) {
                 PlatformClipboard.openUrlInDefaultBrowser(prepared.text)
             }

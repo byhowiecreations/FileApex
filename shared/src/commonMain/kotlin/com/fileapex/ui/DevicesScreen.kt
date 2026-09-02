@@ -36,6 +36,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import com.fileapex.domain.transfer.TransferActivityGuard
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -1053,6 +1055,11 @@ private fun DeviceGridCell(
         }
     }
 
+    val liveStats by TransferActivityGuard.statsFlow.collectAsState()
+    val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
+    val activeSending = pendingItems.firstOrNull { it.isSending }
+    val isSendingToThis = liveStats.isActive && (row.deviceId == dropDeviceId || (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) })))
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1104,7 +1111,36 @@ private fun DeviceGridCell(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                if (connecting) {
+                if (isSendingToThis) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { liveStats.progress },
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp)),
+                            color = FileApexTeal,
+                            trackColor = FileApexTeal.copy(alpha = 0.2f)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val statText = buildList {
+                            if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
+                            if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                            val pct = (liveStats.progress * 100).toInt().coerceIn(0, 100)
+                            if (pct in 1..99) add("$pct%")
+                        }.joinToString(" • ")
+                        Text(
+                            text = if (statText.isNotBlank()) statText else stringRes("sending"),
+                            style = subtitleStyle.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold),
+                            color = FileApexTeal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip
+                        )
+                    }
+                } else if (connecting) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
@@ -1497,6 +1533,11 @@ private fun DeviceCard(
         selected -> FileApexTeal.copy(alpha = 0.12f)
         else -> MaterialTheme.colorScheme.surface
     }
+    val liveStats by TransferActivityGuard.statsFlow.collectAsState()
+    val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
+    val activeSending = pendingItems.firstOrNull { it.isSending }
+    val isSendingToThis = liveStats.isActive && (row.deviceId == dropDeviceId || (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) })))
+
     val cardShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
 
     Card(
@@ -1550,7 +1591,34 @@ private fun DeviceCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(3.dp))
-                if (connecting) {
+                if (isSendingToThis) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        val statText = buildList {
+                            add(stringRes("sending"))
+                            if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
+                            if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                            val pct = (liveStats.progress * 100).toInt().coerceIn(0, 100)
+                            if (pct in 1..99) add("$pct%")
+                        }.joinToString(" • ")
+                        Text(
+                            text = statText,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = FileApexTeal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { liveStats.progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp)),
+                            color = FileApexTeal,
+                            trackColor = FileApexTeal.copy(alpha = 0.2f)
+                        )
+                    }
+                } else if (connecting) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
@@ -1563,7 +1631,7 @@ private fun DeviceCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = FileApexTeal,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Clip
                         )
                     }
                 } else {

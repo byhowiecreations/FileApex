@@ -32,7 +32,7 @@ actual object PlatformClipboard {
         }
     }
 
-    actual fun applyRemoteText(text: String) {
+    actual fun applyRemoteText(text: String, sourceDeviceName: String) {
         ClipboardShareSuppressor.isApplyingRemote = true
         try {
             setSystemClipboardText(text)

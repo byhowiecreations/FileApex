@@ -199,10 +199,14 @@ class TransferManager(
             val devicesForTransfer = if (remoteTargets.isEmpty()) {
                 selectedDevices
             } else {
-                if (!skipTransferPrepare) {
-                    presenceMonitor().prepareForTransfer(remoteTargets)
+                val directDevices = refreshRemoteHosts(selectedDevices)
+                val needsResolution = directDevices.filter { !it.isLocal && (it.host.isBlank() || !NetworkUtils.isUsableLanIpv4(it.host)) }
+                if (needsResolution.isNotEmpty() && !skipTransferPrepare) {
+                    presenceMonitor().prepareForTransfer(needsResolution)
+                    refreshRemoteHosts(selectedDevices)
+                } else {
+                    directDevices
                 }
-                refreshRemoteHosts(selectedDevices)
             }
             val results = transferService.multiCopyToDevices(verifiedSources, devicesForTransfer)
             return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)

@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import com.fileapex.domain.transfer.PendingTransferItem
+import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.domain.transfer.LiveTransferStats
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.presentation.TransferQueueViewModel
 import com.fileapex.ui.theme.fileApexChromeContentColor
@@ -42,6 +44,7 @@ fun TransferQueueScreen(
     viewModel: TransferQueueViewModel
 ) {
     val state by viewModel.uiState.collectAsState()
+    val liveStats by TransferActivityGuard.statsFlow.collectAsState()
 
     FileApexBackHandler { onBack() }
 
@@ -112,6 +115,7 @@ fun TransferQueueScreen(
                     items(state.items, key = { it.id }) { item ->
                         QueuedTransferRow(
                             item = item,
+                            liveStats = liveStats,
                             onRemove = { viewModel.remove(item.id) }
                         )
                     }
@@ -124,6 +128,7 @@ fun TransferQueueScreen(
 @Composable
 private fun QueuedTransferRow(
     item: PendingTransferItem,
+    liveStats: LiveTransferStats,
     onRemove: () -> Unit
 ) {
     Row(
@@ -138,12 +143,18 @@ private fun QueuedTransferRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )
+            val statusText = if (item.isSending) {
+                val rateParts = buildList {
+                    add(stringRes("sending"))
+                    if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
+                    if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                }
+                rateParts.joinToString(" • ")
+            } else {
+                stringRes("waiting_for_devices", item.pendingDeviceNames.joinToString(", "))
+            }
             Text(
-                text = if (item.isSending) {
-                    stringRes("sending")
-                } else {
-                    stringRes("waiting_for_devices", item.pendingDeviceNames.joinToString(", "))
-                },
+                text = statusText,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

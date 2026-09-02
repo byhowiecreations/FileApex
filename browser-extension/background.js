@@ -11,14 +11,6 @@ function canSendTab(tab) {
   return url.startsWith("http://") || url.startsWith("https://");
 }
 
-async function resolveActiveTab(clickedTab) {
-  if (clickedTab && clickedTab.url) {
-    return clickedTab;
-  }
-  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-  return tabs[0] || clickedTab;
-}
-
 async function notify(title, message) {
   try {
     await browser.notifications.create({
@@ -71,9 +63,8 @@ async function sendToBulletinBoard(tab) {
   await postJson("/api/v1/web/post-bulletin", payload);
 }
 
-browser.action.onClicked.addListener(async (clickedTab) => {
+browser.action.onClicked.addListener(async (tab) => {
   try {
-    const tab = await resolveActiveTab(clickedTab);
     if (!canSendTab(tab)) {
       throw new Error("FileApex can only send regular web pages (http/https).");
     }

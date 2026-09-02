@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -124,7 +125,7 @@ class NoteRepository {
         attachmentPath: String? = null,
         attachmentFileName: String? = null,
         attachmentSizeBytes: Long = 0L
-    ): NoteRecord {
+    ): NoteRecord = withContext(Dispatchers.Default) {
         val bulletin = bulletinRepository
         val syncEngine = bulletinSyncEngine
         if (bulletin != null && syncEngine != null) {
@@ -139,11 +140,11 @@ class NoteRepository {
                 bulletin.ingestLocalText(content.trim(), link = link)
             }
             syncEngine.publishMessage(message)
-            return mutex.withLock {
+            return@withContext mutex.withLock {
                 _notes.value.firstOrNull { it.noteId == message.id }
             } ?: message.toNoteRecordFallback()
         }
-        return sendNoteLegacy(
+        sendNoteLegacy(
             content,
             driveFileId,
             checksum,

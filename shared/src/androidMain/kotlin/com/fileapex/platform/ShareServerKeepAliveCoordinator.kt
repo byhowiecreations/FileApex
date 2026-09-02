@@ -168,7 +168,7 @@ object ShareServerKeepAliveCoordinator {
                 context,
                 receiver,
                 ShareServerFreezeGuardReceiver.intentFilter(),
-                ContextCompat.RECEIVER_NOT_EXPORTED
+                ContextCompat.RECEIVER_EXPORTED
             )
             freezeGuardReceiver = receiver
             freezeGuardRegistered = true

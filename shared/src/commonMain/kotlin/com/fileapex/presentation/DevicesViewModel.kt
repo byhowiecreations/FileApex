@@ -693,10 +693,7 @@ class DevicesViewModel : ViewModel() {
                 return@launch
             }
             _uiState.update {
-                it.copy(
-                    statusMessage = AppI18n.t("sending_to_device", target.deviceName),
-                    errorMessage = null
-                )
+                it.copy(errorMessage = null)
             }
             runCatching {
                 withContext(Dispatchers.IO) {

@@ -80,6 +80,7 @@ fun LiveTransferCapsuleOverlay(
     val transferNotificationsEnabled by settings.fileTransferNotificationsEnabled.collectAsState()
     val isTransferActive by TransferActivityGuard.isTransferActiveFlow.collectAsState()
     val liveProgress by TransferActivityGuard.transferProgressFlow.collectAsState()
+    val liveStats by TransferActivityGuard.statsFlow.collectAsState()
     val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
 
     var capsuleData by remember { mutableStateOf(CapsuleDisplayData()) }
@@ -90,6 +91,7 @@ fun LiveTransferCapsuleOverlay(
         transferNotificationsEnabled,
         isTransferActive,
         liveProgress,
+        liveStats,
         pendingItems
     ) {
         if (!capsuleEnabled || !transferNotificationsEnabled) {
@@ -108,10 +110,16 @@ fun LiveTransferCapsuleOverlay(
                 } else {
                     com.fileapex.i18n.AppI18n.t("sending_files")
                 }
-                val subtitle = if (pendingCount > 1) {
-                    com.fileapex.i18n.AppI18n.plural("items_in_queue", pendingCount, pendingCount.toString())
-                } else {
-                    com.fileapex.i18n.AppI18n.t("active_transfer")
+                val rateParts = buildList {
+                    if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
+                    if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                }
+                val speedAndEta = if (rateParts.isNotEmpty()) rateParts.joinToString(" • ") else ""
+                val subtitle = when {
+                    speedAndEta.isNotBlank() && pendingCount > 1 -> "$speedAndEta (${pendingCount})"
+                    speedAndEta.isNotBlank() -> speedAndEta
+                    pendingCount > 1 -> com.fileapex.i18n.AppI18n.plural("items_in_queue", pendingCount, pendingCount.toString())
+                    else -> com.fileapex.i18n.AppI18n.t("active_transfer")
                 }
                 capsuleData = CapsuleDisplayData(
                     state = CapsuleState.Transferring,

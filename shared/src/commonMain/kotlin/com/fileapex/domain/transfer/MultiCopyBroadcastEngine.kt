@@ -70,11 +70,13 @@ class MultiCopyBroadcastEngine(
             )
         }
         val plans = destinations.map { destination ->
-            DestPlan(
-                destination = destination,
-                offset = queryDestinationOffset(destination, verifiedSource.sizeBytes)
-            )
-        }
+            async(Dispatchers.IO) {
+                DestPlan(
+                    destination = destination,
+                    offset = queryDestinationOffset(destination, verifiedSource.sizeBytes)
+                )
+            }
+        }.awaitAll()
         val failures = linkedMapOf<String, String>()
         val succeeded = linkedSetOf<String>()
 

@@ -18,10 +18,12 @@ internal class ShareServerFreezeGuardReceiver : BroadcastReceiver() {
             Intent.ACTION_USER_PRESENT,
             Intent.ACTION_POWER_CONNECTED -> {
                 Log.i(TAG, "Freeze guard event action=$action")
+                val appContext = context.applicationContext
                 ShareServerKeepAliveCoordinator.reassertOrRestart(
-                    context.applicationContext,
+                    appContext,
                     reason = "freeze_guard:$action"
                 )
+                BatteryBulletinCoordinator.onProcessStart(appContext)
             }
         }
     }

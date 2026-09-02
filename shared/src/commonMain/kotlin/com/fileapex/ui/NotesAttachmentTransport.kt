@@ -1,5 +1,8 @@
 package com.fileapex.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -11,11 +14,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -131,24 +132,26 @@ fun NotesAttachmentTransportOverlay(
     modifier: Modifier = Modifier
 ) {
     val particles = remember(state) { spawnStreamParticles(state) }
-    var timeSec by remember(state) { mutableFloatStateOf(0f) }
+    val progress = remember(state) { Animatable(0f) }
     val dest = state.destRect
 
     LaunchedEffect(state) {
-        val start = withFrameNanos { it }
-        while (isActive && !state.streamDone) {
-            withFrameNanos { now ->
-                timeSec = ((now - start) / 1_000_000_000f).coerceAtMost(STREAM_SECONDS)
-            }
-            if (timeSec >= STREAM_SECONDS) {
-                state.streamDone = true
-            }
-        }
+        progress.snapTo(0f)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = (STREAM_SECONDS * 1000).roundToInt(),
+                easing = LinearEasing
+            )
+        )
+        state.streamDone = true
     }
 
-    val headT = (timeSec / STREAM_SECONDS).coerceIn(0f, 1f)
+    val p = progress.value
+    val timeSec = p * STREAM_SECONDS
+    val headT = p
     val thumbPos = streamPoint(headT, state.sourceRect, dest, 0f, 0f)
-    val thumbSize = (34f - 16f * headT).dp
+    val thumbScale = (34f - 16f * headT) / 34f
     val thumbAlpha = when {
         timeSec < 0.08f -> (timeSec / 0.08f).coerceIn(0f, 1f)
         timeSec > STREAM_SECONDS - 0.18f ->
@@ -169,12 +172,16 @@ fun NotesAttachmentTransportOverlay(
             modifier = Modifier
                 .offset {
                     IntOffset(
-                        (thumbPos.x - 11f).roundToInt(),
-                        (thumbPos.y - 11f).roundToInt()
+                        (thumbPos.x - 17f).roundToInt(),
+                        (thumbPos.y - 17f).roundToInt()
                     )
                 }
-                .size(thumbSize)
-                .graphicsLayer { alpha = thumbAlpha }
+                .size(34.dp)
+                .graphicsLayer {
+                    scaleX = thumbScale
+                    scaleY = thumbScale
+                    alpha = thumbAlpha
+                }
                 .clip(RoundedCornerShape(6.dp))
         ) {
             if (state.bitmap != null) {

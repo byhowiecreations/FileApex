@@ -7,8 +7,10 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.util.sha256HexFile
 import com.fileapex.util.TimeUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -116,7 +118,7 @@ class BulletinBoardRepository(
         fileName: String,
         sizeBytes: Long,
         caption: String = ""
-    ): MessageEntity {
+    ): MessageEntity = withContext(Dispatchers.Default) {
         val identity = loadLocalIdentity()
         val selfName = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
         val sha256 = sha256HexFile(absolutePath)
@@ -159,7 +161,7 @@ class BulletinBoardRepository(
             timestamp = TimeUtils.now()
         )
         messageDao.upsert(message)
-        return message
+        message
     }
 
     suspend fun upsertFromSync(payload: BulletinMessagePayload): Boolean {

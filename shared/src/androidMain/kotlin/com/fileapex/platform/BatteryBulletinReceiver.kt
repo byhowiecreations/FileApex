@@ -17,7 +17,8 @@ class BatteryBulletinReceiver : BroadcastReceiver() {
                 val pending = goAsync()
                 BatteryBulletinCoordinator.onBatteryLow(appContext) { pending.finish() }
             }
-            Intent.ACTION_POWER_CONNECTED -> {
+            Intent.ACTION_POWER_CONNECTED,
+            Intent.ACTION_BATTERY_OKAY -> {
                 val pending = goAsync()
                 BatteryBulletinCoordinator.onCharging(appContext) { pending.finish() }
             }

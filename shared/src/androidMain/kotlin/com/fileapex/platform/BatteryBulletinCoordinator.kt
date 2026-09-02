@@ -177,14 +177,15 @@ object BatteryBulletinCoordinator {
                 receiver,
                 IntentFilter().apply {
                     addAction(android.content.Intent.ACTION_BATTERY_LOW)
+                    addAction(android.content.Intent.ACTION_BATTERY_OKAY)
                     addAction(android.content.Intent.ACTION_POWER_CONNECTED)
                     addAction(android.content.Intent.ACTION_POWER_DISCONNECTED)
                 },
-                ContextCompat.RECEIVER_NOT_EXPORTED
+                ContextCompat.RECEIVER_EXPORTED
             )
             dynamicReceiver = receiver
             receiverRegistered = true
-            Log.i(TAG, "Registered dynamic battery bulletin receiver (LOW + POWER_CONNECTED/DISCONNECTED)")
+            Log.i(TAG, "Registered dynamic battery bulletin receiver")
         }.onFailure { error ->
             Log.w(TAG, "Dynamic battery bulletin receiver registration failed :: ${error.message}")
         }

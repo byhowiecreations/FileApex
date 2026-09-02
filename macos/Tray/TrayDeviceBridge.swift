@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Device row pushed from Kotlin [DesktopMacTrayCoordinator] (SSOT for roster + online state).
+/// Device row pushed from Kotlin [DesktopMacTrayCoordinator].
 public struct TrayDeviceItem: Identifiable, Hashable, Codable, Sendable {
     public var id: String { deviceId }
     public let deviceId: String

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.fileapex.domain.transfer.TransferActivityGuard
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +56,7 @@ import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.DevicesScreenLayoutMode
 import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.ExplorerViewModeToggle
+import com.fileapex.ui.LiveTransferBanner
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.HomeTab
@@ -145,7 +148,7 @@ fun AdaptiveWideHome(
             onOpenNotes = onOpenNotes,
             deviceOrderHeaderActions = deviceOrderHeaderActions
         )
-        Row(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             FileApexNavigationRail(
                 selected = selectedTab,
                 onMainHomeScreen = isMainHomeScreen(
@@ -287,6 +290,7 @@ fun AdaptiveWideHome(
                 }
             }
         }
+        LiveTransferBanner(onOpenTransferQueue = onOpenTransferQueue)
     }
 }
 
@@ -333,6 +337,35 @@ private fun WideTopBar(
                     maxLines = 2
                 )
             }
+        }
+        val liveStats by TransferActivityGuard.statsFlow.collectAsState()
+        if (liveStats.isActive) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(FileApexTeal.copy(alpha = 0.20f))
+                    .clickable(onClick = onOpenTransferQueue)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    progress = { liveStats.progress },
+                    modifier = Modifier.size(12.dp),
+                    color = FileApexTeal,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                val rateText = buildList {
+                    if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
+                    if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                }.joinToString(" • ")
+                Text(
+                    text = if (rateText.isNotBlank()) rateText else stringRes("sending"),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = fileApexChromeContentColor()
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
         }
         QueuedFilesButton(
             onClick = onOpenTransferQueue,

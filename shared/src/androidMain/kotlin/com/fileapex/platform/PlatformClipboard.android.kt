@@ -8,6 +8,13 @@ import android.net.Uri
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 
+import android.app.PendingIntent
+import android.graphics.BitmapFactory
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import com.fileapex.i18n.AppI18n
+
 actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
         val context = androidAppContextOrNull() ?: return null
@@ -74,12 +81,78 @@ actual object PlatformClipboard {
         if (!wrote) ClipboardShizukuAccess.tryWriteText(text)
     }
 
-    actual fun applyRemoteText(text: String) {
+    actual fun applyRemoteText(text: String, sourceDeviceName: String) {
         ClipboardShareSuppressor.isApplyingRemote = true
         try {
             setSystemClipboardText(text)
         } finally {
             ClipboardShareSuppressor.isApplyingRemote = false
+        }
+        notifyInboundClipboard(text, sourceDeviceName)
+    }
+
+    private fun notifyInboundClipboard(text: String, sourceDeviceName: String) {
+        val context = androidAppContextOrNull() ?: return
+        val sender = sourceDeviceName.ifBlank { AppI18n.t("paired_device") }
+        val toastMsg = AppI18n.t("clipboard_received_from", sender)
+        BriefToast.show(toastMsg)
+
+        AndroidNotificationChannels.ensureNoteMessagesChannel(context)
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+
+        val notificationId = (System.currentTimeMillis() and 0x7FFF).toInt()
+        val copyIntent = Intent(context, ClipboardActionReceiver::class.java).apply {
+            action = ClipboardActionReceiver.ACTION_CLIPBOARD_COPY
+            putExtra(ClipboardActionReceiver.EXTRA_CLIPBOARD_TEXT, text)
+            putExtra(ClipboardActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        val copyPendingIntent = PendingIntent.getBroadcast(
+            context,
+            notificationId,
+            copyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+
+        val builder = NotificationCompat.Builder(context, AndroidNotificationChannels.NOTE_MESSAGES)
+            .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
+            .setLargeIcon(
+                BitmapFactory.decodeResource(
+                    context.resources,
+                    AndroidNotificationChannels.noteLargeIcon
+                )
+            )
+            .setContentTitle(toastMsg)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(copyPendingIntent)
+            .addAction(
+                0,
+                AppI18n.t("copy"),
+                copyPendingIntent
+            )
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+        if (isWebUrl(text)) {
+            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(text)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val browserPending = PendingIntent.getActivity(
+                context,
+                notificationId + 1,
+                browserIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+            )
+            builder.addAction(
+                0,
+                AppI18n.t("open"),
+                browserPending
+            )
+        }
+
+        runCatching {
+            manager.notify(ClipboardActionReceiver.CLIPBOARD_NOTIFICATION_TAG, notificationId, builder.build())
         }
     }
 

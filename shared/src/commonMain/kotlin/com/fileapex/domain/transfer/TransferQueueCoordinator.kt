@@ -19,6 +19,7 @@ import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.domain.presence.PeerPresenceMonitor
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.platform.isActiveLanConnectivity
+import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -133,7 +134,7 @@ class TransferQueueCoordinator(
         val sendNow = localDevices + routable
         val batch = if (sendNow.isNotEmpty()) {
             runCatching {
-                transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = false)
+                transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = true)
             }.getOrNull()
         } else {
             null
@@ -161,7 +162,7 @@ class TransferQueueCoordinator(
         transferManager.awaitReady()
         val sources = LocalTransferTree.expandAbsolutePaths(absolutePaths)
         check(sources.isNotEmpty()) { AppI18n.t("nothing_to_send_empty_folder") }
-        val options = transferManager.resolveRemoteDeviceOptions(deviceIds)
+        val options = transferManager.resolveRemoteDeviceOptionsForImmediateSend(deviceIds)
         return sendOrQueue(sources, options, skipTransferPrepare)
     }
 
@@ -362,6 +363,11 @@ class TransferQueueCoordinator(
     }
 
     private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? {
+        val host = peer.lastKnownIp.trim()
+        val port = peer.port
+        if (host.isNotEmpty() && NetworkUtils.isPrivateLanPeerHost(host) && port > 0) {
+            return host to port
+        }
         val direct = presenceMonitor.quickAssessLanReachability(peer) as? PeerLanReachabilityVerdict.Direct
             ?: return null
         return direct.host to direct.port

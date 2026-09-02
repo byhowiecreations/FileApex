@@ -36,8 +36,11 @@ DMG_FILE=$(find composeApp/build/compose/binaries/main/dmg -name "*.dmg" | head 
 
 if [ -n "$DMG_FILE" ]; then
     mkdir -p current
-    cp "$DMG_FILE" "current/FileApex-v${VERSION}-Intel.dmg"
+    mv "$DMG_FILE" "current/FileApex-v${VERSION}-Intel.dmg"
     echo "Moved Intel DMG -> current/FileApex-v${VERSION}-Intel.dmg"
+    rm -rf composeApp/build/compose/binaries/main/app
+    rm -rf composeApp/build/compose/binaries/main/dmg
+    rm -rf composeApp/build/compose/tmp/main/runtime
 else
     echo "Error: Intel DMG not found in composeApp/build/compose/binaries/main/dmg"
     exit 1

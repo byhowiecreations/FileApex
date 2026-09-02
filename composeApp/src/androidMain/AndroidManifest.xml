@@ -244,8 +244,17 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BATTERY_LOW" />
+                <action android:name="android.intent.action.BATTERY_OKAY" />
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
                 <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.fileapex.platform.ClipboardActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.fileapex.action.CLIPBOARD_COPY" />
             </intent-filter>
         </receiver>
 

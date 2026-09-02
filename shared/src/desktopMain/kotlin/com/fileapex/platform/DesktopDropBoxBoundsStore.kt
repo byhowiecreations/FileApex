@@ -27,9 +27,8 @@ object DesktopDropBoxBoundsStore {
             width = prefs.getInt(KEY_WIDTH, 0),
             height = prefs.getInt(KEY_HEIGHT, 0)
         )
-        val normalized = normalizeLegacyBounds(bounds)
-        return if (isValidDropBoxBounds(normalized) && isDropBoxOnScreen(normalized)) {
-            normalized
+        return if (isValidDropBoxBounds(bounds) && isDropBoxOnScreen(bounds)) {
+            bounds
         } else {
             clear()
             null
@@ -37,7 +36,7 @@ object DesktopDropBoxBoundsStore {
     }
 
     fun persistPixels(x: Int, y: Int, width: Int, height: Int) {
-        val bounds = normalizeLegacyBounds(DesktopWindowBounds(x = x, y = y, width = width, height = height))
+        val bounds = DesktopWindowBounds(x = x, y = y, width = width, height = height)
         if (!isValidDropBoxBounds(bounds) || !isDropBoxOnScreen(bounds)) {
             clear()
             return
@@ -56,16 +55,6 @@ object DesktopDropBoxBoundsStore {
         prefs.remove(KEY_Y)
         prefs.remove(KEY_WIDTH)
         prefs.remove(KEY_HEIGHT)
-    }
-
-    private fun normalizeLegacyBounds(bounds: DesktopWindowBounds): DesktopWindowBounds {
-        if (bounds.width <= LEGACY_WIDTH_THRESHOLD_PX && bounds.height <= LEGACY_WIDTH_THRESHOLD_PX) {
-            return bounds
-        }
-        return bounds.copy(
-            width = bounds.width.coerceAtMost(DEFAULT_WIDTH_PX),
-            height = bounds.height.coerceAtMost(DEFAULT_HEIGHT_PX)
-        )
     }
 
     private fun isValidDropBoxBounds(bounds: DesktopWindowBounds): Boolean =

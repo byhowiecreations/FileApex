@@ -1,8 +1,10 @@
 package com.fileapex.ui
 
 import com.fileapex.i18n.stringRes
-
 import com.fileapex.i18n.AppI18n
+import com.fileapex.platform.PlatformClipboard
+import com.fileapex.platform.isWebUrl
+import com.fileapex.platform.textContainsWebUrl
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Image
@@ -41,20 +43,26 @@ import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -110,8 +118,54 @@ import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material3.TextButton
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+
+sealed interface BulletinFilter {
+    data object All : BulletinFilter
+    data object Links : BulletinFilter
+    data object Images : BulletinFilter
+    data object Documents : BulletinFilter
+    data object Snippets : BulletinFilter
+    data object Files : BulletinFilter
+    data object Pinned : BulletinFilter
+    data class Tag(val tag: String) : BulletinFilter
+}
+
+private val BULLETIN_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "heic", "heif", "tiff", "avif")
+private val BULLETIN_DOC_EXTENSIONS = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "rtf", "epub", "json", "xml", "log", "html", "htm")
+
+private fun isBulletinImage(fileName: String?): Boolean {
+    if (fileName.isNullOrBlank()) return false
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return ext in BULLETIN_IMAGE_EXTENSIONS
+}
+
+private fun isBulletinDoc(fileName: String?): Boolean {
+    if (fileName.isNullOrBlank()) return false
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return ext in BULLETIN_DOC_EXTENSIONS
+}
+
+private fun isBulletinOtherFile(fileName: String?): Boolean {
+    if (fileName.isNullOrBlank()) return false
+    return !isBulletinImage(fileName) && !isBulletinDoc(fileName)
+}
+
+private fun isBulletinSnippet(note: NoteRecord): Boolean {
+    if (!note.attachmentFileName.isNullOrBlank()) return false
+    val text = note.content.trim()
+    if (text.isEmpty()) return false
+    if (isWebUrl(text) || textContainsWebUrl(text)) return false
+    return text.length <= 120
+}
+
+private fun extractBulletinHashtags(text: String): List<String> {
+    if (text.isBlank()) return emptyList()
+    val regex = Regex("""#[A-Za-z0-9_]+""")
+    return regex.findAll(text).map { it.value.lowercase() }.toList()
+}
 
 @Composable
 fun NotesScreen(
@@ -155,9 +209,49 @@ fun NotesScreen(
     val bubbleThumbs = remember { mutableStateMapOf<String, ImageBitmap?>() }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val notesForList = remember(displayNotes, transport?.assemblingNoteId, transport?.settled) {
+    var activeFilter by remember { mutableStateOf<BulletinFilter>(BulletinFilter.All) }
+    var filterMenuExpanded by remember { mutableStateOf(false) }
+
+    val hasLinks = remember(displayNotes) { displayNotes.any { isWebUrl(it.content) || textContainsWebUrl(it.content) } }
+    val hasImages = remember(displayNotes) { displayNotes.any { isBulletinImage(it.attachmentFileName) } }
+    val hasDocs = remember(displayNotes) { displayNotes.any { isBulletinDoc(it.attachmentFileName) } }
+    val hasSnippets = remember(displayNotes) { displayNotes.any { isBulletinSnippet(it) } }
+    val hasOtherFiles = remember(displayNotes) { displayNotes.any { isBulletinOtherFile(it.attachmentFileName) } }
+    val hasPinned = remember(displayNotes) { displayNotes.any { it.attachmentPinned } }
+    val availableTags = remember(displayNotes) { displayNotes.flatMap { extractBulletinHashtags(it.content) }.distinct().sorted() }
+
+    LaunchedEffect(hasLinks, hasImages, hasDocs, hasSnippets, hasOtherFiles, hasPinned, availableTags) {
+        val isValid = when (activeFilter) {
+            BulletinFilter.All -> true
+            BulletinFilter.Links -> hasLinks
+            BulletinFilter.Images -> hasImages
+            BulletinFilter.Documents -> hasDocs
+            BulletinFilter.Snippets -> hasSnippets
+            BulletinFilter.Files -> hasOtherFiles
+            BulletinFilter.Pinned -> hasPinned
+            is BulletinFilter.Tag -> (activeFilter as BulletinFilter.Tag).tag in availableTags
+        }
+        if (!isValid) {
+            activeFilter = BulletinFilter.All
+        }
+    }
+
+    val notesForList = remember(displayNotes, transport?.assemblingNoteId, transport?.settled, activeFilter) {
         val hideId = transport?.takeIf { it.settled != true }?.assemblingNoteId
-        if (hideId.isNullOrBlank()) displayNotes else displayNotes.filterNot { it.noteId == hideId }
+        val base = if (hideId.isNullOrBlank()) displayNotes else displayNotes.filterNot { it.noteId == hideId }
+        when (activeFilter) {
+            BulletinFilter.All -> base
+            BulletinFilter.Links -> base.filter { isWebUrl(it.content) || textContainsWebUrl(it.content) }
+            BulletinFilter.Images -> base.filter { isBulletinImage(it.attachmentFileName) }
+            BulletinFilter.Documents -> base.filter { isBulletinDoc(it.attachmentFileName) }
+            BulletinFilter.Snippets -> base.filter { isBulletinSnippet(it) }
+            BulletinFilter.Files -> base.filter { isBulletinOtherFile(it.attachmentFileName) }
+            BulletinFilter.Pinned -> base.filter { it.attachmentPinned }
+            is BulletinFilter.Tag -> {
+                val targetTag = (activeFilter as BulletinFilter.Tag).tag.lowercase()
+                base.filter { targetTag in extractBulletinHashtags(it.content) }
+            }
+        }
     }
     val listRows = remember(notesForList) { notesListRows(notesForList) }
     val visualRows = remember(listRows) { listRows.asReversed() }
@@ -639,7 +733,7 @@ fun NotesScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringRes("bulletin_board"),
                         style = MaterialTheme.typography.titleLarge.copy(
@@ -654,6 +748,164 @@ fun NotesScreen(
                         color = subTextColor
                     )
                 }
+                Box {
+                    IconButton(onClick = { filterMenuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.FilterList,
+                            contentDescription = stringRes("filter_notes"),
+                            tint = if (activeFilter != BulletinFilter.All) {
+                                if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                            } else {
+                                subTextColor
+                            }
+                        )
+                    }
+                    val checkTint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+                    DropdownMenu(
+                        expanded = filterMenuExpanded,
+                        onDismissRequest = { filterMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringRes("filter_all"),
+                                    fontWeight = if (activeFilter == BulletinFilter.All) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            trailingIcon = if (activeFilter == BulletinFilter.All) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                            } else null,
+                            onClick = {
+                                activeFilter = BulletinFilter.All
+                                filterMenuExpanded = false
+                            }
+                        )
+                        if (hasLinks) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringRes("filter_links"),
+                                        fontWeight = if (activeFilter == BulletinFilter.Links) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                trailingIcon = if (activeFilter == BulletinFilter.Links) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                                } else null,
+                                onClick = {
+                                    activeFilter = BulletinFilter.Links
+                                    filterMenuExpanded = false
+                                }
+                            )
+                        }
+                        if (hasImages) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringRes("filter_images"),
+                                        fontWeight = if (activeFilter == BulletinFilter.Images) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                trailingIcon = if (activeFilter == BulletinFilter.Images) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                                } else null,
+                                onClick = {
+                                    activeFilter = BulletinFilter.Images
+                                    filterMenuExpanded = false
+                                }
+                            )
+                        }
+                        if (hasDocs) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringRes("filter_documents"),
+                                        fontWeight = if (activeFilter == BulletinFilter.Documents) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                trailingIcon = if (activeFilter == BulletinFilter.Documents) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                                } else null,
+                                onClick = {
+                                    activeFilter = BulletinFilter.Documents
+                                    filterMenuExpanded = false
+                                }
+                            )
+                        }
+                        if (hasSnippets) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringRes("filter_snippets"),
+                                        fontWeight = if (activeFilter == BulletinFilter.Snippets) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                trailingIcon = if (activeFilter == BulletinFilter.Snippets) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                                } else null,
+                                onClick = {
+                                    activeFilter = BulletinFilter.Snippets
+                                    filterMenuExpanded = false
+                                }
+                            )
+                        }
+                        if (hasOtherFiles) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringRes("filter_files"),
+                                        fontWeight = if (activeFilter == BulletinFilter.Files) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                trailingIcon = if (activeFilter == BulletinFilter.Files) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                                } else null,
+                                onClick = {
+                                    activeFilter = BulletinFilter.Files
+                                    filterMenuExpanded = false
+                                }
+                            )
+                        }
+                        if (hasPinned) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringRes("filter_pinned"),
+                                        fontWeight = if (activeFilter == BulletinFilter.Pinned) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                trailingIcon = if (activeFilter == BulletinFilter.Pinned) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                                } else null,
+                                onClick = {
+                                    activeFilter = BulletinFilter.Pinned
+                                    filterMenuExpanded = false
+                                }
+                            )
+                        }
+                        if (availableTags.isNotEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                            availableTags.forEach { tag ->
+                                val isSelected = activeFilter is BulletinFilter.Tag && (activeFilter as BulletinFilter.Tag).tag == tag
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = tag,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                                        )
+                                    },
+                                    trailingIcon = if (isSelected) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+                                    } else null,
+                                    onClick = {
+                                        activeFilter = BulletinFilter.Tag(tag)
+                                        filterMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     ) { padding ->
@@ -664,6 +916,7 @@ fun NotesScreen(
                 .padding(horizontal = 16.dp)
         ) {
             if (notesForList.isEmpty() && !holdingTransportSlot) {
+                val isFilteredEmpty = activeFilter != BulletinFilter.All && displayNotes.isNotEmpty()
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -672,23 +925,44 @@ fun NotesScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Note,
+                            imageVector = if (isFilteredEmpty) Icons.Filled.FilterList else Icons.AutoMirrored.Filled.Note,
                             contentDescription = null,
                             tint = if (isCustomGlass) Color(0xFF00E676).copy(alpha = 0.6f) else FileApexTeal.copy(alpha = 0.6f),
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
+                        val emptyMsg = if (isFilteredEmpty) {
+                            when (activeFilter) {
+                                BulletinFilter.Links -> stringRes("no_filtered_links")
+                                BulletinFilter.Images -> stringRes("no_filtered_images")
+                                BulletinFilter.Documents -> stringRes("no_filtered_documents")
+                                BulletinFilter.Snippets -> stringRes("no_filtered_snippets")
+                                BulletinFilter.Files -> stringRes("no_filtered_files")
+                                BulletinFilter.Pinned -> stringRes("no_filtered_pinned")
+                                is BulletinFilter.Tag -> AppI18n.t("no_filtered_tag", (activeFilter as BulletinFilter.Tag).tag)
+                                BulletinFilter.All -> stringRes("no_filtered_notes")
+                            }
+                        } else {
+                            stringRes("no_notes_yet")
+                        }
                         Text(
-                            text = stringRes("no_notes_yet"),
+                            text = emptyMsg,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = textColor
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = stringRes("notes_empty_hint"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = subTextColor
-                        )
+                        if (isFilteredEmpty) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = { activeFilter = BulletinFilter.All }) {
+                                Text(stringRes("filter_all"), color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal)
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = stringRes("notes_empty_hint"),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = subTextColor
+                            )
+                        }
                     }
                 }
             } else {
@@ -817,7 +1091,8 @@ fun NotesScreen(
                                                 BriefToast.show(AppI18n.t("could_not_download_attachment"))
                                             }
                                         }
-                                    }
+                                    },
+                                    onHashtagClick = { tag -> activeFilter = BulletinFilter.Tag(tag) }
                                 )
                             }
                         }
@@ -1244,7 +1519,8 @@ private fun NoteBubbleItem(
     onCloseAnyReveal: () -> Unit,
     onDeleteClick: () -> Unit,
     onLockClick: () -> Unit,
-    onOpenAttachment: () -> Unit
+    onOpenAttachment: () -> Unit,
+    onHashtagClick: ((String) -> Unit)? = null
 ) {
     val isMine = item.isMine
     val alignment = if (isMine) Alignment.End else Alignment.Start
@@ -1265,9 +1541,11 @@ private fun NoteBubbleItem(
         text.isNotEmpty() && text != attachmentName && !text.startsWith("[Synced note from Drive:")
     }
 
+    val copyableText = caption ?: attachmentName ?: item.content.trim()
+    val hasCopyable = copyableText.isNotBlank()
     val density = LocalDensity.current
     val bubbleScope = rememberCoroutineScope()
-    val actionCount = if (hasAttachment) 2 else 1
+    val actionCount = (if (hasAttachment) 1 else 0) + (if (hasCopyable) 1 else 0) + 1
     val actionWidthPx = with(density) { (52.dp * actionCount).toPx() }
     val offsetAnim = remember { Animatable(0f) }
     val showActions = revealed || offsetAnim.value < -1f
@@ -1285,6 +1563,18 @@ private fun NoteBubbleItem(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (hasCopyable) {
+                    NoteRevealAction(
+                        icon = Icons.Filled.ContentCopy,
+                        contentDescription = stringRes("copy_to_clipboard"),
+                        containerColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal,
+                        onClick = {
+                            PlatformClipboard.setSystemClipboardText(copyableText)
+                            BriefToast.show(AppI18n.t("copied_to_clipboard"))
+                            onCloseAnyReveal()
+                        }
+                    )
+                }
                 if (hasAttachment) {
                     NoteRevealAction(
                         icon = if (item.attachmentPinned) Icons.Filled.Lock else Icons.Filled.LockOpen,
@@ -1361,7 +1651,13 @@ private fun NoteBubbleItem(
                                         onCloseAnyReveal()
                                     }
                                 },
-                                onLongClick = { onRevealedChange(true) }
+                                onLongClick = {
+                                    if (hasCopyable) {
+                                        PlatformClipboard.setSystemClipboardText(copyableText)
+                                        BriefToast.show(AppI18n.t("copied_to_clipboard"))
+                                    }
+                                    onRevealedChange(true)
+                                }
                             )
                         } else {
                             Modifier
@@ -1395,7 +1691,8 @@ private fun NoteBubbleItem(
                             text = caption,
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp, lineHeight = 19.sp),
                             color = textColor,
-                            linkColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                            linkColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal,
+                            onHashtagClick = onHashtagClick
                         )
                     }
                     if (attachmentName != null) {
