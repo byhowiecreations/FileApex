@@ -124,8 +124,9 @@ class NoteRepository {
         checksum: String? = null,
         attachmentPath: String? = null,
         attachmentFileName: String? = null,
-        attachmentSizeBytes: Long = 0L
-    ): NoteRecord = withContext(Dispatchers.Default) {
+        attachmentSizeBytes: Long = 0L,
+        assignedNoteId: String? = null
+    ): NoteRecord = withContext(Dispatchers.IO) {
         val bulletin = bulletinRepository
         val syncEngine = bulletinSyncEngine
         if (bulletin != null && syncEngine != null) {
@@ -134,7 +135,7 @@ class NoteRepository {
                     ?: attachmentPath.substringAfterLast('/').substringAfterLast('\\')
                 val fileLen = SystemFileSystem.metadataOrNull(Path(attachmentPath))?.size
                     ?: error("Attachment file not found")
-                bulletin.ingestLocalFile(attachmentPath, display, fileLen, content.trim())
+                bulletin.ingestLocalFile(attachmentPath, display, fileLen, content.trim(), assignedNoteId)
             } else {
                 val link = textContainsWebUrl(content.trim())
                 bulletin.ingestLocalText(content.trim(), link = link)
@@ -289,7 +290,8 @@ class NoteRepository {
         }
         val latest = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } } ?: return
         val fileName = latest.attachmentFileName.orEmpty()
-        if (!latest.isMine && com.fileapex.update.BulletinApkUpdatePolicy.shouldAutoUpdateNote(
+        val updateInFlight = com.fileapex.update.BulletinApkUpdateCoordinator.isUpdateInFlight(noteId)
+        if (!latest.isMine && !updateInFlight && com.fileapex.update.BulletinApkUpdatePolicy.shouldAutoUpdateNote(
                 fileName,
                 noteId,
                 latest.epochMs,
@@ -332,7 +334,15 @@ class NoteRepository {
     }
 
     suspend fun fetchAttachmentIfNeeded(noteId: String): String? {
-        val note = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } } ?: return null
+        val note = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
+            ?: bulletinRepository?.getMessage(noteId)?.toNoteRecord()?.also { loaded ->
+                mutex.withLock {
+                    if (_notes.value.none { it.noteId == noteId }) {
+                        _notes.value = (_notes.value + loaded).sortedBy { it.epochMs }
+                    }
+                }
+            }
+            ?: return null
         resolveLocalAttachmentPath(note)?.let { return it }
         if (noteId in _downloadingAttachmentIds.value) return null
 
@@ -377,10 +387,6 @@ class NoteRepository {
         if (pending != null && (pending.assetName == snapshot?.attachmentFileName || pending.assetName == attachmentName)) {
             com.fileapex.update.PendingUpdateStore.save(null)
             com.fileapex.platform.dismissAppUpdateNotification()
-        }
-        val localPath = snapshot?.attachmentLocalPath?.takeIf { it.isNotBlank() }
-        if (localPath != null && (snapshot.attachmentFileName?.let { com.fileapex.update.BulletinApkUpdatePolicy.matchesAutoUpdateApk(it) } == true)) {
-            runCatching { java.io.File(localPath).delete() }
         }
     }
 
@@ -526,7 +532,7 @@ class NoteRepository {
         }
     }
 
-    private fun resolveLocalAttachmentPath(note: NoteRecord): String? {
+    internal fun resolveLocalAttachmentPath(note: NoteRecord): String? {
         val path = note.attachmentLocalPath?.takeIf { it.isNotBlank() } ?: return null
         return path.takeIf { SystemFileSystem.exists(Path(it)) }
     }

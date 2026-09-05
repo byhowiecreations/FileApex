@@ -312,6 +312,7 @@ fun DevicesScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
+        val isFreestyle = LocalAppTheme.current == AppTheme.FREESTYLE
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -321,7 +322,14 @@ fun DevicesScreen(
                 CompactDevicesTitleBand(
                     actions = deviceOrderHeaderActions,
                     showLayoutView = true,
-                    onToggleLayoutView = { FileApexServices.settings.setDevicesViewMode(viewMode.toggled()) },
+                    onToggleLayoutView = {
+                        if (isFreestyle) {
+                            val current = FileApexServices.settings.freestyleLayoutMode.value
+                            FileApexServices.settings.setFreestyleLayoutMode(current.next())
+                        } else {
+                            FileApexServices.settings.setDevicesViewMode(viewMode.toggled())
+                        }
+                    },
                     showCloseService = true,
                     onCloseService = onExitApp,
                     onOpenNotes = onOpenNotes,
@@ -331,7 +339,54 @@ fun DevicesScreen(
             ClipboardAccessibilityBanner(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
-            if (isKineticSphere && !editMode) {
+            if (isFreestyle) {
+                FreestyleDevicesView(
+                    deviceRows = listRows,
+                    connectingDeviceId = state.connectingDeviceId,
+                    selectedDeviceId = selectedDeviceId,
+                    isEditMode = editMode,
+                    onOpenDevice = { deviceId ->
+                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                            currentOnOpenDevice(target)
+                        }
+                    },
+                    onRenameDevice = { deviceId, deviceName ->
+                        renameText = deviceName
+                        viewModel.beginRename(deviceId)
+                    },
+                    onDeviceDetails = { deviceId ->
+                        viewModel.requestDeviceDetails(deviceId)
+                    },
+                    onSendClipboardDevice = { deviceId ->
+                        viewModel.sendClipboardToDevice(deviceId)
+                    },
+                    onRemoveDevice = { deviceId, deviceName ->
+                        pendingDelete = PendingDelete(deviceId, deviceName)
+                    },
+                    onFilesDropped = { deviceId, paths ->
+                        viewModel.sendDroppedLocalFiles(deviceId, paths)
+                    },
+                    onSaveDeviceCardPosition = viewModel::saveDeviceCardPosition,
+                    onSaveDeviceTilePosition = viewModel::saveDeviceTilePosition,
+                    onSaveDeviceCardMenuOrder = viewModel::saveDeviceCardMenuOrder,
+                    onSaveDeviceTileMenuOrder = viewModel::saveDeviceTileMenuOrder,
+                    onGenerateQr = onGenerateQr,
+                    onJoinDevice = onJoinDevice,
+                    onCheckBatteries = { viewModel.checkBatteries() },
+                    onSendClipboard = viewModel::sendClipboardNow,
+                    onOpenLocalFiles = onOpenLocalFiles,
+                    onOpenSettings = onOpenSettings,
+                    thisDeviceTarget = viewModel.thisDeviceTarget(),
+                    onResolveBrowseTarget = { deviceId, onTargetResolved ->
+                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                            onTargetResolved(target)
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+            } else if (isKineticSphere && !editMode) {
                 KineticSphereDevicesView(
                     deviceRows = listRows,
                     connectingDeviceId = state.connectingDeviceId,
@@ -404,7 +459,7 @@ fun DevicesScreen(
             }
 
             // Always pinned above bottom navigation — not overlapping the list.
-            if (!editMode && !isKineticSphere) {
+            if (!editMode && !isKineticSphere && !isFreestyle) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -619,9 +674,9 @@ fun DevicesScreen(
     }
 
     state.batteryOverlayState?.let { overlay ->
-        BatteryStatusOverlay(
-            loading = overlay.loading,
-            items = overlay.items,
+        BatteryTerminalOverlay(
+            logLines = overlay.logLines,
+            isComplete = overlay.isComplete,
             onDismiss = viewModel::dismissBatteryOverlay
         )
     }
@@ -1242,7 +1297,7 @@ private fun HomeTopBar(
     onOpenTransferQueue: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
     val allowLayoutView = onToggleLayoutView != null && currentTheme != AppTheme.KINETIC_SPHERE
     if (isCustomGlass) {
         FluxGlassHeader(
@@ -1278,6 +1333,8 @@ fun FileApexBottomBar(
 ) {
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
     val currentTheme = LocalAppTheme.current
+    if (currentTheme == AppTheme.FREESTYLE) return
+
     val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
 
     if (isCustomGlass) {

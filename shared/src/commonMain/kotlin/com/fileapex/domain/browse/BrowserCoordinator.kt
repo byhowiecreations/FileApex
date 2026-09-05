@@ -23,9 +23,23 @@ class BrowserCoordinator(
         throw PinSessionRequiredException()
     }
 
-    suspend fun listAt(path: String): BrowseListing {
+    private data class CachedBrowse(val timestamp: Long, val listing: BrowseListing)
+    private val browseCache = mutableMapOf<String, CachedBrowse>()
+    private val cacheLock = Any()
+
+    suspend fun listAt(path: String, forceRefresh: Boolean = false): BrowseListing {
         ensureBrowseAccess()
-        return when (val browseTarget = target) {
+        val normalized = normalizePath(path)
+        val now = com.fileapex.util.TimeUtils.now()
+        if (!forceRefresh) {
+            synchronized(cacheLock) {
+                val cached = browseCache[normalized]
+                if (cached != null && (now - cached.timestamp) < 60_000L) {
+                    return cached.listing
+                }
+            }
+        }
+        val result = when (val browseTarget = target) {
             is BrowseTarget.Local -> {
                 val listing = transfer.listLocal(path)
                 BrowseListing(
@@ -40,6 +54,20 @@ class BrowserCoordinator(
                     directories = items.filter { it.isDirectory }.sortedBy { it.name.lowercase() },
                     files = items.filter { !it.isDirectory }.sortedBy { it.name.lowercase() }
                 )
+            }
+        }
+        synchronized(cacheLock) {
+            browseCache[normalized] = CachedBrowse(now, result)
+        }
+        return result
+    }
+
+    fun invalidateCache(path: String? = null) {
+        synchronized(cacheLock) {
+            if (path == null) {
+                browseCache.clear()
+            } else {
+                browseCache.remove(normalizePath(path))
             }
         }
     }

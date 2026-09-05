@@ -29,9 +29,10 @@ class UpdateNotificationReceiver : BroadcastReceiver() {
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: Intent().setClassName(context.packageName, "com.fileapex.MainActivity")
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        launch.putExtra(EXTRA_SHOW_UPDATE_SHEET, true)
         if (download) {
             launch.putExtra(EXTRA_DOWNLOAD_UPDATE, true)
+        } else {
+            launch.putExtra(EXTRA_SHOW_UPDATE_SHEET, true)
         }
         runCatching { context.startActivity(launch) }
     }

@@ -45,7 +45,15 @@ data class PairedDeviceEntity(
     val deviceModel: String = "",
     val supportedProtocolsJson: String = "[]",
     /** Epoch millis when this peer was last observed online (UTC). */
-    val lastSeenEpochMs: Long = 0L
+    val lastSeenEpochMs: Long = 0L,
+    val cardPosX: Float? = null,
+    val cardPosY: Float? = null,
+    val cardSortOrder: Int = 0,
+    val cardMenuOrder: String = "",
+    val tilePosX: Float? = null,
+    val tilePosY: Float? = null,
+    val tileSortOrder: Int = 0,
+    val tileMenuOrder: String = ""
 )
 
 @Entity(tableName = "note_records")
@@ -121,6 +129,18 @@ interface DeviceDao {
     )
     suspend fun touchLastSeen(deviceId: String, ip: String, port: Int, epochMs: Long)
 
+    @Query(
+        "UPDATE paired_devices SET cardPosX = :x, cardPosY = :y, cardSortOrder = :order, cardMenuOrder = :menuOrder " +
+            "WHERE deviceId = :deviceId"
+    )
+    suspend fun updateCardLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String)
+
+    @Query(
+        "UPDATE paired_devices SET tilePosX = :x, tilePosY = :y, tileSortOrder = :order, tileMenuOrder = :menuOrder " +
+            "WHERE deviceId = :deviceId"
+    )
+    suspend fun updateTileLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String)
+
     @Query("DELETE FROM paired_devices WHERE deviceId = :deviceId")
     suspend fun deleteDevice(deviceId: String)
 
@@ -181,7 +201,7 @@ interface NoteDao {
         PendingTransferEntity::class,
         NoteEntity::class
     ],
-    version = 10
+    version = 11
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {

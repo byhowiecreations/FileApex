@@ -3,6 +3,7 @@ package com.fileapex.update
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.BriefToast
+import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.dismissAppUpdateNotification
 import com.fileapex.platform.notifyAppUpdateAvailable
 import com.fileapex.platform.shouldDeferUpdateInstallToUser
@@ -52,6 +53,7 @@ object AppUpdateCoordinator {
 
     /** Call once after [FileApexServices.init] when the process starts. */
     fun onAppLaunch() {
+        syncInstallStatusOnAppOpen()
         restorePendingOffer()
         dropStalePendingOffer()
         ensureSchedulerRunning()
@@ -62,6 +64,36 @@ object AppUpdateCoordinator {
                 requireEnabled = true,
                 toastFeedback = false
             )
+        }
+    }
+
+    fun syncInstallStatusOnAppOpen() {
+        val lastNoteId = PendingUpdateStore.getLastAttemptedNoteId()
+        val offer = _pendingUpdate.value ?: PendingUpdateStore.load()
+        val targetNoteId = lastNoteId.ifBlank { offer?.originNoteId.orEmpty() }
+
+        if (targetNoteId.isNotBlank()) {
+            val currentStatus = PendingUpdateStore.getNoteInstallStatus(targetNoteId)
+            val targetVersion = offer?.remoteVersion
+            val isCurrentOrNewer = if (!targetVersion.isNullOrBlank()) {
+                !isRemoteVersionNewer(currentAppVersionName(), targetVersion)
+            } else {
+                false
+            }
+
+            if (currentStatus == "INSTALLED" || isCurrentOrNewer) {
+                PendingUpdateStore.setNoteInstallStatus(targetNoteId, "INSTALLED")
+                PendingUpdateStore.setLastAttemptedNoteId("")
+                setPendingOffer(null)
+                dismissAppUpdateNotification()
+                println("AppUpdateCoordinator: noteId=$targetNoteId status on app open: INSTALLED")
+            } else {
+                PendingUpdateStore.setNoteInstallStatus(targetNoteId, "NOT_INSTALLED")
+                PendingUpdateStore.setLastAttemptedNoteId("")
+                setPendingOffer(null)
+                dismissAppUpdateNotification()
+                println("AppUpdateCoordinator: noteId=$targetNoteId status on app open: NOT_INSTALLED (will not re-prompt)")
+            }
         }
     }
 
@@ -103,7 +135,7 @@ object AppUpdateCoordinator {
             _showUpdateSheet.value = true
             return
         }
-        // Process may have been killed after the notification was posted — re-probe.
+        // Process may have been killed after the notification was posted; re-probe.
         scheduleCheck(
             reason = "notification_open",
             force = true,
@@ -129,8 +161,25 @@ object AppUpdateCoordinator {
     fun downloadPendingUpdate() {
         restorePendingOffer()
         dropStalePendingOffer()
-        val offer = _pendingUpdate.value
+        var offer = _pendingUpdate.value
         if (offer == null) {
+            offer = resolveFallbackBulletinApkOffer()
+            if (offer != null) {
+                setPendingOffer(offer)
+            }
+        }
+        if (offer == null) {
+            val candidateNote = FileApexServices.noteRepository.notes.value.reversed().firstOrNull { note ->
+                com.fileapex.update.BulletinApkUpdatePolicy.matchesAutoUpdateApk(note.attachmentFileName) &&
+                    PendingUpdateStore.getNoteInstallStatus(note.noteId) == null
+            }
+            if (candidateNote != null && FileApexServices.noteRepository.attachmentNeedsDownload(candidateNote)) {
+                BriefToast.show(AppI18n.t("update_download_progress"))
+                scope.launch {
+                    FileApexServices.noteRepository.fetchAttachmentIfNeeded(candidateNote.noteId)
+                }
+                return
+            }
             BriefToast.show(com.fileapex.i18n.AppI18n.t("update_details_missing"))
             scheduleCheck(
                 reason = "notification_install",
@@ -141,9 +190,15 @@ object AppUpdateCoordinator {
             return
         }
         val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }
-        if (localPath != null && SystemFileSystem.exists(Path(localPath))) {
+        if (localPath != null && fileExists(localPath)) {
             _statusMessage.value = AppI18n.t("installing_update", offer.remoteVersion)
             dismissAppUpdateNotification()
+            offer.originNoteId?.let { noteId ->
+                PendingUpdateStore.setLastAttemptedNoteId(noteId)
+                if (PendingUpdateStore.getNoteInstallStatus(noteId) == null) {
+                    PendingUpdateStore.setNoteInstallStatus(noteId, "NOT_INSTALLED")
+                }
+            }
             PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion)
             setPendingOffer(null)
             _showUpdateSheet.value = false
@@ -158,6 +213,12 @@ object AppUpdateCoordinator {
             try {
                 _statusMessage.value = AppI18n.t("downloading_update", offer.remoteVersion)
                 dismissAppUpdateNotification()
+                offer.originNoteId?.let { noteId ->
+                    PendingUpdateStore.setLastAttemptedNoteId(noteId)
+                    if (PendingUpdateStore.getNoteInstallStatus(noteId) == null) {
+                        PendingUpdateStore.setNoteInstallStatus(noteId, "NOT_INSTALLED")
+                    }
+                }
                 AppUpdater.downloadAndInstall(offer)
                 FileApexServices.settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                 setPendingOffer(null)
@@ -295,7 +356,7 @@ object AppUpdateCoordinator {
         setPendingOffer(null)
     }
 
-    private fun setPendingOffer(offer: PendingUpdateOffer?) {
+    fun setPendingOffer(offer: PendingUpdateOffer?) {
         _pendingUpdate.value = offer
         PendingUpdateStore.save(offer)
     }
@@ -306,23 +367,107 @@ object AppUpdateCoordinator {
         _pendingUpdate.value = stored
     }
 
+    private fun fileExists(pathString: String): Boolean {
+        return runCatching {
+            val p = Path(pathString)
+            SystemFileSystem.exists(p)
+        }.getOrDefault(false)
+    }
+
     private fun dropStalePendingOffer() {
         val offer = _pendingUpdate.value ?: PendingUpdateStore.load() ?: return
-        if (!isRemoteVersionNewer(currentAppVersionName(), offer.remoteVersion)) {
-            setPendingOffer(null)
-            dismissAppUpdateNotification()
-            return
-        }
         val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }
-        if (localPath != null && SystemFileSystem.exists(Path(localPath))) {
+        if (localPath != null && fileExists(localPath)) {
             if (_pendingUpdate.value == null) {
                 _pendingUpdate.value = offer
             }
             return
         }
+        if (offer.assetDownloadUrl.isBlank() && offer.assetName.isNotBlank()) {
+            val fallback = resolveFallbackBulletinApkOffer()
+            if (fallback != null) {
+                _pendingUpdate.value = fallback
+                PendingUpdateStore.save(fallback)
+                return
+            }
+        }
+        if (!isRemoteVersionNewer(currentAppVersionName(), offer.remoteVersion)) {
+            setPendingOffer(null)
+            dismissAppUpdateNotification()
+            return
+        }
         if (_pendingUpdate.value == null) {
             _pendingUpdate.value = offer
         }
+    }
+
+    private fun resolveFallbackBulletinApkOffer(): PendingUpdateOffer? {
+        val noteRepo = FileApexServices.noteRepository
+        val candidateNote = noteRepo.notes.value.reversed().firstOrNull { note ->
+            BulletinApkUpdatePolicy.matchesAutoUpdateApk(note.attachmentFileName) &&
+                PendingUpdateStore.getNoteInstallStatus(note.noteId) == null
+        }
+        if (candidateNote != null) {
+            val fileName = candidateNote.attachmentFileName.orEmpty()
+            val version = BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
+            if (isRemoteVersionNewer(currentAppVersionName(), version)) {
+                val localPath = noteRepo.resolveLocalAttachmentPath(candidateNote)
+                if (!localPath.isNullOrBlank() && fileExists(localPath)) {
+                    val apkSize = runCatching { SystemFileSystem.metadataOrNull(Path(localPath))?.size }.getOrNull()
+                        ?: candidateNote.attachmentSizeBytes
+                    return PendingUpdateOffer(
+                        remoteVersion = version,
+                        releaseTitle = "FileApex $version",
+                        releaseNotes = candidateNote.content.takeIf { it.isNotBlank() },
+                        assetName = fileName,
+                        assetDownloadUrl = "",
+                        assetSizeBytes = apkSize,
+                        localFilePath = localPath,
+                        originNoteId = candidateNote.noteId
+                    )
+                }
+            }
+        }
+
+        val downloadsDir = defaultDownloadsDir()
+        val dir = Path(downloadsDir)
+        if (SystemFileSystem.exists(dir)) {
+            val apks = runCatching {
+                SystemFileSystem.list(dir).filter { path ->
+                    val name = path.name
+                    BulletinApkUpdatePolicy.matchesAutoUpdateApk(name)
+                }
+            }.getOrNull().orEmpty()
+
+            val newestApk = apks.maxByOrNull { path ->
+                runCatching { SystemFileSystem.metadataOrNull(path)?.size }.getOrNull() ?: 0L
+            }
+            if (newestApk != null) {
+                val meta = runCatching { SystemFileSystem.metadataOrNull(newestApk) }.getOrNull()
+                if (meta != null && meta.size > 1024L) {
+                    val fileName = newestApk.name
+                    val version = BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
+                    if (isRemoteVersionNewer(currentAppVersionName(), version)) {
+                        val matchingNote = noteRepo.notes.value.firstOrNull {
+                            it.attachmentFileName == fileName
+                        }
+                        if (matchingNote == null || PendingUpdateStore.getNoteInstallStatus(matchingNote.noteId) == null) {
+                            return PendingUpdateOffer(
+                                remoteVersion = version,
+                                releaseTitle = "FileApex $version",
+                                releaseNotes = null,
+                                assetName = fileName,
+                                assetDownloadUrl = "",
+                                assetSizeBytes = meta.size,
+                                localFilePath = newestApk.toString(),
+                                originNoteId = matchingNote?.noteId
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        return null
     }
 
     private fun isOfferSkipped(offer: PendingUpdateOffer): Boolean {

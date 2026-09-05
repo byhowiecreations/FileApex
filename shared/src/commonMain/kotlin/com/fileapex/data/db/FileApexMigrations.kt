@@ -151,3 +151,32 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         ).use { statement -> statement.step() }
     }
 }
+
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `cardPosX` REAL"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `cardPosY` REAL"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `cardSortOrder` INTEGER NOT NULL DEFAULT 0"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `cardMenuOrder` TEXT NOT NULL DEFAULT ''"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `tilePosX` REAL"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `tilePosY` REAL"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `tileSortOrder` INTEGER NOT NULL DEFAULT 0"
+        ).use { statement -> statement.step() }
+        connection.prepare(
+            "ALTER TABLE `paired_devices` ADD COLUMN `tileMenuOrder` TEXT NOT NULL DEFAULT ''"
+        ).use { statement -> statement.step() }
+    }
+}

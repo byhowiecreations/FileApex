@@ -1,50 +1,50 @@
 package com.fileapex.data.files
 
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.platform.fastScanDirectory
+import com.fileapex.util.TimeUtils
 import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
 
 class LocalFileRepository {
-    fun listDirectory(absolutePath: String): Result<DirectoryListing> {
+    private data class CachedListing(
+        val timestampEpochMs: Long,
+        val listing: DirectoryListing
+    )
+
+    private val cache = mutableMapOf<String, CachedListing>()
+    private val cacheLock = Any()
+
+    fun listDirectory(absolutePath: String, bypassCache: Boolean = false): Result<DirectoryListing> {
         return runCatching {
-            val path = Path(absolutePath)
-            if (!SystemFileSystem.exists(path)) {
-                error("Path does not exist: $absolutePath")
-            }
-            val metadata = SystemFileSystem.metadataOrNull(path)
-            if (metadata?.isDirectory != true) {
-                error("Not a directory: $absolutePath")
-            }
-
-            val children = SystemFileSystem.list(path).mapNotNull { child ->
-                val name = child.name.ifBlank { child.toString() }
-                if (isHiddenDotName(name)) return@mapNotNull null
-                val childMeta = SystemFileSystem.metadataOrNull(child) ?: return@mapNotNull null
-                val isDirectory = childMeta.isDirectory
-                RemoteFileItem(
-                    id = child.toString(),
-                    name = name,
-                    absolutePath = child.toString(),
-                    sizeBytes = if (isDirectory) 0L else childMeta.size.coerceAtLeast(0L),
-                    lastModified = 0L,
-                    isDirectory = isDirectory,
-                    mimeType = if (isDirectory) "inode/directory" else guessMimeType(name)
-                )
+            val now = TimeUtils.now()
+            if (!bypassCache) {
+                synchronized(cacheLock) {
+                    val cached = cache[absolutePath]
+                    if (cached != null && (now - cached.timestampEpochMs) < CACHE_TTL_MS) {
+                        return@runCatching cached.listing
+                    }
+                }
             }
 
-            val directories = children
-                .filter { it.isDirectory }
-                .sortedBy { it.name.lowercase() }
-            val files = children
-                .filter { !it.isDirectory }
-                .sortedBy { it.name.lowercase() }
+            val (directories, files) = fastScanDirectory(absolutePath)
+            val parent = Path(absolutePath).parent?.toString()
 
-            DirectoryListing(
+            val listing = DirectoryListing(
                 path = absolutePath,
-                parentPath = path.parent?.toString(),
+                parentPath = parent,
                 directories = directories,
                 files = files
             )
+
+            synchronized(cacheLock) {
+                cache[absolutePath] = CachedListing(now, listing)
+                if (cache.size > 100) {
+                    val cutoff = now - CACHE_TTL_MS
+                    cache.entries.removeAll { it.value.timestampEpochMs < cutoff }
+                }
+            }
+
+            listing
         }
     }
 
@@ -52,20 +52,34 @@ class LocalFileRepository {
         return Path(absolutePath).parent?.toString()
     }
 
-    private fun guessMimeType(name: String): String {
-        val lower = name.lowercase()
-        return when {
-            lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".log") -> "text/plain"
-            lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
-            lower.endsWith(".png") -> "image/png"
-            lower.endsWith(".gif") -> "image/gif"
-            lower.endsWith(".webp") -> "image/webp"
-            lower.endsWith(".mp4") -> "video/mp4"
-            lower.endsWith(".mp3") -> "audio/mpeg"
-            lower.endsWith(".pdf") -> "application/pdf"
-            lower.endsWith(".zip") -> "application/zip"
-            else -> "application/octet-stream"
+    fun invalidateCache(path: String? = null) {
+        synchronized(cacheLock) {
+            if (path == null) {
+                cache.clear()
+            } else {
+                cache.remove(path)
+            }
         }
+    }
+
+    companion object {
+        private const val CACHE_TTL_MS = 15_000L
+    }
+}
+
+fun guessMimeType(name: String): String {
+    val lower = name.lowercase()
+    return when {
+        lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".log") -> "text/plain"
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+        lower.endsWith(".png") -> "image/png"
+        lower.endsWith(".gif") -> "image/gif"
+        lower.endsWith(".webp") -> "image/webp"
+        lower.endsWith(".mp4") -> "video/mp4"
+        lower.endsWith(".mp3") -> "audio/mpeg"
+        lower.endsWith(".pdf") -> "application/pdf"
+        lower.endsWith(".zip") -> "application/zip"
+        else -> "application/octet-stream"
     }
 }
 

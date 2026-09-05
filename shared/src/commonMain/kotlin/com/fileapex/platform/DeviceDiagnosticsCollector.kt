@@ -1,10 +1,12 @@
 package com.fileapex.platform
 
 import com.fileapex.cloud.currentPlatformLabel
+import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.util.TimeUtils
 
 expect fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics
+expect fun collectFastBatteryDiagnostics(): BatteryDiagnostics
 
 fun collectDeviceDiagnostics(): PeerDeviceDiagnostics {
     return collectPlatformDeviceDiagnostics()

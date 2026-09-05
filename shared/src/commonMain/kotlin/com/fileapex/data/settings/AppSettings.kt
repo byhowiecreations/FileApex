@@ -61,10 +61,27 @@ interface AppSettings {
     val liveTransferCapsuleEnabled: StateFlow<Boolean>
     val liveTransferShowQueueEnabled: StateFlow<Boolean>
     val appTheme: StateFlow<AppTheme>
+    val bulletinBoardStyle: StateFlow<BulletinBoardStyle>
 
     val kineticSphereCleanMode: StateFlow<Boolean>
     val kineticSphereConnectedLinesEnabled: StateFlow<Boolean>
     val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean>
+
+    val freestyleCardOptionsPosX: StateFlow<Float?>
+    val freestyleCardOptionsPosY: StateFlow<Float?>
+    val freestyleCardVerticalOptionsPosX: StateFlow<Float?>
+    val freestyleCardVerticalOptionsPosY: StateFlow<Float?>
+    val freestyleTileOptionsPosX: StateFlow<Float?>
+    val freestyleTileOptionsPosY: StateFlow<Float?>
+    val freestyleLayoutMode: StateFlow<FreestyleLayoutMode>
+    val freestyleEditTutorialShown: StateFlow<Boolean>
+    val freestyleCardNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>>
+    val freestyleCardVerticalNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>>
+    val freestyleTileNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>>
+    val freestyleCardMenuOrders: StateFlow<Map<String, String>>
+    val freestyleCardVerticalMenuOrders: StateFlow<Map<String, String>>
+    val freestyleTileMenuOrders: StateFlow<Map<String, String>>
+    val freestyleOptionsMenuOrder: StateFlow<String>
 
     val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean>
     val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean>
@@ -94,6 +111,7 @@ interface AppSettings {
     fun setLiveTransferCapsuleEnabled(enabled: Boolean)
     fun setLiveTransferShowQueueEnabled(enabled: Boolean)
     fun setAppTheme(theme: AppTheme)
+    fun setBulletinBoardStyle(style: BulletinBoardStyle)
     fun setKineticSphereCleanMode(enabled: Boolean)
     fun setKineticSphereConnectedLinesEnabled(enabled: Boolean)
     fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean)
@@ -130,6 +148,20 @@ interface AppSettings {
     fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float)
 
     fun resetKineticNodeOffsets()
+
+    fun setFreestyleOptionsPosition(mode: FreestyleLayoutMode, x: Float?, y: Float?)
+    fun setFreestyleOptionsPosition(isCard: Boolean, x: Float?, y: Float?)
+    fun setFreestyleLayoutMode(mode: FreestyleLayoutMode)
+    fun setFreestyleEditTutorialShown(shown: Boolean)
+    fun setFreestyleNodeOffset(mode: FreestyleLayoutMode, deviceId: String, x: Float, y: Float)
+    fun setFreestyleCardNodeOffset(deviceId: String, x: Float, y: Float)
+    fun setFreestyleCardVerticalNodeOffset(deviceId: String, x: Float, y: Float)
+    fun setFreestyleTileNodeOffset(deviceId: String, x: Float, y: Float)
+    fun setFreestyleMenuOrder(mode: FreestyleLayoutMode, deviceId: String, order: String)
+    fun setFreestyleCardMenuOrder(deviceId: String, order: String)
+    fun setFreestyleCardVerticalMenuOrder(deviceId: String, order: String)
+    fun setFreestyleTileMenuOrder(deviceId: String, order: String)
+    fun setFreestyleOptionsMenuOrder(order: String)
 
     fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences)
 

@@ -20,7 +20,15 @@ data class DeviceListRow(
     val os: String = "",
     val platform: String = "",
     val deviceMake: String = "",
-    val deviceModel: String = ""
+    val deviceModel: String = "",
+    val cardPosX: Float? = null,
+    val cardPosY: Float? = null,
+    val cardSortOrder: Int = 0,
+    val cardMenuOrder: String = "",
+    val tilePosX: Float? = null,
+    val tilePosY: Float? = null,
+    val tileSortOrder: Int = 0,
+    val tileMenuOrder: String = ""
 ) {
     val title: String get() = deviceName
 

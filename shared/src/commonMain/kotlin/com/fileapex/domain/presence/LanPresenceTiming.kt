@@ -78,4 +78,12 @@ object LanPresenceTiming {
     const val ON_DEMAND_PRIME_ATTEMPTS = 2
 
     const val ON_DEMAND_PRIME_RETRY_MS = 400L
+
+    suspend fun awaitConnectHandshakeMinDelay(startedAtEpochMs: Long, skipMinDelay: Boolean) {
+        if (skipMinDelay) return
+        val remaining = (DEVICE_CONNECT_HANDSHAKE_MS - (com.fileapex.util.TimeUtils.now() - startedAtEpochMs)).coerceAtLeast(0L)
+        if (remaining > 0L) {
+            kotlinx.coroutines.delay(remaining)
+        }
+    }
 }

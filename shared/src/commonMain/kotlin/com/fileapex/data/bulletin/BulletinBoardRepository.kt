@@ -117,8 +117,9 @@ class BulletinBoardRepository(
         absolutePath: String,
         fileName: String,
         sizeBytes: Long,
-        caption: String = ""
-    ): MessageEntity = withContext(Dispatchers.Default) {
+        caption: String = "",
+        messageId: String? = null
+    ): MessageEntity = withContext(Dispatchers.IO) {
         val identity = loadLocalIdentity()
         val selfName = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
         val sha256 = sha256HexFile(absolutePath)
@@ -153,7 +154,7 @@ class BulletinBoardRepository(
             )
         }
         val message = MessageEntity(
-            id = "msg-" + TimeUtils.now() + "-" + (1000..9999).random(),
+            id = messageId ?: ("msg-" + TimeUtils.now() + "-" + (1000..9999).random()),
             originDeviceId = identity.deviceId,
             senderName = selfName,
             content = if (caption.isNotBlank()) "$caption\n$content" else content,

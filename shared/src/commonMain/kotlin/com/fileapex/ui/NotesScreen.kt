@@ -1,5 +1,6 @@
 package com.fileapex.ui
 
+import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.i18n.stringRes
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.PlatformClipboard
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -116,69 +118,40 @@ import com.fileapex.ui.dialogs.GoogleDrivePermissionDialog
 import com.fileapex.ui.dnd.deviceFileDropTarget
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.util.TimeUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material3.TextButton
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.fileapex.presentation.BulletinFilter
+import com.fileapex.presentation.NotesListRow
+import com.fileapex.presentation.NotesViewModel
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
-
-sealed interface BulletinFilter {
-    data object All : BulletinFilter
-    data object Links : BulletinFilter
-    data object Images : BulletinFilter
-    data object Documents : BulletinFilter
-    data object Snippets : BulletinFilter
-    data object Files : BulletinFilter
-    data object Pinned : BulletinFilter
-    data class Tag(val tag: String) : BulletinFilter
-}
-
-private val BULLETIN_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "heic", "heif", "tiff", "avif")
-private val BULLETIN_DOC_EXTENSIONS = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "rtf", "epub", "json", "xml", "log", "html", "htm")
-
-private fun isBulletinImage(fileName: String?): Boolean {
-    if (fileName.isNullOrBlank()) return false
-    val ext = fileName.substringAfterLast('.', "").lowercase()
-    return ext in BULLETIN_IMAGE_EXTENSIONS
-}
-
-private fun isBulletinDoc(fileName: String?): Boolean {
-    if (fileName.isNullOrBlank()) return false
-    val ext = fileName.substringAfterLast('.', "").lowercase()
-    return ext in BULLETIN_DOC_EXTENSIONS
-}
-
-private fun isBulletinOtherFile(fileName: String?): Boolean {
-    if (fileName.isNullOrBlank()) return false
-    return !isBulletinImage(fileName) && !isBulletinDoc(fileName)
-}
-
-private fun isBulletinSnippet(note: NoteRecord): Boolean {
-    if (!note.attachmentFileName.isNullOrBlank()) return false
-    val text = note.content.trim()
-    if (text.isEmpty()) return false
-    if (isWebUrl(text) || textContainsWebUrl(text)) return false
-    return text.length <= 120
-}
-
-private fun extractBulletinHashtags(text: String): List<String> {
-    if (text.isBlank()) return emptyList()
-    val regex = Regex("""#[A-Za-z0-9_]+""")
-    return regex.findAll(text).map { it.value.lowercase() }.toList()
-}
 
 @Composable
 fun NotesScreen(
     onBack: () -> Unit,
     focusNoteId: String? = null,
     onFocusNoteConsumed: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: NotesViewModel = viewModel { NotesViewModel() }
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
-    val rawNotes by FileApexServices.noteRepository.notes.collectAsState()
-    val downloadingAttachmentIds by FileApexServices.noteRepository.downloadingAttachmentIds.collectAsState()
-    val displayNotes = remember(rawNotes) { rawNotes.sortedBy { it.epochMs } }
+    val state by viewModel.uiState.collectAsState()
+    val displayNotes = state.rawNotes
+    val downloadingAttachmentIds = state.downloadingAttachmentIds
+    val bulletinBoardStyle = state.bulletinBoardStyle
+    val activeFilter = state.activeFilter
+    val hasLinks = state.hasLinks
+    val hasImages = state.hasImages
+    val hasDocs = state.hasDocs
+    val hasSnippets = state.hasSnippets
+    val hasOtherFiles = state.hasOtherFiles
+    val hasPinned = state.hasPinned
+    val availableTags = state.availableTags
+
     var inputContent by remember { mutableStateOf("") }
     var noteToDelete by remember { mutableStateOf<NoteRecord?>(null) }
     var pendingRemotePurgeDelete by remember { mutableStateOf<NoteRecord?>(null) }
@@ -209,52 +182,16 @@ fun NotesScreen(
     val bubbleThumbs = remember { mutableStateMapOf<String, ImageBitmap?>() }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    var activeFilter by remember { mutableStateOf<BulletinFilter>(BulletinFilter.All) }
     var filterMenuExpanded by remember { mutableStateOf(false) }
 
-    val hasLinks = remember(displayNotes) { displayNotes.any { isWebUrl(it.content) || textContainsWebUrl(it.content) } }
-    val hasImages = remember(displayNotes) { displayNotes.any { isBulletinImage(it.attachmentFileName) } }
-    val hasDocs = remember(displayNotes) { displayNotes.any { isBulletinDoc(it.attachmentFileName) } }
-    val hasSnippets = remember(displayNotes) { displayNotes.any { isBulletinSnippet(it) } }
-    val hasOtherFiles = remember(displayNotes) { displayNotes.any { isBulletinOtherFile(it.attachmentFileName) } }
-    val hasPinned = remember(displayNotes) { displayNotes.any { it.attachmentPinned } }
-    val availableTags = remember(displayNotes) { displayNotes.flatMap { extractBulletinHashtags(it.content) }.distinct().sorted() }
-
-    LaunchedEffect(hasLinks, hasImages, hasDocs, hasSnippets, hasOtherFiles, hasPinned, availableTags) {
-        val isValid = when (activeFilter) {
-            BulletinFilter.All -> true
-            BulletinFilter.Links -> hasLinks
-            BulletinFilter.Images -> hasImages
-            BulletinFilter.Documents -> hasDocs
-            BulletinFilter.Snippets -> hasSnippets
-            BulletinFilter.Files -> hasOtherFiles
-            BulletinFilter.Pinned -> hasPinned
-            is BulletinFilter.Tag -> (activeFilter as BulletinFilter.Tag).tag in availableTags
-        }
-        if (!isValid) {
-            activeFilter = BulletinFilter.All
-        }
-    }
-
-    val notesForList = remember(displayNotes, transport?.assemblingNoteId, transport?.settled, activeFilter) {
+    val visualRows = remember(state.visualRows, transport?.assemblingNoteId, transport?.settled) {
         val hideId = transport?.takeIf { it.settled != true }?.assemblingNoteId
-        val base = if (hideId.isNullOrBlank()) displayNotes else displayNotes.filterNot { it.noteId == hideId }
-        when (activeFilter) {
-            BulletinFilter.All -> base
-            BulletinFilter.Links -> base.filter { isWebUrl(it.content) || textContainsWebUrl(it.content) }
-            BulletinFilter.Images -> base.filter { isBulletinImage(it.attachmentFileName) }
-            BulletinFilter.Documents -> base.filter { isBulletinDoc(it.attachmentFileName) }
-            BulletinFilter.Snippets -> base.filter { isBulletinSnippet(it) }
-            BulletinFilter.Files -> base.filter { isBulletinOtherFile(it.attachmentFileName) }
-            BulletinFilter.Pinned -> base.filter { it.attachmentPinned }
-            is BulletinFilter.Tag -> {
-                val targetTag = (activeFilter as BulletinFilter.Tag).tag.lowercase()
-                base.filter { targetTag in extractBulletinHashtags(it.content) }
-            }
+        if (hideId.isNullOrBlank()) {
+            state.visualRows
+        } else {
+            state.visualRows.filterNot { row -> row is NotesListRow.Bubble && row.note.noteId == hideId }
         }
     }
-    val listRows = remember(notesForList) { notesListRows(notesForList) }
-    val visualRows = remember(listRows) { listRows.asReversed() }
     val holdingTransportSlot = pendingTransport != null ||
         (transport != null && transport?.settled != true)
 
@@ -404,11 +341,11 @@ fun NotesScreen(
         }
     }
 
-    LaunchedEffect(listRows.size, pendingTransport != null, transport?.settled, transport?.streamDone, focusNoteId) {
+    LaunchedEffect(visualRows.size, pendingTransport != null, transport?.settled, transport?.streamDone, focusNoteId) {
         scrollNotesToLatest()
     }
 
-    LaunchedEffect(focusNoteId, listRows) {
+    LaunchedEffect(focusNoteId, visualRows) {
         val id = focusNoteId?.trim().orEmpty()
         if (id.isEmpty()) return@LaunchedEffect
         val rowIndex = visualRows.indexOfFirst { row ->
@@ -440,8 +377,8 @@ fun NotesScreen(
         else -> MaterialTheme.colorScheme.background
     }
     val cardBg = when (currentTheme) {
-        AppTheme.FLUX_GLASS -> Color(0x330D1F29)
-        AppTheme.KINETIC_SPHERE -> Color(0x440A1D2E)
+        AppTheme.FLUX_GLASS -> Color(0xFF15222A)
+        AppTheme.KINETIC_SPHERE -> Color(0xFF12202E)
         else -> MaterialTheme.colorScheme.surface
     }
     val textColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
@@ -518,6 +455,7 @@ fun NotesScreen(
         if (pendingTransport !== pending) return
         if (dest.width < 4f || dest.height < 4f) return
         pendingTransport = null
+        val targetNoteId = "msg-" + TimeUtils.now() + "-" + (1000..9999).random()
         val session = NotesAttachmentTransportState(
             sourceRect = pending.sourceRect,
             destRect = dest,
@@ -527,24 +465,24 @@ fun NotesScreen(
             isImage = pending.isImage,
             accent = pending.accent,
             icon = pending.icon,
-            fileName = pending.name,
+            fileName = pending.name.orEmpty(),
             caption = pending.caption,
             attachmentPath = pending.path
         )
+        session.assemblingNoteId = targetNoteId
+        if (pending.bitmap != null) {
+            bubbleThumbs[targetNoteId] = pending.bitmap
+        }
         transport = session
-        scope.launch {
+        scope.launch(Dispatchers.IO) {
             runCatching {
                 FileApexServices.noteRepository.sendNote(
                     content = pending.text,
                     attachmentPath = pending.path,
                     attachmentFileName = pending.name,
-                    attachmentSizeBytes = pending.size
+                    attachmentSizeBytes = pending.size,
+                    assignedNoteId = targetNoteId
                 )
-            }.onSuccess { record ->
-                session.assemblingNoteId = record.noteId
-                if (pending.bitmap != null) {
-                    bubbleThumbs[record.noteId] = pending.bitmap
-                }
             }.onFailure { error ->
                 session.streamDone = true
                 session.settled = true
@@ -776,7 +714,7 @@ fun NotesScreen(
                                 { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                             } else null,
                             onClick = {
-                                activeFilter = BulletinFilter.All
+                                viewModel.setFilter(BulletinFilter.All)
                                 filterMenuExpanded = false
                             }
                         )
@@ -792,7 +730,7 @@ fun NotesScreen(
                                     { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                                 } else null,
                                 onClick = {
-                                    activeFilter = BulletinFilter.Links
+                                    viewModel.setFilter(BulletinFilter.Links)
                                     filterMenuExpanded = false
                                 }
                             )
@@ -809,7 +747,7 @@ fun NotesScreen(
                                     { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                                 } else null,
                                 onClick = {
-                                    activeFilter = BulletinFilter.Images
+                                    viewModel.setFilter(BulletinFilter.Images)
                                     filterMenuExpanded = false
                                 }
                             )
@@ -826,7 +764,7 @@ fun NotesScreen(
                                     { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                                 } else null,
                                 onClick = {
-                                    activeFilter = BulletinFilter.Documents
+                                    viewModel.setFilter(BulletinFilter.Documents)
                                     filterMenuExpanded = false
                                 }
                             )
@@ -843,7 +781,7 @@ fun NotesScreen(
                                     { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                                 } else null,
                                 onClick = {
-                                    activeFilter = BulletinFilter.Snippets
+                                    viewModel.setFilter(BulletinFilter.Snippets)
                                     filterMenuExpanded = false
                                 }
                             )
@@ -860,7 +798,7 @@ fun NotesScreen(
                                     { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                                 } else null,
                                 onClick = {
-                                    activeFilter = BulletinFilter.Files
+                                    viewModel.setFilter(BulletinFilter.Files)
                                     filterMenuExpanded = false
                                 }
                             )
@@ -877,7 +815,7 @@ fun NotesScreen(
                                     { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                                 } else null,
                                 onClick = {
-                                    activeFilter = BulletinFilter.Pinned
+                                    viewModel.setFilter(BulletinFilter.Pinned)
                                     filterMenuExpanded = false
                                 }
                             )
@@ -898,7 +836,7 @@ fun NotesScreen(
                                         { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
                                     } else null,
                                     onClick = {
-                                        activeFilter = BulletinFilter.Tag(tag)
+                                        viewModel.setFilter(BulletinFilter.Tag(tag))
                                         filterMenuExpanded = false
                                     }
                                 )
@@ -915,7 +853,7 @@ fun NotesScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            if (notesForList.isEmpty() && !holdingTransportSlot) {
+            if (visualRows.isEmpty() && !holdingTransportSlot) {
                 val isFilteredEmpty = activeFilter != BulletinFilter.All && displayNotes.isNotEmpty()
                 Box(
                     modifier = Modifier
@@ -952,7 +890,7 @@ fun NotesScreen(
                         )
                         if (isFilteredEmpty) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { activeFilter = BulletinFilter.All }) {
+                            TextButton(onClick = { viewModel.setFilter(BulletinFilter.All) }) {
                                 Text(stringRes("filter_all"), color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal)
                             }
                         } else {
@@ -986,7 +924,7 @@ fun NotesScreen(
                             val assemblingNote = session?.assemblingNoteId?.let { id ->
                                 displayNotes.firstOrNull { it.noteId == id }
                             }
-                            val outgoingNote = assemblingNote ?: outgoingPlaceholderNote(
+                            val outgoingNote = assemblingNote ?: viewModel.createOutgoingPlaceholder(
                                 fileName = pending?.name ?: session?.fileName,
                                 caption = pending?.caption ?: session?.caption.orEmpty(),
                                 path = pending?.path ?: session?.attachmentPath
@@ -1003,6 +941,7 @@ fun NotesScreen(
                                 revealed = false,
                                 assembling = session?.streamDone != true,
                                 thumbnail = outgoingThumb,
+                                style = bulletinBoardStyle,
                                 footerLabel = when {
                                     session?.settled == true -> null
                                     session?.deliveryLabel != null -> session.deliveryLabel
@@ -1058,6 +997,7 @@ fun NotesScreen(
                                     assembling = false,
                                     thumbnail = bubbleThumbs[row.note.noteId],
                                     isDownloadingAttachment = row.note.noteId in downloadingAttachmentIds,
+                                    style = bulletinBoardStyle,
                                     onBubblePositioned = {},
                                     onRevealedChange = { open ->
                                         revealedNoteId = if (open) row.note.noteId else null
@@ -1069,12 +1009,10 @@ fun NotesScreen(
                                     },
                                     onLockClick = {
                                         revealedNoteId = null
-                                        scope.launch {
-                                            FileApexServices.noteRepository.setAttachmentPinned(
-                                                row.note.noteId,
-                                                !row.note.attachmentPinned
-                                            )
-                                        }
+                                        viewModel.setAttachmentPinned(
+                                            row.note.noteId,
+                                            !row.note.attachmentPinned
+                                        )
                                     },
                                     onOpenAttachment = {
                                         val name = row.note.attachmentFileName.orEmpty()
@@ -1092,7 +1030,7 @@ fun NotesScreen(
                                             }
                                         }
                                     },
-                                    onHashtagClick = { tag -> activeFilter = BulletinFilter.Tag(tag) }
+                                    onHashtagClick = { tag -> viewModel.setFilter(BulletinFilter.Tag(tag)) }
                                 )
                             }
                         }
@@ -1145,8 +1083,7 @@ fun NotesScreen(
                 }
             }
 
-            // Composer Row — 15% shorter than Material3's 56.dp outlined field so the
-            // placeholder stays on one line.
+            // 47.6dp composer height keeps the placeholder on a single line.
             val composerInteraction = remember { MutableInteractionSource() }
             val composerFocused by composerInteraction.collectIsFocusedAsState()
             val composerTextStyle = MaterialTheme.typography.bodySmall.copy(
@@ -1373,9 +1310,7 @@ fun NotesScreen(
                         if (target.hasBulletinBinaryAttachment()) {
                             pendingRemotePurgeDelete = target
                         } else {
-                            scope.launch {
-                                FileApexServices.noteRepository.deleteNoteFromAllDevices(target.noteId)
-                            }
+                            viewModel.deleteNoteFromAllDevices(target.noteId)
                         }
                     }
                 ) {
@@ -1388,9 +1323,7 @@ fun NotesScreen(
                         onClick = {
                             val target = targetToDelete
                             noteToDelete = null
-                            scope.launch {
-                                FileApexServices.noteRepository.deleteNote(target.noteId)
-                            }
+                            viewModel.deleteNoteLocally(target.noteId)
                         }
                     ) {
                         Text(stringRes("this_device_only"))
@@ -1417,12 +1350,10 @@ fun NotesScreen(
                     onClick = {
                         val target = remotePurgeDeleteTarget
                         pendingRemotePurgeDelete = null
-                        scope.launch {
-                            FileApexServices.noteRepository.deleteNoteFromAllDevices(
-                                noteId = target.noteId,
-                                remotePurge = true
-                            )
-                        }
+                        viewModel.deleteNoteFromAllDevices(
+                            noteId = target.noteId,
+                            remotePurge = true
+                        )
                     }
                 ) {
                     Text(stringRes("remove_file"), color = MaterialTheme.colorScheme.error)
@@ -1434,12 +1365,10 @@ fun NotesScreen(
                         onClick = {
                             val target = remotePurgeDeleteTarget
                             pendingRemotePurgeDelete = null
-                            scope.launch {
-                                FileApexServices.noteRepository.deleteNoteFromAllDevices(
-                                    noteId = target.noteId,
-                                    remotePurge = false
-                                )
-                            }
+                            viewModel.deleteNoteFromAllDevices(
+                                noteId = target.noteId,
+                                remotePurge = false
+                            )
                         }
                     ) {
                         Text(stringRes("keep_file"))
@@ -1514,6 +1443,7 @@ private fun NoteBubbleItem(
     isDownloadingAttachment: Boolean = false,
     footerLabel: String? = null,
     gesturesEnabled: Boolean = true,
+    style: BulletinBoardStyle = BulletinBoardStyle.DEFAULT,
     onBubblePositioned: (LayoutCoordinates) -> Unit,
     onRevealedChange: (Boolean) -> Unit,
     onCloseAnyReveal: () -> Unit,
@@ -1524,6 +1454,26 @@ private fun NoteBubbleItem(
 ) {
     val isMine = item.isMine
     val alignment = if (isMine) Alignment.End else Alignment.Start
+    val effectiveTextColor = when (style) {
+        BulletinBoardStyle.STICKY_NOTE, BulletinBoardStyle.TORN_LEDGER -> Color(0xFF1E2022)
+        BulletinBoardStyle.IOS_MODERN -> if (isMine) Color.White else textColor
+        BulletinBoardStyle.AERO_GLASS -> Color.White
+        else -> textColor
+    }
+    val effectiveSubTextColor = when (style) {
+        BulletinBoardStyle.STICKY_NOTE, BulletinBoardStyle.TORN_LEDGER -> Color(0xFF555960)
+        BulletinBoardStyle.IOS_MODERN -> if (isMine) Color.White.copy(alpha = 0.85f) else subTextColor
+        BulletinBoardStyle.AERO_GLASS -> Color.White.copy(alpha = 0.75f)
+        else -> subTextColor
+    }
+    val effectiveHeaderColor = when (style) {
+        BulletinBoardStyle.DEFAULT -> if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+        BulletinBoardStyle.STICKY_NOTE -> Color(0xFFB71C1C)
+        BulletinBoardStyle.TORN_LEDGER -> Color(0xFF1E5BB0)
+        BulletinBoardStyle.IOS_MODERN -> if (isMine) Color.White else IosModernApexBlue
+        BulletinBoardStyle.MATERIAL_YOU -> BrandCoolBlue
+        BulletinBoardStyle.AERO_GLASS -> Color(0xFF4ADE80)
+    }
     val bubbleShape = if (isMine) {
         RoundedCornerShape(16.dp, 16.dp, 2.dp, 16.dp)
     } else {
@@ -1545,7 +1495,7 @@ private fun NoteBubbleItem(
     val hasCopyable = copyableText.isNotBlank()
     val density = LocalDensity.current
     val bubbleScope = rememberCoroutineScope()
-    val actionCount = (if (hasAttachment) 1 else 0) + (if (hasCopyable) 1 else 0) + 1
+    val actionCount = (if (hasCopyable) 1 else 0) + 2
     val actionWidthPx = with(density) { (52.dp * actionCount).toPx() }
     val offsetAnim = remember { Animatable(0f) }
     val showActions = revealed || offsetAnim.value < -1f
@@ -1575,18 +1525,16 @@ private fun NoteBubbleItem(
                         }
                     )
                 }
-                if (hasAttachment) {
-                    NoteRevealAction(
-                        icon = if (item.attachmentPinned) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                        contentDescription = if (item.attachmentPinned) {
-                            stringRes("unlock_attachment")
-                        } else {
-                            stringRes("lock_attachment")
-                        },
-                        containerColor = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
-                        onClick = onLockClick
-                    )
-                }
+                NoteRevealAction(
+                    icon = if (item.attachmentPinned) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    contentDescription = if (item.attachmentPinned) {
+                        stringRes("unlock_attachment")
+                    } else {
+                        stringRes("lock_attachment")
+                    },
+                    containerColor = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
+                    onClick = onLockClick
+                )
                 NoteRevealAction(
                     icon = Icons.Filled.DeleteOutline,
                     contentDescription = stringRes("delete_note"),
@@ -1601,9 +1549,12 @@ private fun NoteBubbleItem(
                 .graphicsLayer { alpha = if (assembling) 0f else 1f },
             horizontalAlignment = alignment
         ) {
+            val isPinnedPinStyle = item.attachmentPinned &&
+                (style == BulletinBoardStyle.STICKY_NOTE || style == BulletinBoardStyle.TORN_LEDGER)
             Column(
                 modifier = Modifier
-                    .widthIn(max = 380.dp)
+                    .widthIn(min = 90.dp, max = 380.dp)
+                    .wrapContentWidth()
                     .offset { IntOffset(offsetAnim.value.roundToInt(), 0) }
                     .then(
                         if (gesturesEnabled) {
@@ -1627,20 +1578,23 @@ private fun NoteBubbleItem(
                         }
                     )
             ) {
-                Card(
-                    modifier = Modifier.onGloballyPositioned(onBubblePositioned),
-                    colors = CardDefaults.cardColors(containerColor = bubbleBg),
-                    shape = bubbleShape,
-                    border = when {
-                        highlighted -> BorderStroke(
-                            2.dp,
-                            if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
-                        )
-                        isCustomGlass -> BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
-                        else -> null
-                    }
+                BulletinBubbleContainer(
+                    style = style,
+                    isMine = isMine,
+                    cardBg = cardBg,
+                    isCustomGlass = isCustomGlass,
+                    highlighted = highlighted,
+                    isPinned = item.attachmentPinned,
+                    modifier = Modifier
+                        .onGloballyPositioned(onBubblePositioned)
+                        .padding(top = if (isPinnedPinStyle) 8.dp else 0.dp)
                 ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = if (style == BulletinBoardStyle.TORN_LEDGER) 14.dp else 12.dp,
+                            vertical = if (style == BulletinBoardStyle.TORN_LEDGER) 14.dp else 12.dp
+                        )
+                    ) {
                     Row(
                         modifier = if (gesturesEnabled) {
                             Modifier.combinedClickable(
@@ -1667,7 +1621,7 @@ private fun NoteBubbleItem(
                         Text(
                             text = if (isMine) stringRes("this_device") else item.sourceDeviceName,
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+                            color = effectiveHeaderColor
                         )
                         if (!item.driveFileId.isNullOrBlank()) {
                             Spacer(modifier = Modifier.width(6.dp))
@@ -1690,8 +1644,8 @@ private fun NoteBubbleItem(
                         NoteLinkText(
                             text = caption,
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp, lineHeight = 19.sp),
-                            color = textColor,
-                            linkColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal,
+                            color = effectiveTextColor,
+                            linkColor = effectiveHeaderColor,
                             onHashtagClick = onHashtagClick
                         )
                     }
@@ -1727,7 +1681,7 @@ private fun NoteBubbleItem(
                                     Text(
                                         text = attachmentName,
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = textColor,
+                                        color = effectiveTextColor,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -1756,14 +1710,14 @@ private fun NoteBubbleItem(
                                     Icon(
                                         imageVector = ExplorerEntryIcons.iconForFile(attachmentName, ""),
                                         contentDescription = stringRes("open_attachment"),
-                                        tint = subTextColor,
+                                        tint = effectiveSubTextColor,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = attachmentName,
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = textColor,
+                                        color = effectiveTextColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -1830,11 +1784,6 @@ private fun NoteRevealAction(
     }
 }
 
-private sealed class NotesListRow {
-    data class DayHeader(val dayKey: String, val label: String) : NotesListRow()
-    data class Bubble(val note: NoteRecord) : NotesListRow()
-}
-
 private class PendingNotesTransport(
     val sourceRect: Rect,
     val bitmap: ImageBitmap?,
@@ -1862,37 +1811,6 @@ private fun pickedFileFromDroppedPath(path: String): PickedLocalFile? {
         sizeBytes = meta.size.coerceAtLeast(0L),
         absolutePath = cleaned
     )
-}
-
-private fun outgoingPlaceholderNote(
-    fileName: String?,
-    caption: String,
-    path: String?
-): NoteRecord {
-    return NoteRecord(
-        noteId = "notes-outgoing-placeholder",
-        sourceDeviceId = "",
-        sourceDeviceName = AppI18n.t("this_device"),
-        content = caption,
-        epochMs = TimeUtils.now(),
-        isMine = true,
-        attachmentFileName = fileName,
-        attachmentLocalPath = path
-    )
-}
-
-private fun notesListRows(notes: List<NoteRecord>): List<NotesListRow> {
-    val rows = mutableListOf<NotesListRow>()
-    var lastDay: String? = null
-    for (note in notes) {
-        val stamp = TimeUtils.noteListStamp(note.epochMs)
-        if (stamp.dayKey != lastDay) {
-            rows += NotesListRow.DayHeader(stamp.dayKey, stamp.dateHeader)
-            lastDay = stamp.dayKey
-        }
-        rows += NotesListRow.Bubble(note)
-    }
-    return rows
 }
 
 private val NOTES_COMPOSER_HEIGHT = 47.6.dp

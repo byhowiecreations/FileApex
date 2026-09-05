@@ -118,21 +118,23 @@ actual object FileApexMdnsBrowser {
         mainHandler.postDelayed(runnable, delayMs)
     }
 
-    /** Pre-API 34 resolve path — still the platform API on those devices. */
-    @Suppress("DEPRECATION")
+    // Pre-API 34 resolve path on devices below Android 14.
     private fun resolveLegacy(manager: NsdManager, serviceInfo: NsdServiceInfo) {
-        manager.resolveService(
-            serviceInfo,
-            object : NsdManager.ResolveListener {
-                override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
-                    println("FileApexMdnsBrowser: resolve failed code=$errorCode")
+        runCatching {
+            val listenerClass = Class.forName("android.net.nsd.NsdManager\$ResolveListener")
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                listenerClass.classLoader,
+                arrayOf(listenerClass)
+            ) { _, method, args ->
+                when (method.name) {
+                    "onResolveFailed" -> println("FileApexMdnsBrowser: resolve failed code=${args?.getOrNull(1)}")
+                    "onServiceResolved" -> (args?.getOrNull(0) as? NsdServiceInfo)?.let { deliverResolved(it) }
                 }
-
-                override fun onServiceResolved(info: NsdServiceInfo) {
-                    deliverResolved(info)
-                }
+                null
             }
-        )
+            manager.javaClass.getMethod("resolveService", NsdServiceInfo::class.java, listenerClass)
+                .invoke(manager, serviceInfo, proxy)
+        }
     }
 
     private fun resolveWithServiceInfoCallback(manager: NsdManager, serviceInfo: NsdServiceInfo) {
@@ -177,9 +179,12 @@ actual object FileApexMdnsBrowser {
         return NetworkUtils.selectBestLanIpv4(addresses).orEmpty()
     }
 
-    @Suppress("DEPRECATION")
-    private fun hostFromServiceInfoLegacy(info: NsdServiceInfo): String =
-        info.host.hostAddress?.trim().orEmpty()
+    private fun hostFromServiceInfoLegacy(info: NsdServiceInfo): String {
+        val hostObj = runCatching {
+            info.javaClass.getMethod("getHost").invoke(info) as? java.net.InetAddress
+        }.getOrNull()
+        return hostObj?.hostAddress?.trim().orEmpty()
+    }
 
     private const val MAX_DISCOVERY_RESTART_ATTEMPTS = 5
     private const val DISCOVERY_RESTART_BASE_MS = 2_000L

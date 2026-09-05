@@ -19,6 +19,14 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
         val version = com.fileapex.update.BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
         val sig = com.fileapex.update.BulletinApkUpdatePolicy.buildFileSignature(fileName, file.length(), file.lastModified())
         com.fileapex.update.PendingUpdateStore.markProcessedFile(sig)
+        val matchingNote = com.fileapex.di.FileApexServices.noteRepository.notes.value.firstOrNull {
+            it.attachmentFileName == fileName || it.attachmentFileName == file.name
+        }
+        val originNoteId = matchingNote?.noteId
+        if (!originNoteId.isNullOrBlank()) {
+            com.fileapex.update.PendingUpdateStore.setLastAttemptedNoteId(originNoteId)
+            com.fileapex.update.PendingUpdateStore.setNoteInstallStatus(originNoteId, "NOT_INSTALLED")
+        }
         val offer = com.fileapex.update.PendingUpdateOffer(
             remoteVersion = version,
             releaseTitle = "FileApex $version",
@@ -26,9 +34,10 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
             assetName = fileName,
             assetDownloadUrl = "",
             assetSizeBytes = file.length(),
-            localFilePath = file.absolutePath
+            localFilePath = file.absolutePath,
+            originNoteId = originNoteId
         )
-        com.fileapex.update.PendingUpdateStore.save(offer)
+        com.fileapex.update.AppUpdateCoordinator.setPendingOffer(offer)
         notifyAppUpdateAvailable(offer)
         runCatching {
             com.fileapex.update.PlatformUpdateInstaller.installAndRelaunch(

@@ -58,7 +58,8 @@ actual fun Modifier.deviceFileDropTarget(
     return this.dragAndDropTarget(
         shouldStartDragAndDrop = { event ->
             runCatching {
-                event.awtTransferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)
+                event.awtTransferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor) ||
+                event.awtTransferable.isDataFlavorSupported(DataFlavor.stringFlavor)
             }.getOrDefault(true)
         },
         target = target
@@ -79,16 +80,31 @@ private fun DragAndDropEvent.dropOffsetInRoot(): Offset {
 @Suppress("UNCHECKED_CAST")
 private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
     val transferable = runCatching { event.awtTransferable }.getOrNull() ?: return emptyList()
-    if (!transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) return emptyList()
-    val files = runCatching {
-        transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>
-    }.getOrNull().orEmpty()
-    return files.mapNotNull { entry ->
-        val file = when (entry) {
-            is File -> entry
-            is String -> File(entry)
-            else -> null
-        } ?: return@mapNotNull null
-        if (file.isFile || file.isDirectory) file.absolutePath else null
+
+    // 1. Check for in-app or custom string transfer payload (fileapex-transfer://)
+    if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+        val text = runCatching {
+            transferable.getTransferData(DataFlavor.stringFlavor) as? String
+        }.getOrNull()
+        if (!text.isNullOrBlank() && text.startsWith("fileapex-transfer://")) {
+            return listOf(text)
+        }
     }
+
+    // 2. Fall back to standard OS javaFileListFlavor
+    if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+        val files = runCatching {
+            transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>
+        }.getOrNull().orEmpty()
+        return files.mapNotNull { entry ->
+            val file = when (entry) {
+                is File -> entry
+                is String -> File(entry)
+                else -> null
+            } ?: return@mapNotNull null
+            if (file.isFile || file.isDirectory) file.absolutePath else null
+        }
+    }
+
+    return emptyList()
 }

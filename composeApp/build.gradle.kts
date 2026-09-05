@@ -990,6 +990,7 @@ private fun Project.pruneMacComposeStaging(reason: String) {
         layout.buildDirectory.dir("compose/binaries/main/app").get().asFile,
         layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile,
         layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile,
+        rootProject.layout.projectDirectory.dir("macos/build/DerivedData").asFile,
     ).forEach { dir ->
         if (dir.exists()) {
             dir.deleteRecursively()

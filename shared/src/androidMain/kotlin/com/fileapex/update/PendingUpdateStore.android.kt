@@ -12,12 +12,22 @@ actual object PendingUpdateStore {
     private const val KEY_ASSET_URL = "asset_url"
     private const val KEY_ASSET_SIZE = "asset_size"
     private const val KEY_LOCAL_FILE_PATH = "local_file_path"
+    private const val KEY_ORIGIN_NOTE_ID = "origin_note_id"
 
     actual fun save(offer: PendingUpdateOffer?) {
         val context = androidAppContextOrNull() ?: return
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (offer == null) {
-            prefs.edit().clear().apply()
+            prefs.edit()
+                .remove(KEY_VERSION)
+                .remove(KEY_TITLE)
+                .remove(KEY_NOTES)
+                .remove(KEY_ASSET_NAME)
+                .remove(KEY_ASSET_URL)
+                .remove(KEY_ASSET_SIZE)
+                .remove(KEY_LOCAL_FILE_PATH)
+                .remove(KEY_ORIGIN_NOTE_ID)
+                .commit()
             return
         }
         prefs.edit()
@@ -28,6 +38,7 @@ actual object PendingUpdateStore {
             .putString(KEY_ASSET_URL, offer.assetDownloadUrl)
             .putLong(KEY_ASSET_SIZE, offer.assetSizeBytes)
             .putString(KEY_LOCAL_FILE_PATH, offer.localFilePath.orEmpty())
+            .putString(KEY_ORIGIN_NOTE_ID, offer.originNoteId.orEmpty())
             .commit()
     }
 
@@ -38,6 +49,7 @@ actual object PendingUpdateStore {
         val assetName = prefs.getString(KEY_ASSET_NAME, null)?.trim().orEmpty()
         val assetUrl = prefs.getString(KEY_ASSET_URL, null)?.trim().orEmpty()
         val localPath = prefs.getString(KEY_LOCAL_FILE_PATH, null)?.trim()?.takeIf { it.isNotEmpty() }
+        val originNoteId = prefs.getString(KEY_ORIGIN_NOTE_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
         if (version.isEmpty() || assetName.isEmpty()) return null
         return PendingUpdateOffer(
             remoteVersion = version,
@@ -46,7 +58,8 @@ actual object PendingUpdateStore {
             assetName = assetName,
             assetDownloadUrl = assetUrl,
             assetSizeBytes = prefs.getLong(KEY_ASSET_SIZE, 0L),
-            localFilePath = localPath
+            localFilePath = localPath,
+            originNoteId = originNoteId
         )
     }
 
@@ -148,5 +161,51 @@ actual object PendingUpdateStore {
         if (signature in currentSigs) {
             prefs.edit().putStringSet(KEY_PROCESSED_FILE_SIGS, currentSigs - signature).commit()
         }
+    }
+
+    private const val KEY_LAST_ATTEMPTED_NOTE_ID = "last_attempted_update_note_id"
+    private const val KEY_NOTE_INSTALL_STATUS_PREFIX = "note_install_status_"
+
+    private val inMemoryNoteInstallStatus = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @kotlin.concurrent.Volatile
+    private var inMemoryLastAttemptedNoteId: String = ""
+
+    actual fun setNoteInstallStatus(noteId: String, status: String) {
+        if (noteId.isBlank()) return
+        inMemoryNoteInstallStatus[noteId] = status
+        val context = androidAppContextOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_NOTE_INSTALL_STATUS_PREFIX + noteId, status).commit()
+    }
+
+    actual fun getNoteInstallStatus(noteId: String): String? {
+        if (noteId.isBlank()) return null
+        inMemoryNoteInstallStatus[noteId]?.let { return it }
+        val context = androidAppContextOrNull() ?: return null
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val status = prefs.getString(KEY_NOTE_INSTALL_STATUS_PREFIX + noteId, null)
+        if (status != null) {
+            inMemoryNoteInstallStatus[noteId] = status
+        }
+        return status
+    }
+
+    actual fun isNoteInstalled(noteId: String): Boolean =
+        getNoteInstallStatus(noteId) == "INSTALLED"
+
+    actual fun setLastAttemptedNoteId(noteId: String) {
+        inMemoryLastAttemptedNoteId = noteId
+        val context = androidAppContextOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_LAST_ATTEMPTED_NOTE_ID, noteId).commit()
+    }
+
+    actual fun getLastAttemptedNoteId(): String {
+        if (inMemoryLastAttemptedNoteId.isNotBlank()) return inMemoryLastAttemptedNoteId
+        val context = androidAppContextOrNull() ?: return ""
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stored = prefs.getString(KEY_LAST_ATTEMPTED_NOTE_ID, "").orEmpty()
+        inMemoryLastAttemptedNoteId = stored
+        return stored
     }
 }

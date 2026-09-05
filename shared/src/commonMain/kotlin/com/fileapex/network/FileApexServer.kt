@@ -327,8 +327,13 @@ class FileApexServer(
                             call.respond(HttpStatusCode.Forbidden, "pin_required")
                             return@runCatching
                         }
-                        val pathStr = call.request.queryParameters["path"]
-                            ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+                        val rawPath = call.request.queryParameters["path"].orEmpty().trim()
+                        val sharedRoot = identityProvider().rootPath
+                        val pathStr = if (rawPath.isBlank() || rawPath == "/" || rawPath == "\\") {
+                            sharedRoot
+                        } else {
+                            rawPath
+                        }
                         if (!isPathAllowed(pathStr)) {
                             call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                             return@runCatching
@@ -361,8 +366,15 @@ class FileApexServer(
                             call.respond(HttpStatusCode.Forbidden, "pin_required")
                             return@runCatching
                         }
-                        val pathStr = call.request.queryParameters["path"]
-                            ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+                        val rawPath = call.request.queryParameters["path"].orEmpty().trim()
+                        if (rawPath.isBlank()) {
+                            return@runCatching call.respond(HttpStatusCode.BadRequest)
+                        }
+                        val pathStr = if (rawPath == "/" || rawPath == "\\") {
+                            identityProvider().rootPath
+                        } else {
+                            rawPath
+                        }
                         if (!isPathAllowed(pathStr)) {
                             call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                             return@runCatching
@@ -899,7 +911,10 @@ class FileApexServer(
     }
 
     private fun isPathAllowed(absolutePath: String): Boolean {
-        return PathUtils.isWithinRoot(absolutePath, identityProvider().rootPath)
+        val root = identityProvider().rootPath
+        val normalized = PathUtils.normalize(absolutePath)
+        if (normalized.isBlank() || normalized == "/" || normalized == "\\" || normalized == PathUtils.normalize(root)) return true
+        return PathUtils.isWithinRoot(normalized, root)
     }
 
     private fun providedPin(call: ApplicationCall): String {

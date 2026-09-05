@@ -1,5 +1,6 @@
 package com.fileapex.update
 
+import androidx.core.content.pm.PackageInfoCompat
 import com.fileapex.data.settings.androidAppContextOrNull
 
 actual fun currentAppVersionName(): String {
@@ -13,11 +14,6 @@ actual fun currentAppVersionCode(): Int {
     val context = androidAppContextOrNull() ?: return FileApexAppVersion.CODE
     return runCatching {
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-            info.longVersionCode.toInt()
-        } else {
-            @Suppress("DEPRECATION")
-            info.versionCode
-        }
+        PackageInfoCompat.getLongVersionCode(info).toInt()
     }.getOrNull() ?: FileApexAppVersion.CODE
 }

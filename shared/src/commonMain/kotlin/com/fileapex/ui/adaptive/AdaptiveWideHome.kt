@@ -23,10 +23,19 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TableRows
+import androidx.compose.material.icons.filled.ViewColumn
+import com.fileapex.ui.FileApexIcons
+import com.fileapex.data.settings.FreestyleLayoutMode
+import com.fileapex.di.FileApexServices
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Dp
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
@@ -118,11 +127,20 @@ fun AdaptiveWideHome(
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         if (editMode) {
-            TextButton(onClick = devicesViewModel::revertDeviceOrderInEditMode) {
-                Text(stringRes("revert"), color = fileApexChromeContentColor())
-            }
-            TextButton(onClick = devicesViewModel::saveDeviceOrderAndExitEditMode) {
-                Text(stringRes("done"), color = fileApexChromeContentColor())
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                TextButton(
+                    onClick = devicesViewModel::revertDeviceOrderInEditMode,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(stringRes("revert"), color = fileApexChromeContentColor(), fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                TextButton(
+                    onClick = devicesViewModel::saveDeviceOrderAndExitEditMode,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(stringRes("done"), color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
+                }
             }
         } else if (deviceRows.isNotEmpty()) {
             IconButton(onClick = devicesViewModel::enterDeviceOrderEditMode) {
@@ -148,26 +166,29 @@ fun AdaptiveWideHome(
             onOpenNotes = onOpenNotes,
             deviceOrderHeaderActions = deviceOrderHeaderActions
         )
+        val isFreestyle = LocalAppTheme.current == AppTheme.FREESTYLE
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            FileApexNavigationRail(
-                selected = selectedTab,
-                onMainHomeScreen = isMainHomeScreen(
-                    selectedTab = selectedTab,
-                    hasActiveDetail = selectedTarget != null
-                ),
-                onDevices = {
-                    onSelectTab(HomeTab.Devices)
-                    if (selectedTarget != null) {
-                        onClearDetail()
-                    }
-                },
-                onFiles = {
-                    onSelectTab(HomeTab.Files)
-                    onOpenLocalFiles()
-                },
-                onSettings = { onSelectTab(HomeTab.Settings) }
-            )
-            val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
+            if (!isFreestyle) {
+                FileApexNavigationRail(
+                    selected = selectedTab,
+                    onMainHomeScreen = isMainHomeScreen(
+                        selectedTab = selectedTab,
+                        hasActiveDetail = selectedTarget != null
+                    ),
+                    onDevices = {
+                        onSelectTab(HomeTab.Devices)
+                        if (selectedTarget != null) {
+                            onClearDetail()
+                        }
+                    },
+                    onFiles = {
+                        onSelectTab(HomeTab.Files)
+                        onOpenLocalFiles()
+                    },
+                    onSettings = { onSelectTab(HomeTab.Settings) }
+                )
+            }
+            val isSpatialTheme = LocalAppTheme.current == AppTheme.KINETIC_SPHERE || LocalAppTheme.current == AppTheme.FREESTYLE
             when (selectedTab) {
                 HomeTab.Settings -> {
                     Surface(
@@ -179,8 +200,8 @@ fun AdaptiveWideHome(
                         SettingsScreen(
                             appVersionName = appVersionName,
                             onBack = { onSelectTab(HomeTab.Devices) },
-                            // Rail is top-level nav; no redundant up/back on Settings root.
-                            showRootBackNavigation = false,
+                            // Rail is top-level nav; on Freestyle without rail, show back button.
+                            showRootBackNavigation = isFreestyle,
                             layoutMode = SettingsScreenLayoutMode.ListPane,
                             backgroundPersistence = backgroundPersistence,
                             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
@@ -195,7 +216,7 @@ fun AdaptiveWideHome(
                     }
                 }
                 HomeTab.Devices -> {
-                    if (isKineticSphere && selectedTarget == null) {
+                    if (isSpatialTheme && selectedTarget == null) {
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
@@ -216,7 +237,7 @@ fun AdaptiveWideHome(
                                 selectedDeviceId = selectedDeviceId
                             )
                         }
-                    } else if (selectedTarget != null && isKineticSphere) {
+                    } else if (selectedTarget != null && isSpatialTheme) {
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
@@ -283,7 +304,10 @@ fun AdaptiveWideHome(
                             ?: devicesViewModel.thisDeviceTarget()
                         FileExplorerScreen(
                             target = localTarget,
-                            onBack = onClearDetail,
+                            onBack = {
+                                onClearDetail()
+                                onSelectTab(HomeTab.Devices)
+                            },
                             titleOverride = com.fileapex.i18n.AppI18n.t("local_files")
                         )
                     }
@@ -372,40 +396,72 @@ private fun WideTopBar(
             iconTint = fileApexChromeContentColor()
         )
         if (onOpenNotes != null) {
-            NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode)
+            NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode, modifier = Modifier.size(40.dp))
         }
         if (showDevicesViewToggle) {
+            val isFreestyle = LocalAppTheme.current == AppTheme.FREESTYLE
+            if (isFreestyle) {
+                val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
+                val icon = when (freestyleMode) {
+                    FreestyleLayoutMode.CARDS_VERTICAL -> Icons.Filled.TableRows
+                    FreestyleLayoutMode.CARDS_HORIZONTAL -> Icons.Filled.ViewColumn
+                    FreestyleLayoutMode.TILES -> FileApexIcons.Atr
+                }
+                val desc = when (freestyleMode) {
+                    FreestyleLayoutMode.CARDS_VERTICAL -> "Vertical Cards Layout"
+                    FreestyleLayoutMode.CARDS_HORIZONTAL -> "Horizontal Cards Layout"
+                    FreestyleLayoutMode.TILES -> "Tiles Layout"
+                }
+                IconButton(
+                    onClick = {
+                        val current = FileApexServices.settings.freestyleLayoutMode.value
+                        FileApexServices.settings.setFreestyleLayoutMode(current.next())
+                    },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = desc,
+                        tint = fileApexChromeContentColor(),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            } else {
+                ExplorerViewModeToggle(
+                    viewMode = devicesViewMode,
+                    onToggle = onToggleDevicesViewMode,
+                    iconTint = fileApexChromeContentColor(),
+                    modifier = Modifier.size(40.dp)
+                )
+            }
             deviceOrderHeaderActions()
-            Spacer(modifier = Modifier.width(4.dp))
-            ExplorerViewModeToggle(
-                viewMode = devicesViewMode,
-                onToggle = onToggleDevicesViewMode,
-                iconTint = fileApexChromeContentColor()
-            )
         } else if (showExplorerViewToggle) {
             ExplorerViewModeToggle(
                 viewMode = explorerViewMode,
                 onToggle = onToggleExplorerViewMode,
-                iconTint = fileApexChromeContentColor()
+                iconTint = fileApexChromeContentColor(),
+                modifier = Modifier.size(40.dp)
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Surface(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .clickable(onClick = onExitClick),
-            shape = CircleShape,
-            color = Color(0x3300E676),
-            border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
+        IconButton(
+            onClick = onExitClick,
+            modifier = Modifier.size(40.dp)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Filled.PowerSettingsNew,
-                    contentDescription = stringRes("exit_fileapex"),
-                    tint = Color(0xFF00E676),
-                    modifier = Modifier.size(20.dp)
-                )
+            Surface(
+                modifier = Modifier
+                    .size(28.dp),
+                shape = CircleShape,
+                color = Color(0x3300E676),
+                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.PowerSettingsNew,
+                        contentDescription = stringRes("exit_fileapex"),
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }

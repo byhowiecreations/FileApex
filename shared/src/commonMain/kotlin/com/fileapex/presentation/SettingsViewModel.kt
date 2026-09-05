@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.data.settings.BulletinRemoteFilePurgePreference
 import com.fileapex.data.settings.DriveRelayMaxMb
 
@@ -53,6 +54,7 @@ data class SettingsUiState(
     val liveTransferCapsuleEnabled: Boolean = false,
     val liveTransferShowQueueEnabled: Boolean = false,
     val appTheme: AppTheme = AppTheme.CLEAN,
+    val bulletinBoardStyle: BulletinBoardStyle = BulletinBoardStyle.DEFAULT,
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
     val pinError: String? = null,
@@ -113,6 +115,7 @@ class SettingsViewModel : ViewModel() {
             liveTransferCapsuleEnabled = settings.liveTransferCapsuleEnabled.value,
             liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
             appTheme = settings.appTheme.value,
+            bulletinBoardStyle = settings.bulletinBoardStyle.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
             pinIdleTimeout = settings.pinIdleTimeout.value,
@@ -260,6 +263,11 @@ class SettingsViewModel : ViewModel() {
                         allowRemoteFileDeletion = preference == BulletinRemoteFilePurgePreference.ENABLED
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            settings.bulletinBoardStyle.collect { style ->
+                _uiState.update { it.copy(bulletinBoardStyle = style) }
             }
         }
     }
@@ -452,6 +460,11 @@ class SettingsViewModel : ViewModel() {
     fun setAppTheme(theme: AppTheme) {
         settings.setAppTheme(theme)
         _uiState.update { it.copy(appTheme = theme) }
+    }
+
+    fun setBulletinBoardStyle(style: BulletinBoardStyle) {
+        settings.setBulletinBoardStyle(style)
+        _uiState.update { it.copy(bulletinBoardStyle = style) }
     }
 
 

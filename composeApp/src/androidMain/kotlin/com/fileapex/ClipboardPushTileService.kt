@@ -34,8 +34,10 @@ class ClipboardPushTileService : TileService() {
                 )
                 startActivityAndCollapse(pending)
             } else {
-                @Suppress("DEPRECATION")
-                startActivityAndCollapse(intent)
+                runCatching {
+                    val method = javaClass.getMethod("startActivityAndCollapse", Intent::class.java)
+                    method.invoke(this, intent)
+                }
             }
         }
     }

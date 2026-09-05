@@ -27,9 +27,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CopyAll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -235,6 +241,17 @@ fun FileExplorerScreen(
                                     }
                                 )
                             }
+                            if (state.isLoading || state.isRefreshing) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(3.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.height(3.dp))
+                            }
                             if (state.isSelectionMode && state.selectedFileIds.isNotEmpty()) {
                                 Text(
                                     text = ExplorerActionCopy.SELECTION_MODE_HELPER,
@@ -293,6 +310,9 @@ fun FileExplorerScreen(
                                 isSelectionMode = state.isSelectionMode,
                                 selectedFileIds = state.selectedFileIds,
                                 isRemoteTarget = state.isRemoteTarget,
+                                sourceDeviceId = state.sourceDeviceId,
+                                loadingFolderPath = state.loadingFolderPath,
+                                isLoading = state.isLoading,
                                 onNavigateUp = viewModel::navigateUp,
                                 onPaneFolderClick = viewModel::onPaneFolderClick,
                                 onContentDirectoryClick = viewModel::onContentDirectoryClick,
@@ -311,6 +331,38 @@ fun FileExplorerScreen(
                                     .weight(1f)
                                     .fillMaxWidth()
                             )
+                        }
+                    }
+                }
+                if (state.isLoading && (state.paneDirectories.isNotEmpty() || state.contentDirectories.isNotEmpty() || state.contentFiles.isNotEmpty())) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = if (showCopyFabs) 140.dp else 24.dp, end = 20.dp),
+                        contentAlignment = Alignment.BottomEnd
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringRes("opening_folder"),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

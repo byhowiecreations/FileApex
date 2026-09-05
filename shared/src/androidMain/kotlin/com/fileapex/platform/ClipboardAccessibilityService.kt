@@ -269,11 +269,13 @@ class ClipboardAccessibilityService : AccessibilityService() {
         return settings.clipboardSharingEnabled.value && settings.clipboardAccessibilityEnabled.value
     }
 
-    // Node pool still exists below API 33; recycle() is a no-op (and deprecated) after that.
-    @Suppress("DEPRECATION")
     private fun recycleNode(node: AccessibilityNodeInfo) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return
-        runCatching { node.recycle() }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            runCatching {
+                val method = node.javaClass.getMethod("recycle")
+                method.invoke(node)
+            }
+        }
     }
 
     private companion object {

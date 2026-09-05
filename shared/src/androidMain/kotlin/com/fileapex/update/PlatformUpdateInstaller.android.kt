@@ -53,40 +53,20 @@ actual object PlatformUpdateInstaller {
             apkFile
         )
 
-        @Suppress("DEPRECATION")
-        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-            putExtra(Intent.EXTRA_RETURN_RESULT, false)
-        }
         val viewIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
         }
 
-        grantUriToResolvers(installIntent, uri)
         grantUriToResolvers(viewIntent, uri)
 
         println(
             "PlatformUpdateInstaller: launching system installer for $remoteVersion " +
                 "(${apkFile.name}, ${apkFile.length()} bytes)"
         )
-        val launched = runCatching {
-            context.startActivity(installIntent)
-            true
-        }.getOrElse { error ->
-            println(
-                "PlatformUpdateInstaller: ACTION_INSTALL_PACKAGE failed - ${error.message}; " +
-                    "falling back to ACTION_VIEW"
-            )
-            false
-        }
-        if (!launched) {
-            context.startActivity(viewIntent)
-        }
+        context.startActivity(viewIntent)
     }
 
     private fun grantUriToResolvers(intent: Intent, uri: android.net.Uri) {

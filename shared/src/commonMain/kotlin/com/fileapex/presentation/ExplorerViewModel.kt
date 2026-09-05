@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.domain.browse.BrowseListing
 import com.fileapex.domain.browse.BrowserCoordinator
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.preview.FilePreviewManager
@@ -16,6 +17,8 @@ import com.fileapex.platform.decodeImageBytes
 import com.fileapex.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +42,7 @@ data class ExplorerUiState(
     val contentDirectories: List<RemoteFileItem> = emptyList(),
     val contentFiles: List<RemoteFileItem> = emptyList(),
     val selectedFolderPath: String? = null,
+    val loadingFolderPath: String? = null,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
@@ -63,7 +67,8 @@ data class ExplorerUiState(
     /** When set, explorer must collect PIN before continuing navigation (idle expiry). */
     val pendingPinUnlock: Boolean = false,
     val pinUnlockError: String? = null,
-    val viewMode: ExplorerViewMode = ExplorerViewMode.List
+    val viewMode: ExplorerViewMode = ExplorerViewMode.List,
+    val sourceDeviceId: String? = null
 )
 
 class ExplorerViewModel(
@@ -79,6 +84,7 @@ class ExplorerViewModel(
     private val settings = FileApexServices.settings
     private val browseRoot: String = browser.browseRoot
     private val isRemote: Boolean = browser.isRemote
+    private val remoteDeviceId: String? = (target as? BrowseTarget.Remote)?.deviceId
     /** Resume after mid-explorer PIN re-entry. */
     private var pendingBrowseAction: (suspend () -> Unit)? = null
     /** Anchor for desktop Shift-click range selection. */
@@ -91,7 +97,8 @@ class ExplorerViewModel(
             deviceTitle = target.displayName,
             clipboardLabel = transfers.clipboardLabel(),
             canPaste = transfers.clipboardHasContent(),
-            isRemoteTarget = isRemote
+            isRemoteTarget = isRemote,
+            sourceDeviceId = remoteDeviceId
         )
     )
     val uiState: StateFlow<ExplorerUiState> = _uiState.asStateFlow()
@@ -117,24 +124,25 @@ class ExplorerViewModel(
 
     fun openPath(path: String) {
         val resolved = browser.resolveWithinRoot(path)
+        _uiState.update {
+            it.copy(
+                isLoading = true,
+                loadingFolderPath = resolved,
+                errorMessage = null,
+                selectedFolderPath = null,
+                previewItem = null,
+                previewText = null,
+                previewImage = null,
+                isPreviewLoading = false,
+                canDownloadPreview = false,
+                isSelectionMode = false,
+                selectedFileIds = emptySet(),
+                canDownloadSelection = false,
+                canPaste = TransferClipboard.hasContent()
+            )
+        }
         launchBrowse {
             browseWithPinRetry {
-                _uiState.update {
-                    it.copy(
-                        isLoading = true,
-                        errorMessage = null,
-                        selectedFolderPath = null,
-                        previewItem = null,
-                        previewText = null,
-                        previewImage = null,
-                        isPreviewLoading = false,
-                        canDownloadPreview = false,
-                        isSelectionMode = false,
-                        selectedFileIds = emptySet(),
-                        canDownloadSelection = false,
-                        canPaste = TransferClipboard.hasContent()
-                    )
-                }
                 val listing = browser.listAt(resolved)
                 applyPaneAndContent(
                     panePath = resolved,
@@ -164,10 +172,10 @@ class ExplorerViewModel(
             }
             return
         }
+        val resolved = browser.resolveWithinRoot(item.absolutePath)
+        _uiState.update { it.copy(isLoading = true, loadingFolderPath = resolved, errorMessage = null) }
         launchBrowse {
             browseWithPinRetry {
-                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-                val resolved = browser.resolveWithinRoot(item.absolutePath)
                 val listing = browser.listAt(resolved)
                 applyPaneAndContent(
                     panePath = _uiState.value.panePath.ifBlank { browseRoot },
@@ -196,13 +204,29 @@ class ExplorerViewModel(
             }
             return
         }
+        val newContent = browser.resolveWithinRoot(item.absolutePath)
+        _uiState.update { it.copy(isLoading = true, loadingFolderPath = newContent, errorMessage = null) }
         launchBrowse {
             browseWithPinRetry {
-                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-                val newContent = browser.resolveWithinRoot(item.absolutePath)
                 val newPane = browser.parentWithinRoot(newContent) ?: browseRoot
-                val paneListing = browser.listAt(newPane)
-                val contentListing = browser.listAt(newContent)
+
+                val currentPane = _uiState.value.panePath.ifBlank { browseRoot }
+                val (paneListing, contentListing) = if (
+                    browser.normalizePath(newPane) == browser.normalizePath(currentPane) &&
+                    _uiState.value.paneDirectories.isNotEmpty()
+                ) {
+                    BrowseListing(
+                        directories = _uiState.value.paneDirectories,
+                        files = _uiState.value.paneFiles
+                    ) to browser.listAt(newContent)
+                } else {
+                    coroutineScope {
+                        val pDeferred = async { browser.listAt(newPane) }
+                        val cDeferred = async { browser.listAt(newContent) }
+                        pDeferred.await() to cDeferred.await()
+                    }
+                }
+
                 applyPaneAndContent(
                     panePath = newPane,
                     contentPath = newContent,
@@ -265,17 +289,24 @@ class ExplorerViewModel(
         } catch (error: PinSessionRequiredException) {
             requestPinThen { browseWithPinRetry(block) }
         } catch (error: Throwable) {
+            if (error is PinSessionRequiredException || error.message?.contains("pin_required", ignoreCase = true) == true) {
+                requestPinThen { browseWithPinRetry(block) }
+                return
+            }
             runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
             runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
             delay(500)
             try {
                 block()
-            } catch (retryError: PinSessionRequiredException) {
-                requestPinThen { browseWithPinRetry(block) }
             } catch (retryError: Throwable) {
+                if (retryError is PinSessionRequiredException || retryError.message?.contains("pin_required", ignoreCase = true) == true) {
+                    requestPinThen { browseWithPinRetry(block) }
+                    return
+                }
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        loadingFolderPath = null,
                         isRefreshing = false,
                         errorMessage = retryError.message ?: AppI18n.t("unable_to_open_folder")
                     )
@@ -287,7 +318,7 @@ class ExplorerViewModel(
     fun cancelPinUnlock() {
         pendingBrowseAction = null
         _uiState.update {
-            it.copy(pendingPinUnlock = false, pinUnlockError = null, isLoading = false)
+            it.copy(pendingPinUnlock = false, pinUnlockError = null, isLoading = false, loadingFolderPath = null)
         }
     }
 
@@ -323,6 +354,7 @@ class ExplorerViewModel(
                 pendingPinUnlock = true,
                 pinUnlockError = null,
                 isLoading = false,
+                loadingFolderPath = null,
                 isRefreshing = false
             )
         }
@@ -351,6 +383,7 @@ class ExplorerViewModel(
                 contentDirectories = contentDirectories,
                 contentFiles = contentFiles,
                 selectedFolderPath = selectedFolderPath?.let(browser::normalizePath),
+                loadingFolderPath = null,
                 isLoading = false,
                 isRefreshing = false
             )
@@ -596,10 +629,10 @@ class ExplorerViewModel(
             return
         }
 
+        val newContent = browser.resolveWithinRoot(parent)
+        _uiState.update { it.copy(isLoading = true, loadingFolderPath = newContent, errorMessage = null) }
         launchBrowse {
             browseWithPinRetry {
-                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-                val newContent = browser.resolveWithinRoot(parent)
                 val newPane = browser.parentWithinRoot(newContent) ?: browseRoot
                 val paneListing = browser.listAt(newPane)
                 val contentListing = browser.listAt(newContent)
@@ -641,6 +674,7 @@ class ExplorerViewModel(
         val contentPath = state.currentPath.ifBlank { browseRoot }
         val panePath = state.panePath.ifBlank { contentPath }
         val selected = state.selectedFolderPath
+        browser.invalidateCache()
         launchBrowse {
             browseWithPinRetry {
                 _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }

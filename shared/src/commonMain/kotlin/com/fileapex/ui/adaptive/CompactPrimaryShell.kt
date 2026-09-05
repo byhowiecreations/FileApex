@@ -43,6 +43,15 @@ import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
 
 import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.FreestyleLayoutMode
+import com.fileapex.di.FileApexServices
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ViewColumn
+import androidx.compose.material.icons.filled.TableRows
+import com.fileapex.ui.FileApexIcons
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.fileapex.data.settings.LocalAppTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.GridView
@@ -75,23 +84,25 @@ fun CompactPrimaryShell(
     content: @Composable () -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
     Scaffold(
         containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background,
         bottomBar = {
-            FileApexBottomBar(
-                selected = selectedTab,
-                onMainHomeScreen = onMainHomeScreen,
-                onDevices = onDevices,
-                onFiles = onFiles,
-                onSettings = onSettings
-            )
+            if (currentTheme != AppTheme.FREESTYLE) {
+                FileApexBottomBar(
+                    selected = selectedTab,
+                    onMainHomeScreen = onMainHomeScreen,
+                    onDevices = onDevices,
+                    onFiles = onFiles,
+                    onSettings = onSettings
+                )
+            }
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .then(if (currentTheme == AppTheme.FREESTYLE) Modifier else Modifier.padding(padding))
         ) {
             // Omit separate top teal strip so Default theme matches Flux Glass unified header structure.
             content()
@@ -129,16 +140,18 @@ fun FluxGlassHeader(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
     val titleColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isCustomGlass) Color.White.copy(alpha = 0.72f) else MaterialTheme.colorScheme.onSurfaceVariant
     val accentTint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
     val resolvedSecondary = secondaryTitle ?: stringRes("paired_devices_title")
 
+    val headerBg = if (currentTheme == AppTheme.FREESTYLE) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface)
+            .background(headerBg)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -184,36 +197,60 @@ fun FluxGlassHeader(
                 NoteHeaderButton(onOpenNotes = onOpenNotes)
             }
 
-            actions()
-
             if (showLayoutView && onToggleLayoutView != null) {
-                Icon(
-                    imageVector = Icons.Filled.GridView,
-                    contentDescription = stringRes("layout_view"),
-                    tint = accentTint,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clickable(onClick = onToggleLayoutView)
-                )
+                val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
+                val icon = if (currentTheme == AppTheme.FREESTYLE) {
+                    when (freestyleMode) {
+                        FreestyleLayoutMode.CARDS_VERTICAL -> Icons.Filled.TableRows
+                        FreestyleLayoutMode.CARDS_HORIZONTAL -> Icons.Filled.ViewColumn
+                        FreestyleLayoutMode.TILES -> FileApexIcons.Atr
+                    }
+                } else {
+                    Icons.Filled.GridView
+                }
+                val desc = if (currentTheme == AppTheme.FREESTYLE) {
+                    when (freestyleMode) {
+                        FreestyleLayoutMode.CARDS_VERTICAL -> "Vertical Cards Layout"
+                        FreestyleLayoutMode.CARDS_HORIZONTAL -> "Horizontal Cards Layout"
+                        FreestyleLayoutMode.TILES -> "Tiles Layout"
+                    }
+                } else {
+                    stringRes("layout_view")
+                }
+                IconButton(
+                    onClick = onToggleLayoutView,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = desc,
+                        tint = accentTint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
+            actions()
+
             if (showCloseService && onCloseService != null) {
-                Surface(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onCloseService),
-                    shape = CircleShape,
-                    color = Color(0x3300E676),
-                    border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
+                IconButton(
+                    onClick = onCloseService,
+                    modifier = Modifier.size(40.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.PowerSettingsNew,
-                            contentDescription = stringRes("exit_fileapex"),
-                            tint = Color(0xFF00E676),
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Surface(
+                        modifier = Modifier.size(28.dp),
+                        shape = CircleShape,
+                        color = Color(0x3300E676),
+                        border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.PowerSettingsNew,
+                                contentDescription = stringRes("exit_fileapex"),
+                                tint = Color(0xFF00E676),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -256,7 +293,7 @@ fun CompactHomeTitleBand(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
     if (isCustomGlass && style == CompactHomeTitleStyle.Prominent) {
         FluxGlassHeader(
             primaryTitle = "FileApex",

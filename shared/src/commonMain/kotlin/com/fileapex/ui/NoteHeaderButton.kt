@@ -24,7 +24,7 @@ fun NoteHeaderButton(
     val isAndroid = com.fileapex.cloud.currentPlatformLabel() == "Android"
     val iconKind = when {
         currentTheme == AppTheme.KINETIC_SPHERE -> NoteIconKind.GREEN
-        currentTheme == AppTheme.FLUX_GLASS -> NoteIconKind.WHITE
+        currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.FREESTYLE -> NoteIconKind.WHITE
         currentTheme == AppTheme.CLEAN && isAndroid -> NoteIconKind.BLACK
         else -> NoteIconKind.WHITE
     }

@@ -139,6 +139,9 @@ class BaseAppSettings(
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
+    private val bulletinBoardStyleFlow = MutableStateFlow(
+        BulletinBoardStyle.fromStorage(store.getString(KEY_BULLETIN_BOARD_STYLE, BulletinBoardStyle.DEFAULT_STYLE.storageKey))
+    )
     private val kineticSphereCleanModeFlow = MutableStateFlow(
         store.getBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, false)
     )
@@ -147,6 +150,57 @@ class BaseAppSettings(
     )
     private val kineticSphereOrbitalRingsFlow = MutableStateFlow(
         store.getBoolean(KEY_KINETIC_SPHERE_ORBITAL_RINGS, !store.getBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, false))
+    )
+    private val freestyleCardOptionsPosXFlow = MutableStateFlow(
+        store.getString(KEY_FREESTYLE_CARD_OPTIONS_X, "").toFloatOrNull()
+    )
+    private val freestyleCardOptionsPosYFlow = MutableStateFlow(
+        store.getString(KEY_FREESTYLE_CARD_OPTIONS_Y, "").toFloatOrNull()
+    )
+    private val freestyleCardVerticalOptionsPosXFlow = MutableStateFlow(
+        store.getString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_X, "").toFloatOrNull()
+            ?: store.getString(KEY_FREESTYLE_CARD_OPTIONS_X, "").toFloatOrNull()
+    )
+    private val freestyleCardVerticalOptionsPosYFlow = MutableStateFlow(
+        store.getString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_Y, "").toFloatOrNull()
+            ?: store.getString(KEY_FREESTYLE_CARD_OPTIONS_Y, "").toFloatOrNull()
+    )
+    private val freestyleTileOptionsPosXFlow = MutableStateFlow(
+        store.getString(KEY_FREESTYLE_TILE_OPTIONS_X, "").toFloatOrNull()
+    )
+    private val freestyleTileOptionsPosYFlow = MutableStateFlow(
+        store.getString(KEY_FREESTYLE_TILE_OPTIONS_Y, "").toFloatOrNull()
+    )
+    private val freestyleLayoutModeFlow = MutableStateFlow(
+        FreestyleLayoutMode.fromStorage(store.getString(KEY_FREESTYLE_LAYOUT_MODE, FreestyleLayoutMode.DEFAULT.storageKey))
+    )
+    private val freestyleEditTutorialShownFlow = MutableStateFlow(
+        store.getBoolean(KEY_FREESTYLE_EDIT_TUTORIAL_SHOWN, false)
+    )
+    private val freestyleCardNodeOffsetsFlow = MutableStateFlow(
+        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_NODE_OFFSETS, ""))
+    )
+    private val freestyleCardVerticalNodeOffsetsFlow = MutableStateFlow(
+        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS, "")).ifEmpty {
+            decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_NODE_OFFSETS, ""))
+        }
+    )
+    private val freestyleTileNodeOffsetsFlow = MutableStateFlow(
+        decodeKineticOffsets(store.getString(KEY_FREESTYLE_TILE_NODE_OFFSETS, ""))
+    )
+    private val freestyleCardMenuOrdersFlow = MutableStateFlow(
+        decodeStringMap(store.getString(KEY_FREESTYLE_CARD_MENU_ORDERS, ""))
+    )
+    private val freestyleCardVerticalMenuOrdersFlow = MutableStateFlow(
+        decodeStringMap(store.getString(KEY_FREESTYLE_CARD_VERTICAL_MENU_ORDERS, "")).ifEmpty {
+            decodeStringMap(store.getString(KEY_FREESTYLE_CARD_MENU_ORDERS, ""))
+        }
+    )
+    private val freestyleTileMenuOrdersFlow = MutableStateFlow(
+        decodeStringMap(store.getString(KEY_FREESTYLE_TILE_MENU_ORDERS, ""))
+    )
+    private val freestyleOptionsMenuOrderFlow = MutableStateFlow(
+        store.getString(KEY_FREESTYLE_OPTIONS_MENU_ORDER, "files,add_device,join_device,send_clipboard,check_batteries,settings")
     )
     private val settingsGroupSystemPerformanceFlow = MutableStateFlow(
         store.getBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, true)
@@ -190,9 +244,25 @@ class BaseAppSettings(
     override val liveTransferShowQueueEnabled: StateFlow<Boolean> =
         liveTransferShowQueueFlow.asStateFlow()
     override val appTheme: StateFlow<AppTheme> = appThemeFlow.asStateFlow()
+    override val bulletinBoardStyle: StateFlow<BulletinBoardStyle> = bulletinBoardStyleFlow.asStateFlow()
     override val kineticSphereCleanMode: StateFlow<Boolean> = kineticSphereCleanModeFlow.asStateFlow()
     override val kineticSphereConnectedLinesEnabled: StateFlow<Boolean> = kineticSphereConnectedLinesFlow.asStateFlow()
     override val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean> = kineticSphereOrbitalRingsFlow.asStateFlow()
+    override val freestyleCardOptionsPosX: StateFlow<Float?> = freestyleCardOptionsPosXFlow.asStateFlow()
+    override val freestyleCardOptionsPosY: StateFlow<Float?> = freestyleCardOptionsPosYFlow.asStateFlow()
+    override val freestyleCardVerticalOptionsPosX: StateFlow<Float?> = freestyleCardVerticalOptionsPosXFlow.asStateFlow()
+    override val freestyleCardVerticalOptionsPosY: StateFlow<Float?> = freestyleCardVerticalOptionsPosYFlow.asStateFlow()
+    override val freestyleTileOptionsPosX: StateFlow<Float?> = freestyleTileOptionsPosXFlow.asStateFlow()
+    override val freestyleTileOptionsPosY: StateFlow<Float?> = freestyleTileOptionsPosYFlow.asStateFlow()
+    override val freestyleLayoutMode: StateFlow<FreestyleLayoutMode> = freestyleLayoutModeFlow.asStateFlow()
+    override val freestyleEditTutorialShown: StateFlow<Boolean> = freestyleEditTutorialShownFlow.asStateFlow()
+    override val freestyleCardNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardNodeOffsetsFlow.asStateFlow()
+    override val freestyleCardVerticalNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardVerticalNodeOffsetsFlow.asStateFlow()
+    override val freestyleTileNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleTileNodeOffsetsFlow.asStateFlow()
+    override val freestyleCardMenuOrders: StateFlow<Map<String, String>> = freestyleCardMenuOrdersFlow.asStateFlow()
+    override val freestyleCardVerticalMenuOrders: StateFlow<Map<String, String>> = freestyleCardVerticalMenuOrdersFlow.asStateFlow()
+    override val freestyleTileMenuOrders: StateFlow<Map<String, String>> = freestyleTileMenuOrdersFlow.asStateFlow()
+    override val freestyleOptionsMenuOrder: StateFlow<String> = freestyleOptionsMenuOrderFlow.asStateFlow()
     override val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean> =
         settingsGroupSystemPerformanceFlow.asStateFlow()
     override val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean> =
@@ -374,6 +444,11 @@ class BaseAppSettings(
         appThemeFlow.value = theme
     }
 
+    override fun setBulletinBoardStyle(style: BulletinBoardStyle) {
+        store.putString(KEY_BULLETIN_BOARD_STYLE, style.storageKey)
+        bulletinBoardStyleFlow.value = style
+    }
+
     override fun setKineticSphereCleanMode(enabled: Boolean) {
         store.putBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, enabled)
         kineticSphereCleanModeFlow.value = enabled
@@ -506,6 +581,101 @@ class BaseAppSettings(
         store.putString(KEY_KINETIC_NODE_OFFSETS, "")
     }
 
+    override fun setFreestyleOptionsPosition(mode: FreestyleLayoutMode, x: Float?, y: Float?) {
+        when (mode) {
+            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
+                store.putString(KEY_FREESTYLE_CARD_OPTIONS_X, x?.toString().orEmpty())
+                store.putString(KEY_FREESTYLE_CARD_OPTIONS_Y, y?.toString().orEmpty())
+                freestyleCardOptionsPosXFlow.value = x
+                freestyleCardOptionsPosYFlow.value = y
+            }
+            FreestyleLayoutMode.CARDS_VERTICAL -> {
+                store.putString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_X, x?.toString().orEmpty())
+                store.putString(KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_Y, y?.toString().orEmpty())
+                freestyleCardVerticalOptionsPosXFlow.value = x
+                freestyleCardVerticalOptionsPosYFlow.value = y
+            }
+            FreestyleLayoutMode.TILES -> {
+                store.putString(KEY_FREESTYLE_TILE_OPTIONS_X, x?.toString().orEmpty())
+                store.putString(KEY_FREESTYLE_TILE_OPTIONS_Y, y?.toString().orEmpty())
+                freestyleTileOptionsPosXFlow.value = x
+                freestyleTileOptionsPosYFlow.value = y
+            }
+        }
+    }
+
+    override fun setFreestyleOptionsPosition(isCard: Boolean, x: Float?, y: Float?) {
+        val mode = if (isCard) FreestyleLayoutMode.CARDS_HORIZONTAL else FreestyleLayoutMode.TILES
+        setFreestyleOptionsPosition(mode, x, y)
+    }
+
+    override fun setFreestyleLayoutMode(mode: FreestyleLayoutMode) {
+        store.putString(KEY_FREESTYLE_LAYOUT_MODE, mode.storageKey)
+        freestyleLayoutModeFlow.value = mode
+    }
+
+    override fun setFreestyleEditTutorialShown(shown: Boolean) {
+        store.putBoolean(KEY_FREESTYLE_EDIT_TUTORIAL_SHOWN, shown)
+        freestyleEditTutorialShownFlow.value = shown
+    }
+
+    override fun setFreestyleNodeOffset(mode: FreestyleLayoutMode, deviceId: String, x: Float, y: Float) {
+        when (mode) {
+            FreestyleLayoutMode.CARDS_HORIZONTAL -> setFreestyleCardNodeOffset(deviceId, x, y)
+            FreestyleLayoutMode.CARDS_VERTICAL -> setFreestyleCardVerticalNodeOffset(deviceId, x, y)
+            FreestyleLayoutMode.TILES -> setFreestyleTileNodeOffset(deviceId, x, y)
+        }
+    }
+
+    override fun setFreestyleCardNodeOffset(deviceId: String, x: Float, y: Float) {
+        val updated = freestyleCardNodeOffsetsFlow.value + (deviceId to Pair(x, y))
+        freestyleCardNodeOffsetsFlow.value = updated
+        store.putString(KEY_FREESTYLE_CARD_NODE_OFFSETS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+    }
+
+    override fun setFreestyleCardVerticalNodeOffset(deviceId: String, x: Float, y: Float) {
+        val updated = freestyleCardVerticalNodeOffsetsFlow.value + (deviceId to Pair(x, y))
+        freestyleCardVerticalNodeOffsetsFlow.value = updated
+        store.putString(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+    }
+
+    override fun setFreestyleTileNodeOffset(deviceId: String, x: Float, y: Float) {
+        val updated = freestyleTileNodeOffsetsFlow.value + (deviceId to Pair(x, y))
+        freestyleTileNodeOffsetsFlow.value = updated
+        store.putString(KEY_FREESTYLE_TILE_NODE_OFFSETS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+    }
+
+    override fun setFreestyleMenuOrder(mode: FreestyleLayoutMode, deviceId: String, order: String) {
+        when (mode) {
+            FreestyleLayoutMode.CARDS_HORIZONTAL -> setFreestyleCardMenuOrder(deviceId, order)
+            FreestyleLayoutMode.CARDS_VERTICAL -> setFreestyleCardVerticalMenuOrder(deviceId, order)
+            FreestyleLayoutMode.TILES -> setFreestyleTileMenuOrder(deviceId, order)
+        }
+    }
+
+    override fun setFreestyleCardMenuOrder(deviceId: String, order: String) {
+        val updated = freestyleCardMenuOrdersFlow.value + (deviceId to order)
+        freestyleCardMenuOrdersFlow.value = updated
+        store.putString(KEY_FREESTYLE_CARD_MENU_ORDERS, encodeStringMap(updated))
+    }
+
+    override fun setFreestyleCardVerticalMenuOrder(deviceId: String, order: String) {
+        val updated = freestyleCardVerticalMenuOrdersFlow.value + (deviceId to order)
+        freestyleCardVerticalMenuOrdersFlow.value = updated
+        store.putString(KEY_FREESTYLE_CARD_VERTICAL_MENU_ORDERS, encodeStringMap(updated))
+    }
+
+    override fun setFreestyleTileMenuOrder(deviceId: String, order: String) {
+        val updated = freestyleTileMenuOrdersFlow.value + (deviceId to order)
+        freestyleTileMenuOrdersFlow.value = updated
+        store.putString(KEY_FREESTYLE_TILE_MENU_ORDERS, encodeStringMap(updated))
+    }
+
+    override fun setFreestyleOptionsMenuOrder(order: String) {
+        store.putString(KEY_FREESTYLE_OPTIONS_MENU_ORDER, order)
+        freestyleOptionsMenuOrderFlow.value = order
+    }
+
     override fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences) {
         val normalized = preferences.normalized()
         store.putString(KEY_DEVICE_DETAILS_DISPLAY, DeviceDetailsDisplayPreferences.encode(normalized))
@@ -604,9 +774,25 @@ class BaseAppSettings(
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
         const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
         const val KEY_APP_THEME = "app_theme"
+        const val KEY_BULLETIN_BOARD_STYLE = "bulletin_board_style"
         const val KEY_KINETIC_SPHERE_CLEAN_MODE = "kinetic_sphere_clean_mode"
         const val KEY_KINETIC_SPHERE_CONNECTED_LINES = "kinetic_sphere_connected_lines"
         const val KEY_KINETIC_SPHERE_ORBITAL_RINGS = "kinetic_sphere_orbital_rings"
+        const val KEY_FREESTYLE_CARD_OPTIONS_X = "freestyle_card_options_x"
+        const val KEY_FREESTYLE_CARD_OPTIONS_Y = "freestyle_card_options_y"
+        const val KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_X = "freestyle_card_vert_options_x"
+        const val KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_Y = "freestyle_card_vert_options_y"
+        const val KEY_FREESTYLE_TILE_OPTIONS_X = "freestyle_tile_options_x"
+        const val KEY_FREESTYLE_TILE_OPTIONS_Y = "freestyle_tile_options_y"
+        const val KEY_FREESTYLE_LAYOUT_MODE = "freestyle_layout_mode"
+        const val KEY_FREESTYLE_EDIT_TUTORIAL_SHOWN = "freestyle_edit_tutorial_shown"
+        const val KEY_FREESTYLE_CARD_NODE_OFFSETS = "freestyle_card_node_offsets"
+        const val KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS = "freestyle_card_vert_node_offsets"
+        const val KEY_FREESTYLE_TILE_NODE_OFFSETS = "freestyle_tile_node_offsets"
+        const val KEY_FREESTYLE_CARD_MENU_ORDERS = "freestyle_card_menu_orders"
+        const val KEY_FREESTYLE_CARD_VERTICAL_MENU_ORDERS = "freestyle_card_vert_menu_orders"
+        const val KEY_FREESTYLE_TILE_MENU_ORDERS = "freestyle_tile_menu_orders"
+        const val KEY_FREESTYLE_OPTIONS_MENU_ORDER = "freestyle_options_menu_order"
 
 
         const val KEY_PIN_REQUIRED = "pin_required"
@@ -679,4 +865,25 @@ private fun decodeKineticOffsets(encoded: String): Map<String, Pair<Float, Float
         }
     }
     return map
+}
+
+private fun decodeStringMap(encoded: String): Map<String, String> {
+    if (encoded.isBlank()) return emptyMap()
+    val map = mutableMapOf<String, String>()
+    encoded.split(";").forEach { token ->
+        if (token.isBlank()) return@forEach
+        val parts = token.split("|", limit = 2)
+        if (parts.size == 2 && parts[0].isNotBlank()) {
+            map[parts[0]] = parts[1]
+        }
+    }
+    return map
+}
+
+private fun encodeStringMap(map: Map<String, String>): String {
+    return map.entries.joinToString(";") { (k, v) ->
+        val cleanKey = k.replace(";", "_").replace("|", "_")
+        val cleanVal = v.replace(";", "_")
+        "$cleanKey|$cleanVal"
+    }
 }

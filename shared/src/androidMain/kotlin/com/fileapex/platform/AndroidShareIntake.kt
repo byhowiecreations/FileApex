@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import androidx.core.content.IntentCompat
 import android.provider.OpenableColumns
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
@@ -149,21 +150,11 @@ object AndroidShareIntake {
     }
 
     private fun readSingleStream(intent: Intent): Uri? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
-        }
+        return IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
     }
 
     private fun readMultipleStreams(intent: Intent): List<Uri> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
-        }
+        return IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
     }
 
     private fun readClipDataUris(intent: Intent): List<Uri> {

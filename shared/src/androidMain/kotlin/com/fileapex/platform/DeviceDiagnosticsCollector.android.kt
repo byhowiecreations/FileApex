@@ -58,6 +58,12 @@ actual fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics {
     }
 }
 
+actual fun collectFastBatteryDiagnostics(): BatteryDiagnostics {
+    val context = androidAppContextOrNull()
+    return runCatching { readBattery(context) }
+        .getOrDefault(BatteryDiagnostics(chargingState = "Not available"))
+}
+
 private fun readDeviceIdentity(): DeviceIdentityDiagnostics {
     val release = Build.VERSION.RELEASE.trim().ifBlank { "Unknown" }
     val osBuild = buildString {
@@ -262,10 +268,11 @@ private fun readWifiInfo(
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         (capabilities.transportInfo as? android.net.wifi.WifiInfo)?.let { return it }
     }
-    @Suppress("DEPRECATION")
-    val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-    @Suppress("DEPRECATION")
-    return wifiManager?.connectionInfo
+    val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return null
+    return runCatching {
+        val method = wifiManager.javaClass.getMethod("getConnectionInfo")
+        method.invoke(wifiManager) as? android.net.wifi.WifiInfo
+    }.getOrNull()
 }
 
 private fun readAndroidSsidFallback(context: Context): String {
@@ -275,10 +282,12 @@ private fun readAndroidSsidFallback(context: Context): String {
     ) {
         return ""
     }
-    @Suppress("DEPRECATION")
     val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return ""
-    @Suppress("DEPRECATION")
-    return normalizeAndroidSsid(wifiManager.connectionInfo?.ssid)
+    val info = runCatching {
+        val method = wifiManager.javaClass.getMethod("getConnectionInfo")
+        method.invoke(wifiManager) as? android.net.wifi.WifiInfo
+    }.getOrNull()
+    return normalizeAndroidSsid(info?.ssid)
 }
 
 private fun readCellularNetwork(context: Context): NetworkDiagnostics {
@@ -295,12 +304,7 @@ private fun readCellularNetworkUnsafe(context: Context): NetworkDiagnostics {
         telephony.simOperatorName.trim()
     }
 
-    @Suppress("DEPRECATION")
-    val networkType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        telephony.dataNetworkType
-    } else {
-        telephony.networkType
-    }
+    val networkType = telephony.dataNetworkType
     val generation = cellularGenerationLabel(networkType)
 
     val signalDbm = readCellularSignalDbm(context, telephony)
@@ -353,8 +357,10 @@ private fun readCellularBandInfo(
         return null to ""
     }
     return runCatching {
-        @Suppress("DEPRECATION")
-        val cellInfoList = telephony.allCellInfo.orEmpty()
+        val cellInfoList = runCatching {
+            val method = telephony.javaClass.getMethod("getAllCellInfo")
+            (method.invoke(telephony) as? List<*>)?.filterIsInstance<android.telephony.CellInfo>()
+        }.getOrNull().orEmpty()
         val serving = cellInfoList.firstOrNull { it.isRegistered } ?: cellInfoList.firstOrNull()
         when (val info = serving) {
             is android.telephony.CellInfoLte -> {
@@ -364,8 +370,10 @@ private fun readCellularBandInfo(
                 } else {
                     ""
                 }
-                @Suppress("DEPRECATION")
-                val freq = identity.earfcn.takeIf { it != Int.MAX_VALUE && it > 0 }
+                val freq = runCatching {
+                    val method = identity.javaClass.getMethod("getEarfcn")
+                    (method.invoke(identity) as? Int)?.takeIf { it != Int.MAX_VALUE && it > 0 }
+                }.getOrNull()
                 Pair(freq, band)
             }
             is android.telephony.CellInfoNr -> {

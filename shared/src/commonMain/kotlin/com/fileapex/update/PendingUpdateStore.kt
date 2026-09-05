@@ -13,4 +13,9 @@ expect object PendingUpdateStore {
     fun markProcessedFile(signature: String)
     fun isFileProcessed(signature: String): Boolean
     fun removeProcessedFile(signature: String)
+    fun setNoteInstallStatus(noteId: String, status: String)
+    fun getNoteInstallStatus(noteId: String): String?
+    fun isNoteInstalled(noteId: String): Boolean
+    fun setLastAttemptedNoteId(noteId: String)
+    fun getLastAttemptedNoteId(): String
 }

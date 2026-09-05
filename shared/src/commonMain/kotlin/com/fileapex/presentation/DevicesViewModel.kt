@@ -8,6 +8,7 @@ import com.fileapex.cloud.diagnostics.DiagnosticsRelayErrors
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
+import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.device.DeviceOrderCoordinator
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
@@ -25,6 +26,9 @@ import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.i18n.AppI18n
 import com.fileapex.session.DeviceSessionManager
+import com.fileapex.domain.transfer.MultiCopySource
+import com.fileapex.domain.transfer.MultiCopyDeviceOption
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -42,8 +46,8 @@ import kotlinx.coroutines.withContext
 /**
  * Ephemeral Devices-screen chrome only.
  *
- * Paired-device list rows live in [DevicesViewModel.deviceRows] so snackbars, dialogs,
- * and scroll bookmarks cannot force a structural list invalidation.
+ * All state that must survive navigation (custom order, pairing pins, active connects)
+ * belongs in [DeviceRepository], [AppSettings], or another process-scoped singleton.
  */
 data class BatteryStatusItem(
     val deviceId: String,
@@ -55,7 +59,9 @@ data class BatteryStatusItem(
 
 data class BatteryCheckOverlayState(
     val loading: Boolean = false,
-    val items: List<BatteryStatusItem> = emptyList()
+    val items: List<BatteryStatusItem> = emptyList(),
+    val logLines: List<String> = emptyList(),
+    val isComplete: Boolean = false
 )
 
 data class DevicesUiState(
@@ -149,7 +155,15 @@ class DevicesViewModel : ViewModel() {
                         os = device.os,
                         platform = device.platform,
                         deviceMake = device.deviceMake,
-                        deviceModel = device.deviceModel
+                        deviceModel = device.deviceModel,
+                        cardPosX = device.cardPosX,
+                        cardPosY = device.cardPosY,
+                        cardSortOrder = device.cardSortOrder,
+                        cardMenuOrder = device.cardMenuOrder,
+                        tilePosX = device.tilePosX,
+                        tilePosY = device.tilePosY,
+                        tileSortOrder = device.tileSortOrder,
+                        tileMenuOrder = device.tileMenuOrder
                     )
                 }
         },
@@ -276,14 +290,7 @@ class DevicesViewModel : ViewModel() {
             DeviceConnectOutcome.Unreachable(error.message ?: AppI18n.t("unable_to_reach_device"))
         }
         val skipMinDelay = outcome is DeviceConnectOutcome.Unreachable && outcome.quickFail
-        val remainingMs = if (skipMinDelay) {
-            0L
-        } else {
-            TimeUtils.remainingMs(startedAt, LanPresenceTiming.DEVICE_CONNECT_HANDSHAKE_MS)
-        }
-        if (remainingMs > 0L) {
-            delay(remainingMs)
-        }
+        LanPresenceTiming.awaitConnectHandshakeMinDelay(startedAt, skipMinDelay)
         _uiState.update { it.copy(connectingDeviceId = null) }
         when (outcome) {
             is DeviceConnectOutcome.Open -> open(outcome.target)
@@ -328,7 +335,7 @@ class DevicesViewModel : ViewModel() {
         if (DeviceSessionManager.isSessionValid(refreshed.deviceId)) {
             DeviceSessionManager.markDeviceAccessed(refreshed.deviceId)
             return DeviceConnectOutcome.Open(
-                browseTargetFor(refreshed, endpoint.host, endpoint.port, pinRequired = true)
+                browseTargetFor(refreshed, endpoint.host, endpoint.port, pinRequired = false)
             )
         }
         runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
@@ -365,6 +372,12 @@ class DevicesViewModel : ViewModel() {
                     detail = error.message ?: PeerReachabilityMessages.peerOffline()
                 )
             }
+        }
+        val actualRoot = remote.rootPath.takeIf { it.isNotBlank() } ?: refreshed.rootPath
+        if (refreshed.rootPath != actualRoot) {
+            val updated = refreshed.copy(rootPath = actualRoot)
+            repository.upsert(updated)
+            refreshed = updated
         }
         if (remote.pinRequired) {
             val name = remote.deviceName.ifBlank { refreshed.deviceName }
@@ -668,6 +681,12 @@ class DevicesViewModel : ViewModel() {
                 }
                 return@launch
             }
+
+            if (absolutePaths.any { it.startsWith("fileapex-transfer://") }) {
+                handleDroppedRemoteTransfer(deviceId, absolutePaths)
+                return@launch
+            }
+
             val roots = withContext(Dispatchers.IO) {
                 absolutePaths.filter { path ->
                     runCatching {
@@ -726,6 +745,121 @@ class DevicesViewModel : ViewModel() {
                     }
                 }
             )
+        }
+    }
+
+    private suspend fun handleDroppedRemoteTransfer(targetDeviceId: String, uriList: List<String>) {
+        val uris = uriList.filter { it.startsWith("fileapex-transfer://") }
+        if (uris.isEmpty()) return
+        for (uri in uris) {
+            val withoutScheme = uri.removePrefix("fileapex-transfer://")
+            val sourceDeviceId = withoutScheme.substringBefore('/')
+            val rest = withoutScheme.substringAfter('/')
+            val rawPath = rest.substringBefore('?')
+            val remotePath = if (rawPath.startsWith('/')) rawPath else "/$rawPath"
+            val query = rest.substringAfter('?', "")
+            val fileName = query.substringAfter("name=", "").substringBefore('&').takeIf { it.isNotBlank() }
+                ?: remotePath.substringAfterLast('/')
+            val fileSize = query.substringAfter("size=", "0").substringBefore('&').toLongOrNull() ?: 0L
+
+            if (sourceDeviceId == targetDeviceId) {
+                _uiState.update { it.copy(errorMessage = AppI18n.t("cannot_send_to_self")) }
+                return
+            }
+
+            if (sourceDeviceId == "local") {
+                sendDroppedLocalFiles(targetDeviceId, listOf(remotePath))
+                return
+            }
+
+            val sourceDevice = repository.getDevice(sourceDeviceId)
+            if (sourceDevice == null) {
+                _uiState.update { it.copy(errorMessage = AppI18n.t("device_no_longer_paired")) }
+                return
+            }
+
+            val isTargetLocal = targetDeviceId == LocalIdentity.LOCAL_DEVICE_ID
+            val targetDevice = if (isTargetLocal) null else repository.getDevice(targetDeviceId)
+            if (!isTargetLocal && targetDevice == null) {
+                _uiState.update { it.copy(errorMessage = AppI18n.t("device_no_longer_paired")) }
+                return
+            }
+
+            val targetName = if (isTargetLocal) AppI18n.t("this_device") else targetDevice!!.deviceName
+
+            _uiState.update {
+                it.copy(
+                    statusMessage = "Transferring $fileName from ${sourceDevice.deviceName} to $targetName...",
+                    errorMessage = null
+                )
+            }
+
+            val destination = if (isTargetLocal) {
+                MultiCopyDeviceOption(
+                    deviceId = LocalIdentity.LOCAL_DEVICE_ID,
+                    deviceName = targetName,
+                    isLocal = true,
+                    host = com.fileapex.util.NetworkUtils.preferredLanIpv4(),
+                    port = identity.sharePort,
+                    destinationRoot = com.fileapex.platform.defaultDownloadsDir()
+                )
+            } else {
+                val dev = targetDevice!!
+                val resolvedRoot = runCatching {
+                    val peerState = FileApexServices.client.fetchPeerNodeState(dev.lastKnownIp, dev.port)
+                    com.fileapex.platform.DownloadsPaths.resolveReceiveRoot(
+                        downloadsPath = peerState.downloadsPath,
+                        rootPath = dev.rootPath,
+                        platform = peerState.platform.ifBlank { dev.platform }
+                    )
+                }.getOrElse {
+                    com.fileapex.platform.DownloadsPaths.resolveReceiveRoot(
+                        downloadsPath = "",
+                        rootPath = dev.rootPath,
+                        platform = dev.platform
+                    )
+                }
+                MultiCopyDeviceOption(
+                    deviceId = dev.deviceId,
+                    deviceName = dev.deviceName,
+                    isLocal = false,
+                    host = dev.lastKnownIp,
+                    port = dev.port,
+                    destinationRoot = resolvedRoot
+                )
+            }
+
+            val source = MultiCopySource.Remote(
+                fileName = fileName,
+                sizeBytes = fileSize,
+                absolutePath = remotePath,
+                host = sourceDevice.lastKnownIp,
+                port = sourceDevice.port,
+                isDirectory = false,
+                relativeDestPath = fileName
+            )
+
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    FileApexServices.transferManager.sendToDevices(listOf(source), listOf(destination))
+                }.fold(
+                    onSuccess = { res ->
+                        _uiState.update {
+                            if (res.allFailed) {
+                                val reason = res.results.flatMap { it.failures.values }.firstOrNull()?.let { ": $it" }.orEmpty()
+                                it.copy(errorMessage = "Transfer of $fileName failed$reason", statusMessage = null)
+                            } else {
+                                it.copy(statusMessage = "Transferred $fileName to $targetName", errorMessage = null)
+                            }
+                        }
+                    },
+                    onFailure = { err ->
+                        _uiState.update {
+                            it.copy(errorMessage = "Transfer failed: ${err.message}", statusMessage = null)
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -841,57 +975,118 @@ class DevicesViewModel : ViewModel() {
 
     fun checkBatteries() {
         viewModelScope.launch {
+            val initialLogs = listOf(
+                "FileApex Linux v0.10.1a (tty1)",
+                "login: fileapex",
+                "fileapex@node:~$ batstat --all-devices",
+                "[INIT] Polling battery telemetry across cluster...",
+                "--------------------------------------------------"
+            )
             _uiState.update {
                 it.copy(
-                    batteryOverlayState = BatteryCheckOverlayState(loading = true, items = emptyList())
+                    batteryOverlayState = BatteryCheckOverlayState(
+                        loading = false,
+                        items = emptyList(),
+                        logLines = initialLogs,
+                        isComplete = false
+                    )
                 )
             }
 
-            val results = withContext(Dispatchers.IO) {
-                val localDiag = runCatching {
-                    com.fileapex.platform.collectDeviceDiagnostics()
+            // 1. Immediately query and display local machine (fast path: < 20ms)
+            val localDiag = withContext(Dispatchers.IO) {
+                runCatching {
+                    com.fileapex.platform.collectFastBatteryDiagnostics()
                 }.getOrNull()
+            }
+            val localLevel = localDiag?.levelPercent
+            val localCharging = localDiag?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
+            val localLine = if (localLevel != null) {
+                "[LOCAL]   This Device: $localLevel% [${localCharging.uppercase()}]"
+            } else {
+                "[LOCAL]   This Device: N/A (A/C Powered)"
+            }
+            val thisDeviceItem = BatteryStatusItem(
+                deviceId = "this_device_local",
+                deviceName = AppI18n.t("this_device"),
+                levelPercent = localLevel,
+                chargingState = localCharging,
+                online = true
+            )
+            _uiState.update { state ->
+                val cur = state.batteryOverlayState ?: return@update state
+                cur.copy(
+                    items = cur.items + thisDeviceItem,
+                    logLines = cur.logLines + localLine
+                ).let { state.copy(batteryOverlayState = it) }
+            }
 
-                val thisDeviceItem = BatteryStatusItem(
-                    deviceId = "this_device_local",
-                    deviceName = AppI18n.t("this_device"),
-                    levelPercent = localDiag?.battery?.levelPercent,
-                    chargingState = localDiag?.battery?.chargingState ?: "",
-                    online = true
-                )
+            // 2. Query online devices concurrently - display each as soon as it responds
+            val rows = deviceRows.value
+            val (onlineRows, offlineRows) = rows.partition { it.online }
 
-                val rows = deviceRows.value
-                val remoteItems = rows.map { row ->
-                    val deviceEntity = repository.getDevice(row.deviceId)
-                    if (deviceEntity != null && row.online) {
-                        val diagnostics = runCatching {
-                            fetchDeviceDetailsSnapshot(deviceEntity)
-                        }.getOrNull()
-                        BatteryStatusItem(
-                            deviceId = row.deviceId,
-                            deviceName = row.deviceName,
-                            levelPercent = diagnostics?.battery?.levelPercent,
-                            chargingState = diagnostics?.battery?.chargingState ?: "",
-                            online = true
-                        )
-                    } else {
-                        BatteryStatusItem(
-                            deviceId = row.deviceId,
-                            deviceName = row.deviceName,
-                            levelPercent = null,
-                            chargingState = "",
-                            online = false
-                        )
+            withContext(Dispatchers.IO) {
+                coroutineScope {
+                    onlineRows.forEach { row ->
+                        launch {
+                            val deviceEntity = repository.getDevice(row.deviceId)
+                            val diagnostics = runCatching {
+                                if (deviceEntity != null) fetchDeviceDetailsSnapshot(deviceEntity) else null
+                            }.getOrNull()
+
+                            val level = diagnostics?.battery?.levelPercent
+                            val charging = diagnostics?.battery?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
+                            val line = if (level != null) {
+                                "[ONLINE]  ${row.deviceName}: $level% [${charging.uppercase()}]"
+                            } else {
+                                "[ONLINE]  ${row.deviceName}: N/A (A/C or Desktop)"
+                            }
+                            val item = BatteryStatusItem(
+                                deviceId = row.deviceId,
+                                deviceName = row.deviceName,
+                                levelPercent = level,
+                                chargingState = charging,
+                                online = true
+                            )
+                            _uiState.update { state ->
+                                val cur = state.batteryOverlayState ?: return@update state
+                                cur.copy(
+                                    items = cur.items + item,
+                                    logLines = cur.logLines + line
+                                ).let { state.copy(batteryOverlayState = it) }
+                            }
+                        }
                     }
                 }
-
-                listOf(thisDeviceItem) + remoteItems
             }
 
-            _uiState.update {
-                it.copy(
-                    batteryOverlayState = BatteryCheckOverlayState(loading = false, items = results)
+            // 3. Query offline devices last
+            for (row in offlineRows) {
+                val line = "[OFFLINE] ${row.deviceName}: OFFLINE"
+                val item = BatteryStatusItem(
+                    deviceId = row.deviceId,
+                    deviceName = row.deviceName,
+                    levelPercent = null,
+                    chargingState = "",
+                    online = false
                 )
+                _uiState.update { state ->
+                    val cur = state.batteryOverlayState ?: return@update state
+                    cur.copy(
+                        items = cur.items + item,
+                        logLines = cur.logLines + line
+                    ).let { state.copy(batteryOverlayState = it) }
+                }
+            }
+
+            val summaryLine = "--------------------------------------------------\n" +
+                "[DONE] Query complete: ${onlineRows.size + 1} online, ${offlineRows.size} offline."
+            _uiState.update { state ->
+                val cur = state.batteryOverlayState ?: return@update state
+                cur.copy(
+                    isComplete = true,
+                    logLines = cur.logLines + summaryLine
+                ).let { state.copy(batteryOverlayState = it) }
             }
         }
     }
@@ -909,7 +1104,48 @@ class DevicesViewModel : ViewModel() {
         listScrollOffset = offset
     }
 
+    private var freestyleEditSnapshot: FreestyleEditSnapshot? = null
+
     fun enterDeviceOrderEditMode() {
+        val settings = FileApexServices.settings
+        val currentRows = deviceRows.value
+        val cardOffsets = currentRows.associate { row ->
+            val cached = settings.freestyleCardNodeOffsets.value[row.deviceId]
+            row.deviceId to Pair(cached?.first ?: row.cardPosX, cached?.second ?: row.cardPosY)
+        }
+        val tileOffsets = currentRows.associate { row ->
+            val cached = settings.freestyleTileNodeOffsets.value[row.deviceId]
+            row.deviceId to Pair(cached?.first ?: row.tilePosX, cached?.second ?: row.tilePosY)
+        }
+        val cardVerticalOffsets = currentRows.associate { row ->
+            val cached = settings.freestyleCardVerticalNodeOffsets.value[row.deviceId]
+            row.deviceId to Pair(cached?.first ?: row.cardPosX, cached?.second ?: row.cardPosY)
+        }
+        val cardMenus = currentRows.associate { row ->
+            val cached = settings.freestyleCardMenuOrders.value[row.deviceId]
+            row.deviceId to (cached ?: row.cardMenuOrder)
+        }
+        val cardVerticalMenus = currentRows.associate { row ->
+            val cached = settings.freestyleCardVerticalMenuOrders.value[row.deviceId]
+            row.deviceId to (cached ?: row.cardMenuOrder)
+        }
+        val tileMenus = currentRows.associate { row ->
+            val cached = settings.freestyleTileMenuOrders.value[row.deviceId]
+            row.deviceId to (cached ?: row.tileMenuOrder)
+        }
+        freestyleEditSnapshot = FreestyleEditSnapshot(
+            cardOptionsPos = Pair(settings.freestyleCardOptionsPosX.value, settings.freestyleCardOptionsPosY.value),
+            cardVerticalOptionsPos = Pair(settings.freestyleCardVerticalOptionsPosX.value, settings.freestyleCardVerticalOptionsPosY.value),
+            tileOptionsPos = Pair(settings.freestyleTileOptionsPosX.value, settings.freestyleTileOptionsPosY.value),
+            optionsMenuOrder = settings.freestyleOptionsMenuOrder.value,
+            cardNodeOffsets = cardOffsets,
+            cardVerticalNodeOffsets = cardVerticalOffsets,
+            tileNodeOffsets = tileOffsets,
+            cardMenuOrders = cardMenus,
+            cardVerticalMenuOrders = cardVerticalMenus,
+            tileMenuOrders = tileMenus,
+            freestyleLayoutMode = settings.freestyleLayoutMode.value
+        )
         _uiState.update {
             it.copy(
                 deviceOrderEditMode = true,
@@ -919,6 +1155,7 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun exitDeviceOrderEditMode() {
+        freestyleEditSnapshot = null
         _uiState.update {
             it.copy(deviceOrderEditMode = false, editOrderRows = emptyList())
         }
@@ -937,13 +1174,52 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun revertDeviceOrderInEditMode() {
+        val snapshot = freestyleEditSnapshot
+        if (snapshot != null) {
+            val settings = FileApexServices.settings
+            settings.setFreestyleOptionsPosition(FreestyleLayoutMode.CARDS_HORIZONTAL, snapshot.cardOptionsPos.first, snapshot.cardOptionsPos.second)
+            settings.setFreestyleOptionsPosition(FreestyleLayoutMode.CARDS_VERTICAL, snapshot.cardVerticalOptionsPos.first, snapshot.cardVerticalOptionsPos.second)
+            settings.setFreestyleOptionsPosition(FreestyleLayoutMode.TILES, snapshot.tileOptionsPos.first, snapshot.tileOptionsPos.second)
+            settings.setFreestyleOptionsMenuOrder(snapshot.optionsMenuOrder)
+            settings.setFreestyleLayoutMode(snapshot.freestyleLayoutMode)
+
+            snapshot.cardNodeOffsets.forEach { (id, offset) ->
+                if (offset.first != null && offset.second != null) {
+                    settings.setFreestyleCardNodeOffset(id, offset.first!!, offset.second!!)
+                }
+                saveDeviceCardPosition(id, offset.first, offset.second)
+            }
+            snapshot.cardVerticalNodeOffsets.forEach { (id, offset) ->
+                if (offset.first != null && offset.second != null) {
+                    settings.setFreestyleCardVerticalNodeOffset(id, offset.first!!, offset.second!!)
+                }
+            }
+            snapshot.tileNodeOffsets.forEach { (id, offset) ->
+                if (offset.first != null && offset.second != null) {
+                    settings.setFreestyleTileNodeOffset(id, offset.first!!, offset.second!!)
+                }
+                saveDeviceTilePosition(id, offset.first, offset.second)
+            }
+            snapshot.cardMenuOrders.forEach { (id, order) ->
+                settings.setFreestyleCardMenuOrder(id, order)
+                saveDeviceCardMenuOrder(id, order)
+            }
+            snapshot.cardVerticalMenuOrders.forEach { (id, order) ->
+                settings.setFreestyleCardVerticalMenuOrder(id, order)
+            }
+            snapshot.tileMenuOrders.forEach { (id, order) ->
+                settings.setFreestyleTileMenuOrder(id, order)
+                saveDeviceTileMenuOrder(id, order)
+            }
+        }
         val rows = _uiState.value.editOrderRows
-        if (rows.isEmpty()) return
-        val alphabetical = DeviceOrderCoordinator.applyOrderIds(
-            rows,
-            DeviceOrderCoordinator.alphabeticalOrderIds(rows)
-        )
-        _uiState.update { it.copy(editOrderRows = alphabetical) }
+        if (rows.isNotEmpty()) {
+            val alphabetical = DeviceOrderCoordinator.applyOrderIds(
+                rows,
+                DeviceOrderCoordinator.alphabeticalOrderIds(rows)
+            )
+            _uiState.update { it.copy(editOrderRows = alphabetical) }
+        }
     }
 
     fun saveDeviceOrderAndExitEditMode() {
@@ -955,7 +1231,45 @@ class DevicesViewModel : ViewModel() {
         DeviceOrderCoordinator.saveLocalOrder(rows.map { it.deviceId })
         exitDeviceOrderEditMode()
     }
+
+    fun saveDeviceCardPosition(deviceId: String, x: Float?, y: Float?) {
+        viewModelScope.launch {
+            repository.saveDeviceCardLayout(deviceId, x, y)
+        }
+    }
+
+    fun saveDeviceTilePosition(deviceId: String, x: Float?, y: Float?) {
+        viewModelScope.launch {
+            repository.saveDeviceTileLayout(deviceId, x, y)
+        }
+    }
+
+    fun saveDeviceCardMenuOrder(deviceId: String, menuOrder: String) {
+        viewModelScope.launch {
+            repository.saveDeviceCardLayout(deviceId, null, null, menuOrder = menuOrder)
+        }
+    }
+
+    fun saveDeviceTileMenuOrder(deviceId: String, menuOrder: String) {
+        viewModelScope.launch {
+            repository.saveDeviceTileLayout(deviceId, null, null, menuOrder = menuOrder)
+        }
+    }
 }
+
+data class FreestyleEditSnapshot(
+    val cardOptionsPos: Pair<Float?, Float?>,
+    val cardVerticalOptionsPos: Pair<Float?, Float?>,
+    val tileOptionsPos: Pair<Float?, Float?>,
+    val optionsMenuOrder: String,
+    val cardNodeOffsets: Map<String, Pair<Float?, Float?>>,
+    val cardVerticalNodeOffsets: Map<String, Pair<Float?, Float?>>,
+    val tileNodeOffsets: Map<String, Pair<Float?, Float?>>,
+    val cardMenuOrders: Map<String, String>,
+    val cardVerticalMenuOrders: Map<String, String>,
+    val tileMenuOrders: Map<String, String>,
+    val freestyleLayoutMode: FreestyleLayoutMode
+)
 
 sealed interface BrowseTarget {
     val deviceId: String

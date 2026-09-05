@@ -241,8 +241,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 requestShowUpdateSheet = true
             }
-        }
-        if (intent?.getBooleanExtra(
+        } else if (intent?.getBooleanExtra(
                 com.fileapex.platform.EXTRA_SHOW_UPDATE_SHEET,
                 false
             ) == true

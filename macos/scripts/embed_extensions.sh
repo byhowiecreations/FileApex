@@ -23,8 +23,9 @@ bash "$ROOT/macos/scripts/build_extensions.sh" "$CONFIGURATION"
 PLUGINS="$APP_BUNDLE/Contents/PlugIns"
 mkdir -p "$PLUGINS"
 rm -rf "$PLUGINS/FileApexFinderSync.appex" "$PLUGINS/FileApexShareExtension.appex" "$PLUGINS/FileApexBulletinShareExtension.appex"
-ditto "$SHARE_APPEX" "$PLUGINS/FileApexShareExtension.appex"
-ditto "$BULLETIN_APPEX" "$PLUGINS/FileApexBulletinShareExtension.appex"
+mv "$SHARE_APPEX" "$PLUGINS/FileApexShareExtension.appex"
+mv "$BULLETIN_APPEX" "$PLUGINS/FileApexBulletinShareExtension.appex"
+rm -rf "$ROOT/macos/build/DerivedData"
 chmod -R a+rX \
   "$PLUGINS/FileApexShareExtension.appex" \
   "$PLUGINS/FileApexBulletinShareExtension.appex"

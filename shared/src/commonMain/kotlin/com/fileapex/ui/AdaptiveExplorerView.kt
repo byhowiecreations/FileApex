@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.filled.Folder
+import com.fileapex.ui.dnd.deviceFileDragSource
 
 
 
@@ -46,6 +47,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -92,6 +94,9 @@ fun AdaptiveExplorerView(
     isSelectionMode: Boolean,
     selectedFileIds: Set<String>,
     isRemoteTarget: Boolean = false,
+    sourceDeviceId: String? = null,
+    loadingFolderPath: String? = null,
+    isLoading: Boolean = false,
     onNavigateUp: () -> Unit,
     onPaneFolderClick: (RemoteFileItem) -> Unit,
     onContentDirectoryClick: (RemoteFileItem) -> Unit,
@@ -133,7 +138,10 @@ fun AdaptiveExplorerView(
             ) {
                 if (canNavigateUp) {
                     item(key = "pane-parent") {
-                        ParentRow(onClick = onNavigateUp)
+                        ParentRow(
+                            onClick = onNavigateUp,
+                            isLoading = isLoading && loadingFolderPath != null && pathsEqual(panePath, loadingFolderPath)
+                        )
                     }
                 }
                 items(paneDirectories, key = { "pane-${it.id}" }) { dir ->
@@ -143,6 +151,8 @@ fun AdaptiveExplorerView(
                     PaneDirectoryRow(
                         dir = dir,
                         isSelectedInPane = selected,
+                        isLoading = isLoading,
+                        loadingFolderPath = loadingFolderPath,
                         isSelectionMode = isSelectionMode,
                         isChecked = isChecked,
                         desktopSelection = desktopSelection,
@@ -185,6 +195,9 @@ fun AdaptiveExplorerView(
                 selectedFileIds = selectedFileIds,
                 desktopSelection = desktopSelection,
                 isRemoteTarget = isRemoteTarget,
+                sourceDeviceId = sourceDeviceId,
+                isLoading = isLoading,
+                loadingFolderPath = loadingFolderPath,
                 listPadding = listPadding,
                 modifier = Modifier
                     .weight(0.6f)
@@ -231,6 +244,9 @@ fun AdaptiveExplorerView(
         selectedFileIds = selectedFileIds,
         desktopSelection = desktopSelection,
         isRemoteTarget = isRemoteTarget,
+        sourceDeviceId = sourceDeviceId,
+        isLoading = isLoading,
+        loadingFolderPath = loadingFolderPath,
         listPadding = listPadding,
         modifier = modifier.fillMaxSize(),
         onNavigateUp = onNavigateUp,
@@ -260,6 +276,9 @@ private fun ExplorerContentPane(
     selectedFileIds: Set<String>,
     desktopSelection: Boolean,
     isRemoteTarget: Boolean,
+    sourceDeviceId: String? = null,
+    isLoading: Boolean = false,
+    loadingFolderPath: String? = null,
     listPadding: PaddingValues,
     modifier: Modifier,
     onNavigateUp: () -> Unit,
@@ -285,6 +304,9 @@ private fun ExplorerContentPane(
             selectedFileIds = selectedFileIds,
             desktopSelection = desktopSelection,
             isRemoteTarget = isRemoteTarget,
+            sourceDeviceId = sourceDeviceId,
+            isLoading = isLoading,
+            loadingFolderPath = loadingFolderPath,
             listPadding = listPadding,
             modifier = modifier,
             onNavigateUp = onNavigateUp,
@@ -309,6 +331,9 @@ private fun ExplorerContentPane(
             selectedFileIds = selectedFileIds,
             desktopSelection = desktopSelection,
             isRemoteTarget = isRemoteTarget,
+            sourceDeviceId = sourceDeviceId,
+            isLoading = isLoading,
+            loadingFolderPath = loadingFolderPath,
             listPadding = listPadding,
             modifier = modifier,
             onNavigateUp = onNavigateUp,
@@ -338,6 +363,9 @@ private fun ExplorerListContent(
     selectedFileIds: Set<String>,
     desktopSelection: Boolean,
     isRemoteTarget: Boolean,
+    sourceDeviceId: String? = null,
+    isLoading: Boolean = false,
+    loadingFolderPath: String? = null,
     listPadding: PaddingValues,
     modifier: Modifier,
     onNavigateUp: () -> Unit,
@@ -358,7 +386,10 @@ private fun ExplorerListContent(
     ) {
         if (canNavigateUp) {
             item(key = "parent") {
-                ParentRow(onClick = onNavigateUp)
+                ParentRow(
+                    onClick = onNavigateUp,
+                    isLoading = isLoading && loadingFolderPath != null && !directories.any { pathsEqual(it.absolutePath, loadingFolderPath) }
+                )
             }
         }
         if (isEmpty) {
@@ -369,10 +400,13 @@ private fun ExplorerListContent(
         items(directories, key = { "dir-${it.id}" }) { dir ->
             DirectoryListRow(
                 dir = dir,
+                isLoading = isLoading,
+                loadingFolderPath = loadingFolderPath,
                 isSelectionMode = isSelectionMode,
                 isSelected = dir.id in selectedFileIds,
                 desktopSelection = desktopSelection,
                 isRemoteTarget = isRemoteTarget,
+                sourceDeviceId = sourceDeviceId,
                 onClick = { onDirectoryClick(dir) },
                 onLongClick = { onFileLongPress(dir) },
                 onSelectExclusive = { onFileSelectExclusive(dir) },
@@ -391,6 +425,7 @@ private fun ExplorerListContent(
                 isSelected = file.id in selectedFileIds,
                 desktopSelection = desktopSelection,
                 isRemoteTarget = isRemoteTarget,
+                sourceDeviceId = sourceDeviceId,
                 onClick = { onFileOpen(file) },
                 onLongClick = { onFileLongPress(file) },
                 onSelectExclusive = { onFileSelectExclusive(file) },
@@ -417,6 +452,9 @@ private fun ExplorerGridContent(
     selectedFileIds: Set<String>,
     desktopSelection: Boolean,
     isRemoteTarget: Boolean,
+    sourceDeviceId: String? = null,
+    isLoading: Boolean = false,
+    loadingFolderPath: String? = null,
     listPadding: PaddingValues,
     modifier: Modifier,
     onNavigateUp: () -> Unit,
@@ -440,7 +478,10 @@ private fun ExplorerGridContent(
     ) {
         if (canNavigateUp) {
             item(key = "parent", span = { GridItemSpan(maxLineSpan) }) {
-                ParentRow(onClick = onNavigateUp)
+                ParentRow(
+                    onClick = onNavigateUp,
+                    isLoading = isLoading && loadingFolderPath != null && !directories.any { pathsEqual(it.absolutePath, loadingFolderPath) }
+                )
             }
         }
         if (isEmpty) {
@@ -452,10 +493,13 @@ private fun ExplorerGridContent(
             ExplorerGridCell(
                 item = dir,
                 subtitle = com.fileapex.i18n.AppI18n.t("folder"),
+                isLoading = isLoading,
+                loadingFolderPath = loadingFolderPath,
                 isSelectionMode = isSelectionMode,
                 isSelected = dir.id in selectedFileIds,
                 desktopSelection = desktopSelection,
                 isRemoteTarget = isRemoteTarget,
+                sourceDeviceId = sourceDeviceId,
                 onClick = { onDirectoryClick(dir) },
                 onLongClick = { onFileLongPress(dir) },
                 onSelectExclusive = { onFileSelectExclusive(dir) },
@@ -475,6 +519,7 @@ private fun ExplorerGridContent(
                 isSelected = file.id in selectedFileIds,
                 desktopSelection = desktopSelection,
                 isRemoteTarget = isRemoteTarget,
+                sourceDeviceId = sourceDeviceId,
                 onClick = { onFileOpen(file) },
                 onLongClick = { onFileLongPress(file) },
                 onSelectExclusive = { onFileSelectExclusive(file) },
@@ -490,7 +535,7 @@ private fun ExplorerGridContent(
 }
 
 @Composable
-private fun ParentRow(onClick: () -> Unit) {
+private fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
     val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
     Row(
         modifier = Modifier
@@ -499,12 +544,22 @@ private fun ParentRow(onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = Icons.Filled.Folder,
-            contentDescription = stringRes("up"),
-            tint = if (isFluxGlass) Color(0xFF00E676) else FileApexTeal,
-            modifier = Modifier.size(28.dp)
-        )
+        if (isLoading) {
+            Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                    color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                )
+            }
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Folder,
+                contentDescription = stringRes("up"),
+                tint = if (isFluxGlass) Color(0xFF00E676) else FileApexTeal,
+                modifier = Modifier.size(28.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(12.dp))
         Column(
             modifier = Modifier.weight(1f),
@@ -542,6 +597,8 @@ private fun EmptyHint(text: String) {
 private fun PaneDirectoryRow(
     dir: RemoteFileItem,
     isSelectedInPane: Boolean,
+    isLoading: Boolean = false,
+    loadingFolderPath: String? = null,
     isSelectionMode: Boolean,
     isChecked: Boolean,
     desktopSelection: Boolean,
@@ -590,7 +647,18 @@ private fun PaneDirectoryRow(
                 SelectionIndicator(selected = isChecked)
                 Spacer(modifier = Modifier.width(12.dp))
             }
-            ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+            val isItemLoading = isLoading && loadingFolderPath != null && pathsEqual(dir.absolutePath, loadingFolderPath)
+            if (isItemLoading) {
+                Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else {
+                ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(
                 modifier = Modifier.weight(1f),
@@ -628,10 +696,13 @@ private fun PaneDirectoryRow(
 @Composable
 private fun DirectoryListRow(
     dir: RemoteFileItem,
+    isLoading: Boolean = false,
+    loadingFolderPath: String? = null,
     isSelectionMode: Boolean,
     isSelected: Boolean,
     desktopSelection: Boolean,
     isRemoteTarget: Boolean,
+    sourceDeviceId: String? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSelectExclusive: () -> Unit,
@@ -655,7 +726,16 @@ private fun DirectoryListRow(
         onSecondaryClick = { menuExpanded = true }
     )
 
-    Box {
+    val dragModifier = if (dir.absolutePath.isNotBlank()) {
+        Modifier.deviceFileDragSource(
+            absolutePath = dir.absolutePath,
+            sourceDeviceId = if (isRemoteTarget) sourceDeviceId else null,
+            fileName = dir.name,
+            fileSize = 0L
+        )
+    } else Modifier
+
+    Box(modifier = Modifier.then(dragModifier)) {
         Row(
             modifier = rowModifier
                 .background(
@@ -672,7 +752,18 @@ private fun DirectoryListRow(
                 SelectionIndicator(selected = isSelected)
                 Spacer(modifier = Modifier.width(12.dp))
             }
-            ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+            val isItemLoading = isLoading && loadingFolderPath != null && pathsEqual(dir.absolutePath, loadingFolderPath)
+            if (isItemLoading) {
+                Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else {
+                ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(
                 modifier = Modifier.weight(1f),
@@ -680,17 +771,14 @@ private fun DirectoryListRow(
             ) {
                 Text(
                     text = dir.name,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                    ),
-                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = com.fileapex.i18n.AppI18n.t("folder"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -714,6 +802,7 @@ private fun FileListRow(
     isSelected: Boolean,
     desktopSelection: Boolean,
     isRemoteTarget: Boolean,
+    sourceDeviceId: String? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSelectExclusive: () -> Unit,
@@ -737,7 +826,16 @@ private fun FileListRow(
         onSecondaryClick = { menuExpanded = true }
     )
 
-    Box {
+    val dragModifier = if (file.absolutePath.isNotBlank()) {
+        Modifier.deviceFileDragSource(
+            absolutePath = file.absolutePath,
+            sourceDeviceId = if (isRemoteTarget) sourceDeviceId else null,
+            fileName = file.name,
+            fileSize = file.sizeBytes
+        )
+    } else Modifier
+
+    Box(modifier = Modifier.then(dragModifier)) {
         Row(
             modifier = rowModifier
                 .background(
@@ -762,15 +860,14 @@ private fun FileListRow(
             ) {
                 Text(
                     text = file.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = formatBytes(file.sizeBytes),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -791,10 +888,13 @@ private fun FileListRow(
 private fun ExplorerGridCell(
     item: RemoteFileItem,
     subtitle: String,
+    isLoading: Boolean = false,
+    loadingFolderPath: String? = null,
     isSelectionMode: Boolean,
     isSelected: Boolean,
     desktopSelection: Boolean,
     isRemoteTarget: Boolean,
+    sourceDeviceId: String? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSelectExclusive: () -> Unit,
@@ -823,7 +923,16 @@ private fun ExplorerGridCell(
         )
     }
 
-    Box {
+    val dragModifier = if (item.absolutePath.isNotBlank()) {
+        Modifier.deviceFileDragSource(
+            absolutePath = item.absolutePath,
+            sourceDeviceId = if (isRemoteTarget) sourceDeviceId else null,
+            fileName = item.name,
+            fileSize = item.sizeBytes
+        )
+    } else Modifier
+
+    Box(modifier = Modifier.then(dragModifier)) {
         Surface(
             modifier = interactionModifier
                 .aspectRatio(1f)
@@ -844,7 +953,18 @@ private fun ExplorerGridCell(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    ExplorerEntryIcon(item = item, modifier = Modifier.size(40.dp))
+                    val isItemLoading = isLoading && loadingFolderPath != null && pathsEqual(item.absolutePath, loadingFolderPath)
+                    if (isItemLoading) {
+                        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(32.dp),
+                                strokeWidth = 3.dp,
+                                color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else {
+                        ExplorerEntryIcon(item = item, modifier = Modifier.size(40.dp))
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = item.name,
@@ -989,7 +1109,6 @@ private fun Modifier.desktopItemClicks(
         val toggleMulti = downEvent.keyboardModifiers.isMetaPressed ||
             downEvent.keyboardModifiers.isCtrlPressed
         val extendRange = downEvent.keyboardModifiers.isShiftPressed && !toggleMulti
-        downChange.consume()
 
         val up = waitForUpOrCancellation() ?: return@awaitEachGesture
         up.consume()

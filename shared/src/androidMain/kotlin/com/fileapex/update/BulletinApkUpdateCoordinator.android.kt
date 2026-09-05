@@ -15,15 +15,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 actual object BulletinApkUpdateCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val inFlightMutex = Mutex()
-    private val inFlightNoteIds = mutableSetOf<String>()
+    private val inFlightNoteIds = ConcurrentHashMap.newKeySet<String>()
     private const val NOTIFICATION_ID_PROGRESS = 9182
+
+    actual fun isUpdateInFlight(noteId: String): Boolean =
+        noteId.isNotBlank() && inFlightNoteIds.contains(noteId)
 
     actual fun handleIncomingApkUpdate(note: NoteRecord) {
         val fileName = note.attachmentFileName.orEmpty().trim()
@@ -31,9 +32,7 @@ actual object BulletinApkUpdateCoordinator {
         if (!BulletinApkUpdatePolicy.shouldAutoUpdateNote(fileName, note.noteId, note.epochMs, note.attachmentSizeBytes)) return
 
         scope.launch {
-            val shouldProceed = inFlightMutex.withLock {
-                inFlightNoteIds.add(note.noteId)
-            }
+            val shouldProceed = inFlightNoteIds.add(note.noteId)
             if (!shouldProceed) return@launch
             val sig = BulletinApkUpdatePolicy.buildFileSignature(fileName, note.attachmentSizeBytes, note.epochMs)
             PendingUpdateStore.markProcessedNote(
@@ -105,9 +104,10 @@ actual object BulletinApkUpdateCoordinator {
                     assetName = fileName,
                     assetDownloadUrl = "",
                     assetSizeBytes = apkFile.length(),
-                    localFilePath = localPath
+                    localFilePath = localPath,
+                    originNoteId = note.noteId
                 )
-                PendingUpdateStore.save(offer)
+                AppUpdateCoordinator.setPendingOffer(offer)
 
                 // Dismiss progress notification
                 notificationManager?.cancel(NOTIFICATION_ID_PROGRESS)
@@ -120,6 +120,9 @@ actual object BulletinApkUpdateCoordinator {
 
                 // Route into the established GitHub update installation manager
                 notifyAppUpdateAvailable(offer)
+
+                PendingUpdateStore.setNoteInstallStatus(note.noteId, "NOT_INSTALLED")
+                PendingUpdateStore.setLastAttemptedNoteId(note.noteId)
 
                 runCatching {
                     PlatformUpdateInstaller.installAndRelaunch(
@@ -138,9 +141,7 @@ actual object BulletinApkUpdateCoordinator {
                     wakeLock.release()
                 }
                 notificationManager?.cancel(NOTIFICATION_ID_PROGRESS)
-                inFlightMutex.withLock {
-                    inFlightNoteIds.remove(note.noteId)
-                }
+                inFlightNoteIds.remove(note.noteId)
             }
         }
     }
@@ -151,6 +152,14 @@ actual object BulletinApkUpdateCoordinator {
             if (!apkFile.isFile || apkFile.length() < 1024L) return@launch
             val sig = BulletinApkUpdatePolicy.buildFileSignature(fileName, apkFile.length(), apkFile.lastModified())
             PendingUpdateStore.markProcessedFile(sig)
+            val matchingNote = FileApexServices.noteRepository.notes.value.firstOrNull {
+                it.attachmentFileName == fileName || it.attachmentFileName == apkFile.name
+            }
+            val originNoteId = matchingNote?.noteId
+            if (!originNoteId.isNullOrBlank()) {
+                PendingUpdateStore.setLastAttemptedNoteId(originNoteId)
+                PendingUpdateStore.setNoteInstallStatus(originNoteId, "NOT_INSTALLED")
+            }
             val offer = PendingUpdateOffer(
                 remoteVersion = version,
                 releaseTitle = "FileApex $version",
@@ -158,9 +167,10 @@ actual object BulletinApkUpdateCoordinator {
                 assetName = fileName,
                 assetDownloadUrl = "",
                 assetSizeBytes = apkFile.length(),
-                localFilePath = localPath
+                localFilePath = localPath,
+                originNoteId = originNoteId
             )
-            PendingUpdateStore.save(offer)
+            AppUpdateCoordinator.setPendingOffer(offer)
             notifyAppUpdateAvailable(offer)
             runCatching {
                 PlatformUpdateInstaller.installAndRelaunch(

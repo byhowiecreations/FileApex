@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.fileapex.MainActivity
 import android.app.PendingIntent
 
@@ -103,8 +104,7 @@ object ShareServerForegroundNotification {
                 }
             }
         } else {
-            @Suppress("DEPRECATION")
-            service.startForeground(NOTIFICATION_ID, notification)
+            ServiceCompat.startForeground(service, NOTIFICATION_ID, notification, 0)
         }
     }
 

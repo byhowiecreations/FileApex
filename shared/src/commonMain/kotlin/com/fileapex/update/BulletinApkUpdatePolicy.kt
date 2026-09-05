@@ -37,9 +37,11 @@ object BulletinApkUpdatePolicy {
         fileSizeBytes: Long = 0L
     ): Boolean {
         if (!matchesAutoUpdateApk(fileName)) return false
+        val id = noteId.orEmpty()
+        if (id.isNotBlank() && PendingUpdateStore.getNoteInstallStatus(id) != null) return false
         val sig = buildFileSignature(fileName, fileSizeBytes, noteEpochMs)
         return !PendingUpdateStore.isNoteProcessed(
-            noteId = noteId.orEmpty(),
+            noteId = id,
             timestampEpochMs = noteEpochMs,
             signature = sig
         )

@@ -23,6 +23,16 @@ class UpdatePackageReplacedReceiver : BroadcastReceiver() {
             if (replaced != null && replaced != context.packageName) return
         }
         println("UpdatePackageReplacedReceiver: package replaced - relaunching FileApex")
+        val lastNoteId = PendingUpdateStore.getLastAttemptedNoteId()
+        val offer = PendingUpdateStore.load()
+        val noteId = lastNoteId.ifBlank { offer?.originNoteId.orEmpty() }
+        if (noteId.isNotBlank()) {
+            PendingUpdateStore.setNoteInstallStatus(noteId, "INSTALLED")
+            println("UpdatePackageReplacedReceiver: noteId=$noteId status set to INSTALLED")
+        }
+        PendingUpdateStore.setLastAttemptedNoteId("")
+        PendingUpdateStore.save(null)
+
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

@@ -60,6 +60,11 @@ actual fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics {
     }
 }
 
+actual fun collectFastBatteryDiagnostics(): BatteryDiagnostics {
+    return runCatching { readBattery() }
+        .getOrDefault(BatteryDiagnostics(chargingState = "Not available"))
+}
+
 private fun macProfilerJsonOrEmpty(): String = macCombinedProfilerJson.get().orEmpty()
 
 private fun readDeviceIdentitySafe(): DeviceIdentityDiagnostics {

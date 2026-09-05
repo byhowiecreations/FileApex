@@ -493,7 +493,15 @@ class DeviceRepository(
                 incoming.lastSeenEpochMs,
                 primary.lastSeenEpochMs,
                 secondary.lastSeenEpochMs
-            )
+            ),
+            cardPosX = primary.cardPosX ?: secondary.cardPosX,
+            cardPosY = primary.cardPosY ?: secondary.cardPosY,
+            cardSortOrder = if (primary.cardSortOrder != 0) primary.cardSortOrder else secondary.cardSortOrder,
+            cardMenuOrder = primary.cardMenuOrder.ifBlank { secondary.cardMenuOrder },
+            tilePosX = primary.tilePosX ?: secondary.tilePosX,
+            tilePosY = primary.tilePosY ?: secondary.tilePosY,
+            tileSortOrder = if (primary.tileSortOrder != 0) primary.tileSortOrder else secondary.tileSortOrder,
+            tileMenuOrder = primary.tileMenuOrder.ifBlank { secondary.tileMenuOrder }
         )
     }
 
@@ -578,7 +586,15 @@ class DeviceRepository(
             platform = trimmed.platform.ifBlank { preserveFrom?.platform.orEmpty() },
             os = trimmed.os.ifBlank { preserveFrom?.os.orEmpty() },
             deviceMake = trimmed.deviceMake.ifBlank { preserveFrom?.deviceMake.orEmpty() },
-            deviceModel = trimmed.deviceModel.ifBlank { preserveFrom?.deviceModel.orEmpty() }
+            deviceModel = trimmed.deviceModel.ifBlank { preserveFrom?.deviceModel.orEmpty() },
+            cardPosX = trimmed.cardPosX ?: preserveFrom?.cardPosX,
+            cardPosY = trimmed.cardPosY ?: preserveFrom?.cardPosY,
+            cardSortOrder = if (trimmed.cardSortOrder != 0) trimmed.cardSortOrder else preserveFrom?.cardSortOrder ?: 0,
+            cardMenuOrder = trimmed.cardMenuOrder.ifBlank { preserveFrom?.cardMenuOrder.orEmpty() },
+            tilePosX = trimmed.tilePosX ?: preserveFrom?.tilePosX,
+            tilePosY = trimmed.tilePosY ?: preserveFrom?.tilePosY,
+            tileSortOrder = if (trimmed.tileSortOrder != 0) trimmed.tileSortOrder else preserveFrom?.tileSortOrder ?: 0,
+            tileMenuOrder = trimmed.tileMenuOrder.ifBlank { preserveFrom?.tileMenuOrder.orEmpty() }
         )
     }
 
@@ -596,6 +612,40 @@ class DeviceRepository(
             return null
         }
         return "$cleaned:$port"
+    }
+
+    suspend fun saveDeviceCardLayout(
+        deviceId: String,
+        x: Float?,
+        y: Float?,
+        sortOrder: Int = 0,
+        menuOrder: String = ""
+    ) {
+        mutateMutex.withLock {
+            val existing = deviceDao.getDevice(deviceId) ?: return
+            val finalX = x ?: existing.cardPosX
+            val finalY = y ?: existing.cardPosY
+            val finalOrder = if (sortOrder != 0) sortOrder else existing.cardSortOrder
+            val finalMenu = menuOrder.ifBlank { existing.cardMenuOrder }
+            deviceDao.updateCardLayout(deviceId, finalX, finalY, finalOrder, finalMenu)
+        }
+    }
+
+    suspend fun saveDeviceTileLayout(
+        deviceId: String,
+        x: Float?,
+        y: Float?,
+        sortOrder: Int = 0,
+        menuOrder: String = ""
+    ) {
+        mutateMutex.withLock {
+            val existing = deviceDao.getDevice(deviceId) ?: return
+            val finalX = x ?: existing.tilePosX
+            val finalY = y ?: existing.tilePosY
+            val finalOrder = if (sortOrder != 0) sortOrder else existing.tileSortOrder
+            val finalMenu = menuOrder.ifBlank { existing.tileMenuOrder }
+            deviceDao.updateTileLayout(deviceId, finalX, finalY, finalOrder, finalMenu)
+        }
     }
 
     suspend fun rename(deviceId: String, newName: String) {

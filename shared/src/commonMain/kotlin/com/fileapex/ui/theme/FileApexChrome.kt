@@ -32,12 +32,17 @@ fun isFileApexKineticSphere(): Boolean =
     LocalAppTheme.current == AppTheme.KINETIC_SPHERE
 
 @Composable
-fun isFileApexCustomGlassTheme(): Boolean =
-    isFileApexFluxGlass() || isFileApexKineticSphere()
+fun isFileApexFreestyle(): Boolean =
+    LocalAppTheme.current == AppTheme.FREESTYLE
 
-/** Top/bottom nav and title-strip background. Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent; Teal on Standard. */
+@Composable
+fun isFileApexCustomGlassTheme(): Boolean =
+    isFileApexFluxGlass() || isFileApexKineticSphere() || isFileApexFreestyle()
+
+/** Top/bottom nav and title-strip background. Pure Black on Freestyle; Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent; Teal on Standard. */
 @Composable
 fun fileApexChromeContainerColor(): Color = when {
+    isFileApexFreestyle() -> Color.Black
     isFileApexCustomGlassTheme() -> Color.Transparent
     isFileApexFluentUi() -> MaterialTheme.colorScheme.surface
     else -> FileApexTeal

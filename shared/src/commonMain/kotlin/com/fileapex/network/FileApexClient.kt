@@ -786,7 +786,11 @@ class FileApexClient(
 
     private fun rejectPinRequired(response: PeerBoundHttpResponse, message: String) {
         if (response.statusCode == 403) {
-            error(message)
+            if (response.body.contains("pin_required", ignoreCase = true)) {
+                error("pin_required: $message")
+            } else {
+                error("Access denied: ${response.body.ifBlank { "Forbidden" }}")
+            }
         }
     }
 

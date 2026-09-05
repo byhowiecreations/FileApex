@@ -59,4 +59,45 @@ class BulletinApkUpdatePolicyTest {
         PendingUpdateStore.removeProcessedFile(sig)
         assertTrue(BulletinApkUpdatePolicy.shouldAutoUpdateNote("FileApex-v0.9.9a.apk", "note-1", 3000L, 5000L))
     }
+
+    @Test
+    fun saveNullDoesNotClearProcessedTracking() {
+        val sig = BulletinApkUpdatePolicy.buildFileSignature("FileApex-v0.9.10a.apk", 6000L, 2000L)
+        PendingUpdateStore.markProcessedNote("note-preserved", 2000L, sig)
+        
+        // Clearing pending offer must NOT wipe processed note tracking
+        PendingUpdateStore.save(null)
+        
+        assertFalse(BulletinApkUpdatePolicy.shouldAutoUpdateNote("FileApex-v0.9.10a.apk", "note-preserved", 2000L, 6000L))
+        assertNull(PendingUpdateStore.load())
+    }
+
+    @Test
+    fun updateInFlightTracksNoteId() {
+        assertFalse(BulletinApkUpdateCoordinator.isUpdateInFlight(""))
+        assertFalse(BulletinApkUpdateCoordinator.isUpdateInFlight("note-flight-test"))
+    }
+
+    @Test
+    fun noteInstallStatusTracksAndSuppressesAutoUpdate() {
+        val noteId = "note-install-test-123"
+        val fileName = "FileApex-v0.9.13a.apk"
+        assertNull(PendingUpdateStore.getNoteInstallStatus(noteId))
+        assertFalse(PendingUpdateStore.isNoteInstalled(noteId))
+
+        PendingUpdateStore.setNoteInstallStatus(noteId, "NOT_INSTALLED")
+        assertEquals("NOT_INSTALLED", PendingUpdateStore.getNoteInstallStatus(noteId))
+        assertFalse(PendingUpdateStore.isNoteInstalled(noteId))
+        assertFalse(BulletinApkUpdatePolicy.shouldAutoUpdateNote(fileName, noteId, 5000L, 1024L))
+
+        PendingUpdateStore.setNoteInstallStatus(noteId, "INSTALLED")
+        assertEquals("INSTALLED", PendingUpdateStore.getNoteInstallStatus(noteId))
+        assertTrue(PendingUpdateStore.isNoteInstalled(noteId))
+        assertFalse(BulletinApkUpdatePolicy.shouldAutoUpdateNote(fileName, noteId, 5000L, 1024L))
+
+        PendingUpdateStore.setLastAttemptedNoteId(noteId)
+        assertEquals(noteId, PendingUpdateStore.getLastAttemptedNoteId())
+        PendingUpdateStore.setLastAttemptedNoteId("")
+        assertEquals("", PendingUpdateStore.getLastAttemptedNoteId())
+    }
 }

@@ -141,7 +141,7 @@ fun FileApexTheme(
     val fluent = uiStyle == DesktopUiStyle.WindowsFluent
     val fontFamily = if (fluent) fluentUiFontFamily() else FontFamily.Default
     val colorScheme = when {
-        appTheme == AppTheme.FLUX_GLASS || appTheme == AppTheme.KINETIC_SPHERE -> FluxGlassColorScheme
+        appTheme == AppTheme.FLUX_GLASS || appTheme == AppTheme.KINETIC_SPHERE || appTheme == AppTheme.FREESTYLE -> FluxGlassColorScheme
         fluent -> FluentColorScheme
         else -> StandardColorScheme
     }

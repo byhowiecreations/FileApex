@@ -261,8 +261,25 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="theme_flux_desc">磨砂玻璃卡片、深青灰色渐变背景和浮动胶囊导航。</string>
     <string name="theme_kinetic">Kinetic Sphere</string>
     <string name="theme_kinetic_desc">空间节点轨道网络、径向子菜单和宇宙玻璃风格。</string>
+    <string name="theme_freestyle">自由风格</string>
+    <string name="theme_freestyle_desc">具有可拖动设备按钮、可自定义浮动卡片和轨道磁贴环的模块化自由画布。</string>
+    <string name="freestyle_onboarding_hint">编辑模式：拖动元素以重新调整位置。使用拖动手柄重新排序菜单选项。</string>
     <string name="theme_lines_desc">从中心枢纽向每个设备节点绘制虚线。</string>
     <string name="theme_rings_desc">在中心枢纽周围绘制三维椭圆轨道环。</string>
+    <string name="bulletin_board_styles">公告栏样式</string>
+    <string name="bulletin_board_styles_intro">自定义公告栏聊天气泡与便签卡片的视觉设计风格。</string>
+    <string name="bulletin_style_default">默认</string>
+    <string name="bulletin_style_default_desc">经典 FileApex 气泡设计，搭配淡雅品牌青色。</string>
+    <string name="bulletin_style_ios_modern">iOS 现代</string>
+    <string name="bulletin_style_ios_modern_desc">高曲率药丸气泡，带有内阴影与冷蓝尾尖。</string>
+    <string name="bulletin_style_material_you">Material You</string>
+    <string name="bulletin_style_material_you_desc">非对称圆角容器，搭配专属品牌冷蓝表面色调。</string>
+    <string name="bulletin_style_aero_glass">Aero 磨砂玻璃</string>
+    <string name="bulletin_style_aero_glass_desc">超薄半透明磨砂面板，带顶部 1px 白色高光与极简边框。</string>
+    <string name="bulletin_style_torn_ledger">撕边账本纸</string>
+    <string name="bulletin_style_torn_ledger_desc">米白色撕边纸条，带有不规则撕边、账本横线与自适应宽度。</string>
+    <string name="bulletin_style_sticky_note">便利贴</string>
+    <string name="bulletin_style_sticky_note_desc">经典淡黄便签贴，右下卷角投影与顶部图钉。</string>
     <string name="layout_compact">紧凑</string>
     <string name="layout_expanded">扩展</string>
     <string name="windows_standard">标准</string>
@@ -763,6 +780,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="diag_uptime_h">%1$s小时</string>
     <string name="diag_uptime_m">%1$s分钟</string>
     <string name="no_handler_saved_to_storage">未找到可打开此文件的应用。已保存到本地存储：%1$s</string>
+    <string name="opening_folder">正在打开文件夹…</string>
     <plurals name="paired_cluster_extra">
         <item quantity="other">（+%d 台集群设备）</item>
     </plurals>

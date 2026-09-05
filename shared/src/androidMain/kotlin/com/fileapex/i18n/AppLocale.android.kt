@@ -19,14 +19,23 @@ actual fun applyPlatformLocale(locale: AppLocale) {
     JvmLocaleSupport.apply(locale)
     val context = androidAppContextOrNull() ?: return
     val javaLocale = JvmLocaleSupport.javaLocale(locale)
-    val resources = context.resources
-    val config = Configuration(resources.configuration)
-    config.setLocale(javaLocale)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val localeManager = context.getSystemService(android.app.LocaleManager::class.java)
+        localeManager?.applicationLocales = LocaleList(javaLocale)
+    } else {
+        val resources = context.resources
+        val config = Configuration(resources.configuration)
         config.setLocales(LocaleList(javaLocale))
+        context.createConfigurationContext(config)
+        runCatching {
+            val method = resources.javaClass.getMethod(
+                "updateConfiguration",
+                Configuration::class.java,
+                android.util.DisplayMetrics::class.java
+            )
+            method.invoke(resources, config, resources.displayMetrics)
+        }
     }
-    @Suppress("DEPRECATION")
-    resources.updateConfiguration(config, resources.displayMetrics)
 }
 
 internal actual fun onAppLocaleChanged() {

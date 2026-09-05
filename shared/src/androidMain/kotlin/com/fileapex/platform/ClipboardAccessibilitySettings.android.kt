@@ -90,8 +90,8 @@ actual object ClipboardAccessibilitySettings {
                 val info = context.packageManager.getInstallSourceInfo(context.packageName)
                 info.installingPackageName ?: info.initiatingPackageName
             } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getInstallerPackageName(context.packageName)
+                val method = context.packageManager.javaClass.getMethod("getInstallerPackageName", String::class.java)
+                method.invoke(context.packageManager, context.packageName) as? String
             }
         }.getOrNull()
         return installer != "com.android.vending"
