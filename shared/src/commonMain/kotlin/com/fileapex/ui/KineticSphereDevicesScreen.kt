@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.data.settings.ThemeIconStyle
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -607,9 +609,15 @@ fun KineticSphereDevicesView(
                         },
                     contentAlignment = Alignment.Center
                 ) {
+                    val iconStyle = LocalThemeIconStyle.current
+                    val nodeBorderWidth = 1.5.dp + (2.dp * focusProgress)
                     DeviceEntryIcon(
                         row = row,
-                        modifier = Modifier.size(28.dp + (8.dp * focusProgress)),
+                        modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
+                            Modifier.size(28.dp + (8.dp * focusProgress))
+                        } else {
+                            Modifier.fillMaxSize().padding(nodeBorderWidth)
+                        },
                         tint = Color.White
                     )
                 }

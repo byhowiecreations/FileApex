@@ -19,8 +19,11 @@ import androidx.compose.ui.unit.IntOffset
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.ThemeIconStyle
+import com.fileapex.data.settings.supportedIconStyles
 import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 
 import androidx.compose.material3.RadioButtonDefaults
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
@@ -289,6 +292,7 @@ fun SettingsScreen(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
             onSelectTheme = viewModel::setAppTheme,
+            onSelectThemeIconStyle = { viewModel.setThemeIconStyle(state.appTheme, it) },
             onToggleConnectedLines = viewModel::setKineticSphereConnectedLinesEnabled,
             onToggleOrbitalRings = viewModel::setKineticSphereOrbitalRingsEnabled
         )
@@ -1254,6 +1258,13 @@ private fun localizedThemeDescription(theme: AppTheme): String = when (theme) {
     AppTheme.FLUX_GLASS -> stringRes("theme_flux_desc")
     AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic_desc")
     AppTheme.FREESTYLE -> stringRes("theme_freestyle_desc")
+}
+
+@Composable
+private fun localizedIconStyleName(style: ThemeIconStyle): String = when (style) {
+    ThemeIconStyle.STANDARD -> stringRes("icon_style_standard")
+    ThemeIconStyle.FLUX -> stringRes("icon_style_flux")
+    ThemeIconStyle.FREESTYLE -> stringRes("icon_style_freestyle")
 }
 
 @Composable
@@ -2290,6 +2301,7 @@ private fun ThemesSettingsPage(
     layoutMode: SettingsScreenLayoutMode,
     onBack: () -> Unit,
     onSelectTheme: (AppTheme) -> Unit,
+    onSelectThemeIconStyle: (ThemeIconStyle) -> Unit,
     onToggleConnectedLines: (Boolean) -> Unit,
     onToggleOrbitalRings: (Boolean) -> Unit
 ) {
@@ -2387,6 +2399,70 @@ private fun ThemesSettingsPage(
                                 unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         )
+                    }
+                }
+
+                val supportedIcons = theme.supportedIconStyles()
+                if (selected && supportedIcons.size > 1) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        supportedIcons.forEach { iconStyle ->
+                            val isIconSelected = state.themeIconStyle == iconStyle
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onSelectThemeIconStyle(iconStyle) },
+                                color = if (isCustomTheme) {
+                                    if (isIconSelected) Color(0x3300E676) else Color(0x221E2D34)
+                                } else {
+                                    if (isIconSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                },
+                                border = BorderStroke(
+                                    width = if (isIconSelected) 1.5.dp else 1.dp,
+                                    color = if (isCustomTheme) {
+                                        if (isIconSelected) Color(0xFF00E676) else Color.White.copy(alpha = 0.18f)
+                                    } else {
+                                        if (isIconSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                                    }
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = localizedIconStyleName(iconStyle),
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                        color = if (isCustomTheme) {
+                                            if (isIconSelected) Color(0xFF00E676) else Color(0xFFFFB74D)
+                                        } else {
+                                            if (isIconSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    RadioButton(
+                                        selected = isIconSelected,
+                                        onClick = { onSelectThemeIconStyle(iconStyle) },
+                                        modifier = Modifier.size(20.dp),
+                                        colors = RadioButtonDefaults.colors(
+                                            selectedColor = if (isCustomTheme) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                                            unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -1,5 +1,10 @@
 package com.fileapex.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DevicesFold
@@ -15,19 +20,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.presentation.DeviceHardwareProfile
 import com.fileapex.presentation.DeviceIconKind
 import com.fileapex.presentation.DeviceIconProfile
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.resolveDeviceIconKind
+import com.fileapex.presentation.resolveFluxDrawable
+import com.fileapex.presentation.resolveFreestyleDrawable
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.FileApexTealDark
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 fun DeviceEntryIcon(
     row: DeviceListRow,
     modifier: Modifier = Modifier,
-    tint: Color = FileApexTealDark
+    tint: Color = FileApexTealDark,
+    iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
 ) {
     DeviceEntryIcon(
         profile = DeviceIconProfile(
@@ -36,7 +47,8 @@ fun DeviceEntryIcon(
             hardware = DeviceHardwareProfile.from(row)
         ),
         modifier = modifier,
-        tint = tint
+        tint = tint,
+        iconStyle = iconStyle
     )
 }
 
@@ -44,14 +56,38 @@ fun DeviceEntryIcon(
 fun DeviceEntryIcon(
     profile: DeviceIconProfile,
     modifier: Modifier = Modifier,
-    tint: Color = FileApexTealDark
+    tint: Color = FileApexTealDark,
+    iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
 ) {
-    Icon(
-        imageVector = deviceIconVector(resolveDeviceIconKind(profile)),
-        contentDescription = stringRes(deviceIconDescriptionKey(resolveDeviceIconKind(profile))),
-        modifier = modifier,
-        tint = tint
-    )
+    val description = stringRes(deviceIconDescriptionKey(resolveDeviceIconKind(profile)))
+    when (iconStyle) {
+        ThemeIconStyle.STANDARD -> {
+            Icon(
+                imageVector = deviceIconVector(resolveDeviceIconKind(profile)),
+                contentDescription = description,
+                modifier = modifier,
+                tint = tint
+            )
+        }
+        ThemeIconStyle.FLUX -> {
+            Image(
+                painter = painterResource(resolveFluxDrawable(profile)),
+                contentDescription = description,
+                modifier = modifier.clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.Center
+            )
+        }
+        ThemeIconStyle.FREESTYLE -> {
+            Image(
+                painter = painterResource(resolveFreestyleDrawable(profile)),
+                contentDescription = description,
+                modifier = modifier.clip(CircleShape),
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.Center
+            )
+        }
+    }
 }
 
 fun deviceIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
@@ -82,11 +118,13 @@ private fun deviceIconDescriptionKey(kind: DeviceIconKind): String = when (kind)
 fun DeviceEntryIconLarge(
     row: DeviceListRow,
     modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.primary
+    tint: Color = MaterialTheme.colorScheme.primary,
+    iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
 ) {
     DeviceEntryIcon(
         row = row,
         modifier = modifier,
-        tint = tint
+        tint = tint,
+        iconStyle = iconStyle
     )
 }

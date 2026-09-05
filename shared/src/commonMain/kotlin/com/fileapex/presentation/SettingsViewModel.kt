@@ -15,6 +15,7 @@ import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
+import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.clipboard.ClipboardShareMode
@@ -54,6 +55,7 @@ data class SettingsUiState(
     val liveTransferCapsuleEnabled: Boolean = false,
     val liveTransferShowQueueEnabled: Boolean = false,
     val appTheme: AppTheme = AppTheme.CLEAN,
+    val themeIconStyle: ThemeIconStyle = ThemeIconStyle.STANDARD,
     val bulletinBoardStyle: BulletinBoardStyle = BulletinBoardStyle.DEFAULT,
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
@@ -115,6 +117,7 @@ class SettingsViewModel : ViewModel() {
             liveTransferCapsuleEnabled = settings.liveTransferCapsuleEnabled.value,
             liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
             appTheme = settings.appTheme.value,
+            themeIconStyle = settings.themeIconStyle.value,
             bulletinBoardStyle = settings.bulletinBoardStyle.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
@@ -268,6 +271,11 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.bulletinBoardStyle.collect { style ->
                 _uiState.update { it.copy(bulletinBoardStyle = style) }
+            }
+        }
+        viewModelScope.launch {
+            settings.themeIconStyle.collect { style ->
+                _uiState.update { it.copy(themeIconStyle = style) }
             }
         }
     }
@@ -459,7 +467,12 @@ class SettingsViewModel : ViewModel() {
 
     fun setAppTheme(theme: AppTheme) {
         settings.setAppTheme(theme)
-        _uiState.update { it.copy(appTheme = theme) }
+        _uiState.update { it.copy(appTheme = theme, themeIconStyle = settings.themeIconStyle.value) }
+    }
+
+    fun setThemeIconStyle(theme: AppTheme, style: ThemeIconStyle) {
+        settings.setThemeIconStyle(theme, style)
+        _uiState.update { it.copy(themeIconStyle = settings.themeIconStyle.value) }
     }
 
     fun setBulletinBoardStyle(style: BulletinBoardStyle) {

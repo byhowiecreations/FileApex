@@ -234,6 +234,7 @@ fun App(
     }
     val desktopUiStyle by desktopUiStyleFlow.collectAsState()
     val appTheme by FileApexServices.settings.appTheme.collectAsState()
+    val themeIconStyle by FileApexServices.settings.themeIconStyle.collectAsState()
     val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
     val bgBrush = appTheme.backgroundBrush()
     val appLocale by AppI18n.localeFlowState
@@ -251,7 +252,8 @@ fun App(
     key(appLocale) {
     FileApexTheme(
         uiStyle = desktopUiStyle,
-        appTheme = appTheme
+        appTheme = appTheme,
+        themeIconStyle = themeIconStyle
     ) {
         Box(
             modifier = Modifier

@@ -10,9 +10,9 @@ import androidx.compose.ui.unit.dp
  * Global UI theme selection for FileApex (Android and macOS Desktop).
  */
 enum class AppTheme(val displayName: String, val description: String) {
-    CLEAN("Clean (default)", "Standard dark OLED surfaces with solid container cards and full-width navigation."),
+    CLEAN("Clean (default)", "Clean light surfaces with solid container cards and full-width navigation."),
     FLUX_GLASS("Flux Glass", "Translucent frosted glass cards, deep dark teal-charcoal gradient background, glowing status accents, and floating pill navigation."),
-    KINETIC_SPHERE("Kinetic Sphere", "Spatial node-based orbital network layout with interactive central hub, contextual radial sub-menus, and cosmic glass styling."),
+    KINETIC_SPHERE("Kinetic Sphere", "Spatial node-based orbital network layout with interactive central hub and cosmic glass styling."),
     FREESTYLE("Freestyle", "Modular draggable canvas layout with customizable floating cards and orbital tile rings.");
 
     companion object {
@@ -84,4 +84,36 @@ fun AppTheme.cardBorder(defaultBorder: BorderStroke): BorderStroke {
     }
 }
 
+/**
+ * Visual styling for device icons across themes.
+ */
+enum class ThemeIconStyle(val displayName: String) {
+    STANDARD("Standard"),
+    FLUX("Flux"),
+    FREESTYLE("Freestyle");
 
+    companion object {
+        val DEFAULT = STANDARD
+
+        fun fromStorage(value: String?): ThemeIconStyle {
+            if (value.isNullOrBlank()) return DEFAULT
+            return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: DEFAULT
+        }
+    }
+}
+
+val LocalThemeIconStyle = staticCompositionLocalOf { ThemeIconStyle.STANDARD }
+
+fun AppTheme.supportedIconStyles(): List<ThemeIconStyle> = when (this) {
+    AppTheme.CLEAN -> listOf(ThemeIconStyle.STANDARD)
+    AppTheme.FLUX_GLASS -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX)
+    AppTheme.KINETIC_SPHERE -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX, ThemeIconStyle.FREESTYLE)
+    AppTheme.FREESTYLE -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX, ThemeIconStyle.FREESTYLE)
+}
+
+fun AppTheme.defaultIconStyle(): ThemeIconStyle = when (this) {
+    AppTheme.CLEAN -> ThemeIconStyle.STANDARD
+    AppTheme.FLUX_GLASS -> ThemeIconStyle.FLUX
+    AppTheme.KINETIC_SPHERE -> ThemeIconStyle.STANDARD
+    AppTheme.FREESTYLE -> ThemeIconStyle.FREESTYLE
+}

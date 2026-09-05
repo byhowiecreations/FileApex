@@ -92,6 +92,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import com.fileapex.data.settings.FreestyleLayoutMode
+import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.BrowseTarget
@@ -756,9 +758,15 @@ fun FreestyleDevicesView(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
+                            val iconStyle = LocalThemeIconStyle.current
+                            val buttonBorderWidth = if (isExpanded || isSelected || dropHover) 2.5.dp else 1.5.dp
                             DeviceEntryIcon(
                                 row = row,
-                                modifier = Modifier.size(32.dp),
+                                modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
+                                    Modifier.size(32.dp)
+                                } else {
+                                    Modifier.fillMaxSize().padding(buttonBorderWidth)
+                                },
                                 tint = if (isExpanded) Color(0xFF64B5F6) else Color.White
                             )
 
@@ -1603,9 +1611,10 @@ fun FreestyleDevicesView(
                                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
+                                                    val iconStyle = LocalThemeIconStyle.current
                                                     DeviceEntryIcon(
                                                         row = row,
-                                                        modifier = Modifier.size(24.dp),
+                                                        modifier = if (iconStyle == ThemeIconStyle.STANDARD) Modifier.size(24.dp) else Modifier.size(36.dp),
                                                         tint = Color.White
                                                     )
                                                     Spacer(modifier = Modifier.width(12.dp))

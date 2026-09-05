@@ -136,6 +136,7 @@ private fun fluentTypography(fontFamily: FontFamily): Typography {
 fun FileApexTheme(
     uiStyle: DesktopUiStyle = DesktopUiStyle.Standard,
     appTheme: AppTheme = AppTheme.CLEAN,
+    themeIconStyle: com.fileapex.data.settings.ThemeIconStyle = com.fileapex.data.settings.ThemeIconStyle.STANDARD,
     content: @Composable () -> Unit
 ) {
     val fluent = uiStyle == DesktopUiStyle.WindowsFluent
@@ -160,7 +161,8 @@ fun FileApexTheme(
 
     CompositionLocalProvider(
         LocalFileApexUiStyle provides uiStyle,
-        LocalAppTheme provides appTheme
+        LocalAppTheme provides appTheme,
+        com.fileapex.data.settings.LocalThemeIconStyle provides themeIconStyle
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

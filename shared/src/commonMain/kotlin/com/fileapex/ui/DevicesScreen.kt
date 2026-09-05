@@ -34,6 +34,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.data.settings.ThemeIconStyle
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -1633,9 +1635,14 @@ private fun DeviceCard(
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
+                val iconStyle = LocalThemeIconStyle.current
                 DeviceEntryIcon(
                     row = row,
-                    modifier = Modifier.size(24.dp),
+                    modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
+                        Modifier.size(24.dp)
+                    } else {
+                        Modifier.fillMaxSize().padding(2.dp)
+                    },
                     tint = FileApexTealDark
                 )
             }

@@ -61,6 +61,7 @@ interface AppSettings {
     val liveTransferCapsuleEnabled: StateFlow<Boolean>
     val liveTransferShowQueueEnabled: StateFlow<Boolean>
     val appTheme: StateFlow<AppTheme>
+    val themeIconStyle: StateFlow<ThemeIconStyle>
     val bulletinBoardStyle: StateFlow<BulletinBoardStyle>
 
     val kineticSphereCleanMode: StateFlow<Boolean>
@@ -111,6 +112,8 @@ interface AppSettings {
     fun setLiveTransferCapsuleEnabled(enabled: Boolean)
     fun setLiveTransferShowQueueEnabled(enabled: Boolean)
     fun setAppTheme(theme: AppTheme)
+    fun themeIconStyleFor(theme: AppTheme): ThemeIconStyle
+    fun setThemeIconStyle(theme: AppTheme, style: ThemeIconStyle)
     fun setBulletinBoardStyle(style: BulletinBoardStyle)
     fun setKineticSphereCleanMode(enabled: Boolean)
     fun setKineticSphereConnectedLinesEnabled(enabled: Boolean)

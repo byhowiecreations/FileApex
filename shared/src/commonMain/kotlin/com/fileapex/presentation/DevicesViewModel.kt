@@ -976,7 +976,7 @@ class DevicesViewModel : ViewModel() {
     fun checkBatteries() {
         viewModelScope.launch {
             val initialLogs = listOf(
-                "FileApex Linux v0.10.1a (tty1)",
+                "FileApex Linux v0.10.2a (tty1)",
                 "login: fileapex",
                 "fileapex@node:~$ batstat --all-devices",
                 "[INIT] Polling battery telemetry across cluster...",

@@ -139,6 +139,49 @@ class BaseAppSettings(
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
+    private val fluxIconStyleFlow = MutableStateFlow(
+        ThemeIconStyle.fromStorage(store.getString(KEY_THEME_ICON_STYLE_FLUX, ThemeIconStyle.FLUX.name))
+    )
+    private val kineticIconStyleFlow = MutableStateFlow(
+        ThemeIconStyle.fromStorage(store.getString(KEY_THEME_ICON_STYLE_KINETIC, ThemeIconStyle.STANDARD.name))
+    )
+    private val freestyleIconStyleFlow = MutableStateFlow(
+        ThemeIconStyle.fromStorage(store.getString(KEY_THEME_ICON_STYLE_FREESTYLE, ThemeIconStyle.FREESTYLE.name))
+    )
+    private val themeIconStyleFlow = MutableStateFlow(
+        computeActiveThemeIconStyle(AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name)))
+    )
+    override val themeIconStyle: StateFlow<ThemeIconStyle> = themeIconStyleFlow.asStateFlow()
+
+    private fun computeActiveThemeIconStyle(theme: AppTheme): ThemeIconStyle = when (theme) {
+        AppTheme.CLEAN -> ThemeIconStyle.STANDARD
+        AppTheme.FLUX_GLASS -> fluxIconStyleFlow.value
+        AppTheme.KINETIC_SPHERE -> kineticIconStyleFlow.value
+        AppTheme.FREESTYLE -> freestyleIconStyleFlow.value
+    }
+
+    override fun themeIconStyleFor(theme: AppTheme): ThemeIconStyle = computeActiveThemeIconStyle(theme)
+
+    override fun setThemeIconStyle(theme: AppTheme, style: ThemeIconStyle) {
+        val validStyle = if (style in theme.supportedIconStyles()) style else theme.defaultIconStyle()
+        when (theme) {
+            AppTheme.CLEAN -> { /* Clean always uses standard icons */ }
+            AppTheme.FLUX_GLASS -> {
+                store.putString(KEY_THEME_ICON_STYLE_FLUX, validStyle.name)
+                fluxIconStyleFlow.value = validStyle
+            }
+            AppTheme.KINETIC_SPHERE -> {
+                store.putString(KEY_THEME_ICON_STYLE_KINETIC, validStyle.name)
+                kineticIconStyleFlow.value = validStyle
+            }
+            AppTheme.FREESTYLE -> {
+                store.putString(KEY_THEME_ICON_STYLE_FREESTYLE, validStyle.name)
+                freestyleIconStyleFlow.value = validStyle
+            }
+        }
+        themeIconStyleFlow.value = computeActiveThemeIconStyle(appThemeFlow.value)
+    }
+
     private val bulletinBoardStyleFlow = MutableStateFlow(
         BulletinBoardStyle.fromStorage(store.getString(KEY_BULLETIN_BOARD_STYLE, BulletinBoardStyle.DEFAULT_STYLE.storageKey))
     )
@@ -442,6 +485,7 @@ class BaseAppSettings(
     override fun setAppTheme(theme: AppTheme) {
         store.putString(KEY_APP_THEME, theme.name)
         appThemeFlow.value = theme
+        themeIconStyleFlow.value = computeActiveThemeIconStyle(theme)
     }
 
     override fun setBulletinBoardStyle(style: BulletinBoardStyle) {
@@ -774,6 +818,9 @@ class BaseAppSettings(
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
         const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
         const val KEY_APP_THEME = "app_theme"
+        const val KEY_THEME_ICON_STYLE_FLUX = "theme_icon_style_flux"
+        const val KEY_THEME_ICON_STYLE_KINETIC = "theme_icon_style_kinetic"
+        const val KEY_THEME_ICON_STYLE_FREESTYLE = "theme_icon_style_freestyle"
         const val KEY_BULLETIN_BOARD_STYLE = "bulletin_board_style"
         const val KEY_KINETIC_SPHERE_CLEAN_MODE = "kinetic_sphere_clean_mode"
         const val KEY_KINETIC_SPHERE_CONNECTED_LINES = "kinetic_sphere_connected_lines"
