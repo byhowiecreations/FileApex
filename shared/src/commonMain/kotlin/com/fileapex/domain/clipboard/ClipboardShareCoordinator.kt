@@ -98,19 +98,20 @@ object ClipboardShareCoordinator {
 
     fun onAppForegrounded() {
         if (!FileApexServices.settings.clipboardSharingEnabled.value) return
-        ClipboardChangeMonitor.onAppForegrounded()
-        if (ClipboardPushDeduper.isInitializing) {
-            val initClip = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
-            if (!initClip.isNullOrBlank()) {
-                ClipboardPushDeduper.remember(initClip)
+        scope.launch {
+            ClipboardChangeMonitor.onAppForegrounded()
+            if (ClipboardPushDeduper.isInitializing) {
+                val initClip = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+                if (!initClip.isNullOrBlank()) {
+                    ClipboardPushDeduper.remember(initClip)
+                }
+                ClipboardPushDeduper.endInitialization()
+                initJob?.cancel()
+                return@launch
             }
-            ClipboardPushDeduper.endInitialization()
-            initJob?.cancel()
-            return
-        }
-        if (currentPlatformLabel() == "Android") {
-            pendingAndroidFocusPush = true
-            return
+            if (currentPlatformLabel() == "Android") {
+                pendingAndroidFocusPush = true
+            }
         }
     }
 
@@ -175,11 +176,14 @@ object ClipboardShareCoordinator {
         if (!ClipboardPushDeduper.shouldAllowManualPush(text)) {
             return com.fileapex.i18n.AppI18n.t("already_sent")
         }
-        ClipboardPushDeduper.remember(text)
-        captureAndBroadcast(
+        val started = captureAndBroadcast(
             text,
             desktopPeersOnly = currentPlatformLabel() == "Android"
         )
+        if (!started) {
+            ClipboardPushDeduper.forget(text)
+            return com.fileapex.i18n.AppI18n.t("choose_devices_first")
+        }
         return com.fileapex.i18n.AppI18n.t("sending_clipboard")
     }
 
@@ -193,9 +197,11 @@ object ClipboardShareCoordinator {
         val device = FileApexServices.deviceRepository.getDevice(deviceId)
             ?: error(com.fileapex.i18n.AppI18n.t("device_not_found"))
         val capturedAt = TimeUtils.now()
-        val delivered = deliverToDevice(device, text, capturedAt)
+        val (delivered, deliveryError) = deliverToDeviceWithDetail(device, text, capturedAt)
         if (!delivered) {
-            error(com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName))
+            ClipboardPushDeduper.forget(text)
+            val msg = deliveryError?.message ?: com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName)
+            error(msg)
         }
         ClipboardPushDeduper.remember(text)
         val name = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
@@ -212,9 +218,11 @@ object ClipboardShareCoordinator {
         val device = FileApexServices.deviceRepository.getDevice(deviceId)
             ?: error(com.fileapex.i18n.AppI18n.t("device_not_found"))
         val capturedAt = TimeUtils.now()
-        val delivered = deliverToDevice(device, trimmed, capturedAt)
+        val (delivered, deliveryError) = deliverToDeviceWithDetail(device, trimmed, capturedAt)
         if (!delivered) {
-            error(com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName))
+            ClipboardPushDeduper.forget(trimmed)
+            val msg = deliveryError?.message ?: com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName)
+            error(msg)
         }
         ClipboardPushDeduper.remember(trimmed)
         val name = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
@@ -283,8 +291,8 @@ object ClipboardShareCoordinator {
         }
     }
 
-    private suspend fun captureAndBroadcast(text: String, desktopPeersOnly: Boolean) {
-        mutex.withLock {
+    private suspend fun captureAndBroadcast(text: String, desktopPeersOnly: Boolean): Boolean {
+        val hasTargets = mutex.withLock {
             val settings = FileApexServices.settings
             val paired = FileApexServices.deviceRepository.listDevices()
             val targets = ClipboardSharePolicy.resolveBroadcastTargets(
@@ -300,18 +308,21 @@ object ClipboardShareCoordinator {
             )
             if (targets.isEmpty()) {
                 pending = null
-                return@withLock
+                false
+            } else {
+                ClipboardPushDeduper.remember(text)
+                pending = PendingShare(
+                    text = text,
+                    capturedAtEpochMs = TimeUtils.now(),
+                    remainingIds = targets.toMutableSet()
+                )
+                true
             }
-            ClipboardPushDeduper.remember(text)
-            pending = PendingShare(
-                text = text,
-                capturedAtEpochMs = TimeUtils.now(),
-                remainingIds = targets.toMutableSet()
-            )
         }
-        if (mutex.withLock { pending } == null) return
+        if (!hasTargets) return false
         attemptPending()
         scheduleRetries()
+        return true
     }
 
     private fun scheduleRetries() {
@@ -376,14 +387,20 @@ object ClipboardShareCoordinator {
         device: PairedDeviceEntity,
         text: String,
         capturedAtEpochMs: Long
-    ): Boolean {
+    ): Boolean = deliverToDeviceWithDetail(device, text, capturedAtEpochMs).first
+
+    private suspend fun deliverToDeviceWithDetail(
+        device: PairedDeviceEntity,
+        text: String,
+        capturedAtEpochMs: Long
+    ): Pair<Boolean, Throwable?> {
         if (ClipboardSharePolicy.isExpired(capturedAtEpochMs, TimeUtils.now())) {
-            return false
+            return Pair(false, IllegalStateException(com.fileapex.i18n.AppI18n.t("clipboard_expired")))
         }
         val peerKey = resolvePeerPublicKey(device)
         if (peerKey.isBlank()) {
             println("ClipboardShareCoordinator: no public key for ${device.deviceName}")
-            return false
+            return Pair(false, IllegalStateException(com.fileapex.i18n.AppI18n.t("device_not_found")))
         }
         val identity = loadLocalIdentity()
         val ciphertext = ClipboardE2ee.encrypt(
@@ -392,13 +409,14 @@ object ClipboardShareCoordinator {
             peerDeviceId = device.deviceId,
             peerPublicKeyBase64 = peerKey
         )
+        var lastError: Throwable? = null
         val lanOk = ClipboardSharePolicy.canUseLocalLan(
             lanConnected = isActiveLanConnectivity() && PeerLanHttpPolicy.canRoute(device.lastKnownIp),
             peerHost = device.lastKnownIp,
             localBindIps = NetworkUtils.lanBindCandidates()
         )
         if (lanOk) {
-            val sent = runCatching {
+            val lanResult = runCatching {
                 FileApexServices.client.sendClipboard(
                     host = device.lastKnownIp,
                     port = device.port,
@@ -409,11 +427,12 @@ object ClipboardShareCoordinator {
                     capturedAtEpochMs = capturedAtEpochMs
                 )
             }.onFailure { error ->
+                lastError = error
                 println(
                     "ClipboardShareCoordinator: LAN send to ${device.deviceName} failed - ${error.message}"
                 )
-            }.isSuccess
-            if (sent) return true
+            }
+            if (lanResult.isSuccess) return Pair(true, null)
         }
         val settings = FileApexServices.settings
         val fcmOk = ClipboardSharePolicy.canUseCellularFcm(
@@ -422,15 +441,16 @@ object ClipboardShareCoordinator {
             peerIsAndroid = PeerPlatform.isAndroid(device.os, device.platform),
             googleLinked = settings.googleAccountLinkEnabled.value
         )
-        if (!fcmOk) return false
-        if (ciphertext.length > ClipboardSharePolicy.FCM_MAX_DATA_CHARS) return false
-        return FcmWakeCoordinator.dispatchClipboardShare(
+        if (!fcmOk) return Pair(false, lastError)
+        if (ciphertext.length > ClipboardSharePolicy.FCM_MAX_DATA_CHARS) return Pair(false, lastError)
+        val fcmSent = FcmWakeCoordinator.dispatchClipboardShare(
             targetDeviceId = device.deviceId,
             senderPublicKey = ClipboardE2ee.publicKeyBase64(),
             ciphertext = ciphertext,
             capturedAtEpochMs = capturedAtEpochMs,
             senderDeviceName = identity.deviceName
         )
+        return Pair(fcmSent, if (fcmSent) null else lastError)
     }
 
     private suspend fun resolvePeerPublicKey(device: PairedDeviceEntity): String {

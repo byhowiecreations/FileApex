@@ -375,8 +375,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="complete_highlighted_first">请先完成高亮的权限。</string>
     <string name="page_of">第 %1$s 页，共 %2$s 页</string>
     <string name="onboarding_grant_then_continue">先完成本页权限，然后继续下一页。</string>
-    <string name="onboard_storage_reason">浏览本设备上的文件夹，并通过 Wi‑Fi 与配对设备共享文件。</string>
-    <string name="onboard_storage_denied">需要文件访问权限 — 没有它 FileApex 无法浏览或发送本地文件。</string>
+    <string name="onboard_storage_reason">FileApex 是一款本地点对点文件管理器。需要“所有文件访问权限”以浏览目录、管理文档并在本地 Wi‑Fi 设备间直接传输任意文件，无需云端服务器。</string>
+    <string name="onboard_storage_denied">需要所有文件访问权限：没有此权限，FileApex 无法浏览存储或传输您的文件。</string>
     <string name="onboard_nearby_reason">发现并连接本地网络上的其他 FileApex 设备。</string>
     <string name="onboard_nearby_denied">局域网配对和文件共享需要附近设备访问权限。</string>
     <string name="onboard_notify_reason">在 FileApex 于后台运行时显示持久的共享服务通知。</string>
@@ -432,6 +432,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="broadcast_or_attach">广播消息或附加文件</string>
     <string name="unlock_attachment">解锁附件</string>
     <string name="lock_attachment">锁定附件</string>
+    <string name="note_locked_unlock_first">便签已锁定。请先解锁后再删除。</string>
     <string name="this_device">本设备</string>
     <string name="drive_sync">Drive 同步</string>
     <string name="google_link_failed">Google 关联失败</string>
@@ -674,6 +675,9 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="drag_drop_files_here">请将文件拖放到此处</string>
     <string name="drop_files">投放文件</string>
     <string name="drop_files_first">请先拖放一个或多个文件</string>
+    <string name="unpin_to_close">取消固定以关闭窗口</string>
+    <string name="pin_drop_box">固定窗口（发送后保持打开）</string>
+    <string name="unpin_drop_box">取消固定窗口</string>
     <string name="ctrl_click_multi_select">Ctrl-单击多选 · 单击发送</string>
     <string name="cmd_click_multi_select">⌘-单击多选 · 单击发送</string>
     <string name="still_running_in_tray">FileApex 仍在系统托盘中运行。</string>
@@ -691,6 +695,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="send_to_device">发送到 %1$s</string>
     <string name="switch_to_grid">切换到网格视图</string>
     <string name="switch_to_list">切换到列表视图</string>
+    <string name="switch_to_compact_layout">切换到紧凑布局</string>
+    <string name="switch_to_expanded_layout">切换到展开布局</string>
     <string name="icon_mac">Mac</string>
     <string name="icon_windows_pc">Windows 电脑</string>
     <string name="icon_foldable_phone">折叠屏手机</string>
@@ -780,7 +786,18 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="diag_uptime_h">%1$s小时</string>
     <string name="diag_uptime_m">%1$s分钟</string>
     <string name="no_handler_saved_to_storage">未找到可打开此文件的应用。已保存到本地存储：%1$s</string>
-    <string name="opening_folder">正在打开文件夹…</string>
+    <string name="agree_and_continue">同意并继续</string>
+    <string name="what_label">访问内容</string>
+    <string name="why_label">使用原因</string>
+    <string name="clipboard_disclosure_title">剪贴板共享</string>
+    <string name="clipboard_disclosure_what">读取您复制到剪贴板的文本或图像。</string>
+    <string name="clipboard_disclosure_why">通过端到端加密直接在配对设备间同步复制的内容。绝不会发送给第三方或云端服务器。</string>
+    <string name="accessibility_disclosure_title">无障碍服务</string>
+    <string name="accessibility_disclosure_what">在 FileApex 后台运行时检测剪贴板复制操作。</string>
+    <string name="accessibility_disclosure_why">没有此服务，Android 会限制后台剪贴板访问。FileApex 不会读取按键、密码或个人屏幕内容。</string>
+    <string name="install_packages_disclosure_title">安装应用包</string>
+    <string name="install_packages_disclosure_what">允许启动安装程序以安装下载的 FileApex 更新。</string>
+    <string name="install_packages_disclosure_why">可在确认后直接在设备上更新 FileApex 到新版本。未经确认绝不会自动安装。</string>
     <plurals name="paired_cluster_extra">
         <item quantity="other">（+%d 台集群设备）</item>
     </plurals>

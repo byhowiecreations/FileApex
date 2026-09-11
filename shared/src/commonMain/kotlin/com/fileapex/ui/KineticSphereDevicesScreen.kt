@@ -228,53 +228,109 @@ fun KineticSphereDevicesView(
 
         val persistedNodeOffsets by FileApexServices.settings.kineticNodeOffsets.collectAsState()
 
-        // Absolute canvas positions keyed as "pos:{cmp|exp}:{deviceId}".
-        // Legacy relative offsets ("cmp:id") are migrated once so roster reorders cannot move nodes.
-        LaunchedEffect(staticNodePositions, deviceRows, persistedNodeOffsets, layoutScopePrefix) {
-            deviceRows.forEachIndexed { index, row ->
-                val posKey = "pos:$layoutScopePrefix${row.deviceId}"
-                if (persistedNodeOffsets.containsKey(posKey)) return@forEachIndexed
-                val staticPos = staticNodePositions.getOrNull(index) ?: return@forEachIndexed
-                val scopedKey = layoutScopePrefix + row.deviceId
-                val legacy = persistedNodeOffsets[scopedKey] ?: persistedNodeOffsets[row.deviceId]
-                val absX = if (legacy != null) staticPos.x + legacy.first else staticPos.x
-                val absY = if (legacy != null) staticPos.y + legacy.second else staticPos.y
-                FileApexServices.settings.setKineticNodeOffset(posKey, absX, absY)
-            }
-        }
-
         val effectiveNodePositions = remember(
             staticNodePositions,
             persistedNodeOffsets,
             deviceRows,
             widthPx,
             heightPx,
-            layoutScopePrefix
+            layoutScopePrefix,
+            baseRadiusPx
         ) {
             val marginPx = with(density) { 70.dp.toPx() }
             val topMarginPx = with(density) { 55.dp.toPx() }
+            val minDistancePx = with(density) { 135.dp.toPx() }
+            val minHubDistancePx = with(density) { 138.dp.toPx() }
 
-            staticNodePositions.mapIndexed { index, staticPos ->
-                val row = deviceRows.getOrNull(index) ?: return@mapIndexed staticPos
-                val posKey = "pos:$layoutScopePrefix${row.deviceId}"
-                val abs = persistedNodeOffsets[posKey]
+            val placedPositions = arrayOfNulls<Offset>(deviceRows.size)
+
+            // Place all devices with user-assigned or persisted offsets first
+            deviceRows.forEachIndexed { index, row ->
+                val abs = persistedNodeOffsets["pos:$layoutScopePrefix${row.deviceId}"]
+                    ?: persistedNodeOffsets["pos:${row.deviceId}"]
+                    ?: persistedNodeOffsets["pos:exp:${row.deviceId}"]
+                    ?: persistedNodeOffsets["pos:cmp:${row.deviceId}"]
                 if (abs != null) {
-                    Offset(
-                        abs.first.coerceIn(marginPx, widthPx - marginPx),
-                        abs.second.coerceIn(topMarginPx, heightPx - marginPx)
-                    )
+                    val clampedX = if (widthPx > marginPx * 2) abs.first.coerceIn(marginPx, widthPx - marginPx) else abs.first
+                    val clampedY = if (heightPx > topMarginPx + marginPx) abs.second.coerceIn(topMarginPx, heightPx - marginPx) else abs.second
+                    placedPositions[index] = Offset(clampedX, clampedY)
                 } else {
                     val scopedKey = layoutScopePrefix + row.deviceId
                     val legacy = persistedNodeOffsets[scopedKey] ?: persistedNodeOffsets[row.deviceId]
                     if (legacy != null) {
-                        Offset(
+                        val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
+                        placedPositions[index] = Offset(
                             (staticPos.x + legacy.first).coerceIn(marginPx, widthPx - marginPx),
                             (staticPos.y + legacy.second).coerceIn(topMarginPx, heightPx - marginPx)
                         )
-                    } else {
-                        staticPos
                     }
                 }
+            }
+
+            // Next, place unassigned or newly joined devices into non-overlapping areas
+            deviceRows.indices.map { index ->
+                val existing = placedPositions[index]
+                if (existing != null) return@map existing
+
+                val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
+                val currentPlaced = placedPositions.filterNotNull()
+
+                fun isClear(pos: Offset): Boolean {
+                    val hubDx = pos.x - centerX
+                    val hubDy = pos.y - centerY
+                    if (kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy) < minHubDistancePx) return false
+                    return currentPlaced.none { placed ->
+                        val dx = pos.x - placed.x
+                        val dy = pos.y - placed.y
+                        kotlin.math.sqrt(dx * dx + dy * dy) < minDistancePx
+                    }
+                }
+
+                val resolvedPos = if (isClear(staticPos)) {
+                    staticPos
+                } else {
+                    var bestCandidate: Offset = staticPos
+                    var maxMinDistance = -1f
+                    val candidateRadii = listOf(baseRadiusPx, baseRadiusPx * 0.82f, baseRadiusPx * 1.25f, baseRadiusPx * 1.45f)
+                    val steps = 24
+                    var foundNonOverlapping = false
+
+                    for (r in candidateRadii) {
+                        if (foundNonOverlapping) break
+                        for (s in 0 until steps) {
+                            val angle = (2.0 * PI * s / steps) - (PI / 2.0)
+                            val candX = (centerX + (r * cos(angle)).toFloat()).coerceIn(marginPx, widthPx - marginPx)
+                            val candY = (centerY + (r * sin(angle)).toFloat()).coerceIn(topMarginPx, heightPx - marginPx)
+                            val candidate = Offset(candX, candY)
+
+                            val hubDx = candX - centerX
+                            val hubDy = candY - centerY
+                            val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
+                            if (hubDist < minHubDistancePx) continue
+
+                            val minOtherDist = if (currentPlaced.isEmpty()) Float.MAX_VALUE else {
+                                currentPlaced.minOf { placed ->
+                                    val dx = candidate.x - placed.x
+                                    val dy = candidate.y - placed.y
+                                    kotlin.math.sqrt(dx * dx + dy * dy)
+                                }
+                            }
+
+                            if (minOtherDist >= minDistancePx) {
+                                bestCandidate = candidate
+                                foundNonOverlapping = true
+                                break
+                            } else if (minOtherDist > maxMinDistance) {
+                                maxMinDistance = minOtherDist
+                                bestCandidate = candidate
+                            }
+                        }
+                    }
+                    bestCandidate
+                }
+
+                placedPositions[index] = resolvedPos
+                resolvedPos
             }
         }
 
@@ -596,6 +652,13 @@ fun KineticSphereDevicesView(
                                     change.consume()
                                     dragX += dragAmount.x
                                     dragY += dragAmount.y
+                                    FileApexServices.settings.setKineticNodeOffset(
+                                        "pos:$layoutScopePrefix${row.deviceId}",
+                                        dragX,
+                                        dragY
+                                    )
+                                },
+                                onDragEnd = {
                                     FileApexServices.settings.setKineticNodeOffset(
                                         "pos:$layoutScopePrefix${row.deviceId}",
                                         dragX,

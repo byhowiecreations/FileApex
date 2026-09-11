@@ -167,6 +167,8 @@ class BulletinBoardRepository(
 
     suspend fun upsertFromSync(payload: BulletinMessagePayload): Boolean {
         if (tombstoneDao.countById(payload.id) > 0) return false
+        val existing = messageDao.getById(payload.id)
+        val pinned = if (existing?.isPinned == true) true else payload.isPinned
         messageDao.upsert(
             MessageEntity(
                 id = payload.id,
@@ -176,7 +178,7 @@ class BulletinBoardRepository(
                 contentType = payload.contentType,
                 timestamp = payload.timestamp,
                 isDeleted = false,
-                isPinned = payload.isPinned
+                isPinned = pinned
             )
         )
         return true

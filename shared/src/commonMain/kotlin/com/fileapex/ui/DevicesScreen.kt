@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -91,6 +94,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -109,6 +114,19 @@ import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.platform.isDesktopHost
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import kotlinx.coroutines.delay
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 
@@ -264,19 +282,23 @@ fun DevicesScreen(
     val isListPane = layoutMode == DevicesScreenLayoutMode.ListPane
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
-        if (LocalAppTheme.current != AppTheme.KINETIC_SPHERE) {
+        val currentTheme = LocalAppTheme.current
+        val isGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.FREESTYLE
+        val editTint = if (isGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.onSurface
+        if (currentTheme != AppTheme.KINETIC_SPHERE) {
             if (editMode) {
                 TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
-                    Text(stringRes("revert"))
+                    Text(stringRes("revert"), color = editTint)
                 }
                 TextButton(onClick = viewModel::saveDeviceOrderAndExitEditMode) {
-                    Text(stringRes("done"))
+                    Text(stringRes("done"), color = Color(0xFF00E676))
                 }
             } else if (deviceRows.isNotEmpty()) {
                 IconButton(onClick = viewModel::enterDeviceOrderEditMode) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
-                        contentDescription = stringRes("reorder_devices")
+                        contentDescription = stringRes("reorder_devices"),
+                        tint = editTint
                     )
                 }
             }
@@ -462,72 +484,191 @@ fun DevicesScreen(
 
             // Always pinned above bottom navigation — not overlapping the list.
             if (!editMode && !isKineticSphere && !isFreestyle) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(top = 8.dp, bottom = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    SendClipboardActionChip(onClick = viewModel::sendClipboardNow)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = { addMenuOpen = true },
+                val isFlux = LocalAppTheme.current == AppTheme.FLUX_GLASS
+                if (isFlux) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(top = 8.dp, bottom = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(40.dp),
-                            shape = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
-                                MaterialTheme.shapes.medium
-                            } else {
-                                RoundedCornerShape(20.dp)
-                            },
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = FileApexTeal,
-                                contentColor = Color.White
-                            ),
-                            elevation = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
-                                ButtonDefaults.buttonElevation(
-                                    defaultElevation = 0.dp,
-                                    pressedElevation = 0.dp,
-                                    hoveredElevation = 0.dp
-                                )
-                            } else {
-                                ButtonDefaults.buttonElevation()
+                                .height(IntrinsicSize.Max),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                onClick = viewModel::sendClipboardNow,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                                shape = RoundedCornerShape(percent = 50),
+                                color = Color(0xEE0D1C22),
+                                border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.55f)),
+                                shadowElevation = 8.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ContentPaste,
+                                        contentDescription = null,
+                                        tint = Color(0xFF00E5FF),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringRes("send_clipboard"),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = stringRes("add_new_device"),
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                softWrap = true,
-                                maxLines = 2
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    onClick = { addMenuOpen = true },
+                                    modifier = Modifier.fillMaxSize(),
+                                    shape = RoundedCornerShape(percent = 50),
+                                    color = Color(0xEE0D1C22),
+                                    border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.65f)),
+                                    shadowElevation = 8.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Add,
+                                            contentDescription = null,
+                                            tint = Color(0xFF00E676),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = stringRes("add_new_device"),
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            ),
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = addMenuOpen,
+                                    onDismissRequest = { addMenuOpen = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringRes("generate_qr")) },
+                                        onClick = {
+                                            addMenuOpen = false
+                                            onGenerateQr()
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringRes("join_device")) },
+                                        onClick = {
+                                            addMenuOpen = false
+                                            onJoinDevice()
+                                        }
+                                    )
+                                }
+                            }
                         }
-                        DropdownMenu(
-                            expanded = addMenuOpen,
-                            onDismissRequest = { addMenuOpen = false }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .padding(top = 8.dp, bottom = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        SendClipboardActionChip(onClick = viewModel::sendClipboardNow)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringRes("generate_qr")) },
-                                onClick = {
-                                    addMenuOpen = false
-                                    onGenerateQr()
+                            Button(
+                                onClick = { addMenuOpen = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp),
+                                shape = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
+                                    MaterialTheme.shapes.medium
+                                } else {
+                                    RoundedCornerShape(20.dp)
+                                },
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = FileApexTeal,
+                                    contentColor = Color.White
+                                ),
+                                elevation = if (LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent) {
+                                    ButtonDefaults.buttonElevation(
+                                        defaultElevation = 0.dp,
+                                        pressedElevation = 0.dp,
+                                        hoveredElevation = 0.dp
+                                    )
+                                } else {
+                                    ButtonDefaults.buttonElevation()
                                 }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringRes("join_device")) },
-                                onClick = {
-                                    addMenuOpen = false
-                                    onJoinDevice()
-                                }
-                            )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringRes("add_new_device"),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    softWrap = true,
+                                    maxLines = 2
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = addMenuOpen,
+                                onDismissRequest = { addMenuOpen = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringRes("generate_qr")) },
+                                    onClick = {
+                                        addMenuOpen = false
+                                        onGenerateQr()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringRes("join_device")) },
+                                    onClick = {
+                                        addMenuOpen = false
+                                        onJoinDevice()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -1089,6 +1230,50 @@ private fun DeviceGridCell(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var dropHover by remember { mutableStateOf(false) }
+    var cellOriginInWindow by remember { mutableStateOf<Offset?>(null) }
+    var titleOverflow by remember { mutableStateOf(false) }
+    var subtitleOverflow by remember { mutableStateOf(false) }
+    var statOverflow by remember { mutableStateOf(false) }
+    val hasOverflow = titleOverflow || subtitleOverflow || statOverflow
+
+    val currentTheme = LocalAppTheme.current
+    val allowHoverPopOver = isDesktopHost() && (currentTheme == AppTheme.CLEAN || currentTheme == AppTheme.FLUX_GLASS) && hasOverflow
+    val cardInteractionSource = remember { MutableInteractionSource() }
+    val isCardHovered by cardInteractionSource.collectIsHoveredAsState()
+    val popupInteractionSource = remember { MutableInteractionSource() }
+    val isPopupHovered by popupInteractionSource.collectIsHoveredAsState()
+
+    var isHoverDwellActive by remember { mutableStateOf(false) }
+    LaunchedEffect(isCardHovered, isPopupHovered) {
+        if (isCardHovered || isPopupHovered) {
+            if (!isHoverDwellActive) {
+                delay(800L)
+                isHoverDwellActive = true
+            }
+        } else {
+            isHoverDwellActive = false
+        }
+    }
+    val showPopOver = allowHoverPopOver && isHoverDwellActive
+
+    val popupPositionProvider = remember {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize
+            ): IntOffset {
+                val origin = cellOriginInWindow
+                val cellX = origin?.x?.roundToInt() ?: anchorBounds.left
+                val cellY = origin?.y?.roundToInt() ?: anchorBounds.top
+                val x = cellX.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                val y = cellY.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
+                return IntOffset(x, y)
+            }
+        }
+    }
+
     val highlighted = selected || dropHover
     val fluent = LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
     val cellShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(12.dp)
@@ -1117,17 +1302,21 @@ private fun DeviceGridCell(
     val activeSending = pendingItems.firstOrNull { it.isSending }
     val isSendingToThis = liveStats.isActive && (row.deviceId == dropDeviceId || (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) })))
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(grid.cellHeight)
-            .deviceFileDropTarget(
-                enabled = true,
-                onHoverChange = { dropHover = it },
-                onFilesDropped = { paths -> onFilesDropped(dropDeviceId, paths) }
-            )
-            .clip(cellShape)
-            .clickable(enabled = !connecting, onClick = onClick),
+    Box(modifier = Modifier.fillMaxWidth().height(grid.cellHeight)) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { coords ->
+                    cellOriginInWindow = coords.localToWindow(Offset.Zero)
+                }
+                .then(if (allowHoverPopOver) Modifier.hoverable(cardInteractionSource) else Modifier)
+                .deviceFileDropTarget(
+                    enabled = true,
+                    onHoverChange = { dropHover = it },
+                    onFilesDropped = { paths -> onFilesDropped(dropDeviceId, paths) }
+                )
+                .clip(cellShape)
+                .clickable(enabled = !connecting, onClick = onClick),
         shape = cellShape,
         color = containerColor,
         tonalElevation = 0.dp,
@@ -1165,7 +1354,8 @@ private fun DeviceGridCell(
                     style = titleStyle.copy(textAlign = TextAlign.Center),
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    onTextLayout = { titleOverflow = it.hasVisualOverflow }
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 if (isSendingToThis) {
@@ -1194,7 +1384,8 @@ private fun DeviceGridCell(
                             style = subtitleStyle.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold),
                             color = FileApexTeal,
                             maxLines = 1,
-                            overflow = TextOverflow.Clip
+                            overflow = TextOverflow.Clip,
+                            onTextLayout = { statOverflow = it.hasVisualOverflow }
                         )
                     }
                 } else if (connecting) {
@@ -1225,7 +1416,8 @@ private fun DeviceGridCell(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         softWrap = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        onTextLayout = { subtitleOverflow = it.hasVisualOverflow }
                     )
                 }
             }
@@ -1288,6 +1480,24 @@ private fun DeviceGridCell(
             }
         }
     }
+    if (showPopOver) {
+            Popup(
+                popupPositionProvider = popupPositionProvider,
+                properties = PopupProperties(focusable = false)
+            ) {
+                DeviceCardPopOver(
+                    row = row,
+                    connecting = connecting,
+                    onClick = onClick,
+                    onRename = onRename,
+                    onDeviceDetails = onDeviceDetails,
+                    onSendClipboard = onSendClipboard,
+                    onRemove = onRemove,
+                    interactionSource = popupInteractionSource
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -1318,6 +1528,10 @@ private fun HomeTopBar(
             CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
             CompactDevicesTitleBand(
                 actions = headerActions,
+                showLayoutView = allowLayoutView,
+                onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
+                showCloseService = true,
+                onCloseService = onExitClick,
                 onOpenNotes = onOpenNotes,
                 onOpenTransferQueue = onOpenTransferQueue
             )
@@ -1555,6 +1769,187 @@ private fun NavIcon(
 }
 
 @Composable
+private fun DeviceCardPopOver(
+    row: DeviceListRow,
+    connecting: Boolean,
+    onClick: () -> Unit,
+    onRename: (() -> Unit)?,
+    onDeviceDetails: (() -> Unit)?,
+    onSendClipboard: (() -> Unit)?,
+    onRemove: (() -> Unit)?,
+    interactionSource: MutableInteractionSource,
+    modifier: Modifier = Modifier
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val fluent = LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
+    val currentTheme = LocalAppTheme.current
+    val cardShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
+    val liveStats by TransferActivityGuard.statsFlow.collectAsState()
+    val pendingItems by FileApexServices.transferQueue.pendingItems.collectAsState(initial = emptyList())
+    val activeSending = pendingItems.firstOrNull { it.isSending }
+    val isSendingToThis = liveStats.isActive && (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) }))
+
+    val isFlux = currentTheme == AppTheme.FLUX_GLASS
+    val containerColor = if (isFlux) Color(0xFF0F1E1B) else MaterialTheme.colorScheme.surface
+    val textColor = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
+    val subtitleColor = if (isFlux) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val iconContainerColor = if (isFlux) Color(0x3300E676) else MaterialTheme.colorScheme.primaryContainer
+    val iconTint = if (isFlux) Color(0xFF00E676) else FileApexTealDark
+    val borderColor = if (isFlux) Color(0xFF00E676) else FileApexTeal
+    val menuIconTint = if (isFlux) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Card(
+        modifier = modifier
+            .hoverable(interactionSource)
+            .wrapContentWidth()
+            .widthIn(min = 180.dp, max = 560.dp)
+            .clickable(enabled = !connecting, onClick = onClick),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+        border = BorderStroke(1.5.dp, borderColor)
+    ) {
+        Row(
+            modifier = Modifier
+                .wrapContentWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(iconContainerColor),
+                contentAlignment = Alignment.Center
+            ) {
+                val iconStyle = LocalThemeIconStyle.current
+                DeviceEntryIcon(
+                    row = row,
+                    modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
+                        Modifier.size(24.dp)
+                    } else {
+                        Modifier.fillMaxSize().padding(2.dp)
+                    },
+                    tint = iconTint
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(
+                modifier = Modifier.width(IntrinsicSize.Max)
+            ) {
+                Text(
+                    text = row.title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = textColor,
+                    softWrap = false,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                if (isSendingToThis) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        val statText = buildList {
+                            add(stringRes("sending"))
+                            if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
+                            if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                            val pct = (liveStats.progress * 100).toInt().coerceIn(0, 100)
+                            if (pct in 1..99) add("$pct%")
+                        }.joinToString(" • ")
+                        Text(
+                            text = statText,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal,
+                            softWrap = false
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { liveStats.progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp)),
+                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal,
+                            trackColor = (if (isFlux) Color(0xFF00E676) else FileApexTeal).copy(alpha = 0.2f)
+                        )
+                    }
+                } else if (connecting) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringRes("connecting"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal,
+                            softWrap = false
+                        )
+                    }
+                } else {
+                    Text(
+                        text = DeviceListRow.localizedSubtitle(row),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = subtitleColor,
+                        softWrap = true
+                    )
+                }
+            }
+            if (onRename != null || onDeviceDetails != null || onSendClipboard != null || onRemove != null) {
+                Spacer(modifier = Modifier.width(10.dp))
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreHoriz,
+                            contentDescription = stringRes("device_options"),
+                            tint = menuIconTint
+                        )
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        if (onRename != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringRes("rename")) },
+                                onClick = {
+                                    menuOpen = false
+                                    onRename()
+                                }
+                            )
+                        }
+                        if (onDeviceDetails != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringRes("device_details")) },
+                                onClick = {
+                                    menuOpen = false
+                                    onDeviceDetails()
+                                }
+                            )
+                        }
+                        if (onSendClipboard != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringRes("send_clipboard")) },
+                                onClick = {
+                                    menuOpen = false
+                                    onSendClipboard()
+                                }
+                            )
+                        }
+                        if (onRemove != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringRes("remove")) },
+                                onClick = {
+                                    menuOpen = false
+                                    onRemove()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DeviceCard(
     row: DeviceListRow,
     onClick: () -> Unit,
@@ -1573,6 +1968,50 @@ private fun DeviceCard(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var dropHover by remember { mutableStateOf(false) }
+    var cardOriginInWindow by remember { mutableStateOf<Offset?>(null) }
+    var titleOverflow by remember { mutableStateOf(false) }
+    var subtitleOverflow by remember { mutableStateOf(false) }
+    var statOverflow by remember { mutableStateOf(false) }
+    val hasOverflow = titleOverflow || subtitleOverflow || statOverflow
+
+    val currentTheme = LocalAppTheme.current
+    val allowHoverPopOver = isDesktopHost() && (currentTheme == AppTheme.CLEAN || currentTheme == AppTheme.FLUX_GLASS) && !editMode && !dragging && hasOverflow
+    val cardInteractionSource = remember { MutableInteractionSource() }
+    val isCardHovered by cardInteractionSource.collectIsHoveredAsState()
+    val popupInteractionSource = remember { MutableInteractionSource() }
+    val isPopupHovered by popupInteractionSource.collectIsHoveredAsState()
+
+    var isHoverDwellActive by remember { mutableStateOf(false) }
+    LaunchedEffect(isCardHovered, isPopupHovered) {
+        if (isCardHovered || isPopupHovered) {
+            if (!isHoverDwellActive) {
+                delay(800L)
+                isHoverDwellActive = true
+            }
+        } else {
+            isHoverDwellActive = false
+        }
+    }
+    val showPopOver = allowHoverPopOver && isHoverDwellActive
+
+    val popupPositionProvider = remember {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize
+            ): IntOffset {
+                val origin = cardOriginInWindow
+                val cardX = origin?.x?.roundToInt() ?: anchorBounds.left
+                val cardY = origin?.y?.roundToInt() ?: anchorBounds.top
+                val x = cardX.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                val y = cardY.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
+                return IntOffset(x, y)
+            }
+        }
+    }
+
     val dropTargetId = dropDeviceId
     val dropCallback = onFilesDropped
     val dropModifier = if (dropTargetId != null && dropCallback != null) {
@@ -1599,11 +2038,16 @@ private fun DeviceCard(
 
     val cardShape = if (fluent) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp)
 
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(dropModifier)
-            .clickable(enabled = !connecting && !editMode, onClick = onClick),
+    Box(modifier = modifier) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onGloballyPositioned { coords ->
+                    cardOriginInWindow = coords.localToWindow(Offset.Zero)
+                }
+                .then(if (allowHoverPopOver) Modifier.hoverable(cardInteractionSource) else Modifier)
+                .then(dropModifier)
+                .clickable(enabled = !connecting && !editMode, onClick = onClick),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(
@@ -1652,7 +2096,8 @@ private fun DeviceCard(
                     text = row.title,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { titleOverflow = it.hasVisualOverflow }
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 if (isSendingToThis) {
@@ -1669,7 +2114,8 @@ private fun DeviceCard(
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                             color = FileApexTeal,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { statOverflow = it.hasVisualOverflow }
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         LinearProgressIndicator(
@@ -1705,7 +2151,8 @@ private fun DeviceCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        softWrap = true
+                        softWrap = true,
+                        onTextLayout = { subtitleOverflow = it.hasVisualOverflow }
                     )
                 }
             }
@@ -1769,6 +2216,24 @@ private fun DeviceCard(
                         }
                     }
                 }
+            }
+        }
+    }
+    if (showPopOver) {
+            Popup(
+                popupPositionProvider = popupPositionProvider,
+                properties = PopupProperties(focusable = false)
+            ) {
+                DeviceCardPopOver(
+                    row = row,
+                    connecting = connecting,
+                    onClick = onClick,
+                    onRename = onRename,
+                    onDeviceDetails = onDeviceDetails,
+                    onSendClipboard = onSendClipboard,
+                    onRemove = onRemove,
+                    interactionSource = popupInteractionSource
+                )
             }
         }
     }

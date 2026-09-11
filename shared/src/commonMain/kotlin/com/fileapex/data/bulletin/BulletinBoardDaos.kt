@@ -23,7 +23,7 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(messages: List<MessageEntity>)
 
-    @Query("UPDATE messages SET isDeleted = 1 WHERE id = :id")
+    @Query("UPDATE messages SET isDeleted = 1 WHERE id = :id AND isPinned = 0")
     suspend fun markDeleted(id: String)
 
     @Query("UPDATE messages SET isPinned = :pinned WHERE id = :id")
@@ -48,6 +48,9 @@ interface TombstoneDao {
 
     @Query("SELECT * FROM tombstones WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): TombstoneEntity?
+
+    @Query("SELECT * FROM tombstones WHERE deletedAt > :cutoff ORDER BY deletedAt ASC")
+    suspend fun getRecentOnce(cutoff: Long): List<TombstoneEntity>
 }
 
 @Dao
@@ -93,7 +96,10 @@ abstract class BulletinBoardTransactionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun insertTombstone(tombstone: TombstoneEntity)
 
-    @Query("UPDATE messages SET isDeleted = 1 WHERE id = :id")
+    @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
+    protected abstract suspend fun getMessageById(id: String): MessageEntity?
+
+    @Query("UPDATE messages SET isDeleted = 1 WHERE id = :id AND isPinned = 0")
     protected abstract suspend fun markMessageDeleted(id: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -107,6 +113,8 @@ abstract class BulletinBoardTransactionDao {
 
     @Transaction
     open suspend fun applyTombstone(tombstone: TombstoneEntity) {
+        val existing = getMessageById(tombstone.id)
+        if (existing != null && existing.isPinned) return
         insertTombstone(tombstone)
         markMessageDeleted(tombstone.id)
     }
@@ -119,6 +127,8 @@ abstract class BulletinBoardTransactionDao {
     ) {
         for (message in messages) upsertMessage(message)
         for (tombstone in tombstones) {
+            val existing = getMessageById(tombstone.id)
+            if (existing != null && existing.isPinned) continue
             insertTombstone(tombstone)
             markMessageDeleted(tombstone.id)
         }

@@ -36,6 +36,7 @@ object BulletinApkUpdatePolicy {
         noteEpochMs: Long = 0L,
         fileSizeBytes: Long = 0L
     ): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         if (!matchesAutoUpdateApk(fileName)) return false
         val id = noteId.orEmpty()
         if (id.isNotBlank() && PendingUpdateStore.getNoteInstallStatus(id) != null) return false
@@ -52,6 +53,7 @@ object BulletinApkUpdatePolicy {
         fileSizeBytes: Long = 0L,
         modifiedEpochMs: Long = 0L
     ): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         if (!matchesAutoUpdateApk(fileName)) return false
         val sig = buildFileSignature(fileName, fileSizeBytes, modifiedEpochMs)
         return !PendingUpdateStore.isFileProcessed(sig)

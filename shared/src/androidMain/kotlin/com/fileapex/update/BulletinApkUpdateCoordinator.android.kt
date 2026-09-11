@@ -108,6 +108,7 @@ actual object BulletinApkUpdateCoordinator {
                     originNoteId = note.noteId
                 )
                 AppUpdateCoordinator.setPendingOffer(offer)
+                com.fileapex.data.bulletin.BulletinRemoteFilePurgeHandler.pruneStaleAutoUpdateApks()
 
                 // Dismiss progress notification
                 notificationManager?.cancel(NOTIFICATION_ID_PROGRESS)
@@ -147,6 +148,7 @@ actual object BulletinApkUpdateCoordinator {
     }
 
     actual fun triggerDirectApkInstall(localPath: String, version: String, fileName: String) {
+        if (FileApexServices.isPlayStoreBuild) return
         scope.launch {
             val apkFile = File(localPath)
             if (!apkFile.isFile || apkFile.length() < 1024L) return@launch

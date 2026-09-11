@@ -161,7 +161,7 @@ enum FileApexSendHandoff {
                 lock.unlock()
                 semaphore.signal()
             }
-            _ = semaphore.wait(timeout: .now() + 8)
+            _ = semaphore.wait(timeout: .now() + 1.5)
             lock.lock()
             let result = opened
             lock.unlock()

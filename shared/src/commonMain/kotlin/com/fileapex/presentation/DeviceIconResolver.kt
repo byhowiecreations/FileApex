@@ -28,12 +28,18 @@ data class DeviceIconProfile(
  * Maps platform identifiers and hardware strings to a specific device icon kind.
  */
 fun resolveDeviceIconKind(profile: DeviceIconProfile): DeviceIconKind {
+    val modelName = DeviceModelLookup.lookupMarketingName(profile.hardware.deviceModel) ?: profile.hardware.deviceModel
+    val inferredMake = profile.hardware.deviceMake.ifBlank { DeviceModelLookup.inferMake(profile.hardware.deviceModel).orEmpty() }
     val haystack = buildString {
         append(profile.deviceName.trim())
         append(' ')
         append(profile.hardware.deviceMake.trim())
         append(' ')
+        append(inferredMake)
+        append(' ')
         append(profile.hardware.deviceModel.trim())
+        append(' ')
+        append(modelName)
         append(' ')
         append(profile.hardware.os.trim())
         append(' ')
@@ -44,7 +50,7 @@ fun resolveDeviceIconKind(profile: DeviceIconProfile): DeviceIconKind {
 
     val os = profile.hardware.os.trim().lowercase()
     val platform = profile.hardware.platform.trim().lowercase()
-    val make = profile.hardware.deviceMake.trim().lowercase()
+    val make = inferredMake.trim().lowercase()
 
     if (os == "macos" || make == "apple" ||
         "macbook" in haystack || "imac" in haystack ||
@@ -125,12 +131,18 @@ fun resolveFluxDrawable(profile: DeviceIconProfile): DrawableResource {
 }
 
 fun resolveFreestyleDrawable(profile: DeviceIconProfile): DrawableResource {
+    val modelName = DeviceModelLookup.lookupMarketingName(profile.hardware.deviceModel) ?: profile.hardware.deviceModel
+    val inferredMake = profile.hardware.deviceMake.ifBlank { DeviceModelLookup.inferMake(profile.hardware.deviceModel).orEmpty() }
     val haystack = buildString {
         append(profile.deviceName.trim())
         append(' ')
         append(profile.hardware.deviceMake.trim())
         append(' ')
+        append(inferredMake)
+        append(' ')
         append(profile.hardware.deviceModel.trim())
+        append(' ')
+        append(modelName)
         append(' ')
         append(profile.hardware.os.trim())
         append(' ')
@@ -140,7 +152,7 @@ fun resolveFreestyleDrawable(profile: DeviceIconProfile): DrawableResource {
     }.lowercase()
 
     val os = profile.hardware.os.trim().lowercase()
-    val make = profile.hardware.deviceMake.trim().lowercase()
+    val make = inferredMake.trim().lowercase()
 
     if (os == "macos" || make == "apple" ||
         "macbook" in haystack || "imac" in haystack ||
@@ -170,14 +182,22 @@ fun resolveFreestyleDrawable(profile: DeviceIconProfile): DrawableResource {
         return Res.drawable.dev_fs_moto_signature
     }
 
-    if ("magic v" in haystack || "magic-v" in haystack || ("honor" in haystack && "fold" in haystack)) {
+    val isHonor = "honor" in haystack || make == "honor"
+    if (isHonor && ("magic v" in haystack || "magic-v" in haystack || "fold" in haystack)) {
         return Res.drawable.dev_fs_honor_magic_v5
     }
-    if ("x9d" in haystack || "x9" in haystack || ("honor" in haystack && "x9" in haystack)) {
+    if (isHonor && ("x9d" in haystack || "x9b" in haystack || "x9a" in haystack || "x9" in haystack)) {
         return Res.drawable.dev_fs_honor_x9d
     }
-    if ("magic 8" in haystack || "magic8" in haystack || ("magic" in haystack && ("honor" in haystack || make == "honor"))) {
+    if (isHonor && ("magic 8" in haystack || "magic8" in haystack || "magic" in haystack)) {
         return Res.drawable.dev_fs_magic8pro
+    }
+
+    val isOppo = "oppo" in haystack || make == "oppo" || "find x" in haystack || "find-x" in haystack
+    if (isOppo) {
+        if ("flip" in haystack) return Res.drawable.dev_fs_flip8
+        if ("fold" in haystack) return Res.drawable.dev_fs_fold8
+        return Res.drawable.dev_fs_oppo_find_x9_pro
     }
 
     if ("oneplus" in haystack || "1+" in haystack) {

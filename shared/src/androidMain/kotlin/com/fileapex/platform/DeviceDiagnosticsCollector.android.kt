@@ -331,7 +331,7 @@ private fun readCellularSignalDbm(
     context: Context,
     telephony: android.telephony.TelephonyManager
 ): Int? {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+    if (com.fileapex.di.FileApexServices.isPlayStoreBuild || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
     if (context.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
         != android.content.pm.PackageManager.PERMISSION_GRANTED
     ) {
@@ -348,7 +348,7 @@ private fun readCellularBandInfo(
     context: Context,
     telephony: android.telephony.TelephonyManager
 ): Pair<Int?, String> {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
+    if (com.fileapex.di.FileApexServices.isPlayStoreBuild || Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
         return null to ""
     }
     if (context.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)

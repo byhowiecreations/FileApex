@@ -48,6 +48,7 @@ object DesktopWindowsDropBox {
     private var targetDeviceIds: List<String> = emptyList()
     private var stagedPaths: List<String> = emptyList()
     private var isSending = false
+    private var singleDestinationName: String? = null
     private var onSend: ((deviceIds: List<String>, paths: List<String>) -> Unit)? = null
     private var persistTimer: Timer? = null
 
@@ -58,16 +59,18 @@ object DesktopWindowsDropBox {
 
     fun show(
         deviceIds: List<String>,
+        singleDeviceName: String? = null,
         onSend: (deviceIds: List<String>, paths: List<String>) -> Unit
     ) {
         require(deviceIds.isNotEmpty())
         SwingUtilities.invokeLater {
             this.onSend = onSend
             targetDeviceIds = deviceIds
+            singleDestinationName = singleDeviceName?.takeIf { it.isNotBlank() }
             stagedPaths = emptyList()
             isSending = false
             ensureFrame()
-            destinationsLabel.text = AppI18n.plural("n_destinations", deviceIds.size, deviceIds.size.toString())
+            updateDestinationsLabel()
             refreshFileUi()
             val window = frame ?: return@invokeLater
             applySavedOrDefaultBounds(window)
@@ -221,17 +224,24 @@ object DesktopWindowsDropBox {
         dropPanel.repaint()
     }
 
+    private fun updateDestinationsLabel() {
+        if (!::destinationsLabel.isInitialized || targetDeviceIds.isEmpty()) return
+        destinationsLabel.text = if (targetDeviceIds.size == 1 && !singleDestinationName.isNullOrBlank()) {
+            singleDestinationName
+        } else {
+            AppI18n.plural(
+                "n_destinations",
+                targetDeviceIds.size,
+                targetDeviceIds.size.toString()
+            )
+        }
+    }
+
     fun applyLocalizedCopy() {
         SwingUtilities.invokeLater {
             if (!::statusLabel.isInitialized) return@invokeLater
             frame?.title = AppI18n.t("drop_files")
-            if (targetDeviceIds.isNotEmpty()) {
-                destinationsLabel.text = AppI18n.plural(
-                    "n_destinations",
-                    targetDeviceIds.size,
-                    targetDeviceIds.size.toString()
-                )
-            }
+            updateDestinationsLabel()
             refreshFileUi()
         }
     }

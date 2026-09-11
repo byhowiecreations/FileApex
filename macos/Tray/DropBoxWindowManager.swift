@@ -10,10 +10,63 @@ private enum DropBoxMetrics {
     static let maxExpandedExtraHeight: CGFloat = 380
 }
 
+final class DropBoxPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
+    override func layoutIfNeeded() {
+        super.layoutIfNeeded()
+        adjustTrafficLights()
+    }
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        super.setFrame(frameRect, display: flag)
+        adjustTrafficLights()
+    }
+
+    override func becomeKey() {
+        super.becomeKey()
+        adjustTrafficLights()
+    }
+
+    func adjustTrafficLights() {
+        guard let closeBtn = standardWindowButton(.closeButton) else { return }
+        let targetX: CGFloat = 18.0
+        let currentX = closeBtn.frame.origin.x
+        if abs(currentX - targetX) > 0.5 {
+            let delta = targetX - currentX
+            closeBtn.frame.origin.x = targetX
+            if let minBtn = standardWindowButton(.miniaturizeButton) {
+                minBtn.frame.origin.x += delta
+            }
+            if let zoomBtn = standardWindowButton(.zoomButton) {
+                zoomBtn.frame.origin.x += delta
+            }
+        }
+    }
+}
+
+final class DropBoxState: ObservableObject {
+    @Published var targetDeviceCount: Int = 0
+    @Published var singleDeviceName: String? = nil
+    @Published var filePaths: [String] = []
+    @Published var isSending: Bool = false
+    @Published var isPinned: Bool = false
+
+    func clear() {
+        filePaths = []
+        isSending = false
+    }
+}
+
 public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
     public static let shared = DropBoxWindowManager()
 
-    private var dropBoxWindow: NSPanel?
+    private var dropBoxWindow: DropBoxPanel?
+    private let state = DropBoxState()
+    private var isPinned = false
+    private var pinAccessoryItem: NSTitlebarAccessoryViewController?
+    private var pinButton: NSButton?
     private var targetDeviceIds: [String] = []
     private var stagedFilePaths: [String] = []
     private var baseUserFrame: NSRect?
@@ -46,10 +99,20 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
         currentFileCount = 0
         isSubmittingSend = false
 
+        let singleName: String? = (deviceIds.count == 1)
+            ? TrayDeviceBridge.shared.devices.first(where: { $0.deviceId == deviceIds[0] })?.name
+            : nil
+
+        state.targetDeviceCount = deviceIds.count
+        state.singleDeviceName = singleName
+        state.clear()
+        state.isPinned = isPinned
+
         let window = ensureDropBoxWindow()
+        setupTitlebarAccessory(on: window)
         window.contentViewController = TrayHostingController(
             rootView: DropBoxContentView(
-                targetDeviceCount: deviceIds.count,
+                state: state,
                 onFilesChanged: { [weak self] paths in
                     self?.stagedFilePaths = paths
                     self?.updateWindowHeightForFiles(count: paths.count)
@@ -68,18 +131,31 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
 
     public func relocalize() {
         dropBoxWindow?.title = AppCopy.shared.t("drop_files")
+        if let btn = pinButton {
+            updatePinButton(btn)
+        }
     }
 
     public func closeDropBox() {
+        if isPinned {
+            clearStagedFilesAndReset()
+            return
+        }
         persistFrameImmediately()
         dropBoxWindow?.orderOut(nil)
-        stagedFilePaths = []
-        currentFileCount = 0
-        isSubmittingSend = false
+        clearStagedFilesAndReset()
         onVisibilityChanged?(false)
     }
 
-    private func ensureDropBoxWindow() -> NSPanel {
+    private func clearStagedFilesAndReset() {
+        stagedFilePaths = []
+        currentFileCount = 0
+        isSubmittingSend = false
+        state.clear()
+        updateWindowHeightForFiles(count: 0)
+    }
+
+    private func ensureDropBoxWindow() -> DropBoxPanel {
         if let dropBoxWindow {
             return dropBoxWindow
         }
@@ -90,9 +166,9 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
             width: DropBoxMetrics.defaultWidth,
             height: DropBoxMetrics.defaultHeight
         )
-        let window = NSPanel(
+        let window = DropBoxPanel(
             contentRect: initialFrame,
-            styleMask: [.titled, .closable, .resizable, .utilityWindow],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -106,6 +182,47 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
         window.delegate = self
         dropBoxWindow = window
         return window
+    }
+
+    private func setupTitlebarAccessory(on window: NSWindow) {
+        if pinAccessoryItem != nil { return }
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .trailing
+
+        let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 28, height: 22))
+        btn.bezelStyle = .texturedRounded
+        btn.isBordered = false
+        btn.target = self
+        btn.action = #selector(togglePin)
+        btn.focusRingType = .none
+        btn.imageScaling = .scaleProportionallyDown
+        updatePinButton(btn)
+
+        accessory.view = btn
+        window.addTitlebarAccessoryViewController(accessory)
+        pinAccessoryItem = accessory
+        pinButton = btn
+    }
+
+    @objc private func togglePin() {
+        isPinned.toggle()
+        state.isPinned = isPinned
+        if let btn = pinButton {
+            updatePinButton(btn)
+        }
+    }
+
+    private func updatePinButton(_ btn: NSButton) {
+        let symbolName = isPinned ? "pin.fill" : "pin"
+        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        let desc = isPinned ? AppCopy.shared.t("unpin_drop_box") : AppCopy.shared.t("pin_drop_box")
+        btn.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: desc)?.withSymbolConfiguration(config)
+        if isPinned {
+            btn.contentTintColor = .controlAccentColor
+        } else {
+            btn.contentTintColor = .secondaryLabelColor
+        }
+        btn.toolTip = desc
     }
 
     private func applyPreferredFrame(to window: NSPanel) {
@@ -220,6 +337,14 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
         schedulePersistFrameToKotlin()
     }
 
+    public func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if isPinned {
+            NSApp.showNativeToast(message: AppCopy.shared.t("unpin_to_close"))
+            return false
+        }
+        return true
+    }
+
     public func windowWillClose(_ notification: Notification) {
         persistFrameImmediately()
         onVisibilityChanged?(false)
@@ -317,14 +442,12 @@ struct DropTargetRepresentable: NSViewRepresentable {
 }
 
 struct DropBoxContentView: View {
-    let targetDeviceCount: Int
+    @ObservedObject var state: DropBoxState
     let onFilesChanged: ([String]) -> Void
     let onSend: () -> Bool
 
     @ObservedObject private var copy = AppCopy.shared
-    @State private var filePaths: [String] = []
     @State private var isTargeted = false
-    @State private var isSending = false
 
     var body: some View {
         ZStack {
@@ -342,20 +465,20 @@ struct DropBoxContentView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(Color.accentColor)
 
-                if filePaths.isEmpty {
+                if state.filePaths.isEmpty {
                     Text(copy.t("drag_drop_files_here"))
                         .font(.subheadline)
                         .bold()
                         .multilineTextAlignment(.center)
                 } else {
-                    Text(copy.plural("n_files_ready", count: filePaths.count))
+                    Text(copy.plural("n_files_ready", count: state.filePaths.count))
                         .font(.subheadline)
                         .bold()
                         .multilineTextAlignment(.center)
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(filePaths, id: \.self) { path in
+                            ForEach(state.filePaths, id: \.self) { path in
                                 HStack(spacing: 6) {
                                     Image(systemName: isDirectory(path) ? "folder.fill" : "doc.fill")
                                         .font(.caption)
@@ -384,11 +507,19 @@ struct DropBoxContentView: View {
                     .frame(maxWidth: .infinity)
                 }
 
-                Text(copy.plural("n_destinations", count: targetDeviceCount))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if state.targetDeviceCount == 1, let name = state.singleDeviceName, !name.isEmpty {
+                    Text(name)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text(copy.plural("n_destinations", count: state.targetDeviceCount))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-                if !filePaths.isEmpty {
+                if !state.filePaths.isEmpty {
                     HStack(spacing: 10) {
                         Button(role: .cancel) {
                             clearFiles()
@@ -398,21 +529,21 @@ struct DropBoxContentView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.regular)
-                        .disabled(isSending)
+                        .disabled(state.isSending)
 
                         Button {
-                            guard !isSending else { return }
-                            isSending = true
+                            guard !state.isSending else { return }
+                            state.isSending = true
                             if !onSend() {
-                                isSending = false
+                                state.isSending = false
                             }
                         } label: {
-                            Text(isSending ? copy.t("sending_short") : copy.t("send"))
+                            Text(state.isSending ? copy.t("sending_short") : copy.t("send"))
                                 .frame(minWidth: 80)
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.regular)
-                        .disabled(isSending)
+                        .disabled(state.isSending)
                     }
                     .padding(.top, 2)
                 }
@@ -435,23 +566,23 @@ struct DropBoxContentView: View {
     private func appendFiles(_ paths: [String]) {
         let valid = paths.filter { !$0.isEmpty && FileManager.default.fileExists(atPath: $0) }
         guard !valid.isEmpty else { return }
-        var updated = filePaths
+        var updated = state.filePaths
         for p in valid {
             if !updated.contains(p) {
                 updated.append(p)
             }
         }
-        filePaths = updated
+        state.filePaths = updated
         onFilesChanged(updated)
     }
 
     private func removeFile(_ path: String) {
-        filePaths.removeAll { $0 == path }
-        onFilesChanged(filePaths)
+        state.filePaths.removeAll { $0 == path }
+        onFilesChanged(state.filePaths)
     }
 
     private func clearFiles() {
-        filePaths.removeAll()
+        state.filePaths.removeAll()
         onFilesChanged([])
     }
 }

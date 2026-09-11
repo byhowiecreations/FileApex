@@ -53,6 +53,20 @@ object ClipboardPushDeduper {
         }
     }
 
+    fun forget(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        ensureLoaded()
+        val hash = hashOf(trimmed)
+        synchronized(lock) {
+            if (lastHash == hash) {
+                lastHash = null
+            }
+            seenHashes.remove(hash)
+            ClipboardDeduperPersistence.save(lastHash, seenHashes)
+        }
+    }
+
     fun isDuplicate(text: String): Boolean {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return true

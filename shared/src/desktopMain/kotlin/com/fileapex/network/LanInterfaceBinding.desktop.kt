@@ -204,7 +204,8 @@ actual suspend fun peerHttpUploadFromFile(
     offset: Long,
     length: Long,
     connectTimeoutMs: Long,
-    uploadIdleTimeoutMs: Long
+    uploadIdleTimeoutMs: Long,
+    onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         return@withContext DesktopMacTrayBridge.lanHttpUploadFile(
@@ -212,9 +213,12 @@ actual suspend fun peerHttpUploadFromFile(
             contentType = contentType,
             filePath = sourcePath,
             offsetBytes = offset,
-            timeoutMs = uploadIdleTimeoutMs
+            timeoutMs = uploadIdleTimeoutMs,
+            onProgress = onProgress
         )
     }
+    val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
+    var currentSent = offset
     executeBoundUpload(
         host = host,
         port = port,
@@ -230,6 +234,8 @@ actual suspend fun peerHttpUploadFromFile(
                 byteLimit = length
             ) { buffer, read ->
                 output.write(buffer, 0, read)
+                currentSent += read
+                onProgress?.invoke(currentSent, total)
             }
         }
     )

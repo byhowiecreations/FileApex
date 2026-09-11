@@ -11,14 +11,14 @@ import androidx.compose.ui.graphics.Color
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.i18n.stringRes
 
-import com.fileapex.ui.theme.fileApexChromeContentColor
-
+import com.fileapex.ui.theme.fileApexHeaderActionTint
+ 
 @Composable
 fun ExplorerViewModeToggle(
     viewMode: ExplorerViewMode,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
-    iconTint: Color = fileApexChromeContentColor()
+    iconTint: Color = fileApexHeaderActionTint()
 ) {
     val showGridNext = viewMode == ExplorerViewMode.List
     IconButton(onClick = onToggle, modifier = modifier) {

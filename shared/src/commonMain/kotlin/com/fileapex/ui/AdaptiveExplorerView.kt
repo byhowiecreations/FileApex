@@ -17,8 +17,13 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -44,12 +49,14 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,13 +71,16 @@ import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.fileapex.di.FileApexServices
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.platform.horizontalResizePointerIcon
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.theme.FileApexTeal
@@ -128,98 +138,128 @@ fun AdaptiveExplorerView(
         val rightFiles = contentFiles
         val rightEmpty = rightDirs.isEmpty() && rightFiles.isEmpty()
 
-        Row(modifier = modifier.fillMaxSize()) {
-            LazyColumn(
-                modifier = Modifier
-                    .weight(0.4f)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                contentPadding = listPadding
-            ) {
-                if (canNavigateUp) {
-                    item(key = "pane-parent") {
-                        ParentRow(
-                            onClick = onNavigateUp,
-                            isLoading = isLoading && loadingFolderPath != null && pathsEqual(panePath, loadingFolderPath)
+        BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+            val totalWidthPx = constraints.maxWidth.toFloat()
+            val splitFraction by FileApexServices.settings.explorerSplitFraction.collectAsState()
+            var isDraggingDivider by remember { mutableStateOf(false) }
+            val dividerInteraction = remember { MutableInteractionSource() }
+            val isHovered by dividerInteraction.collectIsHoveredAsState()
+
+            Row(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(splitFraction)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                    contentPadding = listPadding
+                ) {
+                    if (canNavigateUp) {
+                        item(key = "pane-parent") {
+                            ParentRow(
+                                onClick = onNavigateUp,
+                                isLoading = isLoading && loadingFolderPath != null && pathsEqual(panePath, loadingFolderPath)
+                            )
+                        }
+                    }
+                    items(paneDirectories, key = { "pane-${it.id}" }) { dir ->
+                        val selected = selectedFolderPath != null &&
+                            pathsEqual(dir.absolutePath, selectedFolderPath)
+                        val isChecked = dir.id in selectedFileIds
+                        PaneDirectoryRow(
+                            dir = dir,
+                            isSelectedInPane = selected,
+                            isLoading = isLoading,
+                            loadingFolderPath = loadingFolderPath,
+                            isSelectionMode = isSelectionMode,
+                            isChecked = isChecked,
+                            desktopSelection = desktopSelection,
+                            isRemoteTarget = isRemoteTarget,
+                            onClick = { onPaneFolderClick(dir) },
+                            onLongClick = { onFileLongPress(dir) },
+                            onSelectExclusive = { onFileSelectExclusive(dir) },
+                            onToggleSelect = { onFileToggleSelect(dir) },
+                            onExtendSelect = { onFileExtendSelect(dir) },
+                            onActivate = { onPaneFolderClick(dir) },
+                            onCopy = { onCopyItem(dir) },
+                            onSendToDevice = { onSendItemToDevice(dir) },
+                            onDownload = { onDownloadItem(dir) }
                         )
                     }
-                }
-                items(paneDirectories, key = { "pane-${it.id}" }) { dir ->
-                    val selected = selectedFolderPath != null &&
-                        pathsEqual(dir.absolutePath, selectedFolderPath)
-                    val isChecked = dir.id in selectedFileIds
-                    PaneDirectoryRow(
-                        dir = dir,
-                        isSelectedInPane = selected,
-                        isLoading = isLoading,
-                        loadingFolderPath = loadingFolderPath,
-                        isSelectionMode = isSelectionMode,
-                        isChecked = isChecked,
-                        desktopSelection = desktopSelection,
-                        isRemoteTarget = isRemoteTarget,
-                        onClick = { onPaneFolderClick(dir) },
-                        onLongClick = { onFileLongPress(dir) },
-                        onSelectExclusive = { onFileSelectExclusive(dir) },
-                        onToggleSelect = { onFileToggleSelect(dir) },
-                        onExtendSelect = { onFileExtendSelect(dir) },
-                        onActivate = { onPaneFolderClick(dir) },
-                        onCopy = { onCopyItem(dir) },
-                        onSendToDevice = { onSendItemToDevice(dir) },
-                        onDownload = { onDownloadItem(dir) }
-                    )
-                }
-                if (paneDirectories.isEmpty() && !canNavigateUp) {
-                    item(key = "pane-empty") {
-                        EmptyHint(stringRes("no_folders"))
+                    if (paneDirectories.isEmpty() && !canNavigateUp) {
+                        item(key = "pane-empty") {
+                            EmptyHint(stringRes("no_folders"))
+                        }
                     }
                 }
+                Box(
+                    modifier = Modifier
+                        .width(10.dp)
+                        .fillMaxHeight()
+                        .hoverable(dividerInteraction)
+                        .pointerHoverIcon(horizontalResizePointerIcon())
+                        .pointerInput(totalWidthPx) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { isDraggingDivider = true },
+                                onDragEnd = { isDraggingDivider = false },
+                                onDragCancel = { isDraggingDivider = false }
+                            ) { change, dragAmount ->
+                                change.consume()
+                                if (totalWidthPx > 0f) {
+                                    val current = FileApexServices.settings.explorerSplitFraction.value
+                                    val deltaFraction = dragAmount / totalWidthPx
+                                    FileApexServices.settings.setExplorerSplitFraction(current + deltaFraction)
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    VerticalDivider(
+                        thickness = if (isHovered || isDraggingDivider) 2.dp else 1.dp,
+                        color = if (isHovered || isDraggingDivider) FileApexTeal else MaterialTheme.colorScheme.outlineVariant
+                    )
+                }
+                ExplorerContentPane(
+                    viewMode = viewMode,
+                    canNavigateUp = canNavigateUp,
+                    directories = rightDirs,
+                    files = rightFiles,
+                    isEmpty = rightEmpty,
+                    emptyHint = if (showingPaneRootFiles) {
+                        stringRes("select_folder_or_browse")
+                    } else {
+                        stringRes("folder_empty")
+                    },
+                    isSelectionMode = isSelectionMode,
+                    selectedFileIds = selectedFileIds,
+                    desktopSelection = desktopSelection,
+                    isRemoteTarget = isRemoteTarget,
+                    sourceDeviceId = sourceDeviceId,
+                    isLoading = isLoading,
+                    loadingFolderPath = loadingFolderPath,
+                    listPadding = listPadding,
+                    modifier = Modifier
+                        .weight(1f - splitFraction)
+                        .fillMaxHeight(),
+                    onNavigateUp = onNavigateUp,
+                    onDirectoryClick = onContentDirectoryClick,
+                    onFileOpen = onFileOpen,
+                    onFileLongPress = onFileLongPress,
+                    onFileSelectExclusive = onFileSelectExclusive,
+                    onFileToggleSelect = onFileToggleSelect,
+                    onFileExtendSelect = onFileExtendSelect,
+                    onFileActivate = onFileActivate,
+                    onCopyItem = onCopyItem,
+                    onSendItemToDevice = onSendItemToDevice,
+                    onDownloadItem = onDownloadItem
+                )
             }
-            Spacer(
-                modifier = Modifier
-                    .width(1.dp)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.outlineVariant)
-            )
-            ExplorerContentPane(
-                viewMode = viewMode,
-                canNavigateUp = canNavigateUp,
-                directories = rightDirs,
-                files = rightFiles,
-                isEmpty = rightEmpty,
-                emptyHint = if (showingPaneRootFiles) {
-                    stringRes("select_folder_or_browse")
-                } else {
-                    stringRes("folder_empty")
-                },
-                isSelectionMode = isSelectionMode,
-                selectedFileIds = selectedFileIds,
-                desktopSelection = desktopSelection,
-                isRemoteTarget = isRemoteTarget,
-                sourceDeviceId = sourceDeviceId,
-                isLoading = isLoading,
-                loadingFolderPath = loadingFolderPath,
-                listPadding = listPadding,
-                modifier = Modifier
-                    .weight(0.6f)
-                    .fillMaxHeight(),
-                onNavigateUp = onNavigateUp,
-                onDirectoryClick = onContentDirectoryClick,
-                onFileOpen = onFileOpen,
-                onFileLongPress = onFileLongPress,
-                onFileSelectExclusive = onFileSelectExclusive,
-                onFileToggleSelect = onFileToggleSelect,
-                onFileExtendSelect = onFileExtendSelect,
-                onFileActivate = onFileActivate,
-                onCopyItem = onCopyItem,
-                onSendItemToDevice = onSendItemToDevice,
-                onDownloadItem = onDownloadItem
-            )
         }
         return
     }
 
     val empty = contentDirectories.isEmpty() && contentFiles.isEmpty()
     if (empty && !canNavigateUp) {
+        val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
         Box(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -227,7 +267,7 @@ fun AdaptiveExplorerView(
             Text(
                 text = stringRes("folder_empty"),
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         return
@@ -772,13 +812,14 @@ private fun DirectoryListRow(
                 Text(
                     text = dir.name,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = com.fileapex.i18n.AppI18n.t("folder"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -861,13 +902,14 @@ private fun FileListRow(
                 Text(
                     text = file.name,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = formatBytes(file.sizeBytes),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

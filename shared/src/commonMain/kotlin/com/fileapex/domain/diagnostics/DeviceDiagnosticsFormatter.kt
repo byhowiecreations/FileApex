@@ -159,6 +159,7 @@ object DeviceDiagnosticsFormatter {
 
         return preferences.visibleFieldIds()
             .filter { field ->
+                if (com.fileapex.di.FileApexServices.isPlayStoreBuild && field.cellularOnly) return@filter false
                 when {
                     field.wifiOnly -> isWifi
                     field.cellularOnly -> isCellular

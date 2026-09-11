@@ -21,6 +21,7 @@ object ClipboardShizukuAccess {
     private val started = AtomicBoolean(false)
 
     fun start() {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         if (!started.compareAndSet(false, true)) return
         runCatching {
             Shizuku.addBinderReceivedListenerSticky {
@@ -43,6 +44,7 @@ object ClipboardShizukuAccess {
     }
 
     fun isInstalled(): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         val context = androidAppContextOrNull() ?: return false
         return runCatching {
             context.packageManager.getPackageInfo(SHIZUKU_PACKAGE, 0)
@@ -51,6 +53,7 @@ object ClipboardShizukuAccess {
     }
 
     fun isReady(): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         return runCatching {
             val ping = Shizuku.getBinder() != null && Shizuku.pingBinder()
             val granted = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
@@ -59,12 +62,14 @@ object ClipboardShizukuAccess {
     }
 
     fun isOptedIn(): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         return runCatching {
             com.fileapex.di.FileApexServices.settings.clipboardShizukuEnabled.value
         }.getOrDefault(false)
     }
 
     fun shouldUse(): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         return runCatching {
             val ping = Shizuku.getBinder() != null && Shizuku.pingBinder()
             val granted = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
@@ -73,10 +78,12 @@ object ClipboardShizukuAccess {
     }
 
     fun isRunning(): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         return runCatching { Shizuku.pingBinder() }.getOrDefault(false)
     }
 
     fun requestPermission() {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         runCatching {
             if (!Shizuku.pingBinder()) return
             if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) return
@@ -87,6 +94,7 @@ object ClipboardShizukuAccess {
     }
 
     fun activate() {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         start()
         runCatching {
             com.fileapex.di.FileApexServices.settings.setClipboardShizukuEnabled(true)
@@ -108,6 +116,7 @@ object ClipboardShizukuAccess {
     }
 
     fun openManager() {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         val context = androidAppContextOrNull() ?: return
         val launch = context.packageManager.getLaunchIntentForPackage(SHIZUKU_PACKAGE)
         if (launch != null) {
@@ -125,7 +134,7 @@ object ClipboardShizukuAccess {
     }
 
     fun tryReadText(): String? {
-        if (!shouldUse()) return null
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild || !shouldUse()) return null
         val text = runCatching { readViaIClipboard() }
             .onFailure { error -> Log.w(TAG, "privileged clipboard read failed :: ${error.message}") }
             .getOrNull()
@@ -137,7 +146,7 @@ object ClipboardShizukuAccess {
     }
 
     fun tryWriteText(text: String): Boolean {
-        if (!shouldUse() || text.isBlank()) return false
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild || !shouldUse() || text.isBlank()) return false
         return runCatching { writeViaIClipboard(text) }
             .onFailure { error -> Log.w(TAG, "privileged clipboard write failed :: ${error.message}") }
             .getOrDefault(false)

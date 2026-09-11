@@ -55,4 +55,89 @@ object FileApexIcons {
             }
         }.build()
     }
+
+    /**
+     * "Right Panel Close": Outer rounded window with vertical sidebar divider and right-pointing
+     * triangle (▶), indicating clicking will close the right detail pane (collapse to compact).
+     */
+    val RightPanelClose: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "RightPanelClose",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            // Window frame with vertical panel divider
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.75f
+            ) {
+                moveTo(6f, 4f)
+                lineTo(18f, 4f)
+                curveTo(19.65f, 4f, 21f, 5.35f, 21f, 7f)
+                lineTo(21f, 17f)
+                curveTo(21f, 18.65f, 19.65f, 20f, 18f, 20f)
+                lineTo(6f, 20f)
+                curveTo(4.35f, 20f, 3f, 18.65f, 3f, 17f)
+                lineTo(3f, 7f)
+                curveTo(3f, 5.35f, 4.35f, 4f, 6f, 4f)
+                close()
+                // Divider separating the right panel
+                moveTo(16f, 4f)
+                lineTo(16f, 20f)
+            }
+            // Right-facing triangle in main pane
+            path(fill = SolidColor(Color.White)) {
+                moveTo(8.5f, 8.5f)
+                lineTo(8.5f, 15.5f)
+                lineTo(12.5f, 12f)
+                close()
+            }
+        }.build()
+    }
+
+    /**
+     * "Right Panel Open": Outer rounded window with vertical sidebar divider and left-pointing
+     * triangle (◀), indicating clicking will open the right detail pane (expand to dual-pane).
+     */
+    val RightPanelOpen: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "RightPanelOpen",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            // Window frame with vertical panel divider
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.75f
+            ) {
+                moveTo(6f, 4f)
+                lineTo(18f, 4f)
+                curveTo(19.65f, 4f, 21f, 5.35f, 21f, 7f)
+                lineTo(21f, 17f)
+                curveTo(21f, 18.65f, 19.65f, 20f, 18f, 20f)
+                lineTo(6f, 20f)
+                curveTo(4.35f, 20f, 3f, 18.65f, 3f, 17f)
+                lineTo(3f, 7f)
+                curveTo(3f, 5.35f, 4.35f, 4f, 6f, 4f)
+                close()
+                // Divider separating the right panel
+                moveTo(16f, 4f)
+                lineTo(16f, 20f)
+            }
+            // Left-facing triangle in main pane
+            path(fill = SolidColor(Color.White)) {
+                moveTo(12.5f, 8.5f)
+                lineTo(12.5f, 15.5f)
+                lineTo(8.5f, 12f)
+                close()
+            }
+        }.build()
+    }
+
+    val DesktopExpanded: ImageVector get() = RightPanelClose
+    val DesktopCompact: ImageVector get() = RightPanelOpen
 }

@@ -9,20 +9,22 @@ import com.fileapex.data.settings.androidAppContextOrNull
 actual object ClipboardRuntimeDiagnostics {
     actual fun snapshot(): ClipboardRuntimeSnapshot {
         val context = androidAppContextOrNull()
+        val isPlay = com.fileapex.di.FileApexServices.isPlayStoreBuild
         return ClipboardRuntimeSnapshot(
-            accessibilityBound = ClipboardAccessibilityHealth.isBound(),
-            accessibilityListed = ClipboardAccessibilityHealth.isListed(),
+            accessibilityBound = !isPlay && ClipboardAccessibilityHealth.isBound(),
+            accessibilityListed = !isPlay && ClipboardAccessibilityHealth.isListed(),
             batteryWhitelisted = context?.let { isBatteryWhitelisted(it) } ?: false,
             notificationsEnabled = context?.let { notificationsEnabled(it) } ?: false,
-            restrictedSettingsRelevant = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-            restrictedSettingsBlocked = ClipboardAccessibilitySettings.isRestrictedSettingsBlocked(),
-            shizukuActive = ClipboardShizukuAccess.isReady(),
-            shizukuInstalled = ClipboardShizukuAccess.isInstalled(),
-            shizukuRunning = ClipboardShizukuAccess.isRunning()
+            restrictedSettingsRelevant = !isPlay && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+            restrictedSettingsBlocked = !isPlay && ClipboardAccessibilitySettings.isRestrictedSettingsBlocked(),
+            shizukuActive = !isPlay && ClipboardShizukuAccess.isReady(),
+            shizukuInstalled = !isPlay && ClipboardShizukuAccess.isInstalled(),
+            shizukuRunning = !isPlay && ClipboardShizukuAccess.isRunning()
         )
     }
 
     actual fun requestShizukuPermission() {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         if (!ClipboardShizukuAccess.isInstalled()) {
             ClipboardShizukuAccess.openManager()
             return
@@ -31,10 +33,12 @@ actual object ClipboardRuntimeDiagnostics {
     }
 
     actual fun openShizuku() {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         ClipboardShizukuAccess.openManager()
     }
 
     actual fun activateShizuku() {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return
         ClipboardShizukuAccess.activate()
     }
 

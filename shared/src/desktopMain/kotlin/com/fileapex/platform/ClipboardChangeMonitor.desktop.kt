@@ -67,14 +67,15 @@ actual object ClipboardChangeMonitor {
     }
 
     actual fun onAppForegrounded() {
-        emitCurrentIfChanged()
+        // Hop off whatever thread called us (often Compose Main / EDT).
+        pollExecutor.execute { emitCurrentIfChanged() }
     }
 
     actual fun onAppBackgrounded() = Unit
 
     actual fun onWindowFocusChanged(hasFocus: Boolean) {
         windowFocused.set(hasFocus)
-        if (hasFocus) emitCurrentIfChanged()
+        if (hasFocus) pollExecutor.execute { emitCurrentIfChanged() }
     }
 
     actual fun hasWindowFocus(): Boolean = windowFocused.get()

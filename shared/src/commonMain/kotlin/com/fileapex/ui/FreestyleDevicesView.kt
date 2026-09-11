@@ -8,10 +8,15 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.filled.AddCircleOutline
+import fileapex.shared.generated.resources.*
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -172,6 +177,95 @@ private fun FreestyleOptionAction.label(): String = when (this) {
 }
 
 @Composable
+private fun FreestyleOptionIcon(
+    action: FreestyleOptionAction,
+    iconStyle: ThemeIconStyle,
+    modifier: Modifier = Modifier,
+    tint: Color = Color(0xFF64B5F6)
+) {
+    when (iconStyle) {
+        ThemeIconStyle.FLUX -> {
+            when (action) {
+                FreestyleOptionAction.CHECK_BATTERIES -> Image(
+                    painter = painterResource(Res.drawable.opt_flux_battery),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.SEND_CLIPBOARD -> Image(
+                    painter = painterResource(Res.drawable.opt_flux_clipboard),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.ADD_DEVICE,
+                FreestyleOptionAction.JOIN_DEVICE -> Image(
+                    painter = painterResource(Res.drawable.opt_flux_qrcode),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.SETTINGS -> Image(
+                    painter = painterResource(Res.drawable.opt_flux_settings),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.FILES -> Image(
+                    painter = painterResource(Res.drawable.opt_flux_folder),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        ThemeIconStyle.FREESTYLE -> {
+            when (action) {
+                FreestyleOptionAction.CHECK_BATTERIES -> Image(
+                    painter = painterResource(Res.drawable.opt_fs_battery),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.SEND_CLIPBOARD -> Image(
+                    painter = painterResource(Res.drawable.opt_fs_clipboard),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.ADD_DEVICE,
+                FreestyleOptionAction.JOIN_DEVICE -> Image(
+                    painter = painterResource(Res.drawable.opt_fs_qrcode),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.SETTINGS -> Image(
+                    painter = painterResource(Res.drawable.opt_fs_settings),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                FreestyleOptionAction.FILES -> Image(
+                    painter = painterResource(Res.drawable.opt_fs_folder),
+                    contentDescription = action.label(),
+                    modifier = modifier.clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        ThemeIconStyle.STANDARD -> {
+            Icon(
+                imageVector = action.icon,
+                contentDescription = action.label(),
+                modifier = modifier,
+                tint = tint
+            )
+        }
+    }
+}
+
+@Composable
 fun FreestyleDevicesView(
     deviceRows: List<DeviceListRow>,
     connectingDeviceId: String?,
@@ -229,6 +323,15 @@ fun FreestyleDevicesView(
     val persistedCardVerticalMenuOrders by FileApexServices.settings.freestyleCardVerticalMenuOrders.collectAsState()
     val persistedTileMenuOrders by FileApexServices.settings.freestyleTileMenuOrders.collectAsState()
     val persistedOptionsMenuOrder by FileApexServices.settings.freestyleOptionsMenuOrder.collectAsState()
+    val persistedCardPinnedActions by FileApexServices.settings.freestyleCardPinnedActions.collectAsState()
+    val persistedCardVerticalPinnedActions by FileApexServices.settings.freestyleCardVerticalPinnedActions.collectAsState()
+    val persistedTilePinnedActions by FileApexServices.settings.freestyleTilePinnedActions.collectAsState()
+
+    val currentPinnedActionsMap = when (freestyleMode) {
+        FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardPinnedActions
+        FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalPinnedActions
+        FreestyleLayoutMode.TILES -> persistedTilePinnedActions
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -245,6 +348,9 @@ fun FreestyleDevicesView(
     ) {
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
+
+        val isExpandedDisplay = maxWidth >= 600.dp
+        val layoutScopePrefix = if (isExpandedDisplay) "exp:" else "cmp:"
 
         val marginPx = with(density) { 16.dp.toPx() }
         val topMarginPx = with(density) { 16.dp.toPx() }
@@ -289,7 +395,7 @@ fun FreestyleDevicesView(
             )
         }
 
-        var liveOptionsPos by remember(freestyleMode) {
+        var liveOptionsPos by remember(freestyleMode, layoutScopePrefix, widthPx, heightPx) {
             val initialX = savedOptionsFractionX?.let { it * widthPx - (optionsButtonWidthPx / 2f) } ?: defaultOptionsPx.x
             val initialY = savedOptionsFractionY?.let { it * heightPx - (optionsButtonHeightPx / 2f) } ?: defaultOptionsPx.y
             mutableStateOf(
@@ -300,7 +406,7 @@ fun FreestyleDevicesView(
             )
         }
 
-        LaunchedEffect(freestyleMode, isEditMode) {
+        LaunchedEffect(freestyleMode, isEditMode, layoutScopePrefix, widthPx, heightPx) {
             if (!isEditMode) {
                 val initialX = savedOptionsFractionX?.let { it * widthPx - (optionsButtonWidthPx / 2f) } ?: defaultOptionsPx.x
                 val initialY = savedOptionsFractionY?.let { it * heightPx - (optionsButtonHeightPx / 2f) } ?: defaultOptionsPx.y
@@ -363,11 +469,13 @@ fun FreestyleDevicesView(
         }
 
         // Live node positions map to eliminate jerkiness on repeated moves
-        val liveNodePositions = remember(freestyleMode) { mutableStateMapOf<String, Offset>() }
+        val liveNodePositions = remember(freestyleMode, layoutScopePrefix, widthPx, heightPx) { mutableStateMapOf<String, Offset>() }
+        val livePinnedPositions = remember(freestyleMode) { mutableStateMapOf<String, Offset>() }
 
         LaunchedEffect(isEditMode) {
             if (!isEditMode) {
                 liveNodePositions.clear()
+                livePinnedPositions.clear()
             }
         }
 
@@ -380,6 +488,122 @@ fun FreestyleDevicesView(
                     onSaveDeviceCardMenuOrder(dev.deviceId, newOrder)
                 }
             }
+        }
+
+        var optionsActionsList by remember(persistedOptionsMenuOrder) {
+            mutableStateOf(FreestyleOptionAction.parseOrder(persistedOptionsMenuOrder))
+        }
+        val visibleOptions = optionsActionsList.filter { !currentPinnedActionsMap.containsKey(it.key) }
+        var draggingOptIndex by remember { mutableStateOf<Int?>(null) }
+        var draggingOptOffsetX by remember { mutableStateOf(0f) }
+        var draggingOptOffsetY by remember { mutableStateOf(0f) }
+        var dragCanvasPos by remember { mutableStateOf<Offset?>(null) }
+        var isDraggingOut by remember { mutableStateOf(false) }
+
+        val dropdownWidthDp = if (isEditMode) 200.dp else 160.dp
+        val dropdownWidthPx = with(density) { dropdownWidthDp.toPx() }
+        val dropdownHeightDp = if (visibleOptions.isEmpty()) 110.dp else (visibleOptions.size * 40 + 24).coerceIn(100, 300).dp
+        val dropdownHeightPx = with(density) { dropdownHeightDp.toPx() }
+
+        val idealDropdownX = liveOptionsPos.x
+        val clampedDropdownX = idealDropdownX.coerceIn(marginPx, (widthPx - marginPx - dropdownWidthPx).coerceAtLeast(marginPx))
+        val relDropdownXDp = with(density) { (clampedDropdownX - liveOptionsPos.x).toDp() }
+
+        val placeBelow = (liveOptionsPos.y + optionsButtonHeightPx + with(density) { 6.dp.toPx() } + dropdownHeightPx) <= (heightPx - bottomMarginPx)
+        val idealDropdownY = if (placeBelow) {
+            liveOptionsPos.y + optionsButtonHeightPx + with(density) { 6.dp.toPx() }
+        } else {
+            liveOptionsPos.y - dropdownHeightPx - with(density) { 6.dp.toPx() }
+        }
+        val clampedDropdownY = idealDropdownY.coerceIn(topMarginPx, (heightPx - bottomMarginPx - dropdownHeightPx).coerceAtLeast(topMarginPx))
+        val relDropdownYDp = with(density) { (clampedDropdownY - liveOptionsPos.y).toDp() }
+
+        val optRowHeightDp = 40.dp
+        val optRowHeightPx = with(density) { optRowHeightDp.toPx() }
+
+        val startDragAction = { optIndex: Int ->
+            val rowCenterCanvasX = clampedDropdownX + dropdownWidthPx / 2f
+            val rowCenterCanvasY = clampedDropdownY + with(density) { 4.dp.toPx() } + (optIndex + 0.5f) * optRowHeightPx
+            draggingOptIndex = optIndex
+            draggingOptOffsetX = 0f
+            draggingOptOffsetY = 0f
+            dragCanvasPos = Offset(rowCenterCanvasX, rowCenterCanvasY)
+            isDraggingOut = false
+        }
+        val onDragDeltaAction = { optIndex: Int, dragDelta: Offset ->
+            val newOffsetX = draggingOptOffsetX + dragDelta.x
+            val newOffsetY = draggingOptOffsetY + dragDelta.y
+            draggingOptOffsetX = newOffsetX
+            draggingOptOffsetY = newOffsetY
+
+            val curX = (dragCanvasPos?.x ?: (clampedDropdownX + dropdownWidthPx / 2f)) + dragDelta.x
+            val curY = (dragCanvasPos?.y ?: (clampedDropdownY + with(density) { 4.dp.toPx() } + ((draggingOptIndex ?: optIndex) + 0.5f) * optRowHeightPx)) + dragDelta.y
+            dragCanvasPos = Offset(curX, curY)
+
+            val pad = with(density) { 10.dp.toPx() }
+            val outside = curX < (clampedDropdownX - pad) ||
+                          curX > (clampedDropdownX + dropdownWidthPx + pad) ||
+                          curY < (clampedDropdownY - pad) ||
+                          curY > (clampedDropdownY + dropdownHeightPx + pad)
+            val escapeHoriz = kotlin.math.abs(newOffsetX) >= dropdownWidthPx * 0.35f
+
+            if (outside || escapeHoriz) {
+                isDraggingOut = true
+            } else {
+                isDraggingOut = false
+                if (isEditMode) {
+                    val currentIdx = draggingOptIndex ?: optIndex
+                    if (newOffsetY > optRowHeightPx * 0.5f && currentIdx < visibleOptions.lastIndex) {
+                        val mutable = optionsActionsList.toMutableList()
+                        val from = visibleOptions[currentIdx]
+                        val to = visibleOptions[currentIdx + 1]
+                        val idx1 = mutable.indexOf(from)
+                        val idx2 = mutable.indexOf(to)
+                        if (idx1 != -1 && idx2 != -1) {
+                            mutable[idx1] = to
+                            mutable[idx2] = from
+                            optionsActionsList = mutable
+                            draggingOptIndex = currentIdx + 1
+                            draggingOptOffsetY = newOffsetY - optRowHeightPx
+                            FileApexServices.settings.setFreestyleOptionsMenuOrder(
+                                FreestyleOptionAction.encodeOrder(mutable)
+                            )
+                        }
+                    } else if (newOffsetY < -optRowHeightPx * 0.5f && currentIdx > 0) {
+                        val mutable = optionsActionsList.toMutableList()
+                        val from = visibleOptions[currentIdx]
+                        val to = visibleOptions[currentIdx - 1]
+                        val idx1 = mutable.indexOf(from)
+                        val idx2 = mutable.indexOf(to)
+                        if (idx1 != -1 && idx2 != -1) {
+                            mutable[idx1] = to
+                            mutable[idx2] = from
+                            optionsActionsList = mutable
+                            draggingOptIndex = currentIdx - 1
+                            draggingOptOffsetY = newOffsetY + optRowHeightPx
+                            FileApexServices.settings.setFreestyleOptionsMenuOrder(
+                                FreestyleOptionAction.encodeOrder(mutable)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        val endDragAction = {
+            val currentIdx = draggingOptIndex
+            if (currentIdx != null && currentIdx in visibleOptions.indices && isDraggingOut) {
+                val actionToPin = visibleOptions[currentIdx]
+                val dropX = dragCanvasPos?.x ?: (clampedDropdownX + dropdownWidthPx / 2f)
+                val dropY = dragCanvasPos?.y ?: (clampedDropdownY + (currentIdx + 0.5f) * optRowHeightPx)
+                val fracX = (dropX / widthPx).coerceIn(0.06f, 0.94f)
+                val fracY = (dropY / heightPx).coerceIn(0.06f, 0.94f)
+                FileApexServices.settings.setFreestylePinnedActionOffset(freestyleMode, actionToPin.key, fracX, fracY)
+            }
+            draggingOptIndex = null
+            dragCanvasPos = null
+            isDraggingOut = false
+            draggingOptOffsetX = 0f
+            draggingOptOffsetY = 0f
         }
 
         Box(
@@ -450,34 +674,7 @@ fun FreestyleDevicesView(
                 }
             }
 
-            var optionsActionsList by remember(persistedOptionsMenuOrder) {
-                mutableStateOf(FreestyleOptionAction.parseOrder(persistedOptionsMenuOrder))
-            }
-
             if (optionsMenuExpanded) {
-                val dropdownWidthDp = 230.dp
-                val dropdownWidthPx = with(density) { dropdownWidthDp.toPx() }
-                val dropdownHeightDp = 260.dp
-                val dropdownHeightPx = with(density) { dropdownHeightDp.toPx() }
-
-                val idealDropdownX = liveOptionsPos.x
-                val clampedDropdownX = idealDropdownX.coerceIn(marginPx, (widthPx - marginPx - dropdownWidthPx).coerceAtLeast(marginPx))
-                val relDropdownXDp = with(density) { (clampedDropdownX - liveOptionsPos.x).toDp() }
-
-                val placeBelow = (liveOptionsPos.y + optionsButtonHeightPx + with(density) { 6.dp.toPx() } + dropdownHeightPx) <= (heightPx - bottomMarginPx)
-                val idealDropdownY = if (placeBelow) {
-                    liveOptionsPos.y + optionsButtonHeightPx + with(density) { 6.dp.toPx() }
-                } else {
-                    liveOptionsPos.y - dropdownHeightPx - with(density) { 6.dp.toPx() }
-                }
-                val clampedDropdownY = idealDropdownY.coerceIn(topMarginPx, (heightPx - bottomMarginPx - dropdownHeightPx).coerceAtLeast(topMarginPx))
-                val relDropdownYDp = with(density) { (clampedDropdownY - liveOptionsPos.y).toDp() }
-
-                var draggingOptIndex by remember { mutableStateOf<Int?>(null) }
-                var draggingOptOffsetY by remember { mutableStateOf(0f) }
-                val optRowHeightDp = 40.dp
-                val optRowHeightPx = with(density) { optRowHeightDp.toPx() }
-
                 Surface(
                     modifier = Modifier
                         .offset(x = relDropdownXDp, y = relDropdownYDp)
@@ -499,119 +696,151 @@ fun FreestyleDevicesView(
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
                     ) {
-                        optionsActionsList.forEachIndexed { optIndex, optAction ->
-                            val isAvailable = when (optAction) {
-                                FreestyleOptionAction.SEND_CLIPBOARD -> onSendClipboard != null
-                                FreestyleOptionAction.CHECK_BATTERIES -> onCheckBatteries != null
-                                FreestyleOptionAction.SETTINGS -> onOpenSettings != null
-                                else -> true
-                            }
-                            if (!isAvailable && !isEditMode) return@forEachIndexed
-
-                            key(optAction.name) {
-                                val isDragging = draggingOptIndex == optIndex
-                                val translationY = if (isDragging) draggingOptOffsetY else 0f
-                                val zIndexVal = if (isDragging) 50f else 1f
-
-                                Surface(
-                                    color = if (isDragging) Color(0x5564B5F6) else Color.Transparent,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(optRowHeightDp)
-                                        .zIndex(zIndexVal)
-                                        .graphicsLayer { this.translationY = translationY }
-                                        .clickable(enabled = !isEditMode) {
-                                            optionsMenuExpanded = false
-                                            when (optAction) {
-                                                FreestyleOptionAction.FILES -> showFilesWindow = true
-                                                FreestyleOptionAction.ADD_DEVICE -> onGenerateQr()
-                                                FreestyleOptionAction.JOIN_DEVICE -> onJoinDevice()
-                                                FreestyleOptionAction.SEND_CLIPBOARD -> onSendClipboard?.invoke()
-                                                FreestyleOptionAction.CHECK_BATTERIES -> onCheckBatteries?.invoke()
-                                                FreestyleOptionAction.SETTINGS -> onOpenSettings?.invoke()
-                                            }
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                        if (visibleOptions.isEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "All shortcuts placed on screen",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = Color(0xFF64B5F6),
+                                    textAlign = TextAlign.Center
+                                )
+                                if (isEditMode) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Button(
+                                        onClick = {
+                                            livePinnedPositions.clear()
+                                            FileApexServices.settings.resetFreestylePinnedActions(freestyleMode)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+                                        shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        if (isEditMode) {
-                                            Icon(
-                                                imageVector = Icons.Filled.DragHandle,
-                                                contentDescription = stringRes("reorder_devices"),
-                                                tint = Color(0xFFFFB300),
+                                        Text(
+                                            text = "Return All to Menu",
+                                            fontSize = 12.sp,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            visibleOptions.forEachIndexed { optIndex, optAction ->
+                                val isAvailable = when (optAction) {
+                                    FreestyleOptionAction.SEND_CLIPBOARD -> onSendClipboard != null
+                                    FreestyleOptionAction.CHECK_BATTERIES -> onCheckBatteries != null
+                                    FreestyleOptionAction.SETTINGS -> onOpenSettings != null
+                                    else -> true
+                                }
+                                if (!isAvailable && !isEditMode) return@forEachIndexed
+
+                                key(optAction.name) {
+                                    val isDragging = draggingOptIndex == optIndex
+                                    val zIndexVal = if (isDragging) 50f else 1f
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(optRowHeightDp)
+                                            .zIndex(zIndexVal)
+                                            .pointerInput(optAction, dropdownWidthPx, isEditMode) {
+                                                detectDragGestures(
+                                                    onDragStart = { startDragAction(optIndex) },
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        onDragDeltaAction(optIndex, dragAmount)
+                                                    },
+                                                    onDragEnd = { endDragAction() },
+                                                    onDragCancel = { endDragAction() }
+                                                )
+                                            }
+                                    ) {
+                                        Surface(
+                                            color = if (isDragging && !isDraggingOut) Color(0x5564B5F6) else Color.Transparent,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer {
+                                                    if (isDragging) {
+                                                        if (isDraggingOut) {
+                                                            alpha = 0.35f
+                                                        } else {
+                                                            translationY = draggingOptOffsetY.coerceIn(-optRowHeightPx * 0.8f, optRowHeightPx * 0.8f)
+                                                        }
+                                                    }
+                                                }
+                                                .clickable(enabled = !isDraggingOut) {
+                                                    if (!isEditMode) {
+                                                        optionsMenuExpanded = false
+                                                        when (optAction) {
+                                                            FreestyleOptionAction.FILES -> showFilesWindow = true
+                                                            FreestyleOptionAction.ADD_DEVICE -> onGenerateQr()
+                                                            FreestyleOptionAction.JOIN_DEVICE -> onJoinDevice()
+                                                            FreestyleOptionAction.SEND_CLIPBOARD -> onSendClipboard?.invoke()
+                                                            FreestyleOptionAction.CHECK_BATTERIES -> onCheckBatteries?.invoke()
+                                                            FreestyleOptionAction.SETTINGS -> onOpenSettings?.invoke()
+                                                        }
+                                                    }
+                                                }
+                                        ) {
+                                            Row(
                                                 modifier = Modifier
-                                                    .size(20.dp)
-                                                    .pointerInput(optAction) {
-                                                        detectDragGestures(
-                                                            onDragStart = {
-                                                                draggingOptIndex = optIndex
-                                                                draggingOptOffsetY = 0f
-                                                            },
-                                                            onDrag = { change, dragAmount ->
-                                                                change.consume()
-                                                                val currentIdx = draggingOptIndex ?: optIndex
-                                                                val newOffset = draggingOptOffsetY + dragAmount.y
-                                                                draggingOptOffsetY = newOffset
-                                                                if (newOffset > optRowHeightPx * 0.5f && currentIdx < optionsActionsList.lastIndex) {
-                                                                    val mutable = optionsActionsList.toMutableList()
-                                                                    val temp = mutable[currentIdx]
-                                                                    mutable[currentIdx] = mutable[currentIdx + 1]
-                                                                    mutable[currentIdx + 1] = temp
-                                                                    optionsActionsList = mutable
-                                                                    draggingOptIndex = currentIdx + 1
-                                                                    draggingOptOffsetY = newOffset - optRowHeightPx
-                                                                    FileApexServices.settings.setFreestyleOptionsMenuOrder(
-                                                                        FreestyleOptionAction.encodeOrder(mutable)
-                                                                    )
-                                                                } else if (newOffset < -optRowHeightPx * 0.5f && currentIdx > 0) {
-                                                                    val mutable = optionsActionsList.toMutableList()
-                                                                    val temp = mutable[currentIdx]
-                                                                    mutable[currentIdx] = mutable[currentIdx - 1]
-                                                                    mutable[currentIdx - 1] = temp
-                                                                    optionsActionsList = mutable
-                                                                    draggingOptIndex = currentIdx - 1
-                                                                    draggingOptOffsetY = newOffset + optRowHeightPx
-                                                                    FileApexServices.settings.setFreestyleOptionsMenuOrder(
-                                                                        FreestyleOptionAction.encodeOrder(mutable)
-                                                                    )
-                                                                }
-                                                            },
-                                                            onDragEnd = {
-                                                                draggingOptIndex = null
-                                                                draggingOptOffsetY = 0f
-                                                            },
-                                                            onDragCancel = {
-                                                                draggingOptIndex = null
-                                                                draggingOptOffsetY = 0f
-                                                            }
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = if (isEditMode) 6.dp else 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (isEditMode) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DragHandle,
+                                                        contentDescription = stringRes("reorder_devices"),
+                                                        tint = Color(0xFFFFB300),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    IconButton(
+                                                        onClick = {
+                                                            val deltaX = with(density) { (if (liveOptionsPos.x > widthPx / 2) -90.dp else 90.dp).toPx() }
+                                                            val deltaY = with(density) { -80.dp.toPx() }
+                                                            val initialX = ((liveOptionsPos.x + deltaX) / widthPx).coerceIn(0.1f, 0.9f)
+                                                            val initialY = ((liveOptionsPos.y + deltaY) / heightPx).coerceIn(0.1f, 0.85f)
+                                                            FileApexServices.settings.setFreestylePinnedActionOffset(freestyleMode, optAction.key, initialX, initialY)
+                                                        },
+                                                        modifier = Modifier.size(22.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.AddCircleOutline,
+                                                            contentDescription = "Place on screen",
+                                                            tint = Color(0xFFFFB300),
+                                                            modifier = Modifier.size(16.dp)
                                                         )
                                                     }
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                }
+                                                Icon(
+                                                    imageVector = optAction.icon,
+                                                    contentDescription = null,
+                                                    tint = if (isEditMode) Color(0xFFFFB300) else Color(0xFF64B5F6),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = optAction.label(),
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        fontWeight = if (isEditMode) FontWeight.SemiBold else FontWeight.Normal,
+                                                        fontSize = 12.5.sp
+                                                    ),
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         }
-                                        Icon(
-                                            imageVector = optAction.icon,
-                                            contentDescription = null,
-                                            tint = if (isEditMode) Color(0xFFFFB300) else Color(0xFF64B5F6),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text(
-                                            text = optAction.label(),
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = if (isEditMode) FontWeight.SemiBold else FontWeight.Normal,
-                                                fontSize = 13.sp
-                                            ),
-                                            color = Color.White,
-                                            modifier = Modifier.weight(1f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
                                     }
                                 }
                             }
@@ -621,12 +850,261 @@ fun FreestyleDevicesView(
             }
         }
 
+        // Ghost button while dragging an option outside the menu onto the canvas
+        if (optionsMenuExpanded && draggingOptIndex != null && isDraggingOut && dragCanvasPos != null) {
+            val currentIdx = draggingOptIndex!!
+            if (currentIdx in visibleOptions.indices) {
+                val ghostAction = visibleOptions[currentIdx]
+                val ghostX = (dragCanvasPos!!.x - deviceButtonSizePx / 2f)
+                    .coerceIn(marginPx, widthPx - marginPx - deviceButtonSizePx)
+                val ghostY = (dragCanvasPos!!.y - deviceButtonSizePx / 2f)
+                    .coerceIn(topMarginPx, heightPx - bottomMarginPx - deviceButtonSizePx)
+
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(ghostX.roundToInt(), ghostY.roundToInt()) }
+                        .size(deviceButtonSizeDp)
+                        .zIndex(400f)
+                        .alpha(0.92f)
+                        .shadow(16.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xDD0D3859),
+                                    Color(0xEE050B12)
+                                )
+                            ),
+                            CircleShape
+                        )
+                        .border(BorderStroke(2.5.dp, Color(0xFFFFB300)), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val iconStyle = LocalThemeIconStyle.current
+                    FreestyleOptionIcon(
+                        action = ghostAction,
+                        iconStyle = iconStyle,
+                        modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
+                            Modifier.size(32.dp)
+                        } else {
+                            Modifier.fillMaxSize().padding(2.5.dp)
+                        },
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+        // Render Pinned Canvas Action Buttons
+        currentPinnedActionsMap.forEach { (actionKey, offsetFraction) ->
+            val optAction = FreestyleOptionAction.entries.firstOrNull { it.key == actionKey } ?: return@forEach
+
+            val minDeviceX = marginPx
+            val maxDeviceX = (widthPx - marginPx - deviceButtonSizePx).coerceAtLeast(marginPx)
+            val minDeviceY = topMarginPx
+            val maxDeviceY = (heightPx - bottomMarginPx - deviceButtonSizePx - with(density) { 36.dp.toPx() }).coerceAtLeast(topMarginPx)
+
+            val livePos = livePinnedPositions.getOrPut(actionKey) {
+                val initialX = offsetFraction.first * widthPx - (deviceButtonSizePx / 2f)
+                val initialY = offsetFraction.second * heightPx - (deviceButtonSizePx / 2f)
+                Offset(
+                    initialX.coerceIn(minDeviceX, maxDeviceX),
+                    initialY.coerceIn(minDeviceY, maxDeviceY)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(livePos.x.roundToInt(), livePos.y.roundToInt()) }
+                    .zIndex(if (isEditMode) 60f else 30f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(deviceButtonSizeDp)
+                        .pointerInput(actionKey, freestyleMode, widthPx, heightPx) {
+                            detectDragGestures(
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val cur = livePinnedPositions[actionKey] ?: livePos
+                                    val nextX = (cur.x + dragAmount.x).coerceIn(minDeviceX, maxDeviceX)
+                                    val nextY = (cur.y + dragAmount.y).coerceIn(minDeviceY, maxDeviceY)
+                                    livePinnedPositions[actionKey] = Offset(nextX, nextY)
+                                },
+                                onDragEnd = {
+                                    val finalPos = livePinnedPositions[actionKey] ?: livePos
+                                    val centerX = finalPos.x + (deviceButtonSizePx / 2f)
+                                    val centerY = finalPos.y + (deviceButtonSizePx / 2f)
+                                    val fracX = (centerX / widthPx).coerceIn(0f, 1f)
+                                    val fracY = (centerY / heightPx).coerceIn(0f, 1f)
+                                    FileApexServices.settings.setFreestylePinnedActionOffset(freestyleMode, actionKey, fracX, fracY)
+                                }
+                            )
+                        }
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .clickable(enabled = !isEditMode) {
+                                when (optAction) {
+                                    FreestyleOptionAction.FILES -> showFilesWindow = true
+                                    FreestyleOptionAction.ADD_DEVICE -> onGenerateQr()
+                                    FreestyleOptionAction.JOIN_DEVICE -> onJoinDevice()
+                                    FreestyleOptionAction.SEND_CLIPBOARD -> onSendClipboard?.invoke()
+                                    FreestyleOptionAction.CHECK_BATTERIES -> onCheckBatteries?.invoke()
+                                    FreestyleOptionAction.SETTINGS -> onOpenSettings?.invoke()
+                                }
+                            },
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                        border = BorderStroke(
+                            width = if (isEditMode) 2.5.dp else 1.5.dp,
+                            color = if (isEditMode) Color(0xFFFFB300) else Color(0xFF64B5F6)
+                        ),
+                        shadowElevation = if (isEditMode) 12.dp else 8.dp
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            Color(0xDD0D3859),
+                                            Color(0xEE050B12)
+                                        )
+                                    ),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val iconStyle = LocalThemeIconStyle.current
+                            val buttonBorderWidth = if (isEditMode) 2.5.dp else 1.5.dp
+                            FreestyleOptionIcon(
+                                action = optAction,
+                                iconStyle = iconStyle,
+                                modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
+                                    Modifier.size(32.dp)
+                                } else {
+                                    Modifier.fillMaxSize().padding(buttonBorderWidth)
+                                },
+                                tint = Color.White
+                            )
+
+                            if (isEditMode) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DragHandle,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB300),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Delete / Unpin button in edit mode on top-right
+                    if (isEditMode) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 4.dp, y = (-4).dp)
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE53935))
+                                .border(BorderStroke(1.5.dp, Color.White), CircleShape)
+                                .clickable {
+                                    livePinnedPositions.remove(actionKey)
+                                    FileApexServices.settings.removeFreestylePinnedAction(freestyleMode, actionKey)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Remove from screen",
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Action Label placed directly below the button
+                Column(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                -with(density) { 16.dp.toPx() }.roundToInt(),
+                                (deviceButtonSizePx + with(density) { 4.dp.toPx() }).roundToInt()
+                            )
+                        }
+                        .width(deviceButtonSizeDp + 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = optAction.label(),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp
+                        ),
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        val minDeviceClearancePx = with(density) { 92.dp.toPx() }
+        val nameOffsetPx = with(density) { 36.dp.toPx() }
+        val minDeviceX = marginPx
+        val maxDeviceX = (widthPx - marginPx - deviceButtonSizePx).coerceAtLeast(marginPx)
+        val minDeviceY = topMarginPx
+        val maxDeviceY = (heightPx - bottomMarginPx - deviceButtonSizePx - nameOffsetPx).coerceAtLeast(topMarginPx)
+
+        // Track occupied centers for non-overlapping placement
+        val placedCenters = mutableListOf<Offset>()
+        val currentOptPos = liveOptionsPos
+        val optCenterX = currentOptPos.x + (optionsButtonWidthPx / 2f)
+        val optCenterY = currentOptPos.y + (optionsButtonHeightPx / 2f)
+        val optRadiusPx = (optionsButtonWidthPx / 2f) + (deviceButtonSizePx / 2f) + 8f
+
+        // Pre-populate placedCenters with devices that already have a persisted / user-assigned position
+        deviceRows.forEach { r ->
+            val scopedKey = "$layoutScopePrefix${r.deviceId}"
+            val cached = when (freestyleMode) {
+                FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[scopedKey] ?: persistedCardNodeOffsets[r.deviceId]
+                FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalNodeOffsets[scopedKey]
+                    ?: persistedCardNodeOffsets[scopedKey]
+                    ?: persistedCardVerticalNodeOffsets[r.deviceId]
+                    ?: persistedCardNodeOffsets[r.deviceId]
+                FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[scopedKey] ?: persistedTileNodeOffsets[r.deviceId]
+            }
+            val sfx = cached?.first ?: (if (freestyleMode == FreestyleLayoutMode.TILES) r.tilePosX else r.cardPosX)
+            val sfy = cached?.second ?: (if (freestyleMode == FreestyleLayoutMode.TILES) r.tilePosY else r.cardPosY)
+            if (sfx != null && sfy != null) {
+                val cx = (sfx * widthPx).coerceIn(minDeviceX + deviceButtonSizePx / 2f, maxDeviceX + deviceButtonSizePx / 2f)
+                val cy = (sfy * heightPx).coerceIn(minDeviceY + deviceButtonSizePx / 2f, maxDeviceY + deviceButtonSizePx / 2f)
+                placedCenters.add(Offset(cx, cy))
+            }
+        }
+
         // Render Device Nodes and Menus
         deviceRows.forEachIndexed { index, row ->
+            val scopedDeviceId = "$layoutScopePrefix${row.deviceId}"
             val cachedOffset = when (freestyleMode) {
-                FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[row.deviceId]
-                FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalNodeOffsets[row.deviceId] ?: persistedCardNodeOffsets[row.deviceId]
-                FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[row.deviceId]
+                FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[scopedDeviceId] ?: persistedCardNodeOffsets[row.deviceId]
+                FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalNodeOffsets[scopedDeviceId]
+                    ?: persistedCardNodeOffsets[scopedDeviceId]
+                    ?: persistedCardVerticalNodeOffsets[row.deviceId]
+                    ?: persistedCardNodeOffsets[row.deviceId]
+                FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[scopedDeviceId] ?: persistedTileNodeOffsets[row.deviceId]
             }
             val savedFractionX = cachedOffset?.first ?: (if (freestyleMode == FreestyleLayoutMode.TILES) row.tilePosX else row.cardPosX)
             val savedFractionY = cachedOffset?.second ?: (if (freestyleMode == FreestyleLayoutMode.TILES) row.tilePosY else row.cardPosY)
@@ -651,19 +1129,84 @@ fun FreestyleDevicesView(
                 }
             }
 
-            val nameOffsetPx = with(density) { 36.dp.toPx() }
-            val minDeviceX = marginPx
-            val maxDeviceX = (widthPx - marginPx - deviceButtonSizePx).coerceAtLeast(marginPx)
-            val minDeviceY = topMarginPx
-            val maxDeviceY = (heightPx - bottomMarginPx - deviceButtonSizePx - nameOffsetPx).coerceAtLeast(topMarginPx)
+            val livePos = liveNodePositions.getOrPut(scopedDeviceId) {
+                if (savedFractionX != null && savedFractionY != null) {
+                    val initialX = savedFractionX * widthPx - (deviceButtonSizePx / 2f)
+                    val initialY = savedFractionY * heightPx - (deviceButtonSizePx / 2f)
+                    Offset(
+                        initialX.coerceIn(minDeviceX, maxDeviceX),
+                        initialY.coerceIn(minDeviceY, maxDeviceY)
+                    )
+                } else {
+                    // For new/unassigned devices: find a non-overlapping location
+                    fun isClear(candidate: Offset): Boolean {
+                        val cCenterX = candidate.x + (deviceButtonSizePx / 2f)
+                        val cCenterY = candidate.y + (deviceButtonSizePx / 2f)
+                        val dxOpt = cCenterX - optCenterX
+                        val dyOpt = cCenterY - optCenterY
+                        if (kotlin.math.sqrt(dxOpt * dxOpt + dyOpt * dyOpt) < optRadiusPx) return false
 
-            val livePos = liveNodePositions.getOrPut(row.deviceId) {
-                val initialX = savedFractionX?.let { it * widthPx - (deviceButtonSizePx / 2f) } ?: defaultPos.x
-                val initialY = savedFractionY?.let { it * heightPx - (deviceButtonSizePx / 2f) } ?: defaultPos.y
-                Offset(
-                    initialX.coerceIn(minDeviceX, maxDeviceX),
-                    initialY.coerceIn(minDeviceY, maxDeviceY)
-                )
+                        return placedCenters.none { placed ->
+                            val dx = cCenterX - placed.x
+                            val dy = cCenterY - placed.y
+                            kotlin.math.sqrt(dx * dx + dy * dy) < minDeviceClearancePx
+                        }
+                    }
+
+                    val initialDefault = Offset(
+                        defaultPos.x.coerceIn(minDeviceX, maxDeviceX),
+                        defaultPos.y.coerceIn(minDeviceY, maxDeviceY)
+                    )
+
+                    val resolved = if (isClear(initialDefault)) {
+                        initialDefault
+                    } else {
+                        var best = initialDefault
+                        var maxMinDist = -1f
+                        val centerCanvasX = widthPx / 2f
+                        val centerCanvasY = heightPx * 0.40f
+                        val candidateRadii = listOf(
+                            (widthPx * 0.32f).coerceAtLeast(100f),
+                            (widthPx * 0.22f).coerceAtLeast(80f),
+                            (widthPx * 0.42f).coerceAtLeast(120f)
+                        )
+                        val steps = 24
+                        var found = false
+
+                        for (r in candidateRadii) {
+                            if (found) break
+                            for (s in 0 until steps) {
+                                val angle = (2.0 * PI * s / steps) - (PI / 2.0)
+                                val cx = (centerCanvasX + (r * cos(angle)).toFloat() - (deviceButtonSizePx / 2f)).coerceIn(minDeviceX, maxDeviceX)
+                                val cy = (centerCanvasY + (r * sin(angle)).toFloat() - (deviceButtonSizePx / 2f)).coerceIn(minDeviceY, maxDeviceY)
+                                val candidate = Offset(cx, cy)
+
+                                if (isClear(candidate)) {
+                                    best = candidate
+                                    found = true
+                                    break
+                                } else {
+                                    val cCenterX = candidate.x + (deviceButtonSizePx / 2f)
+                                    val cCenterY = candidate.y + (deviceButtonSizePx / 2f)
+                                    val minDist = if (placedCenters.isEmpty()) Float.MAX_VALUE else {
+                                        placedCenters.minOf { placed ->
+                                            val dx = cCenterX - placed.x
+                                            val dy = cCenterY - placed.y
+                                            kotlin.math.sqrt(dx * dx + dy * dy)
+                                        }
+                                    }
+                                    if (minDist > maxMinDist) {
+                                        maxMinDist = minDist
+                                        best = candidate
+                                    }
+                                }
+                            }
+                        }
+                        best
+                    }
+                    placedCenters.add(Offset(resolved.x + deviceButtonSizePx / 2f, resolved.y + deviceButtonSizePx / 2f))
+                    resolved
+                }
             }
 
             val isExpanded = activeDeviceId == row.deviceId
@@ -696,7 +1239,7 @@ fun FreestyleDevicesView(
                 Box(
                     modifier = Modifier
                         .size(deviceButtonSizeDp)
-                        .pointerInput(row.deviceId, freestyleMode, widthPx, heightPx) {
+                        .pointerInput(scopedDeviceId, freestyleMode, widthPx, heightPx) {
                             detectDragGestures(
                                 onDragStart = {
                                     if (!isEditMode) {
@@ -705,22 +1248,22 @@ fun FreestyleDevicesView(
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    val cur = liveNodePositions[row.deviceId] ?: livePos
+                                    val cur = liveNodePositions[scopedDeviceId] ?: livePos
                                     val nextX = (cur.x + dragAmount.x).coerceIn(minDeviceX, maxDeviceX)
                                     val nextY = (cur.y + dragAmount.y).coerceIn(minDeviceY, maxDeviceY)
-                                    liveNodePositions[row.deviceId] = Offset(nextX, nextY)
+                                    liveNodePositions[scopedDeviceId] = Offset(nextX, nextY)
                                 },
                                 onDragEnd = {
-                                    val finalPos = liveNodePositions[row.deviceId] ?: livePos
+                                    val finalPos = liveNodePositions[scopedDeviceId] ?: livePos
                                     val centerX = finalPos.x + (deviceButtonSizePx / 2f)
                                     val centerY = finalPos.y + (deviceButtonSizePx / 2f)
                                     val fracX = (centerX / widthPx).coerceIn(0f, 1f)
                                     val fracY = (centerY / heightPx).coerceIn(0f, 1f)
-                                    FileApexServices.settings.setFreestyleNodeOffset(freestyleMode, row.deviceId, fracX, fracY)
+                                    FileApexServices.settings.setFreestyleNodeOffset(freestyleMode, scopedDeviceId, fracX, fracY)
                                     if (freestyleMode == FreestyleLayoutMode.TILES) {
-                                        onSaveDeviceTilePosition(row.deviceId, fracX, fracY)
+                                        onSaveDeviceTilePosition(scopedDeviceId, fracX, fracY)
                                     } else {
-                                        onSaveDeviceCardPosition(row.deviceId, fracX, fracY)
+                                        onSaveDeviceCardPosition(scopedDeviceId, fracX, fracY)
                                     }
                                 }
                             )
@@ -729,6 +1272,7 @@ fun FreestyleDevicesView(
                     Surface(
                         modifier = Modifier
                             .fillMaxSize()
+                            .clip(CircleShape)
                             .deviceFileDropTarget(
                                 enabled = true,
                                 onHoverChange = { dropHover = it },
@@ -748,13 +1292,15 @@ fun FreestyleDevicesView(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
                                         colors = listOf(
                                             if (dropHover) Color(0xCC00E676) else (if (isExpanded) Color(0xCC0D3859) else Color(0xDD0D1E2D)),
                                             Color(0xEE050B12)
                                         )
-                                    )
+                                    ),
+                                    shape = CircleShape
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1766,9 +2312,14 @@ private fun FreestyleHorizontalCardItem(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 2.dp, vertical = 3.dp),
+                .padding(
+                    start = 2.dp,
+                    end = 2.dp,
+                    top = if (isEditMode) 3.dp else 7.dp,
+                    bottom = if (isEditMode) 3.dp else 6.dp
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = if (isEditMode) Arrangement.SpaceBetween else Arrangement.spacedBy(3.dp, Alignment.CenterVertically)
         ) {
             if (isEditMode) {
                 Icon(

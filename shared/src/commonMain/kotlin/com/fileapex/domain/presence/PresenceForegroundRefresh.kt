@@ -8,11 +8,12 @@ object PresenceForegroundRefresh {
     fun onAppForegrounded() {
         if (!FileApexServices.isDatabaseReady()) return
         FileApexServices.presenceMonitor.setAppInForeground(true)
-        GoogleLinkCoordinator.refreshCloudRegistry()
         FileApexServices.presenceMonitor.refreshPeersOnForeground()
         FileApexServices.transferQueue.scheduleDrain()
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.onAppForegrounded()
         com.fileapex.platform.ClipboardAccessibilityHealth.refresh()
+        // Cloud registry after local UI path — Firestore upserts were stacking Room writers.
+        GoogleLinkCoordinator.refreshCloudRegistry()
     }
 
     fun onAppBackgrounded() {

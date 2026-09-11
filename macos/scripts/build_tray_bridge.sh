@@ -35,8 +35,11 @@ SWIFT_SOURCES=(
 compile_arch() {
   local arch="$1"
   local output="$2"
+  mkdir -p "$ROOT/macos/build/module-cache"
   swiftc -O \
     -target "${arch}-apple-macosx14.0" \
+    -module-cache-path "$ROOT/macos/build/module-cache" \
+    -Xcc -fmodules-cache-path="$ROOT/macos/build/module-cache" \
     -emit-library \
     -o "$output" \
     "${SWIFT_SOURCES[@]}" \
@@ -54,6 +57,7 @@ compile_arch x86_64 "$OUT/libFileApexTray_x86_64.dylib"
 
 lipo -create -output "$OUT/libFileApexTray.dylib" "$OUT/libFileApexTray_arm64.dylib" "$OUT/libFileApexTray_x86_64.dylib"
 rm -f "$OUT/libFileApexTray_arm64.dylib" "$OUT/libFileApexTray_x86_64.dylib"
+rm -rf "$ROOT/macos/build/module-cache"
 
 codesign --force --sign - "$OUT/libFileApexTray.dylib"
 echo "Built Universal (arm64 + x86_64) $OUT/libFileApexTray.dylib"

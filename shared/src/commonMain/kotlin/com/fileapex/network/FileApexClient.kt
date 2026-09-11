@@ -593,16 +593,19 @@ class FileApexClient(
         host: String,
         port: Int,
         localSourcePath: String,
-        remoteTargetPath: String
+        remoteTargetPath: String,
+        knownResumeOffset: Long? = null,
+        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
     ) {
         val source = Path(localSourcePath)
         check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
         val totalSize = SystemFileSystem.metadataOrNull(source)?.size?.coerceAtLeast(0L) ?: 0L
         var lastError: Throwable? = null
         repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
-            val offset = queryUploadResumeOffset(host, port, remoteTargetPath, totalSize)
+            val offset = (if (attempt == 0 && knownResumeOffset != null) knownResumeOffset else queryUploadResumeOffset(host, port, remoteTargetPath, totalSize))
                 .coerceAtMost(totalSize)
             if (offset >= totalSize && totalSize > 0L) {
+                onProgress?.invoke(totalSize, totalSize)
                 return
             }
             val remaining = (totalSize - offset).coerceAtLeast(0L)
@@ -619,7 +622,8 @@ class FileApexClient(
                     offset = offset,
                     length = remaining,
                     connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-                    uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
+                    uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
+                    onProgress = onProgress
                 ) ?: error(PeerLanHttpPolicy.unreachableMessage(host, port))
                 if (response.statusCode == 403) {
                     error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
@@ -627,6 +631,7 @@ class FileApexClient(
                 require(response.statusCode in 200..299) {
                     "${AppI18n.t("upload_failed")} (${response.statusCode})"
                 }
+                onProgress?.invoke(totalSize, totalSize)
                 return
             } catch (error: Throwable) {
                 lastError = error

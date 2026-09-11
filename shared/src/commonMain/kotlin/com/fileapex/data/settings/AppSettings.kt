@@ -12,6 +12,9 @@ interface AppSettings {
     val googleAccountUid: StateFlow<String>
     val multiCopyIntroAcknowledged: StateFlow<Boolean>
     val clipboardSharingEnabled: StateFlow<Boolean>
+    val clipboardDisclosureAcknowledged: StateFlow<Boolean>
+    val accessibilityDisclosureAcknowledged: StateFlow<Boolean>
+    val installPackagesDisclosureAcknowledged: StateFlow<Boolean>
     val clipboardShareMode: StateFlow<ClipboardShareMode>
     val clipboardTargetDeviceIds: StateFlow<Set<String>>
     val clipboardViaCellularEnabled: StateFlow<Boolean>
@@ -37,6 +40,8 @@ interface AppSettings {
     val deviceOrderIds: StateFlow<String>
     val deviceOrderUpdatedAtEpochMs: StateFlow<Long>
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
+    val desktopSplitFraction: StateFlow<Float>
+    val explorerSplitFraction: StateFlow<Float>
     /** Windows only; ignored on Android and non-Windows desktops. */
     val desktopUiStyle: StateFlow<DesktopUiStyle>
     val explorerViewMode: StateFlow<ExplorerViewMode>
@@ -83,6 +88,9 @@ interface AppSettings {
     val freestyleCardVerticalMenuOrders: StateFlow<Map<String, String>>
     val freestyleTileMenuOrders: StateFlow<Map<String, String>>
     val freestyleOptionsMenuOrder: StateFlow<String>
+    val freestyleCardPinnedActions: StateFlow<Map<String, Pair<Float, Float>>>
+    val freestyleCardVerticalPinnedActions: StateFlow<Map<String, Pair<Float, Float>>>
+    val freestyleTilePinnedActions: StateFlow<Map<String, Pair<Float, Float>>>
 
     val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean>
     val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean>
@@ -93,6 +101,9 @@ interface AppSettings {
     fun setGoogleAccountUid(uid: String)
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
     fun setClipboardSharingEnabled(enabled: Boolean)
+    fun setClipboardDisclosureAcknowledged(acknowledged: Boolean)
+    fun setAccessibilityDisclosureAcknowledged(acknowledged: Boolean)
+    fun setInstallPackagesDisclosureAcknowledged(acknowledged: Boolean)
     fun setClipboardShareMode(mode: ClipboardShareMode)
     fun setClipboardTargetDeviceIds(deviceIds: Set<String>)
     fun setClipboardTargetDevice(deviceId: String, selected: Boolean)
@@ -142,6 +153,9 @@ interface AppSettings {
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode)
 
+    fun setDesktopSplitFraction(fraction: Float)
+    fun setExplorerSplitFraction(fraction: Float)
+
     fun setDesktopUiStyle(style: DesktopUiStyle)
 
     fun setExplorerViewMode(mode: ExplorerViewMode)
@@ -165,6 +179,9 @@ interface AppSettings {
     fun setFreestyleCardVerticalMenuOrder(deviceId: String, order: String)
     fun setFreestyleTileMenuOrder(deviceId: String, order: String)
     fun setFreestyleOptionsMenuOrder(order: String)
+    fun setFreestylePinnedActionOffset(mode: FreestyleLayoutMode, actionKey: String, x: Float, y: Float)
+    fun removeFreestylePinnedAction(mode: FreestyleLayoutMode, actionKey: String)
+    fun resetFreestylePinnedActions(mode: FreestyleLayoutMode)
 
     fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences)
 

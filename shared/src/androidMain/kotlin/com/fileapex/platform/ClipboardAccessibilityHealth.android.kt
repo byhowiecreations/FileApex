@@ -36,6 +36,7 @@ actual object ClipboardAccessibilityHealth {
     private var servicesListener: AccessibilityManager.AccessibilityServicesStateChangeListener? = null
 
     actual fun start() {
+        if (FileApexServices.isPlayStoreBuild) return
         val context = androidAppContextOrNull() ?: return
         if (!started.compareAndSet(false, true)) {
             refresh()
@@ -74,6 +75,10 @@ actual object ClipboardAccessibilityHealth {
     }
 
     actual fun refresh() {
+        if (FileApexServices.isPlayStoreBuild) {
+            _needsReenable.value = false
+            return
+        }
         if (FileApexServices.isDatabaseReady()) {
             val settings = FileApexServices.settings
             val summary =
@@ -104,9 +109,9 @@ actual object ClipboardAccessibilityHealth {
         ClipboardAccessibilitySettings.openSystemPrompt()
     }
 
-    actual fun isBound(): Boolean = bound.get()
+    actual fun isBound(): Boolean = if (FileApexServices.isPlayStoreBuild) false else bound.get()
 
-    actual fun isListed(): Boolean = isServiceListedEnabled()
+    actual fun isListed(): Boolean = if (FileApexServices.isPlayStoreBuild) false else isServiceListedEnabled()
 
     private fun evaluateUnhealthy(): Boolean {
         if (!FileApexServices.isDatabaseReady()) return false

@@ -69,7 +69,9 @@ object FileApexAndroidBootstrap {
             com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
             fullyInitialized = true
             ClipboardAccessibilityHealth.start()
-            ClipboardShizukuAccess.start()
+            if (!FileApexServices.isPlayStoreBuild) {
+                ClipboardShizukuAccess.start()
+            }
             BatteryBulletinCoordinator.onProcessStart(appContext)
             Log.i(TAG, "Android process init complete")
             return true

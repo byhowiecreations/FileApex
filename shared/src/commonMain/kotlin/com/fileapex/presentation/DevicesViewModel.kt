@@ -213,9 +213,7 @@ class DevicesViewModel : ViewModel() {
             val sending = AppI18n.t("sending_clipboard")
             _uiState.update { it.copy(statusMessage = sending) }
             val message = com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboardNow()
-            if (message == sending) {
-                _uiState.update { it.copy(statusMessage = sending) }
-            } else {
+            if (message != sending) {
                 _uiState.update { it.copy(statusMessage = null, errorMessage = message) }
             }
         }
@@ -976,7 +974,7 @@ class DevicesViewModel : ViewModel() {
     fun checkBatteries() {
         viewModelScope.launch {
             val initialLogs = listOf(
-                "FileApex Linux v0.10.2a (tty1)",
+                "FileApex Linux v0.10.3a (tty1)",
                 "login: fileapex",
                 "fileapex@node:~$ batstat --all-devices",
                 "[INIT] Polling battery telemetry across cluster...",

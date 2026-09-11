@@ -200,9 +200,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="no_preview">No preview available.</string>
     <string name="posted_to_bulletin">Posted to Bulletin Board</string>
     <string name="text_copied_select_device">Text copied to clipboard — select a device to send</string>
-    <string name="copied_to_clipboard">Copied to clipboard</string>
-    <string name="copy_to_clipboard">Copy to clipboard</string>
-    <string name="clipboard_received_from">Clipboard from %1$s</string>
     <string name="filter_all">All</string>
     <string name="filter_links">Links</string>
     <string name="filter_images">Images</string>
@@ -379,8 +376,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="complete_highlighted_first">Complete the highlighted permission first.</string>
     <string name="page_of">Page %1$s of %2$s</string>
     <string name="onboarding_grant_then_continue">Grant permissions on this page, then continue on the next.</string>
-    <string name="onboard_storage_reason">Browse folders on this device and share files with paired devices on your Wi‑Fi.</string>
-    <string name="onboard_storage_denied">File access is required — FileApex cannot browse or send local files without it.</string>
+    <string name="onboard_storage_reason">FileApex is a local peer-to-peer file manager. All files access is required to browse directories, manage documents, and transfer arbitrary files directly to paired devices over local Wi‑Fi without cloud storage.</string>
+    <string name="onboard_storage_denied">All files access is required: FileApex cannot browse storage or transfer your files without this permission.</string>
     <string name="onboard_nearby_reason">Discover and connect to other FileApex devices on your local network.</string>
     <string name="onboard_nearby_denied">Nearby device access is required for LAN pairing and file sharing.</string>
     <string name="onboard_notify_reason">Show the persistent share-server notification while FileApex runs in the background.</string>
@@ -436,6 +433,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="broadcast_or_attach">Broadcast message or attach file</string>
     <string name="unlock_attachment">Unlock attachment</string>
     <string name="lock_attachment">Lock attachment</string>
+    <string name="note_locked_unlock_first">Note is locked. Unlock it before deleting.</string>
     <string name="this_device">This Device</string>
     <string name="drive_sync">Drive Sync</string>
     <string name="google_link_failed">Google link failed</string>
@@ -680,6 +678,9 @@ Tap Central Hub (+) to Pair</string>
     <string name="drag_drop_files_here">Drag &amp; drop files here</string>
     <string name="drop_files">Drop Files</string>
     <string name="drop_files_first">Drop one or more files first</string>
+    <string name="unpin_to_close">Unpin to close window</string>
+    <string name="pin_drop_box">Pin window (keep open after sending)</string>
+    <string name="unpin_drop_box">Unpin window</string>
     <string name="ctrl_click_multi_select">Ctrl-click to multi-select · click to send</string>
     <string name="cmd_click_multi_select">⌘-click to multi-select · click to send</string>
     <string name="still_running_in_tray">FileApex is still running in the system tray.</string>
@@ -697,6 +698,8 @@ Tap Central Hub (+) to Pair</string>
     <string name="send_to_device">Send to %1$s</string>
     <string name="switch_to_grid">Switch to grid view</string>
     <string name="switch_to_list">Switch to list view</string>
+    <string name="switch_to_compact_layout">Switch to compact layout</string>
+    <string name="switch_to_expanded_layout">Switch to expanded layout</string>
     <string name="icon_mac">Mac</string>
     <string name="icon_windows_pc">Windows PC</string>
     <string name="icon_foldable_phone">Foldable phone</string>
@@ -786,7 +789,18 @@ Tap Central Hub (+) to Pair</string>
     <string name="diag_uptime_h">%1$sh</string>
     <string name="diag_uptime_m">%1$sm</string>
     <string name="no_handler_saved_to_storage">No app found to open this file. Saved to local storage: %1$s</string>
-    <string name="opening_folder">Opening folder…</string>
+    <string name="agree_and_continue">Agree &amp; Continue</string>
+    <string name="what_label">What</string>
+    <string name="why_label">Why</string>
+    <string name="clipboard_disclosure_title">Clipboard Sharing</string>
+    <string name="clipboard_disclosure_what">Reads text or images that you copy to the clipboard.</string>
+    <string name="clipboard_disclosure_why">Syncs copied items directly between your paired devices using end-to-end encryption. Content is never sent to third parties or cloud servers.</string>
+    <string name="accessibility_disclosure_title">Accessibility Service</string>
+    <string name="accessibility_disclosure_what">Detects clipboard copy actions when FileApex is running in the background.</string>
+    <string name="accessibility_disclosure_why">Android restricts background clipboard access without this service. FileApex does not read keystrokes, passwords, or personal screen content.</string>
+    <string name="install_packages_disclosure_title">Install Packages</string>
+    <string name="install_packages_disclosure_what">Allows launching the package installer to install downloaded FileApex updates.</string>
+    <string name="install_packages_disclosure_why">Enables updating FileApex to newer versions directly on your device. Packages are only installed after you review and confirm.</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d cluster device)</item>
         <item quantity="other">(+%d cluster devices)</item>

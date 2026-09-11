@@ -11,13 +11,18 @@ import com.fileapex.domain.clipboard.ClipboardCopySignals
 
 actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
-        val raw = if (!java.awt.EventQueue.isDispatchThread()) {
-            val appKit = DesktopMacTrayBridge.readClipboardText()
-            if (!appKit.isNullOrBlank()) appKit else null
+        val onEdt = java.awt.EventQueue.isDispatchThread()
+        // Never run pbpaste/osascript on the AWT EDT — that froze clicks for ~1s after first paint.
+        val appKit = if (!onEdt) {
+            DesktopMacTrayBridge.readClipboardText()?.takeIf { it.isNotBlank() }
         } else {
             null
         }
-        val pasted = raw ?: MacPasteboard.readPlainText()?.takeIf { it.isNotBlank() }
+        val pasted = if (!onEdt) {
+            appKit ?: MacPasteboard.readPlainText()?.takeIf { it.isNotBlank() }
+        } else {
+            appKit
+        }
         val text = pasted ?: readAwtClipboardText()
         return ClipboardCopySignals.boundedRaw(text)
     }

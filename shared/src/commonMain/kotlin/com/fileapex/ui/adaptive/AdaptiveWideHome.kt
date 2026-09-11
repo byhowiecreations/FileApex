@@ -64,6 +64,7 @@ import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.DevicesScreenLayoutMode
 import com.fileapex.ui.NoteHeaderButton
+import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.LiveTransferBanner
 import com.fileapex.ui.QueuedFilesButton
@@ -78,6 +79,7 @@ import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.fileApexNavSelectedBackgroundColor
 import com.fileapex.ui.theme.fileApexNavSelectedIconColor
 import com.fileapex.ui.theme.fileApexNavSelectedTextColor
@@ -87,6 +89,18 @@ import com.fileapex.ui.theme.fileApexNavigationRailItemColors
 
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.platform.horizontalResizePointerIcon
+import com.fileapex.platform.isDesktopHost
+import com.fileapex.ui.DesktopLayoutToggle
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 
 /**
  * Medium / Expanded home: teal navigation rail + list-detail (devices | explorer).
@@ -126,13 +140,16 @@ fun AdaptiveWideHome(
     val editMode = state.deviceOrderEditMode
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
+        val currentTheme = LocalAppTheme.current
+        val isGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.FREESTYLE
+        val editTint = if (isGlass) Color(0xFF00E676) else fileApexChromeContentColor()
         if (editMode) {
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
                 TextButton(
                     onClick = devicesViewModel::revertDeviceOrderInEditMode,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text(stringRes("revert"), color = fileApexChromeContentColor(), fontWeight = FontWeight.SemiBold)
+                    Text(stringRes("revert"), color = editTint, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 TextButton(
@@ -147,7 +164,7 @@ fun AdaptiveWideHome(
                 Icon(
                     imageVector = Icons.Filled.Edit,
                     contentDescription = stringRes("reorder_devices"),
-                    tint = fileApexChromeContentColor()
+                    tint = editTint
                 )
             }
         }
@@ -250,44 +267,75 @@ fun AdaptiveWideHome(
                             )
                         }
                     } else {
-                        Row(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                            Surface(
-                                modifier = Modifier
-                                    .weight(0.35f)
-                                    .fillMaxHeight(),
-                                color = MaterialTheme.colorScheme.surface
-                            ) {
-                                DevicesScreen(
-                                    onOpenDevice = onSelectDevice,
-                                    onOpenLocalFiles = onOpenLocalFiles,
-                                    onGenerateQr = onGenerateQr,
-                                    onJoinDevice = onJoinDevice,
-                                    onOpenSettings = { onSelectTab(HomeTab.Settings) },
-                                    onExitApp = onExitApp,
-                                    onOpenNotes = { onOpenNotes?.invoke() },
-                                    onOpenTransferQueue = onOpenTransferQueue,
-                                    viewModel = devicesViewModel,
-                                    layoutMode = DevicesScreenLayoutMode.ListPane,
-                                    selectedDeviceId = selectedDeviceId
-                                )
-                            }
-                            VerticalDivider(
-                                thickness = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .weight(0.65f)
-                                    .fillMaxHeight()
-                            ) {
-                                val detailTarget = selectedTarget
-                                if (detailTarget == null) {
-                                    DetailEmptyState()
-                                } else {
-                                    FileExplorerScreen(
-                                        target = detailTarget,
-                                        onBack = onClearDetail
+                        val splitFraction by FileApexServices.settings.desktopSplitFraction.collectAsState()
+                        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            val totalWidthPx = constraints.maxWidth.toFloat()
+                            var isDraggingDivider by remember { mutableStateOf(false) }
+                            val dividerInteraction = remember { MutableInteractionSource() }
+                            val isHovered by dividerInteraction.collectIsHoveredAsState()
+
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(splitFraction)
+                                        .fillMaxHeight(),
+                                    color = MaterialTheme.colorScheme.surface
+                                ) {
+                                    DevicesScreen(
+                                        onOpenDevice = onSelectDevice,
+                                        onOpenLocalFiles = onOpenLocalFiles,
+                                        onGenerateQr = onGenerateQr,
+                                        onJoinDevice = onJoinDevice,
+                                        onOpenSettings = { onSelectTab(HomeTab.Settings) },
+                                        onExitApp = onExitApp,
+                                        onOpenNotes = { onOpenNotes?.invoke() },
+                                        onOpenTransferQueue = onOpenTransferQueue,
+                                        viewModel = devicesViewModel,
+                                        layoutMode = DevicesScreenLayoutMode.ListPane,
+                                        selectedDeviceId = selectedDeviceId
                                     )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(10.dp)
+                                        .fillMaxHeight()
+                                        .hoverable(dividerInteraction)
+                                        .pointerHoverIcon(horizontalResizePointerIcon())
+                                        .pointerInput(totalWidthPx) {
+                                            detectHorizontalDragGestures(
+                                                onDragStart = { isDraggingDivider = true },
+                                                onDragEnd = { isDraggingDivider = false },
+                                                onDragCancel = { isDraggingDivider = false }
+                                            ) { change, dragAmount ->
+                                                change.consume()
+                                                if (totalWidthPx > 0f) {
+                                                    val current = FileApexServices.settings.desktopSplitFraction.value
+                                                    val deltaFraction = dragAmount / totalWidthPx
+                                                    FileApexServices.settings.setDesktopSplitFraction(current + deltaFraction)
+                                                }
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    VerticalDivider(
+                                        thickness = if (isHovered || isDraggingDivider) 2.dp else 1.dp,
+                                        color = if (isHovered || isDraggingDivider) FileApexTeal else MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f - splitFraction)
+                                        .fillMaxHeight()
+                                ) {
+                                    val detailTarget = selectedTarget
+                                    if (detailTarget == null) {
+                                        DetailEmptyState()
+                                    } else {
+                                        FileExplorerScreen(
+                                            target = detailTarget,
+                                            onBack = onClearDetail
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -382,6 +430,8 @@ private fun WideTopBar(
                 val rateText = buildList {
                     if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
                     if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                    val percent = (liveStats.progress * 100).toInt().coerceIn(0, 100)
+                    add("$percent%")
                 }.joinToString(" • ")
                 Text(
                     text = if (rateText.isNotBlank()) rateText else stringRes("sending"),
@@ -391,15 +441,21 @@ private fun WideTopBar(
             }
             Spacer(modifier = Modifier.width(6.dp))
         }
+        val currentTheme = LocalAppTheme.current
+        val headerIconTint = fileApexHeaderActionTint()
         QueuedFilesButton(
             onClick = onOpenTransferQueue,
-            iconTint = fileApexChromeContentColor()
+            iconTint = headerIconTint
         )
         if (onOpenNotes != null) {
-            NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode, modifier = Modifier.size(40.dp))
+            val noteIconKind = when (currentTheme) {
+                AppTheme.FLUX_GLASS, AppTheme.KINETIC_SPHERE, AppTheme.FREESTYLE -> NoteIconKind.GREEN
+                else -> NoteIconKind.WHITE
+            }
+            NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode, iconKind = noteIconKind, modifier = Modifier.size(40.dp))
         }
         if (showDevicesViewToggle) {
-            val isFreestyle = LocalAppTheme.current == AppTheme.FREESTYLE
+            val isFreestyle = currentTheme == AppTheme.FREESTYLE
             if (isFreestyle) {
                 val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
                 val icon = when (freestyleMode) {
@@ -422,7 +478,7 @@ private fun WideTopBar(
                     Icon(
                         imageVector = icon,
                         contentDescription = desc,
-                        tint = fileApexChromeContentColor(),
+                        tint = headerIconTint,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -430,18 +486,24 @@ private fun WideTopBar(
                 ExplorerViewModeToggle(
                     viewMode = devicesViewMode,
                     onToggle = onToggleDevicesViewMode,
-                    iconTint = fileApexChromeContentColor(),
+                    iconTint = headerIconTint,
                     modifier = Modifier.size(40.dp)
                 )
+                if (isDesktopHost()) {
+                    DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
+                }
             }
             deviceOrderHeaderActions()
         } else if (showExplorerViewToggle) {
             ExplorerViewModeToggle(
                 viewMode = explorerViewMode,
                 onToggle = onToggleExplorerViewMode,
-                iconTint = fileApexChromeContentColor(),
+                iconTint = headerIconTint,
                 modifier = Modifier.size(40.dp)
             )
+            if (isDesktopHost()) {
+                DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
+            }
         }
         IconButton(
             onClick = onExitClick,

@@ -44,7 +44,9 @@ fun org.gradle.api.Project.resolvedFirebaseProjectId(): String =
         .ifBlank { providers.gradleProperty("fileapex.firebase.project.id").orElse("").get().trim() }
 
 fun org.gradle.api.Project.resolvedFirebaseApiKey(): String =
-    firebaseApiKeyFromGoogleServices()
+    providers.gradleProperty("fileapex.firebase.desktop.api.key").orElse("").get().trim()
+        .ifBlank { providers.environmentVariable("FIREBASE_DESKTOP_API_KEY").orElse("").get().trim() }
+        .ifBlank { firebaseApiKeyFromGoogleServices() }
         .ifBlank { providers.gradleProperty("fileapex.firebase.api.key").orElse("").get().trim() }
 
 fun org.gradle.api.Project.hasAndroidOAuthClientInGoogleServices(): Boolean =

@@ -35,12 +35,14 @@ import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.NoteHeaderButton
+import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileApexBottomBar
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.fileApexHeaderActionTint
 
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.FreestyleLayoutMode
@@ -55,6 +57,8 @@ import androidx.compose.runtime.getValue
 import com.fileapex.data.settings.LocalAppTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.GridView
+import com.fileapex.platform.isDesktopHost
+import com.fileapex.ui.DesktopLayoutToggle
 
 /** Shared compact home header metrics — keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
@@ -189,12 +193,17 @@ fun FluxGlassHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            val headerIconTint = fileApexHeaderActionTint()
             if (onOpenTransferQueue != null) {
-                QueuedFilesButton(onClick = onOpenTransferQueue)
+                QueuedFilesButton(onClick = onOpenTransferQueue, iconTint = headerIconTint)
             }
 
             if (onOpenNotes != null) {
-                NoteHeaderButton(onOpenNotes = onOpenNotes)
+                val noteIconKind = when (currentTheme) {
+                    AppTheme.FLUX_GLASS, AppTheme.KINETIC_SPHERE, AppTheme.FREESTYLE -> NoteIconKind.GREEN
+                    else -> NoteIconKind.BLACK
+                }
+                NoteHeaderButton(onOpenNotes = onOpenNotes, iconKind = noteIconKind)
             }
 
             if (showLayoutView && onToggleLayoutView != null) {
@@ -217,6 +226,7 @@ fun FluxGlassHeader(
                 } else {
                     stringRes("layout_view")
                 }
+                val layoutIconTint = fileApexHeaderActionTint()
                 IconButton(
                     onClick = onToggleLayoutView,
                     modifier = Modifier.size(40.dp)
@@ -224,8 +234,14 @@ fun FluxGlassHeader(
                     Icon(
                         imageVector = icon,
                         contentDescription = desc,
-                        tint = accentTint,
+                        tint = layoutIconTint,
                         modifier = Modifier.size(22.dp)
+                    )
+                }
+                if (isDesktopHost()) {
+                    DesktopLayoutToggle(
+                        modifier = Modifier.size(40.dp),
+                        iconTint = layoutIconTint
                     )
                 }
             }
@@ -366,12 +382,14 @@ private fun CompactHomeTitleBandRow(
     actions: @Composable RowScope.() -> Unit = {},
     titleContent: @Composable () -> Unit
 ) {
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val currentTheme = LocalAppTheme.current
+    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
+    val headerBg = if (currentTheme == AppTheme.FREESTYLE) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
     Row(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = CompactHomeChrome.titleBandMinHeight)
-            .background(if (isFluxGlass) Color.Transparent else MaterialTheme.colorScheme.surface)
+            .background(headerBg)
             .padding(
                 horizontal = CompactHomeChrome.titleBandHorizontalPadding,
                 vertical = CompactHomeChrome.titleBandVerticalPadding
@@ -382,7 +400,10 @@ private fun CompactHomeTitleBandRow(
             titleContent()
         }
         if (onOpenTransferQueue != null) {
-            QueuedFilesButton(onClick = onOpenTransferQueue)
+            QueuedFilesButton(
+                onClick = onOpenTransferQueue,
+                iconTint = fileApexHeaderActionTint()
+            )
         }
         actions()
     }

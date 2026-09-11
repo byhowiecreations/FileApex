@@ -66,11 +66,12 @@ object DesktopMacTrayBridge {
             println("DesktopMacTrayBridge: libFileApexTray.dylib not found")
             return false
         }
+        // Native.load only — never call AppKit here. fileapex_tray_install_app_lifecycle
+        // uses DispatchQueue.main.sync; invoking that from a background preload/IO thread
+        // stalls behind Compose's first frames (~6s+) and made Mac cold start feel broken.
         return runCatching {
             native = Native.load(dylib.absolutePath, FileApexTrayNative::class.java)
             println("DesktopMacTrayBridge: loaded ${dylib.absolutePath}")
-            installAppLifecycle()
-            startLocalNetworkProbe()
             true
         }.getOrElse { error ->
             println("DesktopMacTrayBridge: load failed :: ${error.message}")
@@ -155,12 +156,18 @@ object DesktopMacTrayBridge {
         contentType: String?,
         filePath: String,
         offsetBytes: Long = 0L,
-        timeoutMs: Long
+        timeoutMs: Long,
+        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
     ): PeerBoundHttpResponse? {
         val lib = native ?: return null
         val status = IntByReference()
         val bodyPtr = PointerByReference()
         val bodyLen = IntByReference()
+        val progressCallback = onProgress?.let { callback ->
+            UploadProgressCallback { sentBytes, totalBytes ->
+                callback(sentBytes, totalBytes)
+            }
+        }
         val rc = runCatching {
             lib.fileapex_lan_http_upload_file(
                 url,
@@ -168,6 +175,7 @@ object DesktopMacTrayBridge {
                 filePath,
                 offsetBytes,
                 timeoutMs.coerceIn(250L, 600_000L).toInt(),
+                progressCallback,
                 status,
                 bodyPtr,
                 bodyLen
@@ -507,6 +515,7 @@ object DesktopMacTrayBridge {
             filePath: String,
             offsetBytes: Long,
             timeoutMs: Int,
+            progress: UploadProgressCallback?,
             outStatus: IntByReference,
             outBody: PointerByReference,
             outBodyLen: IntByReference
@@ -548,6 +557,10 @@ object DesktopMacTrayBridge {
         fun fileapex_clipboard_stop_watch()
         fun fileapex_clipboard_note_applied()
         fun fileapex_clipboard_read_text(outText: PointerByReference): Int
+    }
+
+    fun interface UploadProgressCallback : Callback {
+        fun invoke(sentBytes: Long, totalBytes: Long)
     }
 
     private fun interface SendCallback : Callback {

@@ -35,6 +35,12 @@ class BaseAppSettings(
     private val googleUid = MutableStateFlow(store.getString(KEY_GOOGLE_UID, ""))
     private val multiCopyIntro = MutableStateFlow(store.getBoolean(KEY_MULTI_COPY_INTRO, false))
     private val clipboardSharing = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_SHARING, false))
+    private val clipboardDisclosureAckFlow =
+        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_DISCLOSURE_ACK, false))
+    private val accessibilityDisclosureAckFlow =
+        MutableStateFlow(store.getBoolean(KEY_ACCESSIBILITY_DISCLOSURE_ACK, false))
+    private val installPackagesDisclosureAckFlow =
+        MutableStateFlow(store.getBoolean(KEY_INSTALL_PACKAGES_DISCLOSURE_ACK, false))
     private val clipboardShareModeFlow = MutableStateFlow(
         ClipboardShareMode.fromStorage(store.getString(KEY_CLIPBOARD_SHARE_MODE, ""))
     )
@@ -95,6 +101,14 @@ class BaseAppSettings(
     private val desktopLayout = MutableStateFlow(
         DesktopLayoutMode.fromStorage(store.getString(KEY_DESKTOP_LAYOUT, DesktopLayoutMode.DEFAULT.name))
     )
+    private val desktopSplitFractionFlow = MutableStateFlow(
+        (store.getString(KEY_DESKTOP_SPLIT_FRACTION, "").toFloatOrNull() ?: 0.35f).coerceIn(0.20f, 0.65f)
+    )
+    override val desktopSplitFraction: StateFlow<Float> = desktopSplitFractionFlow.asStateFlow()
+    private val explorerSplitFractionFlow = MutableStateFlow(
+        (store.getString(KEY_EXPLORER_SPLIT_FRACTION, "").toFloatOrNull() ?: 0.38f).coerceIn(0.20f, 0.70f)
+    )
+    override val explorerSplitFraction: StateFlow<Float> = explorerSplitFractionFlow.asStateFlow()
     private val desktopUiStyleFlow = MutableStateFlow(
         DesktopUiStyle.fromStorage(store.getString(KEY_DESKTOP_UI_STYLE, DesktopUiStyle.DEFAULT.name))
     )
@@ -245,6 +259,17 @@ class BaseAppSettings(
     private val freestyleOptionsMenuOrderFlow = MutableStateFlow(
         store.getString(KEY_FREESTYLE_OPTIONS_MENU_ORDER, "files,add_device,join_device,send_clipboard,check_batteries,settings")
     )
+    private val freestyleCardPinnedActionsFlow = MutableStateFlow(
+        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, ""))
+    )
+    private val freestyleCardVerticalPinnedActionsFlow = MutableStateFlow(
+        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, "")).ifEmpty {
+            decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, ""))
+        }
+    )
+    private val freestyleTilePinnedActionsFlow = MutableStateFlow(
+        decodeKineticOffsets(store.getString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, ""))
+    )
     private val settingsGroupSystemPerformanceFlow = MutableStateFlow(
         store.getBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, true)
     )
@@ -264,6 +289,12 @@ class BaseAppSettings(
     override val googleAccountUid: StateFlow<String> = googleUid.asStateFlow()
     override val multiCopyIntroAcknowledged: StateFlow<Boolean> = multiCopyIntro.asStateFlow()
     override val clipboardSharingEnabled: StateFlow<Boolean> = clipboardSharing.asStateFlow()
+    override val clipboardDisclosureAcknowledged: StateFlow<Boolean> =
+        clipboardDisclosureAckFlow.asStateFlow()
+    override val accessibilityDisclosureAcknowledged: StateFlow<Boolean> =
+        accessibilityDisclosureAckFlow.asStateFlow()
+    override val installPackagesDisclosureAcknowledged: StateFlow<Boolean> =
+        installPackagesDisclosureAckFlow.asStateFlow()
     override val clipboardShareMode: StateFlow<ClipboardShareMode> = clipboardShareModeFlow.asStateFlow()
     override val clipboardTargetDeviceIds: StateFlow<Set<String>> = clipboardTargetDeviceIdsFlow.asStateFlow()
     override val clipboardViaCellularEnabled: StateFlow<Boolean> = clipboardViaCellularFlow.asStateFlow()
@@ -306,6 +337,9 @@ class BaseAppSettings(
     override val freestyleCardVerticalMenuOrders: StateFlow<Map<String, String>> = freestyleCardVerticalMenuOrdersFlow.asStateFlow()
     override val freestyleTileMenuOrders: StateFlow<Map<String, String>> = freestyleTileMenuOrdersFlow.asStateFlow()
     override val freestyleOptionsMenuOrder: StateFlow<String> = freestyleOptionsMenuOrderFlow.asStateFlow()
+    override val freestyleCardPinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardPinnedActionsFlow.asStateFlow()
+    override val freestyleCardVerticalPinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardVerticalPinnedActionsFlow.asStateFlow()
+    override val freestyleTilePinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleTilePinnedActionsFlow.asStateFlow()
     override val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean> =
         settingsGroupSystemPerformanceFlow.asStateFlow()
     override val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean> =
@@ -381,6 +415,21 @@ class BaseAppSettings(
         clipboardSharing.value = enabled
         com.fileapex.platform.ClipboardAccessibilityHealth.refresh()
         com.fileapex.platform.ClipboardShareChrome.fire()
+    }
+
+    override fun setClipboardDisclosureAcknowledged(acknowledged: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_DISCLOSURE_ACK, acknowledged)
+        clipboardDisclosureAckFlow.value = acknowledged
+    }
+
+    override fun setAccessibilityDisclosureAcknowledged(acknowledged: Boolean) {
+        store.putBoolean(KEY_ACCESSIBILITY_DISCLOSURE_ACK, acknowledged)
+        accessibilityDisclosureAckFlow.value = acknowledged
+    }
+
+    override fun setInstallPackagesDisclosureAcknowledged(acknowledged: Boolean) {
+        store.putBoolean(KEY_INSTALL_PACKAGES_DISCLOSURE_ACK, acknowledged)
+        installPackagesDisclosureAckFlow.value = acknowledged
     }
 
     override fun setClipboardShareMode(mode: ClipboardShareMode) {
@@ -599,6 +648,18 @@ class BaseAppSettings(
         desktopLayout.value = mode
     }
 
+    override fun setDesktopSplitFraction(fraction: Float) {
+        val clamped = fraction.coerceIn(0.20f, 0.65f)
+        store.putString(KEY_DESKTOP_SPLIT_FRACTION, clamped.toString())
+        desktopSplitFractionFlow.value = clamped
+    }
+
+    override fun setExplorerSplitFraction(fraction: Float) {
+        val clamped = fraction.coerceIn(0.20f, 0.70f)
+        store.putString(KEY_EXPLORER_SPLIT_FRACTION, clamped.toString())
+        explorerSplitFractionFlow.value = clamped
+    }
+
     override fun setDesktopUiStyle(style: DesktopUiStyle) {
         store.putString(KEY_DESKTOP_UI_STYLE, style.name)
         desktopUiStyleFlow.value = style
@@ -720,6 +781,63 @@ class BaseAppSettings(
         freestyleOptionsMenuOrderFlow.value = order
     }
 
+    override fun setFreestylePinnedActionOffset(mode: FreestyleLayoutMode, actionKey: String, x: Float, y: Float) {
+        when (mode) {
+            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
+                val updated = freestyleCardPinnedActionsFlow.value + (actionKey to Pair(x, y))
+                freestyleCardPinnedActionsFlow.value = updated
+                store.putString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+            }
+            FreestyleLayoutMode.CARDS_VERTICAL -> {
+                val updated = freestyleCardVerticalPinnedActionsFlow.value + (actionKey to Pair(x, y))
+                freestyleCardVerticalPinnedActionsFlow.value = updated
+                store.putString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+            }
+            FreestyleLayoutMode.TILES -> {
+                val updated = freestyleTilePinnedActionsFlow.value + (actionKey to Pair(x, y))
+                freestyleTilePinnedActionsFlow.value = updated
+                store.putString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+            }
+        }
+    }
+
+    override fun removeFreestylePinnedAction(mode: FreestyleLayoutMode, actionKey: String) {
+        when (mode) {
+            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
+                val updated = freestyleCardPinnedActionsFlow.value - actionKey
+                freestyleCardPinnedActionsFlow.value = updated
+                store.putString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+            }
+            FreestyleLayoutMode.CARDS_VERTICAL -> {
+                val updated = freestyleCardVerticalPinnedActionsFlow.value - actionKey
+                freestyleCardVerticalPinnedActionsFlow.value = updated
+                store.putString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+            }
+            FreestyleLayoutMode.TILES -> {
+                val updated = freestyleTilePinnedActionsFlow.value - actionKey
+                freestyleTilePinnedActionsFlow.value = updated
+                store.putString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+            }
+        }
+    }
+
+    override fun resetFreestylePinnedActions(mode: FreestyleLayoutMode) {
+        when (mode) {
+            FreestyleLayoutMode.CARDS_HORIZONTAL -> {
+                freestyleCardPinnedActionsFlow.value = emptyMap()
+                store.putString(KEY_FREESTYLE_CARD_PINNED_ACTIONS, "")
+            }
+            FreestyleLayoutMode.CARDS_VERTICAL -> {
+                freestyleCardVerticalPinnedActionsFlow.value = emptyMap()
+                store.putString(KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS, "")
+            }
+            FreestyleLayoutMode.TILES -> {
+                freestyleTilePinnedActionsFlow.value = emptyMap()
+                store.putString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, "")
+            }
+        }
+    }
+
     override fun setDeviceDetailsDisplayPreferences(preferences: DeviceDetailsDisplayPreferences) {
         val normalized = preferences.normalized()
         store.putString(KEY_DEVICE_DETAILS_DISPLAY, DeviceDetailsDisplayPreferences.encode(normalized))
@@ -801,6 +919,9 @@ class BaseAppSettings(
         const val KEY_GOOGLE_UID = "google_account_uid"
         const val KEY_MULTI_COPY_INTRO = "multi_copy_intro_ack"
         const val KEY_CLIPBOARD_SHARING = "clipboard_sharing_enabled"
+        const val KEY_CLIPBOARD_DISCLOSURE_ACK = "clipboard_disclosure_acknowledged"
+        const val KEY_ACCESSIBILITY_DISCLOSURE_ACK = "accessibility_disclosure_acknowledged"
+        const val KEY_INSTALL_PACKAGES_DISCLOSURE_ACK = "install_packages_disclosure_acknowledged"
         const val KEY_CLIPBOARD_SHARE_MODE = "clipboard_share_mode"
         const val KEY_CLIPBOARD_TARGET_DEVICES = "clipboard_target_device_ids"
         const val KEY_CLIPBOARD_VIA_CELLULAR = "clipboard_via_cellular"
@@ -840,6 +961,9 @@ class BaseAppSettings(
         const val KEY_FREESTYLE_CARD_VERTICAL_MENU_ORDERS = "freestyle_card_vert_menu_orders"
         const val KEY_FREESTYLE_TILE_MENU_ORDERS = "freestyle_tile_menu_orders"
         const val KEY_FREESTYLE_OPTIONS_MENU_ORDER = "freestyle_options_menu_order"
+        const val KEY_FREESTYLE_CARD_PINNED_ACTIONS = "freestyle_card_pinned_actions"
+        const val KEY_FREESTYLE_CARD_VERTICAL_PINNED_ACTIONS = "freestyle_card_vert_pinned_actions"
+        const val KEY_FREESTYLE_TILE_PINNED_ACTIONS = "freestyle_tile_pinned_actions"
 
 
         const val KEY_PIN_REQUIRED = "pin_required"
@@ -855,6 +979,8 @@ class BaseAppSettings(
         const val KEY_DEVICE_ORDER = "device_order_ids"
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
+        const val KEY_DESKTOP_SPLIT_FRACTION = "desktop_split_fraction"
+        const val KEY_EXPLORER_SPLIT_FRACTION = "explorer_split_fraction"
         const val KEY_DESKTOP_UI_STYLE = "desktop_ui_style"
         const val KEY_EXPLORER_VIEW_MODE = "explorer_view_mode"
         const val KEY_DEVICES_VIEW_MODE = "devices_view_mode"

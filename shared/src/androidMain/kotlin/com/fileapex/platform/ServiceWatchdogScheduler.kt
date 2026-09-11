@@ -43,8 +43,8 @@ object ServiceWatchdogScheduler {
     private fun scheduleAt(context: Context, triggerAt: Long, delayLabelMs: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pendingIntent = pendingIntent(context)
-        val useExact = canScheduleExactAlarms(alarmManager)
-        setExactAlarmWarning(context, !useExact)
+        val useExact = !com.fileapex.di.FileApexServices.isPlayStoreBuild && canScheduleExactAlarms(alarmManager)
+        setExactAlarmWarning(context, if (com.fileapex.di.FileApexServices.isPlayStoreBuild) false else !useExact)
         runCatching {
             when {
                 useExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
@@ -61,8 +61,16 @@ object ServiceWatchdogScheduler {
                         pendingIntent
                     )
                 }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+                    Log.i(TAG, "Scheduling inexact allow-while-idle watchdog alarm")
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAt,
+                        pendingIntent
+                    )
+                }
                 else -> {
-                    Log.w(TAG, "Exact alarms unavailable - using inexact watchdog scheduling")
+                    Log.w(TAG, "Exact alarms unavailable - using standard inexact watchdog scheduling")
                     alarmManager.set(
                         AlarmManager.RTC_WAKEUP,
                         triggerAt,
@@ -134,11 +142,16 @@ object ServiceWatchdogScheduler {
     }
 
     fun isExactAlarmWarningActive(context: Context): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         return directBootPrefs(context).getBoolean(KEY_EXACT_ALARM_WARNING, false)
     }
 
     /** Live exact-alarm capability; syncs the persisted warning flag for Settings / boot. */
     fun refreshExactAlarmAvailability(context: Context): Boolean {
+        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+            setExactAlarmWarning(context, false)
+            return true
+        }
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val available = canScheduleExactAlarms(alarmManager)
         setExactAlarmWarning(context, !available)

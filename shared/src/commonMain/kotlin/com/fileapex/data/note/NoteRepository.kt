@@ -163,12 +163,16 @@ class NoteRepository {
     suspend fun deleteNote(noteId: String) {
         val bulletin = bulletinRepository
         if (bulletin != null) {
+            val existing = bulletin.getMessage(noteId)
+            if (existing?.isPinned == true) return
             retractedKeys += noteId
             bulletin.deleteMessageLocalOnly(noteId)
             val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
             retractNotifications(snapshot, noteId)
             return
         }
+        val isLocked = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId }?.attachmentPinned == true }
+        if (isLocked) return
         deleteNoteFromAllDevicesLegacy(noteId)
     }
 
@@ -176,6 +180,8 @@ class NoteRepository {
         val bulletin = bulletinRepository
         val syncEngine = bulletinSyncEngine
         if (bulletin != null && syncEngine != null) {
+            val existing = bulletin.getMessage(noteId)
+            if (existing?.isPinned == true) return
             retractedKeys += noteId
             bulletin.deleteMessage(noteId, remotePurge = remotePurge)
             syncEngine.publishTombstone(noteId)
@@ -183,6 +189,8 @@ class NoteRepository {
             retractNotifications(snapshot, noteId)
             return
         }
+        val isLocked = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId }?.attachmentPinned == true }
+        if (isLocked) return
         deleteNoteFromAllDevicesLegacy(noteId)
     }
 
@@ -375,18 +383,38 @@ class NoteRepository {
         noteId: String,
         attachmentName: String? = null
     ) {
+        val resolvedSnapshot = snapshot ?: bulletinRepository?.getMessage(noteId)?.toNoteRecord()
         val previews = buildList {
-            snapshot?.content?.takeIf { it.isNotBlank() }?.let { add(it) }
-            snapshot?.attachmentFileName?.takeIf { it.isNotBlank() }?.let { add(it) }
+            resolvedSnapshot?.content?.takeIf { it.isNotBlank() }?.let { add(it) }
+            resolvedSnapshot?.attachmentFileName?.takeIf { it.isNotBlank() }?.let { add(it) }
             attachmentName?.takeIf { it.isNotBlank() }?.let { add(it) }
         }.distinct()
         runCatching { com.fileapex.platform.retractNoteNotifications(listOf(noteId), previews) }
         notifiedNoteIds.remove(noteId)
         com.fileapex.update.PendingUpdateStore.removeProcessedNote(noteId)
         val pending = com.fileapex.update.PendingUpdateStore.load()
-        if (pending != null && (pending.assetName == snapshot?.attachmentFileName || pending.assetName == attachmentName)) {
+        if (pending != null && (
+            pending.originNoteId == noteId ||
+            (resolvedSnapshot?.attachmentFileName?.isNotBlank() == true && pending.assetName == resolvedSnapshot.attachmentFileName) ||
+            (attachmentName?.isNotBlank() == true && pending.assetName == attachmentName)
+        )) {
             com.fileapex.update.PendingUpdateStore.save(null)
             com.fileapex.platform.dismissAppUpdateNotification()
+            val selfId = loadLocalIdentity().deviceId
+            val isReceiver = resolvedSnapshot?.let { it.sourceDeviceId != selfId && !it.isMine }
+                ?: (com.fileapex.cloud.currentPlatformLabel() == "Android")
+            if (isReceiver) {
+                val localPath = pending.localFilePath?.takeIf { it.isNotBlank() }
+                val downloadsDir = defaultDownloadsDir()
+                if (localPath != null && com.fileapex.util.PathUtils.isWithinRoot(localPath, downloadsDir)) {
+                    runCatching {
+                        val path = Path(localPath)
+                        if (SystemFileSystem.exists(path)) {
+                            SystemFileSystem.delete(path)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -466,6 +494,8 @@ class NoteRepository {
             }
         }
         for (tombstone in tombstones) {
+            val existing = bulletinRepository?.getMessage(tombstone.id)
+            if (existing?.isPinned == true) continue
             retractedKeys += tombstone.id
             val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == tombstone.id } }
             retractNotifications(snapshot, tombstone.id)
@@ -479,6 +509,8 @@ class NoteRepository {
     private suspend fun onBulletinMessagesRetracted(retractedMessageIds: List<String>) {
         for (noteId in retractedMessageIds.distinct()) {
             if (noteId.isBlank()) continue
+            val existing = bulletinRepository?.getMessage(noteId)
+            if (existing?.isPinned == true) continue
             retractedKeys += noteId
             val snapshot = mutex.withLock { _notes.value.firstOrNull { it.noteId == noteId } }
             retractNotifications(snapshot, noteId)

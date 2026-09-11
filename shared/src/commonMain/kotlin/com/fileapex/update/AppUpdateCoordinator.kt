@@ -53,6 +53,7 @@ object AppUpdateCoordinator {
 
     /** Call once after [FileApexServices.init] when the process starts. */
     fun onAppLaunch() {
+        if (FileApexServices.isPlayStoreBuild) return
         syncInstallStatusOnAppOpen()
         restorePendingOffer()
         dropStalePendingOffer()
@@ -243,6 +244,7 @@ object AppUpdateCoordinator {
     }
 
     private fun ensureSchedulerRunning() {
+        if (FileApexServices.isPlayStoreBuild) return
         if (schedulerJob?.isActive == true) return
         schedulerJob = scope.launch {
             while (isActive) {

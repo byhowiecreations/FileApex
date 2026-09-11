@@ -11,11 +11,13 @@ import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import androidx.core.net.toUri
 import com.fileapex.data.settings.androidAppContextOrNull
+import com.fileapex.di.FileApexServices
 
 actual object ClipboardAccessibilitySettings {
     private const val OP_ACCESS_RESTRICTED_SETTINGS = "android:access_restricted_settings"
 
     actual fun openSystemPrompt() {
+        if (FileApexServices.isPlayStoreBuild) return
         val context = androidAppContextOrNull() ?: return
         val component = ComponentName(context, ClipboardAccessibilityService::class.java)
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
@@ -35,6 +37,7 @@ actual object ClipboardAccessibilitySettings {
     }
 
     actual fun isServiceEnabled(): Boolean {
+        if (FileApexServices.isPlayStoreBuild) return false
         val context = androidAppContextOrNull() ?: return false
         val expected = ComponentName(context, ClipboardAccessibilityService::class.java).flattenToString()
         val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
@@ -61,6 +64,7 @@ actual object ClipboardAccessibilitySettings {
     }
 
     actual fun isRestrictedSettingsBlocked(): Boolean {
+        if (FileApexServices.isPlayStoreBuild) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
         if (isServiceEnabled()) return false
         val context = androidAppContextOrNull() ?: return false

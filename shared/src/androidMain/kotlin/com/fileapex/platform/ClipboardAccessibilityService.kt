@@ -28,6 +28,10 @@ class ClipboardAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        if (FileApexServices.isPlayStoreBuild) {
+            runCatching { disableSelf() }
+            return
+        }
         serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
             eventTypes = CAPTURE_EVENT_TYPES
             flags = flags or
@@ -53,29 +57,33 @@ class ClipboardAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (!isCaptureEnabled()) {
-            FileApexAndroidBootstrap.ensureInitialized(this)
-            if (!isCaptureEnabled()) return
-        }
-        when (event.eventType) {
-            AccessibilityEvent.TYPE_VIEW_CLICKED,
-            AccessibilityEvent.TYPE_VIEW_LONG_CLICKED,
-            AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED -> {
-                if (isCopyAction(event)) onCopyActionDetected(event.packageName?.toString())
+        runCatching {
+            if (!isCaptureEnabled()) {
+                FileApexAndroidBootstrap.ensureInitialized(this)
+                if (!isCaptureEnabled()) return
             }
-            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> rememberSelectedRange(event)
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> rememberEditorText(event)
-            AccessibilityEvent.TYPE_VIEW_FOCUSED -> rememberFocusedNode(event)
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                if (
-                    ClipboardCopySignals.isOemClipboardOverlay(
-                        event.packageName?.toString(),
-                        event.className?.toString()
-                    )
-                ) {
-                    onCopyActionDetected(event.packageName?.toString())
+            when (event.eventType) {
+                AccessibilityEvent.TYPE_VIEW_CLICKED,
+                AccessibilityEvent.TYPE_VIEW_LONG_CLICKED,
+                AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED -> {
+                    if (isCopyAction(event)) onCopyActionDetected(event.packageName?.toString())
+                }
+                AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> rememberSelectedRange(event)
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> rememberEditorText(event)
+                AccessibilityEvent.TYPE_VIEW_FOCUSED -> rememberFocusedNode(event)
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                    if (
+                        ClipboardCopySignals.isOemClipboardOverlay(
+                            event.packageName?.toString(),
+                            event.className?.toString()
+                        )
+                    ) {
+                        onCopyActionDetected(event.packageName?.toString())
+                    }
                 }
             }
+        }.onFailure { error ->
+            Log.w(TAG, "Failed handling accessibility event", error)
         }
     }
 
@@ -220,9 +228,9 @@ class ClipboardAccessibilityService : AccessibilityService() {
             ClipboardCopySignals.isCopyViewId(node.viewIdResourceName)
     }
 
-    private fun labelsLookLikeCopy(labels: List<CharSequence>?): Boolean {
+    private fun labelsLookLikeCopy(labels: List<CharSequence?>?): Boolean {
         if (labels.isNullOrEmpty()) return false
-        return labels.any { ClipboardCopySignals.isCopyLabel(it.toString()) }
+        return labels.any { ClipboardCopySignals.isCopyLabel(it?.toString()) }
     }
 
     private fun rememberSelectedRange(event: AccessibilityEvent) {
@@ -246,7 +254,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
         val source = event.source
         return try {
             ClipboardCopySignals.textFromNodeEvent(
-                eventTexts = event.text?.map { it.toString() },
+                eventTexts = event.text?.mapNotNull { it?.toString() },
                 sourceText = source?.text?.toString(),
                 fromIndex = event.fromIndex,
                 toIndex = event.toIndex,

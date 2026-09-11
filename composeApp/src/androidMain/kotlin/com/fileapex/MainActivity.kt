@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(barColor)
         )
         super.onCreate(savedInstanceState)
+        com.fileapex.di.FileApexServices.isPlayStoreBuild = BuildConfig.IS_PLAY_STORE
         // Complete init if this process deferred Application.onCreate during Direct Boot.
         FileApexAndroidBootstrap.ensureInitialized(this)
         BatteryBulletinCoordinator.onProcessStart(this)
@@ -438,8 +439,12 @@ class MainActivity : ComponentActivity() {
             this,
             restricted = persistenceSnapshot.persistenceRestricted
         )
-        val exactAvailable = ServiceWatchdogScheduler.refreshExactAlarmAvailability(this)
-        exactAlarmWarningActive = !exactAvailable
+        if (BuildConfig.IS_PLAY_STORE) {
+            exactAlarmWarningActive = false
+        } else {
+            val exactAvailable = ServiceWatchdogScheduler.refreshExactAlarmAvailability(this)
+            exactAlarmWarningActive = !exactAvailable
+        }
     }
 
     private fun completePendingOnboardingReturns() {
@@ -539,6 +544,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openExactAlarmSettings() {
+        if (BuildConfig.IS_PLAY_STORE) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
                 data = Uri.parse("package:$packageName")
@@ -555,7 +561,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestPhoneStateForCellularOptIn(onProceed: () -> Unit) {
-        if (AndroidRuntimePermissions.hasReadPhoneState(this)) {
+        if (BuildConfig.IS_PLAY_STORE || AndroidRuntimePermissions.hasReadPhoneState(this)) {
             onProceed()
             return
         }

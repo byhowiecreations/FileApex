@@ -35,7 +35,8 @@ fun FileApexPaneSectionHeader(
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val currentTheme = LocalAppTheme.current
+    val isGlassTheme = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -50,7 +51,7 @@ fun FileApexPaneSectionHeader(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringRes("back"),
-                    tint = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface
+                    tint = if (isGlassTheme) Color.White else MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -58,7 +59,7 @@ fun FileApexPaneSectionHeader(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+            color = if (isGlassTheme) Color.White else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         actions()

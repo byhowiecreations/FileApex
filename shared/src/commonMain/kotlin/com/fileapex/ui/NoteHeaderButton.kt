@@ -18,17 +18,17 @@ import com.fileapex.i18n.stringRes
 fun NoteHeaderButton(
     onOpenNotes: () -> Unit,
     viewMode: ExplorerViewMode = FileApexServices.settings.devicesViewMode.collectAsState().value,
+    iconKind: NoteIconKind? = null,
     modifier: Modifier = Modifier
 ) {
     val currentTheme = LocalAppTheme.current
     val isAndroid = com.fileapex.cloud.currentPlatformLabel() == "Android"
-    val iconKind = when {
-        currentTheme == AppTheme.KINETIC_SPHERE -> NoteIconKind.GREEN
-        currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.FREESTYLE -> NoteIconKind.WHITE
+    val resolvedIconKind = iconKind ?: when {
+        currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.FREESTYLE -> NoteIconKind.GREEN
         currentTheme == AppTheme.CLEAN && isAndroid -> NoteIconKind.BLACK
         else -> NoteIconKind.WHITE
     }
-    val painter = rememberNoteIconPainter(iconKind)
+    val painter = rememberNoteIconPainter(resolvedIconKind)
 
     IconButton(
         onClick = onOpenNotes,

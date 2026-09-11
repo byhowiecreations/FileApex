@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class LiveTransferStats(
     val isActive: Boolean = false,
+    val currentFileName: String = "",
+    val destinationDeviceName: String = "",
     val sentBytes: Long = 0L,
     val totalBytes: Long = 0L,
     val progress: Float = 0f,
@@ -31,18 +33,35 @@ object TransferActivityGuard {
     private val _statsFlow = MutableStateFlow(LiveTransferStats())
     val statsFlow: StateFlow<LiveTransferStats> = _statsFlow.asStateFlow()
 
+    private var currentFileName: String = ""
+    private var destinationDeviceName: String = ""
     private var lastSampleTimeMs: Long = 0L
     private var lastSampleBytes: Long = 0L
     private var smoothedSpeedBps: Long = 0L
 
-    fun beginTransfer() {
+    fun beginTransfer(fileName: String = "", destinationDeviceName: String = "") {
         val count = activeTransfers.incrementAndGet()
+        if (fileName.isNotBlank()) this.currentFileName = fileName
+        if (destinationDeviceName.isNotBlank()) this.destinationDeviceName = destinationDeviceName
         lastSampleTimeMs = TimeUtils.now()
         lastSampleBytes = 0L
         smoothedSpeedBps = 0L
         _transferProgressFlow.value = 0.0f
         _isTransferActiveFlow.value = count > 0
-        _statsFlow.value = LiveTransferStats(isActive = count > 0)
+        _statsFlow.value = LiveTransferStats(
+            isActive = count > 0,
+            currentFileName = this.currentFileName,
+            destinationDeviceName = this.destinationDeviceName
+        )
+    }
+
+    fun setTransferContext(fileName: String, destinationDeviceName: String = "") {
+        if (fileName.isNotBlank()) this.currentFileName = fileName
+        if (destinationDeviceName.isNotBlank()) this.destinationDeviceName = destinationDeviceName
+        _statsFlow.value = _statsFlow.value.copy(
+            currentFileName = this.currentFileName,
+            destinationDeviceName = this.destinationDeviceName
+        )
     }
 
     fun updateProgress(sentBytes: Long, totalBytes: Long) {
@@ -54,8 +73,8 @@ object TransferActivityGuard {
         val dtMs = (now - lastSampleTimeMs).coerceAtLeast(1L)
         val dBytes = (sentBytes - lastSampleBytes).coerceAtLeast(0L)
 
-        // Refresh rolling speed window every 200ms+
-        if (dtMs >= 200L || sentBytes >= totalBytes) {
+        // Refresh rolling speed window every 100ms+ for immediate UI reactivity
+        if (dtMs >= 100L || sentBytes >= totalBytes) {
             val instantBps = (dBytes * 1000L) / dtMs
             smoothedSpeedBps = if (smoothedSpeedBps == 0L) {
                 instantBps
@@ -72,6 +91,8 @@ object TransferActivityGuard {
 
         _statsFlow.value = LiveTransferStats(
             isActive = true,
+            currentFileName = currentFileName,
+            destinationDeviceName = destinationDeviceName,
             sentBytes = sentBytes,
             totalBytes = totalBytes,
             progress = frac,
@@ -87,10 +108,16 @@ object TransferActivityGuard {
         _isTransferActiveFlow.value = count > 0
         _statsFlow.value = LiveTransferStats(
             isActive = count > 0,
+            currentFileName = if (count > 0) currentFileName else "",
+            destinationDeviceName = if (count > 0) destinationDeviceName else "",
             progress = 1.0f,
             speedFormatted = "",
             etaFormatted = ""
         )
+        if (count == 0) {
+            currentFileName = ""
+            destinationDeviceName = ""
+        }
     }
 
     fun isTransferActive(): Boolean = activeTransfers.get() > 0

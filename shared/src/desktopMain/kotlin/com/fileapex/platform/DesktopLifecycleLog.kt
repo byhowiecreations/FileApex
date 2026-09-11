@@ -1,10 +1,17 @@
 package com.fileapex.platform
 
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicLong
 
 object DesktopLifecycleLog {
     private const val LOG_NAME = "desktop-lifecycle.log"
     private const val MAX_BYTES = 512 * 1024
+    private val processStartNs = AtomicLong(0L)
+
+    fun markProcessStart() {
+        processStartNs.compareAndSet(0L, System.nanoTime())
+        log("process start")
+    }
 
     fun log(message: String) {
         runCatching {
@@ -13,7 +20,13 @@ object DesktopLifecycleLog {
                 val tail = file.readLines().takeLast(200).joinToString("\n")
                 file.writeText(tail)
             }
-            file.appendText("${Instant.now()} $message\n")
+            val start = processStartNs.get()
+            val elapsed = if (start > 0L) {
+                " +${(System.nanoTime() - start) / 1_000_000L}ms"
+            } else {
+                ""
+            }
+            file.appendText("${Instant.now()}$elapsed $message\n")
         }
     }
 }

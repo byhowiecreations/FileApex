@@ -24,24 +24,25 @@ enum LocalNetworkProbe {
 
     static func setPeerCallback(_ callback: FileApexLanPeerCallback?) {
         peerCallback = callback
-        start()
-    }
-
-    static func start() {
-        if Thread.isMainThread {
-            startOnMain()
-        } else {
-            DispatchQueue.main.async { startOnMain() }
+        ioQueue.async {
+            gate.lock()
+            defer { gate.unlock() }
+            startPolicyListener()
+            startPolicyBrowser()
+            if callback != nil {
+                startPeerBrowser()
+            }
         }
     }
 
-    private static func startOnMain() {
-        gate.lock()
-        defer { gate.unlock() }
-        startPolicyListener()
-        startPolicyBrowser()
-        startPeerBrowser()
-        ioQueue.async { triggerPrivacyAlert() }
+    static func start() {
+        ioQueue.async {
+            gate.lock()
+            defer { gate.unlock() }
+            startPolicyListener()
+            startPolicyBrowser()
+            triggerPrivacyAlert()
+        }
     }
 
     private static func bonjourTcpParams() -> NWParameters {

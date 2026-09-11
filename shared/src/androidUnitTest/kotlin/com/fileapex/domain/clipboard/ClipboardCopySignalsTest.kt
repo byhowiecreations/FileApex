@@ -2,6 +2,7 @@ package com.fileapex.domain.clipboard
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -108,6 +109,26 @@ class ClipboardCopySignalsTest {
         )
         assertTrue(ClipboardCopySignals.preferCachedNodeOverClipboard(windowFocused = false))
         assertFalse(ClipboardCopySignals.preferCachedNodeOverClipboard(windowFocused = true))
+    }
+
+    @Test
+    fun nodeEventWithNullOrEmptyEventTextsDoesNotThrow() {
+        assertNull(
+            ClipboardCopySignals.textFromNodeEvent(
+                eventTexts = null,
+                sourceText = null,
+                fromIndex = -1,
+                toIndex = -1
+            )
+        )
+        assertNull(
+            ClipboardCopySignals.textFromNodeEvent(
+                eventTexts = emptyList(),
+                sourceText = null,
+                fromIndex = -1,
+                toIndex = -1
+            )
+        )
     }
 
     @Test

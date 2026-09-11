@@ -51,6 +51,9 @@ object FileApexServices {
     @Volatile
     private var deviceRepositoryInstance: DeviceRepository? = null
 
+    @Volatile
+    var isPlayStoreBuild: Boolean = false
+
     val deviceRepository: DeviceRepository
         get() = deviceRepositoryInstance
             ?: error("FileApexServices.init(database) must be called first")

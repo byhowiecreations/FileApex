@@ -31,6 +31,7 @@ import com.fileapex.presentation.resolveFluxDrawable
 import com.fileapex.presentation.resolveFreestyleDrawable
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.FileApexTealDark
+import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
@@ -70,23 +71,45 @@ fun DeviceEntryIcon(
             )
         }
         ThemeIconStyle.FLUX -> {
-            Image(
-                painter = painterResource(resolveFluxDrawable(profile)),
+            ThemeDeviceIconImage(
+                resource = resolveFluxDrawable(profile),
                 contentDescription = description,
-                modifier = modifier.clip(CircleShape),
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.Center
+                modifier = modifier
             )
         }
         ThemeIconStyle.FREESTYLE -> {
-            Image(
-                painter = painterResource(resolveFreestyleDrawable(profile)),
+            ThemeDeviceIconImage(
+                resource = resolveFreestyleDrawable(profile),
                 contentDescription = description,
-                modifier = modifier.clip(CircleShape),
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.Center
+                modifier = modifier
             )
         }
+    }
+}
+
+@Composable
+internal fun ThemeDeviceIconImage(
+    resource: DrawableResource,
+    contentDescription: String,
+    modifier: Modifier
+) {
+    val cached = ThemeDeviceIconPreloader.cached(resource)
+    if (cached != null) {
+        Image(
+            bitmap = cached,
+            contentDescription = contentDescription,
+            modifier = modifier.clip(CircleShape),
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.Center
+        )
+    } else {
+        Image(
+            painter = painterResource(resource),
+            contentDescription = contentDescription,
+            modifier = modifier.clip(CircleShape),
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.Center
+        )
     }
 }
 

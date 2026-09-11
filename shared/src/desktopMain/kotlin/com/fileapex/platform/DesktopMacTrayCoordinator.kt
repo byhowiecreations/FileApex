@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.swing.Swing
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -39,39 +40,56 @@ object DesktopMacTrayCoordinator {
         onQuit: () -> Unit,
     ) {
         if (!DesktopPlatformPaths.isMacOs() || installed) return
-        if (!DesktopMacTrayBridge.load()) {
-            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: tray dylib load failed")
-            return
-        }
-
         mainWindow = window
         this.onShowWindow = onShowWindow
         this.onHideWindow = onHideWindow
-        DesktopMacTrayBridge.registerCallbacks(
-            onSend = { deviceIdsJson, filePathsJson -> handleSend(deviceIdsJson, filePathsJson) },
-            onPopoverVisible = { visible ->
-                if (visible) {
-                    refreshDeviceSnapshotFromTray()
-                }
-            },
-            onDropBoxVisible = { visible ->
-                if (visible) {
-                    refreshDeviceSnapshotFromTray()
-                }
-            },
-            onRefreshDevices = { refreshDeviceSnapshotFromTray() },
-            onPrepareDropBox = { DesktopMacTrayBridge.resyncDropBoxFrame() },
-            onQuit = { dispatchToSwing(onQuit) },
-            onShowMainWindow = { syncMainWindowOnSwing() }
-        )
-        DesktopMacTrayBridge.setup()
-        com.fileapex.i18n.DesktopI18nRuntime.sync()
-        scheduleMainWindowBinding(window)
-        startDeviceSync()
-        installed = true
-        refreshDeviceSnapshotFromTray()
-        DesktopLifecycleLog.log("DesktopMacTrayCoordinator: native tray installed")
-        println("DesktopMacTrayCoordinator: native tray installed")
+
+        // Must run on the AWT/AppKit thread. Background IO + DispatchQueue.main.sync
+        // (inside the dylib) waits on Compose first-frame work and adds multi-second stalls.
+        scope.launch(Dispatchers.Swing) {
+            val t0 = System.nanoTime()
+            fun ms(): Long = (System.nanoTime() - t0) / 1_000_000L
+            val loaded = withContext(Dispatchers.IO) {
+                DesktopMacTrayBridge.load()
+            }
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: dylib load done ${ms()}ms ok=$loaded")
+            if (!loaded) {
+                DesktopLifecycleLog.log("DesktopMacTrayCoordinator: tray dylib load failed")
+                return@launch
+            }
+
+            DesktopMacTrayBridge.installAppLifecycle()
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: lifecycle ${ms()}ms")
+            DesktopMacTrayBridge.startLocalNetworkProbe()
+            DesktopMacTrayBridge.registerCallbacks(
+                onSend = { deviceIdsJson, filePathsJson -> handleSend(deviceIdsJson, filePathsJson) },
+                onPopoverVisible = { visible ->
+                    if (visible) {
+                        refreshDeviceSnapshotFromTray()
+                    }
+                },
+                onDropBoxVisible = { visible ->
+                    if (visible) {
+                        refreshDeviceSnapshotFromTray()
+                    }
+                },
+                onRefreshDevices = { refreshDeviceSnapshotFromTray() },
+                onPrepareDropBox = { DesktopMacTrayBridge.resyncDropBoxFrame() },
+                onQuit = { dispatchToSwing(onQuit) },
+                onShowMainWindow = { syncMainWindowOnSwing() }
+            )
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: callbacks ${ms()}ms")
+            DesktopMacTrayBridge.setup()
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: setup ${ms()}ms")
+            com.fileapex.i18n.DesktopI18nRuntime.sync()
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: i18n sync ${ms()}ms")
+            installed = true
+            scheduleMainWindowBinding(window)
+            startDeviceSync()
+            refreshDeviceSnapshotFromTray()
+            DesktopLifecycleLog.log("DesktopMacTrayCoordinator: native tray installed ${ms()}ms")
+            println("DesktopMacTrayCoordinator: native tray installed")
+        }
     }
 
     /** Returns true when the close request was consumed (hide-to-tray). */

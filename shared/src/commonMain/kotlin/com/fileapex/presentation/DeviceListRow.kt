@@ -43,8 +43,13 @@ data class DeviceListRow(
         fun areItemsTheSame(oldItem: DeviceListRow, newItem: DeviceListRow): Boolean =
             oldItem.deviceId == newItem.deviceId
 
-        fun areContentsTheSame(oldItem: DeviceListRow, newItem: DeviceListRow): Boolean =
-            oldItem == newItem
+        fun areContentsTheSame(oldItem: DeviceListRow, newItem: DeviceListRow): Boolean {
+            // Presence sweeps refresh lastSeen constantly while online; subtitle ignores it when Ready.
+            if (oldItem.online && newItem.online) {
+                return oldItem.copy(lastSeenEpochMs = 0L) == newItem.copy(lastSeenEpochMs = 0L)
+            }
+            return oldItem == newItem
+        }
 
         fun peerStatusSubtitle(
             online: Boolean,
@@ -59,11 +64,15 @@ data class DeviceListRow(
                 return if (versionLabel != null) "$status · $versionLabel" else status
             }
             val lastSeen = TimeUtils.formatLastSeenLabel(lastSeenEpochMs)
-            return buildList {
+            val prefix = buildList {
                 add(status)
                 if (versionLabel != null) add(versionLabel)
-                if (lastSeen != null) add(lastSeen)
             }.joinToString(" · ")
+            return if (lastSeen != null) {
+                if (prefix.isNotEmpty()) "$prefix\n$lastSeen" else lastSeen
+            } else {
+                prefix
+            }
         }
 
         @Composable

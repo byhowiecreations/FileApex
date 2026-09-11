@@ -26,6 +26,7 @@ import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.data.bulletin.createBulletinBoardDatabase
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.data.settings.createAppSettings
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.DesktopShareServerController
 import com.fileapex.domain.presence.PresenceForegroundRefresh
@@ -46,14 +47,18 @@ import com.fileapex.platform.DesktopBulletinHandoff
 import com.fileapex.platform.DesktopWindowsBackdrop
 import com.fileapex.ui.DeviceCardSlotHeight
 import com.fileapex.ui.DeviceListToAddGap
+import com.fileapex.ui.ThemeDeviceIconPreloader
 import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.update.FileApexAppVersion
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.withContext
 
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
@@ -88,6 +93,8 @@ fun main(args: Array<String>) {
 
 private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload?) {
     MacLaunchSplash.show()
+    // Decode Freestyle/Flux PNGs off the UI thread while the window comes up.
+    ThemeDeviceIconPreloader.startFor(createAppSettings().themeIconStyle.value)
 
     // Mac: never System.exit when Compose scope ends — native tray + share server keep running.
     application(exitProcessOnExit = !DesktopPlatformPaths.isMacOs()) {
@@ -107,10 +114,14 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         }
 
         LaunchedEffect(Unit) {
+            val t0 = System.nanoTime()
             if (!servicesReady) {
                 FileApexServices.awaitBootstrap()
             }
             servicesReady = true
+            DesktopLifecycleLog.log(
+                "Main: servicesReady after ${(System.nanoTime() - t0) / 1_000_000L}ms await"
+            )
         }
 
         LaunchedEffect(servicesReady) {
@@ -124,14 +135,6 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             }
         }
 
-        // Defer share-server bind until the window is on screen (avoids Windows Firewall
-        // "Java Platform SE binary" prompt before the user sees FileApex).
-        LaunchedEffect(servicesReady, mainWindowVisible) {
-            if (!servicesReady || !mainWindowVisible) return@LaunchedEffect
-            DesktopShareServerController.start()
-            PresenceForegroundRefresh.onAppForegrounded()
-        }
-
         LaunchedEffect(mainWindowVisible) {
             if (!mainWindowVisible || !DesktopPlatformPaths.isWindows()) return@LaunchedEffect
             runCatching {
@@ -143,14 +146,16 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         }
 
         val savedBounds = remember { DesktopWindowBoundsStore.loadValidated() }
-        val deviceFlow = remember(servicesReady) {
+        val deviceCountFlow = remember(servicesReady) {
             if (servicesReady) {
                 FileApexServices.deviceRepository.observeDevices()
+                    .map { it.size }
+                    .distinctUntilChanged()
             } else {
-                flowOf(emptyList())
+                flowOf(0)
             }
         }
-        val devices by deviceFlow.collectAsState(initial = emptyList())
+        val deviceCount by deviceCountFlow.collectAsState(initial = 0)
         val layoutModeFlow = remember(servicesReady) {
             if (servicesReady) {
                 FileApexServices.settings.desktopLayoutMode
@@ -185,11 +190,11 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             position = initialPosition
         )
 
-        LaunchedEffect(servicesReady, devices.size, desktopLayoutMode) {
+        LaunchedEffect(servicesReady, deviceCount, desktopLayoutMode) {
             if (!servicesReady) return@LaunchedEffect
             if (!DesktopWindowBoundsStore.hasValidSaved()) {
                 windowState.size = preferredWindowSize(
-                    deviceCount = devices.size,
+                    deviceCount = deviceCount,
                     layoutMode = desktopLayoutMode
                 )
             }
@@ -240,23 +245,15 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             // Windows: visible=false is the supported hide-to-tray path (CMP #2928).
             visible = if (DesktopPlatformPaths.isMacOs()) true else mainWindowVisible,
         ) {
-            LaunchedEffect(window) {
-                run {
-                    repeat(60) {
-                        if (window.isShowing) return@run
-                        withFrameNanos { }
-                    }
-                }
-                MacLaunchSplash.hide()
-            }
+            // Light shell first so splash hide + tray attach are not stuck behind Kinetic/PNG
+            // first composition (that path was ~6–10s of Dock bounce / frozen splash).
+            var mountApp by remember { mutableStateOf(false) }
 
             LaunchedEffect(window) {
                 DesktopAppIcon.loadTrayImage()?.let { window.iconImage = it }
                 if (DesktopPlatformPaths.isMacOs()) {
                     DesktopMacWindowClosePolicy.install(window)
                 }
-                withFrameNanos { }
-                withFrameNanos { }
                 DesktopTraySupport.attachMainWindow(
                     window = window,
                     onShowWindow = {
@@ -273,18 +270,39 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 }
             }
 
-            if (!servicesReady) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-                return@Window
+            LaunchedEffect(window) {
+                withFrameNanos { }
+                DesktopLifecycleLog.log("Main: first light frame")
+                MacLaunchSplash.hide()
             }
 
-            LaunchedEffect(servicesReady) {
+            LaunchedEffect(window, servicesReady) {
                 if (!servicesReady) return@LaunchedEffect
+                val t0 = System.nanoTime()
+                val iconsReady = withContext(Dispatchers.Default) {
+                    ThemeDeviceIconPreloader.awaitReady()
+                }
+                DesktopLifecycleLog.log(
+                    "Main: theme icons ready=${iconsReady} " +
+                        "after ${(System.nanoTime() - t0) / 1_000_000L}ms"
+                )
+                withFrameNanos { }
+                mountApp = true
+            }
+
+            LaunchedEffect(mountApp, mainWindowVisible) {
+                if (!mountApp || !mainWindowVisible) return@LaunchedEffect
+                withFrameNanos { }
+                DesktopLifecycleLog.log("Main: first App frame")
+                DesktopShareServerController.start()
+                // Let the window take input before LAN/clipboard/cloud storm.
+                repeat(2) { withFrameNanos { } }
+                delay(350)
+                DesktopLifecycleLog.log("Main: ui interactive")
+                FileApexServices.presenceMonitor.markUiInteractive()
+                withContext(Dispatchers.Default) {
+                    PresenceForegroundRefresh.onAppForegrounded()
+                }
                 MacOsExtensionRegistrar.registerOnLaunchDeferred()
             }
 
@@ -292,6 +310,16 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 if (!DesktopPlatformPaths.isWindows()) return@LaunchedEffect
                 val fluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
                 DesktopWindowsBackdrop.applyMica(window, fluent)
+            }
+
+            if (!servicesReady || !mountApp) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                return@Window
             }
 
             App(

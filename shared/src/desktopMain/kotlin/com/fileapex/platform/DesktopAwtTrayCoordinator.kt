@@ -258,7 +258,10 @@ object DesktopAwtTrayCoordinator {
     }
 
     private fun openDropBox(deviceIds: List<String>) {
-        DesktopWindowsDropBox.show(deviceIds) { ids, paths ->
+        val singleName = if (deviceIds.size == 1) {
+            devices.firstOrNull { it.id == deviceIds.first() }?.name
+        } else null
+        DesktopWindowsDropBox.show(deviceIds, singleName) { ids, paths ->
             scope.launch(Dispatchers.Default) {
                 try {
                     val outcome = FileApexServices.transferQueue.sendLocalPathsOrQueue(

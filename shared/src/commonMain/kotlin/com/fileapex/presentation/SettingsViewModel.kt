@@ -41,6 +41,9 @@ data class SettingsUiState(
     val googleAccountLinkEnabled: Boolean = false,
     val googleAccountEmail: String = "",
     val clipboardSharingEnabled: Boolean = false,
+    val clipboardDisclosureAcknowledged: Boolean = false,
+    val accessibilityDisclosureAcknowledged: Boolean = false,
+    val installPackagesDisclosureAcknowledged: Boolean = false,
     val clipboardShareMode: ClipboardShareMode = ClipboardShareMode.UNSET,
     val clipboardTargetDeviceIds: Set<String> = emptySet(),
     val clipboardViaCellularEnabled: Boolean = false,
@@ -104,6 +107,9 @@ class SettingsViewModel : ViewModel() {
             googleAccountLinkEnabled = settings.googleAccountLinkEnabled.value,
             googleAccountEmail = settings.googleAccountEmail.value,
             clipboardSharingEnabled = settings.clipboardSharingEnabled.value,
+            clipboardDisclosureAcknowledged = settings.clipboardDisclosureAcknowledged.value,
+            accessibilityDisclosureAcknowledged = settings.accessibilityDisclosureAcknowledged.value,
+            installPackagesDisclosureAcknowledged = settings.installPackagesDisclosureAcknowledged.value,
             clipboardShareMode = settings.clipboardShareMode.value,
             clipboardTargetDeviceIds = settings.clipboardTargetDeviceIds.value,
             clipboardViaCellularEnabled = settings.clipboardViaCellularEnabled.value,
@@ -182,6 +188,21 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.clipboardSharingEnabled.collect { enabled ->
                 _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            settings.clipboardDisclosureAcknowledged.collect { ack ->
+                _uiState.update { it.copy(clipboardDisclosureAcknowledged = ack) }
+            }
+        }
+        viewModelScope.launch {
+            settings.accessibilityDisclosureAcknowledged.collect { ack ->
+                _uiState.update { it.copy(accessibilityDisclosureAcknowledged = ack) }
+            }
+        }
+        viewModelScope.launch {
+            settings.installPackagesDisclosureAcknowledged.collect { ack ->
+                _uiState.update { it.copy(installPackagesDisclosureAcknowledged = ack) }
             }
         }
         viewModelScope.launch {
@@ -278,6 +299,21 @@ class SettingsViewModel : ViewModel() {
                 _uiState.update { it.copy(themeIconStyle = style) }
             }
         }
+        viewModelScope.launch {
+            settings.desktopLayoutMode.collect { mode ->
+                _uiState.update { it.copy(desktopLayoutMode = mode) }
+            }
+        }
+        viewModelScope.launch {
+            settings.desktopUiStyle.collect { style ->
+                _uiState.update { it.copy(desktopUiStyle = style) }
+            }
+        }
+        viewModelScope.launch {
+            settings.appTheme.collect { theme ->
+                _uiState.update { it.copy(appTheme = theme) }
+            }
+        }
     }
 
     fun toggleSystemPerformanceGroup() {
@@ -354,6 +390,21 @@ class SettingsViewModel : ViewModel() {
         if (enabled) {
             com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
         }
+    }
+
+    fun setClipboardDisclosureAcknowledged(acknowledged: Boolean) {
+        settings.setClipboardDisclosureAcknowledged(acknowledged)
+        _uiState.update { it.copy(clipboardDisclosureAcknowledged = acknowledged) }
+    }
+
+    fun setAccessibilityDisclosureAcknowledged(acknowledged: Boolean) {
+        settings.setAccessibilityDisclosureAcknowledged(acknowledged)
+        _uiState.update { it.copy(accessibilityDisclosureAcknowledged = acknowledged) }
+    }
+
+    fun setInstallPackagesDisclosureAcknowledged(acknowledged: Boolean) {
+        settings.setInstallPackagesDisclosureAcknowledged(acknowledged)
+        _uiState.update { it.copy(installPackagesDisclosureAcknowledged = acknowledged) }
     }
 
     fun setClipboardShareMode(mode: ClipboardShareMode) {

@@ -69,7 +69,8 @@ expect suspend fun peerHttpUploadFromFile(
     offset: Long,
     length: Long,
     connectTimeoutMs: Long,
-    uploadIdleTimeoutMs: Long
+    uploadIdleTimeoutMs: Long,
+    onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
 ): PeerBoundHttpResponse?
 
 /**

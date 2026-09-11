@@ -45,9 +45,8 @@ object MacOsExtensionRegistrar {
 
         val bundle = resolveRunningAppBundle()
         if (bundle == null || !isApplicationsBundle(bundle)) {
-            removeAllRegistrations(DeprecatedFinderSyncId)
-            removeNonApplicationsRegistrations(ShareExtensionId)
-            removeNonApplicationsRegistrations(BulletinShareExtensionId)
+            // Do not run `pluginkit -mAvvv` here. That listing is multi-second and was
+            // burning CPU on every current/-folder launch. Cleanup only from /Applications.
             log(
                 "skip pluginkit - not running from $ApplicationsAppPath " +
                     "(running=${bundle?.absolutePath ?: "unknown"})"
@@ -86,22 +85,11 @@ object MacOsExtensionRegistrar {
         }
 
         val stamp = registrationStamp(share, bulletin, shareEnts, bulletinEnts)
-        val shareListed = isPluginkitListed(ShareExtensionId)
-        val bulletinListed = isPluginkitListed(BulletinShareExtensionId)
-        if (MacOsExtensionRegistrationPolicy.shouldSkipPluginkit(
-                stampUnchanged = readStamp() == stamp,
-                shareListed = shareListed,
-                bulletinListed = bulletinListed
-            )
-        ) {
+        // Stamp-only short circuit: never call pluginkit -m on the cold-start path.
+        // Listing every launch was multi-second and contended with first Compose paint.
+        if (readStamp() == stamp) {
             log("skip pluginkit - unchanged since last successful registration")
             return
-        }
-        if (readStamp() == stamp && (!shareListed || !bulletinListed)) {
-            log(
-                "re-registering - stamp unchanged but pluginkit missing " +
-                    "share=$shareListed bulletin=$bulletinListed"
-            )
         }
 
         // Never codesign or xattr the host/appexes here. Packaging already signed them;

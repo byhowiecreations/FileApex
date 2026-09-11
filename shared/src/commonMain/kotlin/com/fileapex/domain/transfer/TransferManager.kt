@@ -191,8 +191,9 @@ class TransferManager(
     ): TransferBatchResult {
         awaitReady()
         require(sources.isNotEmpty()) { AppI18n.t("select_at_least_one_file") }
-        require(selectedDevices.isNotEmpty()) { AppI18n.t("select_destination_device") }
-        TransferActivityGuard.beginTransfer()
+        val firstFile = sources.firstOrNull()?.fileName.orEmpty()
+        val destNames = selectedDevices.joinToString(", ") { it.deviceName }
+        TransferActivityGuard.beginTransfer(fileName = firstFile, destinationDeviceName = destNames)
         try {
             val verifiedSources = sources.verifiedFromDisk()
             val remoteTargets = selectedDevices.filter { !it.isLocal }

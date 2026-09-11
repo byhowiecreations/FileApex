@@ -41,6 +41,7 @@ class BulletinBoardSyncEngine(
     private var drainQueued = false
     private var pendingDrainJob: Job? = null
     private var maintenanceJob: Job? = null
+    private val initialSyncPeers = mutableSetOf<String>()
     private val drainScheduleLock = Any()
 
     fun ensureStarted() {
@@ -203,6 +204,8 @@ class BulletinBoardSyncEngine(
             )
         )
         for (messageId in remotePurgeMessageIds.distinct()) {
+            val msg = repository.getMessage(messageId)
+            if (msg != null && msg.isPinned) continue
             BulletinRemoteFilePurgeHandler.handle(messageId)
         }
         if (newlyArrived.isNotEmpty() || incomingTombstones.isNotEmpty()) {
@@ -296,6 +299,35 @@ class BulletinBoardSyncEngine(
                     continue
                 }
                 if (!PeerLanHttpPolicy.canRoute(host)) continue
+
+                if (!initialSyncPeers.contains(device.deviceId)) {
+                    initialSyncPeers.add(device.deviceId)
+                    val activeMessages = messageDao.getActiveOnce()
+                    val recentCutoff = TimeUtils.now() - 7 * 24 * 60 * 60 * 1000L
+                    val recentTombstones = tombstoneDao.getRecentOnce(recentCutoff)
+                    val outboxEntries = mutableListOf<OutboxEntity>()
+                    val now = TimeUtils.now()
+                    for (msg in activeMessages) {
+                        outboxEntries += OutboxEntity(
+                            targetDeviceId = device.deviceId,
+                            payloadType = BulletinPayloadType.MESSAGE,
+                            payloadId = msg.id,
+                            createdAt = now
+                        )
+                    }
+                    for (ts in recentTombstones) {
+                        outboxEntries += OutboxEntity(
+                            targetDeviceId = device.deviceId,
+                            payloadType = BulletinPayloadType.TOMBSTONE,
+                            payloadId = ts.id,
+                            createdAt = now
+                        )
+                    }
+                    if (outboxEntries.isNotEmpty()) {
+                        transactionDao.insertOutboxEntries(outboxEntries)
+                    }
+                }
+
                 val entries = repository.getOutboxForDevice(
                     device.deviceId,
                     BulletinBoardPolicy.SYNC_BATCH_LIMIT

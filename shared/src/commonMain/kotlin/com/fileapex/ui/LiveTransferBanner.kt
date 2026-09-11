@@ -125,7 +125,14 @@ fun LiveTransferBanner(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val label = activeItem?.displayLabel ?: stringRes("sending")
+                            val label = when {
+                                liveStats.currentFileName.isNotBlank() && liveStats.destinationDeviceName.isNotBlank() ->
+                                    "${stringRes("sending")}: ${liveStats.currentFileName} → ${liveStats.destinationDeviceName}"
+                                liveStats.currentFileName.isNotBlank() ->
+                                    "${stringRes("sending")}: ${liveStats.currentFileName}"
+                                activeItem != null -> activeItem.displayLabel
+                                else -> stringRes("sending")
+                            }
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
@@ -138,7 +145,7 @@ fun LiveTransferBanner(
                                 if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
                                 if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
                                 val percent = (liveStats.progress * 100).toInt().coerceIn(0, 100)
-                                if (percent in 1..99) add("$percent%")
+                                add("$percent%")
                             }
                             if (statsParts.isNotEmpty()) {
                                 Spacer(modifier = Modifier.width(8.dp))

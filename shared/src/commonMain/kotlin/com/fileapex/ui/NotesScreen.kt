@@ -1005,7 +1005,11 @@ fun NotesScreen(
                                     onCloseAnyReveal = { revealedNoteId = null },
                                     onDeleteClick = {
                                         revealedNoteId = null
-                                        noteToDelete = row.note
+                                        if (row.note.attachmentPinned) {
+                                            BriefToast.show(AppI18n.t("note_locked_unlock_first"))
+                                        } else {
+                                            noteToDelete = row.note
+                                        }
                                     },
                                     onLockClick = {
                                         revealedNoteId = null
@@ -1307,6 +1311,10 @@ fun NotesScreen(
                     onClick = {
                         val target = targetToDelete
                         noteToDelete = null
+                        if (target.attachmentPinned) {
+                            BriefToast.show(AppI18n.t("note_locked_unlock_first"))
+                            return@TextButton
+                        }
                         if (target.hasBulletinBinaryAttachment()) {
                             pendingRemotePurgeDelete = target
                         } else {
@@ -1323,6 +1331,10 @@ fun NotesScreen(
                         onClick = {
                             val target = targetToDelete
                             noteToDelete = null
+                            if (target.attachmentPinned) {
+                                BriefToast.show(AppI18n.t("note_locked_unlock_first"))
+                                return@TextButton
+                            }
                             viewModel.deleteNoteLocally(target.noteId)
                         }
                     ) {

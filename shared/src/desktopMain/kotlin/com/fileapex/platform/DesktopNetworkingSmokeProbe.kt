@@ -258,7 +258,7 @@ object DesktopNetworkingSmokeProbe {
     }
 
     private fun httpGetStatus(host: String, port: Int, path: String): Int {
-        val url = URL("http://$host:$port$path")
+        val url = java.net.URI.create("http://$host:$port$path").toURL()
         val connection = url.openConnection() as HttpURLConnection
         connection.connectTimeout = 5_000
         connection.readTimeout = 5_000

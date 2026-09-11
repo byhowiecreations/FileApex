@@ -15,6 +15,7 @@ import com.fileapex.network.sendWakeBroadcast
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +28,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Intent-driven peer reachability with battery-first background sweeps.
@@ -65,6 +67,7 @@ class PeerPresenceMonitor(
     private var lastFcmWakeDispatchEpochMs = 0L
     @Volatile
     private var lastSelfBroadcastEpochMs = 0L
+    private val uiInteractiveGate = CompletableDeferred<Unit>()
 
     private val lastReachableEpochById = mutableMapOf<String, Long>()
     private val discoveredMdnsEndpoints = mutableMapOf<Pair<String, Int>, Long>()
@@ -88,6 +91,23 @@ class PeerPresenceMonitor(
     }
 
     fun isAppInForeground(): Boolean = appInForeground
+
+    /** Called once the desktop window has presented and input should stay responsive. */
+    fun markUiInteractive() {
+        if (!uiInteractiveGate.isCompleted) {
+            uiInteractiveGate.complete(Unit)
+        }
+    }
+
+    private suspend fun awaitUiInteractive(timeoutMs: Long = 8_000L) {
+        if (uiInteractiveGate.isCompleted) return
+        // Desktop Main calls markUiInteractive(); Android has no window gate — fail open fast.
+        val timeout = if (com.fileapex.cloud.currentPlatformLabel() == "Android") 50L else timeoutMs
+        withTimeoutOrNull(timeout) { uiInteractiveGate.await() }
+        if (!uiInteractiveGate.isCompleted) {
+            uiInteractiveGate.complete(Unit)
+        }
+    }
 
     fun isDeviceOnline(device: PairedDeviceEntity): Boolean {
         if (!hasUsableEndpoint(device)) return false
@@ -113,6 +133,9 @@ class PeerPresenceMonitor(
     fun ensureLanPollLoop() {
         if (lanPollJob?.isActive == true) return
         lanPollJob = scope.launch {
+            // Do not FULL-sweep during first Compose frames — saturates CPU and Room writers.
+            awaitUiInteractive()
+            delay(400)
             launchSweep(SweepMode.FULL)
             while (isActive) {
                 if (TransferActivityGuard.isTransferActive()) {
@@ -144,7 +167,11 @@ class PeerPresenceMonitor(
     fun scheduleColdLaunchProbeOnce() {
         if (coldLaunchProbeScheduled) return
         coldLaunchProbeScheduled = true
-        launchSweep(SweepMode.FULL)
+        scope.launch {
+            awaitUiInteractive()
+            delay(800)
+            launchSweep(SweepMode.FULL)
+        }
     }
 
     fun refreshPeersOnForeground() {
@@ -153,6 +180,14 @@ class PeerPresenceMonitor(
             return
         }
         lastForegroundRefreshEpochMs = now
+        if (!uiInteractiveGate.isCompleted) {
+            scope.launch {
+                awaitUiInteractive()
+                delay(400)
+                launchSweep(SweepMode.FULL)
+            }
+            return
+        }
         launchSweep(SweepMode.FULL)
     }
 

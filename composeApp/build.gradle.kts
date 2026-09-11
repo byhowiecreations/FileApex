@@ -147,6 +147,28 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            buildConfigField("boolean", "IS_PLAY_STORE", "false")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "IS_PLAY_STORE", "true")
+        }
+    }
+
+    sourceSets {
+        getByName("play") {
+            manifest.srcFile("src/play/AndroidManifest.xml")
+        }
+        getByName("github") {
+            manifest.srcFile("src/github/AndroidManifest.xml")
+        }
     }
 
     packaging {
@@ -187,7 +209,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             if (canSignRelease) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -244,9 +271,9 @@ tasks.register("verifyReleaseApkSigned") {
     description = "Fail if assembleRelease produced an unsigned APK (unsigned artifacts are deleted)"
     dependsOn("assembleRelease")
     doLast {
-        val dir = apkOutputDir("release")
-        val apks = dir.listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
-        check(apks.isNotEmpty()) { "No release APK found in ${dir.absolutePath}" }
+        val apkRoot = layout.buildDirectory.dir("outputs/apk").get().asFile
+        val apks = apkRoot.walkTopDown().filter { it.isFile && it.extension == "apk" && it.name.contains("release", ignoreCase = true) }.toList()
+        check(apks.isNotEmpty()) { "No release APK found in ${apkRoot.absolutePath}" }
         val unsigned = apks.filter { it.name.contains("unsigned", ignoreCase = true) }
         if (unsigned.isNotEmpty()) {
             unsigned.forEach { artifact ->
@@ -374,14 +401,17 @@ fun org.gradle.api.Project.resolveReleaseKeyAlias(
 }
 
 afterEvaluate {
-    listOf("assembleRelease", "packageRelease", "bundleRelease").forEach { taskName ->
-        tasks.matching { it.name == taskName }.configureEach {
-            dependsOn("verifyReleaseSigning")
-        }
+    tasks.matching {
+        it.name.startsWith("assemble") && it.name.endsWith("Release") ||
+        it.name.startsWith("package") && it.name.endsWith("Release") ||
+        it.name.startsWith("bundle") && it.name.endsWith("Release") ||
+        it.name in setOf("assembleRelease", "packageRelease", "bundleRelease")
+    }.configureEach {
+        dependsOn("verifyReleaseSigning")
     }
     // Android release APK is built on macOS only; Windows ships desktop EXE.
     if (!isWindowsHost()) {
-        listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsReleaseBuilds").forEach { taskName ->
+        listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsReleaseBuilds", "shipAndroidBuilds").forEach { taskName ->
             tasks.matching { it.name == taskName }.configureEach {
                 dependsOn("verifyReleaseSigning", "verifyReleaseApkSigned")
             }
@@ -764,18 +794,31 @@ tasks.register("fixDmgVolumeIcon") {
 /** After [moveToCurrent], Gradle must rebuild when outputs no longer exist under `build/`. */
 afterEvaluate {
     fun Project.apkOutputsPresent(variant: String): Boolean =
-        apkOutputDir(variant).listFiles()?.any { it.isFile && it.extension == "apk" } == true
+        layout.buildDirectory.dir("outputs/apk").get().asFile
+            .walkTopDown().any { it.isFile && it.extension == "apk" && it.name.contains(variant, ignoreCase = true) }
 
-    listOf("assembleDebug", "packageDebug").forEach { taskName ->
-        tasks.named(taskName).configure {
-            outputs.upToDateWhen { apkOutputsPresent("debug") }
-        }
+    tasks.matching {
+        it.name.startsWith("assemble") && it.name.contains("Debug", ignoreCase = true) ||
+        it.name.startsWith("package") && it.name.contains("Debug", ignoreCase = true)
+    }.configureEach {
+        outputs.upToDateWhen { apkOutputsPresent("debug") }
     }
 
-    listOf("assembleRelease", "packageRelease").forEach { taskName ->
-        tasks.named(taskName).configure {
-            outputs.upToDateWhen { apkOutputsPresent("release") }
-        }
+    tasks.matching {
+        it.name.startsWith("assemble") && it.name.contains("Release", ignoreCase = true) ||
+        it.name.startsWith("package") && it.name.contains("Release", ignoreCase = true)
+    }.configureEach {
+        outputs.upToDateWhen { apkOutputsPresent("release") }
+    }
+
+    fun Project.bundleOutputsPresent(variant: String): Boolean =
+        layout.buildDirectory.dir("outputs/bundle").get().asFile
+            .walkTopDown().any { it.isFile && it.extension == "aab" && it.name.contains(variant, ignoreCase = true) }
+
+    tasks.matching {
+        it.name.contains("Bundle", ignoreCase = true) && it.name.contains("Release", ignoreCase = true)
+    }.configureEach {
+        outputs.upToDateWhen { bundleOutputsPresent("release") }
     }
 
     tasks.named("createDistributable").configure {
@@ -800,8 +843,15 @@ afterEvaluate {
 
 }
 
-private fun Project.apkOutputDir(variant: String): File =
-    layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
+private fun Project.apkOutputDir(variant: String): File {
+    val github = layout.buildDirectory.dir("outputs/apk/github/$variant").get().asFile
+    if (github.exists()) return github
+    val direct = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
+    if (direct.exists()) return direct
+    val play = layout.buildDirectory.dir("outputs/apk/play/$variant").get().asFile
+    if (play.exists()) return play
+    return github
+}
 
 private fun Project.distributableMacAppBundle(): File =
     layout.buildDirectory.dir("compose/binaries/main/app/FileApex.app").get().asFile
@@ -1034,6 +1084,9 @@ private fun prepareCurrentDirectory(
         if (preserveDmgFiles && entry.isFile && entry.extension.equals("apk", ignoreCase = true)) {
             return@forEach
         }
+        if (entry.isFile && entry.extension.equals("aab", ignoreCase = true)) {
+            return@forEach
+        }
         if ((preserveMacApp || preserveDmgFiles) && entry.name == "FileApex.app") {
             return@forEach
         }
@@ -1130,8 +1183,9 @@ private fun Project.shipToCurrent(
     val appVersionName = fileapexVersionName
 
     fun moveApksFrom(variant: String) {
-        val apks = apkOutputDir(variant).listFiles().orEmpty().filter { it.isFile && it.extension == "apk" }
-        check(apks.isNotEmpty()) { "No APK found in ${apkOutputDir(variant).absolutePath}" }
+        val apkRoot = layout.buildDirectory.dir("outputs/apk").get().asFile
+        val apks = apkRoot.walkTopDown().filter { it.isFile && it.extension == "apk" && it.name.contains(variant, ignoreCase = true) }.toList()
+        check(apks.isNotEmpty()) { "No APK found in ${apkRoot.absolutePath}" }
         apks.forEach { apk ->
             if (variant == "release" && apk.name.contains("unsigned", ignoreCase = true)) {
                 error(
@@ -1140,14 +1194,43 @@ private fun Project.shipToCurrent(
                         "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then run assembleRelease."
                 )
             }
-            val destName = when (variant) {
-                "release" -> "FileApex-v$appVersionName.apk"
-                else -> apk.name
+            val destName = when {
+                apk.name.contains("play", ignoreCase = true) -> "FileApex-v$appVersionName-play.apk"
+                else -> "FileApex-v$appVersionName.apk"
             }
             moveToCurrent(dest, apk, destName = destName, logger = logger)
         }
     }
-    if (includeReleaseApk) moveApksFrom("release")
+    if (includeReleaseApk) {
+        moveApksFrom("release")
+        val apkRoot = layout.buildDirectory.dir("outputs/apk").get().asFile
+        if (apkRoot.exists()) {
+            apkRoot.walkTopDown()
+                .filter { it.isFile && it.extension == "apk" && it.name.contains("debug", ignoreCase = true) }
+                .forEach { debugApk ->
+                    debugApk.delete()
+                    logger.lifecycle("Pruned residual debug APK: ${debugApk.name}")
+                }
+            apkRoot.listFiles()?.filter { it.isDirectory }?.forEach { flavorDir ->
+                flavorDir.listFiles()?.filter { it.isDirectory && it.name.contains("debug", ignoreCase = true) }?.forEach {
+                    it.deleteRecursively()
+                    logger.lifecycle("Pruned residual debug output directory: ${it.absolutePath}")
+                }
+            }
+        }
+        val intermediates = layout.buildDirectory.dir("intermediates").get().asFile
+        if (intermediates.exists()) {
+            listOf("incremental", "dex").forEach { subName ->
+                val subDir = intermediates.resolve(subName)
+                if (subDir.exists()) {
+                    subDir.listFiles()?.filter { it.name.contains("debug", ignoreCase = true) }?.forEach { debugCache ->
+                        debugCache.deleteRecursively()
+                        logger.lifecycle("Pruned residual debug cache: ${debugCache.name}")
+                    }
+                }
+            }
+        }
+    }
 
     if (includeDmg && isMacHost()) {
         val dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg").get().asFile
@@ -1213,6 +1296,40 @@ tasks.register("copyReleaseBuilds") {
             includeMacApp = isMacHost(),
             mountDmg = false,
             preserveExistingDmgOnWipe = false
+        )
+    }
+}
+
+/**
+ * Ship Play Store release bundle (.aab) into current/.
+ */
+tasks.register("shipPlayBundle") {
+    group = "distribution"
+    description = "Build signed playRelease bundle and move to current/"
+    dependsOn("bundlePlayRelease", "verifyReleaseSigning")
+    doLast {
+        val bundleDir = layout.buildDirectory.dir("outputs/bundle/playRelease").get().asFile
+        val aab = bundleDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension == "aab" }
+        check(aab != null) { "No playRelease AAB found in ${bundleDir.absolutePath}" }
+        val dest = currentBuildsDest()
+        moveToCurrent(dest, aab, destName = "FileApex-v$fileapexVersionName-release.aab", logger = logger)
+    }
+}
+
+/**
+ * Ship release APKs and Play Store bundle (.aab) into current/ (without building desktop DMG).
+ */
+tasks.register("shipAndroidBuilds") {
+    group = "distribution"
+    description = "Build signed release APKs and Play bundle, moving them to current/"
+    dependsOn("verifyReleaseApkSigned", "shipPlayBundle")
+    doLast {
+        shipToCurrent(
+            includeReleaseApk = true,
+            includeDmg = false,
+            includeMacApp = false,
+            mountDmg = false,
+            preserveExistingDmgOnWipe = true
         )
     }
 }
@@ -1417,6 +1534,62 @@ tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServic
 }
 
 /**
+ * Silicon (arm64) .app only — no DMG, no Android. Use while iterating Mac launch fixes.
+ */
+tasks.register("packageSiliconApp") {
+    group = "distribution"
+    description = "Package Silicon arm64 FileApex.app into current/ (no DMG, no Android)"
+    onlyIf { isMacHost() }
+    dependsOn("buildMacTrayBridge")
+    doLast {
+        val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+        check(arm64Jdk.isDirectory) { "arm64 JDK not found at ${arm64Jdk.absolutePath}" }
+
+        val stagingAppDir = layout.buildDirectory.dir("compose/binaries/main/app").get().asFile
+        val stagingRuntime = layout.buildDirectory.dir("compose/tmp/main/runtime").get().asFile
+        if (stagingAppDir.exists()) stagingAppDir.deleteRecursively()
+        if (stagingRuntime.exists()) stagingRuntime.deleteRecursively()
+
+        val cmd = "source signing.local.env && unset JAVA_HOME && export JAVA_HOME='${arm64Jdk.absolutePath}' &&" +
+            " ./gradlew --no-daemon createDistributable embedMacExtensions" +
+            " -x assembleRelease -x packageDmg -x packageReleaseDmg" +
+            " -x packageSiliconDmg -x packageIntelDmg" +
+            " -x verifyReleaseApkSigned -x verifyReleaseSigning" +
+            " -x shipFirefoxExtension -x copyAllBuilds -x copyAllBuildsFinalize"
+        val exit = runPackagingSubprocess("package-silicon-app-subprocess.log", cmd)
+        check(exit == 0) { "Silicon .app packaging failed with exit code $exit" }
+
+        val stagingApp = stagingAppDir.resolve("FileApex.app")
+        check(stagingApp.isDirectory) {
+            "Silicon .app missing at ${stagingApp.absolutePath}"
+        }
+        if (!stagingApp.resolve(
+                "Contents/PlugIns/FileApexShareExtension.appex/Contents/Resources/en.xml"
+            ).isFile
+        ) {
+            embedMacExtensionsIn(stagingApp)
+        }
+        embedMacTrayBridgeIn(stagingApp)
+        patchAppInfoPlistVersions(stagingApp, fileapexVersionName, fileapexVersionCode)
+        finalizeMacAppSignature(stagingApp)
+
+        val dest = currentBuildsDest()
+        moveToCurrent(dest, stagingApp, logger = logger)
+        requireMacShareCatalogs(dest.resolve("FileApex.app"))
+        requireMacShareEntitlements(dest.resolve("FileApex.app"))
+        val shippedVerify = ProcessBuilder(
+            "/usr/bin/codesign", "--verify", "--verbose=2",
+            dest.resolve("FileApex.app").absolutePath
+        ).redirectErrorStream(true).start()
+        val shippedOut = shippedVerify.inputStream.bufferedReader().readText()
+        check(shippedVerify.waitFor() == 0) {
+            "Shipped current/FileApex.app signature invalid:\n$shippedOut"
+        }
+        logger.lifecycle("Shipped current/FileApex.app only (no DMG/Android)")
+    }
+}
+
+/**
  * Silicon (arm64) DMG — spawns a fresh Gradle subprocess with JAVA_HOME explicitly set to the
  * arm64 JDK so the Compose plugin always bundles the correct JRE regardless of what the parent
  * daemon has cached.
@@ -1577,8 +1750,8 @@ tasks.register("copyAllBuilds") {
     group = "distribution"
     description = "Ship into current/ (Mac: APK + DMGs; Windows: EXE). Does not build the Firefox XPI."
     if (isMacHost()) {
-        // Only build the APK in-process; desktop DMGs are spawned as explicit subprocesses.
-        dependsOn("assembleRelease", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
+        // Only build the APK and Play AAB in-process; desktop DMGs are spawned as explicit subprocesses.
+        dependsOn("assembleRelease", "shipPlayBundle", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
         finalizedBy("packageSiliconDmg")
     } else if (isWindowsHost()) {
         dependsOn("createReleaseDistributable", "packageInnoExe")

@@ -18,6 +18,7 @@ import com.fileapex.data.settings.DesktopUiStyle
 
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.platform.isDesktopHost
 
 @Composable
 fun isFileApexFluentUi(): Boolean =
@@ -54,6 +55,14 @@ fun fileApexChromeContentColor(): Color = when {
     isFileApexCustomGlassTheme() -> Color.White
     isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurface
     else -> Color.White
+}
+
+/** Action icons in header/chrome (toggle view mode, queued transfers, panel toggle). */
+@Composable
+fun fileApexHeaderActionTint(): Color = when {
+    isFileApexCustomGlassTheme() -> Color(0xFF00E676)
+    isDesktopHost() -> fileApexChromeContentColor()
+    else -> MaterialTheme.colorScheme.onSurface
 }
 
 @Composable

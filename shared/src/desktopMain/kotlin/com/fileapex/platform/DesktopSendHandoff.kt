@@ -97,6 +97,7 @@ object DesktopSendHandoff {
                     return@launch
                 }
             println("DesktopSendHandoff: TransferManager ready - draining send jobs")
+            pruneStaleJobsAndStaging()
             val pending = flow {
                 listPendingJobIds().forEach { emit(it) }
             }
@@ -148,10 +149,15 @@ object DesktopSendHandoff {
             println("DesktopSendHandoff: bad job JSON $jobId :: ${error.message}")
             return
         }
-        if (job.status == STATUS_DONE || job.status == STATUS_FAILED) return
+        if (job.status == STATUS_DONE || job.status == STATUS_FAILED) {
+            jobFile(jobId).delete()
+            cleanupStaging(jobId)
+            return
+        }
         // STATUS_RUNNING with no in-flight owner = crashed mid-send; retry below.
         if (job.filePaths.isEmpty() || job.deviceIds.isEmpty()) {
             writeJob(job.copy(status = STATUS_FAILED, message = AppI18n.t("nothing_to_send")))
+            scheduleJobFilePrune(jobId)
             return
         }
 
@@ -163,6 +169,7 @@ object DesktopSendHandoff {
                     error.message ?: AppI18n.t("initialization_incomplete")
                 )
                 writeJob(job.copy(status = STATUS_FAILED, message = message))
+                scheduleJobFilePrune(jobId)
                 println("DesktopSendHandoff: $jobId :: $message")
                 return
             }
@@ -180,10 +187,13 @@ object DesktopSendHandoff {
             if (!outcome.hadQueue && !failed) {
                 cleanupStaging(jobId)
             }
+            scheduleJobFilePrune(jobId)
             println("DesktopSendHandoff: $status - ${outcome.message}")
         }.onFailure { error ->
             val message = error.message ?: AppI18n.t("send_failed")
             writeJob(job.copy(status = STATUS_FAILED, message = message))
+            cleanupStaging(jobId)
+            scheduleJobFilePrune(jobId)
             println("DesktopSendHandoff: failed $jobId :: $message")
         }
     }
@@ -192,6 +202,38 @@ object DesktopSendHandoff {
         val staging = File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging/$jobId")
         if (staging.isDirectory) {
             staging.deleteRecursively()
+        }
+    }
+
+    private fun scheduleJobFilePrune(jobId: String) {
+        processorScope.launch {
+            kotlinx.coroutines.delay(10_000)
+            runCatching {
+                jobFile(jobId).delete()
+                cleanupStaging(jobId)
+            }
+        }
+    }
+
+    fun pruneStaleJobsAndStaging() {
+        runCatching {
+            val cutoff = com.fileapex.util.TimeUtils.now() - 60_000L
+            jobsDir.listFiles()?.forEach { file ->
+                if (file.isFile && file.name.endsWith(".json")) {
+                    val job = runCatching {
+                        json.decodeFromString<SendJobFile>(file.readText(Charsets.UTF_8))
+                    }.getOrNull()
+                    if (job == null || job.status == STATUS_DONE || job.status == STATUS_FAILED || file.lastModified() < cutoff) {
+                        file.delete()
+                    }
+                }
+            }
+            val stagingDir = File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging")
+            stagingDir.listFiles()?.forEach { dir ->
+                if (dir.isDirectory && (dir.lastModified() < cutoff || !jobFile(dir.name).exists())) {
+                    dir.deleteRecursively()
+                }
+            }
         }
     }
 

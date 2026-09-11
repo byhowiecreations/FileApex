@@ -46,24 +46,28 @@ object ClipboardDiagnosticsPolicy {
     ): List<ClipboardCheckResult> {
         val rows = mutableListOf(
             required(ID_SHARING, sharingEnabled),
-            required(ID_RECIPIENTS, recipientsChosen),
-            required(ID_A11Y_SETTING, accessibilitySettingEnabled),
-            required(ID_A11Y_SYSTEM, accessibilityListed),
-            required(ID_A11Y_BOUND, accessibilityBound),
-            required(ID_BATTERY, batteryWhitelisted),
-            required(ID_NOTIFICATIONS, notificationsEnabled)
+            required(ID_RECIPIENTS, recipientsChosen)
         )
-        if (restrictedSettingsRelevant) {
+        if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+            rows += required(ID_A11Y_SETTING, accessibilitySettingEnabled)
+            rows += required(ID_A11Y_SYSTEM, accessibilityListed)
+            rows += required(ID_A11Y_BOUND, accessibilityBound)
+        }
+        rows += required(ID_BATTERY, batteryWhitelisted)
+        rows += required(ID_NOTIFICATIONS, notificationsEnabled)
+        if (!com.fileapex.di.FileApexServices.isPlayStoreBuild && restrictedSettingsRelevant) {
             rows += required(ID_RESTRICTED, !restrictedSettingsBlocked)
         }
-        rows += ClipboardCheckResult(
-            id = ID_SHIZUKU,
-            required = false,
-            status = ClipboardShizukuPolicy.diagnosticsStatus(
-                optedIn = shizukuOptedIn,
-                active = shizukuActive
+        if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+            rows += ClipboardCheckResult(
+                id = ID_SHIZUKU,
+                required = false,
+                status = ClipboardShizukuPolicy.diagnosticsStatus(
+                    optedIn = shizukuOptedIn,
+                    active = shizukuActive
+                )
             )
-        )
+        }
         return rows
     }
 

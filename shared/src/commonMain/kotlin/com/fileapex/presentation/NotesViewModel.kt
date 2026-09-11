@@ -166,12 +166,16 @@ class NotesViewModel(
     }
 
     fun deleteNoteLocally(noteId: String) {
+        val note = rawNotesFlow.value.firstOrNull { it.noteId == noteId }
+        if (note?.attachmentPinned == true) return
         scope.launch {
             FileApexServices.noteRepository.deleteNote(noteId)
         }
     }
 
     fun deleteNoteFromAllDevices(noteId: String, remotePurge: Boolean = false) {
+        val note = rawNotesFlow.value.firstOrNull { it.noteId == noteId }
+        if (note?.attachmentPinned == true) return
         scope.launch {
             FileApexServices.noteRepository.deleteNoteFromAllDevices(noteId, remotePurge)
         }

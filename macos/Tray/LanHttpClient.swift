@@ -2,13 +2,14 @@ import Darwin
 import Foundation
 import Network
 
+public typealias FileApexUploadProgressCallback = @convention(c) (Int64, Int64) -> Void
+
 /// Peer HTTP over NWConnection so Finder/Dock launches register with the macOS
 /// local-network policy daemon. Java BSD sockets are blocked in that context.
 enum LanHttpClient {
     private static let queue = DispatchQueue(label: "com.fileapex.lan-http", attributes: .concurrent)
     private static let slots = DispatchSemaphore(value: 6)
     private static let streamBufferBytes = 256 * 1024
-    private static let logLock = NSLock()
 
     static func execute(
         method: String,
@@ -25,9 +26,11 @@ enum LanHttpClient {
         header += "Host: \(target.host):\(target.port)\r\n"
         header += "Connection: close\r\n"
         header += "Accept: */*\r\n"
-        if let contentType, !contentType.isEmpty {
+        if let contentType {
             header += "Content-Type: \(contentType)\r\n"
-            header += "Content-Length: \(body?.count ?? 0)\r\n"
+        }
+        if let body {
+            header += "Content-Length: \(body.count)\r\n"
         }
         header += "\r\n"
         var request = Data(header.utf8)
@@ -43,7 +46,8 @@ enum LanHttpClient {
         contentType: String?,
         filePath: String,
         offsetBytes: UInt64,
-        timeoutMs: Int
+        timeoutMs: Int,
+        progress: FileApexUploadProgressCallback? = nil
     ) -> (status: Int, body: Data)? {
         guard let target = Target(urlString: urlString) else { return nil }
         let fileURL = URL(fileURLWithPath: filePath)
@@ -53,12 +57,14 @@ enum LanHttpClient {
         }
         defer { try? handle.close() }
         let remaining: UInt64
+        let totalBytes: UInt64
         do {
             let end = try handle.seekToEnd()
             if offsetBytes > end {
                 log("upload offset \(offsetBytes) past size \(end)")
                 return nil
             }
+            totalBytes = end
             remaining = end - offsetBytes
             try handle.seek(toOffset: offsetBytes)
         } catch {
@@ -76,7 +82,14 @@ enum LanHttpClient {
             request: Data(header.utf8),
             timeoutMs: timeoutMs,
             extraSender: { connection, done in
-                sendFile(handle, on: connection, completion: done)
+                sendFile(
+                    handle,
+                    totalBytes: totalBytes,
+                    offsetBytes: offsetBytes,
+                    on: connection,
+                    progress: progress,
+                    completion: done
+                )
             }
         )
     }
@@ -220,22 +233,28 @@ enum LanHttpClient {
         if let ip = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
             ip.version = .v4
         }
+        // Bind to a real LAN IPv4 like v0.10.6a. Leaving this unset (0.10.7a) made
+        // Network.framework probe virtual/VPN paths and stall every peer HTTP call.
+        // Do not use prohibitedInterfaceTypes=[.other] — that also broke usable routes.
         if let local = lanIpv4() {
             params.requiredLocalEndpoint = .hostPort(host: .ipv4(local), port: .any)
         }
         return params
     }
 
+    /// First private IPv4 on a non-loopback, non-point-to-point interface (skips VPN utun).
     private static func lanIpv4() -> IPv4Address? {
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0, let start = ifaddr else { return nil }
         defer { freeifaddrs(start) }
         var cursor: UnsafeMutablePointer<ifaddrs>? = start
-        var found: IPv4Address?
         while let ptr = cursor {
             defer { cursor = ptr.pointee.ifa_next }
             let flags = Int32(bitPattern: ptr.pointee.ifa_flags)
-            guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0 else { continue }
+            guard (flags & IFF_UP) != 0 else { continue }
+            guard (flags & IFF_LOOPBACK) == 0 else { continue }
+            // IFF_POINTOPPOINT (0x10) — skip VPN/utun tunnels without relying on the Darwin alias.
+            guard (flags & 0x10) == 0 else { continue }
             guard let sa = ptr.pointee.ifa_addr, sa.pointee.sa_family == sa_family_t(AF_INET) else {
                 continue
             }
@@ -244,10 +263,9 @@ enum LanHttpClient {
             inet_ntop(AF_INET, &addr.sin_addr, &buf, socklen_t(INET_ADDRSTRLEN))
             let text = String(cString: buf)
             guard let ipv4 = IPv4Address(text), isPrivateLan(text) else { continue }
-            found = ipv4
-            break
+            return ipv4
         }
-        return found
+        return nil
     }
 
     private static func isPrivateLan(_ ip: String) -> Bool {
@@ -266,31 +284,77 @@ enum LanHttpClient {
 
     private static func sendFile(
         _ handle: FileHandle,
+        totalBytes: UInt64,
+        offsetBytes: UInt64,
         on connection: NWConnection,
+        progress: FileApexUploadProgressCallback?,
         completion: @escaping (Bool) -> Void
     ) {
-        let chunk: Data
-        do {
-            chunk = try handle.read(upToCount: streamBufferBytes) ?? Data()
-        } catch {
-            log("upload read failed \(error.localizedDescription)")
-            completion(false)
-            return
-        }
-        if chunk.isEmpty {
-            connection.send(content: nil, isComplete: true, completion: .contentProcessed { error in
-                completion(error == nil)
-            })
-            return
-        }
-        connection.send(content: chunk, isComplete: false, completion: .contentProcessed { error in
-            if let error {
-                log("upload chunk failed \(error.localizedDescription)")
-                completion(false)
-                return
+        var bytesSent = offsetBytes
+        let lock = NSLock()
+        var hasFailed = false
+        var activeSends = 0
+        let maxInFlight = 2
+        var isEof = false
+
+        func pump() {
+            lock.lock()
+            defer { lock.unlock() }
+            while !hasFailed && !isEof && activeSends < maxInFlight {
+                let chunk: Data
+                do {
+                    chunk = try handle.read(upToCount: streamBufferBytes) ?? Data()
+                } catch {
+                    hasFailed = true
+                    log("upload read failed \(error.localizedDescription)")
+                    completion(false)
+                    return
+                }
+                if chunk.isEmpty {
+                    isEof = true
+                    if activeSends == 0 {
+                        connection.send(content: nil, isComplete: true, completion: .contentProcessed { error in
+                            completion(error == nil)
+                        })
+                    }
+                    return
+                }
+                activeSends += 1
+                let chunkSize = Int64(chunk.count)
+                connection.send(content: chunk, isComplete: false, completion: .contentProcessed { error in
+                    lock.lock()
+                    activeSends -= 1
+                    if let error {
+                        if !hasFailed {
+                            hasFailed = true
+                            log("upload chunk failed \(error.localizedDescription)")
+                            lock.unlock()
+                            completion(false)
+                            return
+                        }
+                    } else {
+                        bytesSent += UInt64(chunkSize)
+                        let currentSent = Int64(bytesSent)
+                        let currentTotal = Int64(totalBytes)
+                        lock.unlock()
+                        progress?(currentSent, currentTotal)
+                        pump()
+                        lock.lock()
+                        if isEof && activeSends == 0 && !hasFailed {
+                            lock.unlock()
+                            connection.send(content: nil, isComplete: true, completion: .contentProcessed { finError in
+                                completion(finError == nil)
+                            })
+                            return
+                        }
+                    }
+                    lock.unlock()
+                })
             }
-            sendFile(handle, on: connection, completion: completion)
-        })
+        }
+
+        progress?(Int64(offsetBytes), Int64(totalBytes))
+        pump()
     }
 
     private static func transactToFile(
@@ -573,20 +637,6 @@ enum LanHttpClient {
 
     private static func log(_ message: String) {
         NSLog("FileApex LanHttp: %@", message)
-        logLock.lock()
-        defer { logLock.unlock() }
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/com.fileapex")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let file = dir.appendingPathComponent("lan-client.log")
-        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
-        if let handle = try? FileHandle(forWritingTo: file) {
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: Data(line.utf8))
-            try? handle.close()
-        } else {
-            try? line.write(to: file, atomically: true, encoding: .utf8)
-        }
     }
 }
 
@@ -701,6 +751,7 @@ public func fileapex_lan_http_upload_file(
     filePath: UnsafePointer<CChar>?,
     offsetBytes: Int64,
     timeoutMs: Int32,
+    progress: FileApexUploadProgressCallback?,
     outStatus: UnsafeMutablePointer<Int32>?,
     outBody: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
     outBodyLen: UnsafeMutablePointer<Int32>?
@@ -712,7 +763,8 @@ public func fileapex_lan_http_upload_file(
         contentType: contentType.map { String(cString: $0) },
         filePath: String(cString: filePath),
         offsetBytes: offset,
-        timeoutMs: Int(timeoutMs)
+        timeoutMs: Int(timeoutMs),
+        progress: progress
     ) else {
         return -1
     }

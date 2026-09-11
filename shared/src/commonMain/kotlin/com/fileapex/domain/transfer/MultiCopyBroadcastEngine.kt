@@ -42,6 +42,10 @@ class MultiCopyBroadcastEngine(
             is MultiCopySource.Local -> source.verifiedFromDisk()
             is MultiCopySource.Remote -> source
         }
+        TransferActivityGuard.setTransferContext(
+            fileName = verifiedSource.fileName,
+            destinationDeviceName = destinations.joinToString(", ") { it.deviceName }
+        )
         if (verifiedSource.isDirectory) {
             val failures = linkedMapOf<String, String>()
             val succeeded = linkedSetOf<String>()
@@ -84,6 +88,30 @@ class MultiCopyBroadcastEngine(
             if (plan.offset >= verifiedSource.sizeBytes && verifiedSource.sizeBytes > 0L) {
                 succeeded += plan.destination.deviceId
             }
+        }
+
+        if (verifiedSource is MultiCopySource.Local) {
+            val pendingDests = destinations.distinctBy { it.deviceId }
+            val outcomes = coroutineScope {
+                pendingDests.map { destination ->
+                    async(Dispatchers.IO) {
+                        val outcome = uploadWithResume(verifiedSource, destination)
+                        destination.deviceId to outcome
+                    }
+                }.awaitAll()
+            }
+            for ((deviceId, outcome) in outcomes) {
+                if (outcome.errorMessage == null) {
+                    succeeded += deviceId
+                } else {
+                    failures[deviceId] = outcome.errorMessage
+                }
+            }
+            return@coroutineScope MultiCopyResult(
+                fileName = verifiedSource.fileName,
+                succeededDeviceIds = succeeded.toSet(),
+                failures = failures.toMap()
+            )
         }
 
         val pending = plans.filter { it.destination.deviceId !in succeeded }
@@ -223,6 +251,10 @@ class MultiCopyBroadcastEngine(
         source: MultiCopySource,
         destination: MultiCopyDestination
     ): WriterOutcome {
+        TransferActivityGuard.setTransferContext(
+            fileName = source.fileName,
+            destinationDeviceName = destination.deviceName
+        )
         var lastError: String? = null
         repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
             val offset = queryDestinationOffset(destination, source.sizeBytes)
@@ -238,11 +270,16 @@ class MultiCopyBroadcastEngine(
                     is MultiCopyDestination.RemoteDevice -> {
                         when (source) {
                             is MultiCopySource.Local -> {
+                                TransferActivityGuard.updateProgress(offset, source.sizeBytes)
                                 client.uploadFromLocal(
                                     host = destination.host,
                                     port = destination.port,
                                     localSourcePath = source.absolutePath,
-                                    remoteTargetPath = destination.absolutePath
+                                    remoteTargetPath = destination.absolutePath,
+                                    knownResumeOffset = offset,
+                                    onProgress = { sent, total ->
+                                        TransferActivityGuard.updateProgress(sent, total)
+                                    }
                                 )
                             }
                             is MultiCopySource.Remote -> {

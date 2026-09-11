@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -45,6 +46,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -77,6 +87,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -136,6 +148,7 @@ private enum class SettingsPage {
     Themes,
     BulletinBoardStyles,
     Clipboard,
+    ClipboardAccessibility,
     ClipboardShareTargets,
     ClipboardDiagnostics,
     DeviceDetails,
@@ -157,6 +170,8 @@ enum class SettingsScreenLayoutMode {
     /** Compact primary shell: pane title band on root, section header on sub-pages. */
     CompactShell
 }
+
+private val LocalSettingsHomeAction = compositionLocalOf<(() -> Unit)?> { null }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,22 +202,33 @@ fun SettingsScreen(
     val googleLinkStatus by viewModel.googleLinkStatus.collectAsState()
     var page by remember { mutableStateOf(SettingsPage.Root) }
 
+    val currentTheme = LocalAppTheme.current
+    val isFreestyleCompact = currentTheme == AppTheme.FREESTYLE && layoutMode == SettingsScreenLayoutMode.CompactShell
+    val allowRootBack = showRootBackNavigation || isFreestyleCompact
+
     val leavePage: () -> Unit = {
         when (page) {
-            SettingsPage.Root -> if (showRootBackNavigation) onBack()
+            SettingsPage.Root -> if (allowRootBack) onBack()
             SettingsPage.FileTransferNotifications -> page = SettingsPage.Notifications
             SettingsPage.ClipboardDiagnostics,
-            SettingsPage.ClipboardShareTargets -> page = SettingsPage.Clipboard
+            SettingsPage.ClipboardShareTargets,
+            SettingsPage.ClipboardAccessibility -> page = SettingsPage.Clipboard
             else -> page = SettingsPage.Root
         }
     }
 
     FileApexBackHandler(
-        enabled = page != SettingsPage.Root || showRootBackNavigation,
+        enabled = page != SettingsPage.Root || allowRootBack,
         onBack = leavePage
     )
 
-    when (page) {
+    val handleGoHome: () -> Unit = {
+        page = SettingsPage.Root
+        onBack()
+    }
+
+    CompositionLocalProvider(LocalSettingsHomeAction provides handleGoHome) {
+        when (page) {
         SettingsPage.Root -> SettingsRootPage(
             appVersionName = appVersionName,
             state = state,
@@ -242,16 +268,35 @@ fun SettingsScreen(
             onToggleDriveRelayNotifications = viewModel::setDriveRelayNotifications,
             onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule
         )
-        SettingsPage.CheckForUpdates -> CheckForUpdatesSettingsPage(
-            state = state,
-            updateStatus = updateStatus,
-            layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
-            onToggle = viewModel::setCheckForUpdates,
-            onUnitSelected = viewModel::setCheckForUpdatesUnit,
-            onAmountTextChange = viewModel::setCheckForUpdatesAmountText,
-            onWeekAmountSelected = viewModel::setCheckForUpdatesWeekAmount
-        )
+        SettingsPage.CheckForUpdates -> {
+            if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+                page = SettingsPage.Root
+            } else {
+                val isAndroid = currentPlatformLabel() == "Android"
+                if (isAndroid && !state.installPackagesDisclosureAcknowledged) {
+                    DisclosureScreen(
+                        title = stringRes("install_packages_disclosure_title"),
+                        icon = Icons.Filled.SystemUpdate,
+                        whatText = stringRes("install_packages_disclosure_what"),
+                        whyText = stringRes("install_packages_disclosure_why"),
+                        layoutMode = layoutMode,
+                        onBack = { page = SettingsPage.Root },
+                        onAgree = { viewModel.setInstallPackagesDisclosureAcknowledged(true) }
+                    )
+                } else {
+                    CheckForUpdatesSettingsPage(
+                        state = state,
+                        updateStatus = updateStatus,
+                        layoutMode = layoutMode,
+                        onBack = { page = SettingsPage.Root },
+                        onToggle = viewModel::setCheckForUpdates,
+                        onUnitSelected = viewModel::setCheckForUpdatesUnit,
+                        onAmountTextChange = viewModel::setCheckForUpdatesAmountText,
+                        onWeekAmountSelected = viewModel::setCheckForUpdatesWeekAmount
+                    )
+                }
+            }
+        }
         SettingsPage.PinRequired -> PinRequiredSettingsPage(
             state = state,
             layoutMode = layoutMode,
@@ -304,23 +349,58 @@ fun SettingsScreen(
             onSelectStyle = viewModel::setBulletinBoardStyle
         )
 
-        SettingsPage.Clipboard -> ClipboardSettingsPage(
-
-            state = state,
-            layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
-            onToggle = viewModel::setClipboardSharing,
-            onToggleViaCellular = viewModel::setClipboardViaCellular,
-            onToggleAccessibility = viewModel::setClipboardAccessibility,
-            onToggleSendNotification = viewModel::setClipboardSendNotification,
-            onToggleShizuku = viewModel::setClipboardShizuku,
-            onToggleAutoSend = viewModel::setClipboardAutoSend,
-            onDismissRestrictedHelp = viewModel::dismissAccessibilityRestrictedHelp,
-            onOpenAppInfo = viewModel::openAccessibilityAppInfo,
-            onOpenAccessibilitySettings = viewModel::openAccessibilitySystemSettings,
-            onOpenShareTargets = { page = SettingsPage.ClipboardShareTargets },
-            onOpenDiagnostics = { page = SettingsPage.ClipboardDiagnostics }
-        )
+        SettingsPage.Clipboard -> {
+            if (!state.clipboardDisclosureAcknowledged) {
+                DisclosureScreen(
+                    title = stringRes("clipboard_disclosure_title"),
+                    icon = Icons.Filled.ContentPaste,
+                    whatText = stringRes("clipboard_disclosure_what"),
+                    whyText = stringRes("clipboard_disclosure_why"),
+                    layoutMode = layoutMode,
+                    onBack = { page = SettingsPage.Root },
+                    onAgree = { viewModel.setClipboardDisclosureAcknowledged(true) }
+                )
+            } else {
+                ClipboardSettingsPage(
+                    state = state,
+                    layoutMode = layoutMode,
+                    onBack = { page = SettingsPage.Root },
+                    onToggle = viewModel::setClipboardSharing,
+                    onToggleViaCellular = viewModel::setClipboardViaCellular,
+                    onToggleSendNotification = viewModel::setClipboardSendNotification,
+                    onToggleAutoSend = viewModel::setClipboardAutoSend,
+                    onOpenAccessibility = { page = SettingsPage.ClipboardAccessibility },
+                    onOpenShareTargets = { page = SettingsPage.ClipboardShareTargets },
+                    onOpenDiagnostics = { page = SettingsPage.ClipboardDiagnostics }
+                )
+            }
+        }
+        SettingsPage.ClipboardAccessibility -> {
+            if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+                page = SettingsPage.Clipboard
+            } else if (!state.accessibilityDisclosureAcknowledged) {
+                DisclosureScreen(
+                    title = stringRes("accessibility_disclosure_title"),
+                    icon = Icons.Filled.Accessibility,
+                    whatText = stringRes("accessibility_disclosure_what"),
+                    whyText = stringRes("accessibility_disclosure_why"),
+                    layoutMode = layoutMode,
+                    onBack = { page = SettingsPage.Clipboard },
+                    onAgree = { viewModel.setAccessibilityDisclosureAcknowledged(true) }
+                )
+            } else {
+                ClipboardAccessibilityPage(
+                    state = state,
+                    layoutMode = layoutMode,
+                    onBack = { page = SettingsPage.Clipboard },
+                    onToggleAccessibility = viewModel::setClipboardAccessibility,
+                    onToggleShizuku = viewModel::setClipboardShizuku,
+                    onDismissRestrictedHelp = viewModel::dismissAccessibilityRestrictedHelp,
+                    onOpenAppInfo = viewModel::openAccessibilityAppInfo,
+                    onOpenAccessibilitySettings = viewModel::openAccessibilitySystemSettings
+                )
+            }
+        }
         SettingsPage.ClipboardShareTargets -> ClipboardShareTargetsPage(
             state = state,
             layoutMode = layoutMode,
@@ -416,6 +496,7 @@ fun SettingsScreen(
             onSave = viewModel::saveDeviceName
         )
     }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -472,18 +553,20 @@ private fun SettingsRootPage(
                     expanded = state.systemPerformanceExpanded,
                     onToggle = onToggleSystemPerformanceGroup
                 ) {
-                    SettingsNavItem(
-                        title = stringRes("check_for_updates"),
-                        subtitle = if (state.checkForUpdatesEnabled) {
-                            UpdateCheckFrequency.label(
-                                state.checkForUpdatesIntervalUnit,
-                                state.checkForUpdatesIntervalAmount
-                            )
-                        } else {
-                            stringRes("off")
-                        },
-                        onClick = onOpenCheckForUpdates
-                    )
+                    if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+                        SettingsNavItem(
+                            title = stringRes("check_for_updates"),
+                            subtitle = if (state.checkForUpdatesEnabled) {
+                                UpdateCheckFrequency.label(
+                                    state.checkForUpdatesIntervalUnit,
+                                    state.checkForUpdatesIntervalAmount
+                                )
+                            } else {
+                                stringRes("off")
+                            },
+                            onClick = onOpenCheckForUpdates
+                        )
+                    }
                     SettingsNavItem(
                         title = stringRes("background_persistence"),
                         subtitle = backgroundPersistenceSubtitle(
@@ -636,7 +719,7 @@ private fun backgroundPersistenceSubtitle(
         if (backgroundPersistence.backgroundRestricted) add(AppI18n.t("warn_background_restricted"))
         if (backgroundPersistence.batteryOptimizationRestricted) add(AppI18n.t("warn_battery_optimized"))
         if (backgroundPersistence.unusedAppRestrictionsActive) add(AppI18n.t("warn_hibernation"))
-        if (exactAlarmWarningActive) add(AppI18n.t("warn_alarms_off"))
+        if (!com.fileapex.di.FileApexServices.isPlayStoreBuild && exactAlarmWarningActive) add(AppI18n.t("warn_alarms_off"))
         if (backgroundPersistence.showOemSetup &&
             !backgroundPersistence.persistenceRestricted &&
             !backgroundPersistence.unusedAppRestrictionsActive
@@ -744,7 +827,7 @@ private fun BackgroundPersistenceSettingsPage(
                     )
                 }
             }
-            if (exactAlarmWarningActive) {
+            if (!com.fileapex.di.FileApexServices.isPlayStoreBuild && exactAlarmWarningActive) {
                 ListItem(
                     headlineContent = { Text(stringRes("exact_alarms_disabled"), softWrap = true) },
                     supportingContent = {
@@ -929,6 +1012,204 @@ private fun FileTransferNotificationsSettingsPage(
     }
 }
 
+@Composable
+private fun DisclosureScreen(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    whatText: String,
+    whyText: String,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onAgree: () -> Unit
+) {
+    SettingsPageShell(
+        title = title,
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Box(
+            modifier = contentModifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(14.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = stringRes("what_label"),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = whatText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = stringRes("why_label"),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = whyText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onAgree,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(stringRes("agree_and_continue"))
+                    }
+                    OutlinedButton(
+                        onClick = onBack,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(stringRes("cancel"))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClipboardAccessibilityPage(
+    state: SettingsUiState,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit,
+    onToggleAccessibility: (Boolean) -> Unit,
+    onToggleShizuku: (Boolean) -> Unit,
+    onDismissRestrictedHelp: () -> Unit,
+    onOpenAppInfo: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit
+) {
+    SettingsPageShell(
+        title = stringRes("accessibility"),
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        Column(
+            modifier = contentModifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            ListItem(
+                headlineContent = { Text(stringRes("accessibility"), softWrap = true) },
+                supportingContent = {
+                    Text(stringRes("accessibility_subtitle"), softWrap = true)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = state.clipboardAccessibilityEnabled,
+                        onCheckedChange = onToggleAccessibility
+                    )
+                }
+            )
+            ClipboardAccessibilityBanner(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+                ClipboardShizukuToggle(
+                    enabled = state.clipboardShizukuEnabled,
+                    onToggle = onToggleShizuku
+                )
+            }
+        }
+        if (state.showAccessibilityRestrictedHelp) {
+            AlertDialog(
+                onDismissRequest = onDismissRestrictedHelp,
+                title = { Text(stringRes("allow_restricted_settings")) },
+                text = {
+                    Text(stringRes("restricted_settings_body"))
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            onOpenAppInfo()
+                            onDismissRestrictedHelp()
+                        }
+                    ) { Text(stringRes("open_app_info")) }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            onOpenAccessibilitySettings()
+                            onDismissRestrictedHelp()
+                        }
+                    ) { Text(stringRes("open_accessibility")) }
+                }
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ClipboardSettingsPage(
@@ -937,13 +1218,9 @@ private fun ClipboardSettingsPage(
     onBack: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onToggleViaCellular: (Boolean) -> Unit,
-    onToggleAccessibility: (Boolean) -> Unit,
     onToggleSendNotification: (Boolean) -> Unit,
-    onToggleShizuku: (Boolean) -> Unit,
     onToggleAutoSend: (Boolean) -> Unit,
-    onDismissRestrictedHelp: () -> Unit,
-    onOpenAppInfo: () -> Unit,
-    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAccessibility: () -> Unit,
     onOpenShareTargets: () -> Unit,
     onOpenDiagnostics: () -> Unit
 ) {
@@ -985,25 +1262,17 @@ private fun ClipboardSettingsPage(
                             )
                         }
                     )
-                    ListItem(
-                        headlineContent = { Text(stringRes("accessibility"), softWrap = true) },
-                        supportingContent = {
-                            Text(stringRes("accessibility_subtitle"), softWrap = true)
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = state.clipboardAccessibilityEnabled,
-                                onCheckedChange = onToggleAccessibility
-                            )
-                        }
-                    )
-                    ClipboardAccessibilityBanner(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                    ClipboardShizukuToggle(
-                        enabled = state.clipboardShizukuEnabled,
-                        onToggle = onToggleShizuku
-                    )
+                    if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+                        SettingsNavItem(
+                            title = stringRes("accessibility"),
+                            subtitle = if (state.clipboardAccessibilityEnabled) {
+                                stringRes("enabled")
+                            } else {
+                                stringRes("disabled")
+                            },
+                            onClick = onOpenAccessibility
+                        )
+                    }
                     ListItem(
                         headlineContent = { Text(stringRes("via_cellular"), softWrap = true) },
                         supportingContent = {
@@ -1048,31 +1317,6 @@ private fun ClipboardSettingsPage(
                     )
                 }
             }
-        }
-        if (state.showAccessibilityRestrictedHelp) {
-            AlertDialog(
-                onDismissRequest = onDismissRestrictedHelp,
-                title = { Text(stringRes("allow_restricted_settings")) },
-                text = {
-                    Text(stringRes("restricted_settings_body"))
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            onOpenAppInfo()
-                            onDismissRestrictedHelp()
-                        }
-                    ) { Text(stringRes("open_app_info")) }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            onOpenAccessibilitySettings()
-                            onDismissRestrictedHelp()
-                        }
-                    ) { Text(stringRes("open_accessibility")) }
-                }
-            )
         }
     }
 }
@@ -1233,7 +1477,7 @@ private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
     val mode = clipboardShareTargetsSubtitle(state)
     val extras = buildList {
         if (currentPlatformLabel() == "Android" && state.clipboardAccessibilityEnabled) add(AppI18n.t("accessibility"))
-        if (currentPlatformLabel() == "Android" && state.clipboardShizukuEnabled) add(AppI18n.t("diag_shizuku_active"))
+        if (currentPlatformLabel() == "Android" && !com.fileapex.di.FileApexServices.isPlayStoreBuild && state.clipboardShizukuEnabled) add(AppI18n.t("diag_shizuku_active"))
         if (currentPlatformLabel() != "Android" && state.clipboardAutoSendEnabled) add(AppI18n.t("auto_send"))
         if (state.clipboardViaCellularEnabled && currentPlatformLabel() == "Android") add(AppI18n.t("cellular"))
     }
@@ -1637,7 +1881,9 @@ private fun DeviceDetailsSettingsPage(
 ) {
     val normalized = preferences.normalized()
     val fieldEntries = normalized.fields.mapNotNull { pref ->
-        DeviceDetailsFieldId.entries.find { it.name == pref.id }?.let { id -> id to pref.visible }
+        DeviceDetailsFieldId.entries.find { it.name == pref.id }
+            ?.takeUnless { com.fileapex.di.FileApexServices.isPlayStoreBuild && it.cellularOnly }
+            ?.let { id -> id to pref.visible }
     }
     val dragState = rememberDeviceOrderDragState()
     val density = LocalDensity.current
@@ -2082,6 +2328,7 @@ private fun SettingsPageShell(
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
     val containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background
+    val onHome = LocalSettingsHomeAction.current
 
     when (layoutMode) {
         SettingsScreenLayoutMode.FullScreen -> {
@@ -2100,15 +2347,36 @@ private fun SettingsPageShell(
             }
         }
         SettingsScreenLayoutMode.CompactShell -> {
+            val isFreestyle = currentTheme == AppTheme.FREESTYLE
+            val homeAction: @Composable RowScope.() -> Unit = {
+                if (isFreestyle && onHome != null) {
+                    IconButton(
+                        onClick = onHome,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Home,
+                            contentDescription = stringRes("home"),
+                            tint = Color(0xFF00E676),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
             Column(modifier = Modifier.fillMaxSize()) {
                 if (onBack != null) {
-                    FileApexPaneSectionHeader(title = title, onBack = onBack)
+                    FileApexPaneSectionHeader(
+                        title = title,
+                        onBack = onBack,
+                        actions = homeAction
+                    )
                 } else {
                     CompactHomeTitleBand(
                         primaryLine = "FileApex",
                         secondaryLine = title,
                         style = CompactHomeTitleStyle.Prominent,
-                        onOpenTransferQueue = onOpenTransferQueue
+                        onOpenTransferQueue = onOpenTransferQueue,
+                        actions = homeAction
                     )
                 }
                 content(Modifier.weight(1f).fillMaxWidth())

@@ -21,11 +21,14 @@ private var clipboardCallback: FileApexClipboardCallback?
 private var clipboardTimer: Timer?
 private var lastPasteboardChangeCount = -1
 
+/// Hop to AppKit main without blocking the caller. Never use main.sync from JNA —
+/// Compose/AWT often runs on a different thread than NSThread.main, and sync then
+/// stalls cold start for several seconds behind first-frame work.
 private func onMainThread(_ block: @escaping () -> Void) {
     if Thread.isMainThread {
         block()
     } else {
-        DispatchQueue.main.sync(execute: block)
+        DispatchQueue.main.async(execute: block)
     }
 }
 

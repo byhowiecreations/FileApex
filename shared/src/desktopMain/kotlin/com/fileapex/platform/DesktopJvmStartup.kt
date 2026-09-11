@@ -6,6 +6,7 @@ package com.fileapex.platform
  */
 object DesktopJvmStartup {
     fun onMainEntry() {
+        DesktopLifecycleLog.markProcessStart()
         DesktopCrashHandler.install()
         sanitizeTempDirectories()
         configureWindowsSkikoRendering()

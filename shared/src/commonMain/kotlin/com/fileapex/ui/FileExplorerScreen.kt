@@ -5,6 +5,8 @@ import com.fileapex.i18n.stringRes
 
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.platform.isDesktopHost
+import com.fileapex.ui.DesktopLayoutToggle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.Image
 
@@ -287,24 +289,8 @@ fun FileExplorerScreen(
                                 viewMode = state.viewMode,
                                 panePath = state.panePath,
                                 paneDirectories = state.paneDirectories,
-                                contentDirectories = if (isWide) {
-                                    state.contentDirectories
-                                } else if (state.currentPath.isBlank() ||
-                                    state.currentPath == state.panePath
-                                ) {
-                                    state.paneDirectories
-                                } else {
-                                    state.contentDirectories
-                                },
-                                contentFiles = if (isWide) {
-                                    state.contentFiles
-                                } else if (state.currentPath.isBlank() ||
-                                    state.currentPath == state.panePath
-                                ) {
-                                    state.paneFiles
-                                } else {
-                                    state.contentFiles
-                                },
+                                contentDirectories = state.contentDirectories,
+                                contentFiles = state.contentFiles,
                                 selectedFolderPath = state.selectedFolderPath,
                                 canNavigateUp = state.canNavigateUp,
                                 isSelectionMode = state.isSelectionMode,
@@ -640,6 +626,9 @@ private fun ExplorerTopBarActions(
                     viewMode = state.viewMode,
                     onToggle = viewModel::toggleViewMode
                 )
+                if (isDesktopHost()) {
+                    DesktopLayoutToggle()
+                }
             }
             TextButton(onClick = { viewModel.enterSelectionMode() }) {
                 Text(stringRes("select"))

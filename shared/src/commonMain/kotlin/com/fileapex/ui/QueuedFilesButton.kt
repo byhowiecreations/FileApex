@@ -24,7 +24,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
-import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.fileApexHeaderActionTint
 
 object QueueBadgeAnchor {
     var windowRect by mutableStateOf<Rect?>(null)
@@ -33,7 +33,7 @@ object QueueBadgeAnchor {
 @Composable
 fun QueuedFilesButton(
     onClick: () -> Unit,
-    iconTint: Color = fileApexChromeContentColor(),
+    iconTint: Color = fileApexHeaderActionTint(),
     modifier: Modifier = Modifier
 ) {
     val count by FileApexServices.transferQueue.pendingCount.collectAsState(initial = 0)

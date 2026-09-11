@@ -19,6 +19,8 @@ fileapex.google.web.client.secret=
 # Firebase client config (Firebase Console → Project settings → Your apps → Android)
 fileapex.firebase.project.id=your-firebase-project-id
 fileapex.firebase.api.key=YOUR_FIREBASE_API_KEY
+# Dedicated Browser/Desktop API key without Android SHA-1 restriction:
+fileapex.firebase.desktop.api.key=YOUR_FIREBASE_BROWSER_KEY
 fileapex.firebase.application.id=1:YOUR_PROJECT_NUMBER:android:YOUR_APP_HASH
 
 # Firebase Admin SDK service account JSON (gitignored json/ folder at project root)
