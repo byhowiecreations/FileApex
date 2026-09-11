@@ -242,8 +242,6 @@ kotlin {
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play.services)
             implementation(libs.google.id)
-            implementation(libs.shizuku.api)
-            implementation(libs.shizuku.provider)
         }
 
         val androidUnitTest by getting {

@@ -121,6 +121,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 }
 
+
 android {
     namespace = "com.fileapex"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -220,6 +221,11 @@ android {
             }
         }
     }
+}
+
+dependencies {
+    "githubImplementation"(libs.shizuku.api)
+    "githubImplementation"(libs.shizuku.provider)
 }
 
 tasks.register("verifyReleaseSigning") {

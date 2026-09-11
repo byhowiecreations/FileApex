@@ -107,7 +107,9 @@
 # Shizuku (Standalone/GitHub distribution)
 # -----------------------------------------------------------------------------
 -dontwarn moe.shizuku.**
+-dontwarn rikka.shizuku.**
 -keep class moe.shizuku.** { *; }
+-keep class rikka.shizuku.** { *; }
 
 # -----------------------------------------------------------------------------
 # General Suppression of Missing Optional Platform Dependencies

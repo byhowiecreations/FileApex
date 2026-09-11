@@ -470,7 +470,7 @@ fun FreestyleDevicesView(
 
         // Live node positions map to eliminate jerkiness on repeated moves
         val liveNodePositions = remember(freestyleMode, layoutScopePrefix, widthPx, heightPx) { mutableStateMapOf<String, Offset>() }
-        val livePinnedPositions = remember(freestyleMode) { mutableStateMapOf<String, Offset>() }
+        val livePinnedPositions = remember(freestyleMode, layoutScopePrefix, widthPx, heightPx) { mutableStateMapOf<String, Offset>() }
 
         LaunchedEffect(isEditMode) {
             if (!isEditMode) {
@@ -1078,13 +1078,20 @@ fun FreestyleDevicesView(
         // Pre-populate placedCenters with devices that already have a persisted / user-assigned position
         deviceRows.forEach { r ->
             val scopedKey = "$layoutScopePrefix${r.deviceId}"
+            val otherScopedKey = if (isExpandedDisplay) "cmp:${r.deviceId}" else "exp:${r.deviceId}"
             val cached = when (freestyleMode) {
-                FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[scopedKey] ?: persistedCardNodeOffsets[r.deviceId]
+                FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[scopedKey]
+                    ?: persistedCardNodeOffsets[otherScopedKey]
+                    ?: persistedCardNodeOffsets[r.deviceId]
                 FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalNodeOffsets[scopedKey]
                     ?: persistedCardNodeOffsets[scopedKey]
+                    ?: persistedCardVerticalNodeOffsets[otherScopedKey]
+                    ?: persistedCardNodeOffsets[otherScopedKey]
                     ?: persistedCardVerticalNodeOffsets[r.deviceId]
                     ?: persistedCardNodeOffsets[r.deviceId]
-                FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[scopedKey] ?: persistedTileNodeOffsets[r.deviceId]
+                FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[scopedKey]
+                    ?: persistedTileNodeOffsets[otherScopedKey]
+                    ?: persistedTileNodeOffsets[r.deviceId]
             }
             val sfx = cached?.first ?: (if (freestyleMode == FreestyleLayoutMode.TILES) r.tilePosX else r.cardPosX)
             val sfy = cached?.second ?: (if (freestyleMode == FreestyleLayoutMode.TILES) r.tilePosY else r.cardPosY)
@@ -1098,13 +1105,20 @@ fun FreestyleDevicesView(
         // Render Device Nodes and Menus
         deviceRows.forEachIndexed { index, row ->
             val scopedDeviceId = "$layoutScopePrefix${row.deviceId}"
+            val otherScopedDeviceId = if (isExpandedDisplay) "cmp:${row.deviceId}" else "exp:${row.deviceId}"
             val cachedOffset = when (freestyleMode) {
-                FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[scopedDeviceId] ?: persistedCardNodeOffsets[row.deviceId]
+                FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[scopedDeviceId]
+                    ?: persistedCardNodeOffsets[otherScopedDeviceId]
+                    ?: persistedCardNodeOffsets[row.deviceId]
                 FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalNodeOffsets[scopedDeviceId]
                     ?: persistedCardNodeOffsets[scopedDeviceId]
+                    ?: persistedCardVerticalNodeOffsets[otherScopedDeviceId]
+                    ?: persistedCardNodeOffsets[otherScopedDeviceId]
                     ?: persistedCardVerticalNodeOffsets[row.deviceId]
                     ?: persistedCardNodeOffsets[row.deviceId]
-                FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[scopedDeviceId] ?: persistedTileNodeOffsets[row.deviceId]
+                FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[scopedDeviceId]
+                    ?: persistedTileNodeOffsets[otherScopedDeviceId]
+                    ?: persistedTileNodeOffsets[row.deviceId]
             }
             val savedFractionX = cachedOffset?.first ?: (if (freestyleMode == FreestyleLayoutMode.TILES) row.tilePosX else row.cardPosX)
             val savedFractionY = cachedOffset?.second ?: (if (freestyleMode == FreestyleLayoutMode.TILES) row.tilePosY else row.cardPosY)
@@ -1260,10 +1274,13 @@ fun FreestyleDevicesView(
                                     val fracX = (centerX / widthPx).coerceIn(0f, 1f)
                                     val fracY = (centerY / heightPx).coerceIn(0f, 1f)
                                     FileApexServices.settings.setFreestyleNodeOffset(freestyleMode, scopedDeviceId, fracX, fracY)
+                                    FileApexServices.settings.setFreestyleNodeOffset(freestyleMode, row.deviceId, fracX, fracY)
                                     if (freestyleMode == FreestyleLayoutMode.TILES) {
                                         onSaveDeviceTilePosition(scopedDeviceId, fracX, fracY)
+                                        onSaveDeviceTilePosition(row.deviceId, fracX, fracY)
                                     } else {
                                         onSaveDeviceCardPosition(scopedDeviceId, fracX, fracY)
+                                        onSaveDeviceCardPosition(row.deviceId, fracX, fracY)
                                     }
                                 }
                             )
