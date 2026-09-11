@@ -18,7 +18,9 @@ import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.domain.clipboard.ClipboardShareMode
+import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
 import com.fileapex.platform.BootLaunchPreference
@@ -52,6 +54,8 @@ data class SettingsUiState(
     val clipboardShizukuEnabled: Boolean = false,
     val clipboardAutoSendEnabled: Boolean = false,
     val clipboardPeers: List<PairedDeviceEntity> = emptyList(),
+    val showClipboardConfigDialog: Boolean = false,
+    val clipboardConfigPeers: List<PairedDeviceEntity> = emptyList(),
     val fileTransferNotificationsEnabled: Boolean = false,
     val driveRelayNotificationsEnabled: Boolean = false,
     val notesNotificationsEnabled: Boolean = false,
@@ -388,8 +392,65 @@ class SettingsViewModel : ViewModel() {
         _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
         com.fileapex.platform.ClipboardShareChrome.fire()
         if (enabled) {
-            com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
+            viewModelScope.launch {
+                val paired = FileApexServices.deviceRepository.listDevices()
+                val peers = paired.map {
+                    ClipboardSharePolicy.PeerRef(
+                        deviceId = it.deviceId,
+                        isDesktop = com.fileapex.domain.peer.PeerPlatform.isDesktop(it.os, it.platform)
+                    )
+                }
+                val selfIsAndroid = currentPlatformLabel() == "Android"
+                val isConfigured = settings.clipboardTargetConfigured.value
+
+                if (!isConfigured) {
+                    val defaultTargetId = ClipboardSharePolicy.resolveAutoDefaultTargetId(selfIsAndroid, peers)
+                    if (defaultTargetId != null) {
+                        if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET ||
+                            settings.clipboardShareMode.value == ClipboardShareMode.SPECIFIC
+                        ) {
+                            settings.setClipboardShareMode(ClipboardShareMode.SPECIFIC)
+                            settings.setClipboardTargetDeviceIds(setOf(defaultTargetId))
+                            _uiState.update {
+                                it.copy(
+                                    clipboardShareMode = ClipboardShareMode.SPECIFIC,
+                                    clipboardTargetDeviceIds = setOf(defaultTargetId)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (com.fileapex.domain.clipboard.ClipboardSharePolicy.shouldPromptTargetConfiguration(isConfigured, selfIsAndroid, peers)) {
+                    _uiState.update {
+                        it.copy(
+                            showClipboardConfigDialog = true,
+                            clipboardConfigPeers = paired
+                        )
+                    }
+                } else {
+                    com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
+                }
+            }
         }
+    }
+
+    fun dismissClipboardConfigDialog() {
+        _uiState.update { it.copy(showClipboardConfigDialog = false) }
+    }
+
+    fun confirmClipboardConfig(mode: ClipboardShareMode, targetIds: Set<String>) {
+        settings.setClipboardShareMode(mode)
+        settings.setClipboardTargetDeviceIds(targetIds)
+        settings.setClipboardTargetConfigured(true)
+        _uiState.update {
+            it.copy(
+                showClipboardConfigDialog = false,
+                clipboardShareMode = mode,
+                clipboardTargetDeviceIds = targetIds
+            )
+        }
+        com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
     }
 
     fun setClipboardDisclosureAcknowledged(acknowledged: Boolean) {

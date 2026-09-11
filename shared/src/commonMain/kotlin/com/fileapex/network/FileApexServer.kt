@@ -564,6 +564,44 @@ class FileApexServer(
                     }
                 }
 
+                get("/api/v1/clipboard/status") {
+                    runCatching {
+                        val settings = FileApexServices.settings
+                        val enabled = settings.clipboardSharingEnabled.value
+                        val identity = identityProvider()
+                        val response = com.fileapex.domain.clipboard.ClipboardStatusResponse(
+                            sharingEnabled = enabled,
+                            deviceId = identity.deviceId,
+                            deviceName = identity.deviceName
+                        )
+                        call.respondText(
+                            text = json.encodeToString(com.fileapex.domain.clipboard.ClipboardStatusResponse.serializer(), response),
+                            contentType = ContentType.Application.Json,
+                            status = HttpStatusCode.OK
+                        )
+                    }.onFailure { error ->
+                        onLog("GET /api/v1/clipboard/status failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "clipboard_status_failed")
+                    }
+                }
+
+                post("/api/v1/clipboard/opt-in-request") {
+                    runCatching {
+                        val body = call.receiveText()
+                        val request = json.decodeFromString(com.fileapex.domain.clipboard.ClipboardOptInRequest.serializer(), body)
+                        val settings = FileApexServices.settings
+                        if (!settings.clipboardSharingEnabled.value && !settings.clipboardOptInPromptShown.value) {
+                            withContext(Dispatchers.Main) {
+                                com.fileapex.platform.notifyClipboardOptInRequested(request.senderDeviceName)
+                            }
+                        }
+                        call.respond(HttpStatusCode.OK, "ok")
+                    }.onFailure { error ->
+                        onLog("POST /api/v1/clipboard/opt-in-request failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "opt_in_request_failed")
+                    }
+                }
+
                 post("/api/v1/clipboard/send") {
                     runCatching {
                         val settings = FileApexServices.settings

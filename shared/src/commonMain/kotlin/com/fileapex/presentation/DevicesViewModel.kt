@@ -3,11 +3,15 @@ package com.fileapex.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
+import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.cloud.diagnostics.DiagnosticsRelayErrors
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
+import com.fileapex.domain.clipboard.ClipboardShareMode
+import com.fileapex.domain.clipboard.ClipboardSharePolicy
+import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.device.DeviceOrderCoordinator
@@ -78,7 +82,10 @@ data class DevicesUiState(
     val deviceDetails: DeviceDetailsState? = null,
     val batteryOverlayState: BatteryCheckOverlayState? = null,
     val discoveredPairingPeers: List<PairingBeacon> = emptyList(),
-    val pairingSucceeded: Boolean = false
+    val pairingSucceeded: Boolean = false,
+    val isSendingClipboard: Boolean = false,
+    val showClipboardConfigDialog: Boolean = false,
+    val clipboardConfigPeers: List<PairedDeviceEntity> = emptyList()
 )
 
 data class DeviceDetailsState(
@@ -209,12 +216,72 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun sendClipboardNow() {
+        if (_uiState.value.isSendingClipboard) return
+        val settings = FileApexServices.settings
         viewModelScope.launch {
+            val paired = repository.listDevices()
+            val peers = paired.map {
+                ClipboardSharePolicy.PeerRef(
+                    deviceId = it.deviceId,
+                    isDesktop = PeerPlatform.isDesktop(it.os, it.platform)
+                )
+            }
+            val selfIsAndroid = currentPlatformLabel() == "Android"
+            val isConfigured = settings.clipboardTargetConfigured.value
+
+            if (!isConfigured) {
+                val defaultTargetId = ClipboardSharePolicy.resolveAutoDefaultTargetId(selfIsAndroid, peers)
+                if (defaultTargetId != null) {
+                    if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET ||
+                        settings.clipboardShareMode.value == ClipboardShareMode.SPECIFIC
+                    ) {
+                        settings.setClipboardShareMode(ClipboardShareMode.SPECIFIC)
+                        settings.setClipboardTargetDeviceIds(setOf(defaultTargetId))
+                    }
+                }
+            }
+
+            if (ClipboardSharePolicy.shouldPromptTargetConfiguration(isConfigured, selfIsAndroid, peers)) {
+                _uiState.update {
+                    it.copy(
+                        showClipboardConfigDialog = true,
+                        clipboardConfigPeers = paired
+                    )
+                }
+                return@launch
+            }
+
+            executeSendClipboard()
+        }
+    }
+
+    fun dismissClipboardConfigDialog() {
+        _uiState.update { it.copy(showClipboardConfigDialog = false) }
+    }
+
+    fun confirmClipboardConfig(mode: ClipboardShareMode, targetIds: Set<String>) {
+        val settings = FileApexServices.settings
+        settings.setClipboardShareMode(mode)
+        settings.setClipboardTargetDeviceIds(targetIds)
+        settings.setClipboardTargetConfigured(true)
+        _uiState.update { it.copy(showClipboardConfigDialog = false) }
+        executeSendClipboard()
+    }
+
+    private fun executeSendClipboard() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSendingClipboard = true) }
             val sending = AppI18n.t("sending_clipboard")
             _uiState.update { it.copy(statusMessage = sending) }
-            val message = com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboardNow()
-            if (message != sending) {
-                _uiState.update { it.copy(statusMessage = null, errorMessage = message) }
+            try {
+                val message = com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboardNow()
+                if (message != sending) {
+                    _uiState.update { it.copy(statusMessage = null, errorMessage = message) }
+                }
+            } catch (t: Throwable) {
+                _uiState.update { it.copy(statusMessage = null, errorMessage = t.message) }
+            } finally {
+                _uiState.update { it.copy(isSendingClipboard = false) }
             }
         }
     }

@@ -47,6 +47,10 @@ class BaseAppSettings(
     private val clipboardTargetDeviceIdsFlow = MutableStateFlow(
         ClipboardSharePolicy.parseDeviceIdSet(store.getString(KEY_CLIPBOARD_TARGET_DEVICES, ""))
     )
+    private val clipboardTargetConfiguredFlow =
+        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_TARGET_CONFIGURED, false))
+    private val clipboardOptInPromptShownFlow =
+        MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_OPT_IN_PROMPT_SHOWN, false))
     private val clipboardViaCellularFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_VIA_CELLULAR, false))
     private val clipboardAccessibilityFlow = MutableStateFlow(store.getBoolean(KEY_CLIPBOARD_ACCESSIBILITY, false))
     private val clipboardSendNotificationFlow =
@@ -297,6 +301,8 @@ class BaseAppSettings(
         installPackagesDisclosureAckFlow.asStateFlow()
     override val clipboardShareMode: StateFlow<ClipboardShareMode> = clipboardShareModeFlow.asStateFlow()
     override val clipboardTargetDeviceIds: StateFlow<Set<String>> = clipboardTargetDeviceIdsFlow.asStateFlow()
+    override val clipboardTargetConfigured: StateFlow<Boolean> = clipboardTargetConfiguredFlow.asStateFlow()
+    override val clipboardOptInPromptShown: StateFlow<Boolean> = clipboardOptInPromptShownFlow.asStateFlow()
     override val clipboardViaCellularEnabled: StateFlow<Boolean> = clipboardViaCellularFlow.asStateFlow()
     override val clipboardAccessibilityEnabled: StateFlow<Boolean> = clipboardAccessibilityFlow.asStateFlow()
     override val clipboardSendNotificationEnabled: StateFlow<Boolean> = clipboardSendNotificationFlow.asStateFlow()
@@ -452,6 +458,16 @@ class BaseAppSettings(
             clipboardTargetDeviceIdsFlow.value - trimmed
         }
         setClipboardTargetDeviceIds(next)
+    }
+
+    override fun setClipboardTargetConfigured(configured: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_TARGET_CONFIGURED, configured)
+        clipboardTargetConfiguredFlow.value = configured
+    }
+
+    override fun setClipboardOptInPromptShown(shown: Boolean) {
+        store.putBoolean(KEY_CLIPBOARD_OPT_IN_PROMPT_SHOWN, shown)
+        clipboardOptInPromptShownFlow.value = shown
     }
 
     override fun setClipboardViaCellularEnabled(enabled: Boolean) {
@@ -924,6 +940,8 @@ class BaseAppSettings(
         const val KEY_INSTALL_PACKAGES_DISCLOSURE_ACK = "install_packages_disclosure_acknowledged"
         const val KEY_CLIPBOARD_SHARE_MODE = "clipboard_share_mode"
         const val KEY_CLIPBOARD_TARGET_DEVICES = "clipboard_target_device_ids"
+        const val KEY_CLIPBOARD_TARGET_CONFIGURED = "clipboard_target_configured"
+        const val KEY_CLIPBOARD_OPT_IN_PROMPT_SHOWN = "clipboard_opt_in_prompt_shown"
         const val KEY_CLIPBOARD_VIA_CELLULAR = "clipboard_via_cellular"
         const val KEY_CLIPBOARD_ACCESSIBILITY = "clipboard_accessibility"
         const val KEY_CLIPBOARD_SEND_NOTIFICATION = "clipboard_send_notification"

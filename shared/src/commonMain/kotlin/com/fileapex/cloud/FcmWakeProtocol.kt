@@ -11,6 +11,7 @@ object FcmWakeProtocol {
     const val ACTION_RETRACT_MESSAGE = "RETRACT_MESSAGE"
     const val TYPE_DRIVE_RELAY = "drive_relay"
     const val TYPE_CLIPBOARD_SHARE = "clipboard_share"
+    const val TYPE_CLIPBOARD_OPT_IN_REQUEST = "clipboard_opt_in_request"
 
     const val KEY_TYPE = "type"
     const val KEY_SOURCE_DEVICE_ID = "sourceDeviceId"

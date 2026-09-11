@@ -148,6 +148,50 @@ class FileApexClient(
         return json.decodeFromString(com.fileapex.domain.clipboard.ClipboardSendResponse.serializer(), response.body)
     }
 
+    suspend fun getClipboardStatus(
+        host: String,
+        port: Int
+    ): com.fileapex.domain.clipboard.ClipboardStatusResponse {
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/clipboard/status",
+                host = host,
+                port = port
+            ),
+            timeoutMs = 3_000
+        )
+        requireSuccess(response, "Clipboard status check failed (${response.statusCode})")
+        return json.decodeFromString(com.fileapex.domain.clipboard.ClipboardStatusResponse.serializer(), response.body)
+    }
+
+    suspend fun requestClipboardOptIn(
+        host: String,
+        port: Int,
+        senderDeviceId: String,
+        senderDeviceName: String
+    ) {
+        val request = com.fileapex.domain.clipboard.ClipboardOptInRequest(
+            senderDeviceId = senderDeviceId,
+            senderDeviceName = senderDeviceName
+        )
+        val bodyStr = json.encodeToString(com.fileapex.domain.clipboard.ClipboardOptInRequest.serializer(), request)
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/clipboard/opt-in-request",
+                host = host,
+                port = port
+            ),
+            body = bodyStr,
+            contentType = "application/json",
+            timeoutMs = 3_000
+        )
+        requireSuccess(response, "Clipboard opt-in request failed (${response.statusCode})")
+    }
+
     suspend fun verifyPin(host: String, port: Int, pin: String) {
         val trimmed = pin.trim()
         require(trimmed.isNotEmpty()) { AppI18n.t("pin_required_error") }

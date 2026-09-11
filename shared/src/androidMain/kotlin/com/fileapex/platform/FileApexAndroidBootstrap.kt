@@ -49,6 +49,7 @@ object FileApexAndroidBootstrap {
             initAndroidLanConnectivity(appContext)
             initAndroidTransferReceiveNotifier(appContext)
             initAndroidNoteReceiveNotifier(appContext)
+            initAndroidClipboardOptInNotifier(appContext)
             initAndroidDriveRelayNotifier(appContext)
             initAndroidBriefToast(appContext)
             initAndroidUpdateAvailableNotifier(appContext)

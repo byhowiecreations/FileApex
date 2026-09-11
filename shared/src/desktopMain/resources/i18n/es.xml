@@ -801,6 +801,13 @@ Toca el hub central (+) para emparejar</string>
     <string name="install_packages_disclosure_title">Instalar paquetes</string>
     <string name="install_packages_disclosure_what">Permite iniciar el instalador para aplicar actualizaciones descargadas de FileApex.</string>
     <string name="install_packages_disclosure_why">Permite actualizar FileApex directamente en tu dispositivo. Los paquetes solo se instalan tras tu confirmación.</string>
+    <string name="clipboard_opt_in_notification_title">Solicitud para compartir portapapeles</string>
+    <string name="clipboard_opt_in_notification_text">%1$s quiere compartir contenido del portapapeles con este dispositivo. Toca para activar.</string>
+    <string name="clipboard_opt_in_dialog_title">¿Activar compartir portapapeles?</string>
+    <string name="clipboard_opt_in_dialog_body">%1$s quiere compartir contenido del portapapeles con este dispositivo. ¿Deseas activar el uso compartido del portapapeles?</string>
+    <string name="configure_clipboard_targets_title">Configurar uso compartido del portapapeles</string>
+    <string name="configure_clipboard_targets_body">Elige qué dispositivos recibirán las actualizaciones del portapapeles desde este dispositivo.</string>
+    <string name="peer_clipboard_disabled_opt_in_sent">El uso compartido del portapapeles está desactivado en %1$s. Se ha enviado una solicitud de activación.</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d dispositivo del clúster)</item>
         <item quantity="other">(+%d dispositivos del clúster)</item>

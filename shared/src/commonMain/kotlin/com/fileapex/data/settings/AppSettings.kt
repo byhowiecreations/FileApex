@@ -17,6 +17,8 @@ interface AppSettings {
     val installPackagesDisclosureAcknowledged: StateFlow<Boolean>
     val clipboardShareMode: StateFlow<ClipboardShareMode>
     val clipboardTargetDeviceIds: StateFlow<Set<String>>
+    val clipboardTargetConfigured: StateFlow<Boolean>
+    val clipboardOptInPromptShown: StateFlow<Boolean>
     val clipboardViaCellularEnabled: StateFlow<Boolean>
     val clipboardAccessibilityEnabled: StateFlow<Boolean>
     val clipboardSendNotificationEnabled: StateFlow<Boolean>
@@ -107,6 +109,8 @@ interface AppSettings {
     fun setClipboardShareMode(mode: ClipboardShareMode)
     fun setClipboardTargetDeviceIds(deviceIds: Set<String>)
     fun setClipboardTargetDevice(deviceId: String, selected: Boolean)
+    fun setClipboardTargetConfigured(configured: Boolean)
+    fun setClipboardOptInPromptShown(shown: Boolean)
     fun setClipboardViaCellularEnabled(enabled: Boolean)
     fun setClipboardAccessibilityEnabled(enabled: Boolean)
     fun setClipboardSendNotificationEnabled(enabled: Boolean)

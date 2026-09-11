@@ -194,4 +194,102 @@ class ClipboardSharePolicyTest {
         assertTrue(retries.last() >= 1_200L)
         assertEquals(700L, ClipboardSharePolicy.ANDROID_FOREGROUND_CLIP_POLL_MS)
     }
+
+    @Test
+    fun calculateDeviceCountsCountsLocalAndRemoteDevices() {
+        val phoneSelfPeers = listOf(ClipboardSharePolicy.PeerRef("mac-1", isDesktop = true))
+        val counts1 = ClipboardSharePolicy.calculateDeviceCounts(selfIsAndroid = true, peers = phoneSelfPeers)
+        assertEquals(1, counts1.totalPhones)
+        assertEquals(1, counts1.totalDesktops)
+
+        val desktopSelfPeers = listOf(ClipboardSharePolicy.PeerRef("pixel-1", isDesktop = false))
+        val counts2 = ClipboardSharePolicy.calculateDeviceCounts(selfIsAndroid = false, peers = desktopSelfPeers)
+        assertEquals(1, counts2.totalPhones)
+        assertEquals(1, counts2.totalDesktops)
+
+        val mixedPeers = listOf(
+            ClipboardSharePolicy.PeerRef("mac-1", isDesktop = true),
+            ClipboardSharePolicy.PeerRef("win-1", isDesktop = true),
+            ClipboardSharePolicy.PeerRef("galaxy-1", isDesktop = false)
+        )
+        val counts3 = ClipboardSharePolicy.calculateDeviceCounts(selfIsAndroid = true, peers = mixedPeers)
+        assertEquals(2, counts3.totalPhones)
+        assertEquals(2, counts3.totalDesktops)
+    }
+
+    @Test
+    fun resolveAutoDefaultTargetIdAutoDefaultsWhenExactlyOnePhoneAndOneDesktop() {
+        val desktopPeer = ClipboardSharePolicy.PeerRef("mac-1", isDesktop = true)
+        val autoTarget = ClipboardSharePolicy.resolveAutoDefaultTargetId(
+            selfIsAndroid = true,
+            peers = listOf(desktopPeer)
+        )
+        assertEquals("mac-1", autoTarget)
+
+        val phonePeer = ClipboardSharePolicy.PeerRef("pixel-1", isDesktop = false)
+        val autoTargetDesktop = ClipboardSharePolicy.resolveAutoDefaultTargetId(
+            selfIsAndroid = false,
+            peers = listOf(phonePeer)
+        )
+        assertEquals("pixel-1", autoTargetDesktop)
+    }
+
+    @Test
+    fun resolveAutoDefaultTargetIdReturnsNullWhenMultiplePhonesOrDesktops() {
+        val phonePeer = ClipboardSharePolicy.PeerRef("pixel-1", isDesktop = false)
+        val autoTarget1 = ClipboardSharePolicy.resolveAutoDefaultTargetId(
+            selfIsAndroid = true,
+            peers = listOf(phonePeer)
+        )
+        org.junit.Assert.assertNull(autoTarget1)
+
+        val twoDesktopPeers = listOf(
+            ClipboardSharePolicy.PeerRef("mac-1", isDesktop = true),
+            ClipboardSharePolicy.PeerRef("win-1", isDesktop = true)
+        )
+        val autoTarget2 = ClipboardSharePolicy.resolveAutoDefaultTargetId(
+            selfIsAndroid = true,
+            peers = twoDesktopPeers
+        )
+        org.junit.Assert.assertNull(autoTarget2)
+    }
+
+    @Test
+    fun shouldPromptTargetConfigurationRespectsFlagAndDeviceCount() {
+        val twoDesktopPeers = listOf(
+            ClipboardSharePolicy.PeerRef("mac-1", isDesktop = true),
+            ClipboardSharePolicy.PeerRef("win-1", isDesktop = true)
+        )
+        assertTrue(
+            ClipboardSharePolicy.shouldPromptTargetConfiguration(
+                isConfigured = false,
+                selfIsAndroid = true,
+                peers = twoDesktopPeers
+            )
+        )
+
+        assertFalse(
+            ClipboardSharePolicy.shouldPromptTargetConfiguration(
+                isConfigured = true,
+                selfIsAndroid = true,
+                peers = twoDesktopPeers
+            )
+        )
+
+        assertFalse(
+            ClipboardSharePolicy.shouldPromptTargetConfiguration(
+                isConfigured = false,
+                selfIsAndroid = true,
+                peers = listOf(ClipboardSharePolicy.PeerRef("mac-1", isDesktop = true))
+            )
+        )
+
+        assertFalse(
+            ClipboardSharePolicy.shouldPromptTargetConfiguration(
+                isConfigured = false,
+                selfIsAndroid = true,
+                peers = listOf(ClipboardSharePolicy.PeerRef("pixel-1", isDesktop = false))
+            )
+        )
+    }
 }

@@ -798,6 +798,13 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="install_packages_disclosure_title">安装应用包</string>
     <string name="install_packages_disclosure_what">允许启动安装程序以安装下载的 FileApex 更新。</string>
     <string name="install_packages_disclosure_why">可在确认后直接在设备上更新 FileApex 到新版本。未经确认绝不会自动安装。</string>
+    <string name="clipboard_opt_in_notification_title">剪贴板共享请求</string>
+    <string name="clipboard_opt_in_notification_text">%1$s 想与此设备共享剪贴板内容。点击以启用。</string>
+    <string name="clipboard_opt_in_dialog_title">启用剪贴板共享？</string>
+    <string name="clipboard_opt_in_dialog_body">%1$s 想与此设备共享剪贴板内容。您是否要启用剪贴板共享？</string>
+    <string name="configure_clipboard_targets_title">配置剪贴板共享</string>
+    <string name="configure_clipboard_targets_body">选择从此设备接收剪贴板更新的设备。</string>
+    <string name="peer_clipboard_disabled_opt_in_sent">%1$s 上的剪贴板共享已禁用。已发送启用请求。</string>
     <plurals name="paired_cluster_extra">
         <item quantity="other">（+%d 台集群设备）</item>
     </plurals>

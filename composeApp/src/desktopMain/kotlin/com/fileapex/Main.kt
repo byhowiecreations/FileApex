@@ -322,6 +322,8 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 return@Window
             }
 
+            val desktopClipboardOptInSender by com.fileapex.platform.DesktopClipboardOptInState.pendingSender.collectAsState()
+
             App(
                 hasStoragePermission = true,
                 hasUnrestrictedBattery = true,
@@ -333,7 +335,9 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 onExitApp = { quitDesktop() },
                 appVersionName = FileApexAppVersion.NAME,
                 incomingShare = desktopIncomingShare,
-                onIncomingShareConsumed = { desktopIncomingShare = null }
+                onIncomingShareConsumed = { desktopIncomingShare = null },
+                pendingClipboardOptInSender = desktopClipboardOptInSender,
+                onClipboardOptInConsumed = { com.fileapex.platform.DesktopClipboardOptInState.consume() }
             )
         }
 

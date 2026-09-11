@@ -38,6 +38,7 @@ class PairingCoordinator(
      */
     suspend fun propagatePairingComplete(newlyPaired: PairedDeviceEntity) {
         broadcastPairingCompleteOnce(newlyPaired)
+        com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
     }
 
     /**
@@ -45,6 +46,7 @@ class PairingCoordinator(
      */
     suspend fun afterOutboundPair(peer: PairedDeviceEntity) {
         broadcastPairingCompleteOnce(peer)
+        com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
     }
 
     /**

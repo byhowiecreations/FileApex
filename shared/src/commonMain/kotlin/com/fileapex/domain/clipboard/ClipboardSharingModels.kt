@@ -19,3 +19,16 @@ data class ClipboardSendResponse(
     val recipientDeviceName: String,
     val message: String? = null
 )
+
+@Serializable
+data class ClipboardStatusResponse(
+    val sharingEnabled: Boolean,
+    val deviceId: String = "",
+    val deviceName: String = ""
+)
+
+@Serializable
+data class ClipboardOptInRequest(
+    val senderDeviceId: String,
+    val senderDeviceName: String
+)

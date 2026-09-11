@@ -52,6 +52,7 @@ import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.ui.DevicesScreen
+import com.fileapex.ui.dialogs.ClipboardOptInDialog
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.GenerateQrScreen
 import com.fileapex.ui.JoinDeviceScreen
@@ -127,7 +128,9 @@ fun App(
     pendingOpenBulletinBoard: Boolean = false,
     onOpenBulletinBoardConsumed: () -> Unit = {},
     pendingOpenDeviceId: String? = null,
-    onOpenDeviceRequestConsumed: () -> Unit = {}
+    onOpenDeviceRequestConsumed: () -> Unit = {},
+    pendingClipboardOptInSender: String? = null,
+    onClipboardOptInConsumed: () -> Unit = {}
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
@@ -583,6 +586,30 @@ fun App(
                         showLanguagePrompt = false
                     }
                 ) { Text(stringRes("language_use_english"), softWrap = true) }
+            }
+        )
+    }
+
+    val optInPromptShown by FileApexServices.settings.clipboardOptInPromptShown.collectAsState()
+    val clipboardSharingEnabled by FileApexServices.settings.clipboardSharingEnabled.collectAsState()
+
+    LaunchedEffect(pendingClipboardOptInSender, optInPromptShown) {
+        if (pendingClipboardOptInSender != null && optInPromptShown) {
+            onClipboardOptInConsumed()
+        }
+    }
+
+    if (pendingClipboardOptInSender != null && !optInPromptShown) {
+        ClipboardOptInDialog(
+            senderDeviceName = pendingClipboardOptInSender,
+            sharingEnabled = clipboardSharingEnabled,
+            onToggleSharing = { enabled ->
+                FileApexServices.settings.setClipboardSharingEnabled(enabled)
+                com.fileapex.platform.ClipboardShareChrome.fire()
+            },
+            onDone = {
+                FileApexServices.settings.setClipboardOptInPromptShown(true)
+                onClipboardOptInConsumed()
             }
         )
     }

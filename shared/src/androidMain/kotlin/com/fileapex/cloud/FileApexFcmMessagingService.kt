@@ -116,6 +116,12 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
                         ?: data[FcmWakeProtocol.KEY_CAPTURED_AT]
                 )
             }
+            FcmWakeCoordinator.isClipboardOptInRequest(type) -> {
+                val senderName = data[FcmWakeProtocol.Keys.SENDER_DEVICE_NAME]
+                    ?: data[FcmWakeProtocol.KEY_SENDER_DEVICE_NAME]
+                    ?: com.fileapex.i18n.AppI18n.t("paired_device")
+                com.fileapex.platform.notifyClipboardOptInRequested(senderName)
+            }
             else -> Log.w(TAG, "FCM ignored unknown type=$type")
         }
     }

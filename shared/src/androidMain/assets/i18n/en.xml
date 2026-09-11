@@ -801,6 +801,13 @@ Tap Central Hub (+) to Pair</string>
     <string name="install_packages_disclosure_title">Install Packages</string>
     <string name="install_packages_disclosure_what">Allows launching the package installer to install downloaded FileApex updates.</string>
     <string name="install_packages_disclosure_why">Enables updating FileApex to newer versions directly on your device. Packages are only installed after you review and confirm.</string>
+    <string name="clipboard_opt_in_notification_title">Clipboard Sharing Request</string>
+    <string name="clipboard_opt_in_notification_text">%1$s wants to share clipboard content with this device. Tap to enable.</string>
+    <string name="clipboard_opt_in_dialog_title">Enable Clipboard Sharing?</string>
+    <string name="clipboard_opt_in_dialog_body">%1$s wants to share clipboard content with this device. Would you like to enable Clipboard Sharing?</string>
+    <string name="configure_clipboard_targets_title">Configure Clipboard Sharing</string>
+    <string name="configure_clipboard_targets_body">Choose which devices will receive clipboard updates from this device.</string>
+    <string name="peer_clipboard_disabled_opt_in_sent">Clipboard sharing is disabled on %1$s. An opt-in request has been sent.</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d cluster device)</item>
         <item quantity="other">(+%d cluster devices)</item>

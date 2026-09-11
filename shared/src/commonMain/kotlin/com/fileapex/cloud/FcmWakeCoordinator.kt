@@ -83,6 +83,7 @@ object FcmWakeCoordinator {
     fun isDriveRelay(type: String?): Boolean = type == FcmWakeProtocol.TYPE_DRIVE_RELAY
 
     fun isClipboardShare(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_SHARE
+    fun isClipboardOptInRequest(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_OPT_IN_REQUEST
 
     suspend fun dispatchClipboardShare(
         targetDeviceId: String,
@@ -107,6 +108,27 @@ object FcmWakeCoordinator {
             )
         }.getOrElse { error ->
             println("FcmWakeCoordinator: clipboard FCM failed - ${error.message}")
+            false
+        }
+    }
+
+    suspend fun dispatchClipboardOptIn(
+        targetDeviceId: String,
+        senderDeviceName: String
+    ): Boolean {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
+        if (!FcmWakeBackend.isConfigured()) return false
+        val selfId = loadLocalIdentity().deviceId
+        return runCatching {
+            val targets = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(targetDeviceId))
+            val target = targets.firstOrNull() ?: return false
+            FcmWakeBackend.sendClipboardOptIn(
+                targetFcmToken = target.fcmToken,
+                sourceDeviceId = selfId,
+                senderDeviceName = senderDeviceName
+            )
+        }.getOrElse { error ->
+            println("FcmWakeCoordinator: clipboard opt-in FCM failed - ${error.message}")
             false
         }
     }

@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
+import com.fileapex.ui.dialogs.ClipboardTargetConfigDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -502,13 +503,17 @@ fun DevicesScreen(
                         ) {
                             Surface(
                                 onClick = viewModel::sendClipboardNow,
+                                enabled = !state.isSendingClipboard,
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight(),
                                 shape = RoundedCornerShape(percent = 50),
                                 color = Color(0xEE0D1C22),
-                                border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.55f)),
-                                shadowElevation = 8.dp
+                                border = BorderStroke(
+                                    1.dp,
+                                    Color(0xFF00E5FF).copy(alpha = if (state.isSendingClipboard) 0.25f else 0.55f)
+                                ),
+                                shadowElevation = if (state.isSendingClipboard) 2.dp else 8.dp
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -517,12 +522,20 @@ fun DevicesScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.ContentPaste,
-                                        contentDescription = null,
-                                        tint = Color(0xFF00E5FF),
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    if (state.isSendingClipboard) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF00E5FF)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Filled.ContentPaste,
+                                            contentDescription = null,
+                                            tint = Color(0xFF00E5FF),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = stringRes("send_clipboard"),
@@ -530,7 +543,7 @@ fun DevicesScreen(
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp
                                         ),
-                                        color = Color.White,
+                                        color = if (state.isSendingClipboard) Color.White.copy(alpha = 0.6f) else Color.White,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -606,7 +619,11 @@ fun DevicesScreen(
                             .padding(top = 8.dp, bottom = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        SendClipboardActionChip(onClick = viewModel::sendClipboardNow)
+                        SendClipboardActionChip(
+                            onClick = viewModel::sendClipboardNow,
+                            enabled = !state.isSendingClipboard,
+                            isLoading = state.isSendingClipboard
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Box(
                             modifier = Modifier.fillMaxWidth(),
@@ -824,6 +841,21 @@ fun DevicesScreen(
         )
     }
 
+    if (state.showClipboardConfigDialog) {
+        val settings = remember { FileApexServices.settings }
+        val currentMode by settings.clipboardShareMode.collectAsState()
+        val currentTargets by settings.clipboardTargetDeviceIds.collectAsState()
+        ClipboardTargetConfigDialog(
+            initialMode = currentMode,
+            initialTargetIds = currentTargets,
+            peers = state.clipboardConfigPeers,
+            onConfirm = { mode, targets ->
+                viewModel.confirmClipboardConfig(mode, targets)
+            },
+            onDismiss = viewModel::dismissClipboardConfigDialog
+        )
+    }
+
     if (confirmExit) {
         AlertDialog(
             onDismissRequest = { confirmExit = false },
@@ -847,31 +879,48 @@ fun DevicesScreen(
 @Composable
 internal fun SendClipboardActionChip(
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isLoading: Boolean = false
 ) {
     val glass = isFileApexCustomGlassTheme()
     Surface(
         onClick = onClick,
+        enabled = enabled && !isLoading,
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         color = if (glass) Color(0xDD0D1C22) else MaterialTheme.colorScheme.surface,
         border = BorderStroke(
             1.dp,
-            if (glass) Color(0xFF00E5FF).copy(alpha = 0.50f) else FileApexTeal.copy(alpha = 0.55f)
+            if (isLoading) {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            } else if (glass) {
+                Color(0xFF00E5FF).copy(alpha = 0.50f)
+            } else {
+                FileApexTeal.copy(alpha = 0.55f)
+            }
         ),
-        shadowElevation = if (glass) 8.dp else 2.dp
+        shadowElevation = if (isLoading) 1.dp else if (glass) 8.dp else 2.dp
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = Icons.Filled.ContentPaste,
-                contentDescription = null,
-                tint = if (glass) Color(0xFF00E676) else FileApexTeal,
-                modifier = Modifier.size(15.dp)
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(15.dp),
+                    strokeWidth = 2.dp,
+                    color = if (glass) Color(0xFF00E676) else FileApexTeal
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.ContentPaste,
+                    contentDescription = null,
+                    tint = if (glass) Color(0xFF00E676) else FileApexTeal,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = stringRes("send_clipboard"),
@@ -879,7 +928,11 @@ internal fun SendClipboardActionChip(
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.5.sp
                 ),
-                color = if (glass) Color.White else MaterialTheme.colorScheme.onSurface,
+                color = if (isLoading) {
+                    (if (glass) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.6f)
+                } else {
+                    if (glass) Color.White else MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1
             )
         }

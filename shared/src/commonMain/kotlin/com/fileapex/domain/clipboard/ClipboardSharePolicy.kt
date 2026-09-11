@@ -21,6 +21,48 @@ object ClipboardSharePolicy {
         val isDesktop: Boolean
     )
 
+    data class DeviceCounts(
+        val totalPhones: Int,
+        val totalDesktops: Int
+    ) {
+        val totalCount: Int get() = totalPhones + totalDesktops
+        val isOnePhoneAndOneDesktop: Boolean get() = totalPhones == 1 && totalDesktops == 1
+        val hasThreeOrMoreDevices: Boolean get() = totalCount >= 3 && (totalPhones >= 2 || totalDesktops >= 2)
+    }
+
+    fun calculateDeviceCounts(
+        selfIsAndroid: Boolean,
+        peers: Collection<PeerRef>
+    ): DeviceCounts {
+        val selfPhones = if (selfIsAndroid) 1 else 0
+        val selfDesktops = if (selfIsAndroid) 0 else 1
+        val peerPhones = peers.count { !it.isDesktop }
+        val peerDesktops = peers.count { it.isDesktop }
+        return DeviceCounts(
+            totalPhones = selfPhones + peerPhones,
+            totalDesktops = selfDesktops + peerDesktops
+        )
+    }
+
+    fun resolveAutoDefaultTargetId(
+        selfIsAndroid: Boolean,
+        peers: Collection<PeerRef>
+    ): String? {
+        val counts = calculateDeviceCounts(selfIsAndroid, peers)
+        if (!counts.isOnePhoneAndOneDesktop) return null
+        return peers.firstOrNull()?.deviceId?.trim()?.ifBlank { null }
+    }
+
+    fun shouldPromptTargetConfiguration(
+        isConfigured: Boolean,
+        selfIsAndroid: Boolean,
+        peers: Collection<PeerRef>
+    ): Boolean {
+        if (isConfigured) return false
+        val counts = calculateDeviceCounts(selfIsAndroid, peers)
+        return counts.hasThreeOrMoreDevices
+    }
+
     fun resolveTargetIds(
         mode: ClipboardShareMode,
         pairedDeviceIds: Collection<String>,

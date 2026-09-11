@@ -185,6 +185,29 @@ object FcmWakeBackend {
             data = dataObj
         )
     }
+
+    suspend fun sendClipboardOptIn(
+        targetFcmToken: String,
+        sourceDeviceId: String,
+        senderDeviceName: String
+    ): Boolean {
+        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (targetFcmToken.isBlank()) return false
+        val dataObj = buildJsonObject {
+            put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_CLIPBOARD_OPT_IN_REQUEST)
+            put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_CLIPBOARD_OPT_IN_REQUEST)
+            put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
+            put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
+            put(FcmWakeProtocol.Keys.SENDER_DEVICE_NAME, senderDeviceName)
+            put(FcmWakeProtocol.KEY_SENDER_DEVICE_NAME, senderDeviceName)
+            put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
+        }
+        return FcmHttpV1Client.sendDataWake(
+            config = config,
+            targetToken = targetFcmToken,
+            data = dataObj
+        )
+    }
 }
 
 internal object FcmHttpV1Client {

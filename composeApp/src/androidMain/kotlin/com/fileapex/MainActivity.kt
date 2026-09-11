@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
     private var pendingOpenDeviceId by mutableStateOf<String?>(null)
     private var isPreparingShare by mutableStateOf(false)
     private var sharePrepareError by mutableStateOf<String?>(null)
+    private var pendingClipboardOptInSender by mutableStateOf<String?>(null)
 
     /** True when this activity instance was brought up primarily for ACTION_SEND*. */
     private var openedFromShareSheet = false
@@ -190,7 +191,9 @@ class MainActivity : ComponentActivity() {
                     pendingOpenBulletinBoard = pendingOpenBulletinBoard,
                     onOpenBulletinBoardConsumed = { pendingOpenBulletinBoard = false },
                     pendingOpenDeviceId = pendingOpenDeviceId,
-                    onOpenDeviceRequestConsumed = { pendingOpenDeviceId = null }
+                    onOpenDeviceRequestConsumed = { pendingOpenDeviceId = null },
+                    pendingClipboardOptInSender = pendingClipboardOptInSender,
+                    onClipboardOptInConsumed = { pendingClipboardOptInSender = null }
                 )
                 com.fileapex.platform.LiveTransferCapsuleOverlay()
             }
@@ -249,6 +252,16 @@ class MainActivity : ComponentActivity() {
         ) {
             requestShowUpdateSheet = true
             intent.removeExtra(com.fileapex.platform.EXTRA_SHOW_UPDATE_SHEET)
+        }
+        if (intent?.getBooleanExtra(
+                com.fileapex.platform.EXTRA_SHOW_CLIPBOARD_OPT_IN,
+                false
+            ) == true
+        ) {
+            val sender = intent.getStringExtra(com.fileapex.platform.EXTRA_CLIPBOARD_OPT_IN_SENDER).orEmpty()
+            pendingClipboardOptInSender = sender
+            intent.removeExtra(com.fileapex.platform.EXTRA_SHOW_CLIPBOARD_OPT_IN)
+            intent.removeExtra(com.fileapex.platform.EXTRA_CLIPBOARD_OPT_IN_SENDER)
         }
         val openNoteId = intent?.getStringExtra(com.fileapex.platform.EXTRA_OPEN_NOTE_ID)
             ?.trim()

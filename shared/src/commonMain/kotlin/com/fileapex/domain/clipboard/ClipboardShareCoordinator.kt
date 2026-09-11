@@ -69,10 +69,37 @@ object ClipboardShareCoordinator {
         if (shouldWatchLocalClipboard()) {
             ClipboardChangeMonitor.start(::onLocalClipboardChanged)
         }
+        checkAndApplyAutoDefaultTarget()
         initJob?.cancel()
         initJob = scope.launch {
             delay(ClipboardSharePolicy.INIT_GUARD_MS)
             ClipboardPushDeduper.endInitialization()
+        }
+    }
+
+    fun checkAndApplyAutoDefaultTarget() {
+        val settings = FileApexServices.settings
+        if (settings.clipboardTargetConfigured.value) return
+        scope.launch {
+            val paired = FileApexServices.deviceRepository.listDevices()
+            val peers = paired.map {
+                ClipboardSharePolicy.PeerRef(
+                    deviceId = it.deviceId,
+                    isDesktop = com.fileapex.domain.peer.PeerPlatform.isDesktop(it.os, it.platform)
+                )
+            }
+            val defaultTargetId = ClipboardSharePolicy.resolveAutoDefaultTargetId(
+                selfIsAndroid = currentPlatformLabel() == "Android",
+                peers = peers
+            )
+            if (defaultTargetId != null) {
+                if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET ||
+                    settings.clipboardShareMode.value == ClipboardShareMode.SPECIFIC
+                ) {
+                    settings.setClipboardShareMode(ClipboardShareMode.SPECIFIC)
+                    settings.setClipboardTargetDeviceIds(setOf(defaultTargetId))
+                }
+            }
         }
     }
 
@@ -160,6 +187,7 @@ object ClipboardShareCoordinator {
     }
 
     suspend fun pushCurrentClipboardNow(prefetchedText: String? = null): String {
+        checkAndApplyAutoDefaultTarget()
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) {
             return com.fileapex.i18n.AppI18n.t("clipboard_sharing_off")
@@ -355,9 +383,9 @@ object ClipboardShareCoordinator {
         }
         for (deviceId in remaining) {
             val device = FileApexServices.deviceRepository.getDevice(deviceId) ?: continue
-            val delivered = runCatching {
-                deliverToDevice(device, snapshot.text, snapshot.capturedAtEpochMs)
-            }.getOrDefault(false)
+            val (delivered, error) = runCatching {
+                deliverToDeviceWithDetail(device, snapshot.text, snapshot.capturedAtEpochMs)
+            }.getOrElse { Pair(false, it) }
             if (delivered) {
                 mutex.withLock {
                     pending?.remainingIds?.remove(deviceId)
@@ -365,6 +393,8 @@ object ClipboardShareCoordinator {
                         pending = null
                     }
                 }
+            } else if (error != null && !error.message.isNullOrBlank()) {
+                showClipboardToast(error.message.orEmpty())
             }
         }
         mutex.withLock {
@@ -416,6 +446,31 @@ object ClipboardShareCoordinator {
             localBindIps = NetworkUtils.lanBindCandidates()
         )
         if (lanOk) {
+            val statusResult = runCatching {
+                FileApexServices.client.getClipboardStatus(device.lastKnownIp, device.port)
+            }
+            if (statusResult.isSuccess) {
+                val status = statusResult.getOrThrow()
+                if (!status.sharingEnabled) {
+                    val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
+                    runCatching {
+                        FileApexServices.client.requestClipboardOptIn(
+                            host = device.lastKnownIp,
+                            port = device.port,
+                            senderDeviceId = identity.deviceId,
+                            senderDeviceName = identity.deviceName
+                        )
+                    }
+                    val settings = FileApexServices.settings
+                    if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
+                        runCatching {
+                            FcmWakeCoordinator.dispatchClipboardOptIn(device.deviceId, identity.deviceName)
+                        }
+                    }
+                    val msg = com.fileapex.i18n.AppI18n.t("peer_clipboard_disabled_opt_in_sent", peerName)
+                    return Pair(false, IllegalStateException(msg))
+                }
+            }
             val lanResult = runCatching {
                 FileApexServices.client.sendClipboard(
                     host = device.lastKnownIp,
@@ -428,11 +483,33 @@ object ClipboardShareCoordinator {
                 )
             }.onFailure { error ->
                 lastError = error
+                if (error.message?.contains("clipboard_disabled") == true) {
+                    val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
+                    runCatching {
+                        FileApexServices.client.requestClipboardOptIn(
+                            host = device.lastKnownIp,
+                            port = device.port,
+                            senderDeviceId = identity.deviceId,
+                            senderDeviceName = identity.deviceName
+                        )
+                    }
+                    val settings = FileApexServices.settings
+                    if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
+                        runCatching {
+                            FcmWakeCoordinator.dispatchClipboardOptIn(device.deviceId, identity.deviceName)
+                        }
+                    }
+                    val msg = com.fileapex.i18n.AppI18n.t("peer_clipboard_disabled_opt_in_sent", peerName)
+                    lastError = IllegalStateException(msg)
+                }
                 println(
                     "ClipboardShareCoordinator: LAN send to ${device.deviceName} failed - ${error.message}"
                 )
             }
             if (lanResult.isSuccess) return Pair(true, null)
+            if (lastError is IllegalStateException) {
+                return Pair(false, lastError)
+            }
         }
         val settings = FileApexServices.settings
         val fcmOk = ClipboardSharePolicy.canUseCellularFcm(
