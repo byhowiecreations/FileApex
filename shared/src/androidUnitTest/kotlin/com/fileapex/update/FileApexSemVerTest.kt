@@ -25,4 +25,14 @@ class FileApexSemVerTest {
         assertFalse(isRemoteVersionNewer("0.9.2c", "v0.9.2c"))
         assertFalse(isRemoteVersionNewer("0.8.3", "v0.8.3"))
     }
+
+    @Test
+    fun installedStrictlyNewerTests() {
+        assertTrue(isInstalledVersionStrictlyNewer("0.10.10d", "0.10.9"))
+        assertTrue(isInstalledVersionStrictlyNewer("0.10.10d", "0.10.10c"))
+        assertFalse(isInstalledVersionStrictlyNewer("0.10.10d", "0.10.10d"))
+        assertFalse(isInstalledVersionStrictlyNewer("0.10.10d", "v0.10.10d"))
+        assertFalse(isInstalledVersionStrictlyNewer("0.10.10c", "0.10.10d"))
+    }
 }
+

@@ -10,6 +10,8 @@ interface AppSettings {
     val googleAccountEmail: StateFlow<String>
     /** Firestore path users/{uid}/devices. Empty when unlinked. */
     val googleAccountUid: StateFlow<String>
+    val googleRestorePending: StateFlow<Boolean>
+    val googleBackupEmailHint: StateFlow<String>
     val multiCopyIntroAcknowledged: StateFlow<Boolean>
     val clipboardSharingEnabled: StateFlow<Boolean>
     val clipboardDisclosureAcknowledged: StateFlow<Boolean>
@@ -101,6 +103,8 @@ interface AppSettings {
     fun setGoogleAccountLinkEnabled(enabled: Boolean)
     fun setGoogleAccountEmail(email: String)
     fun setGoogleAccountUid(uid: String)
+    fun setGoogleRestorePending(pending: Boolean)
+    fun setGoogleBackupEmailHint(email: String)
     fun setMultiCopyIntroAcknowledged(acknowledged: Boolean)
     fun setClipboardSharingEnabled(enabled: Boolean)
     fun setClipboardDisclosureAcknowledged(acknowledged: Boolean)

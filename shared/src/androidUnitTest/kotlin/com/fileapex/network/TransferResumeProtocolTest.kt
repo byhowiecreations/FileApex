@@ -65,6 +65,67 @@ class TransferResumeProtocolTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun transactionJournalDeduplicatesSameTransactionAndAllowsFreshTransfer() {
+        val dir = File.createTempFile("fileapex-tx-journal-", ".dir")
+        check(dir.delete() && dir.mkdirs())
+        try {
+            val file = File(dir, "FileApex-test.apk")
+            file.writeBytes(ByteArray(2048) { 42 })
+
+            val txId1 = "tx-event-1"
+            val sender = "mac-client"
+            TransferTransactionJournal.recordCompleted(
+                transactionId = txId1,
+                senderDeviceId = sender,
+                targetPath = file.absolutePath,
+                finalPath = file.absolutePath,
+                byteSize = 2048L,
+                timestampEpochMs = 123456789L
+            )
+
+            // 1. Same transaction ID query -> returns complete=true, offset=2048L (skips duplicate upload)
+            val sameTx = TransferResumeProtocol.inspectIncoming(
+                preferredPath = file.absolutePath,
+                expectedSize = 2048L,
+                transactionId = txId1,
+                senderDeviceId = sender
+            )
+            assertEquals(2048L, sameTx.offset)
+            assertTrue(sameTx.complete)
+
+            // 2. Different transaction ID query (new rebuild / patch with same name and size) -> does not falsely deduplicate
+            val txId2 = "tx-event-2"
+            val newTx = TransferResumeProtocol.inspectIncoming(
+                preferredPath = file.absolutePath,
+                expectedSize = 2048L,
+                transactionId = txId2,
+                senderDeviceId = sender
+            )
+            // Since no part file exists for fresh target, returns 0L offset and not complete
+            assertEquals(0L, newTx.offset)
+            assertFalse(newTx.complete)
+
+            // 3. Test install tracking
+            assertFalse(TransferTransactionJournal.isInstalled(txId1))
+            TransferTransactionJournal.markInstallAttempted(txId1)
+            assertFalse(TransferTransactionJournal.isInstalled(txId1))
+            val recordBefore = TransferTransactionJournal.findRecordByFilePath(file.absolutePath)
+            assertTrue(recordBefore?.installAttempted == true)
+
+            TransferTransactionJournal.markInstalled(txId1)
+            assertTrue(TransferTransactionJournal.isInstalled(txId1))
+            val recordAfter = TransferTransactionJournal.findRecordByFilePath(file.absolutePath)
+            assertTrue(recordAfter?.installed == true)
+
+            // 4. Test purge
+            TransferTransactionJournal.purgeTransaction(txId1)
+            assertFalse(TransferTransactionJournal.isInstalled(txId1))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }
 
 class SocketFileStreamerTest {

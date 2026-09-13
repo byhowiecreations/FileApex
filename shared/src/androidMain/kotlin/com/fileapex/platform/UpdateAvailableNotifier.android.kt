@@ -18,14 +18,21 @@ fun initAndroidUpdateAvailableNotifier(context: Context) {
 
 actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
     if (!::updateNotifierContext.isInitialized) {
-        println("UpdateAvailableNotifier: skipped - not initialized")
-        return
+        val fallback = com.fileapex.data.settings.androidAppContextOrNull()
+        if (fallback != null) {
+            initAndroidUpdateAvailableNotifier(fallback)
+        } else {
+            println("UpdateAvailableNotifier: skipped - not initialized")
+            return
+        }
     }
     val manager = NotificationManagerCompat.from(updateNotifierContext)
     if (!manager.areNotificationsEnabled()) {
         println("UpdateAvailableNotifier: skipped - notifications disabled")
         return
     }
+
+    AndroidNotificationChannels.ensureAppUpdatesChannel(updateNotifierContext)
 
     val title = com.fileapex.i18n.AppI18n.t("update_available_title", offer.remoteVersion)
     val body = offer.notificationDetail()
@@ -73,8 +80,10 @@ actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
             skipIntent
         )
         .setAutoCancel(true)
-        .setOnlyAlertOnce(true)
-        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        .setOnlyAlertOnce(false)
+        .setPriority(NotificationCompat.PRIORITY_MAX)
+        .setDefaults(NotificationCompat.DEFAULT_ALL)
+        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         .build()
 
     runCatching {

@@ -120,6 +120,23 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
                 val senderName = data[FcmWakeProtocol.Keys.SENDER_DEVICE_NAME]
                     ?: data[FcmWakeProtocol.KEY_SENDER_DEVICE_NAME]
                     ?: com.fileapex.i18n.AppI18n.t("paired_device")
+                val senderDeviceId = data[FcmWakeProtocol.Keys.SOURCE_DEVICE_ID]
+                    ?: data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID]
+                    ?: ""
+                val cipher = data[FcmWakeProtocol.Keys.CIPHERTEXT]
+                val pubKey = data[FcmWakeProtocol.Keys.SENDER_PUBLIC_KEY]
+                if (!cipher.isNullOrBlank() && !pubKey.isNullOrBlank()) {
+                    val epoch = (data[FcmWakeProtocol.Keys.CAPTURED_AT] ?: "0").toLongOrNull() ?: 0L
+                    com.fileapex.domain.clipboard.ClipboardPendingOptInStore.setPending(
+                        com.fileapex.domain.clipboard.ClipboardSendRequest(
+                            senderDeviceId = senderDeviceId,
+                            senderDeviceName = senderName,
+                            senderPublicKey = pubKey,
+                            ciphertext = cipher,
+                            capturedAtEpochMs = epoch
+                        )
+                    )
+                }
                 com.fileapex.platform.notifyClipboardOptInRequested(senderName)
             }
             else -> Log.w(TAG, "FCM ignored unknown type=$type")
@@ -128,6 +145,10 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
 
     private fun handlePresenceWake(data: Map<String, String>) {
         Log.i(TAG, "Presence wake received from ${data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID]}")
+        com.fileapex.platform.ShareServerRestartCoordinator.restoreFromExternalWake(
+            applicationContext,
+            "fcm_presence_wake"
+        )
         ServerLifecycleManager.ensureRunning { logMessage, error ->
             if (error != null) {
                 Log.e(TAG, logMessage, error)
@@ -143,6 +164,10 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
         Log.i(
             TAG,
             "Diagnostics wake session=$sessionId from ${data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID]}"
+        )
+        com.fileapex.platform.ShareServerRestartCoordinator.restoreFromExternalWake(
+            applicationContext,
+            "fcm_diagnostics_wake"
         )
         ServerLifecycleManager.ensureRunning { logMessage, error ->
             if (error != null) {

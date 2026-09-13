@@ -5,6 +5,8 @@ import com.fileapex.network.FileApexClient
 import com.fileapex.network.SocketFileStreamer
 import com.fileapex.network.TransferResumeProtocol
 import com.fileapex.platform.UniqueFileNames
+import com.fileapex.platform.generateDeviceId
+import com.fileapex.util.TimeUtils
 import java.io.RandomAccessFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -73,11 +75,15 @@ class MultiCopyBroadcastEngine(
                 failures = failures.toMap()
             )
         }
+        val txTimestamp = TimeUtils.now()
+        val txMap = destinations.associate { it.deviceId to generateDeviceId() }
+
         val plans = destinations.map { destination ->
             async(Dispatchers.IO) {
+                val txId = txMap[destination.deviceId]
                 DestPlan(
                     destination = destination,
-                    offset = queryDestinationOffset(destination, verifiedSource.sizeBytes)
+                    offset = queryDestinationOffset(destination, verifiedSource.sizeBytes, txId)
                 )
             }
         }.awaitAll()
@@ -95,7 +101,12 @@ class MultiCopyBroadcastEngine(
             val outcomes = coroutineScope {
                 pendingDests.map { destination ->
                     async(Dispatchers.IO) {
-                        val outcome = uploadWithResume(verifiedSource, destination)
+                        val outcome = uploadWithResume(
+                            source = verifiedSource,
+                            destination = destination,
+                            transactionId = txMap[destination.deviceId] ?: generateDeviceId(),
+                            transactionTimestamp = txTimestamp
+                        )
                         destination.deviceId to outcome
                     }
                 }.awaitAll()
@@ -119,7 +130,13 @@ class MultiCopyBroadcastEngine(
         val resume = pending.filter { it.offset > 0L }
 
         if (zeroOffset.isNotEmpty()) {
-            val fanOut = fanOutFromOffset(verifiedSource, zeroOffset.map { it.destination }, offset = 0L)
+            val fanOut = fanOutFromOffset(
+                source = verifiedSource,
+                destinations = zeroOffset.map { it.destination },
+                offset = 0L,
+                destinationTransactions = txMap,
+                transactionTimestamp = txTimestamp
+            )
             succeeded += fanOut.succeededDeviceIds
             failures.putAll(fanOut.failures)
         }
@@ -129,7 +146,12 @@ class MultiCopyBroadcastEngine(
         }
         val independent = resume.map { it.destination } + stillFailed
         for (destination in independent.distinctBy { it.deviceId }) {
-            val outcome = uploadWithResume(verifiedSource, destination)
+            val outcome = uploadWithResume(
+                source = verifiedSource,
+                destination = destination,
+                transactionId = txMap[destination.deviceId] ?: generateDeviceId(),
+                transactionTimestamp = txTimestamp
+            )
             if (outcome.errorMessage == null) {
                 succeeded += destination.deviceId
                 failures.remove(destination.deviceId)
@@ -149,7 +171,9 @@ class MultiCopyBroadcastEngine(
     private suspend fun fanOutFromOffset(
         source: MultiCopySource,
         destinations: List<MultiCopyDestination>,
-        offset: Long
+        offset: Long,
+        destinationTransactions: Map<String, String> = emptyMap(),
+        transactionTimestamp: Long = TimeUtils.now()
     ): MultiCopyResult = coroutineScope {
         val chunkChannels = destinations.map {
             Channel<ByteArray>(capacity = CHANNEL_CAPACITY)
@@ -169,6 +193,7 @@ class MultiCopyBroadcastEngine(
                             )
                         }
                         is MultiCopyDestination.RemoteDevice -> {
+                            val txId = destinationTransactions[destination.deviceId]
                             client.uploadFromChunkChannel(
                                 host = destination.host,
                                 port = destination.port,
@@ -176,7 +201,9 @@ class MultiCopyBroadcastEngine(
                                 chunks = chunkChannels[index],
                                 contentLength = remaining,
                                 resumeOffset = offset,
-                                totalSize = source.sizeBytes
+                                totalSize = source.sizeBytes,
+                                transactionId = txId,
+                                transactionTimestampEpochMs = transactionTimestamp
                             )
                         }
                     }
@@ -249,7 +276,9 @@ class MultiCopyBroadcastEngine(
 
     private suspend fun uploadWithResume(
         source: MultiCopySource,
-        destination: MultiCopyDestination
+        destination: MultiCopyDestination,
+        transactionId: String = generateDeviceId(),
+        transactionTimestamp: Long = TimeUtils.now()
     ): WriterOutcome {
         TransferActivityGuard.setTransferContext(
             fileName = source.fileName,
@@ -257,7 +286,7 @@ class MultiCopyBroadcastEngine(
         )
         var lastError: String? = null
         repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
-            val offset = queryDestinationOffset(destination, source.sizeBytes)
+            val offset = queryDestinationOffset(destination, source.sizeBytes, transactionId)
             if (offset >= source.sizeBytes && source.sizeBytes > 0L) {
                 return WriterOutcome(destination.deviceId, errorMessage = null)
             }
@@ -277,6 +306,8 @@ class MultiCopyBroadcastEngine(
                                     localSourcePath = source.absolutePath,
                                     remoteTargetPath = destination.absolutePath,
                                     knownResumeOffset = offset,
+                                    transactionId = transactionId,
+                                    transactionTimestampEpochMs = transactionTimestamp,
                                     onProgress = { sent, total ->
                                         TransferActivityGuard.updateProgress(sent, total)
                                     }
@@ -301,7 +332,9 @@ class MultiCopyBroadcastEngine(
                                         chunks = channel,
                                         contentLength = remaining,
                                         resumeOffset = offset,
-                                        totalSize = source.sizeBytes
+                                        totalSize = source.sizeBytes,
+                                        transactionId = transactionId,
+                                        transactionTimestampEpochMs = transactionTimestamp
                                     )
                                     producer.join()
                                 }
@@ -324,7 +357,8 @@ class MultiCopyBroadcastEngine(
 
     private suspend fun queryDestinationOffset(
         destination: MultiCopyDestination,
-        expectedSize: Long
+        expectedSize: Long,
+        transactionId: String? = null
     ): Long = when (destination) {
         is MultiCopyDestination.LocalDevice -> {
             val resolved = UniqueFileNames.resolve(destination.absolutePath)
@@ -335,7 +369,8 @@ class MultiCopyBroadcastEngine(
                 host = destination.host,
                 port = destination.port,
                 remoteTargetPath = destination.absolutePath,
-                expectedSizeBytes = expectedSize
+                expectedSizeBytes = expectedSize,
+                transactionId = transactionId.orEmpty()
             )
         }
     }

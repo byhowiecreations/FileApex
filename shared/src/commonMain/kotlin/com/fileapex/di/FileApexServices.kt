@@ -73,6 +73,8 @@ object FileApexServices {
         get() = bulletinSyncEngineInstance
             ?: error("FileApexServices.initBulletinBoard(database) must be called first")
 
+    fun bulletinSyncEngineOrNull(): BulletinBoardSyncEngine? = bulletinSyncEngineInstance
+
     /** Outbound Multi Copy orchestration — single entry for UI and extension handoff. */
     val transferManager: TransferManager by lazy {
         TransferManager(

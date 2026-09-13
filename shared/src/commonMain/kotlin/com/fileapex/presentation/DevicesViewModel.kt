@@ -15,6 +15,7 @@ import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.device.DeviceOrderCoordinator
+import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.LanPairingDiscovery
 import com.fileapex.domain.pairing.PairingBeacon
@@ -1034,12 +1035,26 @@ class DevicesViewModel : ViewModel() {
         return DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId)
     }
 
+    private suspend fun fetchDeviceBattery(device: PairedDeviceEntity): BatteryDiagnostics? {
+        presence.resolveOutboundEndpoint(device)?.let { direct ->
+            val directResult = runCatching {
+                FileApexServices.client.fetchFastBattery(direct.host, direct.port)
+            }.getOrNull()
+            if (directResult != null) return directResult
+        }
+        return runCatching {
+            DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId).battery
+        }.getOrNull()
+    }
+
     fun dismissDeviceDetails() {
         _uiState.update { it.copy(deviceDetails = null) }
     }
 
     fun checkBatteries() {
         viewModelScope.launch {
+            runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
+            runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
             val initialLogs = listOf(
                 "FileApex Linux v0.10.3a (tty1)",
                 "login: fileapex",
@@ -1095,16 +1110,20 @@ class DevicesViewModel : ViewModel() {
                     onlineRows.forEach { row ->
                         launch {
                             val deviceEntity = repository.getDevice(row.deviceId)
-                            val diagnostics = runCatching {
-                                if (deviceEntity != null) fetchDeviceDetailsSnapshot(deviceEntity) else null
-                            }.getOrNull()
+                            val battery = if (deviceEntity != null) {
+                                fetchDeviceBattery(deviceEntity)
+                            } else null
 
-                            val level = diagnostics?.battery?.levelPercent
-                            val charging = diagnostics?.battery?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
+                            val level = battery?.levelPercent
+                            val charging = battery?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
+                            val isDesktop = deviceEntity?.platform?.lowercase() in setOf("macos", "windows", "linux") ||
+                                deviceEntity?.platform?.lowercase()?.contains("desktop") == true
                             val line = if (level != null) {
                                 "[ONLINE]  ${row.deviceName}: $level% [${charging.uppercase()}]"
-                            } else {
+                            } else if (isDesktop) {
                                 "[ONLINE]  ${row.deviceName}: N/A (A/C or Desktop)"
+                            } else {
+                                "[ONLINE]  ${row.deviceName}: TIMEOUT (Dozing)"
                             }
                             val item = BatteryStatusItem(
                                 deviceId = row.deviceId,

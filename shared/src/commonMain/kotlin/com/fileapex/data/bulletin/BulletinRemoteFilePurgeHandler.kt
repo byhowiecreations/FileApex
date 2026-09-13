@@ -13,6 +13,7 @@ import kotlinx.io.files.SystemFileSystem
 
 import com.fileapex.update.BulletinApkUpdatePolicy
 import com.fileapex.update.currentAppVersionName
+import com.fileapex.update.isInstalledVersionStrictlyNewer
 import com.fileapex.update.isRemoteVersionNewer
 import com.fileapex.platform.UniqueFileNames
 
@@ -164,11 +165,22 @@ object BulletinRemoteFilePurgeHandler {
                 val childName = child.name
                 if (BulletinApkUpdatePolicy.matchesAutoUpdateApk(childName)) {
                     val apkVersion = BulletinApkUpdatePolicy.extractVersionFromApkName(childName)
-                    val shouldPrune = apkVersion == null ||
-                        !isRemoteVersionNewer(currentVersion, apkVersion) ||
-                        apkVersion == currentVersion
+                    val candidate = child.toString()
+                    val shouldPrune = when {
+                        apkVersion == null -> true
+                        isInstalledVersionStrictlyNewer(currentVersion, apkVersion) -> true
+                        apkVersion == currentVersion -> {
+                            val activeOffer = com.fileapex.update.PendingUpdateStore.load()
+                            if (activeOffer?.assetName == childName || activeOffer?.localFilePath == candidate) {
+                                false
+                            } else {
+                                val record = com.fileapex.network.TransferTransactionJournal.findRecordByFilePath(candidate)
+                                record != null && record.installed
+                            }
+                        }
+                        else -> false
+                    }
                     if (shouldPrune) {
-                        val candidate = child.toString()
                         if (BulletinRemoteFilePurgeResolver.isSafeDeletePath(candidate, downloadsDir)) {
                             runCatching { SystemFileSystem.delete(child) }
                         }

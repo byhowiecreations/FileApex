@@ -40,11 +40,37 @@ internal suspend fun interactiveGoogleIdToken(activity: Activity): Pair<String, 
     return googleIdTokenFromCredential(response.credential.data)
 }
 
+suspend fun reinstallGoogleAccountPicker(activity: Activity): Pair<String, String?>? {
+    val clientId = googleWebClientId()
+    if (clientId.isBlank()) return null
+    val option = GetSignInWithGoogleOption.Builder(clientId).build()
+    val response = runCatching {
+        CredentialManager.create(activity).getCredential(
+            activity,
+            GetCredentialRequest.Builder().addCredentialOption(option).build()
+        )
+    }.getOrElse { error ->
+        println("RestoreCredentials: reinstall account picker cancelled or failed - ${error.message}")
+        return null
+    }
+    return runCatching {
+        googleIdTokenFromCredential(response.credential.data)
+    }.getOrNull()
+}
+
 internal suspend fun silentGoogleIdTokenFromCredentialManager(
-    context: Context
+    context: Context,
+    expectedEmail: String?
 ): Pair<String, String?>? {
-    return googleIdAutoSelect(context, authorizedOnly = true)
-        ?: googleIdAutoSelect(context, authorizedOnly = false)
+    val result = googleIdAutoSelect(context, authorizedOnly = true) ?: return null
+    val tokenEmail = result.second
+    if (!expectedEmail.isNullOrBlank() && !tokenEmail.isNullOrBlank()) {
+        if (!tokenEmail.equals(expectedEmail.trim(), ignoreCase = true)) {
+            println("RestoreCredentials: auto-selected $tokenEmail does not match linked $expectedEmail - rejecting")
+            return null
+        }
+    }
+    return result
 }
 
 private suspend fun googleIdAutoSelect(

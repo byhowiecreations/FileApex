@@ -13,6 +13,8 @@ actual object PendingUpdateStore {
     private const val KEY_ASSET_SIZE = "asset_size"
     private const val KEY_LOCAL_FILE_PATH = "local_file_path"
     private const val KEY_ORIGIN_NOTE_ID = "origin_note_id"
+    private const val KEY_TRANSACTION_ID = "transaction_id"
+    private const val KEY_TRANSACTION_TIMESTAMP = "transaction_timestamp"
 
     actual fun save(offer: PendingUpdateOffer?) {
         val context = androidAppContextOrNull() ?: return
@@ -27,6 +29,8 @@ actual object PendingUpdateStore {
                 .remove(KEY_ASSET_SIZE)
                 .remove(KEY_LOCAL_FILE_PATH)
                 .remove(KEY_ORIGIN_NOTE_ID)
+                .remove(KEY_TRANSACTION_ID)
+                .remove(KEY_TRANSACTION_TIMESTAMP)
                 .commit()
             return
         }
@@ -39,6 +43,8 @@ actual object PendingUpdateStore {
             .putLong(KEY_ASSET_SIZE, offer.assetSizeBytes)
             .putString(KEY_LOCAL_FILE_PATH, offer.localFilePath.orEmpty())
             .putString(KEY_ORIGIN_NOTE_ID, offer.originNoteId.orEmpty())
+            .putString(KEY_TRANSACTION_ID, offer.transactionId.orEmpty())
+            .putLong(KEY_TRANSACTION_TIMESTAMP, offer.transactionTimestampEpochMs ?: 0L)
             .commit()
     }
 
@@ -50,6 +56,8 @@ actual object PendingUpdateStore {
         val assetUrl = prefs.getString(KEY_ASSET_URL, null)?.trim().orEmpty()
         val localPath = prefs.getString(KEY_LOCAL_FILE_PATH, null)?.trim()?.takeIf { it.isNotEmpty() }
         val originNoteId = prefs.getString(KEY_ORIGIN_NOTE_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
+        val txId = prefs.getString(KEY_TRANSACTION_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
+        val txTimestamp = prefs.getLong(KEY_TRANSACTION_TIMESTAMP, 0L).takeIf { it > 0L }
         if (version.isEmpty() || assetName.isEmpty()) return null
         return PendingUpdateOffer(
             remoteVersion = version,
@@ -59,7 +67,9 @@ actual object PendingUpdateStore {
             assetDownloadUrl = assetUrl,
             assetSizeBytes = prefs.getLong(KEY_ASSET_SIZE, 0L),
             localFilePath = localPath,
-            originNoteId = originNoteId
+            originNoteId = originNoteId,
+            transactionId = txId,
+            transactionTimestampEpochMs = txTimestamp
         )
     }
 
@@ -207,5 +217,160 @@ actual object PendingUpdateStore {
         val stored = prefs.getString(KEY_LAST_ATTEMPTED_NOTE_ID, "").orEmpty()
         inMemoryLastAttemptedNoteId = stored
         return stored
+    }
+
+    private const val KEY_LAST_ATTEMPTED_TX_ID = "last_attempted_update_tx_id"
+    private const val KEY_TX_INSTALL_STATUS_PREFIX = "tx_install_status_"
+    private const val KEY_TX_RECORD_PREFIX = "tx_record_"
+    private const val KEY_ACTIVE_TX_IDS = "active_transfer_tx_ids"
+
+    private val inMemoryTxInstallStatus = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @kotlin.concurrent.Volatile
+    private var inMemoryLastAttemptedTxId: String = ""
+
+    actual fun setLastAttemptedTransactionId(transactionId: String) {
+        inMemoryLastAttemptedTxId = transactionId
+        val context = androidAppContextOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_LAST_ATTEMPTED_TX_ID, transactionId).commit()
+    }
+
+    actual fun getLastAttemptedTransactionId(): String {
+        if (inMemoryLastAttemptedTxId.isNotBlank()) return inMemoryLastAttemptedTxId
+        val context = androidAppContextOrNull() ?: return ""
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stored = prefs.getString(KEY_LAST_ATTEMPTED_TX_ID, "").orEmpty()
+        inMemoryLastAttemptedTxId = stored
+        return stored
+    }
+
+    actual fun setTransactionInstallStatus(transactionId: String, status: String) {
+        if (transactionId.isBlank()) return
+        inMemoryTxInstallStatus[transactionId] = status
+        val context = androidAppContextOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_TX_INSTALL_STATUS_PREFIX + transactionId, status).commit()
+        val record = getTransactionRecord(transactionId)
+        if (record != null) {
+            val updated = record.copy(
+                installAttempted = status == "INSTALLING" || status == "INSTALLED",
+                installed = status == "INSTALLED"
+            )
+            saveTransactionRecord(updated)
+        }
+    }
+
+    actual fun getTransactionInstallStatus(transactionId: String): String? {
+        if (transactionId.isBlank()) return null
+        inMemoryTxInstallStatus[transactionId]?.let { return it }
+        val context = androidAppContextOrNull() ?: return null
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val status = prefs.getString(KEY_TX_INSTALL_STATUS_PREFIX + transactionId, null)
+        if (status != null) {
+            inMemoryTxInstallStatus[transactionId] = status
+        }
+        return status
+    }
+
+    actual fun isTransactionInstalled(transactionId: String): Boolean =
+        getTransactionInstallStatus(transactionId) == "INSTALLED"
+
+    actual fun saveTransactionRecord(record: com.fileapex.network.TransferTransactionRecord) {
+        val context = androidAppContextOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val json = kotlinx.serialization.json.Json.encodeToString(
+            com.fileapex.network.TransferTransactionRecord.serializer(),
+            record
+        )
+        val activeIds = prefs.getStringSet(KEY_ACTIVE_TX_IDS, emptySet()) ?: emptySet()
+        val newSet = if (activeIds.size >= 50) {
+            (activeIds.drop(1) + record.transactionId).toSet()
+        } else {
+            activeIds + record.transactionId
+        }
+        prefs.edit()
+            .putString(KEY_TX_RECORD_PREFIX + record.transactionId, json)
+            .putStringSet(KEY_ACTIVE_TX_IDS, newSet)
+            .commit()
+    }
+
+    actual fun getTransactionRecord(transactionId: String): com.fileapex.network.TransferTransactionRecord? {
+        if (transactionId.isBlank()) return null
+        val context = androidAppContextOrNull() ?: return null
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_TX_RECORD_PREFIX + transactionId, null) ?: return null
+        return runCatching {
+            kotlinx.serialization.json.Json.decodeFromString(
+                com.fileapex.network.TransferTransactionRecord.serializer(),
+                raw
+            )
+        }.getOrNull()
+    }
+
+    actual fun findTransactionByFilePath(filePath: String): com.fileapex.network.TransferTransactionRecord? {
+        if (filePath.isBlank()) return null
+        val context = androidAppContextOrNull() ?: return null
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val activeIds = prefs.getStringSet(KEY_ACTIVE_TX_IDS, emptySet()) ?: emptySet()
+        for (id in activeIds) {
+            val record = getTransactionRecord(id) ?: continue
+            if (record.finalPath == filePath || record.targetPath == filePath) {
+                return record
+            }
+        }
+        return null
+    }
+
+    actual fun markTransactionInstallAttempted(transactionId: String) {
+        setTransactionInstallStatus(transactionId, "INSTALLING")
+    }
+
+    actual fun markTransactionInstalled(transactionId: String) {
+        setTransactionInstallStatus(transactionId, "INSTALLED")
+    }
+
+    actual fun purgeTransaction(transactionId: String) {
+        if (transactionId.isBlank()) return
+        inMemoryTxInstallStatus.remove(transactionId)
+        val context = androidAppContextOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val activeIds = prefs.getStringSet(KEY_ACTIVE_TX_IDS, emptySet()) ?: emptySet()
+        prefs.edit()
+            .remove(KEY_TX_RECORD_PREFIX + transactionId)
+            .remove(KEY_TX_INSTALL_STATUS_PREFIX + transactionId)
+            .putStringSet(KEY_ACTIVE_TX_IDS, activeIds - transactionId)
+            .commit()
+    }
+
+    actual fun deleteUpdateApkAndCompleteTransaction(transactionId: String): Boolean {
+        if (transactionId.isBlank()) return false
+        val txRecord = getTransactionRecord(transactionId)
+            ?: com.fileapex.network.TransferTransactionJournal.findCompleted(transactionId, "", 0L)
+        val offer = load()
+        val candidatePath = txRecord?.finalPath?.takeIf { it.isNotBlank() }
+            ?: txRecord?.targetPath?.takeIf { it.isNotBlank() }
+            ?: (if (offer?.transactionId == transactionId) offer?.localFilePath else null)
+
+        if (!candidatePath.isNullOrBlank() && candidatePath.endsWith(".apk", ignoreCase = true)) {
+            val file = java.io.File(candidatePath)
+            if (file.isFile) {
+                val deleted = runCatching { file.delete() }.getOrDefault(false)
+                println("PendingUpdateStore: deleted update APK for txId=$transactionId at $candidatePath (deleted=$deleted)")
+            } else {
+                println("PendingUpdateStore: candidate update file missing or not a file: $candidatePath")
+            }
+        } else {
+            println("PendingUpdateStore: no candidate APK file found for txId=$transactionId")
+        }
+
+        setTransactionInstallStatus(transactionId, "INSTALLED")
+        com.fileapex.network.TransferTransactionJournal.markInstalled(transactionId)
+        offer?.originNoteId?.takeIf { it.isNotBlank() }?.let { noteId ->
+            setNoteInstallStatus(noteId, "INSTALLED")
+            setLastAttemptedNoteId("")
+        }
+        setLastAttemptedTransactionId("")
+        save(null)
+        return true
     }
 }

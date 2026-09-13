@@ -110,35 +110,27 @@ internal actual object RestoreCredentials {
     actual suspend fun restoreGoogleIdToken(): Pair<String, String?>? {
         if (!supported()) return null
         val context = androidAppContextOrNull() ?: return null
-        val manager = CredentialManager.create(context)
-        val restore = getRestoreCredential(manager, context)
-        if (restore != null) {
-            Log.i(TAG, "Restore key retrieved")
-        }
-        val emailFromKey = restore?.let {
-            RestoreCredentialJson.emailFromAssertion(it.authenticationResponseJson)
-        }
-        val emailHint = FileApexServices.settings.googleAccountEmail.value.ifBlank { null }
-            ?: emailFromKey
-        if (!GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                restoreKeyPresent = restore != null,
-                backedUpEmail = emailHint.orEmpty()
-            )
-        ) {
-            Log.i(TAG, "No restore key and no backed-up Google email - skipping silent Google")
+        val settings = FileApexServices.settings
+        if (!settings.googleAccountLinkEnabled.value) {
+            Log.i(TAG, "Google link not enabled in settings - skipping silent Google ID restore")
             return null
         }
-        val fromGoogleId = silentGoogleIdTokenFromCredentialManager(context)
+        val expectedEmail = settings.googleAccountEmail.value.trim().ifBlank { null }
+        if (expectedEmail == null) {
+            Log.i(TAG, "No linked email configured - skipping silent Google ID restore")
+            return null
+        }
+        val fromGoogleId = silentGoogleIdTokenFromCredentialManager(context, expectedEmail)
         if (fromGoogleId != null) {
             Log.i(TAG, "Silent Google ID from Credential Manager")
             return fromGoogleId
         }
-        val tokens = silentGoogleIdToken(context, emailHint)
+        val tokens = silentGoogleIdToken(context, expectedEmail)
         if (tokens != null) {
             Log.i(TAG, "Silent Google ID from Identity")
             return tokens
         }
-        Log.w(TAG, "Restore key or backed-up email present but Google ID token unavailable")
+        Log.w(TAG, "Linked email present but Google ID token unavailable")
         return null
     }
 

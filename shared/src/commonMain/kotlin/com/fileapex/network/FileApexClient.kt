@@ -2,6 +2,7 @@ package com.fileapex.network
 
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
+import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.pairing.ClusterSyncRequest
@@ -105,6 +106,25 @@ class FileApexClient(
         return json.decodeFromString(PeerDeviceDiagnostics.serializer(), response.body)
     }
 
+    suspend fun fetchFastBattery(host: String, port: Int): BatteryDiagnostics {
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/battery",
+                host = host,
+                port = port
+            ),
+            timeoutMs = BATTERY_CHECK_TIMEOUT_MS
+        )
+        if (response.statusCode == io.ktor.http.HttpStatusCode.NotFound.value) {
+            return fetchDeviceDiagnostics(host, port).battery
+        }
+        rejectPinRequired(response, com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
+        requireSuccess(response, "Battery check failed (${response.statusCode})")
+        return json.decodeFromString(BatteryDiagnostics.serializer(), response.body)
+    }
+
     suspend fun sendClipboard(
         host: String,
         port: Int,
@@ -170,11 +190,13 @@ class FileApexClient(
         host: String,
         port: Int,
         senderDeviceId: String,
-        senderDeviceName: String
+        senderDeviceName: String,
+        pendingPayload: com.fileapex.domain.clipboard.ClipboardSendRequest? = null
     ) {
         val request = com.fileapex.domain.clipboard.ClipboardOptInRequest(
             senderDeviceId = senderDeviceId,
-            senderDeviceName = senderDeviceName
+            senderDeviceName = senderDeviceName,
+            pendingPayload = pendingPayload
         )
         val bodyStr = json.encodeToString(com.fileapex.domain.clipboard.ClipboardOptInRequest.serializer(), request)
         val response = boundPost(
@@ -607,10 +629,12 @@ class FileApexClient(
         host: String,
         port: Int,
         remoteTargetPath: String,
-        expectedSizeBytes: Long
+        expectedSizeBytes: Long = 0L,
+        transactionId: String = ""
     ): Long {
-        val response = runCatching {
-            boundGet(
+        return runCatching {
+            PeerLanHttpPolicy.ensureRoute(host)
+            val response = boundGet(
                 host = host,
                 port = port,
                 pathWithQuery = queryPath(
@@ -622,15 +646,20 @@ class FileApexClient(
                         if (expectedSizeBytes > 0L) {
                             put(TransferResumeProtocol.EXPECTED_SIZE_QUERY, expectedSizeBytes.toString())
                         }
+                        if (transactionId.isNotBlank()) {
+                            put(TransferResumeProtocol.TRANSACTION_ID_QUERY, transactionId)
+                        }
                     }
                 ),
                 timeoutMs = PEER_REQUEST_TIMEOUT_MS
             )
-        }.getOrNull() ?: return 0L
-        if (response.statusCode !in 200..299) return 0L
-        return runCatching {
-            json.decodeFromString(ResumeOffsetResponse.serializer(), response.body).offset
-        }.getOrDefault(0L).coerceAtLeast(0L)
+            response
+        }.getOrNull()?.let { response ->
+            if (response.statusCode !in 200..299) return@let 0L
+            runCatching {
+                json.decodeFromString(ResumeOffsetResponse.serializer(), response.body).offset
+            }.getOrDefault(0L).coerceAtLeast(0L)
+        } ?: 0L
     }
 
     suspend fun uploadFromLocal(
@@ -639,14 +668,18 @@ class FileApexClient(
         localSourcePath: String,
         remoteTargetPath: String,
         knownResumeOffset: Long? = null,
+        transactionId: String? = null,
+        transactionTimestampEpochMs: Long? = null,
         onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
     ) {
         val source = Path(localSourcePath)
         check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
         val totalSize = SystemFileSystem.metadataOrNull(source)?.size?.coerceAtLeast(0L) ?: 0L
+        val txId = transactionId.orEmpty()
+        val txTimestamp = transactionTimestampEpochMs ?: com.fileapex.util.TimeUtils.now()
         var lastError: Throwable? = null
         repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
-            val offset = (if (attempt == 0 && knownResumeOffset != null) knownResumeOffset else queryUploadResumeOffset(host, port, remoteTargetPath, totalSize))
+            val offset = (if (attempt == 0 && knownResumeOffset != null) knownResumeOffset else queryUploadResumeOffset(host, port, remoteTargetPath, totalSize, txId))
                 .coerceAtMost(totalSize)
             if (offset >= totalSize && totalSize > 0L) {
                 onProgress?.invoke(totalSize, totalSize)
@@ -659,7 +692,15 @@ class FileApexClient(
                     host = host,
                     port = port,
                     pathWithQuery = withSenderQuery(
-                        uploadPathWithQuery(host, port, remoteTargetPath, offset, totalSize)
+                        uploadPathWithQuery(
+                            host = host,
+                            port = port,
+                            remoteTargetPath = remoteTargetPath,
+                            offset = offset,
+                            totalSize = totalSize,
+                            transactionId = txId,
+                            transactionTimestamp = txTimestamp
+                        )
                     ),
                     contentType = "application/octet-stream",
                     sourcePath = localSourcePath,
@@ -695,15 +736,27 @@ class FileApexClient(
         chunks: ReceiveChannel<ByteArray>,
         contentLength: Long? = null,
         resumeOffset: Long = 0L,
-        totalSize: Long? = null
+        totalSize: Long? = null,
+        transactionId: String? = null,
+        transactionTimestampEpochMs: Long? = null
     ) {
         PeerLanHttpPolicy.ensureRoute(host)
+        val txId = transactionId.orEmpty()
+        val txTimestamp = transactionTimestampEpochMs ?: com.fileapex.util.TimeUtils.now()
         val remaining = contentLength?.takeIf { it > 0L }
         val response = peerHttpUploadFromChannel(
             host = host,
             port = port,
             pathWithQuery = withSenderQuery(
-                uploadPathWithQuery(host, port, remoteTargetPath, resumeOffset, totalSize ?: contentLength)
+                uploadPathWithQuery(
+                    host = host,
+                    port = port,
+                    remoteTargetPath = remoteTargetPath,
+                    offset = resumeOffset,
+                    totalSize = totalSize ?: contentLength,
+                    transactionId = txId,
+                    transactionTimestamp = txTimestamp
+                )
             ),
             contentType = "application/octet-stream",
             chunks = chunks,
@@ -814,7 +867,9 @@ class FileApexClient(
         port: Int,
         remoteTargetPath: String,
         offset: Long = 0L,
-        totalSize: Long? = null
+        totalSize: Long? = null,
+        transactionId: String = "",
+        transactionTimestamp: Long = 0L
     ): String {
         val params = buildMap {
             put("targetPath", remoteTargetPath)
@@ -823,6 +878,12 @@ class FileApexClient(
             }
             if (totalSize != null && totalSize > 0L) {
                 put(TransferResumeProtocol.TOTAL_SIZE_QUERY, totalSize.toString())
+            }
+            if (transactionId.isNotBlank()) {
+                put(TransferResumeProtocol.TRANSACTION_ID_QUERY, transactionId)
+            }
+            if (transactionTimestamp > 0L) {
+                put(TransferResumeProtocol.TIMESTAMP_QUERY, transactionTimestamp.toString())
             }
         }
         return queryPath(
@@ -856,7 +917,8 @@ class FileApexClient(
         private const val PEER_REQUEST_TIMEOUT_MS = 15_000L
         private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
         private const val PEER_STATE_TIMEOUT_MS = 5_000L
-        private const val DIAGNOSTICS_TIMEOUT_MS = 15_000L
+        private const val BATTERY_CHECK_TIMEOUT_MS = 20_000L
+        private const val DIAGNOSTICS_TIMEOUT_MS = 25_000L
         private const val CLUSTER_SYNC_TIMEOUT_MS = 15_000L
     }
 }

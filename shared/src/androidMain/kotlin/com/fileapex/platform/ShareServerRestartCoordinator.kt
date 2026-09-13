@@ -54,8 +54,23 @@ object ShareServerRestartCoordinator {
         Log.i(TAG, "Deferring share-server restart until foreground :: $reason")
         ServiceWatchdogScheduler.clearShareServerHeartbeat(appContext)
         ShareServerPendingStart.mark(appContext)
-        ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
         ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
+    }
+
+    /** Restores share-server from background execution exemptions (FCM data wake, app update). */
+    fun restoreFromExternalWake(context: Context, source: String) {
+        val appContext = context.applicationContext
+        ShareServerPendingStart.consume(appContext)
+        runCatching {
+            val start = Intent().setClassName(appContext.packageName, FILE_SHARE_SERVER_SERVICE).apply {
+                action = "com.fileapex.action.START_SHARE_SERVER"
+                putExtra("extra_from_foreground", true)
+            }
+            ContextCompat.startForegroundService(appContext, start)
+            Log.i(TAG, "Restored share-server FGS from $source")
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to restore share-server from $source :: ${error.message}")
+        }
     }
 
     /**
@@ -98,10 +113,10 @@ object ShareServerRestartCoordinator {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         return when (trigger) {
             RestartTrigger.BOOT_COMPLETED,
-            RestartTrigger.STICKY_RESTART,
-            RestartTrigger.SCREEN_WAKE -> false
+            RestartTrigger.UI_FOREGROUND -> false
             RestartTrigger.WATCHDOG_ALARM,
-            RestartTrigger.UI_FOREGROUND -> !isProcessEligibleForBackgroundFgs(context)
+            RestartTrigger.STICKY_RESTART,
+            RestartTrigger.SCREEN_WAKE -> !isProcessEligibleForBackgroundFgs(context)
         }
     }
 }

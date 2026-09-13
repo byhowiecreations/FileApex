@@ -84,7 +84,9 @@ import com.fileapex.i18n.needsLanguagePrompt
 import com.fileapex.i18n.persistAppLanguage
 import com.fileapex.i18n.stringRes
 import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 @Composable
 fun App(
@@ -600,15 +602,44 @@ fun App(
     }
 
     if (pendingClipboardOptInSender != null && !optInPromptShown) {
+        val coroutineScope = rememberCoroutineScope()
         ClipboardOptInDialog(
             senderDeviceName = pendingClipboardOptInSender,
             sharingEnabled = clipboardSharingEnabled,
             onToggleSharing = { enabled ->
                 FileApexServices.settings.setClipboardSharingEnabled(enabled)
                 com.fileapex.platform.ClipboardShareChrome.fire()
+                if (enabled) {
+                    com.fileapex.domain.clipboard.ClipboardPendingOptInStore.consume()?.let { pending ->
+                        coroutineScope.launch {
+                            com.fileapex.domain.clipboard.ClipboardShareCoordinator.applyInbound(
+                                senderDeviceId = pending.senderDeviceId,
+                                senderDeviceName = pending.senderDeviceName,
+                                senderPublicKey = pending.senderPublicKey,
+                                ciphertext = pending.ciphertext,
+                                capturedAtEpochMs = pending.capturedAtEpochMs
+                            )
+                        }
+                    }
+                }
             },
             onDone = {
                 FileApexServices.settings.setClipboardOptInPromptShown(true)
+                if (clipboardSharingEnabled) {
+                    com.fileapex.domain.clipboard.ClipboardPendingOptInStore.consume()?.let { pending ->
+                        coroutineScope.launch {
+                            com.fileapex.domain.clipboard.ClipboardShareCoordinator.applyInbound(
+                                senderDeviceId = pending.senderDeviceId,
+                                senderDeviceName = pending.senderDeviceName,
+                                senderPublicKey = pending.senderPublicKey,
+                                ciphertext = pending.ciphertext,
+                                capturedAtEpochMs = pending.capturedAtEpochMs
+                            )
+                        }
+                    }
+                } else {
+                    com.fileapex.domain.clipboard.ClipboardPendingOptInStore.clear()
+                }
                 onClipboardOptInConsumed()
             }
         )

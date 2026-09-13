@@ -21,7 +21,8 @@ object AndroidNotificationChannels {
     private const val PREFS_NAME = "fileapex_notification_channels"
     private const val KEY_SHARE_SERVER_MIGRATED = "share_server_v2_channel_migrated"
 
-    const val APP_UPDATES = "fileapex_app_updates"
+    const val APP_UPDATES = "fileapex_app_updates_v2"
+    private const val LEGACY_APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
     const val NOTE_MESSAGES = "fileapex_note_messages"
     const val BATTERY_ALERTS = "fileapex_battery_alerts_v1"
@@ -37,15 +38,24 @@ object AndroidNotificationChannels {
 
     fun ensureAppUpdatesChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        runCatching {
+            if (manager.getNotificationChannel(LEGACY_APP_UPDATES) != null) {
+                manager.deleteNotificationChannel(LEGACY_APP_UPDATES)
+            }
+        }
         val channel = NotificationChannel(
             APP_UPDATES,
             com.fileapex.i18n.AppI18n.t("channel_app_updates"),
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = com.fileapex.i18n.AppI18n.t("channel_app_updates_desc")
+            enableVibration(true)
+            enableLights(true)
+            setShowBadge(true)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         }
-        context.getSystemService(NotificationManager::class.java)
-            ?.createNotificationChannel(channel)
+        manager.createNotificationChannel(channel)
     }
 
     fun ensureNoteMessagesChannel(context: Context) {

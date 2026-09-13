@@ -2,7 +2,7 @@ package com.fileapex.cloud
 
 internal object GoogleLinkRestorePolicy {
     fun shouldProbeRestoreKey(linkedFlag: Boolean, alreadyProbedThisInstall: Boolean): Boolean =
-        linkedFlag || !alreadyProbedThisInstall
+        linkedFlag && !alreadyProbedThisInstall
 
     fun shouldClearLinkedFlag(
         linkedFlag: Boolean,
@@ -11,7 +11,7 @@ internal object GoogleLinkRestorePolicy {
     ): Boolean = linkedFlag && !hasFirebaseSession && !restoredIdToken
 
     fun shouldAttemptSilentGoogleId(
-        restoreKeyPresent: Boolean,
-        backedUpEmail: String
-    ): Boolean = restoreKeyPresent || backedUpEmail.isNotBlank()
+        linkedFlag: Boolean,
+        configuredEmail: String
+    ): Boolean = linkedFlag && configuredEmail.isNotBlank()
 }

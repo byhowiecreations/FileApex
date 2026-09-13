@@ -9,6 +9,7 @@ import com.fileapex.data.note.NoteRecord
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.network.TransferTransactionJournal
 import com.fileapex.platform.AndroidNotificationChannels
 import com.fileapex.platform.notifyAppUpdateAvailable
 import kotlinx.coroutines.CoroutineScope
@@ -97,6 +98,17 @@ actual object BulletinApkUpdateCoordinator {
                 }
 
                 // Prepare installer offer in PendingUpdateStore
+                val txId = "bb_${note.noteId}"
+                TransferTransactionJournal.recordCompleted(
+                    transactionId = txId,
+                    senderDeviceId = note.sourceDeviceId,
+                    targetPath = localPath,
+                    finalPath = localPath,
+                    byteSize = apkFile.length(),
+                    timestampEpochMs = note.epochMs
+                )
+                PendingUpdateStore.setLastAttemptedTransactionId(txId)
+                PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
                 val offer = PendingUpdateOffer(
                     remoteVersion = version,
                     releaseTitle = "FileApex $version",
@@ -105,7 +117,9 @@ actual object BulletinApkUpdateCoordinator {
                     assetDownloadUrl = "",
                     assetSizeBytes = apkFile.length(),
                     localFilePath = localPath,
-                    originNoteId = note.noteId
+                    originNoteId = note.noteId,
+                    transactionId = txId,
+                    transactionTimestampEpochMs = note.epochMs
                 )
                 AppUpdateCoordinator.setPendingOffer(offer)
                 com.fileapex.data.bulletin.BulletinRemoteFilePurgeHandler.pruneStaleAutoUpdateApks()
@@ -122,16 +136,18 @@ actual object BulletinApkUpdateCoordinator {
                 // Route into the established GitHub update installation manager
                 notifyAppUpdateAvailable(offer)
 
-                PendingUpdateStore.setNoteInstallStatus(note.noteId, "NOT_INSTALLED")
+                PendingUpdateStore.setNoteInstallStatus(note.noteId, "PENDING")
                 PendingUpdateStore.setLastAttemptedNoteId(note.noteId)
 
-                runCatching {
-                    PlatformUpdateInstaller.installAndRelaunch(
-                        localFilePath = localPath,
-                        remoteVersion = version
-                    )
-                }.onFailure { error ->
-                    println("BulletinApkUpdateCoordinator: install launch failed - ${error.message}")
+                if (isAppInForeground()) {
+                    runCatching {
+                        PlatformUpdateInstaller.installAndRelaunch(
+                            localFilePath = localPath,
+                            remoteVersion = version
+                        )
+                    }.onFailure { error ->
+                        println("BulletinApkUpdateCoordinator: install launch failed - ${error.message}")
+                    }
                 }
             } catch (error: Throwable) {
                 println("BulletinApkUpdateCoordinator: failed processing $fileName - ${error.message}")
@@ -147,7 +163,14 @@ actual object BulletinApkUpdateCoordinator {
         }
     }
 
-    actual fun triggerDirectApkInstall(localPath: String, version: String, fileName: String) {
+    actual fun triggerDirectApkInstall(
+        localPath: String,
+        version: String,
+        fileName: String,
+        transactionId: String,
+        transactionTimestampEpochMs: Long,
+        senderDeviceId: String
+    ) {
         if (FileApexServices.isPlayStoreBuild) return
         scope.launch {
             val apkFile = File(localPath)
@@ -160,7 +183,11 @@ actual object BulletinApkUpdateCoordinator {
             val originNoteId = matchingNote?.noteId
             if (!originNoteId.isNullOrBlank()) {
                 PendingUpdateStore.setLastAttemptedNoteId(originNoteId)
-                PendingUpdateStore.setNoteInstallStatus(originNoteId, "NOT_INSTALLED")
+                PendingUpdateStore.setNoteInstallStatus(originNoteId, "PENDING")
+            }
+            if (transactionId.isNotBlank()) {
+                PendingUpdateStore.setLastAttemptedTransactionId(transactionId)
+                PendingUpdateStore.setTransactionInstallStatus(transactionId, "PENDING")
             }
             val offer = PendingUpdateOffer(
                 remoteVersion = version,
@@ -170,18 +197,38 @@ actual object BulletinApkUpdateCoordinator {
                 assetDownloadUrl = "",
                 assetSizeBytes = apkFile.length(),
                 localFilePath = localPath,
-                originNoteId = originNoteId
+                originNoteId = originNoteId,
+                transactionId = transactionId.takeIf { it.isNotBlank() },
+                transactionTimestampEpochMs = transactionTimestampEpochMs.takeIf { it > 0L }
             )
             AppUpdateCoordinator.setPendingOffer(offer)
             notifyAppUpdateAvailable(offer)
-            runCatching {
-                PlatformUpdateInstaller.installAndRelaunch(
-                    localFilePath = localPath,
-                    remoteVersion = version
-                )
-            }.onFailure { error ->
-                println("BulletinApkUpdateCoordinator: direct install failed - ${error.message}")
+            if (isAppInForeground()) {
+                runCatching {
+                    PlatformUpdateInstaller.installAndRelaunch(
+                        localFilePath = localPath,
+                        remoteVersion = version
+                    )
+                }.onFailure { error ->
+                    println("BulletinApkUpdateCoordinator: direct install failed - ${error.message}")
+                }
             }
         }
+    }
+
+    private fun isAppInForeground(): Boolean {
+        val context = androidAppContextOrNull()
+        if (context != null) {
+            val appProcessInfo = android.app.ActivityManager.RunningAppProcessInfo()
+            runCatching {
+                android.app.ActivityManager.getMyMemoryState(appProcessInfo)
+            }
+            if (appProcessInfo.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
+                return true
+            }
+        }
+        return runCatching {
+            FileApexServices.isDatabaseReady() && FileApexServices.presenceMonitor.isAppInForeground()
+        }.getOrDefault(false)
     }
 }

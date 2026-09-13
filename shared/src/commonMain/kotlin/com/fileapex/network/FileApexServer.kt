@@ -16,9 +16,11 @@ import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.domain.clipboard.ClipboardSendRequest
 import com.fileapex.domain.clipboard.ClipboardSendResponse
+import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.collectDeviceDiagnostics
 import com.fileapex.platform.collectDeviceDiagnosticsFallback
+import com.fileapex.platform.collectFastBatteryDiagnostics
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.notifyFilesReceived
 import com.fileapex.util.PathUtils
@@ -154,6 +156,10 @@ class FileApexServer(
 
                 get("/api/v1/heartbeat") {
                     runCatching {
+                        val senderId = call.request.queryParameters["from"].orEmpty()
+                        if (senderId.isNotBlank()) {
+                            TransferTransactionJournal.purgeInstalledForSender(senderId)
+                        }
                         respondSelfPeerState(call)
                     }.onFailure { error ->
                         onLog("GET /api/v1/heartbeat failed", error)
@@ -438,7 +444,16 @@ class FileApexServer(
                         val expectedSize = call.request.queryParameters[TransferResumeProtocol.EXPECTED_SIZE_QUERY]
                             ?.toLongOrNull()
                             ?: 0L
-                        val snapshot = TransferResumeProtocol.inspectIncoming(preferredPathStr, expectedSize)
+                        val txId = call.request.queryParameters[TransferResumeProtocol.TRANSACTION_ID_QUERY].orEmpty()
+                        val senderId = call.request.queryParameters["from"]
+                            ?: call.request.queryParameters[TransferResumeProtocol.SENDER_DEVICE_ID_QUERY]
+                            ?: ""
+                        val snapshot = TransferResumeProtocol.inspectIncoming(
+                            preferredPath = preferredPathStr,
+                            expectedSize = expectedSize,
+                            transactionId = txId,
+                            senderDeviceId = senderId
+                        )
                         call.respondText(
                             text = json.encodeToString(ResumeOffsetResponse.serializer(), snapshot),
                             contentType = ContentType.Application.Json
@@ -457,6 +472,17 @@ class FileApexServer(
                             ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
                         if (!isPathAllowed(preferredPathStr)) {
                             call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
+                            return@runCatching
+                        }
+                        val txId = call.request.queryParameters[TransferResumeProtocol.TRANSACTION_ID_QUERY].orEmpty()
+                        val txTimestamp = call.request.queryParameters[TransferResumeProtocol.TIMESTAMP_QUERY]?.toLongOrNull()
+                            ?: com.fileapex.util.TimeUtils.now()
+                        val senderId = call.request.queryParameters["from"]
+                            ?: call.request.queryParameters[TransferResumeProtocol.SENDER_DEVICE_ID_QUERY]
+                            ?: ""
+                        if (txId.isNotBlank() && TransferTransactionJournal.findCompleted(txId, senderId, 0L) != null) {
+                            onLog("TransferLog: upload skipped (already completed) txId=$txId sender=$senderId path=$preferredPathStr", null)
+                            call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
                             return@runCatching
                         }
                         // Never overwrite an existing file — collide like Finder/Files: name (1).ext
@@ -518,11 +544,22 @@ class FileApexServer(
                             return@runCatching
                         }
                         val finalPath = SocketFileStreamer.finalizePart(partPath, targetPathStr)
+                        if (txId.isNotBlank()) {
+                            TransferTransactionJournal.recordCompleted(
+                                transactionId = txId,
+                                senderDeviceId = senderId,
+                                targetPath = targetPathStr,
+                                finalPath = finalPath,
+                                byteSize = totalReceived,
+                                timestampEpochMs = txTimestamp
+                            )
+                        }
                         onLog(
-                            "upload complete path=$finalPath bytes=$totalReceived" +
+                            "TransferLog: [txId=$txId] sender=$senderId path=$finalPath bytes=$totalReceived timestamp=$txTimestamp" +
                                 (if (offset > 0L) " resumedFrom=$offset" else ""),
                             null
                         )
+                        call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
                         val receivedName = finalPath
                             .substringAfterLast('/')
                             .substringAfterLast('\\')
@@ -531,16 +568,26 @@ class FileApexServer(
                             if (com.fileapex.update.BulletinApkUpdatePolicy.shouldAutoUpdateDirectFile(
                                     receivedName,
                                     uploadFile.length(),
-                                    uploadFile.lastModified()
+                                    uploadFile.lastModified(),
+                                    transactionId = txId
                                 )
                             ) {
                                 val version = com.fileapex.update.BulletinApkUpdatePolicy.extractVersionFromApkName(receivedName) ?: "v0.0.0"
-                                com.fileapex.update.BulletinApkUpdateCoordinator.triggerDirectApkInstall(finalPath, version, receivedName)
+                                serverScope.launch {
+                                    kotlinx.coroutines.delay(200)
+                                    com.fileapex.update.BulletinApkUpdateCoordinator.triggerDirectApkInstall(
+                                        localPath = finalPath,
+                                        version = version,
+                                        fileName = receivedName,
+                                        transactionId = txId,
+                                        transactionTimestampEpochMs = txTimestamp,
+                                        senderDeviceId = senderId
+                                    )
+                                }
                             } else {
                                 notifyFilesReceived(listOf(receivedName))
                             }
                         }
-                        call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
                     }.onFailure { error ->
                         onLog("POST /api/v1/files/upload failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "upload_failed")
@@ -591,6 +638,9 @@ class FileApexServer(
                         val request = json.decodeFromString(com.fileapex.domain.clipboard.ClipboardOptInRequest.serializer(), body)
                         val settings = FileApexServices.settings
                         if (!settings.clipboardSharingEnabled.value && !settings.clipboardOptInPromptShown.value) {
+                            request.pendingPayload?.let {
+                                com.fileapex.domain.clipboard.ClipboardPendingOptInStore.setPending(it)
+                            }
                             withContext(Dispatchers.Main) {
                                 com.fileapex.platform.notifyClipboardOptInRequested(request.senderDeviceName)
                             }
@@ -740,6 +790,11 @@ class FileApexServer(
                             com.fileapex.data.bulletin.BulletinSyncBatch.serializer(),
                             body
                         )
+                        val isPaired = FileApexServices.deviceRepositoryOrNull()?.getDevice(batch.originDeviceId) != null
+                        if (!isPaired) {
+                            call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
+                            return@runCatching
+                        }
                         val ack = FileApexServices.bulletinSyncEngine.processIncomingBatch(batch)
                         call.respondText(
                             json.encodeToString(com.fileapex.data.bulletin.BulletinSyncAck.serializer(), ack),
@@ -753,6 +808,13 @@ class FileApexServer(
 
                 get("/api/v1/bulletin/file") {
                     runCatching {
+                        val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
+                            call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
+                        }
+                        if (from.isNotBlank() && FileApexServices.deviceRepositoryOrNull()?.getDevice(from) == null) {
+                            call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
+                            return@runCatching
+                        }
                         val messageId = call.request.queryParameters["messageId"].orEmpty().trim()
                         val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
                         if (messageId.isBlank() || fileName.isBlank()) {
@@ -921,6 +983,28 @@ class FileApexServer(
                     }.onFailure { error ->
                         onLog("GET /api/v1/diagnostics encode failed", error)
                         call.respond(HttpStatusCode.InternalServerError, "diagnostics_failed")
+                    }
+                }
+
+                get("/api/v1/battery") {
+                    if (!isPeerPinAccepted(providedPin(call))) {
+                        call.respond(HttpStatusCode.Forbidden, "pin_required")
+                        return@get
+                    }
+                    val snapshot = withContext(Dispatchers.IO) {
+                        runCatching { collectFastBatteryDiagnostics() }
+                            .getOrElse {
+                                BatteryDiagnostics(chargingState = "Not available")
+                            }
+                    }
+                    runCatching {
+                        call.respondText(
+                            text = json.encodeToString(BatteryDiagnostics.serializer(), snapshot),
+                            contentType = ContentType.Application.Json
+                        )
+                    }.onFailure { error ->
+                        onLog("GET /api/v1/battery encode failed", error)
+                        call.respond(HttpStatusCode.InternalServerError, "battery_failed")
                     }
                 }
             }

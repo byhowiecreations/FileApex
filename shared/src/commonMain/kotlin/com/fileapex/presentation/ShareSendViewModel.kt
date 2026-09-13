@@ -80,7 +80,9 @@ class ShareSendViewModel(
     }
 
     fun cancelCleanup() {
-        cleanupStaging()
+        if (!_uiState.value.sendCompleted) {
+            cleanupStaging()
+        }
     }
 
     private fun prepareDestinations() {

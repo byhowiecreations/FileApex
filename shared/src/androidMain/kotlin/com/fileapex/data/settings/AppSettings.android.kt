@@ -81,37 +81,34 @@ actual fun createAppSettings(): AppSettings {
 private fun hydrateGoogleBackup(settings: SharedPreferences, backup: SharedPreferences) {
     val settingsEmail = settings.getString(BaseAppSettings.KEY_GOOGLE_EMAIL, "").orEmpty()
     val backupEmail = backup.getString(BaseAppSettings.KEY_GOOGLE_EMAIL, "").orEmpty()
-    if (settingsEmail.isBlank() && backupEmail.isNotBlank()) {
+    val backupLinked = backup.getBoolean(BaseAppSettings.KEY_GOOGLE, false)
+    if (settingsEmail.isBlank() && backupEmail.isNotBlank() && backupLinked) {
         settings.edit()
-            .putBoolean(
-                BaseAppSettings.KEY_GOOGLE,
-                backup.getBoolean(BaseAppSettings.KEY_GOOGLE, false)
-            )
-            .putString(BaseAppSettings.KEY_GOOGLE_EMAIL, backupEmail)
+            .putBoolean(BaseAppSettings.KEY_GOOGLE, false)
+            .putBoolean(BaseAppSettings.KEY_GOOGLE_RESTORE_PENDING, true)
+            .putString(BaseAppSettings.KEY_GOOGLE_BACKUP_EMAIL_HINT, backupEmail)
             .putString(
                 BaseAppSettings.KEY_GOOGLE_UID,
                 backup.getString(BaseAppSettings.KEY_GOOGLE_UID, "").orEmpty()
             )
             .apply()
-        Log.i(GOOGLE_BACKUP_TAG, "Hydrated Google link from backup prefs")
+        Log.i(GOOGLE_BACKUP_TAG, "Reinstall detected from backup prefs: set restore pending for $backupEmail")
     } else {
         writeGoogleBackup(settings, backup)
     }
 }
 
 private fun writeGoogleBackup(settings: SharedPreferences, backup: SharedPreferences) {
+    val linked = settings.getBoolean(BaseAppSettings.KEY_GOOGLE, false)
     backup.edit()
-        .putBoolean(
-            BaseAppSettings.KEY_GOOGLE,
-            settings.getBoolean(BaseAppSettings.KEY_GOOGLE, false)
-        )
+        .putBoolean(BaseAppSettings.KEY_GOOGLE, linked)
         .putString(
             BaseAppSettings.KEY_GOOGLE_EMAIL,
-            settings.getString(BaseAppSettings.KEY_GOOGLE_EMAIL, "").orEmpty()
+            if (linked) settings.getString(BaseAppSettings.KEY_GOOGLE_EMAIL, "").orEmpty() else ""
         )
         .putString(
             BaseAppSettings.KEY_GOOGLE_UID,
-            settings.getString(BaseAppSettings.KEY_GOOGLE_UID, "").orEmpty()
+            if (linked) settings.getString(BaseAppSettings.KEY_GOOGLE_UID, "").orEmpty() else ""
         )
         .apply()
 }

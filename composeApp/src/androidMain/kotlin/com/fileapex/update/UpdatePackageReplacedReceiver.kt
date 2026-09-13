@@ -24,18 +24,37 @@ class UpdatePackageReplacedReceiver : BroadcastReceiver() {
         }
         println("UpdatePackageReplacedReceiver: package replaced - relaunching FileApex")
         val lastNoteId = PendingUpdateStore.getLastAttemptedNoteId()
+        val lastTxId = PendingUpdateStore.getLastAttemptedTransactionId()
         val offer = PendingUpdateStore.load()
         val noteId = lastNoteId.ifBlank { offer?.originNoteId.orEmpty() }
         if (noteId.isNotBlank()) {
             PendingUpdateStore.setNoteInstallStatus(noteId, "INSTALLED")
+            PendingUpdateStore.setLastAttemptedNoteId("")
             println("UpdatePackageReplacedReceiver: noteId=$noteId status set to INSTALLED")
         }
-        PendingUpdateStore.setLastAttemptedNoteId("")
-        PendingUpdateStore.save(null)
+        val txId = lastTxId.ifBlank { offer?.transactionId.orEmpty() }
+        if (txId.isNotBlank()) {
+            PendingUpdateStore.deleteUpdateApkAndCompleteTransaction(txId)
+            println("UpdatePackageReplacedReceiver: txId=$txId deleted update APK and marked INSTALLED")
+        } else {
+            PendingUpdateStore.setLastAttemptedTransactionId("")
+            PendingUpdateStore.save(null)
+        }
+        com.fileapex.platform.dismissAppUpdateNotification()
+
+        com.fileapex.platform.ShareServerPendingStart.consume(context)
+        val serverIntent = Intent(context, com.fileapex.network.FileShareServerService::class.java).apply {
+            setAction(com.fileapex.network.FileShareServerService.ACTION_START)
+            putExtra(com.fileapex.network.FileShareServerService.EXTRA_FROM_FOREGROUND, true)
+        }
+        runCatching {
+            androidx.core.content.ContextCompat.startForegroundService(context, serverIntent)
+            println("UpdatePackageReplacedReceiver: started FileShareServerService after update")
+        }
 
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        context.startActivity(launch)
+        runCatching { context.startActivity(launch) }
     }
 }

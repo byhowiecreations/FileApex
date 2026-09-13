@@ -114,7 +114,8 @@ object FcmWakeCoordinator {
 
     suspend fun dispatchClipboardOptIn(
         targetDeviceId: String,
-        senderDeviceName: String
+        senderDeviceName: String,
+        pendingPayload: com.fileapex.domain.clipboard.ClipboardSendRequest? = null
     ): Boolean {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
         if (!FcmWakeBackend.isConfigured()) return false
@@ -125,7 +126,8 @@ object FcmWakeCoordinator {
             FcmWakeBackend.sendClipboardOptIn(
                 targetFcmToken = target.fcmToken,
                 sourceDeviceId = selfId,
-                senderDeviceName = senderDeviceName
+                senderDeviceName = senderDeviceName,
+                pendingPayload = pendingPayload
             )
         }.getOrElse { error ->
             println("FcmWakeCoordinator: clipboard opt-in FCM failed - ${error.message}")

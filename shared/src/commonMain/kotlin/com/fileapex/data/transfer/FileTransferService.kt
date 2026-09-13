@@ -282,10 +282,19 @@ class FileTransferService(
                             async {
                                 semaphore.withPermit {
                                     val dest = PathUtils.join(targetDirectory, localSource.relativeDestPath)
+                                    val txId = com.fileapex.platform.generateDeviceId()
+                                    val txTime = com.fileapex.util.TimeUtils.now()
                                     if (localSource.isDirectory) {
                                         client.createDirectory(host, port, dest)
                                     } else {
-                                        client.uploadFromLocal(host, port, localSource.absolutePath, dest)
+                                        client.uploadFromLocal(
+                                            host = host,
+                                            port = port,
+                                            localSourcePath = localSource.absolutePath,
+                                            remoteTargetPath = dest,
+                                            transactionId = txId,
+                                            transactionTimestampEpochMs = txTime
+                                        )
                                     }
                                 }
                             }
@@ -301,6 +310,8 @@ class FileTransferService(
                             async {
                                 semaphore.withPermit {
                                     val dest = PathUtils.join(targetDirectory, remoteSource.relativeDestPath)
+                                    val txId = com.fileapex.platform.generateDeviceId()
+                                    val txTime = com.fileapex.util.TimeUtils.now()
                                     if (remoteSource.isDirectory) {
                                         client.createDirectory(host, port, dest)
                                     } else {
@@ -313,7 +324,14 @@ class FileTransferService(
                                                 localTargetPath = tempFile,
                                                 expectedSizeBytes = remoteSource.sizeBytes.takeIf { it > 0L }
                                             )
-                                            client.uploadFromLocal(host, port, tempFile, dest)
+                                            client.uploadFromLocal(
+                                                host = host,
+                                                port = port,
+                                                localSourcePath = tempFile,
+                                                remoteTargetPath = dest,
+                                                transactionId = txId,
+                                                transactionTimestampEpochMs = txTime
+                                            )
                                         } finally {
                                             runCatching {
                                                 val p = Path(tempFile)
@@ -328,10 +346,19 @@ class FileTransferService(
                 }
             } else {
                 val tempLocal = PathUtils.join(defaultTempDir(), "fileapex-paste-${payload.fileName}")
+                val txId = com.fileapex.platform.generateDeviceId()
+                val txTime = com.fileapex.util.TimeUtils.now()
                 try {
                     when {
                         payload.isLocalSource -> {
-                            client.uploadFromLocal(host, port, payload.remoteAbsolutePath, remoteTarget)
+                            client.uploadFromLocal(
+                                host = host,
+                                port = port,
+                                localSourcePath = payload.remoteAbsolutePath,
+                                remoteTargetPath = remoteTarget,
+                                transactionId = txId,
+                                transactionTimestampEpochMs = txTime
+                            )
                         }
                         else -> {
                             client.downloadToLocal(
@@ -341,7 +368,14 @@ class FileTransferService(
                                 localTargetPath = tempLocal,
                                 expectedSizeBytes = payload.sizeBytes.takeIf { it > 0L }
                             )
-                            client.uploadFromLocal(host, port, tempLocal, remoteTarget)
+                            client.uploadFromLocal(
+                                host = host,
+                                port = port,
+                                localSourcePath = tempLocal,
+                                remoteTargetPath = remoteTarget,
+                                transactionId = txId,
+                                transactionTimestampEpochMs = txTime
+                            )
                         }
                     }
                 } finally {

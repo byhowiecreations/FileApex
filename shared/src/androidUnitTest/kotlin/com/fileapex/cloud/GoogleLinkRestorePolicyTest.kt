@@ -7,8 +7,20 @@ import org.junit.Test
 class GoogleLinkRestorePolicyTest {
 
     @Test
-    fun probesOncePerInstallWhenSignedOut() {
+    fun probesOnlyWhenLinkedAndNotYetProbed() {
         assertTrue(
+            GoogleLinkRestorePolicy.shouldProbeRestoreKey(
+                linkedFlag = true,
+                alreadyProbedThisInstall = false
+            )
+        )
+        assertFalse(
+            GoogleLinkRestorePolicy.shouldProbeRestoreKey(
+                linkedFlag = true,
+                alreadyProbedThisInstall = true
+            )
+        )
+        assertFalse(
             GoogleLinkRestorePolicy.shouldProbeRestoreKey(
                 linkedFlag = false,
                 alreadyProbedThisInstall = false
@@ -17,16 +29,6 @@ class GoogleLinkRestorePolicyTest {
         assertFalse(
             GoogleLinkRestorePolicy.shouldProbeRestoreKey(
                 linkedFlag = false,
-                alreadyProbedThisInstall = true
-            )
-        )
-    }
-
-    @Test
-    fun alwaysProbesWhenLinkedFlagIsSet() {
-        assertTrue(
-            GoogleLinkRestorePolicy.shouldProbeRestoreKey(
-                linkedFlag = true,
                 alreadyProbedThisInstall = true
             )
         )
@@ -65,23 +67,29 @@ class GoogleLinkRestorePolicyTest {
     }
 
     @Test
-    fun silentGoogleOnlyWhenRestoreKeyOrBackedUpEmailExists() {
+    fun silentGoogleOnlyWhenLinkedWithConfiguredEmail() {
         assertFalse(
             GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                restoreKeyPresent = false,
-                backedUpEmail = ""
+                linkedFlag = false,
+                configuredEmail = ""
+            )
+        )
+        assertFalse(
+            GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
+                linkedFlag = false,
+                configuredEmail = "user@example.com"
+            )
+        )
+        assertFalse(
+            GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
+                linkedFlag = true,
+                configuredEmail = ""
             )
         )
         assertTrue(
             GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                restoreKeyPresent = true,
-                backedUpEmail = ""
-            )
-        )
-        assertTrue(
-            GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                restoreKeyPresent = false,
-                backedUpEmail = "user@example.com"
+                linkedFlag = true,
+                configuredEmail = "user@example.com"
             )
         )
     }

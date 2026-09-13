@@ -22,6 +22,8 @@ import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -598,16 +600,74 @@ class TransferQueueCoordinator(
                 val paths = runCatching {
                     json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
                 }.getOrNull() ?: return null
-                LocalTransferTree.expandAbsolutePaths(paths).map { it as MultiCopySource }
+                val healed = paths.map { healPathIfMissing(it) }
+                if (healed != paths) {
+                    scope.launch {
+                        dao.upsert(
+                            entity.copy(
+                                sourceJson = json.encodeToString(ListSerializer(String.serializer()), healed),
+                                lastError = null
+                            )
+                        )
+                    }
+                }
+                LocalTransferTree.expandAbsolutePaths(healed).map { it as MultiCopySource }
             }
             QueuedTransferSourceKind.Sources -> {
                 val snapshots = runCatching {
                     json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
                 }.getOrNull() ?: return null
-                snapshots.map { it.toSource() }
+                val healed = snapshots.map { healSnapshotIfMissing(it) }
+                if (healed != snapshots) {
+                    scope.launch {
+                        dao.upsert(
+                            entity.copy(
+                                sourceJson = json.encodeToString(ListSerializer(QueuedSourceSnapshot.serializer()), healed),
+                                lastError = null
+                            )
+                        )
+                    }
+                }
+                healed.map { it.toSource() }
             }
             null -> null
         }
+
+    private fun healPathIfMissing(rawPath: String): String {
+        val path = Path(rawPath)
+        if (SystemFileSystem.exists(path)) return rawPath
+        val fileName = rawPath.substringAfterLast('/').substringAfterLast('\\')
+        if (fileName.isBlank()) return rawPath
+        val candidateDirs = listOf(
+            "/storage/emulated/0/Pictures/Screenshots",
+            "/storage/emulated/0/DCIM/Screenshots",
+            "/storage/emulated/0/DCIM/Camera",
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/Pictures",
+            "/storage/emulated/0/Documents",
+            "/sdcard/Pictures/Screenshots",
+            "/sdcard/Download"
+        )
+        for (dir in candidateDirs) {
+            val candidate = Path("$dir/$fileName")
+            if (SystemFileSystem.exists(candidate)) {
+                return candidate.toString()
+            }
+        }
+        return rawPath
+    }
+
+    private fun healSnapshotIfMissing(snapshot: QueuedSourceSnapshot): QueuedSourceSnapshot {
+        val healedPath = healPathIfMissing(snapshot.absolutePath)
+        if (healedPath != snapshot.absolutePath) {
+            val size = runCatching { SystemFileSystem.metadataOrNull(Path(healedPath))?.size }.getOrNull()
+            return snapshot.copy(
+                absolutePath = healedPath,
+                sizeBytes = size ?: snapshot.sizeBytes
+            )
+        }
+        return snapshot
+    }
 
     private fun pathSummary(paths: List<String>): String =
         when (paths.size) {
@@ -664,15 +724,15 @@ class TransferQueueCoordinator(
         private fun isWaitingDriveGrant(error: String?): Boolean =
             error == WAITING_DRIVE_GRANT || error == WAITING_DRIVE_GRANT_LEGACY
 
-        private fun localizeQueueError(raw: String?): String? = when (raw) {
-            null, "" -> raw
-            WAITING_DRIVE_GRANT, WAITING_DRIVE_GRANT_LEGACY -> AppI18n.t("waiting_drive_grant")
-            "Drive relay did not finish" -> AppI18n.t("drive_relay_did_not_finish")
-            "Nothing to send — empty folder or missing files",
-            "Nothing to send" -> AppI18n.t("nothing_to_send_empty_folder")
-            "Nothing to queue" -> AppI18n.t("nothing_to_queue")
-            "Send did not finish — retrying" -> AppI18n.t("send_did_not_finish_retrying")
-            "Source read failed" -> AppI18n.t("source_read_failed")
+        private fun localizeQueueError(raw: String?): String? = when {
+            raw.isNullOrEmpty() -> raw
+            isWaitingDriveGrant(raw) -> AppI18n.t("waiting_drive_grant")
+            raw == "Drive relay did not finish" -> AppI18n.t("drive_relay_did_not_finish")
+            raw == "Nothing to send — empty folder or missing files" ||
+                raw == "Nothing to send" -> AppI18n.t("nothing_to_send_empty_folder")
+            raw == "Nothing to queue" -> AppI18n.t("nothing_to_queue")
+            raw == "Send did not finish — retrying" -> AppI18n.t("send_did_not_finish_retrying")
+            raw == "Source read failed" || raw.startsWith("Missing local file") -> AppI18n.t("source_read_failed")
             else -> raw
         }
     }

@@ -30,5 +30,6 @@ data class ClipboardStatusResponse(
 @Serializable
 data class ClipboardOptInRequest(
     val senderDeviceId: String,
-    val senderDeviceName: String
+    val senderDeviceName: String,
+    val pendingPayload: ClipboardSendRequest? = null
 )

@@ -1,6 +1,7 @@
 package com.fileapex.data.bulletin
 
 import com.fileapex.cloud.FcmWakeCoordinator
+import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.PeerLanHttpPolicy
@@ -41,7 +42,6 @@ class BulletinBoardSyncEngine(
     private var drainQueued = false
     private var pendingDrainJob: Job? = null
     private var maintenanceJob: Job? = null
-    private val initialSyncPeers = mutableSetOf<String>()
     private val drainScheduleLock = Any()
 
     fun ensureStarted() {
@@ -119,6 +119,37 @@ class BulletinBoardSyncEngine(
         )
         requestDrain()
         FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
+    }
+
+    suspend fun onDevicePairingComplete(peer: PairedDeviceEntity) {
+        val selfId = loadLocalIdentity().deviceId
+        if (peer.deviceId.isBlank() || peer.deviceId == selfId) return
+        if (!peer.supportsBulletinSync()) return
+        val activeMessages = messageDao.getActiveOnce()
+        val recentCutoff = TimeUtils.now() - 7 * 24 * 60 * 60 * 1000L
+        val recentTombstones = tombstoneDao.getRecentOnce(recentCutoff)
+        val outboxEntries = mutableListOf<OutboxEntity>()
+        val now = TimeUtils.now()
+        for (msg in activeMessages) {
+            outboxEntries += OutboxEntity(
+                targetDeviceId = peer.deviceId,
+                payloadType = BulletinPayloadType.MESSAGE,
+                payloadId = msg.id,
+                createdAt = now
+            )
+        }
+        for (ts in recentTombstones) {
+            outboxEntries += OutboxEntity(
+                targetDeviceId = peer.deviceId,
+                payloadType = BulletinPayloadType.TOMBSTONE,
+                payloadId = ts.id,
+                createdAt = now
+            )
+        }
+        if (outboxEntries.isNotEmpty()) {
+            transactionDao.insertOutboxEntries(outboxEntries)
+            requestDrain()
+        }
     }
 
     suspend fun ingestSharedText(text: String) {
@@ -300,34 +331,6 @@ class BulletinBoardSyncEngine(
                 }
                 if (!PeerLanHttpPolicy.canRoute(host)) continue
 
-                if (!initialSyncPeers.contains(device.deviceId)) {
-                    initialSyncPeers.add(device.deviceId)
-                    val activeMessages = messageDao.getActiveOnce()
-                    val recentCutoff = TimeUtils.now() - 7 * 24 * 60 * 60 * 1000L
-                    val recentTombstones = tombstoneDao.getRecentOnce(recentCutoff)
-                    val outboxEntries = mutableListOf<OutboxEntity>()
-                    val now = TimeUtils.now()
-                    for (msg in activeMessages) {
-                        outboxEntries += OutboxEntity(
-                            targetDeviceId = device.deviceId,
-                            payloadType = BulletinPayloadType.MESSAGE,
-                            payloadId = msg.id,
-                            createdAt = now
-                        )
-                    }
-                    for (ts in recentTombstones) {
-                        outboxEntries += OutboxEntity(
-                            targetDeviceId = device.deviceId,
-                            payloadType = BulletinPayloadType.TOMBSTONE,
-                            payloadId = ts.id,
-                            createdAt = now
-                        )
-                    }
-                    if (outboxEntries.isNotEmpty()) {
-                        transactionDao.insertOutboxEntries(outboxEntries)
-                    }
-                }
-
                 val entries = repository.getOutboxForDevice(
                     device.deviceId,
                     BulletinBoardPolicy.SYNC_BATCH_LIMIT
@@ -350,6 +353,13 @@ class BulletinBoardSyncEngine(
     }
 
     private suspend fun drainPeer(job: PeerDrainJob) {
+        val targetId = job.entries.firstOrNull()?.targetDeviceId
+        if (targetId != null && FileApexServices.deviceRepositoryOrNull()?.getDevice(targetId) == null) {
+            for (entry in job.entries) {
+                repository.removeOutboxEntry(entry.outboxId)
+            }
+            return
+        }
         runCatching {
             val ack = FileApexServices.client.postBulletinSyncBatch(job.host, job.port, job.batch)
             processIncomingAck(ack)

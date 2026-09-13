@@ -263,9 +263,18 @@ object GoogleLinkCoordinator {
             FileApexServices.settings.setGoogleAccountEmail("")
             FileApexServices.settings.setGoogleAccountUid("")
             FileApexServices.settings.setGoogleAccountLinkEnabled(false)
+            FileApexServices.settings.setGoogleRestorePending(false)
+            FileApexServices.settings.setGoogleBackupEmailHint("")
             com.fileapex.cloud.drive.DriveRelayCoordinator.clearGrantOnUnlink()
             _status.value = "Google Account unlinked"
         }
+    }
+
+    suspend fun dismissPendingRestore() {
+        val settings = FileApexServices.settings
+        settings.setGoogleRestorePending(false)
+        settings.setGoogleBackupEmailHint("")
+        runCatching { RestoreCredentials.clear() }
     }
 
     suspend fun publishRemovedPeer(deviceId: String) {
@@ -303,18 +312,37 @@ object GoogleLinkCoordinator {
     }
 
     private suspend fun restoreSessionZeroTap() {
-        val existing = CloudAuthBackend.currentSession()
-        if (existing != null) {
-            restoreSessionAndListen()
-            val email = existing.email.ifBlank {
-                FileApexServices.settings.googleAccountEmail.value
-            }
-            RestoreCredentials.markProbedThisInstall()
-            RestoreCredentials.createForSignedInUser(existing.firebaseUid, email)
-            return
-        }
         val settings = FileApexServices.settings
         val linked = settings.googleAccountLinkEnabled.value
+        if (!linked) {
+            // Clean install or unlinked. Do not auto-link or probe.
+            val existing = CloudAuthBackend.currentSession()
+            if (existing != null) {
+                runCatching { CloudAuthBackend.signOut() }
+            }
+            RestoreCredentials.markProbedThisInstall()
+            return
+        }
+
+        val existing = CloudAuthBackend.currentSession()
+        if (existing != null) {
+            val linkedEmail = settings.googleAccountEmail.value.trim()
+            val linkedUid = settings.googleAccountUid.value.trim()
+            val sessionMatches = (linkedUid.isEmpty() || existing.firebaseUid == linkedUid) &&
+                (linkedEmail.isEmpty() || existing.email.equals(linkedEmail, ignoreCase = true))
+
+            if (sessionMatches) {
+                restoreSessionAndListen()
+                val email = existing.email.ifBlank { linkedEmail }
+                RestoreCredentials.markProbedThisInstall()
+                RestoreCredentials.createForSignedInUser(existing.firebaseUid, email)
+                return
+            } else {
+                println("GoogleLinkCoordinator: cached Firebase session does not match linked settings - signing out")
+                runCatching { CloudAuthBackend.signOut() }
+            }
+        }
+
         val restoredIdToken: Boolean
         if (GoogleLinkRestorePolicy.shouldProbeRestoreKey(
                 linkedFlag = linked,
@@ -324,8 +352,13 @@ object GoogleLinkCoordinator {
             val restored = RestoreCredentials.restoreGoogleIdToken()
             RestoreCredentials.markProbedThisInstall()
             if (restored != null) {
-                linkWithGoogleIdToken(restored.first, restored.second)
-                return
+                val linkedEmail = settings.googleAccountEmail.value.trim()
+                if (linkedEmail.isBlank() || restored.second.equals(linkedEmail, ignoreCase = true)) {
+                    linkWithGoogleIdToken(restored.first, restored.second)
+                    return
+                } else {
+                    println("GoogleLinkCoordinator: restored token email ${restored.second} does not match linked $linkedEmail")
+                }
             }
             restoredIdToken = false
         } else {

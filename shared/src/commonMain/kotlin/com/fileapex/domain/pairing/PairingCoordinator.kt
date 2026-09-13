@@ -39,6 +39,9 @@ class PairingCoordinator(
     suspend fun propagatePairingComplete(newlyPaired: PairedDeviceEntity) {
         broadcastPairingCompleteOnce(newlyPaired)
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
+        runCatching {
+            FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(newlyPaired)
+        }
     }
 
     /**
@@ -47,6 +50,9 @@ class PairingCoordinator(
     suspend fun afterOutboundPair(peer: PairedDeviceEntity) {
         broadcastPairingCompleteOnce(peer)
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
+        runCatching {
+            FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer)
+        }
     }
 
     /**
@@ -76,6 +82,7 @@ class PairingCoordinator(
                         return@runCatching
                     }
                     repository.adoptFromPairing(entity)
+                    FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(entity)
                 }.onFailure { error ->
                     println(
                         "PairingCoordinator: pairing intro adopt failed for ${state.deviceId} - ${error.message}"

@@ -45,3 +45,10 @@ fun isRemoteVersionNewer(localVersion: String, remoteTag: String): Boolean {
     val remote = FileApexSemVer.parse(remoteTag) ?: return false
     return remote > local
 }
+
+fun isInstalledVersionStrictlyNewer(localVersion: String, remoteTag: String): Boolean {
+    val local = FileApexSemVer.parse(localVersion) ?: return false
+    val remote = FileApexSemVer.parse(remoteTag) ?: return false
+    return local > remote
+}
+

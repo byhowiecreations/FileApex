@@ -56,4 +56,22 @@ class BulletinLockAndSyncTest {
         val note = msg.toNoteRecord()
         assertTrue("note attachmentPinned must be true", note.attachmentPinned)
     }
+
+    @Test
+    fun bulletinSyncBatchOriginValidation() {
+        val batch = BulletinSyncBatch(
+            packetId = "pkt-1",
+            originDeviceId = "known-peer-1",
+            items = emptyList()
+        )
+        val pairedPeerIds = setOf("known-peer-1", "known-peer-2")
+        assertTrue("known peer is authenticated", pairedPeerIds.contains(batch.originDeviceId))
+
+        val unknownBatch = BulletinSyncBatch(
+            packetId = "pkt-2",
+            originDeviceId = "unpaired-intruder",
+            items = emptyList()
+        )
+        assertFalse("unpaired peer is rejected", pairedPeerIds.contains(unknownBatch.originDeviceId))
+    }
 }

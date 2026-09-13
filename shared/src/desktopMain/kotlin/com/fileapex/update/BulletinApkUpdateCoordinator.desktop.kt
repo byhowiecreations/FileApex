@@ -7,7 +7,14 @@ actual object BulletinApkUpdateCoordinator {
         // Desktop platforms (macOS/Windows) do not auto-install Android APKs.
     }
 
-    actual fun triggerDirectApkInstall(localPath: String, version: String, fileName: String) {
+    actual fun triggerDirectApkInstall(
+        localPath: String,
+        version: String,
+        fileName: String,
+        transactionId: String,
+        transactionTimestampEpochMs: Long,
+        senderDeviceId: String
+    ) {
         // Desktop platforms (macOS/Windows) do not auto-install Android APKs.
     }
 

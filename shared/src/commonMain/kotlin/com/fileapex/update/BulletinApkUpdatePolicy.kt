@@ -7,7 +7,7 @@ package com.fileapex.update
  * `FileApex-v[0-9]+\.[0-9]+\.[0-9]+[a-zA-Z]*\.apk`
  */
 object BulletinApkUpdatePolicy {
-    val APK_NAME_REGEX = Regex("^FileApex-v[0-9]+\\.[0-9]+\\.[0-9]+[a-zA-Z]*\\.apk$")
+    val APK_NAME_REGEX = Regex("^FileApex-v[0-9]+\\.[0-9]+\\.[0-9]+[a-zA-Z]*(?: \\([0-9]+\\))?\\.apk$")
 
     fun matchesAutoUpdateApk(fileName: String?): Boolean {
         if (fileName.isNullOrBlank()) return false
@@ -17,10 +17,11 @@ object BulletinApkUpdatePolicy {
     fun extractVersionFromApkName(fileName: String?): String? {
         if (fileName.isNullOrBlank()) return null
         val trimmed = fileName.trim()
-        if (matchesAutoUpdateApk(trimmed)) {
-            return trimmed.removePrefix("FileApex-").removeSuffix(".apk")
+        val withoutCollision = trimmed.replace(Regex(""" \([0-9]+\)\.apk$"""), ".apk")
+        if (matchesAutoUpdateApk(withoutCollision)) {
+            return withoutCollision.removePrefix("FileApex-").removeSuffix(".apk")
         }
-        val match = Regex("""v?[0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9]*""").find(trimmed)
+        val match = Regex("""v?[0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9]*""").find(withoutCollision)
         return match?.value?.let { if (it.startsWith("v")) it else "v$it" }
     }
 
@@ -51,10 +52,14 @@ object BulletinApkUpdatePolicy {
     fun shouldAutoUpdateDirectFile(
         fileName: String?,
         fileSizeBytes: Long = 0L,
-        modifiedEpochMs: Long = 0L
+        modifiedEpochMs: Long = 0L,
+        transactionId: String = ""
     ): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         if (!matchesAutoUpdateApk(fileName)) return false
+        if (transactionId.isNotBlank()) {
+            return !PendingUpdateStore.isTransactionInstalled(transactionId)
+        }
         val sig = buildFileSignature(fileName, fileSizeBytes, modifiedEpochMs)
         return !PendingUpdateStore.isFileProcessed(sig)
     }

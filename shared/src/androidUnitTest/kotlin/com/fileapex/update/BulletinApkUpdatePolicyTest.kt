@@ -15,6 +15,8 @@ class BulletinApkUpdatePolicyTest {
         assertTrue(BulletinApkUpdatePolicy.matchesAutoUpdateApk("FileApex-v12.34.56.apk"))
         assertTrue(BulletinApkUpdatePolicy.matchesAutoUpdateApk("FileApex-v0.9.7a.apk"))
         assertTrue(BulletinApkUpdatePolicy.matchesAutoUpdateApk("FileApex-v2.1.0BETA.apk"))
+        assertTrue(BulletinApkUpdatePolicy.matchesAutoUpdateApk("FileApex-v0.10.10d (1).apk"))
+        assertTrue(BulletinApkUpdatePolicy.matchesAutoUpdateApk("FileApex-v1.2.3 (42).apk"))
     }
 
     @Test
@@ -38,6 +40,7 @@ class BulletinApkUpdatePolicyTest {
         assertEquals("v0.9.8a", BulletinApkUpdatePolicy.extractVersionFromApkName("FileApex-v0.9.8a.apk"))
         assertEquals("v1.0.0", BulletinApkUpdatePolicy.extractVersionFromApkName("FileApex-v1.0.0.apk"))
         assertEquals("v2.1.0BETA", BulletinApkUpdatePolicy.extractVersionFromApkName("FileApex-v2.1.0BETA.apk"))
+        assertEquals("v0.10.10d", BulletinApkUpdatePolicy.extractVersionFromApkName("FileApex-v0.10.10d (1).apk"))
         assertNull(BulletinApkUpdatePolicy.extractVersionFromApkName("app-debug.apk"))
     }
 
@@ -99,5 +102,74 @@ class BulletinApkUpdatePolicyTest {
         assertEquals(noteId, PendingUpdateStore.getLastAttemptedNoteId())
         PendingUpdateStore.setLastAttemptedNoteId("")
         assertEquals("", PendingUpdateStore.getLastAttemptedNoteId())
+    }
+
+    @Test
+    fun transactionInstallStatusTracksAndSuppressesAutoUpdate() {
+        val txId = "tx-install-test-456"
+        val fileName = "FileApex-v0.10.10d.apk"
+        assertNull(PendingUpdateStore.getTransactionInstallStatus(txId))
+        assertFalse(PendingUpdateStore.isTransactionInstalled(txId))
+
+        // New transaction -> auto-update allowed
+        assertTrue(BulletinApkUpdatePolicy.shouldAutoUpdateDirectFile(fileName, 1024L, 1000L, transactionId = txId))
+
+        PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
+        assertEquals("INSTALLING", PendingUpdateStore.getTransactionInstallStatus(txId))
+        assertFalse(PendingUpdateStore.isTransactionInstalled(txId))
+
+        PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLED")
+        assertEquals("INSTALLED", PendingUpdateStore.getTransactionInstallStatus(txId))
+        assertTrue(PendingUpdateStore.isTransactionInstalled(txId))
+        // Installed transaction -> suppressed
+        assertFalse(BulletinApkUpdatePolicy.shouldAutoUpdateDirectFile(fileName, 1024L, 1000L, transactionId = txId))
+
+        PendingUpdateStore.setLastAttemptedTransactionId(txId)
+        assertEquals(txId, PendingUpdateStore.getLastAttemptedTransactionId())
+        PendingUpdateStore.setLastAttemptedTransactionId("")
+        assertEquals("", PendingUpdateStore.getLastAttemptedTransactionId())
+    }
+
+    @Test
+    fun testDeleteUpdateApkAndCompleteTransaction() {
+        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"), "test_apk_cleanup_${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+        try {
+            val apkFile = java.io.File(tempDir, "FileApex-v0.10.10d.apk")
+            apkFile.writeText("dummy apk content")
+            val otherFile = java.io.File(tempDir, "OtherFile.txt")
+            otherFile.writeText("do not delete")
+
+            val txId = "tx-cleanup-test-1"
+            com.fileapex.network.TransferTransactionJournal.recordCompleted(
+                transactionId = txId,
+                senderDeviceId = "sender-test",
+                targetPath = apkFile.absolutePath,
+                finalPath = apkFile.absolutePath,
+                byteSize = apkFile.length(),
+                timestampEpochMs = 12345L
+            )
+            PendingUpdateStore.setLastAttemptedTransactionId(txId)
+            PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
+
+            assertTrue(apkFile.exists())
+            assertTrue(otherFile.exists())
+
+            // Execute deleteUpdateApkAndCompleteTransaction
+            val success = PendingUpdateStore.deleteUpdateApkAndCompleteTransaction(txId)
+            assertTrue(success)
+
+            // Verify the specific APK file is deleted
+            assertFalse(apkFile.exists())
+            // Verify other files are untouched
+            assertTrue(otherFile.exists())
+
+            // Verify marked INSTALLED and lastAttempted cleared
+            assertTrue(PendingUpdateStore.isTransactionInstalled(txId))
+            assertTrue(com.fileapex.network.TransferTransactionJournal.isInstalled(txId))
+            assertEquals("", PendingUpdateStore.getLastAttemptedTransactionId())
+        } finally {
+            tempDir.deleteRecursively()
+        }
     }
 }

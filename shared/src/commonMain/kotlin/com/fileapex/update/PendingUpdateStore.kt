@@ -18,4 +18,16 @@ expect object PendingUpdateStore {
     fun isNoteInstalled(noteId: String): Boolean
     fun setLastAttemptedNoteId(noteId: String)
     fun getLastAttemptedNoteId(): String
+    fun setLastAttemptedTransactionId(transactionId: String)
+    fun getLastAttemptedTransactionId(): String
+    fun setTransactionInstallStatus(transactionId: String, status: String)
+    fun getTransactionInstallStatus(transactionId: String): String?
+    fun isTransactionInstalled(transactionId: String): Boolean
+    fun saveTransactionRecord(record: com.fileapex.network.TransferTransactionRecord)
+    fun getTransactionRecord(transactionId: String): com.fileapex.network.TransferTransactionRecord?
+    fun findTransactionByFilePath(filePath: String): com.fileapex.network.TransferTransactionRecord?
+    fun markTransactionInstallAttempted(transactionId: String)
+    fun markTransactionInstalled(transactionId: String)
+    fun purgeTransaction(transactionId: String)
+    fun deleteUpdateApkAndCompleteTransaction(transactionId: String): Boolean
 }

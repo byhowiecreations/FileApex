@@ -69,6 +69,15 @@ object ShareServerKeepAliveCoordinator {
         unregisterFreezeGuard(context.applicationContext)
     }
 
+    fun onPowerConnected(context: Context) {
+        val appContext = context.applicationContext
+        if (!ServiceWatchdogScheduler.isWatchdogEnabled(appContext)) return
+        if (ShareServerPendingStart.isPending(appContext) || !ServiceWatchdogScheduler.isShareServerRunning(appContext)) {
+            Log.i(TAG, "Power connected - attempting share-server recovery")
+            reassertOrRestart(appContext, reason = "freeze_guard:power_connected")
+        }
+    }
+
     /**
      * Called from freeze-guard receivers, JobScheduler, and network transitions to restore
      * foreground promotion or restart the FGS when the heartbeat is stale.

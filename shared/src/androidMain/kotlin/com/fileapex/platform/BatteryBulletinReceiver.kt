@@ -20,6 +20,9 @@ class BatteryBulletinReceiver : BroadcastReceiver() {
             Intent.ACTION_POWER_CONNECTED,
             Intent.ACTION_BATTERY_OKAY -> {
                 val pending = goAsync()
+                if (action == Intent.ACTION_POWER_CONNECTED) {
+                    ShareServerKeepAliveCoordinator.onPowerConnected(appContext)
+                }
                 BatteryBulletinCoordinator.onCharging(appContext) { pending.finish() }
             }
             Intent.ACTION_POWER_DISCONNECTED -> {

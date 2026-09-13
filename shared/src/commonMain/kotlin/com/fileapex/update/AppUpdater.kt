@@ -91,6 +91,34 @@ object AppUpdater {
 
     suspend fun downloadAndInstall(offer: PendingUpdateOffer): UpdateCheckOutcome.Installing {
         installMutex.withLock {
+            val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }
+            if (localPath != null && SystemFileSystem.exists(Path(localPath))) {
+                val txId = offer.transactionId?.takeIf { it.isNotBlank() }
+                    ?: "update_${offer.remoteVersion}_${com.fileapex.util.TimeUtils.now()}"
+                com.fileapex.update.PendingUpdateStore.setLastAttemptedTransactionId(txId)
+                com.fileapex.network.TransferTransactionJournal.recordCompleted(
+                    transactionId = txId,
+                    senderDeviceId = "local_file",
+                    targetPath = localPath,
+                    finalPath = localPath,
+                    byteSize = SystemFileSystem.metadataOrNull(Path(localPath))?.size ?: 0L,
+                    timestampEpochMs = com.fileapex.util.TimeUtils.now()
+                )
+                com.fileapex.update.PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
+                println(
+                    "AppUpdater: using existing local file $localPath for ${offer.remoteVersion}; installing…"
+                )
+                PlatformUpdateInstaller.installAndRelaunch(
+                    localFilePath = localPath,
+                    remoteVersion = offer.remoteVersion
+                )
+                delay(INSTALL_GRACE_MS)
+                return UpdateCheckOutcome.Installing(
+                    remoteVersion = offer.remoteVersion,
+                    releaseTitle = offer.offerTitleOrNull(),
+                    releaseNotes = offer.releaseNotes
+                )
+            }
             println(
                 "AppUpdater: downloading ${offer.assetName} " +
                     "(${offer.assetSizeBytes} bytes) for ${offer.remoteVersion}"
@@ -103,13 +131,27 @@ object AppUpdater {
             downloadToFile(offer.assetDownloadUrl, partPath)
             validateDownloadedAsset(partPath, offer.assetSizeBytes)
             replaceDownloadedFile(partPath, targetPath)
-            validateDownloadedAsset(targetPath, offer.assetSizeBytes)
+            val assetSize = SystemFileSystem.metadataOrNull(targetPath)?.size ?: offer.assetSizeBytes
+            validateDownloadedAsset(targetPath, assetSize)
             println(
                 "AppUpdater: download complete → $targetPath " +
-                    "(${SystemFileSystem.metadataOrNull(targetPath)?.size ?: -1} bytes); installing…"
+                    "($assetSize bytes); installing…"
             )
+            val finalTarget = targetPath.toString()
+            val txId = offer.transactionId?.takeIf { it.isNotBlank() }
+                ?: "download_${offer.remoteVersion}_${com.fileapex.util.TimeUtils.now()}"
+            com.fileapex.update.PendingUpdateStore.setLastAttemptedTransactionId(txId)
+            com.fileapex.network.TransferTransactionJournal.recordCompleted(
+                transactionId = txId,
+                senderDeviceId = "download",
+                targetPath = finalTarget,
+                finalPath = finalTarget,
+                byteSize = assetSize,
+                timestampEpochMs = com.fileapex.util.TimeUtils.now()
+            )
+            com.fileapex.update.PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
             PlatformUpdateInstaller.installAndRelaunch(
-                localFilePath = targetPath.toString(),
+                localFilePath = finalTarget,
                 remoteVersion = offer.remoteVersion
             )
             delay(INSTALL_GRACE_MS)

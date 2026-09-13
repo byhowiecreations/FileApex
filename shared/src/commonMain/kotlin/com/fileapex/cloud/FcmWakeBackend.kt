@@ -189,7 +189,8 @@ object FcmWakeBackend {
     suspend fun sendClipboardOptIn(
         targetFcmToken: String,
         sourceDeviceId: String,
-        senderDeviceName: String
+        senderDeviceName: String,
+        pendingPayload: com.fileapex.domain.clipboard.ClipboardSendRequest? = null
     ): Boolean {
         val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
         if (targetFcmToken.isBlank()) return false
@@ -201,6 +202,11 @@ object FcmWakeBackend {
             put(FcmWakeProtocol.Keys.SENDER_DEVICE_NAME, senderDeviceName)
             put(FcmWakeProtocol.KEY_SENDER_DEVICE_NAME, senderDeviceName)
             put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
+            if (pendingPayload != null && pendingPayload.ciphertext.length <= 2000) {
+                put(FcmWakeProtocol.Keys.CIPHERTEXT, pendingPayload.ciphertext)
+                put(FcmWakeProtocol.Keys.SENDER_PUBLIC_KEY, pendingPayload.senderPublicKey)
+                put(FcmWakeProtocol.Keys.CAPTURED_AT, pendingPayload.capturedAtEpochMs.toString())
+            }
         }
         return FcmHttpV1Client.sendDataWake(
             config = config,

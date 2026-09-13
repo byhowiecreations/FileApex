@@ -143,6 +143,10 @@ class MainActivity : ComponentActivity() {
             startShareServer()
         }
 
+        if (com.fileapex.di.FileApexServices.settings.googleRestorePending.value) {
+            promptReinstallGoogleAccount()
+        }
+
         handleIncomingIntent(intent)
 
         setContent {
@@ -216,6 +220,9 @@ class MainActivity : ComponentActivity() {
             startShareServer()
         }
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppForegrounded()
+        if (com.fileapex.update.AppUpdateCoordinator.pendingUpdate.value != null) {
+            requestShowUpdateSheet = true
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -231,6 +238,20 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         stageJob?.cancel()
         super.onDestroy()
+    }
+
+    private fun promptReinstallGoogleAccount() {
+        lifecycleScope.launch {
+            val result = com.fileapex.cloud.reinstallGoogleAccountPicker(this@MainActivity)
+            if (result != null) {
+                val settings = com.fileapex.di.FileApexServices.settings
+                settings.setGoogleRestorePending(false)
+                settings.setGoogleBackupEmailHint("")
+                com.fileapex.cloud.GoogleLinkCoordinator.linkWithGoogleIdToken(result.first, result.second)
+            } else {
+                com.fileapex.cloud.GoogleLinkCoordinator.dismissPendingRestore()
+            }
+        }
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
