@@ -13,11 +13,22 @@ import com.fileapex.platform.localIpv4Addresses
  */
 object NetworkUtils {
     /**
+     * NetworkInterface enumeration is expensive on Windows (native getAll/isUp). Device list,
+     * notes, and bulletin paths used to call it on every Room emit and burn multiple cores idle.
+     */
+    private const val LAN_ENUM_CACHE_MS = 2_000L
+
+    @Volatile private var cachedLanIpv4: List<String> = emptyList()
+    @Volatile private var cachedLanIpv4AtMs: Long = 0L
+    @Volatile private var cachedActiveLanIpv4: List<String> = emptyList()
+    @Volatile private var cachedActiveLanIpv4AtMs: Long = 0L
+
+    /**
      * Preferred LAN IPv4 for advertising this device.
      * Prefers the active default-routed interface, then falls back to raw platform addresses.
      */
     fun preferredLanIpv4(): String =
-        selectBestLanIpv4(activeLanIpv4Addresses().filter { isUsableLanIpv4(it) })
+        selectBestLanIpv4(cachedActiveLanIpv4Addresses().filter { isUsableLanIpv4(it) })
             ?: selectBestLanIpv4(lanIpv4Addresses())
             ?: "127.0.0.1"
 
@@ -26,7 +37,7 @@ object NetworkUtils {
      * Never falls back to cellular or inactive interfaces.
      */
     fun lanBindCandidates(): List<String> {
-        val active = activeLanIpv4Addresses().filter { isUsableLanIpv4(it) }
+        val active = cachedActiveLanIpv4Addresses().filter { isUsableLanIpv4(it) }
         if (active.isEmpty()) {
             return emptyList()
         }
@@ -56,7 +67,27 @@ object NetworkUtils {
         return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]
     }
 
-    fun lanIpv4Addresses(): List<String> = localIpv4Addresses()
+    fun lanIpv4Addresses(): List<String> {
+        val now = TimeUtils.now()
+        if (now - cachedLanIpv4AtMs < LAN_ENUM_CACHE_MS) {
+            return cachedLanIpv4
+        }
+        val next = localIpv4Addresses()
+        cachedLanIpv4 = next
+        cachedLanIpv4AtMs = now
+        return next
+    }
+
+    private fun cachedActiveLanIpv4Addresses(): List<String> {
+        val now = TimeUtils.now()
+        if (now - cachedActiveLanIpv4AtMs < LAN_ENUM_CACHE_MS) {
+            return cachedActiveLanIpv4
+        }
+        val next = activeLanIpv4Addresses()
+        cachedActiveLanIpv4 = next
+        cachedActiveLanIpv4AtMs = now
+        return next
+    }
 
     fun selectBestLanIpv4(candidates: Collection<String>): String? =
         candidates

@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import java.awt.Toolkit
 import java.awt.datatransfer.FlavorListener
 import java.util.concurrent.Executors
@@ -9,7 +10,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 actual object ClipboardChangeMonitor {
-    private const val POLL_INTERVAL_MS = 700L
+    /** Same cadence as macOS TrayBridge pasteboard watch (`Timer(timeInterval: 0.45)`). */
+    private val WATCH_INTERVAL_MS = ClipboardSharePolicy.DESKTOP_CLIPBOARD_WATCH_MS
 
     private val listener = AtomicReference<FlavorListener?>(null)
     private val lastSeen = AtomicReference<String?>(null)
@@ -43,12 +45,12 @@ actual object ClipboardChangeMonitor {
         pollTask.set(
             pollExecutor.scheduleWithFixedDelay(
                 { emitCurrentIfChanged() },
-                POLL_INTERVAL_MS,
-                POLL_INTERVAL_MS,
+                WATCH_INTERVAL_MS,
+                WATCH_INTERVAL_MS,
                 TimeUnit.MILLISECONDS
             )
         )
-        println("ClipboardChangeMonitor: desktop poll started")
+        println("ClipboardChangeMonitor: desktop watch started (${WATCH_INTERVAL_MS}ms, matches Mac)")
     }
 
     actual fun stop() {

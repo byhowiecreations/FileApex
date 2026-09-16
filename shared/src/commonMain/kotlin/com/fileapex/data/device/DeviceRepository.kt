@@ -387,8 +387,10 @@ class DeviceRepository(
         }
     }
 
-    private fun collapseAndExcludeSelf(devices: List<PairedDeviceEntity>): List<PairedDeviceEntity> =
-        collapseAliases(devices.filterNot { isLocalDevice(it) })
+    private fun collapseAndExcludeSelf(devices: List<PairedDeviceEntity>): List<PairedDeviceEntity> {
+        val local = localDeviceProvider()
+        return collapseAliases(devices.filterNot { isLocalDevice(it, local) })
+    }
 
     /**
      * Pure in-memory collapse used by Flows and list reads so the UI never sees
@@ -540,9 +542,11 @@ class DeviceRepository(
      * True when [device] is this phone/Mac — must never appear under paired peers.
      * Matches local deviceId, the UI sentinel id, or this node's current LAN endpoint.
      */
-    private fun isLocalDevice(device: PairedDeviceEntity): Boolean {
+    private fun isLocalDevice(
+        device: PairedDeviceEntity,
+        local: LocalDeviceRef = localDeviceProvider()
+    ): Boolean {
         if (device.deviceId == LocalIdentity.LOCAL_DEVICE_ID) return true
-        val local = localDeviceProvider()
         if (local.deviceId.isNotBlank() && device.deviceId == local.deviceId) return true
         val endpoint = endpointKey(device.lastKnownIp, device.port) ?: return false
         return endpoint in local.endpoints
@@ -550,7 +554,8 @@ class DeviceRepository(
 
     private suspend fun purgeLocalRowsLocked(): Boolean {
         val all = deviceDao.getAllDevicesOnce()
-        val victims = all.filter { isLocalDevice(it) }
+        val local = localDeviceProvider()
+        val victims = all.filter { isLocalDevice(it, local) }
         if (victims.isEmpty()) return false
         for (row in victims) {
             deviceDao.deleteDevice(row.deviceId)

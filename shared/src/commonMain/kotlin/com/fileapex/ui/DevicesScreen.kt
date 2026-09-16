@@ -1360,7 +1360,8 @@ private fun DeviceGridCell(
             modifier = Modifier
                 .fillMaxSize()
                 .onGloballyPositioned { coords ->
-                    cellOriginInWindow = coords.localToWindow(Offset.Zero)
+                    val next = coords.localToWindow(Offset.Zero)
+                    if (cellOriginInWindow != next) cellOriginInWindow = next
                 }
                 .then(if (allowHoverPopOver) Modifier.hoverable(cardInteractionSource) else Modifier)
                 .deviceFileDropTarget(
@@ -2096,7 +2097,8 @@ private fun DeviceCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coords ->
-                    cardOriginInWindow = coords.localToWindow(Offset.Zero)
+                    val next = coords.localToWindow(Offset.Zero)
+                    if (cardOriginInWindow != next) cardOriginInWindow = next
                 }
                 .then(if (allowHoverPopOver) Modifier.hoverable(cardInteractionSource) else Modifier)
                 .then(dropModifier)

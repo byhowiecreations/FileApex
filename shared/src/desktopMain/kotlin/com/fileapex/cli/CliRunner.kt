@@ -62,7 +62,6 @@ object CliRunner {
             runBlocking {
                 FileApexServices.awaitBootstrap()
             }
-            com.fileapex.cli.dash.CliClusterEngine.ensureLiveMirror()
         }
     }
 

@@ -123,7 +123,6 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 FileApexServices.awaitBootstrap()
             }
             servicesReady = true
-            com.fileapex.cli.dash.CliClusterEngine.ensureLiveMirror()
             DesktopLifecycleLog.log(
                 "Main: servicesReady after ${(System.nanoTime() - t0) / 1_000_000L}ms await"
             )

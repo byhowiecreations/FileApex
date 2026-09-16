@@ -44,13 +44,16 @@ fun QueuedFilesButton(
 
     val positionMod = modifier.onGloballyPositioned { coords ->
         val topLeft = coords.localToWindow(Offset.Zero)
-        QueueBadgeAnchor.windowRect = Rect(
+        val next = Rect(
             offset = topLeft,
             size = Size(
                 coords.size.width.toFloat().coerceAtLeast(1f),
                 coords.size.height.toFloat().coerceAtLeast(1f)
             )
         )
+        if (QueueBadgeAnchor.windowRect != next) {
+            QueueBadgeAnchor.windowRect = next
+        }
     }
     if (count <= 0) {
         Box(modifier = positionMod.size(0.dp))

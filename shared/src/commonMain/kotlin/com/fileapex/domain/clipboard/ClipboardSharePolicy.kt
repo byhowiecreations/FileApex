@@ -8,6 +8,8 @@ object ClipboardSharePolicy {
     const val INIT_GUARD_MS = 1_500L
     const val FCM_MAX_DATA_CHARS = 3_000
     const val ANDROID_FOREGROUND_CLIP_POLL_MS = 700L
+    /** Matches macOS TrayBridge `Timer(timeInterval: 0.45)` pasteboard watch. */
+    const val DESKTOP_CLIPBOARD_WATCH_MS = 450L
     // MIUI/Android: onResume reads clipboard before window focus → ClipboardService deny.
     val ANDROID_FOCUS_CLIP_RETRY_MS = longArrayOf(350L, 700L, 1_200L)
 

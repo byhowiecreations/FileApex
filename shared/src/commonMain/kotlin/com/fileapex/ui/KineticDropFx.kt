@@ -76,7 +76,9 @@ fun startKineticDropFx(
 
 object KineticDropFxHost {
     var fx by mutableStateOf<KineticDropFx?>(null)
-    var overlayCoords by mutableStateOf<LayoutCoordinates?>(null)
+    // Ref only — LayoutCoordinates identity changes every layout pass.
+    @Volatile
+    var overlayCoords: LayoutCoordinates? = null
 }
 
 @Composable

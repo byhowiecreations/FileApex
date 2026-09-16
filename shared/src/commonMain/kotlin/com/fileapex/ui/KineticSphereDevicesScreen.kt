@@ -125,13 +125,15 @@ fun KineticSphereDevicesView(
 ) {
     var addMenuOpen by remember { mutableStateOf(false) }
     var activeRadialNodeId by remember { mutableStateOf<String?>(null) }
-    var sphereCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    // Do NOT store LayoutCoordinates in Compose state — onGloballyPositioned fires every
+    // layout pass with a new instance and will recompose the whole kinetic tree forever (~multi-core).
+    val sphereCoordsRef = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val density = LocalDensity.current
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .onGloballyPositioned { sphereCoords = it }
+            .onGloballyPositioned { sphereCoordsRef[0] = it }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -609,7 +611,7 @@ fun KineticSphereDevicesView(
                                     ?.substringAfterLast('\\')
                                     .orEmpty()
                                 if (firstName.isNotEmpty()) {
-                                    sphereCoords?.let { coords ->
+                                    sphereCoordsRef[0]?.let { coords ->
                                         startKineticDropFx(
                                             sphere = coords,
                                             node = Offset(nodeCx, nodeCy),
