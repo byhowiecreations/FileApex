@@ -213,6 +213,9 @@ class TransferManager(
             return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)
         } finally {
             TransferActivityGuard.endTransfer()
+            if (TransferActivityGuard.getActiveTransfers().isEmpty()) {
+                TransferActivityGuard.reset()
+            }
             runCatching { FileApexServices.transferQueue.scheduleDrain() }
         }
     }

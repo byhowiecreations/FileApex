@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
     private var pendingOnboardingStepId: String? = null
     private var pendingStorageOnboardingReturn = false
     private var pendingBatteryOnboardingReturn = false
+    private var pendingOemPersistenceOnboardingReturn = false
 
     private val legacyStoragePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -220,7 +221,10 @@ class MainActivity : ComponentActivity() {
             startShareServer()
         }
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppForegrounded()
-        if (com.fileapex.update.AppUpdateCoordinator.pendingUpdate.value != null) {
+        com.fileapex.update.AppUpdateCoordinator.syncInstallStatusOnAppOpen()
+        val pendingOffer = com.fileapex.update.AppUpdateCoordinator.pendingUpdate.value
+        val hasDownloadUpdateExtra = intent?.getBooleanExtra(com.fileapex.platform.EXTRA_DOWNLOAD_UPDATE, false) == true
+        if (pendingOffer != null && !hasDownloadUpdateExtra) {
             requestShowUpdateSheet = true
         }
     }
@@ -261,7 +265,12 @@ class MainActivity : ComponentActivity() {
             ) == true
         ) {
             intent.removeExtra(com.fileapex.platform.EXTRA_DOWNLOAD_UPDATE)
-            if (com.fileapex.update.PlatformInstallPermission.canRequestPackageInstalls()) {
+            com.fileapex.update.AppUpdateCoordinator.restorePendingOfferIfStored()
+            val pendingOffer = com.fileapex.update.AppUpdateCoordinator.pendingUpdate.value
+                ?: com.fileapex.update.PendingUpdateStore.load()
+            if (pendingOffer != null && com.fileapex.update.AppUpdateCoordinator.isLocalApkPresent(pendingOffer)) {
+                com.fileapex.update.AppUpdateCoordinator.downloadPendingUpdate()
+            } else if (com.fileapex.update.PlatformInstallPermission.canRequestPackageInstalls()) {
                 com.fileapex.update.AppUpdateCoordinator.downloadPendingUpdate()
             } else {
                 requestShowUpdateSheet = true
@@ -271,6 +280,7 @@ class MainActivity : ComponentActivity() {
                 false
             ) == true
         ) {
+            com.fileapex.update.AppUpdateCoordinator.restorePendingOfferIfStored()
             requestShowUpdateSheet = true
             intent.removeExtra(com.fileapex.platform.EXTRA_SHOW_UPDATE_SHEET)
         }
@@ -496,6 +506,14 @@ class MainActivity : ComponentActivity() {
                 granted = !BackgroundPersistenceGuidance.isBatteryOptimizationRestricted(this)
             )
         }
+        if (pendingOemPersistenceOnboardingReturn) {
+            pendingOemPersistenceOnboardingReturn = false
+            AndroidOnboardingPermissions.markOemPersistenceCompleted(this)
+            refreshOnboardingAfterExternalReturn(
+                stepId = AndroidOnboardingPermissions.ID_OEM_BACKGROUND_PERSISTENCE,
+                granted = true
+            )
+        }
     }
 
     private fun refreshOnboardingAfterExternalReturn(stepId: String, granted: Boolean) {
@@ -528,6 +546,10 @@ class MainActivity : ComponentActivity() {
             AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS -> {
                 pendingBatteryOnboardingReturn = true
                 requestBatteryUnrestricted()
+            }
+            AndroidOnboardingPermissions.ID_OEM_BACKGROUND_PERSISTENCE -> {
+                pendingOemPersistenceOnboardingReturn = true
+                openBackgroundPersistenceSettings()
             }
         }
     }

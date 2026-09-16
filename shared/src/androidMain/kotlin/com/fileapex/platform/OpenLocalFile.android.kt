@@ -39,6 +39,7 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
         )
         com.fileapex.update.AppUpdateCoordinator.setPendingOffer(offer)
         notifyAppUpdateAvailable(offer)
+        com.fileapex.update.AppUpdateCoordinator.dismissUpdateSheet()
         runCatching {
             com.fileapex.update.PlatformUpdateInstaller.installAndRelaunch(
                 localFilePath = file.absolutePath,

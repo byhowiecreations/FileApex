@@ -10,3 +10,8 @@ expect fun notifyNoteReceived(
 expect fun retractNoteNotification(noteId: String)
 
 expect fun retractNoteNotifications(noteIds: List<String>, previewTexts: List<String> = emptyList())
+
+expect fun notifyDirectAlert(
+    sourceDeviceName: String,
+    content: String,
+)

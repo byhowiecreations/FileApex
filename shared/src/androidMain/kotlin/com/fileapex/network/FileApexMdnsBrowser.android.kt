@@ -3,6 +3,7 @@ package com.fileapex.network
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
 actual object FileApexMdnsBrowser {
     private var nsdManager: NsdManager? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
     private var callback: ((String, Int, String?) -> Unit)? = null
     private val resolveExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -35,6 +37,12 @@ actual object FileApexMdnsBrowser {
         if (manager != null && listener != null) {
             runCatching { manager.stopServiceDiscovery(listener) }
         }
+        runCatching {
+            multicastLock?.let {
+                if (it.isHeld) it.release()
+            }
+        }
+        multicastLock = null
         nsdManager = null
         discoveryListener = null
         callback = null
@@ -61,6 +69,15 @@ actual object FileApexMdnsBrowser {
     private fun beginDiscovery() {
         val context = androidApplicationContextOrNull() ?: return
         val manager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
+        if (multicastLock == null) {
+            runCatching {
+                val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                multicastLock = wifi?.createMulticastLock("fileapex:mdns_browser")?.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        }
         nsdManager = manager
         val listener = createDiscoveryListener()
         discoveryListener = listener

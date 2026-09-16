@@ -214,6 +214,63 @@ class FileApexClient(
         requireSuccess(response, "Clipboard opt-in request failed (${response.statusCode})")
     }
 
+    suspend fun triggerDeviceBeep(host: String, port: Int): Boolean {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/device/beep",
+                host = host,
+                port = port
+            ),
+            body = "{}",
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        return response.statusCode in 200..299
+    }
+
+    suspend fun sendDirectAlert(host: String, port: Int, title: String, text: String): Boolean {
+        val bodyStr = """{"title":${json.encodeToString(title)},"text":${json.encodeToString(text)}}"""
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/device/alert",
+                host = host,
+                port = port
+            ),
+            body = bodyStr,
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        return response.statusCode in 200..299
+    }
+
+    suspend fun pullRemoteClipboard(host: String, port: Int): String? {
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/clipboard/current",
+                host = host,
+                port = port
+            ),
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        if (response.statusCode == 403) {
+            if (response.body.contains("clipboard_disabled")) {
+                error(AppI18n.t("clipboard_disabled_on_peer"))
+            } else {
+                error(AppI18n.t("pin_required_open_device"))
+            }
+        }
+        requireSuccess(response, "Clipboard pull failed (${response.statusCode})")
+        val root = runCatching { json.parseToJsonElement(response.body) }.getOrNull()
+        return (root as? kotlinx.serialization.json.JsonObject)?.get("content")
+            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+    }
+
     suspend fun verifyPin(host: String, port: Int, pin: String) {
         val trimmed = pin.trim()
         require(trimmed.isNotEmpty()) { AppI18n.t("pin_required_error") }
@@ -637,19 +694,21 @@ class FileApexClient(
             val response = boundGet(
                 host = host,
                 port = port,
-                pathWithQuery = queryPath(
-                    basePath = "/api/v1/files/resume",
-                    host = host,
-                    port = port,
-                    params = buildMap {
-                        put("targetPath", remoteTargetPath)
-                        if (expectedSizeBytes > 0L) {
-                            put(TransferResumeProtocol.EXPECTED_SIZE_QUERY, expectedSizeBytes.toString())
+                pathWithQuery = withSenderQuery(
+                    queryPath(
+                        basePath = "/api/v1/files/resume",
+                        host = host,
+                        port = port,
+                        params = buildMap {
+                            put("targetPath", remoteTargetPath)
+                            if (expectedSizeBytes > 0L) {
+                                put(TransferResumeProtocol.EXPECTED_SIZE_QUERY, expectedSizeBytes.toString())
+                            }
+                            if (transactionId.isNotBlank()) {
+                                put(TransferResumeProtocol.TRANSACTION_ID_QUERY, transactionId)
+                            }
                         }
-                        if (transactionId.isNotBlank()) {
-                            put(TransferResumeProtocol.TRANSACTION_ID_QUERY, transactionId)
-                        }
-                    }
+                    )
                 ),
                 timeoutMs = PEER_REQUEST_TIMEOUT_MS
             )

@@ -62,6 +62,7 @@ actual object PlatformUpdateInstaller {
 
         grantUriToResolvers(viewIntent, uri)
 
+        PendingUpdateStore.setLastAttemptedInstallTimestamp(com.fileapex.util.TimeUtils.now())
         println(
             "PlatformUpdateInstaller: launching system installer for $remoteVersion " +
                 "(${apkFile.name}, ${apkFile.length()} bytes)"

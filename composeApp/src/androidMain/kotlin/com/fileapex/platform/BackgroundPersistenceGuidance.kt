@@ -105,6 +105,9 @@ object BackgroundPersistenceGuidance {
     /** Best-effort OEM-specific battery / auto-start screens. */
     fun createOemBackgroundIntent(context: Context, vendor: OemVendor): Intent? {
         val packageManager = context.packageManager
+        if (vendor == OemVendor.Tcl || vendor == OemVendor.Motorola || vendor == OemVendor.Samsung) {
+            createAppBatteryUsageIntent(context)?.let { return it }
+        }
         val components = oemBackgroundComponents(vendor)
         for (component in components) {
             val intent = Intent().setComponent(component)
@@ -112,8 +115,13 @@ object BackgroundPersistenceGuidance {
                 return intent
             }
         }
-        val actionFallback = oemBackgroundActionFallback(vendor) ?: return null
-        return actionFallback.takeIf { it.resolveActivity(packageManager) != null }
+        val actions = oemBackgroundActionCandidates(vendor)
+        for (actionIntent in actions) {
+            if (actionIntent.resolveActivity(packageManager) != null) {
+                return actionIntent
+            }
+        }
+        return null
     }
 
     private fun oemBackgroundComponents(vendor: OemVendor): List<ComponentName> = when (vendor) {
@@ -127,20 +135,15 @@ object BackgroundPersistenceGuidance {
                 "com.motorola.batterycare.ui.activity.BatteryCareActivity"
             )
         )
-        OemVendor.Samsung -> listOf(
-            ComponentName(
-                "com.samsung.android.lool",
-                "com.samsung.android.sm.battery.ui.BatteryActivity"
-            ),
-            ComponentName(
-                "com.samsung.android.lool",
-                "com.samsung.android.sm.ui.battery.BatteryActivity"
-            )
-        )
+        OemVendor.Samsung -> emptyList()
         OemVendor.Xiaomi, OemVendor.Poco -> listOf(
             ComponentName(
                 "com.miui.securitycenter",
                 "com.miui.permcenter.autostart.AutoStartManagementActivity"
+            ),
+            ComponentName(
+                "com.miui.powerkeeper",
+                "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"
             )
         )
         OemVendor.Oppo, OemVendor.OnePlus -> listOf(
@@ -151,6 +154,18 @@ object BackgroundPersistenceGuidance {
             ComponentName(
                 "com.oplus.safecenter",
                 "com.oplus.safecenter.permission.startup.StartupAppListActivity"
+            ),
+            ComponentName(
+                "com.coloros.safecenter",
+                "com.coloros.safecenter.permission.startupapp.StartupAppListActivity"
+            ),
+            ComponentName(
+                "com.oplus.battery",
+                "com.oplus.battery.power.PowerSettingsActivity"
+            ),
+            ComponentName(
+                "com.oplus.battery",
+                "com.oplus.battery.AppBatteryConsumptionActivity"
             )
         )
         OemVendor.Vivo -> listOf(
@@ -161,6 +176,10 @@ object BackgroundPersistenceGuidance {
             ComponentName(
                 "com.vivo.permissionmanager",
                 "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"
+            ),
+            ComponentName(
+                "com.vivo.permissionmanager",
+                "com.vivo.permissionmanager.activity.PurviewTabActivity"
             )
         )
         OemVendor.Honor -> listOf(
@@ -183,15 +202,63 @@ object BackgroundPersistenceGuidance {
                 "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"
             )
         )
+        OemVendor.Tcl -> listOf(
+            ComponentName(
+                "com.tcl.manager",
+                "com.tcl.manager.activity.PermissionManagerActivity"
+            ),
+            ComponentName(
+                "com.tct.onetouchbooster",
+                "com.tct.onetouchbooster.activity.MainActivity"
+            )
+        )
+        OemVendor.Asus -> listOf(
+            ComponentName(
+                "com.asus.mobilemanager",
+                "com.asus.mobilemanager.entry.FunctionActivity"
+            ),
+            ComponentName(
+                "com.asus.mobilemanager",
+                "com.asus.mobilemanager.autostart.AutoStartActivity"
+            )
+        )
+        OemVendor.Transsion -> listOf(
+            ComponentName(
+                "com.transsion.phonemaster",
+                "com.transsion.phonemaster.AutoStartActivity"
+            ),
+            ComponentName(
+                "com.transsion.phonemaster",
+                "com.transsion.phonemaster.MainActivity"
+            )
+        )
         OemVendor.Pixel, OemVendor.Other -> emptyList()
     }
 
-    private fun oemBackgroundActionFallback(vendor: OemVendor): Intent? = when (vendor) {
-        OemVendor.Honor -> Intent("hihonor.intent.action.HSM_STARTUPAPP_MANAGER")
-            .setPackage("com.hihonor.systemmanager")
-        OemVendor.Huawei -> Intent("huawei.intent.action.HSM_STARTUPAPP_MANAGER")
-            .setPackage("com.huawei.systemmanager")
-        else -> null
+    private fun oemBackgroundActionCandidates(vendor: OemVendor): List<Intent> = when (vendor) {
+        OemVendor.Honor -> listOf(
+            Intent("hihonor.intent.action.HSM_STARTUPAPP_MANAGER")
+                .setPackage("com.hihonor.systemmanager")
+        )
+        OemVendor.Huawei -> listOf(
+            Intent("huawei.intent.action.HSM_STARTUPAPP_MANAGER")
+                .setPackage("com.huawei.systemmanager")
+        )
+        OemVendor.Samsung -> listOf(
+            Intent("com.samsung.android.sm.ACTION_OPEN_CHECKABLE_LISTACTIVITY")
+                .setPackage("com.samsung.android.sm")
+                .putExtra("activity_type", 2),
+            Intent("com.samsung.android.sm.ACTION_OPEN_CHECKABLE_LISTACTIVITY")
+                .setPackage("com.samsung.android.lool")
+                .putExtra("activity_type", 2)
+        )
+        OemVendor.Xiaomi, OemVendor.Poco -> listOf(
+            Intent("miui.intent.action.OP_AUTO_START").addCategory(Intent.CATEGORY_DEFAULT)
+        )
+        OemVendor.Motorola -> listOf(
+            Intent(Intent.ACTION_POWER_USAGE_SUMMARY)
+        )
+        else -> emptyList()
     }
 
     @SuppressLint("BatteryLife")

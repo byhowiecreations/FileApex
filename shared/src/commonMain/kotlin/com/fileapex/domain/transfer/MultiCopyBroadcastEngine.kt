@@ -280,79 +280,84 @@ class MultiCopyBroadcastEngine(
         transactionId: String = generateDeviceId(),
         transactionTimestamp: Long = TimeUtils.now()
     ): WriterOutcome {
-        TransferActivityGuard.setTransferContext(
+        TransferActivityGuard.beginTransfer(
             fileName = source.fileName,
-            destinationDeviceName = destination.deviceName
+            destinationDeviceName = destination.deviceName,
+            deviceId = destination.deviceId
         )
-        var lastError: String? = null
-        repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
-            val offset = queryDestinationOffset(destination, source.sizeBytes, transactionId)
-            if (offset >= source.sizeBytes && source.sizeBytes > 0L) {
-                return WriterOutcome(destination.deviceId, errorMessage = null)
-            }
-            val remaining = (source.sizeBytes - offset).coerceAtLeast(0L)
-            val result = runCatching {
-                when (destination) {
-                    is MultiCopyDestination.LocalDevice -> {
-                        writeLocalFromSource(source, destination.absolutePath, offset, source.sizeBytes)
-                    }
-                    is MultiCopyDestination.RemoteDevice -> {
-                        when (source) {
-                            is MultiCopySource.Local -> {
-                                TransferActivityGuard.updateProgress(offset, source.sizeBytes)
-                                client.uploadFromLocal(
-                                    host = destination.host,
-                                    port = destination.port,
-                                    localSourcePath = source.absolutePath,
-                                    remoteTargetPath = destination.absolutePath,
-                                    knownResumeOffset = offset,
-                                    transactionId = transactionId,
-                                    transactionTimestampEpochMs = transactionTimestamp,
-                                    onProgress = { sent, total ->
-                                        TransferActivityGuard.updateProgress(sent, total)
-                                    }
-                                )
-                            }
-                            is MultiCopySource.Remote -> {
-                                val channel = Channel<ByteArray>(capacity = CHANNEL_CAPACITY)
-                                coroutineScope {
-                                    val producer = launch(Dispatchers.IO) {
-                                        try {
-                                            streamSource(source, offset) { chunk ->
-                                                channel.send(chunk)
-                                            }
-                                        } finally {
-                                            channel.close()
-                                        }
-                                    }
-                                    client.uploadFromChunkChannel(
+        try {
+            var lastError: String? = null
+            repeat(TransferResumeProtocol.MAX_ATTEMPTS) { attempt ->
+                val offset = queryDestinationOffset(destination, source.sizeBytes, transactionId)
+                if (offset >= source.sizeBytes && source.sizeBytes > 0L) {
+                    return WriterOutcome(destination.deviceId, errorMessage = null)
+                }
+                val remaining = (source.sizeBytes - offset).coerceAtLeast(0L)
+                val result = runCatching {
+                    when (destination) {
+                        is MultiCopyDestination.LocalDevice -> {
+                            writeLocalFromSource(source, destination.absolutePath, offset, source.sizeBytes)
+                        }
+                        is MultiCopyDestination.RemoteDevice -> {
+                            when (source) {
+                                is MultiCopySource.Local -> {
+                                    TransferActivityGuard.updateProgress(offset, source.sizeBytes, destination.deviceId)
+                                    client.uploadFromLocal(
                                         host = destination.host,
                                         port = destination.port,
+                                        localSourcePath = source.absolutePath,
                                         remoteTargetPath = destination.absolutePath,
-                                        chunks = channel,
-                                        contentLength = remaining,
-                                        resumeOffset = offset,
-                                        totalSize = source.sizeBytes,
+                                        knownResumeOffset = offset,
                                         transactionId = transactionId,
-                                        transactionTimestampEpochMs = transactionTimestamp
+                                        transactionTimestampEpochMs = transactionTimestamp,
+                                        onProgress = { sent, total ->
+                                            TransferActivityGuard.updateProgress(sent, total, destination.deviceId)
+                                        }
                                     )
-                                    producer.join()
+                                }
+                                is MultiCopySource.Remote -> {
+                                    val channel = Channel<ByteArray>(capacity = CHANNEL_CAPACITY)
+                                    coroutineScope {
+                                        val producer = launch(Dispatchers.IO) {
+                                            try {
+                                                streamSource(source, offset) { chunk ->
+                                                    channel.send(chunk)
+                                                }
+                                            } finally {
+                                                channel.close()
+                                            }
+                                        }
+                                        client.uploadFromChunkChannel(
+                                            host = destination.host,
+                                            port = destination.port,
+                                            remoteTargetPath = destination.absolutePath,
+                                            chunks = channel,
+                                            contentLength = remaining,
+                                            resumeOffset = offset,
+                                            totalSize = source.sizeBytes,
+                                            transactionId = transactionId,
+                                            transactionTimestampEpochMs = transactionTimestamp
+                                        )
+                                        producer.join()
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                if (result.isSuccess) {
+                    return WriterOutcome(destination.deviceId, errorMessage = null)
+                }
+                lastError = result.exceptionOrNull()?.message
+                    ?: AppI18n.t("transfer_failed_on", destination.deviceName)
+                if (attempt < TransferResumeProtocol.MAX_ATTEMPTS - 1) {
+                    delay(TransferResumeProtocol.RETRY_DELAY_MS)
+                }
             }
-            if (result.isSuccess) {
-                return WriterOutcome(destination.deviceId, errorMessage = null)
-            }
-            lastError = result.exceptionOrNull()?.message
-                ?: AppI18n.t("transfer_failed_on", destination.deviceName)
-            if (attempt < TransferResumeProtocol.MAX_ATTEMPTS - 1) {
-                delay(TransferResumeProtocol.RETRY_DELAY_MS)
-            }
+            return WriterOutcome(destination.deviceId, errorMessage = lastError)
+        } finally {
+            TransferActivityGuard.endTransfer(destination.deviceId)
         }
-        return WriterOutcome(destination.deviceId, errorMessage = lastError)
     }
 
     private suspend fun queryDestinationOffset(

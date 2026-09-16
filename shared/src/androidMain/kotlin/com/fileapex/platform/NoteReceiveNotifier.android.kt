@@ -88,6 +88,50 @@ actual fun notifyNoteReceived(
     }
 }
 
+actual fun notifyDirectAlert(
+    sourceDeviceName: String,
+    content: String,
+) {
+    if (content.isBlank()) return
+    if (!::noteNotifierContext.isInitialized) return
+    val manager = NotificationManagerCompat.from(noteNotifierContext)
+    if (!manager.areNotificationsEnabled()) return
+
+    val resolvedTitle = com.fileapex.data.device.DeviceDisplayNames.resolve(sourceDeviceName, null)
+    val alertId = (sourceDeviceName + content).hashCode() and 0x7FFF
+    val launch = noteNotifierContext.packageManager
+        .getLaunchIntentForPackage(noteNotifierContext.packageName)
+        ?: Intent().setClassName(noteNotifierContext.packageName, MAIN_ACTIVITY_CLASS)
+    val pendingIntent = PendingIntent.getActivity(
+        noteNotifierContext,
+        alertId,
+        launch,
+        PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+    )
+
+    val notification = NotificationCompat.Builder(noteNotifierContext, AndroidNotificationChannels.NOTE_MESSAGES)
+        .setSmallIcon(AndroidNotificationChannels.noteSmallIcon)
+        .setLargeIcon(
+            BitmapFactory.decodeResource(
+                noteNotifierContext.resources,
+                AndroidNotificationChannels.noteLargeIcon
+            )
+        )
+        .setContentTitle(resolvedTitle)
+        .setContentText(content)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+        .setContentIntent(pendingIntent)
+        .setAutoCancel(true)
+        .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .build()
+
+    runCatching {
+        manager.notify("fileapex.alert", alertId, notification)
+    }
+}
+
 actual fun retractNoteNotification(noteId: String) {
     retractNoteNotifications(listOf(noteId))
 }

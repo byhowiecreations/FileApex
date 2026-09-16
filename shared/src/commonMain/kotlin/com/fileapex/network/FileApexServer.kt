@@ -4,30 +4,21 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.files.LocalFileRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
-import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.di.FileApexServices
-import com.fileapex.i18n.AppI18n
-import com.fileapex.i18n.AppLocale
-import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.pairing.ClusterSyncRequest
-import com.fileapex.domain.pairing.LanPairingDiscovery
-import com.fileapex.domain.pairing.PeerSyncEventKind
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
-import com.fileapex.domain.clipboard.ClipboardSendRequest
-import com.fileapex.domain.clipboard.ClipboardSendResponse
-import com.fileapex.domain.diagnostics.BatteryDiagnostics
-import com.fileapex.platform.UniqueFileNames
-import com.fileapex.platform.collectDeviceDiagnostics
-import com.fileapex.platform.collectDeviceDiagnosticsFallback
-import com.fileapex.platform.collectFastBatteryDiagnostics
-import com.fileapex.platform.defaultDownloadsDir
-import com.fileapex.platform.notifyFilesReceived
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.AppLocale
+import com.fileapex.network.routes.registerBulletinRoutes
+import com.fileapex.network.routes.registerClipboardRoutes
+import com.fileapex.network.routes.registerDiagnosticRoutes
+import com.fileapex.network.routes.registerFileRoutes
+import com.fileapex.network.routes.registerIdentityRoutes
+import com.fileapex.util.NetworkUtils
 import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
-import com.fileapex.util.NetworkUtils
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
@@ -37,14 +28,8 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.statuspages.StatusPages
-import io.ktor.server.request.receiveChannel
-import io.ktor.server.request.receiveText
-import io.ktor.server.response.header
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
@@ -54,11 +39,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -69,12 +49,12 @@ import kotlinx.serialization.json.put
  */
 class FileApexServer(
     private val port: Int,
-    private val identityProvider: () -> LocalIdentity = { loadLocalIdentity() },
-    private val onPairingRespond: suspend (PairedDeviceEntity) -> Unit = {},
-    private val onPairingRespondComplete: suspend (PairedDeviceEntity) -> Unit = {},
-    private val onClusterMerge: suspend (ClusterSyncRequest) -> Unit = {},
-    private val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
-    private val onLog: (String, Throwable?) -> Unit = { message, error ->
+    internal val identityProvider: () -> LocalIdentity = { loadLocalIdentity() },
+    internal val onPairingRespond: suspend (PairedDeviceEntity) -> Unit = {},
+    internal val onPairingRespondComplete: suspend (PairedDeviceEntity) -> Unit = {},
+    internal val onClusterMerge: suspend (ClusterSyncRequest) -> Unit = {},
+    internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
+    internal val onLog: (String, Throwable?) -> Unit = { message, error ->
         if (error != null) {
             println("FileApexServer: $message :: ${error.message}")
             error.printStackTrace()
@@ -86,12 +66,12 @@ class FileApexServer(
     private val engineLock = Any()
     private var serverEngine: EmbeddedServer<*, *>? = null
     private var lifecycleJob: Job = SupervisorJob()
-    private var serverScope: CoroutineScope = CoroutineScope(Dispatchers.IO + lifecycleJob)
-    private val json = Json {
+    internal var serverScope: CoroutineScope = CoroutineScope(Dispatchers.IO + lifecycleJob)
+    internal val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
-    private val localFiles = LocalFileRepository()
+    internal val localFiles = LocalFileRepository()
 
     val isRunning: Boolean
         get() = synchronized(engineLock) { serverEngine != null }
@@ -115,900 +95,30 @@ class FileApexServer(
                 null
             )
             serverEngine = embeddedServer(CIO, port = port, host = bindHost) {
-            install(StatusPages) {
-                exception<Throwable> { call, cause ->
-                    onLog("Unhandled route exception", cause)
-                    runCatching {
-                        call.respond(
-                            HttpStatusCode.InternalServerError,
-                            cause.message ?: "Internal server error"
-                        )
-                    }
-                }
-            }
-
-            intercept(ApplicationCallPipeline.Call) {
-                rememberInboundPeer(call)
-            }
-
-            routing {
-                suspend fun respondSelfPeerState(call: io.ktor.server.application.ApplicationCall) {
-                    val identity = identityProvider()
-                    val settings = FileApexServices.settings
-                    val state = PeerNodeStateMapper.selfState(
-                        identity = identity,
-                        pinRequired = settings.pinRequiredEnabled.value
-                    )
-                    call.respondText(
-                        text = json.encodeToString(PeerNodeState.serializer(), state),
-                        contentType = ContentType.Application.Json
-                    )
-                }
-
-                get("/api/v1/identity") {
-                    runCatching {
-                        respondSelfPeerState(call)
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/identity failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "identity_failed")
-                    }
-                }
-
-                get("/api/v1/heartbeat") {
-                    runCatching {
-                        val senderId = call.request.queryParameters["from"].orEmpty()
-                        if (senderId.isNotBlank()) {
-                            TransferTransactionJournal.purgeInstalledForSender(senderId)
-                        }
-                        respondSelfPeerState(call)
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/heartbeat failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "heartbeat_failed")
-                    }
-                }
-
-                post("/api/v1/identity/rename") {
-                    runCatching {
-                        val body = call.receiveText()
-                        val request = json.decodeFromString(RenameDeviceRequest.serializer(), body)
-                        val trimmed = request.deviceName.trim()
-                        if (trimmed.isEmpty()) {
-                            call.respond(HttpStatusCode.BadRequest, "empty_name")
-                            return@runCatching
-                        }
-                        withContext(Dispatchers.IO) {
-                            com.fileapex.domain.device.DeviceNameCoordinator.applyRemoteRename(
-                                assignedName = trimmed,
-                                renamedByDeviceId = request.renamedByDeviceId,
-                                renamedByDeviceName = request.renamedByDeviceName
-                            )
-                        }
-                        onLog("Local device renamed to $trimmed via cluster request", null)
-                        call.respond(HttpStatusCode.OK)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/identity/rename failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "rename_failed")
-                    }
-                }
-
-                post("/api/v1/auth/verify-pin") {
-                    runCatching {
-                        if (!isPeerPinAccepted(providedPin(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pin_required")
-                            return@runCatching
-                        }
-                        call.respond(HttpStatusCode.OK)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/auth/verify-pin failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "verify_pin_failed")
-                    }
-                }
-
-                post("/api/v1/pairing/respond") {
-                    runCatching {
-                        if (!isPeerPinAccepted(providedPin(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pin_required")
-                            return@runCatching
-                        }
-                        if (!LanPairingDiscovery.matchesActiveCode(providedPairingCode(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
-                            return@runCatching
-                        }
-                        val body = call.receiveText()
-                        if (body.isBlank()) {
-                            call.respond(HttpStatusCode.BadRequest, "Empty pairing payload")
-                            return@runCatching
-                        }
-                        val inboundIp = inboundPeerLanIpv4(call)
-                        val scanningDevice = runCatching {
-                            json.decodeFromString(PairedDeviceEntity.serializer(), body)
-                        }.getOrElse { decodeError ->
-                            onLog("Invalid pairing JSON payload", decodeError)
-                            call.respond(HttpStatusCode.BadRequest, "Invalid pairing payload")
-                            return@runCatching
-                        }
-                        if (scanningDevice.deviceId.isBlank() || scanningDevice.deviceName.isBlank()) {
-                            call.respond(HttpStatusCode.BadRequest, "Missing required device fields")
-                            return@runCatching
-                        }
-                        val localId = identityProvider().deviceId
-                        if (scanningDevice.deviceId == localId) {
-                            call.respond(HttpStatusCode.BadRequest, "Cannot pair with self")
-                            return@runCatching
-                        }
-                        val inboundDevice = if (inboundIp != null) {
-                            scanningDevice.copy(lastKnownIp = inboundIp)
-                        } else {
-                            scanningDevice
-                        }
-
-                        // Persist off the request-critical path so Room failures never tear down CIO.
-                        withContext(Dispatchers.IO) {
-                            onPairingRespond(inboundDevice)
-                        }
-                        onLog(
-                            "Paired inbound device ${inboundDevice.deviceName} (${inboundDevice.deviceId})",
-                            null
-                        )
-                        call.respond(HttpStatusCode.Created)
-                        LanPairingDiscovery.onHostPairingAccepted()
-                        serverScope.launch {
-                            runCatching {
-                                withContext(Dispatchers.IO) {
-                                    onPairingRespondComplete(inboundDevice)
-                                }
-                            }.onFailure { error ->
-                                onLog(
-                                    "Pairing roster seed failed for ${inboundDevice.deviceName}",
-                                    error
-                                )
-                            }
-                        }
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/pairing/respond failed", error)
+                install(StatusPages) {
+                    exception<Throwable> { call, cause ->
+                        onLog("Unhandled route exception", cause)
                         runCatching {
-                            call.respond(HttpStatusCode.InternalServerError, "pairing_failed")
-                        }
-                    }
-                }
-
-                get("/api/v1/devices") {
-                    runCatching {
-                        val devices = withContext(Dispatchers.IO) { onListDevices() }
-                        call.respondText(
-                            text = json.encodeToString(
-                                ListSerializer(PairedDeviceEntity.serializer()),
-                                devices
-                            ),
-                            contentType = ContentType.Application.Json
-                        )
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/devices failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "devices_failed")
-                    }
-                }
-
-                post("/api/v1/devices/merge") {
-                    runCatching {
-                        val body = call.receiveText()
-                        if (body.isBlank()) {
-                            call.respond(HttpStatusCode.BadRequest, "Empty cluster payload")
-                            return@runCatching
-                        }
-                        val request = runCatching {
-                            json.decodeFromString(ClusterSyncRequest.serializer(), body)
-                        }.getOrElse { decodeError ->
-                            onLog("Invalid cluster JSON payload", decodeError)
-                            call.respond(HttpStatusCode.BadRequest, "Invalid cluster payload")
-                            return@runCatching
-                        }
-                        val inboundIp = inboundPeerLanIpv4(call)
-                        val mergeRequest = if (
-                            inboundIp != null &&
-                            request.eventKind == PeerSyncEventKind.SELF_METADATA
-                        ) {
-                            request.copy(
-                                nodeStates = request.nodeStates.map { state ->
-                                    state.copy(ipAddress = inboundIp, lastKnownIp = inboundIp)
-                                }
-                            )
-                        } else {
-                            request
-                        }
-                        withContext(Dispatchers.IO) {
-                            onClusterMerge(mergeRequest)
-                        }
-                        call.respond(HttpStatusCode.Created)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/devices/merge failed", error)
-                        runCatching {
-                            call.respond(HttpStatusCode.InternalServerError, "cluster_failed")
-                        }
-                    }
-                }
-
-                get("/api/v1/files/list") {
-                    runCatching {
-                        if (!isPeerPinAccepted(providedPin(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pin_required")
-                            return@runCatching
-                        }
-                        val rawPath = call.request.queryParameters["path"].orEmpty().trim()
-                        val sharedRoot = identityProvider().rootPath
-                        val pathStr = if (rawPath.isBlank() || rawPath == "/" || rawPath == "\\") {
-                            sharedRoot
-                        } else {
-                            rawPath
-                        }
-                        if (!isPathAllowed(pathStr)) {
-                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                            return@runCatching
-                        }
-                        val listing = withContext(Dispatchers.IO) {
-                            localFiles.listDirectory(pathStr)
-                        }.getOrElse { error ->
-                            val missing = error.message?.contains("does not exist") == true
-                            if (missing) {
-                                call.respond(HttpStatusCode.NotFound)
-                            } else {
-                                call.respond(HttpStatusCode.BadRequest, error.message ?: "list_failed")
-                            }
-                            return@runCatching
-                        }
-                        val items = listing.directories + listing.files
-                        call.respondText(
-                            text = json.encodeToString(items),
-                            contentType = ContentType.Application.Json
-                        )
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/files/list failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "list_failed")
-                    }
-                }
-
-                get("/api/v1/files/stream") {
-                    runCatching {
-                        if (!isPeerPinAccepted(providedPin(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pin_required")
-                            return@runCatching
-                        }
-                        val rawPath = call.request.queryParameters["path"].orEmpty().trim()
-                        if (rawPath.isBlank()) {
-                            return@runCatching call.respond(HttpStatusCode.BadRequest)
-                        }
-                        val pathStr = if (rawPath == "/" || rawPath == "\\") {
-                            identityProvider().rootPath
-                        } else {
-                            rawPath
-                        }
-                        if (!isPathAllowed(pathStr)) {
-                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                            return@runCatching
-                        }
-                        val filePath = Path(pathStr)
-
-                        val fileMetadata = SystemFileSystem.metadataOrNull(filePath)
-                        if (SystemFileSystem.exists(filePath) &&
-                            fileMetadata?.isDirectory != true
-                        ) {
-                            val fileSize = fileMetadata?.size?.coerceAtLeast(0L) ?: 0L
-                            val offset = TransferResumeProtocol.parseByteOffset(
-                                queryOffset = call.request.queryParameters[TransferResumeProtocol.OFFSET_QUERY],
-                                rangeHeader = call.request.headers[HttpHeaders.Range]
-                            )
-                            if (offset > fileSize) {
-                                call.response.header(HttpHeaders.ContentRange, "bytes */$fileSize")
-                                call.respond(HttpStatusCode.RequestedRangeNotSatisfiable)
-                                return@runCatching
-                            }
-                            val remaining = (fileSize - offset).coerceAtLeast(0L)
-                            val partial = offset > 0L
-                            call.response.header(HttpHeaders.AcceptRanges, "bytes")
-                            if (partial) {
-                                val endInclusive = (fileSize - 1L).coerceAtLeast(offset)
-                                call.response.header(
-                                    HttpHeaders.ContentRange,
-                                    "bytes $offset-$endInclusive/$fileSize"
-                                )
-                            }
-                            if (remaining == 0L) {
-                                call.respond(if (partial) HttpStatusCode.PartialContent else HttpStatusCode.OK)
-                                return@runCatching
-                            }
-                            call.respondOutputStream(
-                                contentType = ContentType.Application.OctetStream,
-                                status = if (partial) HttpStatusCode.PartialContent else HttpStatusCode.OK,
-                                contentLength = remaining
-                            ) {
-                                SocketFileStreamer.streamFromOffset(pathStr, offset) { buffer, length ->
-                                    write(buffer, 0, length)
-                                }
-                            }
-                        } else {
-                            call.respond(HttpStatusCode.NotFound)
-                        }
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/files/stream failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "stream_failed")
-                    }
-                }
-
-                get("/api/v1/files/resume") {
-                    runCatching {
-                        val preferredPathStr = call.request.queryParameters["targetPath"]
-                            ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
-                        if (!isPathAllowed(preferredPathStr)) {
-                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                            return@runCatching
-                        }
-                        val expectedSize = call.request.queryParameters[TransferResumeProtocol.EXPECTED_SIZE_QUERY]
-                            ?.toLongOrNull()
-                            ?: 0L
-                        val txId = call.request.queryParameters[TransferResumeProtocol.TRANSACTION_ID_QUERY].orEmpty()
-                        val senderId = call.request.queryParameters["from"]
-                            ?: call.request.queryParameters[TransferResumeProtocol.SENDER_DEVICE_ID_QUERY]
-                            ?: ""
-                        val snapshot = TransferResumeProtocol.inspectIncoming(
-                            preferredPath = preferredPathStr,
-                            expectedSize = expectedSize,
-                            transactionId = txId,
-                            senderDeviceId = senderId
-                        )
-                        call.respondText(
-                            text = json.encodeToString(ResumeOffsetResponse.serializer(), snapshot),
-                            contentType = ContentType.Application.Json
-                        )
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/files/resume failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "resume_failed")
-                    }
-                }
-
-                post("/api/v1/files/upload") {
-                    runCatching {
-                        // Browse/list/stream stay PIN-gated. Direct send (upload) is allowed
-                        // regardless of peer browse-lock state so Multi Copy / Send File work.
-                        val preferredPathStr = call.request.queryParameters["targetPath"]
-                            ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
-                        if (!isPathAllowed(preferredPathStr)) {
-                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                            return@runCatching
-                        }
-                        val txId = call.request.queryParameters[TransferResumeProtocol.TRANSACTION_ID_QUERY].orEmpty()
-                        val txTimestamp = call.request.queryParameters[TransferResumeProtocol.TIMESTAMP_QUERY]?.toLongOrNull()
-                            ?: com.fileapex.util.TimeUtils.now()
-                        val senderId = call.request.queryParameters["from"]
-                            ?: call.request.queryParameters[TransferResumeProtocol.SENDER_DEVICE_ID_QUERY]
-                            ?: ""
-                        if (txId.isNotBlank() && TransferTransactionJournal.findCompleted(txId, senderId, 0L) != null) {
-                            onLog("TransferLog: upload skipped (already completed) txId=$txId sender=$senderId path=$preferredPathStr", null)
-                            call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
-                            return@runCatching
-                        }
-                        // Never overwrite an existing file — collide like Finder/Files: name (1).ext
-                        val targetPathStr = UniqueFileNames.resolve(preferredPathStr)
-                        if (!isPathAllowed(targetPathStr)) {
-                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                            return@runCatching
-                        }
-                        val partPath = SocketFileStreamer.partPathFor(targetPathStr)
-                        val sessionLength = call.request.headers["Content-Length"]?.toLongOrNull()
-                        val offset = TransferResumeProtocol.parseByteOffset(
-                            queryOffset = call.request.queryParameters[TransferResumeProtocol.OFFSET_QUERY],
-                            rangeHeader = null
-                        ).let { fromQuery ->
-                            if (fromQuery > 0L) {
-                                fromQuery
-                            } else {
-                                TransferResumeProtocol.parseContentRangeStart(
-                                    call.request.headers[HttpHeaders.ContentRange]
-                                )
-                            }
-                        }
-                        val totalSize = TransferResumeProtocol.parseTotalSize(
-                            queryTotal = call.request.queryParameters[TransferResumeProtocol.TOTAL_SIZE_QUERY],
-                            contentRange = call.request.headers[HttpHeaders.ContentRange],
-                            sessionLength = sessionLength,
-                            offset = offset
-                        )
-                        val existingPart = SocketFileStreamer.fileLength(partPath)
-                        if (offset > existingPart) {
-                            onLog(
-                                "upload resume gap path=$partPath offset=$offset existing=$existingPart",
-                                null
-                            )
-                            call.respond(HttpStatusCode.BadRequest, "resume_offset_invalid")
-                            return@runCatching
-                        }
-                        val channel = call.receiveChannel()
-                        val received = receiveUploadBytes(channel, partPath, offset, sessionLength)
-                        val totalReceived = offset + received
-                        val complete = when {
-                            received <= 0L && offset == 0L -> false
-                            totalSize != null -> totalReceived == totalSize
-                            sessionLength != null -> received == sessionLength
-                            else -> received > 0L
-                        }
-                        if (!complete) {
-                            val reason = if (totalReceived <= 0L) "upload_empty" else "upload_incomplete"
-                            onLog(
-                                "upload paused path=$partPath offset=$offset session=$received" +
-                                    (totalSize?.let { " total=$it" } ?: "") +
-                                    " reason=$reason",
-                                null
-                            )
-                            if (totalReceived <= 0L) {
-                                SocketFileStreamer.deleteQuietly(partPath)
-                            }
-                            call.respond(HttpStatusCode.BadRequest, reason)
-                            return@runCatching
-                        }
-                        val finalPath = SocketFileStreamer.finalizePart(partPath, targetPathStr)
-                        if (txId.isNotBlank()) {
-                            TransferTransactionJournal.recordCompleted(
-                                transactionId = txId,
-                                senderDeviceId = senderId,
-                                targetPath = targetPathStr,
-                                finalPath = finalPath,
-                                byteSize = totalReceived,
-                                timestampEpochMs = txTimestamp
-                            )
-                        }
-                        onLog(
-                            "TransferLog: [txId=$txId] sender=$senderId path=$finalPath bytes=$totalReceived timestamp=$txTimestamp" +
-                                (if (offset > 0L) " resumedFrom=$offset" else ""),
-                            null
-                        )
-                        call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
-                        val receivedName = finalPath
-                            .substringAfterLast('/')
-                            .substringAfterLast('\\')
-                        if (receivedName.isNotBlank()) {
-                            val uploadFile = java.io.File(finalPath)
-                            if (com.fileapex.update.BulletinApkUpdatePolicy.shouldAutoUpdateDirectFile(
-                                    receivedName,
-                                    uploadFile.length(),
-                                    uploadFile.lastModified(),
-                                    transactionId = txId
-                                )
-                            ) {
-                                val version = com.fileapex.update.BulletinApkUpdatePolicy.extractVersionFromApkName(receivedName) ?: "v0.0.0"
-                                serverScope.launch {
-                                    kotlinx.coroutines.delay(200)
-                                    com.fileapex.update.BulletinApkUpdateCoordinator.triggerDirectApkInstall(
-                                        localPath = finalPath,
-                                        version = version,
-                                        fileName = receivedName,
-                                        transactionId = txId,
-                                        transactionTimestampEpochMs = txTimestamp,
-                                        senderDeviceId = senderId
-                                    )
-                                }
-                            } else {
-                                notifyFilesReceived(listOf(receivedName))
-                            }
-                        }
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/files/upload failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "upload_failed")
-                    }
-                }
-
-                post("/api/v1/files/mkdir") {
-                    runCatching {
-                        val pathStr = call.request.queryParameters["targetPath"]
-                            ?: return@runCatching call.respond(HttpStatusCode.BadRequest, "Missing targetPath")
-                        if (!isPathAllowed(pathStr)) {
-                            call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                            return@runCatching
-                        }
-                        val dir = java.io.File(pathStr)
-                        dir.mkdirs()
-                        call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/files/mkdir failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "mkdir_failed")
-                    }
-                }
-
-                get("/api/v1/clipboard/status") {
-                    runCatching {
-                        val settings = FileApexServices.settings
-                        val enabled = settings.clipboardSharingEnabled.value
-                        val identity = identityProvider()
-                        val response = com.fileapex.domain.clipboard.ClipboardStatusResponse(
-                            sharingEnabled = enabled,
-                            deviceId = identity.deviceId,
-                            deviceName = identity.deviceName
-                        )
-                        call.respondText(
-                            text = json.encodeToString(com.fileapex.domain.clipboard.ClipboardStatusResponse.serializer(), response),
-                            contentType = ContentType.Application.Json,
-                            status = HttpStatusCode.OK
-                        )
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/clipboard/status failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "clipboard_status_failed")
-                    }
-                }
-
-                post("/api/v1/clipboard/opt-in-request") {
-                    runCatching {
-                        val body = call.receiveText()
-                        val request = json.decodeFromString(com.fileapex.domain.clipboard.ClipboardOptInRequest.serializer(), body)
-                        val settings = FileApexServices.settings
-                        if (!settings.clipboardSharingEnabled.value && !settings.clipboardOptInPromptShown.value) {
-                            request.pendingPayload?.let {
-                                com.fileapex.domain.clipboard.ClipboardPendingOptInStore.setPending(it)
-                            }
-                            withContext(Dispatchers.Main) {
-                                com.fileapex.platform.notifyClipboardOptInRequested(request.senderDeviceName)
-                            }
-                        }
-                        call.respond(HttpStatusCode.OK, "ok")
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/clipboard/opt-in-request failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "opt_in_request_failed")
-                    }
-                }
-
-                post("/api/v1/clipboard/send") {
-                    runCatching {
-                        val settings = FileApexServices.settings
-                        if (!settings.clipboardSharingEnabled.value) {
-                            call.respondText(
-                                text = "clipboard_disabled",
-                                status = HttpStatusCode.Forbidden
-                            )
-                            return@runCatching
-                        }
-                        if (!isPeerPinAccepted(providedPin(call))) {
-                            call.respond(HttpStatusCode.Forbidden, "pin_required")
-                            return@runCatching
-                        }
-                        val body = call.receiveText()
-                        val request = json.decodeFromString(ClipboardSendRequest.serializer(), body)
-                        if (request.ciphertext.isBlank() || request.senderPublicKey.isBlank()) {
-                            call.respond(HttpStatusCode.BadRequest, "clipboard_ciphertext_required")
-                            return@runCatching
-                        }
-                        withContext(Dispatchers.Main) {
-                            com.fileapex.domain.clipboard.ClipboardShareCoordinator.applyInbound(
-                                senderDeviceId = request.senderDeviceId,
-                                senderDeviceName = request.senderDeviceName,
-                                senderPublicKey = request.senderPublicKey,
-                                ciphertext = request.ciphertext,
-                                capturedAtEpochMs = request.capturedAtEpochMs
-                            )
-                        }
-                        val response = ClipboardSendResponse(
-                            status = "ok",
-                            recipientDeviceName = identityProvider().deviceName
-                        )
-                        call.respondText(
-                            text = json.encodeToString(ClipboardSendResponse.serializer(), response),
-                            contentType = ContentType.Application.Json
-                        )
-                    }.onFailure { error ->
-                        val message = error.message.orEmpty()
-                        when {
-                            message.contains("clipboard_disabled") ->
-                                call.respondText("clipboard_disabled", status = HttpStatusCode.Forbidden)
-                            message.contains("clipboard_expired") ->
-                                call.respond(HttpStatusCode.BadRequest, "clipboard_expired")
-                            message.contains("clipboard_ciphertext_required") ||
-                                message.contains("empty_text") ->
-                                call.respond(HttpStatusCode.BadRequest, "clipboard_ciphertext_required")
-                            else -> {
-                                onLog("POST /api/v1/clipboard/send failed", error)
-                                call.respond(HttpStatusCode.InternalServerError, "clipboard_failed")
-                            }
-                        }
-                    }
-                }
-
-                post("/api/v1/notes/send") {
-                    runCatching {
-                        val body = call.receiveText()
-                        val record = json.decodeFromString(com.fileapex.data.note.NoteRecord.serializer(), body)
-                        FileApexServices.noteRepository.addNote(
-                            record.copy(isMine = false, attachmentLocalPath = null)
-                        )
-                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/notes/send failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "note_failed")
-                    }
-                }
-
-                post("/api/v1/notes/attachment") {
-                    runCatching {
-                        val noteId = call.request.queryParameters["noteId"].orEmpty().trim()
-                        val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
-                        if (noteId.isBlank() || fileName.isBlank()) {
-                            call.respond(HttpStatusCode.BadRequest, "note_attachment_missing")
-                            return@runCatching
-                        }
-                        val expectedLength = call.request.headers["Content-Length"]?.toLongOrNull()
-                        if (expectedLength != null &&
-                            expectedLength > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
-                        ) {
-                            call.respond(HttpStatusCode.PayloadTooLarge, "note_attachment_too_large")
-                            return@runCatching
-                        }
-                        val dest = UniqueFileNames.resolveInDirectory(defaultDownloadsDir(), fileName)
-                        val channel = call.receiveChannel()
-                        val received = receiveUploadBytes(channel, dest, startOffset = 0L, expectedLength)
-                        val complete = expectedLength == null || received == expectedLength
-                        if (!complete || received <= 0L ||
-                            received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
-                        ) {
-                            SocketFileStreamer.deleteQuietly(dest)
-                            val status = if (received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES) {
-                                HttpStatusCode.PayloadTooLarge
-                            } else {
-                                HttpStatusCode.BadRequest
-                            }
-                            call.respond(status, "note_attachment_rejected")
-                            return@runCatching
-                        }
-                        FileApexServices.noteRepository.setAttachmentLocalPath(noteId, dest)
-                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/notes/attachment failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "note_attachment_failed")
-                    }
-                }
-
-                post("/api/v1/notes/delete") {
-                    runCatching {
-                        val body = call.receiveText()
-                        val jsonObj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
-                        val noteId = jsonObj?.get("noteId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
-                        val driveFileId = jsonObj?.get("driveFileId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                        val checksum = jsonObj?.get("checksum")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                        val attachmentName = jsonObj?.get("attachmentName")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                        if (noteId.isNotBlank() || !driveFileId.isNullOrBlank() || !checksum.isNullOrBlank()) {
-                            FileApexServices.noteRepository.applyRemoteRetract(
-                                noteId,
-                                driveFileId,
-                                checksum,
-                                attachmentName
-                            )
-                        }
-                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/notes/delete failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "delete_failed")
-                    }
-                }
-
-                post("/api/v1/bulletin/sync/batch") {
-                    runCatching {
-                        val body = call.receiveText()
-                        val batch = json.decodeFromString(
-                            com.fileapex.data.bulletin.BulletinSyncBatch.serializer(),
-                            body
-                        )
-                        val isPaired = FileApexServices.deviceRepositoryOrNull()?.getDevice(batch.originDeviceId) != null
-                        if (!isPaired) {
-                            call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
-                            return@runCatching
-                        }
-                        val ack = FileApexServices.bulletinSyncEngine.processIncomingBatch(batch)
-                        call.respondText(
-                            json.encodeToString(com.fileapex.data.bulletin.BulletinSyncAck.serializer(), ack),
-                            ContentType.Application.Json
-                        )
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/bulletin/sync/batch failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "bulletin_sync_failed")
-                    }
-                }
-
-                get("/api/v1/bulletin/file") {
-                    runCatching {
-                        val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
-                            call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
-                        }
-                        if (from.isNotBlank() && FileApexServices.deviceRepositoryOrNull()?.getDevice(from) == null) {
-                            call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
-                            return@runCatching
-                        }
-                        val messageId = call.request.queryParameters["messageId"].orEmpty().trim()
-                        val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
-                        if (messageId.isBlank() || fileName.isBlank()) {
-                            call.respond(HttpStatusCode.BadRequest, "bulletin_file_missing")
-                            return@runCatching
-                        }
-                        val message = FileApexServices.bulletinBoardRepository.getMessage(messageId)
-                            ?: run {
-                                call.respond(HttpStatusCode.NotFound, "bulletin_message_missing")
-                                return@runCatching
-                            }
-                        val meta = FileApexServices.bulletinBoardRepository.decodeFileMetadata(message)
-                            ?: run {
-                                call.respond(HttpStatusCode.NotFound, "bulletin_file_metadata_missing")
-                                return@runCatching
-                            }
-                        val localPath = meta.localPath?.takeIf { it.isNotBlank() }
-                            ?: run {
-                                call.respond(HttpStatusCode.NotFound, "bulletin_file_unavailable")
-                                return@runCatching
-                            }
-                        val source = Path(localPath)
-                        if (!SystemFileSystem.exists(source)) {
-                            call.respond(HttpStatusCode.NotFound, "bulletin_file_missing_on_disk")
-                            return@runCatching
-                        }
-                        val size = SystemFileSystem.metadataOrNull(source)?.size ?: 0L
-                        call.respondOutputStream(
-                            contentType = ContentType.Application.OctetStream,
-                            status = HttpStatusCode.OK,
-                            contentLength = size
-                        ) {
-                            SocketFileStreamer.streamFromOffset(localPath, 0L) { buffer, length ->
-                                write(buffer, 0, length)
-                            }
-                        }
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/bulletin/file failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "bulletin_file_failed")
-                    }
-                }
-
-                get("/") {
-                    call.respondText(webShareHtml(), ContentType.Text.Html)
-                }
-
-                get("/share") {
-                    call.respondText(webShareHtml(), ContentType.Text.Html)
-                }
-
-                post("/api/v1/web/send-clipboard") {
-                    runCatching {
-                        val body = call.receiveText()
-                        val jsonObj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
-                        val targetDeviceId = jsonObj?.get("targetDeviceId")?.let {
-                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
-                        }.orEmpty()
-                        val text = jsonObj?.get("text")?.let {
-                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
-                        }.orEmpty()
-
-                        if (targetDeviceId.isBlank() || text.isBlank()) {
                             call.respond(
-                                HttpStatusCode.BadRequest,
-                                """{"status":"error","message":"Target device and text are required"}"""
+                                HttpStatusCode.InternalServerError,
+                                cause.message ?: "Internal server error"
                             )
-                            return@runCatching
                         }
-
-                        val devices = withContext(Dispatchers.IO) { onListDevices() }
-                        val targetDevice = devices.firstOrNull { it.deviceId == targetDeviceId }
-                        if (targetDevice == null) {
-                            val missing = json.encodeToString(AppI18n.t("web_share_target_not_found"))
-                            call.respondText(
-                                """{"status":"error","message":$missing}""",
-                                ContentType.Application.Json,
-                                HttpStatusCode.NotFound
-                            )
-                            return@runCatching
-                        }
-
-                        val result = com.fileapex.domain.clipboard.ClipboardShareCoordinator.sendPlaintextToDevice(
-                            deviceId = targetDeviceId,
-                            text = text
-                        )
-                        val respJson = json.encodeToString(ClipboardSendResponse.serializer(), result)
-                        call.respondText(respJson, ContentType.Application.Json)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/web/send-clipboard failed", error)
-                        val errMsg = error.message ?: AppI18n.t("web_share_failed")
-                        val safeMsg = json.encodeToString(errMsg)
-                        call.respondText(
-                            """{"status":"error","message":$safeMsg}""",
-                            ContentType.Application.Json,
-                            HttpStatusCode.InternalServerError
-                        )
                     }
                 }
 
-                post("/api/v1/web/post-bulletin") {
-                    runCatching {
-                        val body = call.receiveText()
-                        val jsonObj = json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
-                        val url = jsonObj?.get("url")?.let {
-                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
-                        }.orEmpty().trim()
-                        val title = jsonObj?.get("title")?.let {
-                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
-                        }.orEmpty().trim()
-                        val text = jsonObj?.get("text")?.let {
-                            (it as? kotlinx.serialization.json.JsonPrimitive)?.content
-                        }.orEmpty().trim()
-
-                        val payload = when {
-                            text.isNotBlank() -> text
-                            url.isNotBlank() && title.isNotBlank() -> "$title\n$url"
-                            url.isNotBlank() -> url
-                            title.isNotBlank() -> title
-                            else -> ""
-                        }
-                        if (payload.isBlank()) {
-                            call.respond(
-                                HttpStatusCode.BadRequest,
-                                """{"status":"error","message":"url_or_text_required"}"""
-                            )
-                            return@runCatching
-                        }
-
-                        withContext(Dispatchers.IO) {
-                            FileApexServices.bulletinSyncEngine.ingestSharedText(payload)
-                        }
-                        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
-                    }.onFailure { error ->
-                        onLog("POST /api/v1/web/post-bulletin failed", error)
-                        val errMsg = error.message ?: AppI18n.t("could_not_post_bulletin")
-                        val safeMsg = json.encodeToString(errMsg)
-                        call.respondText(
-                            """{"status":"error","message":$safeMsg}""",
-                            ContentType.Application.Json,
-                            HttpStatusCode.InternalServerError
-                        )
-                    }
+                intercept(ApplicationCallPipeline.Call) {
+                    rememberInboundPeer(call)
                 }
 
-                get("/api/v1/health") {
-                    call.respondText("ok", ContentType.Text.Plain)
+                routing {
+                    registerIdentityRoutes(this@FileApexServer)
+                    registerFileRoutes(this@FileApexServer)
+                    registerClipboardRoutes(this@FileApexServer)
+                    registerBulletinRoutes(this@FileApexServer)
+                    registerDiagnosticRoutes(this@FileApexServer)
                 }
-
-                get("/api/v1/diagnostics") {
-                    if (!isPeerPinAccepted(providedPin(call))) {
-                        call.respond(HttpStatusCode.Forbidden, "pin_required")
-                        return@get
-                    }
-                    val snapshot = withContext(Dispatchers.IO) {
-                        runCatching { collectDeviceDiagnostics() }
-                            .getOrElse { error ->
-                                onLog("GET /api/v1/diagnostics collector failed - returning partial snapshot", error)
-                                collectDeviceDiagnosticsFallback()
-                            }
-                    }
-                    runCatching {
-                        call.respondText(
-                            text = json.encodeToString(PeerDeviceDiagnostics.serializer(), snapshot),
-                            contentType = ContentType.Application.Json
-                        )
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/diagnostics encode failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "diagnostics_failed")
-                    }
-                }
-
-                get("/api/v1/battery") {
-                    if (!isPeerPinAccepted(providedPin(call))) {
-                        call.respond(HttpStatusCode.Forbidden, "pin_required")
-                        return@get
-                    }
-                    val snapshot = withContext(Dispatchers.IO) {
-                        runCatching { collectFastBatteryDiagnostics() }
-                            .getOrElse {
-                                BatteryDiagnostics(chargingState = "Not available")
-                            }
-                    }
-                    runCatching {
-                        call.respondText(
-                            text = json.encodeToString(BatteryDiagnostics.serializer(), snapshot),
-                            contentType = ContentType.Application.Json
-                        )
-                    }.onFailure { error ->
-                        onLog("GET /api/v1/battery encode failed", error)
-                        call.respond(HttpStatusCode.InternalServerError, "battery_failed")
-                    }
-                }
-            }
-        }.start(wait = false)
+            }.start(wait = false)
 
             serverScope.launch {
                 onLog("CIO engine started and listening on port $port", null)
@@ -1032,20 +142,33 @@ class FileApexServer(
         }
     }
 
-    private fun isPathAllowed(absolutePath: String): Boolean {
+    internal suspend fun respondSelfPeerState(call: ApplicationCall) {
+        val identity = identityProvider()
+        val settings = FileApexServices.settings
+        val state = PeerNodeStateMapper.selfState(
+            identity = identity,
+            pinRequired = settings.pinRequiredEnabled.value
+        )
+        call.respondText(
+            text = json.encodeToString(PeerNodeState.serializer(), state),
+            contentType = ContentType.Application.Json
+        )
+    }
+
+    internal fun isPathAllowed(absolutePath: String): Boolean {
         val root = identityProvider().rootPath
         val normalized = PathUtils.normalize(absolutePath)
         if (normalized.isBlank() || normalized == "/" || normalized == "\\" || normalized == PathUtils.normalize(root)) return true
         return PathUtils.isWithinRoot(normalized, root)
     }
 
-    private fun providedPin(call: ApplicationCall): String {
+    internal fun providedPin(call: ApplicationCall): String {
         val fromQuery = call.request.queryParameters["pin"].orEmpty().trim()
         if (fromQuery.isNotEmpty()) return fromQuery
         return call.request.headers["X-FileApex-Pin"].orEmpty().trim()
     }
 
-    private fun providedPairingCode(call: ApplicationCall): String {
+    internal fun providedPairingCode(call: ApplicationCall): String {
         val fromQuery = call.request.queryParameters["code"].orEmpty().trim()
         if (fromQuery.isNotEmpty()) return fromQuery
         return call.request.headers["X-FileApex-Pairing-Code"].orEmpty().trim()
@@ -1075,7 +198,7 @@ class FileApexServer(
         }
     }
 
-    private fun inboundPeerLanIpv4(call: ApplicationCall): String? {
+    internal fun inboundPeerLanIpv4(call: ApplicationCall): String? {
         val raw = call.request.local.remoteAddress.trim()
             .ifBlank { call.request.local.remoteHost.trim() }
         val host = sanitizeInboundIpv4(raw) ?: return null
@@ -1097,7 +220,7 @@ class FileApexServer(
      * When PIN required is off, always accept.
      * When on, require a non-blank configured PIN that matches the peer-provided value.
      */
-    private fun isPeerPinAccepted(provided: String): Boolean {
+    internal fun isPeerPinAccepted(provided: String): Boolean {
         val settings = FileApexServices.settings
         if (!settings.pinRequiredEnabled.value) return true
         val expected = settings.devicePin.value
@@ -1109,7 +232,7 @@ class FileApexServer(
      * URLSession clients send Content-Length; FileApex/Ktor senders may use chunked EOF.
      * Partial files are kept at [targetPath] so a later request can resume from disk length.
      */
-    private suspend fun receiveUploadBytes(
+    internal suspend fun receiveUploadBytes(
         channel: ByteReadChannel,
         targetPath: String,
         startOffset: Long,
@@ -1145,7 +268,7 @@ class FileApexServer(
 
     companion object {
         private const val UPLOAD_IDLE_TIMEOUT_MS = 60_000L
-        private fun webShareHtml(): String {
+        internal fun webShareHtml(): String {
             val i18n = buildJsonObject {
                 put("title", AppI18n.t("web_share_title"))
                 put("selectDevice", AppI18n.t("web_share_select_device"))

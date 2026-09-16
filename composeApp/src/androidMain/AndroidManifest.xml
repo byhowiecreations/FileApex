@@ -192,7 +192,7 @@
             android:name=".network.FileShareServerService"
             android:exported="false"
             android:stopWithTask="false"
-            android:foregroundServiceType="connectedDevice|dataSync" />
+            android:foregroundServiceType="connectedDevice" />
 
         <service
             android:name="com.fileapex.platform.ShareServerKeepAliveJobService"
@@ -207,9 +207,11 @@
             </intent-filter>
         </service>
 
+        <!-- exported=true is required for system ACTION_BOOT_COMPLETED / USER_UNLOCKED. Guarded by RECEIVE_BOOT_COMPLETED. -->
         <receiver
             android:name="com.fileapex.platform.FileApexWatchdogReceiver"
-            android:exported="false">
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
             <intent-filter>
                 <action android:name="android.intent.action.USER_UNLOCKED" />
             </intent-filter>

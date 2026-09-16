@@ -220,6 +220,7 @@ actual object PendingUpdateStore {
     }
 
     private const val KEY_LAST_ATTEMPTED_TX_ID = "last_attempted_update_tx_id"
+    private const val KEY_LAST_ATTEMPTED_INSTALL_TIMESTAMP = "last_attempted_install_timestamp"
     private const val KEY_TX_INSTALL_STATUS_PREFIX = "tx_install_status_"
     private const val KEY_TX_RECORD_PREFIX = "tx_record_"
     private const val KEY_ACTIVE_TX_IDS = "active_transfer_tx_ids"
@@ -227,6 +228,8 @@ actual object PendingUpdateStore {
     private val inMemoryTxInstallStatus = java.util.concurrent.ConcurrentHashMap<String, String>()
     @kotlin.concurrent.Volatile
     private var inMemoryLastAttemptedTxId: String = ""
+    @kotlin.concurrent.Volatile
+    private var inMemoryLastAttemptedInstallTimestamp: Long = 0L
 
     actual fun setLastAttemptedTransactionId(transactionId: String) {
         inMemoryLastAttemptedTxId = transactionId
@@ -241,6 +244,22 @@ actual object PendingUpdateStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getString(KEY_LAST_ATTEMPTED_TX_ID, "").orEmpty()
         inMemoryLastAttemptedTxId = stored
+        return stored
+    }
+
+    actual fun setLastAttemptedInstallTimestamp(timestampEpochMs: Long) {
+        inMemoryLastAttemptedInstallTimestamp = timestampEpochMs
+        val context = androidAppContextOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putLong(KEY_LAST_ATTEMPTED_INSTALL_TIMESTAMP, timestampEpochMs).commit()
+    }
+
+    actual fun getLastAttemptedInstallTimestamp(): Long {
+        if (inMemoryLastAttemptedInstallTimestamp > 0L) return inMemoryLastAttemptedInstallTimestamp
+        val context = androidAppContextOrNull() ?: return 0L
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stored = prefs.getLong(KEY_LAST_ATTEMPTED_INSTALL_TIMESTAMP, 0L)
+        inMemoryLastAttemptedInstallTimestamp = stored
         return stored
     }
 
@@ -370,6 +389,7 @@ actual object PendingUpdateStore {
             setLastAttemptedNoteId("")
         }
         setLastAttemptedTransactionId("")
+        setLastAttemptedInstallTimestamp(0L)
         save(null)
         return true
     }

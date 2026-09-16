@@ -58,7 +58,12 @@ object BulletinApkUpdatePolicy {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
         if (!matchesAutoUpdateApk(fileName)) return false
         if (transactionId.isNotBlank()) {
-            return !PendingUpdateStore.isTransactionInstalled(transactionId)
+            if (PendingUpdateStore.isTransactionInstalled(transactionId) ||
+                com.fileapex.network.TransferTransactionJournal.isInstalled(transactionId)
+            ) {
+                return false
+            }
+            return true
         }
         val sig = buildFileSignature(fileName, fileSizeBytes, modifiedEpochMs)
         return !PendingUpdateStore.isFileProcessed(sig)

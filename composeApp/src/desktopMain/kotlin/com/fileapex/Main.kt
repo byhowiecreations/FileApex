@@ -62,7 +62,6 @@ import kotlinx.coroutines.withContext
 
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
-import com.fileapex.platform.DesktopSingleInstance
 import java.io.File
 import java.util.UUID
 
@@ -74,17 +73,19 @@ private val DesktopWindowMaxHeight = 900.dp
 fun main(args: Array<String>) {
     DesktopCrashHandler.install()
     try {
-        if (DesktopSingleInstance.handleSingleInstanceOrHandoff(args)) {
+        if (args.isNotEmpty()) {
+            com.fileapex.cli.CliRunner.run(args)
             return
         }
         DesktopJvmStartup.onMainEntry()
+        com.fileapex.cli.ipc.CliIpcDaemon.start()
+        com.fileapex.cli.CliPathIntegration.ensureInstalled()
         FileApexServices.beginBootstrap(
             createDatabase = { createFileApexDatabase() },
             createBulletinBoard = { createBulletinBoardDatabase() }
         )
 
-        val initialCliSharePayload = parseCliSharePayload(args)
-        startDesktopApplication(initialCliSharePayload)
+        startDesktopApplication(null)
     } catch (t: Throwable) {
         DesktopCrashHandler.handleCrash(Thread.currentThread(), t)
         throw t
@@ -103,7 +104,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         var desktopIncomingShare by remember { mutableStateOf(initialCliSharePayload) }
 
         LaunchedEffect(Unit) {
-            DesktopSingleInstance.incomingCliShares.collect { payload ->
+            com.fileapex.cli.ipc.CliIpcDaemon.incomingCliShares.collect { payload ->
                 desktopIncomingShare = payload
                 if (DesktopPlatformPaths.isMacOs()) {
                     DesktopTraySupport.showMainWindow()

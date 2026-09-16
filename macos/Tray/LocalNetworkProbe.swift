@@ -65,19 +65,19 @@ enum LocalNetworkProbe {
                 domain: policyDomain
             )
             instance.stateUpdateHandler = { state in
-                NSLog("FileApex NWListener: \(String(describing: state))")
+                log("FileApex NWListener: \(String(describing: state))")
             }
             instance.serviceRegistrationUpdateHandler = { change in
-                NSLog("FileApex NWListener service: \(String(describing: change))")
+                log("FileApex NWListener service: \(String(describing: change))")
             }
             instance.newConnectionHandler = { connection in
                 connection.cancel()
             }
             instance.start(queue: ioQueue)
             listener = instance
-            NSLog("FileApex NWListener: advertising \(policyType) \(policyDomain)")
+            log("FileApex NWListener: advertising \(policyType) \(policyDomain)")
         } catch {
-            NSLog("FileApex NWListener: %@", error.localizedDescription)
+            log("FileApex NWListener: \(error.localizedDescription)")
         }
     }
 
@@ -92,10 +92,10 @@ enum LocalNetworkProbe {
             using: params
         )
         instance.stateUpdateHandler = { state in
-            NSLog("FileApex LocalNetworkProbe policy: \(String(describing: state))")
+            log("FileApex LocalNetworkProbe policy: \(String(describing: state))")
         }
         instance.browseResultsChangedHandler = { results, _ in
-            NSLog("FileApex LocalNetworkProbe policy results=%d", results.count)
+            log("FileApex LocalNetworkProbe policy results=\(results.count)")
         }
         instance.start(queue: ioQueue)
         policyBrowser = instance
@@ -112,7 +112,7 @@ enum LocalNetworkProbe {
         instance.stateUpdateHandler = { state in
             switch state {
             case .failed(let error):
-                NSLog("FileApex LocalNetworkProbe: %@", error.localizedDescription)
+                log("FileApex LocalNetworkProbe: \(error.localizedDescription)")
             default:
                 break
             }
@@ -124,7 +124,7 @@ enum LocalNetworkProbe {
         }
         instance.start(queue: ioQueue)
         peerBrowser = instance
-        NSLog("FileApex LocalNetworkProbe: browsing \(peerType)")
+        log("FileApex LocalNetworkProbe: browsing \(peerType)")
     }
 
     private static func resolve(_ result: NWBrowser.Result) {
@@ -195,7 +195,13 @@ enum LocalNetworkProbe {
                 }
             }
         }
-        NSLog("FileApex LocalNetworkProbe: privacy alert probe sent")
+        log("FileApex LocalNetworkProbe: privacy alert probe sent")
+    }
+
+    private static func log(_ message: String) {
+        if ProcessInfo.processInfo.environment["FILEAPEX_DEBUG_LAN_HTTP"] != nil {
+            NSLog("%@", message)
+        }
     }
 }
 

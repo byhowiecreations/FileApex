@@ -16,6 +16,9 @@ enum class OemVendor {
     Vivo,
     Honor,
     Huawei,
+    Tcl,
+    Asus,
+    Transsion,
     Other
 }
 
@@ -41,6 +44,14 @@ fun detectOemVendor(manufacturer: String, brand: String): OemVendor {
             label.equals("honor", ignoreCase = true) -> OemVendor.Honor
         maker.equals("huawei", ignoreCase = true) ||
             label.equals("huawei", ignoreCase = true) -> OemVendor.Huawei
+        maker.equals("tcl", ignoreCase = true) ||
+            maker.equals("alcatel", ignoreCase = true) ||
+            label.equals("tcl", ignoreCase = true) -> OemVendor.Tcl
+        maker.equals("asus", ignoreCase = true) -> OemVendor.Asus
+        maker.equals("transsion", ignoreCase = true) ||
+            maker.equals("infinix", ignoreCase = true) ||
+            maker.equals("tecno", ignoreCase = true) ||
+            maker.equals("itel", ignoreCase = true) -> OemVendor.Transsion
         else -> OemVendor.Other
     }
 }
@@ -119,6 +130,27 @@ data class OemBackgroundGuidance(
                 vendorLabel = "Huawei",
                 batteryStepsKey = "oem_huawei_battery_steps",
                 autoStartHintKey = "oem_huawei_autostart",
+                alwaysShowSetup = true
+            )
+            OemVendor.Tcl -> OemBackgroundGuidance(
+                vendor = vendor,
+                vendorLabel = "TCL",
+                batteryStepsKey = "oem_tcl_battery_steps",
+                autoStartHintKey = "oem_tcl_autostart",
+                alwaysShowSetup = true
+            )
+            OemVendor.Asus -> OemBackgroundGuidance(
+                vendor = vendor,
+                vendorLabel = "Asus",
+                batteryStepsKey = "oem_asus_battery_steps",
+                autoStartHintKey = "oem_asus_autostart",
+                alwaysShowSetup = true
+            )
+            OemVendor.Transsion -> OemBackgroundGuidance(
+                vendor = vendor,
+                vendorLabel = "Transsion",
+                batteryStepsKey = "oem_transsion_battery_steps",
+                autoStartHintKey = "oem_transsion_autostart",
                 alwaysShowSetup = true
             )
             OemVendor.Other -> error("Other has no guidance")

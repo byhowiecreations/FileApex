@@ -444,7 +444,9 @@ private suspend fun executeBoundUploadOnLocalIp(
         output.write(header.toByteArray(Charsets.UTF_8))
         writeBody(output)
         output.flush()
-        socket.shutdownOutput()
+        if (contentLength == null) {
+            socket.shutdownOutput()
+        }
         val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)
         return parseHttpResponse(raw)
     } finally {

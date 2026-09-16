@@ -8,8 +8,9 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class LiveTransferStats(
     val isActive: Boolean = false,
-    val currentFileName: String = "",
+    val destinationDeviceId: String = "",
     val destinationDeviceName: String = "",
+    val currentFileName: String = "",
     val sentBytes: Long = 0L,
     val totalBytes: Long = 0L,
     val progress: Float = 0f,
@@ -33,42 +34,117 @@ object TransferActivityGuard {
     private val _statsFlow = MutableStateFlow(LiveTransferStats())
     val statsFlow: StateFlow<LiveTransferStats> = _statsFlow.asStateFlow()
 
+    private class TargetProgress(
+        val deviceId: String,
+        var deviceName: String,
+        var fileName: String
+    ) {
+        var sentBytes: Long = 0L
+        var totalBytes: Long = 0L
+        var progress: Float = 0f
+        var lastSampleTimeMs: Long = TimeUtils.now()
+        var lastSampleBytes: Long = 0L
+        var smoothedSpeedBps: Long = 0L
+
+        fun toLiveTransferStats(): LiveTransferStats = LiveTransferStats(
+            isActive = true,
+            destinationDeviceId = deviceId,
+            destinationDeviceName = deviceName,
+            currentFileName = fileName,
+            sentBytes = sentBytes,
+            totalBytes = totalBytes,
+            progress = progress,
+            speedBytesPerSec = smoothedSpeedBps,
+            speedFormatted = formatSpeed(smoothedSpeedBps),
+            etaFormatted = formatEta(sentBytes, totalBytes, smoothedSpeedBps)
+        )
+    }
+
+    private val activeTargetMap = java.util.concurrent.ConcurrentHashMap<String, TargetProgress>()
+
     private var currentFileName: String = ""
     private var destinationDeviceName: String = ""
     private var lastSampleTimeMs: Long = 0L
     private var lastSampleBytes: Long = 0L
     private var smoothedSpeedBps: Long = 0L
 
-    fun beginTransfer(fileName: String = "", destinationDeviceName: String = "") {
-        val count = activeTransfers.incrementAndGet()
+    fun beginTransfer(
+        fileName: String = "",
+        destinationDeviceName: String = "",
+        deviceId: String = ""
+    ) {
         if (fileName.isNotBlank()) this.currentFileName = fileName
         if (destinationDeviceName.isNotBlank()) this.destinationDeviceName = destinationDeviceName
+
+        if (deviceId.isNotBlank()) {
+            activeTargetMap[deviceId] = TargetProgress(
+                deviceId = deviceId,
+                deviceName = destinationDeviceName,
+                fileName = fileName.ifBlank { this.currentFileName }
+            )
+        } else {
+            activeTransfers.incrementAndGet()
+        }
+
+        val count = if (activeTargetMap.isNotEmpty()) activeTargetMap.size else activeTransfers.get()
+
         lastSampleTimeMs = TimeUtils.now()
         lastSampleBytes = 0L
         smoothedSpeedBps = 0L
         _transferProgressFlow.value = 0.0f
         _isTransferActiveFlow.value = count > 0
+        TransferWakeLockCoordinator.acquire()
         _statsFlow.value = LiveTransferStats(
             isActive = count > 0,
+            destinationDeviceId = deviceId,
             currentFileName = this.currentFileName,
             destinationDeviceName = this.destinationDeviceName
         )
     }
 
-    fun setTransferContext(fileName: String, destinationDeviceName: String = "") {
+    fun setTransferContext(fileName: String, destinationDeviceName: String = "", deviceId: String = "") {
         if (fileName.isNotBlank()) this.currentFileName = fileName
         if (destinationDeviceName.isNotBlank()) this.destinationDeviceName = destinationDeviceName
+        if (deviceId.isNotBlank()) {
+            activeTargetMap[deviceId]?.let {
+                if (fileName.isNotBlank()) it.fileName = fileName
+                if (destinationDeviceName.isNotBlank()) it.deviceName = destinationDeviceName
+            }
+        }
         _statsFlow.value = _statsFlow.value.copy(
             currentFileName = this.currentFileName,
             destinationDeviceName = this.destinationDeviceName
         )
     }
 
-    fun updateProgress(sentBytes: Long, totalBytes: Long) {
+    fun updateProgress(sentBytes: Long, totalBytes: Long, deviceId: String = "") {
         if (totalBytes <= 0L) return
         val frac = (sentBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-        _transferProgressFlow.value = frac
 
+        if (deviceId.isNotBlank()) {
+            val target = activeTargetMap.getOrPut(deviceId) {
+                TargetProgress(deviceId, destinationDeviceName, currentFileName)
+            }
+            target.sentBytes = sentBytes
+            target.totalBytes = totalBytes
+            target.progress = frac
+
+            val now = TimeUtils.now()
+            val dtMs = (now - target.lastSampleTimeMs).coerceAtLeast(1L)
+            val dBytes = (sentBytes - target.lastSampleBytes).coerceAtLeast(0L)
+            if (dtMs >= 100L || sentBytes >= totalBytes) {
+                val instantBps = (dBytes * 1000L) / dtMs
+                target.smoothedSpeedBps = if (target.smoothedSpeedBps == 0L) {
+                    instantBps
+                } else {
+                    ((target.smoothedSpeedBps * 7) + (instantBps * 3)) / 10
+                }
+                target.lastSampleTimeMs = now
+                target.lastSampleBytes = sentBytes
+            }
+        }
+
+        _transferProgressFlow.value = frac
         val now = TimeUtils.now()
         val dtMs = (now - lastSampleTimeMs).coerceAtLeast(1L)
         val dBytes = (sentBytes - lastSampleBytes).coerceAtLeast(0L)
@@ -79,7 +155,6 @@ object TransferActivityGuard {
             smoothedSpeedBps = if (smoothedSpeedBps == 0L) {
                 instantBps
             } else {
-                // Exponential moving average (70% previous, 30% instant) for smooth UI reading
                 ((smoothedSpeedBps * 7) + (instantBps * 3)) / 10
             }
             lastSampleTimeMs = now
@@ -91,6 +166,7 @@ object TransferActivityGuard {
 
         _statsFlow.value = LiveTransferStats(
             isActive = true,
+            destinationDeviceId = deviceId,
             currentFileName = currentFileName,
             destinationDeviceName = destinationDeviceName,
             sentBytes = sentBytes,
@@ -102,25 +178,61 @@ object TransferActivityGuard {
         )
     }
 
-    fun endTransfer() {
-        val count = activeTransfers.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
-        _transferProgressFlow.value = 1.0f
+    fun endTransfer(deviceId: String = "") {
+        if (deviceId.isNotBlank()) {
+            activeTargetMap.remove(deviceId)
+        } else {
+            activeTransfers.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+        }
+        val count = if (activeTargetMap.isNotEmpty()) {
+            activeTargetMap.size
+        } else {
+            activeTransfers.get()
+        }
+        _transferProgressFlow.value = if (count > 0) _transferProgressFlow.value else 0.0f
         _isTransferActiveFlow.value = count > 0
-        _statsFlow.value = LiveTransferStats(
-            isActive = count > 0,
-            currentFileName = if (count > 0) currentFileName else "",
-            destinationDeviceName = if (count > 0) destinationDeviceName else "",
-            progress = 1.0f,
-            speedFormatted = "",
-            etaFormatted = ""
-        )
+        _statsFlow.value = if (count > 0) {
+            LiveTransferStats(
+                isActive = true,
+                currentFileName = currentFileName,
+                destinationDeviceName = destinationDeviceName,
+                progress = _transferProgressFlow.value,
+                speedFormatted = "",
+                etaFormatted = ""
+            )
+        } else {
+            LiveTransferStats(isActive = false)
+        }
+        TransferWakeLockCoordinator.release()
         if (count == 0) {
             currentFileName = ""
             destinationDeviceName = ""
+            activeTargetMap.clear()
+            activeTransfers.set(0)
+            _transferProgressFlow.value = 0.0f
         }
     }
 
-    fun isTransferActive(): Boolean = activeTransfers.get() > 0
+    fun reset() {
+        TransferWakeLockCoordinator.releaseAll()
+        activeTargetMap.clear()
+        activeTransfers.set(0)
+        currentFileName = ""
+        destinationDeviceName = ""
+        _transferProgressFlow.value = 0.0f
+        _isTransferActiveFlow.value = false
+        _statsFlow.value = LiveTransferStats(isActive = false)
+    }
+
+    fun getActiveTransfers(): List<LiveTransferStats> {
+        if (activeTargetMap.isNotEmpty()) {
+            return activeTargetMap.values.map { it.toLiveTransferStats() }
+        }
+        val global = _statsFlow.value
+        return if (global.isActive) listOf(global) else emptyList()
+    }
+
+    fun isTransferActive(): Boolean = if (activeTargetMap.isNotEmpty()) true else activeTransfers.get() > 0
 
     private fun formatSpeed(bytesPerSec: Long): String {
         if (bytesPerSec <= 0L) return ""

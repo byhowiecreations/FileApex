@@ -19,3 +19,11 @@ actual fun retractNoteNotification(noteId: String) {
 
 actual fun retractNoteNotifications(noteIds: List<String>, previewTexts: List<String>) {
 }
+
+actual fun notifyDirectAlert(
+    sourceDeviceName: String,
+    content: String,
+) {
+    if (content.isBlank()) return
+    println("AlertNotifier (Desktop): Alert from $sourceDeviceName - ${content.take(40)}")
+}

@@ -119,15 +119,16 @@ enum LanHttpClient {
         let path: String
 
         init?(urlString: String) {
-            guard let url = URL(string: urlString), let host = url.host, !host.isEmpty else {
+            guard let components = URLComponents(string: urlString),
+                  let host = components.host, !host.isEmpty else {
                 return nil
             }
             self.host = host
-            let resolvedPort = url.port ?? 80
+            let resolvedPort = components.port ?? 80
             guard resolvedPort > 0, resolvedPort <= Int(UInt16.max) else { return nil }
             self.port = UInt16(resolvedPort)
-            var path = url.path.isEmpty ? "/" : url.path
-            if let query = url.query, !query.isEmpty {
+            var path = components.percentEncodedPath.isEmpty ? "/" : components.percentEncodedPath
+            if let query = components.percentEncodedQuery, !query.isEmpty {
                 path += "?" + query
             }
             self.path = path
@@ -179,19 +180,13 @@ enum LanHttpClient {
                         finish(nil)
                         return
                     }
-                    let afterHeaders = {
-                        receiveHttp(on: connection, finish: finish)
-                    }
+                    receiveHttp(on: connection, finish: finish)
                     if let extraSender {
                         extraSender(connection) { ok in
-                            if ok {
-                                afterHeaders()
-                            } else {
+                            if !ok {
                                 finish(nil)
                             }
                         }
-                    } else {
-                        afterHeaders()
                     }
                 })
             case .waiting(let error):
@@ -313,9 +308,7 @@ enum LanHttpClient {
                 if chunk.isEmpty {
                     isEof = true
                     if activeSends == 0 {
-                        connection.send(content: nil, isComplete: true, completion: .contentProcessed { error in
-                            completion(error == nil)
-                        })
+                        completion(true)
                     }
                     return
                 }
@@ -342,9 +335,7 @@ enum LanHttpClient {
                         lock.lock()
                         if isEof && activeSends == 0 && !hasFailed {
                             lock.unlock()
-                            connection.send(content: nil, isComplete: true, completion: .contentProcessed { finError in
-                                completion(finError == nil)
-                            })
+                            completion(true)
                             return
                         }
                     }
@@ -636,7 +627,9 @@ enum LanHttpClient {
     }
 
     private static func log(_ message: String) {
-        NSLog("FileApex LanHttp: %@", message)
+        if ProcessInfo.processInfo.environment["FILEAPEX_DEBUG_LAN_HTTP"] != nil {
+            NSLog("FileApex LanHttp: %@", message)
+        }
     }
 }
 

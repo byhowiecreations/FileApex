@@ -263,6 +263,12 @@ kotlin {
                 implementation(libs.jmdns)
             }
         }
+
+        val desktopTest by getting {
+            dependencies {
+                implementation(libs.junit)
+            }
+        }
     }
 }
 

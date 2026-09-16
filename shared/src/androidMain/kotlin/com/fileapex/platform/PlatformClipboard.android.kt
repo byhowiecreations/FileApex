@@ -93,9 +93,10 @@ actual object PlatformClipboard {
 
     private fun notifyInboundClipboard(text: String, sourceDeviceName: String) {
         val context = androidAppContextOrNull() ?: return
-        val sender = sourceDeviceName.ifBlank { AppI18n.t("paired_device") }
-        val toastMsg = AppI18n.t("clipboard_received_from", sender)
-        BriefToast.show(toastMsg)
+        val sender = com.fileapex.data.device.DeviceDisplayNames.resolve(sourceDeviceName, null)
+            .ifBlank { AppI18n.t("paired_device") }
+        val title = "Clipboard from $sender"
+        BriefToast.show(title)
 
         AndroidNotificationChannels.ensureNoteMessagesChannel(context)
         val manager = NotificationManagerCompat.from(context)
@@ -122,7 +123,7 @@ actual object PlatformClipboard {
                     AndroidNotificationChannels.noteLargeIcon
                 )
             )
-            .setContentTitle(toastMsg)
+            .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(copyPendingIntent)

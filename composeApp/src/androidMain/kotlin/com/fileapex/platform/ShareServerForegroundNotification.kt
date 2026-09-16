@@ -88,20 +88,9 @@ object ShareServerForegroundNotification {
             val preferred = preferredForegroundServiceType()
             try {
                 service.startForeground(NOTIFICATION_ID, notification, preferred)
-            } catch (error: SecurityException) {
-                if (preferred == ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) {
-                    Log.w(
-                        TAG,
-                        "connectedDevice FGS denied - falling back to dataSync :: ${error.message}"
-                    )
-                    service.startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                    )
-                } else {
-                    throw error
-                }
+            } catch (error: Throwable) {
+                Log.w(TAG, "startForeground with connectedDevice failed (${error.message}), falling back to untyped promotion")
+                ServiceCompat.startForeground(service, NOTIFICATION_ID, notification, 0)
             }
         } else {
             ServiceCompat.startForeground(service, NOTIFICATION_ID, notification, 0)
@@ -151,12 +140,10 @@ object ShareServerForegroundNotification {
     }
 
     private fun preferredForegroundServiceType(): Int {
-        return when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            else -> 0
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        } else {
+            0
         }
     }
 }

@@ -17,3 +17,10 @@ actual fun currentAppVersionCode(): Int {
         PackageInfoCompat.getLongVersionCode(info).toInt()
     }.getOrNull() ?: FileApexAppVersion.CODE
 }
+
+actual fun installedAppLastUpdateTimeEpochMs(): Long {
+    val context = androidAppContextOrNull() ?: return 0L
+    return runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+    }.getOrDefault(0L)
+}

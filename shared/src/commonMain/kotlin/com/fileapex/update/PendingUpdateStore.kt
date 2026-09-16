@@ -20,6 +20,8 @@ expect object PendingUpdateStore {
     fun getLastAttemptedNoteId(): String
     fun setLastAttemptedTransactionId(transactionId: String)
     fun getLastAttemptedTransactionId(): String
+    fun setLastAttemptedInstallTimestamp(timestampEpochMs: Long)
+    fun getLastAttemptedInstallTimestamp(): Long
     fun setTransactionInstallStatus(transactionId: String, status: String)
     fun getTransactionInstallStatus(transactionId: String): String?
     fun isTransactionInstalled(transactionId: String): Boolean

@@ -32,12 +32,20 @@ object ShareServerRestartCoordinator {
         return activityManager.isBackgroundRestricted
     }
 
+    /** True when the OS has excluded this app from battery optimizations (Doze whitelist). */
+    fun isBatteryOptimizationIgnored(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        return powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+    }
+
     /**
-     * True when the app process is visible enough that background [ContextCompat.startForegroundService]
-     * is likely to succeed on API 31+. Alarm/boot paths may still attempt when false.
+     * True when the app process is visible enough or battery-exempt so background [ContextCompat.startForegroundService]
+     * is allowed on API 31+.
      */
     fun isProcessEligibleForBackgroundFgs(context: Context): Boolean {
         if (isBackgroundRestricted(context)) return false
+        if (isBatteryOptimizationIgnored(context)) return true
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val appProcess = activityManager.runningAppProcesses
             ?.firstOrNull { it.processName == context.packageName }
@@ -111,10 +119,11 @@ object ShareServerRestartCoordinator {
 
     private fun shouldDeferBeforeStart(context: Context, trigger: RestartTrigger): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+        if (isBatteryOptimizationIgnored(context)) return false
         return when (trigger) {
             RestartTrigger.BOOT_COMPLETED,
-            RestartTrigger.UI_FOREGROUND -> false
-            RestartTrigger.WATCHDOG_ALARM,
+            RestartTrigger.UI_FOREGROUND,
+            RestartTrigger.WATCHDOG_ALARM -> false
             RestartTrigger.STICKY_RESTART,
             RestartTrigger.SCREEN_WAKE -> !isProcessEligibleForBackgroundFgs(context)
         }

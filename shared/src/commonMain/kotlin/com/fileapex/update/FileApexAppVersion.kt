@@ -18,3 +18,6 @@ expect fun currentAppVersionName(): String
 
 /** Platform-resolved build number (Android: versionCode; Desktop: [FileApexAppVersion.CODE]). */
 expect fun currentAppVersionCode(): Int
+
+/** OS-level package last update timestamp in epoch millis (Android: PackageInfo.lastUpdateTime; Desktop: 0L). */
+expect fun installedAppLastUpdateTimeEpochMs(): Long

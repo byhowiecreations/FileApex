@@ -132,6 +132,7 @@ actual object PendingUpdateStore {
 
     private val txInstallStatus = mutableMapOf<String, String>()
     private var lastAttemptedTxId: String = ""
+    private var lastAttemptedInstallTimestamp: Long = 0L
 
     actual fun setLastAttemptedTransactionId(transactionId: String) {
         lastAttemptedTxId = transactionId
@@ -143,6 +144,19 @@ actual object PendingUpdateStore {
         if (lastAttemptedTxId.isNotBlank()) return lastAttemptedTxId
         val stored = prefs.get("last_attempted_update_tx_id", "")?.trim().orEmpty()
         lastAttemptedTxId = stored
+        return stored
+    }
+
+    actual fun setLastAttemptedInstallTimestamp(timestampEpochMs: Long) {
+        lastAttemptedInstallTimestamp = timestampEpochMs
+        prefs.putLong("last_attempted_install_timestamp", timestampEpochMs)
+        prefs.flush()
+    }
+
+    actual fun getLastAttemptedInstallTimestamp(): Long {
+        if (lastAttemptedInstallTimestamp > 0L) return lastAttemptedInstallTimestamp
+        val stored = prefs.getLong("last_attempted_install_timestamp", 0L)
+        lastAttemptedInstallTimestamp = stored
         return stored
     }
 
@@ -264,6 +278,7 @@ actual object PendingUpdateStore {
             setLastAttemptedNoteId("")
         }
         setLastAttemptedTransactionId("")
+        setLastAttemptedInstallTimestamp(0L)
         save(null)
         return true
     }

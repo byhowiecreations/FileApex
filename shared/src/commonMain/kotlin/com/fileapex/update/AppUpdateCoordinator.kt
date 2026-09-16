@@ -71,38 +71,44 @@ object AppUpdateCoordinator {
     fun syncInstallStatusOnAppOpen() {
         val lastNoteId = PendingUpdateStore.getLastAttemptedNoteId()
         val lastTxId = PendingUpdateStore.getLastAttemptedTransactionId()
+        val lastAttemptedTimestamp = PendingUpdateStore.getLastAttemptedInstallTimestamp()
+        val osLastUpdateTime = installedAppLastUpdateTimeEpochMs()
         val offer = _pendingUpdate.value ?: PendingUpdateStore.load()
-        val targetNoteId = lastNoteId.ifBlank { offer?.originNoteId.orEmpty() }
-        val targetTxId = lastTxId.ifBlank { offer?.transactionId.orEmpty() }
+        val targetTxId = offer?.transactionId?.takeIf { it.isNotBlank() } ?: lastTxId
+        val targetNoteId = offer?.originNoteId?.takeIf { it.isNotBlank() } ?: lastNoteId
+
+        // A transaction is ONLY updated by system if an install was actually attempted for THIS transaction
+        val isTxAttempted = targetTxId.isNotBlank() && targetTxId == lastTxId &&
+            PendingUpdateStore.getTransactionInstallStatus(targetTxId) == "INSTALLING"
+        val isTxUpdatedBySystem = isTxAttempted && lastAttemptedTimestamp > 0L && osLastUpdateTime > lastAttemptedTimestamp
+
+        val isNoteAttempted = targetNoteId.isNotBlank() && targetNoteId == lastNoteId &&
+            PendingUpdateStore.getNoteInstallStatus(targetNoteId) == "INSTALLING"
+        val isNoteUpdatedBySystem = isNoteAttempted && lastAttemptedTimestamp > 0L && osLastUpdateTime > lastAttemptedTimestamp
+
+        val targetVersion = offer?.remoteVersion
+        val isStrictlyNewer = if (!targetVersion.isNullOrBlank()) {
+            isInstalledVersionStrictlyNewer(currentAppVersionName(), targetVersion)
+        } else {
+            false
+        }
 
         if (targetTxId.isNotBlank()) {
             val txStatus = PendingUpdateStore.getTransactionInstallStatus(targetTxId)
             val txRecord = com.fileapex.network.TransferTransactionJournal.findCompleted(targetTxId, "", 0L)
                 ?: PendingUpdateStore.getTransactionRecord(targetTxId)
-            val targetVersion = offer?.remoteVersion
-            val isStrictlyNewer = if (!targetVersion.isNullOrBlank()) {
-                isInstalledVersionStrictlyNewer(currentAppVersionName(), targetVersion)
-            } else {
-                false
-            }
-            if (txStatus == "INSTALLED" || isStrictlyNewer || txRecord?.installed == true) {
+
+            if (txStatus == "INSTALLED" || isTxUpdatedBySystem || isStrictlyNewer || txRecord?.installed == true) {
                 PendingUpdateStore.deleteUpdateApkAndCompleteTransaction(targetTxId)
                 setPendingOffer(null)
                 dismissAppUpdateNotification()
-                println("AppUpdateCoordinator: txId=$targetTxId verified on app open: deleted APK and marked INSTALLED")
+                println("AppUpdateCoordinator: txId=$targetTxId verified on app open (bySystem=$isTxUpdatedBySystem, strictlyNewer=$isStrictlyNewer, txStatus=$txStatus): deleted APK and marked INSTALLED")
             }
         }
 
         if (targetNoteId.isNotBlank()) {
             val currentStatus = PendingUpdateStore.getNoteInstallStatus(targetNoteId)
-            val targetVersion = offer?.remoteVersion
-            val isStrictlyNewer = if (!targetVersion.isNullOrBlank()) {
-                isInstalledVersionStrictlyNewer(currentAppVersionName(), targetVersion)
-            } else {
-                false
-            }
-
-            if (currentStatus == "INSTALLED" || isStrictlyNewer) {
+            if (currentStatus == "INSTALLED" || isNoteUpdatedBySystem || isStrictlyNewer) {
                 PendingUpdateStore.setNoteInstallStatus(targetNoteId, "INSTALLED")
                 PendingUpdateStore.setLastAttemptedNoteId("")
                 setPendingOffer(null)
@@ -112,11 +118,10 @@ object AppUpdateCoordinator {
         }
 
         if (targetTxId.isBlank() && targetNoteId.isBlank() && offer != null) {
-            val targetVersion = offer.remoteVersion
-            if (isInstalledVersionStrictlyNewer(currentAppVersionName(), targetVersion)) {
+            if (isStrictlyNewer) {
                 setPendingOffer(null)
                 dismissAppUpdateNotification()
-                println("AppUpdateCoordinator: dropped legacy offer without transaction ID on app open (current=${currentAppVersionName()} target=$targetVersion)")
+                println("AppUpdateCoordinator: dropped offer on app open (strictlyNewer=true, current=${currentAppVersionName()} target=$targetVersion)")
             }
         }
     }
@@ -154,6 +159,26 @@ object AppUpdateCoordinator {
 
     fun requestShowUpdateSheet() {
         restorePendingOffer()
+        val offer = _pendingUpdate.value ?: PendingUpdateStore.load()
+        if (offer != null) {
+            val local = offer.localFilePath
+            if (!local.isNullOrBlank() && fileExists(local)) {
+                _showUpdateSheet.value = false
+                offer.originNoteId?.let { noteId ->
+                    PendingUpdateStore.setLastAttemptedNoteId(noteId)
+                    PendingUpdateStore.setNoteInstallStatus(noteId, "INSTALLING")
+                }
+                val txId = offer.transactionId?.takeIf { it.isNotBlank() }
+                    ?: "local_${offer.remoteVersion}_${TimeUtils.now()}"
+                PendingUpdateStore.setLastAttemptedTransactionId(txId)
+                PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
+                PendingUpdateStore.setLastAttemptedInstallTimestamp(TimeUtils.now())
+                PlatformUpdateInstaller.installAndRelaunch(local, offer.remoteVersion)
+                return
+            }
+            _showUpdateSheet.value = true
+            return
+        }
         dropStalePendingOffer()
         if (_pendingUpdate.value != null) {
             _showUpdateSheet.value = true
@@ -184,8 +209,35 @@ object AppUpdateCoordinator {
 
     fun downloadPendingUpdate() {
         restorePendingOffer()
+        var offer = _pendingUpdate.value ?: PendingUpdateStore.load()
+        val localPath = offer?.localFilePath?.takeIf { it.isNotBlank() }
+        if (offer != null && localPath != null && fileExists(localPath)) {
+            _statusMessage.value = AppI18n.t("installing_update", offer.remoteVersion)
+            dismissAppUpdateNotification()
+            offer.originNoteId?.let { noteId ->
+                PendingUpdateStore.setLastAttemptedNoteId(noteId)
+                PendingUpdateStore.setNoteInstallStatus(noteId, "INSTALLING")
+            }
+            val txId = offer.transactionId?.takeIf { it.isNotBlank() }
+                ?: "local_${offer.remoteVersion}_${TimeUtils.now()}"
+            PendingUpdateStore.setLastAttemptedTransactionId(txId)
+            com.fileapex.network.TransferTransactionJournal.recordCompleted(
+                transactionId = txId,
+                senderDeviceId = "local_installer",
+                targetPath = localPath,
+                finalPath = localPath,
+                byteSize = java.io.File(localPath).length(),
+                timestampEpochMs = TimeUtils.now()
+            )
+            PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
+            PendingUpdateStore.setLastAttemptedInstallTimestamp(TimeUtils.now())
+            PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion)
+            _showUpdateSheet.value = false
+            return
+        }
+
         dropStalePendingOffer()
-        var offer = _pendingUpdate.value
+        offer = _pendingUpdate.value
         if (offer == null) {
             offer = resolveFallbackBulletinApkOffer()
             if (offer != null) {
@@ -211,32 +263,6 @@ object AppUpdateCoordinator {
                 requireEnabled = false,
                 toastFeedback = true
             )
-            return
-        }
-        val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }
-        if (localPath != null && fileExists(localPath)) {
-            _statusMessage.value = AppI18n.t("installing_update", offer.remoteVersion)
-            dismissAppUpdateNotification()
-            offer.originNoteId?.let { noteId ->
-                PendingUpdateStore.setLastAttemptedNoteId(noteId)
-                if (PendingUpdateStore.getNoteInstallStatus(noteId) == null) {
-                    PendingUpdateStore.setNoteInstallStatus(noteId, "NOT_INSTALLED")
-                }
-            }
-            val txId = offer.transactionId?.takeIf { it.isNotBlank() }
-                ?: "local_${offer.remoteVersion}_${TimeUtils.now()}"
-            PendingUpdateStore.setLastAttemptedTransactionId(txId)
-            com.fileapex.network.TransferTransactionJournal.recordCompleted(
-                transactionId = txId,
-                senderDeviceId = "local_installer",
-                targetPath = localPath,
-                finalPath = localPath,
-                byteSize = java.io.File(localPath).length(),
-                timestampEpochMs = TimeUtils.now()
-            )
-            PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
-            PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion)
-            _showUpdateSheet.value = false
             return
         }
         if (downloadInFlight) {
@@ -386,7 +412,10 @@ object AppUpdateCoordinator {
             notifyAppUpdateAvailable(offer)
             _statusMessage.value = AppI18n.t("update_available_title", offer.remoteVersion)
             if (toastFeedback) {
-                _showUpdateSheet.value = true
+                val local = offer.localFilePath
+                if (local.isNullOrBlank() || !fileExists(local)) {
+                    _showUpdateSheet.value = true
+                }
             }
             return
         }
@@ -401,16 +430,22 @@ object AppUpdateCoordinator {
         PendingUpdateStore.save(offer)
     }
 
+    fun restorePendingOfferIfStored() {
+        restorePendingOffer()
+    }
+
     private fun restorePendingOffer() {
         if (_pendingUpdate.value != null) return
         val stored = PendingUpdateStore.load() ?: return
         _pendingUpdate.value = stored
     }
 
-    private fun fileExists(pathString: String): Boolean {
+    fun isLocalApkPresent(offer: PendingUpdateOffer? = _pendingUpdate.value): Boolean =
+        offer?.localFilePath?.let { it.isNotBlank() && fileExists(it) } ?: false
+
+    internal fun fileExists(pathString: String): Boolean {
         return runCatching {
-            val p = Path(pathString)
-            SystemFileSystem.exists(p)
+            java.io.File(pathString).exists() || SystemFileSystem.exists(Path(pathString))
         }.getOrDefault(false)
     }
 
@@ -419,9 +454,30 @@ object AppUpdateCoordinator {
         val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }
         val txId = offer.transactionId.orEmpty()
         val noteId = offer.originNoteId.orEmpty()
+        val lastTxId = PendingUpdateStore.getLastAttemptedTransactionId()
+        val lastNoteId = PendingUpdateStore.getLastAttemptedNoteId()
+        val lastAttemptedTimestamp = PendingUpdateStore.getLastAttemptedInstallTimestamp()
+        val osLastUpdateTime = installedAppLastUpdateTimeEpochMs()
+
+        val isTxAttempted = txId.isNotBlank() && txId == lastTxId &&
+            PendingUpdateStore.getTransactionInstallStatus(txId) == "INSTALLING"
+        val isTxUpdatedBySystem = isTxAttempted && lastAttemptedTimestamp > 0L && osLastUpdateTime > lastAttemptedTimestamp
+
+        val isNoteAttempted = noteId.isNotBlank() && noteId == lastNoteId &&
+            PendingUpdateStore.getNoteInstallStatus(noteId) == "INSTALLING"
+        val isNoteUpdatedBySystem = isNoteAttempted && lastAttemptedTimestamp > 0L && osLastUpdateTime > lastAttemptedTimestamp
+
+        if (isTxUpdatedBySystem || isNoteUpdatedBySystem) {
+            if (txId.isNotBlank()) {
+                PendingUpdateStore.deleteUpdateApkAndCompleteTransaction(txId)
+            }
+            setPendingOffer(null)
+            dismissAppUpdateNotification()
+            return
+        }
 
         // 1. Offers without a transaction ID or origin note ID cannot represent a valid tracked same-version update.
-        // If current app version is already strictly newer, drop immediately.
+        // If current app version strictly exceeds target, drop immediately.
         if (txId.isBlank() && noteId.isBlank() && isInstalledVersionStrictlyNewer(currentAppVersionName(), offer.remoteVersion)) {
             setPendingOffer(null)
             dismissAppUpdateNotification()
@@ -477,11 +533,6 @@ object AppUpdateCoordinator {
                 PendingUpdateStore.save(fallback)
                 return
             }
-        }
-        if (isInstalledVersionStrictlyNewer(currentAppVersionName(), offer.remoteVersion)) {
-            setPendingOffer(null)
-            dismissAppUpdateNotification()
-            return
         }
         if (_pendingUpdate.value == null) {
             _pendingUpdate.value = offer

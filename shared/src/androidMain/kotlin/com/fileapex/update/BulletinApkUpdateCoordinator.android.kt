@@ -138,7 +138,9 @@ actual object BulletinApkUpdateCoordinator {
 
                 PendingUpdateStore.setNoteInstallStatus(note.noteId, "PENDING")
                 PendingUpdateStore.setLastAttemptedNoteId(note.noteId)
+                PendingUpdateStore.setLastAttemptedInstallTimestamp(0L)
 
+                AppUpdateCoordinator.dismissUpdateSheet()
                 if (isAppInForeground()) {
                     runCatching {
                         PlatformUpdateInstaller.installAndRelaunch(
@@ -188,6 +190,7 @@ actual object BulletinApkUpdateCoordinator {
             if (transactionId.isNotBlank()) {
                 PendingUpdateStore.setLastAttemptedTransactionId(transactionId)
                 PendingUpdateStore.setTransactionInstallStatus(transactionId, "PENDING")
+                PendingUpdateStore.setLastAttemptedInstallTimestamp(0L)
             }
             val offer = PendingUpdateOffer(
                 remoteVersion = version,

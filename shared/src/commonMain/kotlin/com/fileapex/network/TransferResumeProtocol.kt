@@ -75,18 +75,18 @@ object TransferTransactionJournal {
             records.removeAll { now - it.completedAtEpochMs > SESSION_TTL_MS }
             records.firstOrNull { record ->
                 record.transactionId == transactionId &&
-                    (senderDeviceId.isBlank() || record.senderDeviceId == senderDeviceId) &&
+                    (senderDeviceId.isBlank() || record.senderDeviceId.isBlank() || record.senderDeviceId.equals(senderDeviceId, ignoreCase = true)) &&
                     (expectedSize <= 0L || record.byteSize == expectedSize) &&
-                    runCatching { SystemFileSystem.exists(Path(record.finalPath)) }.getOrDefault(false)
+                    runCatching { java.io.File(record.finalPath).exists() || SystemFileSystem.exists(Path(record.finalPath)) }.getOrDefault(false)
             }
         }
         if (inMemory != null) return inMemory
 
         val persisted = com.fileapex.update.PendingUpdateStore.getTransactionRecord(transactionId)
         if (persisted != null &&
-            (senderDeviceId.isBlank() || persisted.senderDeviceId == senderDeviceId) &&
+            (senderDeviceId.isBlank() || persisted.senderDeviceId.isBlank() || persisted.senderDeviceId.equals(senderDeviceId, ignoreCase = true)) &&
             (expectedSize <= 0L || persisted.byteSize == expectedSize) &&
-            runCatching { SystemFileSystem.exists(Path(persisted.finalPath)) }.getOrDefault(false)
+            runCatching { java.io.File(persisted.finalPath).exists() || SystemFileSystem.exists(Path(persisted.finalPath)) }.getOrDefault(false)
         ) {
             synchronized(lock) { records.add(persisted) }
             return persisted
