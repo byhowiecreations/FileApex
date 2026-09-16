@@ -74,6 +74,9 @@ fun main(args: Array<String>) {
     DesktopCrashHandler.install()
     try {
         if (args.isNotEmpty()) {
+            if (com.fileapex.platform.DesktopPlatformPaths.isWindows()) {
+                com.fileapex.platform.DesktopWindowsConsole.attachConsole()
+            }
             com.fileapex.cli.CliRunner.run(args)
             return
         }
@@ -120,6 +123,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 FileApexServices.awaitBootstrap()
             }
             servicesReady = true
+            com.fileapex.cli.dash.CliClusterEngine.ensureLiveMirror()
             DesktopLifecycleLog.log(
                 "Main: servicesReady after ${(System.nanoTime() - t0) / 1_000_000L}ms await"
             )

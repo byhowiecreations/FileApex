@@ -26,7 +26,8 @@ class IpcClusterBackend : CliClusterBackend {
     override suspend fun fetchClusterState(highlightBattery: Boolean, force: Boolean): CliClusterState = withContext(Dispatchers.IO) {
         val payload = "$highlightBattery,$force"
         val req = CliRequest(requestType = "DASH_STATE", payload = payload)
-        val packet = CliIpcClient.sendDashboardRequest(req, timeoutMs = 3000)
+        val timeout = if (force && lastState.devices.isEmpty()) 8000 else 3000
+        val packet = CliIpcClient.sendDashboardRequest(req, timeoutMs = timeout)
         if (packet is CliIpcPacket.DashState) {
             lastState = packet.state
             packet.state

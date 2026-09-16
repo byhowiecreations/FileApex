@@ -29,6 +29,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
+ChangesEnvironment=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -41,6 +42,8 @@ Name: "sendtoshortcut"; Description: "Add FileApex to Windows 'Send to' right-cl
 Source: "..\composeApp\build\compose\binaries\main-release\app\FileApex\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "FileApexLauncher.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "FileApexBootstrap.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "bin\fileapex.cmd"; DestDir: "{app}\bin"; Flags: ignoreversion
+Source: "bin\fileapex"; DestDir: "{app}\bin"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFilename: "{app}\FileApex.exe"; WorkingDir: "{app}"
@@ -51,8 +54,9 @@ Name: "{usersendto}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFilen
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "RuntimeDir"; ValueData: "{app}\runtime"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "Executable"; ValueData: "{app}\FileApex.exe"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\FileApex.exe"; ValueType: string; ValueData: "{app}\FileApexLauncher.cmd"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\FileApex.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\FileApex.exe"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\FileApex.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app};{app}\runtime\bin;{app}\runtime\bin\server"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\fileapex.cmd"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\fileapex.cmd"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\*\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApexLauncher.cmd"" ""%1"""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
@@ -182,11 +186,83 @@ begin
   end;
 end;
 
+procedure AddAppToPath();
+var
+  Paths: String;
+  BinDir, LegacyAppDir: String;
+begin
+  BinDir := ExpandConstant('{app}\bin');
+  LegacyAppDir := ExpandConstant('{app}');
+  if RegQueryStringValue(HKA, 'Environment', 'Path', Paths) then
+  begin
+    // Clean up legacy {app} from PATH if present
+    if Pos(';' + Uppercase(LegacyAppDir) + ';', ';' + Uppercase(Paths) + ';') > 0 then
+    begin
+      Paths := ';' + Paths + ';';
+      StringChange(Paths, ';' + LegacyAppDir + ';', ';');
+      if (Length(Paths) > 0) and (Paths[1] = ';') then Delete(Paths, 1, 1);
+      if (Length(Paths) > 0) and (Paths[Length(Paths)] = ';') then Delete(Paths, Length(Paths), 1);
+    end;
+
+    if Pos(';' + Uppercase(BinDir) + ';', ';' + Uppercase(Paths) + ';') = 0 then
+    begin
+      if (Paths <> '') and (Paths[Length(Paths)] <> ';') then
+        Paths := Paths + ';';
+      Paths := Paths + BinDir;
+      RegWriteStringValue(HKA, 'Environment', 'Path', Paths);
+    end
+    else
+    begin
+      RegWriteStringValue(HKA, 'Environment', 'Path', Paths);
+    end;
+  end
+  else
+  begin
+    RegWriteStringValue(HKA, 'Environment', 'Path', BinDir);
+  end;
+end;
+
+procedure RemoveAppFromPath();
+var
+  Paths, NewPaths: String;
+  BinDir: String;
+  P, L: Integer;
+begin
+  BinDir := ExpandConstant('{app}\bin');
+  if RegQueryStringValue(HKA, 'Environment', 'Path', Paths) then
+  begin
+    NewPaths := ';' + Paths + ';';
+    P := Pos(';' + Uppercase(BinDir) + ';', Uppercase(NewPaths));
+    if P > 0 then
+    begin
+      L := Length(BinDir) + 1;
+      Delete(NewPaths, P, L);
+      if (Length(NewPaths) > 0) and (NewPaths[1] = ';') then
+        Delete(NewPaths, 1, 1);
+      if (Length(NewPaths) > 0) and (NewPaths[Length(NewPaths)] = ';') then
+        Delete(NewPaths, Length(NewPaths), 1);
+      RegWriteStringValue(HKA, 'Environment', 'Path', NewPaths);
+    end;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
   begin
     CleanupLegacyCorruptInstallations();
+  end
+  else if CurStep = ssPostInstall then
+  begin
+    AddAppToPath();
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    RemoveAppFromPath();
   end;
 end;
 

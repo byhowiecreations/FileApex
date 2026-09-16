@@ -1360,10 +1360,85 @@ tasks.register("copyWindowsBuilds") {
     }
 }
 
+tasks.register("prepareWindowsCliLauncher") {
+    group = "distribution"
+    description =
+        "Copy FileApex.exe → fileapex.exe and set PE subsystem to CONSOLE so CLI/TUI own a real console"
+    dependsOn("createReleaseDistributable")
+    onlyIf { isWindowsHost() }
+
+    doLast {
+        val appRoot = layout.buildDirectory.dir("compose/binaries/main-release/app/FileApex").get().asFile
+        val guiExe = File(appRoot, "FileApex.exe")
+        val installedStub = File(System.getProperty("user.home"), "AppData/Local/Programs/FileApex/FileApex.exe")
+        val stubSource = when {
+            guiExe.isFile -> guiExe
+            installedStub.isFile -> {
+                logger.warn("App image missing FileApex.exe — using installed launcher stub")
+                installedStub
+            }
+            else -> error(
+                "Missing GUI launcher at ${guiExe.absolutePath} and no installed stub at ${installedStub.absolutePath}"
+            )
+        }
+
+        if (!guiExe.isFile) {
+            stubSource.copyTo(guiExe, overwrite = true)
+            check(guiExe.isFile) { "Failed to materialize FileApex.exe into app image" }
+        }
+
+        // Console launcher must sit beside FileApex.exe so jpackage finds ../app/*.cfg.
+        // Cannot use fileapex.exe in the same folder — Windows is case-insensitive.
+        val cliExe = File(appRoot, "FileApexCli.exe")
+        guiExe.copyTo(cliExe, overwrite = true)
+        setWindowsPeSubsystemConsole(cliExe)
+
+        // jpackage resolves cfg from the exe basename: FileApexCli.exe → FileApexCli.cfg
+        val cfg = File(appRoot, "app/FileApex.cfg")
+        val cliCfg = File(appRoot, "app/FileApexCli.cfg")
+        check(cfg.isFile) { "Missing ${cfg.absolutePath}" }
+        cfg.copyTo(cliCfg, overwrite = true)
+
+        val binDir = File(appRoot, "bin")
+        binDir.mkdirs()
+        rootProject.file("windows/bin/fileapex.cmd").copyTo(File(binDir, "fileapex.cmd"), overwrite = true)
+        rootProject.file("windows/bin/fileapex").copyTo(File(binDir, "fileapex"), overwrite = true)
+        File(binDir, "fileapex.exe").delete()
+
+        val bytes = cliExe.readBytes()
+        val pe = leInt32(bytes, 0x3C)
+        val subsystem = leUInt16(bytes, pe + 0x5C)
+        check(subsystem == 3) { "FileApexCli.exe subsystem=$subsystem (expected 3=CONSOLE)" }
+        logger.lifecycle("Windows CLI launcher ready: ${cliExe.absolutePath} (CONSOLE subsystem)")
+    }
+}
+
+/** PE optional-header Subsystem: 2=WINDOWS GUI, 3=CONSOLE. */
+fun setWindowsPeSubsystemConsole(exe: File) {
+    val bytes = exe.readBytes()
+    val pe = leInt32(bytes, 0x3C)
+    val subsystemOffset = pe + 0x5C
+    require(subsystemOffset + 1 < bytes.size) { "Invalid PE: subsystem offset out of range" }
+    bytes[subsystemOffset] = 3
+    bytes[subsystemOffset + 1] = 0
+    exe.writeBytes(bytes)
+}
+
+fun leInt32(bytes: ByteArray, offset: Int): Int {
+    return (bytes[offset].toInt() and 0xFF) or
+        ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+        ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+        ((bytes[offset + 3].toInt() and 0xFF) shl 24)
+}
+
+fun leUInt16(bytes: ByteArray, offset: Int): Int {
+    return (bytes[offset].toInt() and 0xFF) or ((bytes[offset + 1].toInt() and 0xFF) shl 8)
+}
+
 tasks.register("packageInnoExe") {
     group = "distribution"
     description = "Compile Inno Setup EXE installer using ISCC"
-    dependsOn("createReleaseDistributable")
+    dependsOn("createReleaseDistributable", "prepareWindowsCliLauncher")
     onlyIf { isWindowsHost() }
 
     doLast {
@@ -1389,14 +1464,12 @@ tasks.register("packageInnoExe") {
             )
         }
 
-        listOf(
-            layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile,
-            layout.buildDirectory.dir("compose/binaries/main/app").get().asFile,
-        ).forEach { dir ->
-            if (dir.exists()) {
-                dir.deleteRecursively()
-                logger.lifecycle("Pruned app-image staging dir ${dir.absolutePath}")
-            }
+        // Keep main-release/app so createReleaseDistributable stays honest for CLI launcher
+        // stamping on the next ship. Only prune the debug app-image.
+        val debugApp = layout.buildDirectory.dir("compose/binaries/main/app").get().asFile
+        if (debugApp.exists()) {
+            debugApp.deleteRecursively()
+            logger.lifecycle("Pruned app-image staging dir ${debugApp.absolutePath}")
         }
     }
 }

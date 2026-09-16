@@ -260,6 +260,8 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.jna)
+                implementation(libs.jline)
+                implementation(libs.jline.terminal.jna)
                 implementation(libs.jmdns)
             }
         }

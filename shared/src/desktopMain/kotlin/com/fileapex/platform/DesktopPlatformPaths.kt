@@ -32,6 +32,15 @@ object DesktopPlatformPaths {
 
     fun isWindows(): Boolean = desktopOs == DesktopOs.Windows
 
+    /**
+     * Local Desktop folder for crash logs and similar user-visible files.
+     * Always `%USERPROFILE%\Desktop` / `~/Desktop` — never OneDrive-redirected paths.
+     */
+    fun userDesktopDirectory(): File {
+        val desktop = File(userHomeDirectory(), "Desktop")
+        return ensureDirectory(desktop)
+    }
+
     /** Primary writable app-data directory (created on demand). */
     fun applicationSupportDirectory(): File = ensureDirectory(primaryAppDataDirectory())
 

@@ -28,6 +28,7 @@ captures/
 *.dex
 *.class
 bin/
+!windows/bin/
 gen/
 out/
 .cxx/

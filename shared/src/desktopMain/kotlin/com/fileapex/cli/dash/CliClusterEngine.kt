@@ -8,43 +8,155 @@ import com.fileapex.cli.ipc.CliDeviceStatus
 import com.fileapex.cli.ipc.CliIpcPacket
 import com.fileapex.cli.ipc.CliQueueItem
 import com.fileapex.cli.ipc.CliRemoteFile
-import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.clipboard.ClipboardShareCoordinator
-import com.fileapex.domain.clipboard.ClipboardShareMode
+import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.platform.PlatformClipboard
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 
 object CliClusterEngine {
 
     private var cachedClusterState: CliClusterState? = null
     private var lastClusterFetchTimeMs = 0L
-    private val batteryCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
+    private val batteryCache = ConcurrentHashMap<String, Pair<Int, String>>()
+    /** Peer `/clipboard/status` sharingEnabled, keyed by deviceId. */
+    private val peerClipboardEnabled = ConcurrentHashMap<String, Boolean>()
+    private val peerClipboardProbeEpochMs = ConcurrentHashMap<String, Long>()
+
+    private val mirrorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val mirrorStarted = AtomicBoolean(false)
+    private var mirrorJob: Job? = null
+    @Volatile
+    private var mirroredDevices: List<com.fileapex.data.db.PairedDeviceEntity> = emptyList()
+    @Volatile
+    private var mirroredQueueCount: Int = 0
+
+    /**
+     * Keeps an in-memory cluster snapshot warm from the main app's presence/device flows
+     * so `fileapex dash` can paint with zero cold-start delay when the GUI is running.
+     * Must run only after [FileApexServices] database init.
+     */
+    fun ensureLiveMirror() {
+        if (!FileApexServices.isDatabaseReady()) return
+        if (!mirrorStarted.compareAndSet(false, true)) return
+        mirrorJob = mirrorScope.launch {
+            runCatching {
+                val repo = FileApexServices.deviceRepository
+                val presence = FileApexServices.presenceMonitor
+                val settings = FileApexServices.settings
+                launch {
+                    repo.observeDevices().collectLatest { devices ->
+                        mirroredDevices = devices.filter {
+                            it.deviceId.isNotBlank() && it.publicKeyHash.isNotBlank()
+                        }
+                        rebuildCachedState(
+                            devices = mirroredDevices,
+                            highlightBattery = false,
+                            forceBatteryRefresh = false
+                        )
+                    }
+                }
+                launch {
+                    val presenceSignals = combine(
+                        presence.onlineDeviceIds,
+                        presence.onlineSnapshotEpochMs,
+                        presence.reachabilityEpochMs
+                    ) { online, snap, reach -> Triple(online, snap, reach) }
+                    val clipboardSignals = combine(
+                        settings.clipboardSharingEnabled,
+                        settings.clipboardShareMode,
+                        settings.clipboardTargetDeviceIds
+                    ) { enabled, mode, targets -> Triple(enabled, mode, targets) }
+                    combine(presenceSignals, clipboardSignals) { _, _ -> }
+                        .collectLatest {
+                            rebuildCachedState(
+                                devices = mirroredDevices.ifEmpty {
+                                    runCatching { CliDeviceResolver.getAuthenticatedDevices(repo) }.getOrDefault(emptyList())
+                                },
+                                highlightBattery = false,
+                                forceBatteryRefresh = false
+                            )
+                        }
+                }
+                launch {
+                    FileApexServices.transferQueue.pendingItems.collectLatest { items ->
+                        mirroredQueueCount = items.size
+                        val current = cachedClusterState
+                        if (current != null && current.queueCount != items.size) {
+                            cachedClusterState = current.copy(queueCount = items.size)
+                        }
+                    }
+                }
+                launch {
+                    TransferActivityGuard.statsFlow.collectLatest {
+                        rebuildCachedState(
+                            devices = mirroredDevices,
+                            highlightBattery = false,
+                            forceBatteryRefresh = false
+                        )
+                    }
+                }
+                // Seed immediately from current roster
+                mirroredDevices = runCatching {
+                    CliDeviceResolver.getAuthenticatedDevices(repo)
+                }.getOrDefault(emptyList())
+                rebuildCachedState(mirroredDevices, highlightBattery = false, forceBatteryRefresh = true)
+            }.onFailure {
+                mirrorStarted.set(false)
+            }
+        }
+    }
 
     suspend fun fetchClusterState(highlightBattery: Boolean = false, force: Boolean = false): CliClusterState = withContext(Dispatchers.IO) {
+        ensureLiveMirror()
+        // Prefer mirrored roster (already in memory from main app) over a fresh Room round-trip.
+        val now = System.currentTimeMillis()
+        if (!force && cachedClusterState != null && (now - lastClusterFetchTimeMs < 50L)) {
+            return@withContext cachedClusterState!!
+        }
+        if (!force && !TransferActivityGuard.isTransferActive() &&
+            cachedClusterState != null &&
+            cachedClusterState!!.devices.isNotEmpty() &&
+            (now - lastClusterFetchTimeMs < 300L)
+        ) {
+            return@withContext cachedClusterState!!
+        }
+
+        val devices = if (mirroredDevices.isNotEmpty()) {
+            mirroredDevices
+        } else {
+            CliDeviceResolver.getAuthenticatedDevices(FileApexServices.deviceRepository)
+        }
+
+        rebuildCachedState(devices, highlightBattery, forceBatteryRefresh = force || highlightBattery)
+        // First paint: never wait on empty mirror — return whatever we just built (may still be filling).
+        cachedClusterState ?: CliClusterState(0, 0, 0, 0)
+    }
+
+    private fun rebuildCachedState(
+        devices: List<com.fileapex.data.db.PairedDeviceEntity>,
+        highlightBattery: Boolean,
+        forceBatteryRefresh: Boolean
+    ) {
         val activeStats = TransferActivityGuard.statsFlow.value
         val isGuardActive = TransferActivityGuard.isTransferActive()
         val now = System.currentTimeMillis()
         val isTransferring = isGuardActive || activeStats.isActive
 
-        if (!force && !isTransferring && cachedClusterState != null && (now - lastClusterFetchTimeMs < 300L)) {
-            return@withContext cachedClusterState!!
-        }
-
-        val repo = FileApexServices.deviceRepository
-        val devices = CliDeviceResolver.getAuthenticatedDevices(repo)
         val settings = FileApexServices.settings
         val presence = FileApexServices.presenceMonitor
         val onlineIds = presence.onlineDeviceIds.value
@@ -52,12 +164,20 @@ object CliClusterEngine {
         val sharingEnabled = settings.clipboardSharingEnabled.value
         val mode = settings.clipboardShareMode.value
         val targetIds = settings.clipboardTargetDeviceIds.value
+        val localClipTargets = if (!sharingEnabled) {
+            emptySet()
+        } else {
+            ClipboardSharePolicy.resolveTargetIds(
+                mode = mode,
+                pairedDeviceIds = devices.map { it.deviceId },
+                selectedDeviceIds = targetIds
+            )
+        }
 
         val deviceStatuses = devices.mapIndexed { idx, dev ->
             val slug = CliDeviceAliasManager.resolveEffectiveSlug(dev)
             val name = dev.deviceName.ifBlank { "Unknown" }
 
-            // Primary authority is presenceMonitor in-memory state
             val isOnline = presence.isDeviceOnline(dev) || (dev.deviceId in onlineIds)
             val isCellular = false
             val direct = dev.lastKnownIp.takeIf { it.isNotBlank() }
@@ -72,9 +192,8 @@ object CliClusterEngine {
                     chargingState = cachedBat.second
                 }
 
-                // If battery is uncached or highlight requested, refresh in background without blocking this call
-                if (highlightBattery || cachedBat == null) {
-                    kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                if (forceBatteryRefresh || highlightBattery || cachedBat == null) {
+                    mirrorScope.launch {
                         val bat = withTimeoutOrNull(600) {
                             runCatching {
                                 FileApexServices.client.fetchFastBattery(direct, dev.port)
@@ -82,6 +201,22 @@ object CliClusterEngine {
                         }
                         if (bat?.levelPercent != null && bat.levelPercent > 0) {
                             batteryCache[dev.deviceId] = Pair(bat.levelPercent, bat.chargingState)
+                        }
+                    }
+                }
+
+                // Refresh peer clipboard capability in background (non-blocking).
+                val lastProbe = peerClipboardProbeEpochMs[dev.deviceId] ?: 0L
+                if (now - lastProbe > 8_000L) {
+                    peerClipboardProbeEpochMs[dev.deviceId] = now
+                    mirrorScope.launch {
+                        val status = withTimeoutOrNull(700) {
+                            runCatching {
+                                FileApexServices.client.getClipboardStatus(direct, dev.port)
+                            }.getOrNull()
+                        }
+                        if (status != null) {
+                            peerClipboardEnabled[dev.deviceId] = status.sharingEnabled
                         }
                     }
                 }
@@ -93,8 +228,11 @@ object CliClusterEngine {
                 else -> "ONLINE"
             }
 
-            val clipEnabled = sharingEnabled && (mode == ClipboardShareMode.ALL || dev.deviceId in targetIds)
-            val clipStatusStr = if (clipEnabled) "Enabled" else "Disabled"
+            val clipStatusStr = resolveClipboardStatusLabel(
+                deviceId = dev.deviceId,
+                localTargets = localClipTargets,
+                isOnline = isOnline
+            )
             val batteryBlockStr = formatBatteryBlocks(levelPercent, chargingState, highlightBattery)
 
             CliDeviceStatus(
@@ -113,8 +251,6 @@ object CliClusterEngine {
         }
 
         val onlineCount = deviceStatuses.count { it.status == "ONLINE" || it.status == "CELLULAR" }
-        val queueItems = runCatching { FileApexServices.transferQueue.pendingItems.first() }.getOrDefault(emptyList())
-        val activeSendingItem = queueItems.firstOrNull { it.isSending }
 
         val activeTargetList = TransferActivityGuard.getActiveTransfers()
         val mappedTransfers = if (activeTargetList.isNotEmpty()) {
@@ -132,7 +268,7 @@ object CliClusterEngine {
                     bytesFormatted = bFormatted
                 )
             }
-        } else if (isTransferring || activeSendingItem != null) {
+        } else if (isTransferring) {
             val bFormatted = if (activeStats.totalBytes > 0L) {
                 "${formatByteSize(activeStats.sentBytes)} / ${formatByteSize(activeStats.totalBytes)}"
             } else ""
@@ -140,7 +276,7 @@ object CliClusterEngine {
                 CliActiveTransfer(
                     deviceId = activeStats.destinationDeviceId,
                     deviceName = activeStats.destinationDeviceName,
-                    fileName = activeStats.currentFileName.ifBlank { activeSendingItem?.displayLabel.orEmpty() },
+                    fileName = activeStats.currentFileName,
                     progress = activeStats.progress,
                     speed = activeStats.speedFormatted,
                     eta = activeStats.etaFormatted,
@@ -152,14 +288,13 @@ object CliClusterEngine {
         }
 
         val activeCount = mappedTransfers.size
+        val queueCount = mirroredQueueCount
 
         val transferSummary = when {
             activeStats.currentFileName.isNotBlank() && activeStats.destinationDeviceName.isNotBlank() ->
                 "${activeStats.currentFileName} -> ${activeStats.destinationDeviceName}"
             activeStats.currentFileName.isNotBlank() ->
                 activeStats.currentFileName
-            activeSendingItem != null ->
-                activeSendingItem.displayLabel
             isTransferring ->
                 "In-flight transfer"
             else -> ""
@@ -179,7 +314,6 @@ object CliClusterEngine {
 
         val progress = when {
             activeStats.totalBytes > 0L -> activeStats.progress
-            activeSendingItem != null -> 0.0f
             isTransferring -> activeStats.progress
             else -> null
         }
@@ -188,7 +322,7 @@ object CliClusterEngine {
             onlinePeerCount = onlineCount,
             totalPeerCount = devices.size,
             activeTransfersCount = activeCount,
-            queueCount = queueItems.size,
+            queueCount = queueCount,
             activeTransferProgress = progress,
             activeTransferSpeed = activeStats.speedFormatted,
             activeTransferEta = activeStats.etaFormatted,
@@ -200,7 +334,28 @@ object CliClusterEngine {
         )
         cachedClusterState = state
         lastClusterFetchTimeMs = now
-        state
+    }
+
+    /**
+     * Prefer live peer clipboard status when known; otherwise fall back to local share targets
+     * (same policy the GUI uses for who receives clipboard).
+     */
+    private fun resolveClipboardStatusLabel(
+        deviceId: String,
+        localTargets: Set<String>,
+        isOnline: Boolean
+    ): String {
+        val peer = peerClipboardEnabled[deviceId]
+        if (peer != null) {
+            return if (peer) "Enabled" else "Disabled"
+        }
+        if (deviceId in localTargets) {
+            return "Enabled"
+        }
+        // Offline peers with no probe: if sharing is ALL/SPECIFIC targeting them we already
+        // returned Enabled above. Otherwise Disabled.
+        if (!isOnline) return "Disabled"
+        return "Disabled"
     }
 
     private fun formatByteSize(bytes: Long): String {
@@ -359,7 +514,7 @@ object CliClusterEngine {
 
     suspend fun getQueue(): List<CliQueueItem> = withContext(Dispatchers.IO) {
         val transferQueue = FileApexServices.transferQueue
-        val items = transferQueue.pendingItems.first()
+        val items = withTimeoutOrNull(500) { transferQueue.pendingItems.first() } ?: emptyList()
         items.mapIndexed { idx, item ->
             val targets = item.pendingDeviceNames.joinToString(", ").ifBlank { "Unknown" }
             CliQueueItem(
@@ -374,7 +529,7 @@ object CliClusterEngine {
 
     suspend fun removeFromQueue(indices: List<Int>): CliIpcPacket.DashActionResult = withContext(Dispatchers.IO) {
         val transferQueue = FileApexServices.transferQueue
-        val items = transferQueue.pendingItems.first()
+        val items = withTimeoutOrNull(500) { transferQueue.pendingItems.first() } ?: emptyList()
         var removedCount = 0
         for (i in indices) {
             if (i in 1..items.size) {

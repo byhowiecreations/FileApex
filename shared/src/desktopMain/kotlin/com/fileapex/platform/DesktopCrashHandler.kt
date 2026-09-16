@@ -38,12 +38,16 @@ object DesktopCrashHandler {
     }
 
     private fun writeCrashLogToDesktop(thread: Thread, throwable: Throwable): File {
-        val userHome = System.getProperty("user.home").orEmpty()
-        val desktopDir = File(userHome, "Desktop").let {
-            if (it.exists() && it.isDirectory) it else File(userHome)
-        }
-
+        val desktopDir = DesktopPlatformPaths.userDesktopDirectory()
         val targetLogFile = File(desktopDir, "FileApex-error.log")
+
+        // Prefer a single Desktop log; remove a mistaken home-folder copy from older builds.
+        runCatching {
+            val homeMistaken = File(System.getProperty("user.home").orEmpty(), "FileApex-error.log")
+            if (homeMistaken.isFile && homeMistaken.canonicalFile != targetLogFile.canonicalFile) {
+                homeMistaken.delete()
+            }
+        }
 
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
@@ -80,15 +84,12 @@ object DesktopCrashHandler {
             appendLine("user.home       = ${System.getProperty("user.home")}")
             appendLine("user.name       = ${System.getProperty("user.name")}")
             appendLine("user.dir        = ${System.getProperty("user.dir")}")
+            appendLine("desktop.path    = ${desktopDir.absolutePath}")
             appendLine("================================================================================")
         }
 
         runCatching {
-            if (targetLogFile.exists()) {
-                targetLogFile.appendText("\n\n$logContent")
-            } else {
-                targetLogFile.writeText(logContent, Charsets.UTF_8)
-            }
+            targetLogFile.writeText(logContent, Charsets.UTF_8)
         }
 
         return targetLogFile

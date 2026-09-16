@@ -7,6 +7,10 @@ import com.sun.jna.Native
 import com.sun.jna.Pointer
 import java.io.InputStream
 import java.util.Scanner
+import org.jline.terminal.Attributes
+import org.jline.terminal.Terminal
+import org.jline.terminal.TerminalBuilder
+import org.jline.utils.NonBlockingReader
 
 enum class KeyAction {
     UP,
@@ -31,7 +35,7 @@ object TerminalConsole {
     private var rawModeEnabled = false
     private var shutdownHookInstalled = false
 
-    // Windows state
+    // Windows / legacy JNA size query
     private var originalInMode: Int = 0
     private var originalOutMode: Int = 0
 
@@ -39,6 +43,11 @@ object TerminalConsole {
 
     private var cachedTerminalSize = Pair(80, 24)
     private var lastSizeCheckEpochMs = 0L
+
+    // JLine (Windows): real console input via JNA — System.in.available() is unreliable there.
+    private var jlineTerminal: Terminal? = null
+    private var jlineSavedAttributes: Attributes? = null
+    private var jlineReader: NonBlockingReader? = null
 
     private interface WinKernel32 : Library {
         fun GetStdHandle(nStdHandle: Int): Pointer?
@@ -66,7 +75,7 @@ object TerminalConsole {
         }
 
         rawModeEnabled = if (isWindows) {
-            enableRawModeWindows()
+            enableRawModeWindowsJline() || enableRawModeWindows()
         } else {
             enableRawModeUnix()
         }
@@ -79,29 +88,71 @@ object TerminalConsole {
 
         showCursor()
         if (isWindows) {
+            restoreWindowsJline()
             restoreWindows()
         } else {
             restoreUnix()
         }
     }
 
+    private fun enableRawModeWindowsJline(): Boolean {
+        return runCatching {
+            val terminal = TerminalBuilder.builder()
+                .system(true)
+                .jna(true)
+                .jansi(false)
+                .dumb(false)
+                .build()
+            val saved = terminal.enterRawMode()
+            jlineTerminal = terminal
+            jlineSavedAttributes = saved
+            jlineReader = terminal.reader()
+            // Keep VT processing on stdout for ANSI TUI drawing.
+            val k32 = kernel32
+            val hOut = k32?.GetStdHandle(-11)
+            if (k32 != null && hOut != null) {
+                val outMode = IntArray(1)
+                if (k32.GetConsoleMode(hOut, outMode)) {
+                    originalOutMode = outMode[0]
+                    k32.SetConsoleMode(hOut, originalOutMode or 0x0004)
+                }
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun restoreWindowsJline() {
+        runCatching {
+            val terminal = jlineTerminal
+            val saved = jlineSavedAttributes
+            if (terminal != null && saved != null) {
+                terminal.setAttributes(saved)
+            }
+            terminal?.close()
+        }
+        jlineReader = null
+        jlineSavedAttributes = null
+        jlineTerminal = null
+    }
+
     private fun enableRawModeWindows(): Boolean {
         val k32 = kernel32 ?: return false
-        val hIn = k32.GetStdHandle(-10) ?: return false // STD_INPUT_HANDLE
+        val hIn = k32.GetStdHandle(-10) ?: return false
         val inMode = IntArray(1)
         if (!k32.GetConsoleMode(hIn, inMode)) return false
         originalInMode = inMode[0]
 
-        // Disable ENABLE_LINE_INPUT (0x0002) and ENABLE_ECHO_INPUT (0x0004)
-        val rawInMode = (originalInMode and (0x0002 or 0x0004).inv()) or 0x0200
+        val enableExtendedFlags = 0x0080
+        val enableQuickEdit = 0x0040
+        val rawInMode = (originalInMode and (0x0002 or 0x0004 or enableQuickEdit).inv()) or
+            0x0200 or enableExtendedFlags
         k32.SetConsoleMode(hIn, rawInMode)
 
-        val hOut = k32.GetStdHandle(-11) // STD_OUTPUT_HANDLE
+        val hOut = k32.GetStdHandle(-11)
         if (hOut != null) {
             val outMode = IntArray(1)
             if (k32.GetConsoleMode(hOut, outMode)) {
                 originalOutMode = outMode[0]
-                // ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
                 k32.SetConsoleMode(hOut, originalOutMode or 0x0004)
             }
         }
@@ -122,7 +173,6 @@ object TerminalConsole {
 
     private fun enableRawModeUnix(): Boolean {
         return runCatching {
-            // Use stty raw -echo opost so \n continues to map to \r\n and prevents raw staircase indenting
             val pb = ProcessBuilder("/bin/sh", "-c", "stty raw -echo opost < /dev/tty").inheritIO()
             val p = pb.start()
             p.waitFor() == 0
@@ -158,6 +208,15 @@ object TerminalConsole {
             return cachedTerminalSize
         }
         lastSizeCheckEpochMs = now
+
+        val jlineSize = jlineTerminal?.size
+        if (jlineSize != null && jlineSize.columns > 0 && jlineSize.rows > 0) {
+            cachedTerminalSize = Pair(
+                jlineSize.columns.coerceAtLeast(40),
+                jlineSize.rows.coerceAtLeast(15)
+            )
+            return cachedTerminalSize
+        }
 
         cachedTerminalSize = if (isWindows) {
             queryWindowsTerminalSize()
@@ -216,14 +275,17 @@ object TerminalConsole {
 
     fun readKey(input: InputStream = System.`in`): KeyEvent? {
         if (!rawModeEnabled) {
-            // Line buffered fallback
             val line = runCatching { readLine() }.getOrNull() ?: return null
             val trimmed = line.trim()
             if (trimmed.isEmpty()) return KeyEvent(KeyAction.ENTER)
             return KeyEvent(KeyAction.CHAR, trimmed[0])
         }
 
-        // Non-blocking check to prevent freezing the event loop
+        val reader = jlineReader
+        if (reader != null) {
+            return readKeyJline(reader)
+        }
+
         val available = runCatching { input.available() }.getOrDefault(0)
         if (available <= 0) {
             return null
@@ -231,54 +293,78 @@ object TerminalConsole {
 
         val b1 = runCatching { input.read() }.getOrDefault(-1)
         if (b1 == -1) return null
+        return decodeKeyByte(b1, input)
+    }
 
+    private fun readKeyJline(reader: NonBlockingReader): KeyEvent? {
+        // NonBlockingReader.READ_EXPIRED == -2
+        val b1 = runCatching { reader.read(15L) }.getOrDefault(NonBlockingReader.READ_EXPIRED)
+        if (b1 == NonBlockingReader.READ_EXPIRED || b1 < 0) {
+            return null
+        }
+        return decodeKeyByte(b1) { peekMs ->
+            runCatching { reader.read(peekMs) }.getOrDefault(NonBlockingReader.READ_EXPIRED)
+                .takeIf { it >= 0 }
+        }
+    }
+
+    private fun decodeKeyByte(b1: Int, input: InputStream): KeyEvent {
+        return decodeKeyByte(b1) { _ ->
+            if (input.available() > 0) input.read().takeIf { it >= 0 } else null
+        }
+    }
+
+    private fun decodeKeyByte(b1: Int, readNext: (timeoutMs: Long) -> Int?): KeyEvent {
         when (b1) {
             3 -> return KeyEvent(KeyAction.CTRL_C)
             10, 13 -> return KeyEvent(KeyAction.ENTER)
             32 -> return KeyEvent(KeyAction.SPACE, ' ')
             127, 8 -> return KeyEvent(KeyAction.BACKSPACE)
-            27 -> { // Escape or escape sequence
-                if (input.available() > 0) {
-                    val b2 = input.read()
-                    if (b2 == 91) { // '['
-                        val b3 = input.read()
-                        return when (b3) {
-                            65 -> KeyEvent(KeyAction.UP)
-                            66 -> KeyEvent(KeyAction.DOWN)
-                            67 -> KeyEvent(KeyAction.RIGHT)
-                            68 -> KeyEvent(KeyAction.LEFT)
-                            else -> {
-                                // Drain any trailing escape sequence characters (e.g. F1-F12 like ESC [ 2 1 ~)
-                                while (input.available() > 0) {
-                                    val next = input.read()
-                                    if (next == 126 || (next in 64..126 && next !in 48..57 && next != 59)) {
-                                        break
-                                    }
+            27 -> {
+                val b2 = readNext(5L) ?: return KeyEvent(KeyAction.ESCAPE)
+                if (b2 == 91) {
+                    val b3 = readNext(5L) ?: return KeyEvent(KeyAction.UNKNOWN)
+                    return when (b3) {
+                        65 -> KeyEvent(KeyAction.UP)
+                        66 -> KeyEvent(KeyAction.DOWN)
+                        67 -> KeyEvent(KeyAction.RIGHT)
+                        68 -> KeyEvent(KeyAction.LEFT)
+                        else -> {
+                            var next = readNext(1L)
+                            while (next != null) {
+                                if (next == 126 || (next in 64..126 && next !in 48..57 && next != 59)) {
+                                    break
                                 }
-                                KeyEvent(KeyAction.UNKNOWN)
+                                next = readNext(1L)
                             }
+                            KeyEvent(KeyAction.UNKNOWN)
                         }
-                    } else if (b2 == 79) { // 'O' (SS3 sequences, e.g. F1-F4)
-                        if (input.available() > 0) {
-                            input.read() // consume single trailing char
-                        }
-                        return KeyEvent(KeyAction.UNKNOWN)
                     }
+                }
+                if (b2 == 79) {
+                    readNext(5L)
+                    return KeyEvent(KeyAction.UNKNOWN)
                 }
                 return KeyEvent(KeyAction.ESCAPE)
             }
-            else -> {
-                val c = b1.toChar()
-                return KeyEvent(KeyAction.CHAR, c)
-            }
+            else -> return KeyEvent(KeyAction.CHAR, b1.toChar())
         }
     }
 
     fun readLinePrompt(promptText: String): String {
         showCursor()
         val wasRaw = rawModeEnabled
+        val jline = jlineTerminal
+        val saved = jlineSavedAttributes
+
         if (wasRaw) {
-            if (isWindows) restoreWindows() else restoreUnix()
+            if (jline != null && saved != null) {
+                runCatching { jline.setAttributes(saved) }
+            } else if (isWindows) {
+                restoreWindows()
+            } else {
+                restoreUnix()
+            }
         }
 
         print(promptText)
@@ -286,7 +372,14 @@ object TerminalConsole {
         val input = Scanner(System.`in`).nextLine().trim()
 
         if (wasRaw) {
-            if (isWindows) enableRawModeWindows() else enableRawModeUnix()
+            if (jline != null) {
+                jlineSavedAttributes = jline.enterRawMode()
+                jlineReader = jline.reader()
+            } else if (isWindows) {
+                enableRawModeWindows()
+            } else {
+                enableRawModeUnix()
+            }
             hideCursor()
         }
         return input

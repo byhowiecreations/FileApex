@@ -80,22 +80,36 @@ object CliPathIntegration {
         val exeFile = File(currentCommand)
         val installDir = exeFile.parentFile ?: return
 
-        // Ensure fileapex.cmd wrapper exists in the installation directory
-        val cmdWrapper = File(installDir, "fileapex.cmd")
-        val cmdContent = "@echo off\r\n\"${exeFile.absolutePath}\" %*\r\n"
+        val binDir = File(installDir, "bin")
+        if (!binDir.exists()) {
+            runCatching { binDir.mkdirs() }
+        }
+
+        // Ensure fileapex.cmd wrapper exists in the bin directory
+        val cmdWrapper = File(binDir, "fileapex.cmd")
+        val cmdContent = "@echo off\r\nsetlocal\r\n\"%~dp0..\\FileApexCli.exe\" %*\r\nexit /b %ERRORLEVEL%\r\n"
         if (!cmdWrapper.exists() || cmdWrapper.readText() != cmdContent) {
             runCatching { cmdWrapper.writeText(cmdContent) }
         }
 
+        // Ensure fileapex bash wrapper exists in the bin directory (for Git Bash)
+        val bashWrapper = File(binDir, "fileapex")
+        val bashContent = "#!/bin/sh\nexec \"\$(dirname \"\$0\")/../FileApexCli.exe\" \"\$@\"\n"
+        if (!bashWrapper.exists() || bashWrapper.readText() != bashContent) {
+            runCatching { bashWrapper.writeText(bashContent) }
+        }
+
         // Check and append to user PATH environment variable via PowerShell + broadcast WM_SETTINGCHANGE
-        val installPath = installDir.absolutePath
+        val binPath = binDir.absolutePath
+        val legacyPath = installDir.absolutePath
         val psScript = """
             ${'$'}currentPath = [Environment]::GetEnvironmentVariable('Path', 'User')
             if (-not ${'$'}currentPath) { ${'$'}currentPath = "" }
-            ${'$'}entries = ${'$'}currentPath -split ';' | Where-Object { ${'$'}_.Trim() -ne "" }
-            ${'$'}target = '$installPath'
+            ${'$'}entries = ${'$'}currentPath -split ';' | Where-Object { ${'$'}_.Trim() -ne "" -and ${'$'}_ -ne '$legacyPath' }
+            ${'$'}target = '$binPath'
             if (${'$'}entries -notcontains ${'$'}target) {
-                ${'$'}newPath = if (${'$'}currentPath -eq "") { ${'$'}target } else { "${'$'}currentPath;${'$'}target" }
+                ${'$'}entries += ${'$'}target
+                ${'$'}newPath = ${'$'}entries -join ';'
                 [Environment]::SetEnvironmentVariable('Path', ${'$'}newPath, 'User')
                 
                 # Broadcast WM_SETTINGCHANGE so active shells/terminals pick up the change immediately
@@ -111,7 +125,8 @@ object CliPathIntegration {
             }
         """.trimIndent()
 
-        val pb = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", psScript)
+        val encoded = java.util.Base64.getEncoder().encodeToString(psScript.toByteArray(Charsets.UTF_16LE))
+        val pb = ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
         pb.redirectErrorStream(true)
         val process = pb.start()
         process.waitFor()

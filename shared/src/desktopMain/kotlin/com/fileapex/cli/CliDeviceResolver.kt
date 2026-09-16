@@ -12,11 +12,12 @@ object CliDeviceResolver {
      * Unauthenticated, expired, or untrusted handshake states are completely excluded.
      */
     suspend fun getAuthenticatedDevices(repository: DeviceRepository): List<PairedDeviceEntity> {
-        val all = repository.listDevices()
-        return all.filter { dev ->
+        // listDevices() already excludes self and removed/blocklisted rows are deleted from the roster.
+        // Do not call isBlocklisted() per device — that serializes N Room queries under a mutex and
+        // stalls the TUI first paint for seconds.
+        return repository.listDevices().filter { dev ->
             dev.deviceId.isNotBlank() &&
-                dev.publicKeyHash.isNotBlank() &&
-                !repository.isBlocklisted(dev)
+                dev.publicKeyHash.isNotBlank()
         }
     }
 
