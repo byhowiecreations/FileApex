@@ -44,10 +44,10 @@ object DownloadsPaths {
         val root = rootPath.trim().trimEnd('/', '\\')
         if (root.isBlank()) return defaultDownloadsDir()
         val p = platform.trim().lowercase()
-        return if (p == "desktop" || p.contains("mac") || p.contains("darwin")) {
-            "$root/Downloads/$FOLDER_NAME"
-        } else {
-            "$root/Download/$FOLDER_NAME"
-        }
+        val isDesktop = p == "desktop" || p.contains("mac") || p.contains("darwin") ||
+            p.contains("windows") || p.contains("win") || p.contains("linux")
+        val folder = if (isDesktop) "Downloads" else "Download"
+        val sep = if (p.contains("win") || root.contains('\\') || (root.length >= 2 && root[1] == ':')) "\\" else "/"
+        return "$root$sep$folder$sep$FOLDER_NAME"
     }
 }
