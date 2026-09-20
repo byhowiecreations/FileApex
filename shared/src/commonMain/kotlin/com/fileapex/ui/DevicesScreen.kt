@@ -332,12 +332,14 @@ fun DevicesScreen(
         }
     }
 
+    val currentTheme = LocalAppTheme.current
+    val isGlassTheme = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (isGlassTheme) Color.Transparent else MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
-        val isFreestyle = LocalAppTheme.current == AppTheme.FREESTYLE
+        val isKineticSphere = currentTheme == AppTheme.KINETIC_SPHERE
+        val isFreestyle = currentTheme == AppTheme.FREESTYLE
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -835,6 +837,7 @@ fun DevicesScreen(
 
     state.batteryOverlayState?.let { overlay ->
         BatteryTerminalOverlay(
+            items = overlay.items,
             logLines = overlay.logLines,
             isComplete = overlay.isComplete,
             onDismiss = viewModel::dismissBatteryOverlay

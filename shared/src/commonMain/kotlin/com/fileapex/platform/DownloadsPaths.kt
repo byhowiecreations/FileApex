@@ -3,6 +3,9 @@ package com.fileapex.platform
 /** User-facing short label for where received files land on this platform. */
 expect fun downloadsFolderDisplayLabel(): String
 
+/** Public Downloads/FileApex directory for saving remote files onto this device. */
+expect fun defaultDownloadsDir(): String
+
 /**
  * Inbound file landing folders.
  *

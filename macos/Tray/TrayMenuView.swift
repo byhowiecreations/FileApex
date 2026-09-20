@@ -62,7 +62,7 @@ struct TrayMenuView: View {
             }
         }
         .padding(12)
-        .fixedSize()
+        .frame(width: 270)
         .onAppear {
             onRefreshDevices()
         }

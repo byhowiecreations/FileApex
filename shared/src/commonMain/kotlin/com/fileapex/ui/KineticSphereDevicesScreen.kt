@@ -29,10 +29,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.fileapex.data.settings.LocalThemeIconStyle
 import com.fileapex.data.settings.ThemeIconStyle
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import fileapex.shared.generated.resources.Res
+import fileapex.shared.generated.resources.bg
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Add
@@ -104,6 +108,16 @@ private data class EllipticalOrbitConfig(
  * Set to false to revert to straight 'connected device lines' (spokes).
  */
 const val USE_ELLIPSES_CONNECTED = false
+
+@Composable
+fun KineticSphereWallpaperBackground(modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(Res.drawable.bg),
+        contentDescription = null,
+        modifier = modifier.fillMaxSize(),
+        contentScale = ContentScale.Crop
+    )
+}
 
 @Composable
 fun KineticSphereDevicesView(
@@ -337,36 +351,7 @@ fun KineticSphereDevicesView(
         }
 
         val showConnectedLines by FileApexServices.settings.kineticSphereConnectedLinesEnabled.collectAsState()
-        val showOrbitalRings by FileApexServices.settings.kineticSphereOrbitalRingsEnabled.collectAsState()
-
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val solidGlowStroke = Stroke(width = 4f.dp.toPx())
-            val solidCoreStroke = Stroke(width = 1.8f.dp.toPx())
-
-            if (showOrbitalRings) {
-                orbitConfigs.forEach { config ->
-                    withTransform({
-                        translate(centerX, centerY)
-                        rotate(config.rotationDeg)
-                    }) {
-                        val rx = baseRadiusPx * config.scaleX
-                        val ry = baseRadiusPx * config.scaleY
-
-                        drawOval(
-                            color = Color(0xFF00E5FF).copy(alpha = 0.14f),
-                            topLeft = Offset(-rx, -ry),
-                            size = Size(rx * 2f, ry * 2f),
-                            style = solidGlowStroke
-                        )
-                        drawOval(
-                            color = Color(0xFF00E5FF).copy(alpha = 0.40f),
-                            topLeft = Offset(-rx, -ry),
-                            size = Size(rx * 2f, ry * 2f),
-                            style = solidCoreStroke
-                        )
-                    }
-                }
-            }
 
             val stars = listOf(
                 Offset(centerX * 0.3f, centerY * 0.4f),

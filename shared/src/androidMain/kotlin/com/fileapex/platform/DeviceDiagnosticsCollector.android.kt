@@ -193,10 +193,13 @@ private fun readBattery(context: Context?): BatteryDiagnostics {
             status == BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "Discharging"
         else -> "Unknown"
     }
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    val isLowPower = powerManager?.isPowerSaveMode == true
     return BatteryDiagnostics(
         levelPercent = percent,
         chargingState = chargingState,
-        temperatureCelsius = temperature
+        temperatureCelsius = temperature,
+        lowPowerMode = isLowPower
     )
 }
 

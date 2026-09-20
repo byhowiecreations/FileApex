@@ -95,7 +95,8 @@ internal fun ThemesSettingsPage(
     onSelectTheme: (AppTheme) -> Unit,
     onSelectThemeIconStyle: (ThemeIconStyle) -> Unit,
     onToggleConnectedLines: (Boolean) -> Unit,
-    onToggleOrbitalRings: (Boolean) -> Unit
+    onToggleOrbitalRings: (Boolean) -> Unit,
+    onTogglePersistentWallpaper: (Boolean) -> Unit = {}
 ) {
     SettingsPageShell(
         title = stringRes("themes"),
@@ -289,6 +290,21 @@ internal fun ThemesSettingsPage(
                         )
                     }
                 )
+
+                if (state.kineticSphereOrbitalRingsEnabled) {
+                    ListItem(
+                        headlineContent = { Text(stringRes("kinetic_sphere_persistent_wallpaper"), softWrap = true) },
+                        supportingContent = {
+                            Text(stringRes("kinetic_sphere_persistent_wallpaper_desc"), softWrap = true)
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = state.kineticSpherePersistentWallpaperEnabled,
+                                onCheckedChange = onTogglePersistentWallpaper
+                            )
+                        }
+                    )
+                }
             }
         }
     }

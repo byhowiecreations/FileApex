@@ -340,7 +340,8 @@ fun SettingsScreen(
             onSelectTheme = viewModel::setAppTheme,
             onSelectThemeIconStyle = { viewModel.setThemeIconStyle(state.appTheme, it) },
             onToggleConnectedLines = viewModel::setKineticSphereConnectedLinesEnabled,
-            onToggleOrbitalRings = viewModel::setKineticSphereOrbitalRingsEnabled
+            onToggleOrbitalRings = viewModel::setKineticSphereOrbitalRingsEnabled,
+            onTogglePersistentWallpaper = viewModel::setKineticSpherePersistentWallpaperEnabled
         )
 
         SettingsPage.BulletinBoardStyles -> BulletinBoardStylesSettingsPage(

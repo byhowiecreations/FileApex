@@ -214,6 +214,9 @@ class BaseAppSettings(
     private val kineticSphereOrbitalRingsFlow = MutableStateFlow(
         store.getBoolean(KEY_KINETIC_SPHERE_ORBITAL_RINGS, !store.getBoolean(KEY_KINETIC_SPHERE_CLEAN_MODE, false))
     )
+    private val kineticSpherePersistentWallpaperFlow = MutableStateFlow(
+        store.getBoolean(KEY_KINETIC_SPHERE_PERSISTENT_WALLPAPER, false)
+    )
     private val freestyleCardOptionsPosXFlow = MutableStateFlow(
         store.getString(KEY_FREESTYLE_CARD_OPTIONS_X, "").toFloatOrNull()
     )
@@ -332,6 +335,7 @@ class BaseAppSettings(
     override val kineticSphereCleanMode: StateFlow<Boolean> = kineticSphereCleanModeFlow.asStateFlow()
     override val kineticSphereConnectedLinesEnabled: StateFlow<Boolean> = kineticSphereConnectedLinesFlow.asStateFlow()
     override val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean> = kineticSphereOrbitalRingsFlow.asStateFlow()
+    override val kineticSpherePersistentWallpaperEnabled: StateFlow<Boolean> = kineticSpherePersistentWallpaperFlow.asStateFlow()
     override val freestyleCardOptionsPosX: StateFlow<Float?> = freestyleCardOptionsPosXFlow.asStateFlow()
     override val freestyleCardOptionsPosY: StateFlow<Float?> = freestyleCardOptionsPosYFlow.asStateFlow()
     override val freestyleCardVerticalOptionsPosX: StateFlow<Float?> = freestyleCardVerticalOptionsPosXFlow.asStateFlow()
@@ -595,6 +599,11 @@ class BaseAppSettings(
     override fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean) {
         store.putBoolean(KEY_KINETIC_SPHERE_ORBITAL_RINGS, enabled)
         kineticSphereOrbitalRingsFlow.value = enabled
+    }
+
+    override fun setKineticSpherePersistentWallpaperEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_KINETIC_SPHERE_PERSISTENT_WALLPAPER, enabled)
+        kineticSpherePersistentWallpaperFlow.value = enabled
     }
 
     override fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean) {
@@ -983,6 +992,7 @@ class BaseAppSettings(
         const val KEY_KINETIC_SPHERE_CLEAN_MODE = "kinetic_sphere_clean_mode"
         const val KEY_KINETIC_SPHERE_CONNECTED_LINES = "kinetic_sphere_connected_lines"
         const val KEY_KINETIC_SPHERE_ORBITAL_RINGS = "kinetic_sphere_orbital_rings"
+        const val KEY_KINETIC_SPHERE_PERSISTENT_WALLPAPER = "kinetic_sphere_persistent_wallpaper"
         const val KEY_FREESTYLE_CARD_OPTIONS_X = "freestyle_card_options_x"
         const val KEY_FREESTYLE_CARD_OPTIONS_Y = "freestyle_card_options_y"
         const val KEY_FREESTYLE_CARD_VERTICAL_OPTIONS_X = "freestyle_card_vert_options_x"

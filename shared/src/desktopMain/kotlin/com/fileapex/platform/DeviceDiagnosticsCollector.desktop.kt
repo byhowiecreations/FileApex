@@ -272,9 +272,11 @@ private fun readMacBattery(): BatteryDiagnostics {
         output.contains("drawing from 'Battery Power'", ignoreCase = true) -> "Discharging"
         else -> "Unknown"
     }
+    val isLowPower = readCommandOutput("pmset", "-g")?.contains(Regex("""lowpowermode\s+1""")) == true
     return BatteryDiagnostics(
         levelPercent = percent,
-        chargingState = chargingState
+        chargingState = chargingState,
+        lowPowerMode = isLowPower
     )
 }
 

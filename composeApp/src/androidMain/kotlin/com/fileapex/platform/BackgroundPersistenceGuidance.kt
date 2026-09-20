@@ -14,12 +14,17 @@ import android.util.Log
 import androidx.core.content.IntentCompat
 import androidx.core.content.PackageManagerCompat
 import androidx.core.content.UnusedAppRestrictionsConstants
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 object BackgroundPersistenceGuidance {
     private const val TAG = "BackgroundPersistence"
     private const val APP_BATTERY_USAGE_ACTIVITY =
         "com.android.settings.Settings\$AppBatteryUsageActivity"
     private const val EXTRA_PACKAGE = "package"
+
+    @Volatile
+    private var cachedUnusedAppRestrictionsActive: Boolean = false
 
     data class Snapshot(
         val batteryOptimizationRestricted: Boolean,
@@ -36,7 +41,7 @@ object BackgroundPersistenceGuidance {
         return Snapshot(
             batteryOptimizationRestricted = isBatteryOptimizationRestricted(context),
             backgroundRestricted = isBackgroundRestricted(context),
-            unusedAppRestrictionsActive = isUnusedAppRestrictionsActive(context),
+            unusedAppRestrictionsActive = cachedUnusedAppRestrictionsActive,
             oemGuidance = OemBackgroundGuidance.forVendor(vendor)
         )
     }
@@ -53,18 +58,21 @@ object BackgroundPersistenceGuidance {
         return activityManager.isBackgroundRestricted
     }
 
-    /**
-     * True when unused-app restrictions (permission auto-reset and/or app hibernation) are active.
-     */
-    fun isUnusedAppRestrictionsActive(context: Context): Boolean {
-        val status = runCatching { queryUnusedAppRestrictionsStatus(context) }
-            .getOrElse { error ->
-                Log.w(TAG, "Unused-app restrictions check failed :: ${error.message}")
-                return false
-            }
-        return status == UnusedAppRestrictionsConstants.API_31 ||
-            status == UnusedAppRestrictionsConstants.API_30 ||
-            status == UnusedAppRestrictionsConstants.API_30_BACKPORT
+    fun isUnusedAppRestrictionsActive(context: Context): Boolean =
+        cachedUnusedAppRestrictionsActive
+
+    suspend fun refreshUnusedAppRestrictions(context: Context): Boolean = withContext(Dispatchers.IO) {
+        val active = runCatching {
+            val status = queryUnusedAppRestrictionsStatus(context)
+            status == UnusedAppRestrictionsConstants.API_31 ||
+                status == UnusedAppRestrictionsConstants.API_30 ||
+                status == UnusedAppRestrictionsConstants.API_30_BACKPORT
+        }.getOrElse { error ->
+            Log.w(TAG, "Unused-app restrictions check failed :: ${error.message}")
+            false
+        }
+        cachedUnusedAppRestrictionsActive = active
+        active
     }
 
     private fun queryUnusedAppRestrictionsStatus(context: Context): Int {

@@ -91,6 +91,7 @@ data class SettingsUiState(
     val kineticSphereCleanMode: Boolean = false,
     val kineticSphereConnectedLinesEnabled: Boolean = true,
     val kineticSphereOrbitalRingsEnabled: Boolean = true,
+    val kineticSpherePersistentWallpaperEnabled: Boolean = false,
     val systemPerformanceExpanded: Boolean = true,
     val appearanceBehaviorExpanded: Boolean = true,
     val securityAccountExpanded: Boolean = true,
@@ -151,6 +152,7 @@ class SettingsViewModel : ViewModel() {
             kineticSphereCleanMode = settings.kineticSphereCleanMode.value,
             kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
             kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value,
+            kineticSpherePersistentWallpaperEnabled = settings.kineticSpherePersistentWallpaperEnabled.value,
             systemPerformanceExpanded = settings.settingsGroupSystemPerformanceExpanded.value,
             appearanceBehaviorExpanded = settings.settingsGroupAppearanceBehaviorExpanded.value,
             securityAccountExpanded = settings.settingsGroupSecurityAccountExpanded.value
@@ -270,6 +272,11 @@ class SettingsViewModel : ViewModel() {
             }
         }
         viewModelScope.launch {
+            settings.kineticSpherePersistentWallpaperEnabled.collect { enabled ->
+                _uiState.update { it.copy(kineticSpherePersistentWallpaperEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
             settings.settingsGroupSystemPerformanceExpanded.collect { expanded ->
                 _uiState.update { it.copy(systemPerformanceExpanded = expanded) }
             }
@@ -357,6 +364,11 @@ class SettingsViewModel : ViewModel() {
     fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean) {
         settings.setKineticSphereOrbitalRingsEnabled(enabled)
         _uiState.update { it.copy(kineticSphereOrbitalRingsEnabled = enabled) }
+    }
+
+    fun setKineticSpherePersistentWallpaperEnabled(enabled: Boolean) {
+        settings.setKineticSpherePersistentWallpaperEnabled(enabled)
+        _uiState.update { it.copy(kineticSpherePersistentWallpaperEnabled = enabled) }
     }
 
     val updateStatusMessage: StateFlow<String?> = AppUpdateCoordinator.statusMessage

@@ -238,7 +238,7 @@ fun AdaptiveWideHome(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight(),
-                            color = MaterialTheme.colorScheme.surface
+                            color = if (isSpatialTheme) Color.Transparent else MaterialTheme.colorScheme.surface
                         ) {
                             DevicesScreen(
                                 onOpenDevice = onSelectDevice,
@@ -259,7 +259,7 @@ fun AdaptiveWideHome(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight(),
-                            color = MaterialTheme.colorScheme.surface
+                            color = if (isSpatialTheme) Color.Transparent else MaterialTheme.colorScheme.surface
                         ) {
                             FileExplorerScreen(
                                 target = selectedTarget,

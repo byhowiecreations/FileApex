@@ -59,6 +59,7 @@ import com.fileapex.ui.JoinDeviceScreen
 import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.KineticDropFxLayer
+import com.fileapex.ui.KineticSphereWallpaperBackground
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.QueuedFilesButton
@@ -241,7 +242,10 @@ fun App(
     val appTheme by FileApexServices.settings.appTheme.collectAsState()
     val themeIconStyle by FileApexServices.settings.themeIconStyle.collectAsState()
     val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
-    val bgBrush = appTheme.backgroundBrush()
+    val kineticSphereWallpaperOn by FileApexServices.settings.kineticSphereOrbitalRingsEnabled.collectAsState()
+    val kineticSpherePersistentWallpaperOn by FileApexServices.settings.kineticSpherePersistentWallpaperEnabled.collectAsState()
+    val isKineticSphere = appTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = isKineticSphere || appTheme == AppTheme.FLUX_GLASS || appTheme == AppTheme.FREESTYLE
     val appLocale by AppI18n.localeFlowState
     var showLanguagePrompt by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -260,31 +264,66 @@ fun App(
         appTheme = appTheme,
         themeIconStyle = themeIconStyle
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (bgBrush != null) {
-                        Modifier.background(bgBrush)
-                    } else {
-                        Modifier.background(
-                            if (windowsFluent) MaterialTheme.colorScheme.background
-                            else FileApexTeal
-                        )
-                    }
-                )
-        ) {
-            Surface(
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val widthClass = widthSizeClassFor(maxWidth)
+            val desktopLayoutMode = if (usesDesktopFileSelection()) {
+                FileApexServices.settings.desktopLayoutMode.collectAsState().value
+            } else {
+                null
+            }
+            val isWide = when (desktopLayoutMode) {
+                DesktopLayoutMode.Compact -> false
+                DesktopLayoutMode.Expanded -> true
+                null -> widthClass.isWide
+            }
+
+            val onDevicesPage = if (isWide) {
+                route !is AppRoute.Explorer && route !is AppRoute.Settings &&
+                    wideHomeTab == HomeTab.Devices && wideSelectedTarget == null
+            } else {
+                route is AppRoute.Devices
+            }
+
+            val showKineticWallpaper = isKineticSphere && kineticSphereWallpaperOn &&
+                (kineticSpherePersistentWallpaperOn || onDevicesPage)
+
+            val bgBrush = if (showKineticWallpaper) {
+                null
+            } else {
+                appTheme.backgroundBrush()
+            }
+
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .safeDrawingPadding(),
-                color = if (bgBrush != null) {
-                    Color.Transparent
-                } else if (windowsFluent) {
-                    MaterialTheme.colorScheme.background
-                } else {
-                    Color.White
-                },
+                    .then(
+                        if (bgBrush != null) {
+                            Modifier.background(bgBrush)
+                        } else if (isKineticSphere) {
+                            Modifier.background(Color(0xFF02050B))
+                        } else {
+                            Modifier.background(
+                                if (windowsFluent) MaterialTheme.colorScheme.background
+                                else FileApexTeal
+                            )
+                        }
+                    )
+            ) {
+                if (showKineticWallpaper) {
+                    KineticSphereWallpaperBackground(modifier = Modifier.fillMaxSize())
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .safeDrawingPadding(),
+                    color = if (isCustomGlass || bgBrush != null) {
+                        Color.Transparent
+                    } else if (windowsFluent) {
+                        MaterialTheme.colorScheme.background
+                    } else {
+                        Color.White
+                    },
                 tonalElevation = 0.dp
             ) {
 
@@ -502,6 +541,7 @@ fun App(
                     }
                 }
             }
+        }
         }
     }
 

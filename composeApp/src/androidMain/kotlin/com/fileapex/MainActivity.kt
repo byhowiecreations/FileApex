@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -140,6 +141,7 @@ class MainActivity : ComponentActivity() {
         BatteryBulletinCoordinator.onProcessStart(this)
         configureVisibleSystemBars()
         refreshPermissions()
+        refreshUnusedAppRestrictionsAsync()
         if (onboardingComplete) {
             startShareServer()
         }
@@ -215,10 +217,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         configureVisibleSystemBars()
-        refreshPermissions()
+        val previouslyComplete = onboardingComplete
         completePendingOnboardingReturns()
+        refreshPermissions()
+        refreshUnusedAppRestrictionsAsync()
         if (onboardingComplete) {
-            startShareServer()
+            if (!previouslyComplete) {
+                startShareServerDeferred()
+            } else {
+                startShareServer()
+            }
         }
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppForegrounded()
         com.fileapex.update.AppUpdateCoordinator.syncInstallStatusOnAppOpen()
@@ -494,14 +502,14 @@ class MainActivity : ComponentActivity() {
     private fun completePendingOnboardingReturns() {
         if (pendingStorageOnboardingReturn) {
             pendingStorageOnboardingReturn = false
-            refreshOnboardingAfterExternalReturn(
+            updateOnboardingDenial(
                 stepId = AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE,
                 granted = AndroidStorageAccess.hasFullAccess(this)
             )
         }
         if (pendingBatteryOnboardingReturn) {
             pendingBatteryOnboardingReturn = false
-            refreshOnboardingAfterExternalReturn(
+            updateOnboardingDenial(
                 stepId = AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS,
                 granted = !BackgroundPersistenceGuidance.isBatteryOptimizationRestricted(this)
             )
@@ -509,7 +517,7 @@ class MainActivity : ComponentActivity() {
         if (pendingOemPersistenceOnboardingReturn) {
             pendingOemPersistenceOnboardingReturn = false
             AndroidOnboardingPermissions.markOemPersistenceCompleted(this)
-            refreshOnboardingAfterExternalReturn(
+            updateOnboardingDenial(
                 stepId = AndroidOnboardingPermissions.ID_OEM_BACKGROUND_PERSISTENCE,
                 granted = true
             )
@@ -526,6 +534,24 @@ class MainActivity : ComponentActivity() {
             deniedOnboardingStepIds - stepId
         } else {
             deniedOnboardingStepIds + stepId
+        }
+    }
+
+    private fun refreshUnusedAppRestrictionsAsync() {
+        lifecycleScope.launch {
+            val active = BackgroundPersistenceGuidance.refreshUnusedAppRestrictions(this@MainActivity)
+            if (active != persistenceSnapshot.unusedAppRestrictionsActive) {
+                persistenceSnapshot = persistenceSnapshot.copy(unusedAppRestrictionsActive = active)
+            }
+        }
+    }
+
+    private fun startShareServerDeferred() {
+        Looper.myQueue().addIdleHandler {
+            if (!isDestroyed && !isFinishing && onboardingComplete) {
+                startShareServer()
+            }
+            false
         }
     }
 
@@ -548,6 +574,7 @@ class MainActivity : ComponentActivity() {
                 requestBatteryUnrestricted()
             }
             AndroidOnboardingPermissions.ID_OEM_BACKGROUND_PERSISTENCE -> {
+                AndroidOnboardingPermissions.markOemPersistenceCompleted(this)
                 pendingOemPersistenceOnboardingReturn = true
                 openBackgroundPersistenceSettings()
             }
@@ -569,6 +596,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openUnusedAppRestrictionsSettings() {
         BackgroundPersistenceGuidance.launchUnusedAppRestrictionsSettings(this)
+        refreshUnusedAppRestrictionsAsync()
     }
 
     private fun requestStoragePermission() {

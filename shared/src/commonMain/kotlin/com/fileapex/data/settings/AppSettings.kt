@@ -76,6 +76,7 @@ interface AppSettings {
     val kineticSphereCleanMode: StateFlow<Boolean>
     val kineticSphereConnectedLinesEnabled: StateFlow<Boolean>
     val kineticSphereOrbitalRingsEnabled: StateFlow<Boolean>
+    val kineticSpherePersistentWallpaperEnabled: StateFlow<Boolean>
 
     val freestyleCardOptionsPosX: StateFlow<Float?>
     val freestyleCardOptionsPosY: StateFlow<Float?>
@@ -137,6 +138,7 @@ interface AppSettings {
     fun setKineticSphereCleanMode(enabled: Boolean)
     fun setKineticSphereConnectedLinesEnabled(enabled: Boolean)
     fun setKineticSphereOrbitalRingsEnabled(enabled: Boolean)
+    fun setKineticSpherePersistentWallpaperEnabled(enabled: Boolean)
     fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean)
     fun setSettingsGroupAppearanceBehaviorExpanded(expanded: Boolean)
     fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean)

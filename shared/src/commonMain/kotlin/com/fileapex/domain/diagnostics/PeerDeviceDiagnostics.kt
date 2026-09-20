@@ -49,7 +49,8 @@ data class BatteryDiagnostics(
     val levelPercent: Int? = null,
     /** AC, USB, Wireless, Discharging, Full, Not available, Unknown */
     val chargingState: String = "",
-    val temperatureCelsius: Double? = null
+    val temperatureCelsius: Double? = null,
+    val lowPowerMode: Boolean = false
 )
 
 @Serializable

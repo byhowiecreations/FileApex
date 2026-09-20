@@ -165,7 +165,7 @@ object ServiceWatchdogScheduler {
     fun syncBatteryOptimizationWarning(context: Context, restricted: Boolean) {
         directBootPrefs(context).edit()
             .putBoolean(KEY_BATTERY_OPTIMIZATION_WARNING, restricted)
-            .commit()
+            .apply()
         if (restricted) {
             Log.w(TAG, "Battery optimization active - background server survival may be limited")
         }
@@ -212,7 +212,7 @@ object ServiceWatchdogScheduler {
     private fun setExactAlarmWarning(context: Context, active: Boolean) {
         directBootPrefs(context).edit()
             .putBoolean(KEY_EXACT_ALARM_WARNING, active)
-            .commit()
+            .apply()
     }
 
     private fun directBootPrefs(context: Context): android.content.SharedPreferences {

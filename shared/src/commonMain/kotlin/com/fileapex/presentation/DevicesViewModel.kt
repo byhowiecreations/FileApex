@@ -59,6 +59,7 @@ data class BatteryStatusItem(
     val deviceName: String,
     val levelPercent: Int?,
     val chargingState: String = "",
+    val lowPowerMode: Boolean = false,
     val online: Boolean
 )
 
@@ -1056,9 +1057,9 @@ class DevicesViewModel : ViewModel() {
             runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
             runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
             val initialLogs = listOf(
-                "FileApex Linux v0.10.3a (tty1)",
+                "FileApex Linux v${com.fileapex.update.currentAppVersionName()} (tty1)",
                 "login: fileapex",
-                "fileapex@node:~$ batstat --all-devices",
+                "root@fileapex:~# batstat --all-devices",
                 "[INIT] Polling battery telemetry across cluster...",
                 "--------------------------------------------------"
             )
@@ -1073,6 +1074,13 @@ class DevicesViewModel : ViewModel() {
                 )
             }
 
+            val rows = deviceRows.value
+            val localDeviceName = _uiState.value.localDeviceName
+                .ifBlank { LocalDeviceNameStore.current() }
+                .ifBlank { AppI18n.t("this_device") }
+            val allNames = listOf(localDeviceName) + rows.map { it.deviceName }
+            val nameColumnWidth = (allNames.maxOfOrNull { it.length } ?: 10) + 1
+
             // 1. Immediately query and display local machine (fast path: < 20ms)
             val localDiag = withContext(Dispatchers.IO) {
                 runCatching {
@@ -1081,16 +1089,20 @@ class DevicesViewModel : ViewModel() {
             }
             val localLevel = localDiag?.levelPercent
             val localCharging = localDiag?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
-            val localLine = if (localLevel != null) {
-                "[LOCAL]   This Device: $localLevel% [${localCharging.uppercase()}]"
-            } else {
-                "[LOCAL]   This Device: N/A (A/C Powered)"
+            val localLowPower = localDiag?.lowPowerMode == true
+            val localPercentText = if (localLevel != null) "$localLevel%" else "---"
+            val localStateTag = when {
+                localLevel == null && localCharging.equals("Not available", ignoreCase = true) -> "[AC]"
+                else -> "[${localCharging.uppercase()}]"
             }
+            val localLowPowerTag = if (localLowPower) " [LOW POWER]" else ""
+            val localLine = "[ONLINE]  ${localDeviceName.padEnd(nameColumnWidth)}│ ${localPercentText.padStart(4)} │ $localStateTag$localLowPowerTag"
             val thisDeviceItem = BatteryStatusItem(
                 deviceId = "this_device_local",
-                deviceName = AppI18n.t("this_device"),
+                deviceName = localDeviceName,
                 levelPercent = localLevel,
                 chargingState = localCharging,
+                lowPowerMode = localLowPower,
                 online = true
             )
             _uiState.update { state ->
@@ -1102,7 +1114,6 @@ class DevicesViewModel : ViewModel() {
             }
 
             // 2. Query online devices concurrently - display each as soon as it responds
-            val rows = deviceRows.value
             val (onlineRows, offlineRows) = rows.partition { it.online }
 
             withContext(Dispatchers.IO) {
@@ -1116,20 +1127,23 @@ class DevicesViewModel : ViewModel() {
 
                             val level = battery?.levelPercent
                             val charging = battery?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
+                            val lowPower = battery?.lowPowerMode == true
                             val isDesktop = deviceEntity?.platform?.lowercase() in setOf("macos", "windows", "linux") ||
                                 deviceEntity?.platform?.lowercase()?.contains("desktop") == true
-                            val line = if (level != null) {
-                                "[ONLINE]  ${row.deviceName}: $level% [${charging.uppercase()}]"
-                            } else if (isDesktop) {
-                                "[ONLINE]  ${row.deviceName}: N/A (A/C or Desktop)"
-                            } else {
-                                "[ONLINE]  ${row.deviceName}: TIMEOUT (Dozing)"
+                            val percentText = if (level != null) "$level%" else "---"
+                            val stateTag = when {
+                                level != null -> "[${charging.uppercase()}]"
+                                isDesktop -> "[AC]"
+                                else -> "[TIMEOUT]"
                             }
+                            val lowPowerTag = if (lowPower) " [LOW POWER]" else ""
+                            val line = "[ONLINE]  ${row.deviceName.padEnd(nameColumnWidth)}│ ${percentText.padStart(4)} │ $stateTag$lowPowerTag"
                             val item = BatteryStatusItem(
                                 deviceId = row.deviceId,
                                 deviceName = row.deviceName,
                                 levelPercent = level,
                                 chargingState = charging,
+                                lowPowerMode = lowPower,
                                 online = true
                             )
                             _uiState.update { state ->
@@ -1146,12 +1160,13 @@ class DevicesViewModel : ViewModel() {
 
             // 3. Query offline devices last
             for (row in offlineRows) {
-                val line = "[OFFLINE] ${row.deviceName}: OFFLINE"
+                val line = "[OFFLINE] ${row.deviceName.padEnd(nameColumnWidth)}│  --- │ [OFFLINE]"
                 val item = BatteryStatusItem(
                     deviceId = row.deviceId,
                     deviceName = row.deviceName,
                     levelPercent = null,
                     chargingState = "",
+                    lowPowerMode = false,
                     online = false
                 )
                 _uiState.update { state ->

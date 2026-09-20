@@ -16,22 +16,62 @@ object AndroidOnboardingPermissions {
 
     private const val PREFS_NAME = "fileapex_onboarding_oem"
     private const val KEY_OEM_PERSISTENCE_DONE = "oem_persistence_completed"
+    private const val KEY_INITIAL_ONBOARDING_INITIALIZED = "initial_onboarding_initialized"
 
     fun isOemPersistenceCompleted(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(KEY_OEM_PERSISTENCE_DONE, false)
+        if (prefs.getBoolean(KEY_OEM_PERSISTENCE_DONE, false)) {
+            return true
+        }
+        val vendor = detectOemVendor(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())
+        // TCL, Motorola, and Samsung rely on standard Android battery optimization settings.
+        // If battery optimization is already unrestricted, the OEM step is already satisfied.
+        if (vendor == OemVendor.Tcl || vendor == OemVendor.Motorola || vendor == OemVendor.Samsung) {
+            if (!isBatteryOptimizationRestricted(context)) {
+                markOemPersistenceCompleted(context, true)
+                return true
+            }
+        }
+        // Migration for existing installations: If storage access was already granted before this session,
+        // the user has already completed initial onboarding and configured their device.
+        if (!prefs.getBoolean(KEY_INITIAL_ONBOARDING_INITIALIZED, false)) {
+            if (AndroidStorageAccess.hasFullAccess(context)) {
+                prefs.edit()
+                    .putBoolean(KEY_OEM_PERSISTENCE_DONE, true)
+                    .putBoolean(KEY_INITIAL_ONBOARDING_INITIALIZED, true)
+                    .apply()
+                return true
+            } else {
+                prefs.edit().putBoolean(KEY_INITIAL_ONBOARDING_INITIALIZED, true).apply()
+            }
+        }
+        return false
     }
 
     fun markOemPersistenceCompleted(context: Context, completed: Boolean = true) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean(KEY_OEM_PERSISTENCE_DONE, completed).apply()
+        prefs.edit()
+            .putBoolean(KEY_OEM_PERSISTENCE_DONE, completed)
+            .putBoolean(KEY_INITIAL_ONBOARDING_INITIALIZED, true)
+            .apply()
     }
 
     fun isOemPersistenceRequired(context: Context): Boolean {
         val vendor = detectOemVendor(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())
         return when (vendor) {
-            OemVendor.Pixel, OemVendor.Other -> false
-            else -> true
+            // Only prompt for OEMs that have separate, proprietary auto-start / app launch managers.
+            // Vendors like TCL, Motorola, and Samsung rely on standard Android App Battery Usage,
+            // which is already handled by the Unrestricted Battery step.
+            OemVendor.Honor,
+            OemVendor.Huawei,
+            OemVendor.Xiaomi,
+            OemVendor.Poco,
+            OemVendor.Oppo,
+            OemVendor.OnePlus,
+            OemVendor.Vivo,
+            OemVendor.Asus,
+            OemVendor.Transsion -> true
+            else -> false
         }
     }
 
