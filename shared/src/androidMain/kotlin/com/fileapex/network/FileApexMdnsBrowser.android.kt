@@ -16,6 +16,7 @@ actual object FileApexMdnsBrowser {
     private var nsdManager: NsdManager? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var pendingLockReleaseRunnable: Runnable? = null
     private var callback: ((String, Int, String?) -> Unit)? = null
     private val resolveExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -32,17 +33,12 @@ actual object FileApexMdnsBrowser {
     actual fun stop(fast: Boolean) {
         pendingRestartRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingRestartRunnable = null
+        releaseMulticastLock()
         val manager = nsdManager
         val listener = discoveryListener
         if (manager != null && listener != null) {
             runCatching { manager.stopServiceDiscovery(listener) }
         }
-        runCatching {
-            multicastLock?.let {
-                if (it.isHeld) it.release()
-            }
-        }
-        multicastLock = null
         nsdManager = null
         discoveryListener = null
         callback = null
@@ -56,6 +52,7 @@ actual object FileApexMdnsBrowser {
             }
             return
         }
+        androidApplicationContextOrNull()?.let { acquireLegacyMulticastLockIfNeeded(it) }
         val listener = discoveryListener ?: return
         runCatching {
             manager.stopServiceDiscovery(listener)
@@ -69,15 +66,7 @@ actual object FileApexMdnsBrowser {
     private fun beginDiscovery() {
         val context = androidApplicationContextOrNull() ?: return
         val manager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
-        if (multicastLock == null) {
-            runCatching {
-                val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-                multicastLock = wifi?.createMulticastLock("fileapex:mdns_browser")?.apply {
-                    setReferenceCounted(false)
-                    acquire()
-                }
-            }
-        }
+        acquireLegacyMulticastLockIfNeeded(context)
         nsdManager = manager
         val listener = createDiscoveryListener()
         discoveryListener = listener
@@ -87,6 +76,42 @@ actual object FileApexMdnsBrowser {
             println("FileApexMdnsBrowser: discoverServices failed - ${error.message}")
             scheduleDiscoveryRestart()
         }
+    }
+
+    // API 31+ NsdService manages multicast internally; legacy platforms use a 10s burst.
+    private fun acquireLegacyMulticastLockIfNeeded(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return
+        pendingLockReleaseRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingLockReleaseRunnable = null
+        if (multicastLock == null) {
+            runCatching {
+                val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                multicastLock = wifi?.createMulticastLock("fileapex:mdns_browser")?.apply {
+                    setReferenceCounted(false)
+                }
+            }
+        }
+        runCatching {
+            multicastLock?.let { lock ->
+                if (!lock.isHeld) {
+                    lock.acquire()
+                }
+                val releaseRunnable = Runnable { releaseMulticastLock() }
+                pendingLockReleaseRunnable = releaseRunnable
+                mainHandler.postDelayed(releaseRunnable, LEGACY_MULTICAST_BURST_MS)
+            }
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        pendingLockReleaseRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingLockReleaseRunnable = null
+        runCatching {
+            multicastLock?.let {
+                if (it.isHeld) it.release()
+            }
+        }
+        multicastLock = null
     }
 
     private fun createDiscoveryListener(): NsdManager.DiscoveryListener {
@@ -205,4 +230,5 @@ actual object FileApexMdnsBrowser {
 
     private const val MAX_DISCOVERY_RESTART_ATTEMPTS = 5
     private const val DISCOVERY_RESTART_BASE_MS = 2_000L
+    private const val LEGACY_MULTICAST_BURST_MS = 10_000L
 }

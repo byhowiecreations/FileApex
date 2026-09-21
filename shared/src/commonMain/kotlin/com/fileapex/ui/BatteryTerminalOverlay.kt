@@ -120,7 +120,6 @@ fun BatteryTerminalOverlay(
                 }
 
                 val hasLowPower = remember(items) { items.any { it.lowPowerMode } }
-                // Dynamic width calculation: if resolvedWidth cannot fit full [DISCHARGING], dynamically drop to compact ↓
                 val requiredFullWidth = remember(nameColWidthDp, hasLowPower) {
                     28.dp + 72.dp + 4.dp + nameColWidthDp + 14.dp + 27.dp + 14.dp + 88.dp + (if (hasLowPower) 75.dp else 0.dp)
                 }
@@ -148,13 +147,11 @@ fun BatteryTerminalOverlay(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            // Consume clicks inside the terminal window so tap outside only dismisses when clicking background
                         },
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xF8080E0A)
                 ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // Retro DOS / Linux Terminal Titlebar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -181,7 +178,6 @@ fun BatteryTerminalOverlay(
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Maximize / Restore Toggle
                             IconButton(
                                 onClick = { isMaximized = !isMaximized },
                                 modifier = Modifier.size(24.dp)
@@ -209,7 +205,6 @@ fun BatteryTerminalOverlay(
                         }
                     }
 
-                    // Terminal Output Body
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -229,7 +224,6 @@ fun BatteryTerminalOverlay(
                                 )
                             }
                         } else {
-                            // Retro Linux terminal banner & header
                             item {
                                 Text(
                                     text = formatTerminalLine("FileApex Linux v${com.fileapex.update.currentAppVersionName()} (tty1)"),
@@ -268,7 +262,6 @@ fun BatteryTerminalOverlay(
                                 )
                             }
 
-                            // Dynamic items: Option B Hybrid only when ultra narrow (<280dp), otherwise clean single-line table (Full or Compact)
                             if (isUltraNarrow) {
                                 items(items, key = { it.deviceId }) { item ->
                                     BatteryStackedItemRow(item, isCompact = isCompact)
@@ -279,7 +272,6 @@ fun BatteryTerminalOverlay(
                                 }
                             }
 
-                            // Terminal command completion footer
                             if (isComplete) {
                                 item {
                                     Text(
@@ -301,7 +293,6 @@ fun BatteryTerminalOverlay(
                             }
                         }
 
-                        // Terminal interactive prompt line with blinking cursor
                         item {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -323,7 +314,6 @@ fun BatteryTerminalOverlay(
                         }
                     }
 
-                    // Terminal Bottom Command Prompt Bar + Resize Handle
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -347,7 +337,6 @@ fun BatteryTerminalOverlay(
                                 color = Color.White.copy(alpha = 0.5f)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            // Interactive Resize Handle
                             Box(
                                 modifier = Modifier
                                     .size(20.dp)
@@ -411,7 +400,6 @@ private fun BatteryStackedItemRow(
     }
 
     Column {
-        // Line 1: [ONLINE] Google Pixel 11 Pro │ 96%
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.height(16.dp)
@@ -450,7 +438,6 @@ private fun BatteryStackedItemRow(
                 lineHeight = 15.sp
             )
         }
-        // Line 2:   └─ ⚡ [AC] or   └─ [DISCHARGING] / ↓
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.height(16.dp)
@@ -519,7 +506,6 @@ private fun BatteryWideItemRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.height(16.dp)
     ) {
-        // Col 1: Status tag (Fixed width: 72.dp so [OFFLINE] never truncates)
         Text(
             text = if (item.online) "[ONLINE]" else "[OFFLINE]",
             color = if (item.online) Color(0xFF33FF66) else Color(0xFFFF6E6E),
@@ -531,7 +517,6 @@ private fun BatteryWideItemRow(
         )
         Spacer(modifier = Modifier.width(4.dp))
 
-        // Col 2: Device Name (Fixed width: nameColWidthDp)
         Text(
             text = item.deviceName,
             color = Color(0xFFE8F5E9),
@@ -542,7 +527,6 @@ private fun BatteryWideItemRow(
             modifier = Modifier.width(nameColWidthDp)
         )
 
-        // Separator 1 (1 space each side: " │ ")
         Text(
             text = " │ ",
             color = Color(0xFF00FF66).copy(alpha = 0.55f),
@@ -551,7 +535,6 @@ private fun BatteryWideItemRow(
             lineHeight = 15.sp
         )
 
-        // Col 3: Battery Level % (Fixed width: 27.dp, right aligned)
         Text(
             text = percentStr,
             color = batteryColor,
@@ -563,7 +546,6 @@ private fun BatteryWideItemRow(
             modifier = Modifier.width(27.dp)
         )
 
-        // Separator 2 (1 space each side: " │ ")
         Text(
             text = " │ ",
             color = Color(0xFF00FF66).copy(alpha = 0.55f),
@@ -572,7 +554,6 @@ private fun BatteryWideItemRow(
             lineHeight = 15.sp
         )
 
-        // Col 4: State Tag (⚡ [AC] or [DISCHARGING] / ↓)
         Text(
             text = stateTag,
             color = stateColor,
@@ -581,7 +562,6 @@ private fun BatteryWideItemRow(
             lineHeight = 15.sp
         )
 
-        // Optional [LOW POWER] tag
         if (item.lowPowerMode) {
             Spacer(modifier = Modifier.width(4.dp))
             Text(
@@ -612,7 +592,6 @@ private fun getBatteryColor(percent: Int?, isCharging: Boolean, isOnline: Boolea
 private fun formatTerminalLine(line: String): AnnotatedString {
     return buildAnnotatedString {
         when {
-            // Case 1: Stacked second line (e.g. "  └─ 96% │ [DISCHARGING]" or "  └─ 34% │ [DISCHARGING] [LOW POWER]")
             line.contains("└─") -> {
                 val treePrefix = line.substringBefore("└─") + "└─ "
                 val afterTree = line.substringAfter("└─ ").trim()
@@ -667,7 +646,6 @@ private fun formatTerminalLine(line: String): AnnotatedString {
                 }
             }
 
-            // Case 2: Wide 3-column table row (e.g. "[ONLINE]  Device Name  │   96%  │  [DISCHARGING]")
             line.contains("│") -> {
                 val parts = line.split("│")
                 val col0 = parts[0]
@@ -758,7 +736,6 @@ private fun formatTerminalLine(line: String): AnnotatedString {
                 }
             }
 
-            // Case 3: Stacked first line (e.g. "[ONLINE] Google Pixel 11 Pro" or "[OFFLINE] Nimo")
             line.startsWith("[ONLINE]") || line.startsWith("[OFFLINE]") || line.startsWith("[LOCAL]") -> {
                 val tag = line.substringBefore("]") + "]"
                 val rest = line.substringAfter("]")
@@ -776,7 +753,6 @@ private fun formatTerminalLine(line: String): AnnotatedString {
                 }
             }
 
-            // Case 4: Shell command / prompt
             line.startsWith("root@fileapex:~#") || line.startsWith("fileapex@") -> {
                 val prompt = if (line.contains("batstat")) {
                     line.substringBefore("batstat")
@@ -792,21 +768,18 @@ private fun formatTerminalLine(line: String): AnnotatedString {
                 }
             }
 
-            // Case 5: Telemetry status banners
             line.startsWith("[INIT]") || line.startsWith("[DONE]") -> {
                 withStyle(SpanStyle(color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold)) {
                     append(line)
                 }
             }
 
-            // Case 6: Dividers
             line.startsWith("---") -> {
                 withStyle(SpanStyle(color = Color(0xFF00FF66).copy(alpha = 0.4f))) {
                     append(line)
                 }
             }
 
-            // Case 7: Headers / system info
             else -> {
                 withStyle(SpanStyle(color = Color(0xFF81C784))) {
                     append(line)
