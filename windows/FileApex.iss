@@ -40,15 +40,13 @@ Name: "sendtoshortcut"; Description: "Add FileApex to Windows 'Send to' right-cl
 
 [Files]
 Source: "..\composeApp\build\compose\binaries\main-release\app\FileApex\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "FileApexLauncher.cmd"; DestDir: "{app}"; Flags: ignoreversion
-Source: "FileApexBootstrap.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "bin\fileapex.cmd"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "bin\fileapex"; DestDir: "{app}\bin"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFilename: "{app}\FileApex.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFilename: "{app}\FileApex.exe"; Tasks: desktopshortcut; WorkingDir: "{app}"
-Name: "{usersendto}\FileApex"; Filename: "{app}\FileApexLauncher.cmd"; IconFilename: "{app}\FileApex.exe"; Tasks: sendtoshortcut; WorkingDir: "{app}"
+Name: "{group}\FileApex"; Filename: "{app}\FileApex.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\FileApex"; Filename: "{app}\FileApex.exe"; Tasks: desktopshortcut; WorkingDir: "{app}"
+Name: "{usersendto}\FileApex"; Filename: "{app}\FileApex.exe"; Tasks: sendtoshortcut; WorkingDir: "{app}"
 
 [Registry]
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
@@ -58,12 +56,17 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\FileApex
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\FileApex.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app};{app}\runtime\bin;{app}\runtime\bin\server"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\fileapex.cmd"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\fileapex.cmd"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\*\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApexLauncher.cmd"" ""%1"""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\*\shell\FileApex"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\FileApex.exe"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\*\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApex.exe"" ""%1"""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Directory\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Directory\shell\FileApex"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\FileApex.exe"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Directory\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApex.exe"" ""%1"""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex"; ValueType: string; ValueData: "Send with FileApex"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApexLauncher.cmd"" ""%1"""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\FileApex.exe"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\SystemFileAssociations\*\shell\FileApex\command"; ValueType: string; ValueData: """{app}\FileApex.exe"" ""%1"""; Flags: uninsdeletekey
 
 [Run]
-Filename: "{app}\FileApexLauncher.cmd"; Description: "{cm:LaunchProgram,FileApex}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\FileApex.exe"; Description: "{cm:LaunchProgram,FileApex}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 function IsUnsafeJavaPath(PathStr: String): Boolean;
@@ -184,6 +187,11 @@ begin
   begin
     UninstallAndRemoveDirectory(UserAppDir3);
   end;
+
+  if FileExists(AddBackslash(TargetAppDir) + 'FileApexLauncher.cmd') then
+    DeleteFile(AddBackslash(TargetAppDir) + 'FileApexLauncher.cmd');
+  if FileExists(AddBackslash(TargetAppDir) + 'FileApexBootstrap.ps1') then
+    DeleteFile(AddBackslash(TargetAppDir) + 'FileApexBootstrap.ps1');
 end;
 
 procedure AddAppToPath();

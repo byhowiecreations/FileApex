@@ -73,26 +73,41 @@ private val DesktopWindowMaxHeight = 900.dp
 fun main(args: Array<String>) {
     DesktopCrashHandler.install()
     try {
-        if (args.isNotEmpty()) {
+        if (isCliInvocation(args)) {
             if (com.fileapex.platform.DesktopPlatformPaths.isWindows()) {
                 com.fileapex.platform.DesktopWindowsConsole.attachConsole()
             }
-            com.fileapex.cli.CliRunner.run(args)
+            com.fileapex.cli.CliRunner.run(if (args.isEmpty()) arrayOf("help") else args)
             return
         }
         DesktopJvmStartup.onMainEntry()
-        com.fileapex.cli.ipc.CliIpcDaemon.start()
-        com.fileapex.cli.CliPathIntegration.ensureInstalled()
         FileApexServices.beginBootstrap(
             createDatabase = { createFileApexDatabase() },
             createBulletinBoard = { createBulletinBoardDatabase() }
         )
 
-        startDesktopApplication(null)
+        val initialShare = parseCliSharePayload(args)
+        startDesktopApplication(initialShare)
     } catch (t: Throwable) {
         DesktopCrashHandler.handleCrash(Thread.currentThread(), t)
         throw t
     }
+}
+
+private fun isCliInvocation(args: Array<String>): Boolean {
+    val appPath = System.getProperty("jpackage.app-path").orEmpty().lowercase()
+    if (appPath.endsWith("fileapexcli.exe") || appPath.endsWith("fileapex.cmd")) {
+        return true
+    }
+    val command = ProcessHandle.current().info().command().orElse("").lowercase()
+    if (command.endsWith("fileapexcli.exe")) {
+        return true
+    }
+    val first = args.firstOrNull()?.lowercase() ?: return false
+    return first in setOf(
+        "help", "-h", "--help", "dash", "dashboard",
+        "devices", "alias", "send", "clip", "queue", "--version", "-v"
+    )
 }
 
 private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload?) {
@@ -105,17 +120,6 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
         var mainWindowVisible by remember { mutableStateOf(true) }
         var desktopIncomingShare by remember { mutableStateOf(initialCliSharePayload) }
-
-        LaunchedEffect(Unit) {
-            com.fileapex.cli.ipc.CliIpcDaemon.incomingCliShares.collect { payload ->
-                desktopIncomingShare = payload
-                if (DesktopPlatformPaths.isMacOs()) {
-                    DesktopTraySupport.showMainWindow()
-                } else {
-                    mainWindowVisible = true
-                }
-            }
-        }
 
         LaunchedEffect(Unit) {
             val t0 = System.nanoTime()

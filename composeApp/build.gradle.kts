@@ -881,7 +881,13 @@ private fun Project.shipExeToCurrent(
 ) {
     val exeDir = exeOutputDir(release)
     val exes = exeDir.listFiles().orEmpty().filter { it.isFile && it.extension.equals("exe", ignoreCase = true) }
-    if (exes.isEmpty()) return
+    if (exes.isEmpty()) {
+        val targetExe = dest.resolve("FileApex-v$appVersionName.exe")
+        if (targetExe.isFile) {
+            logger.lifecycle("Windows installer already present in current/${targetExe.name}")
+        }
+        return
+    }
     val preferred = exes.maxByOrNull { it.lastModified() } ?: exes.first()
     moveToCurrent(dest, preferred, destName = "FileApex-v$appVersionName.exe", logger = logger)
 }
@@ -1094,6 +1100,9 @@ private fun prepareCurrentDirectory(
             return@forEach
         }
         if ((preserveMacApp || preserveDmgFiles) && entry.name == "FileApex.app") {
+            return@forEach
+        }
+        if (entry.isFile && entry.name == "FileApex-v$fileapexVersionName.exe") {
             return@forEach
         }
         entry.deleteRecursively()
@@ -1471,6 +1480,16 @@ tasks.register("packageInnoExe") {
             debugApp.deleteRecursively()
             logger.lifecycle("Pruned app-image staging dir ${debugApp.absolutePath}")
         }
+
+        val dest = currentBuildsDest()
+        dest.mkdirs()
+        dest.listFiles().orEmpty()
+            .filter { it.isFile && it.extension.equals("exe", ignoreCase = true) && it.name != "FileApex-v$fileapexVersionName.exe" }
+            .forEach {
+                it.delete()
+                logger.lifecycle("Pruned older installer: ${it.name}")
+            }
+        shipExeToCurrent(dest, fileapexVersionName, logger, release = true)
     }
 }
 

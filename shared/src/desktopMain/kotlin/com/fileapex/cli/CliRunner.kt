@@ -30,23 +30,12 @@ object CliRunner {
 
         val cwd = System.getProperty("user.dir") ?: "."
         if (first == "dash" || first == "dashboard") {
-            val backend = if (CliIpcClient.isDaemonRunning()) {
-                IpcClusterBackend()
-            } else {
-                ensureHeadlessBootstrap()
-                StandaloneClusterBackend()
-            }
+            ensureHeadlessBootstrap()
+            val backend = StandaloneClusterBackend()
             CliDashboard(backend, cwd).run()
             exitProcess(0)
         }
 
-        // 1. Try forwarding to active GUI IPC daemon
-        val daemonExitCode = CliIpcClient.forwardCommand(normalizedArgs, cwd)
-        if (daemonExitCode != null) {
-            exitProcess(daemonExitCode)
-        }
-
-        // 2. GUI app is not running; execute headlessly
         val exitCode = runHeadless(normalizedArgs, cwd)
         exitProcess(exitCode)
     }

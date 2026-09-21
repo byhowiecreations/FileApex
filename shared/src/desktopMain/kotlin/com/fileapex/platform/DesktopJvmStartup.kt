@@ -13,9 +13,6 @@ object DesktopJvmStartup {
         if (DesktopPlatformPaths.isMacOs()) {
             DesktopMacTrayBridge.preload()
         }
-        if (DesktopPlatformPaths.isWindows()) {
-            DesktopWindowsRegistration.registerWindowsContextMenuAndSendTo()
-        }
         DesktopSendHandoff.installOpenUriHandler()
     }
 
