@@ -163,6 +163,8 @@ enum LanHttpClient {
             stateLock.unlock()
             guard shouldComplete else { return }
             connection.cancel()
+            connection.stateUpdateHandler = nil
+            connection.pathUpdateHandler = nil
             lock.signal()
         }
 
@@ -171,10 +173,18 @@ enum LanHttpClient {
                 log("path unsatisfied \(target.host):\(target.port) \(unsatisfiedText(path))")
             }
         }
-        connection.stateUpdateHandler = { state in
+        connection.stateUpdateHandler = { [weak connection] state in
+            guard let connection = connection else {
+                finish(nil)
+                return
+            }
             switch state {
             case .ready:
-                connection.send(content: request, isComplete: extraSender == nil, completion: .contentProcessed { error in
+                connection.send(content: request, isComplete: extraSender == nil, completion: .contentProcessed { [weak connection] error in
+                    guard let connection = connection else {
+                        finish(nil)
+                        return
+                    }
                     if let error {
                         log("send failed \(error.localizedDescription)")
                         finish(nil)
@@ -196,6 +206,8 @@ enum LanHttpClient {
             case .failed(let error):
                 log("connect failed \(target.host):\(target.port) \(error.localizedDescription)")
                 finish(nil)
+            case .cancelled:
+                finish(nil)
             default:
                 break
             }
@@ -205,10 +217,15 @@ enum LanHttpClient {
         _ = lock.wait(timeout: .now() + seconds)
         stateLock.lock()
         let timedOut = !finished
+        if timedOut {
+            finished = true
+        }
         stateLock.unlock()
         if timedOut {
             log("timeout \(target.host):\(target.port)")
             connection.cancel()
+            connection.stateUpdateHandler = nil
+            connection.pathUpdateHandler = nil
         }
         if result == nil {
             log("no response \(target.host):\(target.port)")
@@ -314,7 +331,14 @@ enum LanHttpClient {
                 }
                 activeSends += 1
                 let chunkSize = Int64(chunk.count)
-                connection.send(content: chunk, isComplete: false, completion: .contentProcessed { error in
+                connection.send(content: chunk, isComplete: false, completion: .contentProcessed { [weak connection] error in
+                    guard connection != nil else {
+                        lock.lock()
+                        hasFailed = true
+                        lock.unlock()
+                        completion(false)
+                        return
+                    }
                     lock.lock()
                     activeSends -= 1
                     if let error {
@@ -376,13 +400,28 @@ enum LanHttpClient {
             stateLock.unlock()
             guard shouldComplete else { return }
             connection.cancel()
+            connection.stateUpdateHandler = nil
+            connection.pathUpdateHandler = nil
             lock.signal()
         }
 
-        connection.stateUpdateHandler = { state in
+        connection.pathUpdateHandler = { path in
+            if path.status == .unsatisfied {
+                log("path unsatisfied \(target.host):\(target.port) \(unsatisfiedText(path))")
+            }
+        }
+        connection.stateUpdateHandler = { [weak connection] state in
+            guard let connection = connection else {
+                finish(nil)
+                return
+            }
             switch state {
             case .ready:
-                connection.send(content: request, isComplete: true, completion: .contentProcessed { error in
+                connection.send(content: request, isComplete: true, completion: .contentProcessed { [weak connection] error in
+                    guard let connection = connection else {
+                        finish(nil)
+                        return
+                    }
                     if let error {
                         log("send failed \(error.localizedDescription)")
                         finish(nil)
@@ -401,6 +440,8 @@ enum LanHttpClient {
             case .failed(let error):
                 log("connect failed \(target.host):\(target.port) \(error.localizedDescription)")
                 finish(nil)
+            case .cancelled:
+                finish(nil)
             default:
                 break
             }
@@ -410,10 +451,15 @@ enum LanHttpClient {
         _ = lock.wait(timeout: .now() + seconds)
         stateLock.lock()
         let timedOut = !finished
+        if timedOut {
+            finished = true
+        }
         stateLock.unlock()
         if timedOut {
             log("timeout \(target.host):\(target.port)")
             connection.cancel()
+            connection.stateUpdateHandler = nil
+            connection.pathUpdateHandler = nil
         }
         return result
     }
@@ -424,7 +470,11 @@ enum LanHttpClient {
         headerBuffer: Data,
         finish: @escaping (Int?) -> Void
     ) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { content, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { [weak connection] content, _, isComplete, error in
+            guard let connection = connection else {
+                finish(nil)
+                return
+            }
             if let error {
                 log("receive failed \(error.localizedDescription)")
                 finish(nil)
@@ -509,7 +559,11 @@ enum LanHttpClient {
                     closeAndFinish(status)
                     return
                 }
-                connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { content, _, complete, error in
+                connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { [weak connection] content, _, complete, error in
+                    guard let connection = connection else {
+                        closeAndFinish(nil)
+                        return
+                    }
                     if let error {
                         log("receive failed \(error.localizedDescription)")
                         closeAndFinish(nil)
@@ -546,7 +600,11 @@ enum LanHttpClient {
             closeAndFinish(status)
             return
         }
-        connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { content, _, complete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: streamBufferBytes) { [weak connection] content, _, complete, error in
+            guard let connection = connection else {
+                closeAndFinish(nil)
+                return
+            }
             if let error {
                 log("receive failed \(error.localizedDescription)")
                 closeAndFinish(nil)
@@ -604,7 +662,11 @@ enum LanHttpClient {
         buffer: Data = Data(),
         finish: @escaping ((Int, Data)?) -> Void
     ) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { content, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak connection] content, _, isComplete, error in
+            guard let connection = connection else {
+                finish(nil)
+                return
+            }
             if let error {
                 log("receive failed \(error.localizedDescription)")
                 finish(nil)

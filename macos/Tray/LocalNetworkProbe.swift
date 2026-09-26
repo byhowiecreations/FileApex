@@ -129,22 +129,49 @@ enum LocalNetworkProbe {
 
     private static func resolve(_ result: NWBrowser.Result) {
         guard case .service(let name, _, _, _) = result.endpoint else { return }
-        if resolving[name] != nil { return }
+        gate.lock()
+        if resolving[name] != nil {
+            gate.unlock()
+            return
+        }
         let connection = NWConnection(to: result.endpoint, using: bonjourTcpParams())
         resolving[name] = connection
-        connection.stateUpdateHandler = { state in
+        gate.unlock()
+
+        var completed = false
+        func cleanup() {
+            gate.lock()
+            guard !completed else {
+                gate.unlock()
+                return
+            }
+            completed = true
+            connection.cancel()
+            connection.stateUpdateHandler = nil
+            resolving[name] = nil
+            gate.unlock()
+        }
+
+        connection.stateUpdateHandler = { [weak connection] state in
+            guard let connection = connection else {
+                cleanup()
+                return
+            }
             switch state {
             case .ready:
                 deliverIfPossible(serviceName: name, connection: connection)
-                connection.cancel()
-                resolving[name] = nil
+                cleanup()
             case .failed, .cancelled:
-                resolving[name] = nil
+                cleanup()
             default:
                 break
             }
         }
         connection.start(queue: ioQueue)
+
+        ioQueue.asyncAfter(deadline: .now() + 5.0) {
+            cleanup()
+        }
     }
 
     private static func deliverIfPossible(serviceName: String, connection: NWConnection) {
