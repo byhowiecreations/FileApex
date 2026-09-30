@@ -6,6 +6,7 @@ expect object PlatformClipboard {
     fun setSystemClipboardText(text: String)
     fun applyRemoteText(text: String, sourceDeviceName: String = "")
     fun openUrlInDefaultBrowser(url: String)
+    fun sharePlainText(text: String, title: String = "")
 }
 
 private val webUrlInTextPattern = Regex("""https?://[^\s<>"{}|\\^`\[\]]+""")

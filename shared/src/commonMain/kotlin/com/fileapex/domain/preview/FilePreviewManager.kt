@@ -40,10 +40,14 @@ class FilePreviewManager(
                     maxBytes = maxBytes
                 )
             }
+            is BrowseTarget.Demo -> {
+                com.fileapex.domain.demo.DemoModeState.getDemoPreviewBytes(item.name)
+            }
         }
     }
 
     fun isImageFile(item: RemoteFileItem): Boolean {
+        if (target is BrowseTarget.Demo) return false
         val name = item.name.lowercase()
         return item.mimeType.startsWith("image/") ||
             name.endsWith(".jpg") ||
@@ -55,6 +59,7 @@ class FilePreviewManager(
     }
 
     fun isTextFile(item: RemoteFileItem): Boolean {
+        if (target is BrowseTarget.Demo) return true
         val name = item.name.lowercase()
         return item.mimeType.startsWith("text/") ||
             name.endsWith(".txt") ||

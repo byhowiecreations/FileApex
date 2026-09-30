@@ -96,6 +96,8 @@ fun App(
     onboardingComplete: Boolean = hasStoragePermission,
     deniedOnboardingStepIds: Set<String> = emptySet(),
     onGrantOnboardingStep: (String) -> Unit = {},
+    onSkipOnboardingStep: (String) -> Unit = {},
+    onContinueToApp: () -> Unit = {},
     hasUnrestrictedBattery: Boolean = true,
     backgroundPersistence: BackgroundPersistenceUiState = BackgroundPersistenceUiState(),
     onRequestStoragePermission: () -> Unit,
@@ -332,31 +334,10 @@ fun App(
                     OnboardingScreen(
                         steps = onboardingSteps,
                         deniedStepIds = deniedOnboardingStepIds,
-                        onGrantStep = onGrantOnboardingStep
+                        onGrantStep = onGrantOnboardingStep,
+                        onSkipStep = onSkipOnboardingStep,
+                        onContinueToApp = onContinueToApp
                     )
-                } else if (!setupComplete) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = stringRes("fileapex_setup"),
-                            style = MaterialTheme.typography.headlineMedium
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = stringRes("grant_storage_continue"),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = onRequestStoragePermission) {
-                            Text(stringRes("grant_file_access"))
-                        }
-                    }
                 } else if (isPreparingShare) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
@@ -458,8 +439,12 @@ fun App(
                                         wideHomeTab = HomeTab.Devices
                                     },
                                     onOpenLocalFiles = {
-                                        wideSelectedTarget = devicesViewModel.thisDeviceTarget()
-                                        wideHomeTab = HomeTab.Files
+                                        if (!hasStoragePermission) {
+                                             onRequestStoragePermission()
+                                        } else {
+                                             wideSelectedTarget = devicesViewModel.thisDeviceTarget()
+                                             wideHomeTab = HomeTab.Files
+                                        }
                                     },
                                     devicesViewMode = devicesViewMode,
                                     onToggleDevicesViewMode = {
@@ -501,7 +486,10 @@ fun App(
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
                                     onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
                                     onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                    onOpenNotes = { route = AppRoute.Notes }
+                                    onOpenNotes = { route = AppRoute.Notes },
+                                    onboardingSteps = onboardingSteps,
+                                    deniedOnboardingStepIds = deniedOnboardingStepIds,
+                                    onGrantOnboardingStep = onGrantOnboardingStep
                                 )
                             } else {
                                 CompactHomeContent(
@@ -510,7 +498,11 @@ fun App(
                                     appVersionName = appVersionName,
                                     onOpenDevice = { route = AppRoute.Explorer(it) },
                                     onOpenLocalFiles = {
-                                        route = AppRoute.Explorer(devicesViewModel.thisDeviceTarget())
+                                        if (!hasStoragePermission) {
+                                            onRequestStoragePermission()
+                                        } else {
+                                            route = AppRoute.Explorer(devicesViewModel.thisDeviceTarget())
+                                        }
                                     },
                                     onGenerateQr = {
                                         onStartShareServer()
@@ -533,7 +525,10 @@ fun App(
                                     onOpenAppDetailsSettings = onOpenAppDetailsSettings,
                                     onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
                                     onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                    onOpenNotes = { route = AppRoute.Notes }
+                                    onOpenNotes = { route = AppRoute.Notes },
+                                    onboardingSteps = onboardingSteps,
+                                    deniedOnboardingStepIds = deniedOnboardingStepIds,
+                                    onGrantOnboardingStep = onGrantOnboardingStep
                                 )
                             }
                             KineticDropFxLayer()
@@ -717,7 +712,10 @@ private fun CompactHomeContent(
     onOpenAppDetailsSettings: () -> Unit = {},
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     onOpenTransferQueue: () -> Unit = {},
-    onOpenNotes: () -> Unit = {}
+    onOpenNotes: () -> Unit = {},
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
+    deniedOnboardingStepIds: Set<String> = emptySet(),
+    onGrantOnboardingStep: (String) -> Unit = {}
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
@@ -783,7 +781,10 @@ private fun CompactHomeContent(
                 onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                 onOpenAppDetailsSettings = onOpenAppDetailsSettings,
                 onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                onOpenTransferQueue = onOpenTransferQueue
+                onOpenTransferQueue = onOpenTransferQueue,
+                onboardingSteps = onboardingSteps,
+                deniedOnboardingStepIds = deniedOnboardingStepIds,
+                onGrantOnboardingStep = onGrantOnboardingStep
             )
             is AppRoute.Explorer -> FileExplorerScreen(
                 target = current.target,

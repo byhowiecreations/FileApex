@@ -83,7 +83,7 @@ class ExplorerViewModel(
     )
     private val settings = FileApexServices.settings
     private val browseRoot: String = browser.browseRoot
-    private val isRemote: Boolean = browser.isRemote
+    private val isRemote: Boolean = browser.isRemote || target is BrowseTarget.Demo
     private val remoteDeviceId: String? = (target as? BrowseTarget.Remote)?.deviceId
     /** Resume after mid-explorer PIN re-entry. */
     private var pendingBrowseAction: (suspend () -> Unit)? = null

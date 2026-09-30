@@ -10,5 +10,6 @@ data class OnboardingPermissionStep(
     val titleKey: String,
     val reasonKey: String,
     val deniedHintKey: String,
-    val granted: Boolean
+    val granted: Boolean,
+    val isOptional: Boolean = false
 )

@@ -32,6 +32,9 @@ class ExplorerTransferManager(
                     items = items
                 )
             }
+            is BrowseTarget.Demo -> {
+                // In-memory demo simulation
+            }
         }
         return if (items.size == 1) {
             AppI18n.t("copied_file_paste_hint", items.first().name)
@@ -48,10 +51,19 @@ class ExplorerTransferManager(
                 port = target.port,
                 targetDirectory = currentPath
             )
+            is BrowseTarget.Demo -> emptyList()
         }
     }
 
     suspend fun downloadRemote(items: List<RemoteFileItem>): List<String> {
+        if (target is BrowseTarget.Demo) {
+            kotlinx.coroutines.coroutineScope {
+                items.forEach { item ->
+                    com.fileapex.domain.demo.DemoModeState.simulateTransfer(item, this)
+                }
+            }
+            return items.map { it.name }
+        }
         val remote = target as? BrowseTarget.Remote
             ?: error(AppI18n.t("download_remote_only"))
         require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_download") }
@@ -62,6 +74,7 @@ class ExplorerTransferManager(
         val sourceDeviceId = when (val browseTarget = target) {
             is BrowseTarget.Local -> identityProvider().deviceId
             is BrowseTarget.Remote -> browseTarget.deviceId
+            is BrowseTarget.Demo -> browseTarget.deviceId
         }
         return transferManager.buildInAppDeviceOptions(sourceDeviceId)
     }
@@ -108,6 +121,9 @@ class ExplorerTransferManager(
                             )
                         )
                     }
+                }
+                is BrowseTarget.Demo -> {
+                    // Demo mode does not expand multi-copy network sources
                 }
             }
         }

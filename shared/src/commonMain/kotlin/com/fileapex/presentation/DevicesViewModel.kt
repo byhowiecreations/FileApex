@@ -177,9 +177,14 @@ class DevicesViewModel : ViewModel() {
                 }
         },
         FileApexServices.settings.deviceOrderIds,
-        DeviceOrderCoordinator.revisionEpochMs
-    ) { rows, _, _ ->
-        DeviceOrderCoordinator.applySavedOrder(rows)
+        DeviceOrderCoordinator.revisionEpochMs,
+        com.fileapex.domain.demo.DemoModeState.isDemoModeActive
+    ) { rows, _, _, isDemoActive ->
+        if (rows.isEmpty() && isDemoActive) {
+            com.fileapex.domain.demo.DemoModeState.getDemoDeviceRows()
+        } else {
+            DeviceOrderCoordinator.applySavedOrder(rows)
+        }
     }
         .distinctUntilChanged { old, new ->
             if (old.size != new.size) return@distinctUntilChanged false
@@ -205,6 +210,13 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             LanPairingDiscovery.discoveredPeers.collect { peers ->
                 _uiState.update { it.copy(discoveredPairingPeers = peers) }
+            }
+        }
+        viewModelScope.launch {
+            repository.observeDevices().collect { devices ->
+                if (devices.isNotEmpty() && com.fileapex.domain.demo.DemoModeState.isDemoModeActive.value) {
+                    com.fileapex.domain.demo.DemoModeState.exitDemo()
+                }
             }
         }
     }
@@ -325,6 +337,12 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun openDeviceOrExplain(deviceId: String, open: (BrowseTarget) -> Unit) {
+        if (com.fileapex.domain.demo.DemoModeState.isDemoModeActive.value &&
+            (deviceId == "demo_macbook" || deviceId == "demo_tablet")
+        ) {
+            open(com.fileapex.domain.demo.DemoModeState.getBrowseTarget(deviceId))
+            return
+        }
         viewModelScope.launch {
             val device = repository.getDevice(deviceId) ?: return@launch
             openDeviceOrExplainInternal(device, open)
@@ -1389,5 +1407,11 @@ sealed interface BrowseTarget {
         override val rootPath: String,
         /** Peer advertised PIN requirement; explorer re-checks session before navigation. */
         val pinRequired: Boolean = false
+    ) : BrowseTarget
+
+    data class Demo(
+        override val deviceId: String,
+        override val displayName: String,
+        override val rootPath: String = "/"
     ) : BrowseTarget
 }

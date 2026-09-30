@@ -55,6 +55,12 @@ class BrowserCoordinator(
                     files = items.filter { !it.isDirectory }.sortedBy { it.name.lowercase() }
                 )
             }
+            is BrowseTarget.Demo -> {
+                BrowseListing(
+                    directories = com.fileapex.domain.demo.DemoModeState.getDemoDirectories(path),
+                    files = com.fileapex.domain.demo.DemoModeState.getDemoFiles(path)
+                )
+            }
         }
         synchronized(cacheLock) {
             browseCache[normalized] = CachedBrowse(now, result)

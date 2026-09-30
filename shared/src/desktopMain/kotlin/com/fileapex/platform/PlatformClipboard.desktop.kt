@@ -58,6 +58,11 @@ actual object PlatformClipboard {
         }
     }
 
+    actual fun sharePlainText(text: String, title: String) {
+        setSystemClipboardText(text)
+        openUrlInDefaultBrowser("https://github.com/byhowiecreations/FileApex/releases")
+    }
+
     private fun readAwtClipboardText(): String? {
         return runCatching {
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard

@@ -166,4 +166,24 @@ actual object PlatformClipboard {
             context.startActivity(intent)
         }
     }
+
+    actual fun sharePlainText(text: String, title: String) {
+        val context = androidAppContextOrNull() ?: return
+        runCatching {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+                if (title.isNotEmpty()) {
+                    putExtra(Intent.EXTRA_SUBJECT, title)
+                }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(intent, title.ifEmpty { "Share FileApex" }).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+        }.onFailure {
+            setSystemClipboardText(text)
+        }
+    }
 }

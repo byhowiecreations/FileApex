@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.FileApexBackHandler
+import com.fileapex.domain.demo.DemoModeState
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerActionCopy
 import com.fileapex.presentation.ExplorerUiState
@@ -240,6 +241,14 @@ fun FileExplorerScreen(
                                             onBack = onBack,
                                             viewModel = viewModel
                                         )
+                                    }
+                                )
+                            }
+                            if (target is BrowseTarget.Demo) {
+                                DemoModeBanner(
+                                    onExitDemo = {
+                                        DemoModeState.exitDemo()
+                                        onBack()
                                     }
                                 )
                             }

@@ -843,6 +843,14 @@ Tap Central Hub (+) to Pair</string>
     <string name="configure_clipboard_targets_title">Configure Clipboard Sharing</string>
     <string name="configure_clipboard_targets_body">Choose which devices will receive clipboard updates from this device.</string>
     <string name="peer_clipboard_disabled_opt_in_sent">Clipboard sharing is disabled on %1$s. An opt-in request has been sent.</string>
+    <string name="report_issue_feedback">Report an Issue / Feedback</string>
+    <string name="report_issue_feedback_desc">Submit diagnostic logs, feedback form, or report on GitHub</string>
+    <string name="feedback_option_email">Send Email (Includes Diagnostic Logs)</string>
+    <string name="feedback_option_email_desc">Attach exported logs and email developer</string>
+    <string name="feedback_option_form">Submit Anonymous Feedback (Google Form)</string>
+    <string name="feedback_option_form_desc">Open pre-filled form with device telemetry</string>
+    <string name="feedback_option_github">Open GitHub Issues Tracker</string>
+    <string name="feedback_option_github_desc">View or report issues on GitHub</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d cluster device)</item>
         <item quantity="other">(+%d cluster devices)</item>
@@ -891,5 +899,32 @@ Tap Central Hub (+) to Pair</string>
         <item quantity="one">Sent to %1$s device.</item>
         <item quantity="other">Sent to %1$s devices.</item>
     </plurals>
+    <string name="quick_start_title_android">Connect to another device</string>
+    <string name="quick_start_desc_android">Install FileApex on your Mac, Windows PC, or second Android device to start sending files.</string>
+    <string name="share_download_link">Share Download Link</string>
+    <string name="quick_start_title_desktop">No connected devices yet</string>
+    <string name="quick_start_desc_desktop">Install FileApex on your Android device or second Windows PC/Mac to start sending files.</string>
+    <string name="get_android_app">Get Android App</string>
+    <string name="demo_mode_card_title">Try a demo of the app</string>
+    <string name="demo_mode_card_desc">Explore how FileApex works with a simulated environment of devices that you can virtually navigate.</string>
+    <string name="launch_demo">Launch Demo</string>
+    <string name="exit_demo">Exit Demo</string>
+    <string name="demo_mode_banner">DEMO MODE — Simulated environment (No files moved)</string>
+    <string name="demo_transfer_complete">Demo transfer complete! Ready to connect your real devices?</string>
+    <string name="set_up_later">Set Up Later</string>
+    <string name="continue_to_app">Continue to App</string>
+    <string name="demo_preview_title">Demo Preview</string>
+    <string name="phone_may_pause_transfer">Phone may pause transfer if screen turns off.</string>
+    <string name="keep_active">Keep Active</string>
+    <string name="add_device">Add Device</string>
+    <string name="explore_demo_mode">Explore Demo Mode</string>
+    <string name="explore_demo_mode_desc">Take a simulated tour with zero permissions required.</string>
+    <string name="try_demo_mode">Try Demo Mode</string>
+    <string name="onboarding_permissions_title">Onboarding permissions</string>
+    <string name="onboarding_permissions_desc">Grant remaining permissions for file transfers &amp; background sync</string>
+    <string name="onboarding_permissions_subpage_hint">Grant the remaining permissions below to enable full file browsing, transfers, and background connectivity.</string>
+    <string name="all_permissions_granted">All permissions granted</string>
+    <string name="all_permissions_granted_desc">FileApex has all required permissions to transfer files and discover nearby devices.</string>
+    <string name="back_to_settings">Back to Settings</string>
 </resources>
 

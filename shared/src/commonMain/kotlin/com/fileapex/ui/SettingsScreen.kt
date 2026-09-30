@@ -54,8 +54,11 @@ import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.platform.Diagnostics
+import com.fileapex.platform.OnboardingPermissionStep
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedButton
@@ -146,6 +149,7 @@ import kotlinx.coroutines.delay
 
 private enum class SettingsPage {
     Root,
+    OnboardingPermissions,
     CheckForUpdates,
     PinRequired,
     BackgroundPersistence,
@@ -202,6 +206,9 @@ fun SettingsScreen(
     /** Android: gate cellular opt-in behind READ_PHONE_STATE; other platforms invoke [onProceed] immediately. */
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     onOpenTransferQueue: () -> Unit = {},
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
+    deniedOnboardingStepIds: Set<String> = emptySet(),
+    onGrantOnboardingStep: (String) -> Unit = {},
     viewModel: SettingsViewModel = viewModel { SettingsViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -264,7 +271,16 @@ fun SettingsScreen(
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             backgroundPersistence = backgroundPersistence,
             exactAlarmWarningActive = exactAlarmWarningActive,
-            onOpenTransferQueue = onOpenTransferQueue
+            onOpenTransferQueue = onOpenTransferQueue,
+            onboardingSteps = onboardingSteps,
+            onOpenOnboardingPermissions = { page = SettingsPage.OnboardingPermissions }
+        )
+        SettingsPage.OnboardingPermissions -> OnboardingPermissionsSettingsPage(
+            onboardingSteps = onboardingSteps,
+            deniedOnboardingStepIds = deniedOnboardingStepIds,
+            onGrantOnboardingStep = onGrantOnboardingStep,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root }
         )
         SettingsPage.Notifications -> NotificationsSettingsPage(
             state = state,
@@ -549,7 +565,9 @@ private fun SettingsRootPage(
     onVersionNumberEasterEgg: () -> Unit,
     backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean,
-    onOpenTransferQueue: () -> Unit = {}
+    onOpenTransferQueue: () -> Unit = {},
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
+    onOpenOnboardingPermissions: () -> Unit = {}
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
     var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
@@ -569,6 +587,54 @@ private fun SettingsRootPage(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = 48.dp)
             ) {
+                val ungrantedSteps = onboardingSteps.filter { !it.granted }
+                if (ungrantedSteps.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .clickable(onClick = onOpenOnboardingPermissions),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringRes("onboarding_permissions_title"),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = stringRes("onboarding_permissions_desc"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
                 SettingsCategoryGroup(
                     title = stringRes("system_app_performance"),
                     expanded = state.systemPerformanceExpanded,
@@ -790,6 +856,79 @@ private fun SettingsRootPage(
                     }
                 }
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OnboardingPermissionsSettingsPage(
+    onboardingSteps: List<OnboardingPermissionStep>,
+    deniedOnboardingStepIds: Set<String>,
+    onGrantOnboardingStep: (String) -> Unit,
+    layoutMode: SettingsScreenLayoutMode,
+    onBack: () -> Unit
+) {
+    SettingsPageShell(
+        title = stringRes("onboarding_permissions_title"),
+        layoutMode = layoutMode,
+        onBack = onBack
+    ) { contentModifier ->
+        val remainingSteps = onboardingSteps.filter { !it.granted }
+        if (remainingSteps.isEmpty()) {
+            Column(
+                modifier = contentModifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringRes("all_permissions_granted"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringRes("all_permissions_granted_desc"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = onBack) {
+                    Text(stringRes("back_to_settings"))
+                }
+            }
+        } else {
+            Column(
+                modifier = contentModifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringRes("onboarding_permissions_subpage_hint"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                )
+                remainingSteps.forEach { step ->
+                    OnboardingPermissionCard(
+                        step = step,
+                        denied = step.id in deniedOnboardingStepIds,
+                        onGrant = { onGrantOnboardingStep(step.id) }
+                    )
+                }
+            }
         }
     }
 }

@@ -73,6 +73,7 @@ import com.fileapex.ui.HomeTab
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.platform.BackgroundPersistenceUiState
+import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.isMainHomeScreen
 import com.fileapex.ui.theme.FileApexTeal
@@ -133,7 +134,10 @@ fun AdaptiveWideHome(
     onOpenAppDetailsSettings: () -> Unit = {},
     onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit = { it() },
     onOpenTransferQueue: () -> Unit = {},
-    onOpenNotes: (() -> Unit)? = null
+    onOpenNotes: (() -> Unit)? = null,
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
+    deniedOnboardingStepIds: Set<String> = emptySet(),
+    onGrantOnboardingStep: (String) -> Unit = {}
 ) {
     val state by devicesViewModel.uiState.collectAsState()
     val deviceRows by devicesViewModel.deviceRows.collectAsState()
@@ -228,7 +232,10 @@ fun AdaptiveWideHome(
                             exactAlarmWarningActive = exactAlarmWarningActive,
                             onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                             onOpenAppDetailsSettings = onOpenAppDetailsSettings,
-                            onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled
+                            onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
+                            onboardingSteps = onboardingSteps,
+                            deniedOnboardingStepIds = deniedOnboardingStepIds,
+                            onGrantOnboardingStep = onGrantOnboardingStep
                         )
                     }
                 }

@@ -151,6 +151,16 @@ class MainActivity : ComponentActivity() {
             promptReinstallGoogleAccount()
         }
 
+        lifecycleScope.launch {
+            runCatching {
+                com.fileapex.di.FileApexServices.deviceRepository.observeDevices().collect { devices ->
+                    if (devices.isNotEmpty() && onboardingComplete) {
+                        startShareServer(force = true)
+                    }
+                }
+            }
+        }
+
         handleIncomingIntent(intent)
 
         setContent {
@@ -162,6 +172,8 @@ class MainActivity : ComponentActivity() {
                     onboardingComplete = onboardingComplete,
                     deniedOnboardingStepIds = deniedOnboardingStepIds,
                     onGrantOnboardingStep = ::grantOnboardingStep,
+                    onSkipOnboardingStep = ::skipOnboardingStep,
+                    onContinueToApp = ::continueToAppFromOnboarding,
                     hasUnrestrictedBattery = !persistenceSnapshot.persistenceRestricted,
                     backgroundPersistence = persistenceSnapshot.toUiState(),
                     onRequestStoragePermission = ::requestStoragePermission,
@@ -482,7 +494,7 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshPermissions() {
         onboardingSteps = AndroidOnboardingPermissions.buildSteps(this)
-        onboardingComplete = AndroidOnboardingPermissions.isComplete(onboardingSteps)
+        onboardingComplete = AndroidOnboardingPermissions.isComplete(this, onboardingSteps)
         hasStoragePermission = onboardingSteps
             .firstOrNull { it.id == AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE }
             ?.granted
@@ -498,6 +510,16 @@ class MainActivity : ComponentActivity() {
             val exactAvailable = ServiceWatchdogScheduler.refreshExactAlarmAvailability(this)
             exactAlarmWarningActive = !exactAvailable
         }
+    }
+
+    private fun skipOnboardingStep(stepId: String) {
+        AndroidOnboardingPermissions.markStepSkipped(this, stepId)
+        refreshPermissions()
+    }
+
+    private fun continueToAppFromOnboarding() {
+        AndroidOnboardingPermissions.markAllOptionalStepsSkipped(this, onboardingSteps)
+        refreshPermissions()
     }
 
     private fun completePendingOnboardingReturns() {
@@ -666,11 +688,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startShareServer() {
+    private fun startShareServer(force: Boolean = false) {
         if (!onboardingComplete) {
             return
         }
+        val hasPaired = runCatching {
+            if (com.fileapex.di.FileApexServices.isDatabaseReady()) {
+                kotlinx.coroutines.runBlocking {
+                    com.fileapex.di.FileApexServices.deviceRepository.listDevices().isNotEmpty()
+                }
+            } else false
+        }.getOrDefault(false)
+
         val wasPending = ShareServerPendingStart.consume(this)
+        if (!force && !hasPaired && !wasPending) {
+            Log.i(TAG, "Deferring share server start - 0 paired devices")
+            return
+        }
         val heartbeatStale = !ServiceWatchdogScheduler.isShareServerRunning(this)
         if (wasPending || heartbeatStale) {
             Log.i(

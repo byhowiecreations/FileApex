@@ -36,6 +36,9 @@ object PathUtils {
     fun isWithinRoot(absolutePath: String, rootPath: String): Boolean {
         val root = normalize(rootPath)
         val current = normalize(absolutePath)
+        if (root == "/") {
+            return current.startsWith("/")
+        }
         return current == root || current.startsWith("$root/")
     }
 
@@ -50,8 +53,8 @@ object PathUtils {
         val current = normalize(path)
         if (current == root) return null
         val slash = current.lastIndexOf('/')
-        if (slash <= 0) return null
-        val parent = current.substring(0, slash).ifBlank { "/" }
+        if (slash < 0) return null
+        val parent = if (slash == 0) "/" else current.substring(0, slash)
         val normalizedParent = normalize(parent)
         return if (isWithinRoot(normalizedParent, root)) normalizedParent else null
     }

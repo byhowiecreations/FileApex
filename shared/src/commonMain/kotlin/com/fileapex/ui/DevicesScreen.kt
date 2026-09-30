@@ -457,6 +457,7 @@ fun DevicesScreen(
                     editMode = editMode,
                     connectingDeviceId = if (editMode) null else state.connectingDeviceId,
                     selectedDeviceId = selectedDeviceId,
+                    onAddDevice = { addMenuOpen = true },
                     onOpenDevice = { deviceId ->
                         viewModel.openDeviceOrExplain(deviceId) { target ->
                             currentOnOpenDevice(target)
@@ -956,6 +957,7 @@ private fun PairedDevicesList(
     editMode: Boolean,
     connectingDeviceId: String?,
     selectedDeviceId: String?,
+    onAddDevice: () -> Unit,
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onDeviceDetails: (deviceId: String) -> Unit,
@@ -983,6 +985,7 @@ private fun PairedDevicesList(
                     layoutMode = layoutMode,
                     connectingDeviceId = connectingDeviceId,
                     selectedDeviceId = selectedDeviceId,
+                    onAddDevice = onAddDevice,
                     onOpenDevice = onOpenDevice,
                     onRenameDevice = onRenameDevice,
                     onDeviceDetails = onDeviceDetails,
@@ -996,6 +999,7 @@ private fun PairedDevicesList(
                     deviceRows = deviceRows,
                     connectingDeviceId = connectingDeviceId,
                     selectedDeviceId = selectedDeviceId,
+                    onAddDevice = onAddDevice,
                     onOpenDevice = onOpenDevice,
                     onRenameDevice = onRenameDevice,
                     onDeviceDetails = onDeviceDetails,
@@ -1135,6 +1139,7 @@ private fun PairedDevicesBrowseList(
     deviceRows: List<DeviceListRow>,
     connectingDeviceId: String?,
     selectedDeviceId: String?,
+    onAddDevice: () -> Unit = {},
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onDeviceDetails: (deviceId: String) -> Unit,
@@ -1145,6 +1150,8 @@ private fun PairedDevicesBrowseList(
 ) {
     val itemSpacing = 14.dp
     val listTopPadding = 8.dp
+    val isDemoActive by com.fileapex.domain.demo.DemoModeState.isDemoModeActive.collectAsState()
+    val bottomPadding = if (deviceRows.isEmpty() && !isDemoActive) 24.dp else DeviceListToAddGap
 
     LazyColumn(
         state = listState,
@@ -1153,26 +1160,25 @@ private fun PairedDevicesBrowseList(
             start = 20.dp,
             end = 20.dp,
             top = listTopPadding,
-            bottom = DeviceListToAddGap
+            bottom = bottomPadding
         ),
         verticalArrangement = Arrangement.spacedBy(itemSpacing)
     ) {
-        if (deviceRows.isEmpty()) {
+        if (isDemoActive) {
+            item(key = "demo_banner") {
+                DemoModeBanner(
+                    onExitDemo = { com.fileapex.domain.demo.DemoModeState.exitDemo() }
+                )
+            }
+        }
+        if (deviceRows.isEmpty() && !isDemoActive) {
             item(
                 key = "empty",
                 contentType = "empty"
             ) {
-                Text(
-                    text = stringRes("no_paired_devices_hint"),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier
-                        .animateItem(
-                            fadeInSpec = null,
-                            fadeOutSpec = null,
-                            placementSpec = null
-                        )
-                        .padding(horizontal = 4.dp, vertical = 8.dp)
+                EmptyDevicesQuickStartCard(
+                    onAddDevice = onAddDevice,
+                    onLaunchDemo = { com.fileapex.domain.demo.DemoModeState.launchDemo() }
                 )
             }
         } else {
@@ -1213,6 +1219,7 @@ private fun PairedDevicesGridBrowseList(
     layoutMode: DevicesScreenLayoutMode,
     connectingDeviceId: String?,
     selectedDeviceId: String?,
+    onAddDevice: () -> Unit = {},
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onDeviceDetails: (deviceId: String) -> Unit,
@@ -1221,10 +1228,12 @@ private fun PairedDevicesGridBrowseList(
     onFilesDropped: (deviceId: String, paths: List<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDemoActive by com.fileapex.domain.demo.DemoModeState.isDemoModeActive.collectAsState()
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         // Skip first frame(s) with unset constraints so Fixed column count is not computed wrong.
         if (!maxWidth.value.isFinite() || maxWidth <= 0.dp) return@BoxWithConstraints
         val grid = resolveDeviceGridLayout(maxWidth = maxWidth, layoutMode = layoutMode)
+        val bottomPadding = if (deviceRows.isEmpty() && !isDemoActive) 24.dp else DeviceListToAddGap
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columnCount),
             modifier = Modifier.fillMaxSize(),
@@ -1232,18 +1241,23 @@ private fun PairedDevicesGridBrowseList(
                 start = grid.contentPadding,
                 end = grid.contentPadding,
                 top = 8.dp,
-                bottom = DeviceListToAddGap
+                bottom = bottomPadding
             ),
             horizontalArrangement = Arrangement.spacedBy(grid.cellSpacing),
             verticalArrangement = Arrangement.spacedBy(grid.cellSpacing)
         ) {
-            if (deviceRows.isEmpty()) {
+            if (isDemoActive) {
+                item(key = "demo_banner", span = { GridItemSpan(grid.columnCount) }) {
+                    DemoModeBanner(
+                        onExitDemo = { com.fileapex.domain.demo.DemoModeState.exitDemo() }
+                    )
+                }
+            }
+            if (deviceRows.isEmpty() && !isDemoActive) {
                 item(key = "empty", span = { GridItemSpan(grid.columnCount) }) {
-                    Text(
-                        text = stringRes("no_paired_devices_hint"),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                    EmptyDevicesQuickStartCard(
+                        onAddDevice = onAddDevice,
+                        onLaunchDemo = { com.fileapex.domain.demo.DemoModeState.launchDemo() }
                     )
                 }
             } else {

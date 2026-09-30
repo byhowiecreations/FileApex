@@ -843,6 +843,14 @@ Toca el hub central (+) para emparejar</string>
     <string name="configure_clipboard_targets_title">Configurar uso compartido del portapapeles</string>
     <string name="configure_clipboard_targets_body">Elige qué dispositivos recibirán las actualizaciones del portapapeles desde este dispositivo.</string>
     <string name="peer_clipboard_disabled_opt_in_sent">El uso compartido del portapapeles está desactivado en %1$s. Se ha enviado una solicitud de activación.</string>
+    <string name="report_issue_feedback">Informar de un problema / Comentarios</string>
+    <string name="report_issue_feedback_desc">Enviar registros de diagnóstico, formulario o informe en GitHub</string>
+    <string name="feedback_option_email">Enviar correo (incluye registros de diagnóstico)</string>
+    <string name="feedback_option_email_desc">Adjuntar registros y enviar correo al desarrollador</string>
+    <string name="feedback_option_form">Enviar comentarios anónimos (Formulario de Google)</string>
+    <string name="feedback_option_form_desc">Abrir formulario con telemetría del dispositivo</string>
+    <string name="feedback_option_github">Abrir seguimiento de problemas de GitHub</string>
+    <string name="feedback_option_github_desc">Ver o informar problemas en GitHub</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d dispositivo del clúster)</item>
         <item quantity="other">(+%d dispositivos del clúster)</item>
@@ -891,5 +899,32 @@ Toca el hub central (+) para emparejar</string>
         <item quantity="one">Enviado a %1$s dispositivo.</item>
         <item quantity="other">Enviado a %1$s dispositivos.</item>
     </plurals>
+    <string name="quick_start_title_android">Conéctate a otro dispositivo</string>
+    <string name="quick_start_desc_android">Instala FileApex en tu Mac, PC con Windows o segundo dispositivo Android para comenzar a enviar archivos.</string>
+    <string name="share_download_link">Compartir enlace de descarga</string>
+    <string name="quick_start_title_desktop">Aún no hay dispositivos conectados</string>
+    <string name="quick_start_desc_desktop">Instala FileApex en tu dispositivo Android o segunda PC con Windows/Mac para comenzar a enviar archivos.</string>
+    <string name="get_android_app">Obtener aplicación de Android</string>
+    <string name="demo_mode_card_title">Prueba una demostración de la app</string>
+    <string name="demo_mode_card_desc">Explora cómo funciona FileApex con un entorno simulado de dispositivos por los que puedes navegar virtualmente.</string>
+    <string name="launch_demo">Iniciar demostración</string>
+    <string name="exit_demo">Salir de la demostración</string>
+    <string name="demo_mode_banner">MODO DEMO — Entorno simulado (No se mueven archivos)</string>
+    <string name="demo_transfer_complete">¡Transferencia de demostración completa! ¿Listo para conectar tus dispositivos reales?</string>
+    <string name="set_up_later">Configurar más tarde</string>
+    <string name="continue_to_app">Continuar a la aplicación</string>
+    <string name="demo_preview_title">Vista previa de demostración</string>
+    <string name="phone_may_pause_transfer">El teléfono puede pausar la transferencia si la pantalla se apaga.</string>
+    <string name="keep_active">Mantener activo</string>
+    <string name="add_device">Agregar dispositivo</string>
+    <string name="explore_demo_mode">Explorar modo de demostración</string>
+    <string name="explore_demo_mode_desc">Realiza un recorrido simulado sin necesidad de permisos.</string>
+    <string name="try_demo_mode">Probar modo demo</string>
+    <string name="onboarding_permissions_title">Permisos de incorporación</string>
+    <string name="onboarding_permissions_desc">Concede los permisos restantes para transferir archivos y sincronizar en segundo plano</string>
+    <string name="onboarding_permissions_subpage_hint">Concede los permisos restantes a continuación para habilitar la exploración completa de archivos, transferencias y conectividad en segundo plano.</string>
+    <string name="all_permissions_granted">Todos los permisos concedidos</string>
+    <string name="all_permissions_granted_desc">FileApex tiene todos los permisos necesarios para transferir archivos y detectar dispositivos cercanos.</string>
+    <string name="back_to_settings">Volver a Configuración</string>
 </resources>
 

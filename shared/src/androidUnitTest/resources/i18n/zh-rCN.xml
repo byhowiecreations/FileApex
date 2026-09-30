@@ -840,6 +840,14 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="configure_clipboard_targets_title">配置剪贴板共享</string>
     <string name="configure_clipboard_targets_body">选择从此设备接收剪贴板更新的设备。</string>
     <string name="peer_clipboard_disabled_opt_in_sent">%1$s 上的剪贴板共享已禁用。已发送启用请求。</string>
+    <string name="report_issue_feedback">报告问题 / 反馈</string>
+    <string name="report_issue_feedback_desc">提交诊断日志、反馈表单或在 GitHub 报告问题</string>
+    <string name="feedback_option_email">发送电子邮件（包含诊断日志）</string>
+    <string name="feedback_option_email_desc">附加导出的日志并发送邮件给开发者</string>
+    <string name="feedback_option_form">提交匿名反馈（Google 表单）</string>
+    <string name="feedback_option_form_desc">打开包含设备遥测信息的预填表单</string>
+    <string name="feedback_option_github">打开 GitHub 问题跟踪器</string>
+    <string name="feedback_option_github_desc">在 GitHub 上查看或报告问题</string>
     <plurals name="paired_cluster_extra">
         <item quantity="other">（+%d 台集群设备）</item>
     </plurals>
@@ -876,5 +884,32 @@ Would you like to use English? / 您想使用英语吗？</string>
     <plurals name="sent_to_n_devices">
         <item quantity="other">已发送到 %1$s 台设备。</item>
     </plurals>
+    <string name="quick_start_title_android">连接到另一台设备</string>
+    <string name="quick_start_desc_android">在您的 Mac、Windows PC 或另一台 Android 设备上安装 FileApex 以开始发送文件。</string>
+    <string name="share_download_link">分享下载链接</string>
+    <string name="quick_start_title_desktop">暂无已连接的设备</string>
+    <string name="quick_start_desc_desktop">在您的 Android 设备或另一台 Windows PC/Mac 上安装 FileApex 以开始发送文件。</string>
+    <string name="get_android_app">获取 Android 应用</string>
+    <string name="demo_mode_card_title">体验应用演示</string>
+    <string name="demo_mode_card_desc">通过可以进行虚拟浏览的模拟设备环境探索 FileApex 的工作方式。</string>
+    <string name="launch_demo">启动演示</string>
+    <string name="exit_demo">退出演示</string>
+    <string name="demo_mode_banner">演示模式 — 模拟环境（未移动任何文件）</string>
+    <string name="demo_transfer_complete">演示传输完成！准备好连接您的真实设备了吗？</string>
+    <string name="set_up_later">稍后设置</string>
+    <string name="continue_to_app">继续前往应用</string>
+    <string name="demo_preview_title">演示预览</string>
+    <string name="phone_may_pause_transfer">如果屏幕关闭，手机可能会暂停传输。</string>
+    <string name="keep_active">保持活跃</string>
+    <string name="add_device">添加设备</string>
+    <string name="explore_demo_mode">体验演示模式</string>
+    <string name="explore_demo_mode_desc">零权限体验模拟演示流程。</string>
+    <string name="try_demo_mode">尝试演示模式</string>
+    <string name="onboarding_permissions_title">入门引导权限</string>
+    <string name="onboarding_permissions_desc">授予剩余权限以启用文件传输和后台同步</string>
+    <string name="onboarding_permissions_subpage_hint">请授予以下剩余权限，以启用完整的文件浏览、传输和后台连接。</string>
+    <string name="all_permissions_granted">已授予所有权限</string>
+    <string name="all_permissions_granted_desc">FileApex 已拥有传输文件和发现附近设备所需的全部权限。</string>
+    <string name="back_to_settings">返回设置</string>
 </resources>
 
