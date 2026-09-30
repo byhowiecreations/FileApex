@@ -688,8 +688,14 @@ private fun SettingsRootPage(
                     )
                 }
             }
+            val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
+            val versionDisplayText = if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+                "FileApex v$cleanVersion"
+            } else {
+                "FileApex v$cleanVersion (GitHub)"
+            }
             Text(
-                text = "FileApex v$appVersionName",
+                text = versionDisplayText,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 20.dp)

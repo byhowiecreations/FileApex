@@ -10,6 +10,7 @@ class FileApexApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         com.fileapex.di.FileApexServices.isPlayStoreBuild = BuildConfig.IS_PLAY_STORE
+        com.fileapex.di.FileApexServices.buildChannel = BuildConfig.BUILD_CHANNEL
         com.fileapex.i18n.LocaleChromeRefresh.listener = {
             ShareServerForegroundNotification.refreshLocalizedCopy(this)
         }

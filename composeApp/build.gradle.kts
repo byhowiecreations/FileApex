@@ -155,11 +155,15 @@ android {
     productFlavors {
         create("github") {
             dimension = "distribution"
+            versionCode = 2026160
             buildConfigField("boolean", "IS_PLAY_STORE", "false")
+            buildConfigField("String", "BUILD_CHANNEL", "\"GitHub\"")
         }
         create("play") {
             dimension = "distribution"
+            versionCode = 160
             buildConfigField("boolean", "IS_PLAY_STORE", "true")
+            buildConfigField("String", "BUILD_CHANNEL", "\"Play\"")
         }
     }
 
@@ -417,7 +421,7 @@ afterEvaluate {
     }
     // Android release APK is built on macOS only; Windows ships desktop EXE.
     if (!isWindowsHost()) {
-        listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsReleaseBuilds", "shipAndroidBuilds").forEach { taskName ->
+        listOf("copyReleaseBuilds", "copyAllBuilds", "copyWindowsBuilds", "shipAndroidBuilds").forEach { taskName ->
             tasks.matching { it.name == taskName }.configureEach {
                 dependsOn("verifyReleaseSigning", "verifyReleaseApkSigned")
             }
@@ -1316,12 +1320,9 @@ tasks.register("copyReleaseBuilds") {
 }
 
 /**
- * Ship Play Store release bundle (.aab) into current/.
+ * Move Play Store release bundle (.aab) into current/ upon completion.
  */
-tasks.register("shipPlayBundle") {
-    group = "distribution"
-    description = "Build signed playRelease bundle and move to current/"
-    dependsOn("bundlePlayRelease", "verifyReleaseSigning")
+tasks.matching { it.name == "bundlePlayRelease" }.configureEach {
     doLast {
         val bundleDir = layout.buildDirectory.dir("outputs/bundle/playRelease").get().asFile
         val aab = bundleDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension == "aab" }
@@ -1337,7 +1338,7 @@ tasks.register("shipPlayBundle") {
 tasks.register("shipAndroidBuilds") {
     group = "distribution"
     description = "Build signed release APKs and Play bundle, moving them to current/"
-    dependsOn("verifyReleaseApkSigned", "shipPlayBundle")
+    dependsOn("verifyReleaseApkSigned", "bundlePlayRelease")
     doLast {
         shipToCurrent(
             includeReleaseApk = true,
@@ -1490,26 +1491,6 @@ tasks.register("packageInnoExe") {
                 logger.lifecycle("Pruned older installer: ${it.name}")
             }
         shipExeToCurrent(dest, fileapexVersionName, logger, release = true)
-    }
-}
-
-/**
- * Windows desktop ship (alias of copyWindowsBuilds).
- */
-tasks.register("copyWindowsReleaseBuilds") {
-    group = "distribution"
-    description = "Release EXE into current/ (Windows host only; APK is macOS-only)"
-    dependsOn("createReleaseDistributable", "packageInnoExe")
-    onlyIf { isWindowsHost() }
-
-    doLast {
-        shipToCurrent(
-            includeReleaseApk = false,
-            includeDmg = false,
-            includeMacApp = false,
-            mountDmg = false,
-            preserveExistingDmgOnWipe = true
-        )
     }
 }
 
@@ -1849,7 +1830,7 @@ tasks.register("copyAllBuilds") {
     description = "Ship into current/ (Mac: APK + DMGs; Windows: EXE). Does not build the Firefox XPI."
     if (isMacHost()) {
         // Only build the APK and Play AAB in-process; desktop DMGs are spawned as explicit subprocesses.
-        dependsOn("assembleRelease", "shipPlayBundle", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
+        dependsOn("assembleRelease", "bundlePlayRelease", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
         finalizedBy("packageSiliconDmg")
     } else if (isWindowsHost()) {
         dependsOn("createReleaseDistributable", "packageInnoExe")

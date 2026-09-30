@@ -54,6 +54,9 @@ object FileApexServices {
     @Volatile
     var isPlayStoreBuild: Boolean = false
 
+    @Volatile
+    var buildChannel: String = "GitHub"
+
     val deviceRepository: DeviceRepository
         get() = deviceRepositoryInstance
             ?: error("FileApexServices.init(database) must be called first")
