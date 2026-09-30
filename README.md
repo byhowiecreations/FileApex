@@ -52,6 +52,7 @@ To provide cross-platform file access and seamless system integration, the app m
 * **Exact alarms (Android):** Supports the service watchdog when background persistence is enabled in Settings.
 * **Phone state (Android):** Reads cellular network type, signal, and band for the Device Details screen when you are on mobile data (**opt-in**).
 
+* **Google Play:** [FileApex on Google Play Store](https://play.google.com/store/apps/details?id=com.fileapex) 
 
 FileApex does not request location access.
 
