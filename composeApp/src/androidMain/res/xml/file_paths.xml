@@ -2,5 +2,6 @@
 <paths>
     <cache-path name="updates" path="updates/" />
     <cache-path name="note_attachments" path="note-attachments/" />
+    <cache-path name="diagnostics" path="." />
     <external-path name="fileapex_downloads" path="Download/FileApex/" />
 </paths>

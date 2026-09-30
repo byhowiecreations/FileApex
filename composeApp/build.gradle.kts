@@ -5,6 +5,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.time.Year
+import java.time.ZoneOffset
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -151,17 +153,19 @@ android {
         buildConfig = true
     }
 
+    val baseVersionCode = fileapexVersionCode.toInt()
+    val yearPrefix = Year.now(ZoneOffset.UTC).value
     flavorDimensions += "distribution"
     productFlavors {
         create("github") {
             dimension = "distribution"
-            versionCode = 2026160
+            versionCode = yearPrefix * 1000 + baseVersionCode
             buildConfigField("boolean", "IS_PLAY_STORE", "false")
             buildConfigField("String", "BUILD_CHANNEL", "\"GitHub\"")
         }
         create("play") {
             dimension = "distribution"
-            versionCode = 160
+            versionCode = baseVersionCode
             buildConfigField("boolean", "IS_PLAY_STORE", "true")
             buildConfigField("String", "BUILD_CHANNEL", "\"Play\"")
         }
@@ -1222,6 +1226,11 @@ private fun Project.shipToCurrent(
     }
     if (includeReleaseApk) {
         moveApksFrom("release")
+        val bundleDir = layout.buildDirectory.dir("outputs/bundle/playRelease").get().asFile
+        val aab = bundleDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension == "aab" }
+        if (aab != null) {
+            moveToCurrent(dest, aab, destName = "FileApex-v$appVersionName-release.aab", logger = logger)
+        }
         val apkRoot = layout.buildDirectory.dir("outputs/apk").get().asFile
         if (apkRoot.exists()) {
             apkRoot.walkTopDown()

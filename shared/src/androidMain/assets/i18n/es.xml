@@ -843,6 +843,14 @@ Toca el hub central (+) para emparejar</string>
     <string name="configure_clipboard_targets_title">Configurar uso compartido del portapapeles</string>
     <string name="configure_clipboard_targets_body">Elige qué dispositivos recibirán las actualizaciones del portapapeles desde este dispositivo.</string>
     <string name="peer_clipboard_disabled_opt_in_sent">El uso compartido del portapapeles está desactivado en %1$s. Se ha enviado una solicitud de activación.</string>
+    <string name="report_issue_feedback">Informar de un problema / Comentarios</string>
+    <string name="report_issue_feedback_desc">Enviar registros de diagnóstico, formulario o informe en GitHub</string>
+    <string name="feedback_option_email">Enviar correo (incluye registros de diagnóstico)</string>
+    <string name="feedback_option_email_desc">Adjuntar registros y enviar correo al desarrollador</string>
+    <string name="feedback_option_form">Enviar comentarios anónimos (Formulario de Google)</string>
+    <string name="feedback_option_form_desc">Abrir formulario con telemetría del dispositivo</string>
+    <string name="feedback_option_github">Abrir seguimiento de problemas de GitHub</string>
+    <string name="feedback_option_github_desc">Ver o informar problemas en GitHub</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d dispositivo del clúster)</item>
         <item quantity="other">(+%d dispositivos del clúster)</item>

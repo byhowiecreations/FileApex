@@ -26,6 +26,7 @@ class FileApexApplication : Application() {
             return
         }
         FileApexAndroidBootstrap.ensureInitialized(this)
+        com.fileapex.platform.Diagnostics.log("Application initialized (channel=${BuildConfig.BUILD_CHANNEL}, play=${BuildConfig.IS_PLAY_STORE})")
     }
 
     private companion object {

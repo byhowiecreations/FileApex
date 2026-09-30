@@ -843,6 +843,14 @@ Tap Central Hub (+) to Pair</string>
     <string name="configure_clipboard_targets_title">Configure Clipboard Sharing</string>
     <string name="configure_clipboard_targets_body">Choose which devices will receive clipboard updates from this device.</string>
     <string name="peer_clipboard_disabled_opt_in_sent">Clipboard sharing is disabled on %1$s. An opt-in request has been sent.</string>
+    <string name="report_issue_feedback">Report an Issue / Feedback</string>
+    <string name="report_issue_feedback_desc">Submit diagnostic logs, feedback form, or report on GitHub</string>
+    <string name="feedback_option_email">Send Email (Includes Diagnostic Logs)</string>
+    <string name="feedback_option_email_desc">Attach exported logs and email developer</string>
+    <string name="feedback_option_form">Submit Anonymous Feedback (Google Form)</string>
+    <string name="feedback_option_form_desc">Open pre-filled form with device telemetry</string>
+    <string name="feedback_option_github">Open GitHub Issues Tracker</string>
+    <string name="feedback_option_github_desc">View or report issues on GitHub</string>
     <plurals name="paired_cluster_extra">
         <item quantity="one">(+%d cluster device)</item>
         <item quantity="other">(+%d cluster devices)</item>

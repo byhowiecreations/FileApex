@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.fileapex.data.settings.AppTheme
@@ -50,6 +51,11 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.fileapex.platform.Diagnostics
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedButton
@@ -548,6 +554,7 @@ private fun SettingsRootPage(
     var versionTapCount by remember { mutableIntStateOf(0) }
     var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
     val versionTapInteraction = remember { MutableInteractionSource() }
+    var showFeedbackDialog by remember { mutableStateOf(false) }
 
     SettingsPageShell(
         title = stringRes("settings"),
@@ -581,6 +588,11 @@ private fun SettingsRootPage(
                             onClick = onOpenCheckForUpdates
                         )
                     }
+                    SettingsNavItem(
+                        title = stringRes("report_issue_feedback"),
+                        subtitle = stringRes("report_issue_feedback_desc"),
+                        onClick = { showFeedbackDialog = true }
+                    )
                     SettingsNavItem(
                         title = stringRes("background_persistence"),
                         subtitle = backgroundPersistenceSubtitle(
@@ -689,10 +701,11 @@ private fun SettingsRootPage(
                 }
             }
             val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
-            val versionDisplayText = if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
-                "FileApex v$cleanVersion"
-            } else {
+            val isAndroidGitHub = !usesDesktopFileSelection() && !com.fileapex.di.FileApexServices.isPlayStoreBuild
+            val versionDisplayText = if (isAndroidGitHub) {
                 "FileApex v$cleanVersion (GitHub)"
+            } else {
+                "FileApex v$cleanVersion"
             }
             Text(
                 text = versionDisplayText,
@@ -725,6 +738,98 @@ private fun SettingsRootPage(
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
             )
+        }
+
+        if (showFeedbackDialog) {
+            AlertDialog(
+                onDismissRequest = { showFeedbackDialog = false },
+                modifier = Modifier.widthIn(max = 440.dp),
+                title = {
+                    Text(
+                        text = stringRes("report_issue_feedback"),
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FeedbackOptionCard(
+                            icon = Icons.Default.Email,
+                            title = stringRes("feedback_option_email"),
+                            subtitle = stringRes("feedback_option_email_desc"),
+                            onClick = {
+                                showFeedbackDialog = false
+                                Diagnostics.sendFeedbackEmail()
+                            }
+                        )
+                        FeedbackOptionCard(
+                            icon = Icons.Default.Feedback,
+                            title = stringRes("feedback_option_form"),
+                            subtitle = stringRes("feedback_option_form_desc"),
+                            onClick = {
+                                showFeedbackDialog = false
+                                Diagnostics.openAnonymousFeedbackForm()
+                            }
+                        )
+                        FeedbackOptionCard(
+                            icon = Icons.Default.OpenInBrowser,
+                            title = stringRes("feedback_option_github"),
+                            subtitle = stringRes("feedback_option_github_desc"),
+                            onClick = {
+                                showFeedbackDialog = false
+                                Diagnostics.openGitHubIssuesTracker()
+                            }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showFeedbackDialog = false }) {
+                        Text(stringRes("cancel"))
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeedbackOptionCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

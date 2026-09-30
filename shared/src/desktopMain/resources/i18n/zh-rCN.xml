@@ -840,6 +840,14 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="configure_clipboard_targets_title">配置剪贴板共享</string>
     <string name="configure_clipboard_targets_body">选择从此设备接收剪贴板更新的设备。</string>
     <string name="peer_clipboard_disabled_opt_in_sent">%1$s 上的剪贴板共享已禁用。已发送启用请求。</string>
+    <string name="report_issue_feedback">报告问题 / 反馈</string>
+    <string name="report_issue_feedback_desc">提交诊断日志、反馈表单或在 GitHub 报告问题</string>
+    <string name="feedback_option_email">发送电子邮件（包含诊断日志）</string>
+    <string name="feedback_option_email_desc">附加导出的日志并发送邮件给开发者</string>
+    <string name="feedback_option_form">提交匿名反馈（Google 表单）</string>
+    <string name="feedback_option_form_desc">打开包含设备遥测信息的预填表单</string>
+    <string name="feedback_option_github">打开 GitHub 问题跟踪器</string>
+    <string name="feedback_option_github_desc">在 GitHub 上查看或报告问题</string>
     <plurals name="paired_cluster_extra">
         <item quantity="other">（+%d 台集群设备）</item>
     </plurals>
