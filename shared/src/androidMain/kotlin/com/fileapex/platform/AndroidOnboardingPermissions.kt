@@ -16,7 +16,20 @@ object AndroidOnboardingPermissions {
 
     private const val PREFS_NAME = "fileapex_onboarding_oem"
     private const val KEY_OEM_PERSISTENCE_DONE = "oem_persistence_completed"
+    private const val KEY_BATTERY_ACKNOWLEDGED = "battery_optimization_acknowledged"
     private const val KEY_INITIAL_ONBOARDING_INITIALIZED = "initial_onboarding_initialized"
+
+    fun isBatteryOptimizationAcknowledged(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_BATTERY_ACKNOWLEDGED, false)
+    }
+
+    fun markBatteryOptimizationAcknowledged(context: Context, acknowledged: Boolean = true) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean(KEY_BATTERY_ACKNOWLEDGED, acknowledged)
+            .apply()
+    }
 
     fun isOemPersistenceCompleted(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -27,7 +40,7 @@ object AndroidOnboardingPermissions {
         // TCL, Motorola, and Samsung rely on standard Android battery optimization settings.
         // If battery optimization is already unrestricted, the OEM step is already satisfied.
         if (vendor == OemVendor.Tcl || vendor == OemVendor.Motorola || vendor == OemVendor.Samsung) {
-            if (!isBatteryOptimizationRestricted(context)) {
+            if (!isBatteryOptimizationRestricted(context) || isBatteryOptimizationAcknowledged(context)) {
                 markOemPersistenceCompleted(context, true)
                 return true
             }
@@ -38,7 +51,9 @@ object AndroidOnboardingPermissions {
             if (AndroidStorageAccess.hasFullAccess(context)) {
                 prefs.edit()
                     .putBoolean(KEY_OEM_PERSISTENCE_DONE, true)
+                    .putBoolean(KEY_BATTERY_ACKNOWLEDGED, true)
                     .putBoolean(KEY_INITIAL_ONBOARDING_INITIALIZED, true)
+                    .putBoolean(KEY_ONBOARDING_DISMISSED, true)
                     .apply()
                 return true
             } else {
@@ -89,16 +104,6 @@ object AndroidOnboardingPermissions {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             add(
                 OnboardingPermissionStep(
-                    id = ID_NEARBY_WIFI_DEVICES,
-                    titleKey = "onboard_perm_nearby",
-                    reasonKey = "onboard_nearby_reason",
-                    deniedHintKey = "onboard_nearby_denied",
-                    granted = AndroidRuntimePermissions.hasNearbyWifiDevices(context),
-                    isOptional = true
-                )
-            )
-            add(
-                OnboardingPermissionStep(
                     id = ID_POST_NOTIFICATIONS,
                     titleKey = "onboard_perm_notify",
                     reasonKey = "onboard_notify_reason",
@@ -108,13 +113,14 @@ object AndroidOnboardingPermissions {
                 )
             )
         }
+        val batteryGranted = !isBatteryOptimizationRestricted(context) || isBatteryOptimizationAcknowledged(context)
         add(
             OnboardingPermissionStep(
                 id = ID_IGNORE_BATTERY_OPTIMIZATIONS,
                 titleKey = "onboard_perm_battery",
                 reasonKey = "onboard_battery_reason",
                 deniedHintKey = "onboard_battery_denied",
-                granted = !isBatteryOptimizationRestricted(context),
+                granted = batteryGranted,
                 isOptional = true
             )
         )
@@ -151,6 +157,7 @@ object AndroidOnboardingPermissions {
 
     fun markAllOptionalStepsSkipped(context: Context, steps: List<OnboardingPermissionStep>) {
         markOnboardingDismissed(context)
+        markBatteryOptimizationAcknowledged(context, true)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_SKIPPED_OPTIONAL_STEPS, emptySet())?.toMutableSet() ?: mutableSetOf()
         steps.filter { it.isOptional }.forEach { current.add(it.id) }
@@ -163,7 +170,12 @@ object AndroidOnboardingPermissions {
             return true
         }
         val skipped = prefs.getStringSet(KEY_SKIPPED_OPTIONAL_STEPS, emptySet()) ?: emptySet()
-        return steps.all { it.granted || (it.isOptional && it.id in skipped) }
+        val batteryAck = prefs.getBoolean(KEY_BATTERY_ACKNOWLEDGED, false)
+        return steps.all { step ->
+            step.granted ||
+                (step.id == ID_IGNORE_BATTERY_OPTIMIZATIONS && batteryAck) ||
+                (step.isOptional && step.id in skipped)
+        }
     }
 
     fun isComplete(steps: List<OnboardingPermissionStep>): Boolean =

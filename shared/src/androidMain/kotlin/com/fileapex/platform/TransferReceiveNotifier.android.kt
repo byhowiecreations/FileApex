@@ -1,6 +1,9 @@
 package com.fileapex.platform
 
+import android.app.DownloadManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -33,6 +36,13 @@ actual fun notifyFilesReceived(fileNames: List<String>) {
 
     val title = AppI18n.plural("n_files_received", fileNames.size, fileNames.size.toString())
     val body = fileNames.joinToString(separator = ", ")
+    val notificationId = NOTIFICATION_ID_BASE + (fileNames.hashCode() and 0xFFFF)
+    val openDownloads = PendingIntent.getActivity(
+        notifierContext,
+        notificationId,
+        Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
 
     val notification = NotificationCompat.Builder(notifierContext, AndroidNotificationChannels.TRANSFER_RECEIVE)
         .setSmallIcon(AndroidNotificationChannels.smallIcon)
@@ -42,12 +52,13 @@ actual fun notifyFilesReceived(fileNames: List<String>) {
         .setContentTitle(title)
         .setContentText(body)
         .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        .setContentIntent(openDownloads)
         .setAutoCancel(true)
         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
         .build()
 
     runCatching {
-        manager.notify(NOTIFICATION_ID_BASE + (fileNames.hashCode() and 0xFFFF), notification)
+        manager.notify(notificationId, notification)
     }.onFailure { error ->
         println("TransferReceiveNotifier: notify failed :: ${error.message}")
     }

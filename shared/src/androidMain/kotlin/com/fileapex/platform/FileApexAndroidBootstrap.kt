@@ -9,6 +9,10 @@ import com.fileapex.data.identity.initAndroidLocalIdentity
 import com.fileapex.data.settings.initAndroidAppSettings
 import com.fileapex.di.FileApexServices
 import com.fileapex.update.AppUpdateCoordinator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Android process bootstrap after credential storage is unlocked.
@@ -29,6 +33,9 @@ object FileApexAndroidBootstrap {
     private var fullyInitialized = false
 
     private val lock = Any()
+
+    /** Launch-tier work that nothing in the synchronous init contract depends on. */
+    private val deferredScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** @return true when credential storage is unlocked and process init has completed. */
     fun ensureInitialized(context: Context): Boolean {
@@ -64,11 +71,8 @@ object FileApexAndroidBootstrap {
                 ShareServerKeepAliveCoordinator.registerFreezeGuardIfNeeded(appContext)
             }
             ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
-            AppUpdateCoordinator.onAppLaunch()
-            GoogleLinkCoordinator.onAppLaunch()
-            com.fileapex.cloud.FcmTokenRegistrar.start()
-            com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
             fullyInitialized = true
+            launchDeferredStartup()
             ClipboardAccessibilityHealth.start()
             if (!FileApexServices.isPlayStoreBuild) {
                 ClipboardShizukuAccess.start()
@@ -76,6 +80,23 @@ object FileApexAndroidBootstrap {
             BatteryBulletinCoordinator.onProcessStart(appContext)
             Log.i(TAG, "Android process init complete")
             return true
+        }
+    }
+
+    private fun launchDeferredStartup() {
+        deferredScope.launch {
+            runStartupStep("update") { AppUpdateCoordinator.onAppLaunch() }
+            runStartupStep("google link") { GoogleLinkCoordinator.onAppLaunch() }
+            runStartupStep("fcm") { com.fileapex.cloud.FcmTokenRegistrar.start() }
+            runStartupStep("drive relay") { com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch() }
+        }
+    }
+
+    private inline fun runStartupStep(name: String, step: () -> Unit) {
+        try {
+            step()
+        } catch (error: Exception) {
+            Log.w(TAG, "deferred startup step '$name' failed: ${error.message}")
         }
     }
 }

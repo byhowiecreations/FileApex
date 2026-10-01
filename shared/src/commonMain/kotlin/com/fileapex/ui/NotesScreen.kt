@@ -3,6 +3,7 @@ package com.fileapex.ui
 import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.i18n.stringRes
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.PlatformClipboard
 import com.fileapex.platform.isWebUrl
 import com.fileapex.platform.textContainsWebUrl
@@ -245,7 +246,7 @@ fun NotesScreen(
                     showDrivePermission = true
                 }
             }.onFailure { error ->
-                attachError = error.message ?: AppI18n.t("google_link_failed")
+                attachError = UserFacingErrors.message(error, "google_link_failed")
                 pendingAcceptAfterRelay = null
             }
         }
@@ -486,7 +487,7 @@ fun NotesScreen(
             }.onFailure { error ->
                 session.streamDone = true
                 session.settled = true
-                attachError = error.message ?: AppI18n.t("failed_send_attachment")
+                attachError = UserFacingErrors.message(error, "failed_send_attachment")
             }
         }
     }

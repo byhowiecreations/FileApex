@@ -59,6 +59,12 @@ object ServerLifecycleManager {
             onClusterMerge = { request ->
                 FileApexServices.pairingCoordinator.mergeIncoming(request)
             },
+            onClusterPeerRemoved = { record ->
+                FileApexServices.pairingCoordinator.handlePeerRemoval(record, forward = true)
+            },
+            onClusterSelfRemoved = { record ->
+                FileApexServices.pairingCoordinator.handleSelfRemoval(record)
+            },
             onListDevices = {
                 FileApexServices.deviceRepository.listDevices()
             },

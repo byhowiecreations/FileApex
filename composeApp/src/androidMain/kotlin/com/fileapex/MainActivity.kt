@@ -532,9 +532,14 @@ class MainActivity : ComponentActivity() {
         }
         if (pendingBatteryOnboardingReturn) {
             pendingBatteryOnboardingReturn = false
+            AndroidOnboardingPermissions.markBatteryOptimizationAcknowledged(this, true)
+            AndroidOnboardingPermissions.markStepSkipped(
+                this,
+                AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS
+            )
             updateOnboardingDenial(
                 stepId = AndroidOnboardingPermissions.ID_IGNORE_BATTERY_OPTIMIZATIONS,
-                granted = !BackgroundPersistenceGuidance.isBatteryOptimizationRestricted(this)
+                granted = true
             )
         }
         if (pendingOemPersistenceOnboardingReturn) {
@@ -606,7 +611,17 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("BatteryLife")
     private fun requestBatteryUnrestricted() {
-        BackgroundPersistenceGuidance.launchBatteryOptimizationRequest(this)
+        val vendor = BackgroundPersistenceGuidance.detectOemVendor()
+        if (vendor == com.fileapex.platform.OemVendor.Tcl) {
+            val opened = BackgroundPersistenceGuidance.createAppBatteryUsageIntent(this)?.let {
+                runCatching { startActivity(it); true }.getOrDefault(false)
+            } ?: false
+            if (!opened) {
+                BackgroundPersistenceGuidance.launchBatteryOptimizationRequest(this)
+            }
+        } else {
+            BackgroundPersistenceGuidance.launchBatteryOptimizationRequest(this)
+        }
     }
 
     private fun openBackgroundPersistenceSettings() {

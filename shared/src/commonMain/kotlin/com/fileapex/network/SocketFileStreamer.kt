@@ -8,7 +8,18 @@ object SocketFileStreamer {
     const val BUFFER_BYTES = 256 * 1024
     const val PART_SUFFIX = ".fileapex-part"
 
+    // Kept apart from PART_SUFFIX: legacy resume treats part length as the offset, which is
+    // wrong for a file written out of order.
+    const val SEGMENT_PART_SUFFIX = ".fileapex-segpart"
+
     fun partPathFor(finalPath: String): String = "$finalPath$PART_SUFFIX"
+
+    fun segmentPartPathFor(finalPath: String): String = "$finalPath$SEGMENT_PART_SUFFIX"
+
+    fun isTransferScratchFile(name: String): Boolean =
+        name.endsWith(PART_SUFFIX) ||
+            name.endsWith(SEGMENT_PART_SUFFIX) ||
+            name.contains("$SEGMENT_PART_SUFFIX.")
 
     fun fileLength(path: String): Long {
         val file = File(path)

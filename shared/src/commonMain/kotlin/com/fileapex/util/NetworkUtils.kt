@@ -60,6 +60,10 @@ object NetworkUtils {
         return sameSubnet + rest
     }
 
+    /** A peer on the same /24 as a failed bind address is not reachable through any other interface. */
+    fun shouldTryNextBindCandidate(localIp: String, peerHost: String): Boolean =
+        !sameIpv4Slash24(localIp, peerHost)
+
     fun sameIpv4Slash24(left: String, right: String): Boolean {
         val a = left.trim().split('.')
         val b = right.trim().split('.')

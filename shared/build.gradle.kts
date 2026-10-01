@@ -468,6 +468,17 @@ tasks.matching { it.name.startsWith("ksp") && it.name.contains("Desktop", ignore
     dependsOn(generateDesktopCloudConfig)
 }
 
+val themeGoldenDir = layout.projectDirectory.dir("src/desktopTest/resources/theme-goldens")
+val recordThemeGoldens = providers.gradleProperty("recordThemeGoldens").getOrElse("false")
+
+tasks.withType<Test>().matching { it.name == "desktopTest" }.configureEach {
+    systemProperty("fileapex.themeGoldenDir", themeGoldenDir.asFile.absolutePath)
+    systemProperty("fileapex.recordThemeGoldens", recordThemeGoldens)
+    systemProperty("fileapex.themeDiffDir", layout.buildDirectory.dir("theme-golden-diffs").get().asFile.absolutePath)
+    inputs.property("recordThemeGoldens", recordThemeGoldens)
+    inputs.files(fileTree(themeGoldenDir)).withPropertyName("themeGoldens")
+}
+
 /**
  * Web OAuth client IDs are prefixed with the GCP project number. Firebase Auth rejects tokens
  * when [fileapex.google.web.client.id] belongs to a different project than [google-services.json].

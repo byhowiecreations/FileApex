@@ -28,7 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import com.fileapex.domain.transfer.PendingTransferItem
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.domain.transfer.LiveTransferStats
@@ -116,7 +118,9 @@ fun TransferQueueScreen(
                         QueuedTransferRow(
                             item = item,
                             liveStats = liveStats,
-                            onRemove = { viewModel.remove(item.id) }
+                            onRemove = { viewModel.remove(item.id) },
+                            onCancel = { viewModel.cancelSending(item.id) },
+                            onRetry = { viewModel.retryNow(item.id) }
                         )
                     }
                 }
@@ -129,7 +133,9 @@ fun TransferQueueScreen(
 private fun QueuedTransferRow(
     item: PendingTransferItem,
     liveStats: LiveTransferStats,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -143,15 +149,15 @@ private fun QueuedTransferRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )
-            val statusText = if (item.isSending) {
-                val rateParts = buildList {
+            val statusText = when {
+                item.isSending -> buildList {
                     add(stringRes("sending"))
+                    if (liveStats.isActive) add("${(liveStats.progress * 100).toInt().coerceIn(0, 100)}%")
                     if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
                     if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
-                }
-                rateParts.joinToString(" • ")
-            } else {
-                stringRes("waiting_for_devices", item.pendingDeviceNames.joinToString(", "))
+                }.joinToString(" • ")
+                item.isPaused -> stringRes("queue_paused")
+                else -> stringRes("waiting_for_devices", item.pendingDeviceNames.joinToString(", "))
             }
             Text(
                 text = statusText,
@@ -163,6 +169,21 @@ private fun QueuedTransferRow(
                     text = error,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        if (item.isSending) {
+            IconButton(onClick = onCancel) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringRes("cancel")
+                )
+            }
+        } else if (item.isPaused || item.lastError != null) {
+            IconButton(onClick = onRetry) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = stringRes("queue_retry_now")
                 )
             }
         }

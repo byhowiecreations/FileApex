@@ -28,6 +28,15 @@ object LanPresenceTiming {
 
     const val DEVICE_DETAILS_PING_TIMEOUT_MS = 800L
 
+    /** Node-state (identity/metadata) refresh after a successful probe. */
+    const val NODE_STATE_REFRESH_TTL_MS = 15 * 60 * 1000L
+
+    /** Retry floor for node-state fetch while metadata is still missing. */
+    const val NODE_STATE_MISSING_RETRY_MS = 60_000L
+
+    /** Minimum gap between UDP wake broadcasts triggered by presence sweeps. */
+    const val SWEEP_WAKE_FLOOR_MS = 10 * 60 * 1000L
+
     /**
      * Retry after WiFi/Ethernet transition until [com.fileapex.platform.isActiveLanConnectivity]
      * reports a bindable LAN address (DHCP often lags NetworkCallback).
@@ -52,6 +61,12 @@ object LanPresenceTiming {
 
     /** Share server running with UI in background. */
     const val BACKGROUND_LAN_POLL_MS = 5 * 60 * 1000L
+
+    /** In 60s foreground poll, skip peer if verified reachable within 45s and metadata is complete. */
+    const val FOREGROUND_PEER_FRESH_MS = 45_000L
+
+    /** In 5m background poll, skip peer if verified reachable within 4m and metadata is complete. */
+    const val BACKGROUND_PEER_FRESH_MS = 4 * 60 * 1000L
 
     const val TRANSFER_DEFER_POLL_MS = 15_000L
 

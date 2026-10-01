@@ -24,6 +24,14 @@ actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
     }.getOrNull()
 }
 
+actual fun previewMaxEdgePx(): Int {
+    val metrics = androidApplicationContextOrNull()?.resources?.displayMetrics
+        ?: return PREVIEW_FALLBACK_EDGE_PX
+    val edge = maxOf(metrics.widthPixels, metrics.heightPixels)
+    if (edge <= 0) return PREVIEW_FALLBACK_EDGE_PX
+    return edge.coerceIn(PREVIEW_MIN_EDGE_PX, PREVIEW_MAX_EDGE_PX)
+}
+
 private fun calculateInSampleSize(
     width: Int,
     height: Int,

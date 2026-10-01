@@ -33,6 +33,11 @@ private class AndroidSettingsKvStore(
         prefs.edit().putLong(key, value).apply()
     }
 
+    override fun clear() {
+        prefs.edit().clear().commit()
+        googleBackup.edit().clear().commit()
+    }
+
     private fun mirrorGoogleBackupIfNeeded(key: String) {
         if (key != BaseAppSettings.KEY_GOOGLE &&
             key != BaseAppSettings.KEY_GOOGLE_EMAIL &&

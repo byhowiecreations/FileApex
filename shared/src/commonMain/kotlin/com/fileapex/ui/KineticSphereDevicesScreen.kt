@@ -642,6 +642,14 @@ fun KineticSphereDevicesView(
                                     FileApexServices.settings.setKineticNodeOffset(
                                         "pos:$layoutScopePrefix${row.deviceId}",
                                         dragX,
+                                        dragY,
+                                        persist = false
+                                    )
+                                },
+                                onDragCancel = {
+                                    FileApexServices.settings.setKineticNodeOffset(
+                                        "pos:$layoutScopePrefix${row.deviceId}",
+                                        dragX,
                                         dragY
                                     )
                                 },

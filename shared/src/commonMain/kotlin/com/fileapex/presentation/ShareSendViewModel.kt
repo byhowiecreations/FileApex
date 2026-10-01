@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
@@ -111,7 +112,7 @@ class ShareSendViewModel(
                         it.copy(
                             isPreparing = false,
                             options = emptyList(),
-                            errorMessage = error.message ?: AppI18n.t("could_not_load_devices")
+                            errorMessage = UserFacingErrors.message(error, "could_not_load_devices")
                         )
                     }
                 }
@@ -145,7 +146,7 @@ class ShareSendViewModel(
                         it.copy(
                             isPreparing = false,
                             isSending = false,
-                            errorMessage = error.message ?: AppI18n.t("send_failed")
+                            errorMessage = UserFacingErrors.message(error, "send_failed")
                         )
                     }
                 }
@@ -191,7 +192,7 @@ class ShareSendViewModel(
                     it.copy(
                         isPreparing = false,
                         isSending = false,
-                        errorMessage = error.message ?: AppI18n.t("send_failed")
+                        errorMessage = UserFacingErrors.message(error, "send_failed")
                     )
                 }
             }

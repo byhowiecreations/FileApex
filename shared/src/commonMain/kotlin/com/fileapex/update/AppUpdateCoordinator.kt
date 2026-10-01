@@ -2,6 +2,7 @@ package com.fileapex.update
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.BriefToast
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.dismissAppUpdateNotification
@@ -290,7 +291,7 @@ object AppUpdateCoordinator {
                 _showUpdateSheet.value = false
                 _statusMessage.value = AppI18n.t("installing_update", offer.remoteVersion)
             } catch (error: Throwable) {
-                val message = error.message ?: AppI18n.t("update_download_failed")
+                val message = UserFacingErrors.message(error, "update_download_failed")
                 _statusMessage.value = message
                 BriefToast.show(message)
                 println("AppUpdateCoordinator: download failed - $message")
@@ -393,7 +394,7 @@ object AppUpdateCoordinator {
                 }
             } catch (error: Throwable) {
                 settings.setLastUpdateCheckEpochMs(TimeUtils.now())
-                val message = error.message ?: AppI18n.t("update_check_failed")
+                val message = UserFacingErrors.message(error, "update_check_failed")
                 _statusMessage.value = message
                 if (toastFeedback) {
                     BriefToast.show(message)

@@ -926,5 +926,28 @@ Tap Central Hub (+) to Pair</string>
     <string name="all_permissions_granted">All permissions granted</string>
     <string name="all_permissions_granted_desc">FileApex has all required permissions to transfer files and discover nearby devices.</string>
     <string name="back_to_settings">Back to Settings</string>
+    <string name="peer_revoked_this_device">%1$s no longer recognizes this device — pair again to rejoin</string>
+    <string name="transfer_cancelled">Transfer cancelled</string>
+    <string name="queue_retry_failed">Could not retry this transfer</string>
+    <string name="queue_retry_now">Retry now</string>
+    <string name="queue_paused">Paused — tap retry to resume</string>
+    <string name="show_in_folder">Show in folder</string>
+    <string name="error_peer_timeout">The device took too long to respond. Check that it is awake and on the same Wi-Fi.</string>
+    <string name="error_peer_unreachable">Could not reach the device. Check that FileApex is running on it and both devices are on the same network.</string>
+    <string name="error_disk_full">Not enough storage space to finish.</string>
+    <string name="error_connection_lost">The connection was interrupted. Try again.</string>
+    <string name="filter_this_folder">Filter this folder</string>
+    <string name="sort_by">Sort by</string>
+    <string name="sort_name">Name</string>
+    <string name="sort_date">Date modified</string>
+    <string name="sort_size">Size</string>
+    <string name="clear">Clear</string>
+    <string name="clipboard_expired">Clipboard item expired</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="copy">Copy</string>
+    <string name="copy_to_clipboard">Copy to clipboard</string>
+    <string name="disabled">Disabled</string>
+    <string name="enabled">Enabled</string>
+    <string name="opening_folder">Opening folder…</string>
 </resources>
 

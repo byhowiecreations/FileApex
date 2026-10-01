@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.NetworkUtils
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
@@ -134,7 +135,7 @@ actual suspend fun peerHttpUploadFromChannel(
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
     contentLength: Long?
-): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
     executeBoundUpload(
         host = host,
         port = port,
@@ -162,7 +163,7 @@ actual suspend fun peerHttpUploadFromFile(
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
     onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
-): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
     val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
     var currentSent = offset
     executeBoundUpload(
@@ -195,7 +196,7 @@ actual suspend fun peerHttpGetStreaming(
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray, Int) -> Unit,
     onStatus: ((Int) -> Unit)?
-): PeerBoundStreamResult? = withContext(Dispatchers.IO) {
+): PeerBoundStreamResult? = withContext(TransferRuntime.outbound) {
     executeBoundGetStreaming(
         host = host,
         port = port,
@@ -236,6 +237,7 @@ private fun executeBoundHttp(
         if (response != null && response.statusCode > 0) {
             return response
         }
+        if (!NetworkUtils.shouldTryNextBindCandidate(localIp, host)) break
     }
     return null
 }

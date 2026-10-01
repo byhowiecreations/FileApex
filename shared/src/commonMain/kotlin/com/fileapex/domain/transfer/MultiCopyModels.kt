@@ -66,5 +66,7 @@ sealed interface MultiCopyDestination {
 data class MultiCopyResult(
     val fileName: String,
     val succeededDeviceIds: Set<String>,
-    val failures: Map<String, String>
+    val failures: Map<String, String>,
+    /** Subset of [failures] where no TCP connection could be opened to the stored endpoint. */
+    val unreachableDeviceIds: Set<String> = emptySet()
 )

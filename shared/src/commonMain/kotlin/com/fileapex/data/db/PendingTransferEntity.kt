@@ -31,7 +31,9 @@ data class PendingTransferEntity(
 
 enum class PendingTransferStatus {
     Queued,
-    Sending
+    Sending,
+    /** Cancelled by the user; waits for "Retry now" instead of draining on the next reachability event. */
+    Paused
 }
 
 enum class QueuedTransferSourceKind {

@@ -26,6 +26,10 @@ private class DesktopSettingsKvStore(
     override fun putLong(key: String, value: Long) {
         prefs.putLong(key, value)
     }
+
+    override fun clear() {
+        runCatching { prefs.clear() }
+    }
 }
 
 private val desktopSettings = AtomicReference<AppSettings?>(null)

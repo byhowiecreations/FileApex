@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import android.app.DownloadManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.webkit.MimeTypeMap
@@ -95,6 +96,15 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
         val targetName = File(targetPath).name
         BriefToast.show(AppI18n.t("no_handler_saved_to_storage", targetName))
     }
+}
+
+actual fun revealInFolder(absolutePath: String) {
+    val context = androidAppContextOrNull() ?: return
+    val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { context.startActivity(intent) }
+        .onFailure { error -> println("revealInFolder: ${error.message}") }
 }
 
 fun resolveMimeType(fileName: String): String {

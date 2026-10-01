@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.platform.Diagnostics
@@ -168,7 +169,8 @@ private enum class SettingsPage {
     DesktopLayout,
     WindowsDesign,
     Language,
-    DeviceName
+    DeviceName,
+    LeaveClusterWipe
 }
 
 
@@ -265,6 +267,7 @@ fun SettingsScreen(
             onOpenRemoteFileDeletion = { page = SettingsPage.RemoteFileDeletion },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
+            onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
             onToggleAppearanceBehaviorGroup = viewModel::toggleAppearanceBehaviorGroup,
             onToggleSecurityAccountGroup = viewModel::toggleSecurityAccountGroup,
@@ -519,6 +522,10 @@ fun SettingsScreen(
             onDraftChange = viewModel::setDeviceNameDraft,
             onSave = viewModel::saveDeviceName
         )
+        SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root }
+        )
     }
     }
 
@@ -559,6 +566,7 @@ private fun SettingsRootPage(
     onOpenRemoteFileDeletion: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
+    onOpenLeaveClusterWipe: () -> Unit = {},
     onToggleSystemPerformanceGroup: () -> Unit,
     onToggleAppearanceBehaviorGroup: () -> Unit,
     onToggleSecurityAccountGroup: () -> Unit,
@@ -763,6 +771,13 @@ private fun SettingsRootPage(
                         title = stringRes("allow_remote_file_deletion"),
                         subtitle = if (state.allowRemoteFileDeletion) stringRes("on") else stringRes("off"),
                         onClick = onOpenRemoteFileDeletion
+                    )
+                    SettingsNavItem(
+                        title = stringRes("leave_cluster_wipe_title"),
+                        subtitle = stringRes("leave_cluster_wipe_desc"),
+                        isDestructive = true,
+                        leadingIcon = Icons.Filled.Warning,
+                        onClick = onOpenLeaveClusterWipe
                     )
                 }
             }
@@ -2441,19 +2456,33 @@ private fun ClipboardDiagnosticsEntry(
 private fun SettingsNavItem(
     title: String,
     subtitle: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isDestructive: Boolean = false,
+    leadingIcon: ImageVector? = null
 ) {
+    val headlineColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    val trailingTint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        headlineContent = { Text(title, softWrap = true) },
+        leadingContent = leadingIcon?.let { icon ->
+            {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        },
+        headlineContent = { Text(title, color = headlineColor, softWrap = true) },
         supportingContent = { Text(subtitle, softWrap = true) },
         trailingContent = {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = trailingTint
             )
         }
     )

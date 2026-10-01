@@ -6,6 +6,7 @@ import com.fileapex.data.bulletin.BulletinBoardRepository
 import com.fileapex.data.bulletin.BulletinBoardSyncEngine
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.device.LocalDeviceRef
+import com.fileapex.data.device.SettingsMembershipStore
 import com.fileapex.data.device.recoverEmptyRosterIfNeeded
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
@@ -135,13 +136,23 @@ object FileApexServices {
             return
         }
         this.database = database
-        this.deviceRepositoryInstance = DeviceRepository(database.deviceDao()) {
-            val identity = loadLocalIdentity()
-            LocalDeviceRef(
-                deviceId = identity.deviceId,
-                endpoints = NetworkUtils.shareEndpoints(identity)
-            )
+        this.deviceRepositoryInstance = DeviceRepository(
+            deviceDao = database.deviceDao(),
+            localDeviceProvider = {
+                val identity = loadLocalIdentity()
+                LocalDeviceRef(
+                    deviceId = identity.deviceId,
+                    endpoints = NetworkUtils.shareEndpoints(identity)
+                )
+            },
+            membershipStore = SettingsMembershipStore { settings }
+        )
+        client.onRevocationDetected = { host ->
+            com.fileapex.session.DeviceSessionManager.clearAllSessions()
+            presenceMonitor.refreshOnlineSnapshot()
+            RevokedByPeerNotice.onRevoked(host, deviceRepository.listDevices())
         }
+        client.membershipVersionProvider = { deviceRepository.selfMembershipVersion() }
         LocalDeviceNameStore.ensureLoaded()
         DeviceNamePeerLabelsStore.ensureLoaded()
         noteRepository.attachLegacyDao(database.noteDao(), bootstrapScope)
@@ -228,4 +239,22 @@ object FileApexServices {
     fun isDatabaseReady(): Boolean = database != null && deviceRepositoryInstance != null
 
     fun deviceRepositoryOrNull(): DeviceRepository? = deviceRepositoryInstance
+
+    suspend fun purgeDatabases() {
+        database?.let { db ->
+            runCatching { db.deviceDao().deleteAllDevices() }
+            runCatching { db.deviceDao().deleteAllRemovedDevices() }
+            runCatching { db.controlDeliveryDao().deleteAll() }
+            runCatching { db.pendingTransferDao().deleteAll() }
+            runCatching { db.noteDao().deleteAllNotes() }
+            runCatching { db.clearAllTables() }
+        }
+        bulletinDatabase?.let { bDb ->
+            runCatching { bDb.messageDao().deleteAllMessages() }
+            runCatching { bDb.tombstoneDao().deleteAllTombstones() }
+            runCatching { bDb.outboxDao().deleteAllOutbox() }
+            runCatching { bDb.processedPacketDao().deleteAllPackets() }
+            runCatching { bDb.clearAllTables() }
+        }
+    }
 }

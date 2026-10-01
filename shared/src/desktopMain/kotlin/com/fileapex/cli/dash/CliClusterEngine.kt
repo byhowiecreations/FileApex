@@ -111,20 +111,22 @@ object CliClusterEngine {
                     chargingState = cachedBat.second
                 }
 
-                // Battery HTTP only on explicit battery view / force during dash poll.
-                if (allowNetworkProbes && (forceBatteryRefresh || highlightBattery)) {
-                    val lastBatProbe = batteryProbeEpochMs[dev.deviceId] ?: 0L
-                    if (now - lastBatProbe > LanPresenceTiming.FOREGROUND_LAN_POLL_MS) {
-                        batteryProbeEpochMs[dev.deviceId] = now
-                        probeScope.launch {
-                            val bat = withTimeoutOrNull(600) {
-                                runCatching {
-                                    FileApexServices.client.fetchFastBattery(direct, dev.port)
-                                }.getOrNull()
-                            }
-                            if (bat?.levelPercent != null && bat.levelPercent > 0) {
-                                batteryCache[dev.deviceId] = Pair(bat.levelPercent, bat.chargingState)
-                            }
+                val lastBatProbe = batteryProbeEpochMs[dev.deviceId] ?: 0L
+                val interval = if (cachedBat == null) 30_000L else LanPresenceTiming.BACKGROUND_LAN_POLL_MS
+                val needsProbe = cachedBat == null || forceBatteryRefresh || highlightBattery || (now - lastBatProbe > interval)
+
+                if (allowNetworkProbes && needsProbe && (now - lastBatProbe > interval || forceBatteryRefresh || highlightBattery)) {
+                    batteryProbeEpochMs[dev.deviceId] = now
+                    probeScope.launch {
+                        val bat = withTimeoutOrNull(LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS) {
+                            runCatching {
+                                FileApexServices.client.fetchFastBattery(direct, dev.port)
+                            }.getOrNull()
+                        }
+                        if (bat?.levelPercent != null && bat.levelPercent > 0) {
+                            batteryCache[dev.deviceId] = Pair(bat.levelPercent, bat.chargingState)
+                        } else if (cachedBat == null) {
+                            batteryProbeEpochMs[dev.deviceId] = now - interval + 30_000L
                         }
                     }
                 }

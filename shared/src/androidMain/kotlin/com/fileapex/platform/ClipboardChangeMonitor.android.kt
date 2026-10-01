@@ -18,6 +18,9 @@ actual object ClipboardChangeMonitor {
     private val lastSeen = AtomicReference<String?>(null)
     private val listening = AtomicBoolean(false)
     private val polling = AtomicBoolean(false)
+
+    /** Set once the system listener fires; polling is then only kept for OEMs that never call it. */
+    private val listenerVerified = AtomicBoolean(false)
     private val windowFocused = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
@@ -111,6 +114,10 @@ actual object ClipboardChangeMonitor {
         }
         val listener = ClipboardManager.OnPrimaryClipChangedListener {
             if (ClipboardShareSuppressor.isApplyingRemote) return@OnPrimaryClipChangedListener
+            if (listenerVerified.compareAndSet(false, true)) {
+                Log.i(TAG, "clip listener verified - foreground polling disabled")
+                stopPoll()
+            }
             emitCurrentIfChanged()
             ClipboardSharePolicy.ANDROID_FOCUS_CLIP_RETRY_MS.forEach { delayMs ->
                 mainHandler.postDelayed({ emitCurrentIfChanged() }, delayMs)
@@ -126,6 +133,7 @@ actual object ClipboardChangeMonitor {
     }
 
     private fun startPoll() {
+        if (listenerVerified.get() && listening.get()) return
         if (!polling.compareAndSet(false, true)) return
         mainHandler.post(pollRunnable)
     }

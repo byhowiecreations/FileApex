@@ -311,14 +311,20 @@ fun AdaptiveWideHome(
                                         .pointerInput(totalWidthPx) {
                                             detectHorizontalDragGestures(
                                                 onDragStart = { isDraggingDivider = true },
-                                                onDragEnd = { isDraggingDivider = false },
-                                                onDragCancel = { isDraggingDivider = false }
+                                                onDragEnd = {
+                                                    isDraggingDivider = false
+                                                    FileApexServices.settings.setDesktopSplitFraction(FileApexServices.settings.desktopSplitFraction.value)
+                                                },
+                                                onDragCancel = {
+                                                    isDraggingDivider = false
+                                                    FileApexServices.settings.setDesktopSplitFraction(FileApexServices.settings.desktopSplitFraction.value)
+                                                }
                                             ) { change, dragAmount ->
                                                 change.consume()
                                                 if (totalWidthPx > 0f) {
                                                     val current = FileApexServices.settings.desktopSplitFraction.value
                                                     val deltaFraction = dragAmount / totalWidthPx
-                                                    FileApexServices.settings.setDesktopSplitFraction(current + deltaFraction)
+                                                    FileApexServices.settings.setDesktopSplitFraction(current + deltaFraction, persist = false)
                                                 }
                                             }
                                         },

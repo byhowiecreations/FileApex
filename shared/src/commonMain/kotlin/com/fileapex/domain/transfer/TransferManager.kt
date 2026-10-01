@@ -13,11 +13,18 @@ import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.domain.transfer.verifiedFromDisk
+import com.fileapex.network.TransferCancelledException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.fileapex.network.sendWakeBroadcast
 
 
 /**
@@ -76,20 +83,16 @@ class TransferManager(
         val peers = deviceRepository().listDevices()
             .filter { it.deviceId != sourceDeviceId }
             .sortedBy { it.deviceName.lowercase() }
-        val peerOptions = coroutineScope {
-            peers.map { peer ->
-                async(Dispatchers.IO) {
-                    resolveRemoteOption(
-                        deviceId = peer.deviceId,
-                        deviceName = peer.deviceName,
-                        host = peer.lastKnownIp,
-                        port = peer.port,
-                        rootPath = peer.rootPath,
-                        peerPlatform = peer.platform,
-                        appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
-                    )
-                }
-            }.awaitAll()
+        val peerOptions = peers.map { peer ->
+            resolveRemoteOptionFromRoster(
+                deviceId = peer.deviceId,
+                deviceName = peer.deviceName,
+                host = peer.lastKnownIp,
+                port = peer.port,
+                rootPath = peer.rootPath,
+                peerPlatform = peer.platform,
+                appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
+            )
         }
         options.addAll(peerOptions)
         return options
@@ -142,7 +145,7 @@ class TransferManager(
         val peers = deviceRepository().listDevices().filter { it.deviceId in wanted }
         check(peers.isNotEmpty()) { AppI18n.t("selected_devices_not_paired") }
         return peers.map { peer ->
-            resolveRemoteOption(
+            resolveRemoteOptionFromRoster(
                 deviceId = peer.deviceId,
                 deviceName = peer.deviceName,
                 host = peer.lastKnownIp,
@@ -169,7 +172,7 @@ class TransferManager(
         val peers = deviceRepository().listDevices().filter { it.deviceId in wanted }
         check(peers.isNotEmpty()) { AppI18n.t("selected_devices_not_paired") }
         return peers.map { peer ->
-            resolveRemoteOption(
+            resolveRemoteOptionFromRoster(
                 deviceId = peer.deviceId,
                 deviceName = peer.deviceName,
                 host = host,
@@ -195,29 +198,58 @@ class TransferManager(
         val destNames = selectedDevices.joinToString(", ") { it.deviceName }
         TransferActivityGuard.beginTransfer(fileName = firstFile, destinationDeviceName = destNames)
         try {
-            val verifiedSources = sources.verifiedFromDisk()
-            val remoteTargets = selectedDevices.filter { !it.isLocal }
-            val devicesForTransfer = if (remoteTargets.isEmpty()) {
-                selectedDevices
-            } else {
-                val directDevices = refreshRemoteHosts(selectedDevices)
-                val needsResolution = directDevices.filter { !it.isLocal && (it.host.isBlank() || !NetworkUtils.isUsableLanIpv4(it.host)) }
-                if (needsResolution.isNotEmpty() && !skipTransferPrepare) {
-                    presenceMonitor().prepareForTransfer(needsResolution)
-                    refreshRemoteHosts(selectedDevices)
-                } else {
-                    directDevices
+            return coroutineScope {
+                // A child job, so a user cancel stops this batch without cancelling the caller (queue drain).
+                val work = async { sendPrepared(sources, selectedDevices, skipTransferPrepare) }
+                val unregisterCancel = TransferActivityGuard.registerCancelable(work)
+                try {
+                    work.await()
+                } catch (cancelled: CancellationException) {
+                    if (work.isCancelled && currentCoroutineContext().isActive) {
+                        throw TransferCancelledException()
+                    }
+                    throw cancelled
+                } finally {
+                    unregisterCancel()
                 }
             }
-            val results = transferService.multiCopyToDevices(verifiedSources, devicesForTransfer)
-            return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)
         } finally {
             TransferActivityGuard.endTransfer()
-            if (TransferActivityGuard.getActiveTransfers().isEmpty()) {
-                TransferActivityGuard.reset()
-            }
             runCatching { FileApexServices.transferQueue.scheduleDrain() }
         }
+    }
+
+    private suspend fun sendPrepared(
+        sources: List<MultiCopySource>,
+        selectedDevices: List<MultiCopyDeviceOption>,
+        skipTransferPrepare: Boolean
+    ): TransferBatchResult {
+        val verifiedSources = sources.verifiedFromDisk()
+        val remoteTargets = selectedDevices.filter { !it.isLocal }
+        if (remoteTargets.isNotEmpty()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { sendWakeBroadcast() }
+            }
+        }
+        val devicesForTransfer = if (remoteTargets.isEmpty()) {
+            selectedDevices
+        } else {
+            val directDevices = refreshRemoteHosts(selectedDevices)
+            val needsResolution = directDevices.filter { !it.isLocal && (it.host.isBlank() || !NetworkUtils.isUsableLanIpv4(it.host)) }
+            if (needsResolution.isNotEmpty() && !skipTransferPrepare) {
+                presenceMonitor().prepareForTransfer(needsResolution)
+                refreshRemoteHosts(selectedDevices)
+            } else {
+                directDevices
+            }
+        }
+        val firstPass = transferService.multiCopyToDevices(verifiedSources, devicesForTransfer)
+        val results = if (skipTransferPrepare) {
+            firstPass
+        } else {
+            retryMovedPeers(verifiedSources, firstPass, devicesForTransfer)
+        }
+        return TransferBatchResult.from(results, verifiedSources, devicesForTransfer)
     }
 
     fun copyLocalFiles(
@@ -268,6 +300,51 @@ class TransferManager(
         return sendToDevices(sources, options)
     }
 
+    /**
+     * Sends go straight to the stored endpoint. Only peers that refused the connection are
+     * re-resolved, and only if they turn out to have moved are their failed sources resent — once.
+     */
+    private suspend fun retryMovedPeers(
+        sources: List<MultiCopySource>,
+        results: List<MultiCopyResult>,
+        devices: List<MultiCopyDeviceOption>
+    ): List<MultiCopyResult> {
+        val unreachableIds = results.flatMapTo(HashSet()) { it.unreachableDeviceIds }
+        if (unreachableIds.isEmpty() || results.size != sources.size) return results
+        val stale = devices.filter { it.deviceId in unreachableIds }
+        presenceMonitor().primePeersForTransfer(stale)
+        val staleById = stale.associateBy { it.deviceId }
+        val moved = refreshRemoteHosts(stale).filter { refreshed ->
+            val before = staleById.getValue(refreshed.deviceId)
+            refreshed.host.isNotBlank() && (refreshed.host != before.host || refreshed.port != before.port)
+        }
+        if (moved.isEmpty()) return results
+        val merged = results.toMutableList()
+        coroutineScope {
+            moved.map { device ->
+                async {
+                    val indexes = results.indices.filter { device.deviceId in results[it].unreachableDeviceIds }
+                    val retried = transferService.multiCopyToDevices(indexes.map { sources[it] }, listOf(device))
+                    indexes.zip(retried)
+                }
+            }.awaitAll()
+        }.forEach { pairs ->
+            for ((index, retry) in pairs) {
+                merged[index] = merged[index].mergedWith(retry)
+            }
+        }
+        return merged
+    }
+
+    private fun MultiCopyResult.mergedWith(retry: MultiCopyResult): MultiCopyResult {
+        val retriedIds = retry.succeededDeviceIds + retry.failures.keys
+        return copy(
+            succeededDeviceIds = succeededDeviceIds + retry.succeededDeviceIds,
+            failures = failures.filterKeys { it !in retriedIds } + retry.failures,
+            unreachableDeviceIds = unreachableDeviceIds.filterTo(HashSet()) { it !in retriedIds } + retry.unreachableDeviceIds
+        )
+    }
+
     private suspend fun refreshRemoteHosts(
         options: List<MultiCopyDeviceOption>
     ): List<MultiCopyDeviceOption> = options.map { option ->
@@ -291,9 +368,14 @@ class TransferManager(
         peerPlatform: String,
         appVersion: String?
     ): MultiCopyDeviceOption {
+        val effectiveRoot = if (peerPlatform.trim().equals("android", ignoreCase = true) && (rootPath.isBlank() || rootPath == "/")) {
+            "/storage/emulated/0"
+        } else {
+            rootPath
+        }
         val downloadsRoot = DownloadsPaths.resolveReceiveRoot(
             downloadsPath = "",
-            rootPath = rootPath,
+            rootPath = effectiveRoot,
             platform = peerPlatform
         )
         return MultiCopyDeviceOption(
@@ -316,18 +398,23 @@ class TransferManager(
         peerPlatform: String,
         appVersion: String?
     ): MultiCopyDeviceOption {
+        val effectiveRoot = if (peerPlatform.trim().equals("android", ignoreCase = true) && (rootPath.isBlank() || rootPath == "/")) {
+            "/storage/emulated/0"
+        } else {
+            rootPath
+        }
         val downloadsRoot = runCatching {
             val remote = client.fetchPeerNodeState(host, port)
             presenceMonitor().notifyPassiveReachability(deviceId)
             DownloadsPaths.resolveReceiveRoot(
                 downloadsPath = remote.downloadsPath,
-                rootPath = rootPath,
+                rootPath = remote.rootPath.ifBlank { effectiveRoot },
                 platform = remote.platform.ifBlank { peerPlatform }
             )
         }.getOrElse {
             DownloadsPaths.resolveReceiveRoot(
                 downloadsPath = "",
-                rootPath = rootPath,
+                rootPath = effectiveRoot,
                 platform = peerPlatform
             )
         }

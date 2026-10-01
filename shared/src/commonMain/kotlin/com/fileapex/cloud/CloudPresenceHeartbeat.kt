@@ -2,6 +2,7 @@ package com.fileapex.cloud
 
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.network.ServerLifecycleManager
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +21,7 @@ object CloudPresenceHeartbeat {
         heartbeatJob = scope.launch {
             while (isActive) {
                 if (ServerLifecycleManager.isRunning) {
-                    runCatching { GoogleLinkCoordinator.publishScheduledPresenceHeartbeat() }
+                    cancellableCatching { GoogleLinkCoordinator.publishScheduledPresenceHeartbeat() }
                         .onFailure { error ->
                             println("CloudPresenceHeartbeat: publish failed - ${error.message}")
                         }

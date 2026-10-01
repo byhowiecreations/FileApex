@@ -18,6 +18,7 @@ import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.domain.clipboard.ClipboardSharePolicy
@@ -721,7 +722,7 @@ class SettingsViewModel : ViewModel() {
                 }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(googleAccountError = error.message ?: AppI18n.t("google_link_failed"))
+                    it.copy(googleAccountError = UserFacingErrors.message(error, "google_link_failed"))
                 }
             }
         }
@@ -925,7 +926,7 @@ class SettingsViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         deviceNameSaveBusy = false,
-                        deviceNameError = error.message ?: AppI18n.t("rename_failed")
+                        deviceNameError = UserFacingErrors.message(error, "rename_failed")
                     )
                 }
             }

@@ -113,7 +113,11 @@ object BackgroundPersistenceGuidance {
     /** Best-effort OEM-specific battery / auto-start screens. */
     fun createOemBackgroundIntent(context: Context, vendor: OemVendor): Intent? {
         val packageManager = context.packageManager
-        if (vendor == OemVendor.Tcl || vendor == OemVendor.Motorola || vendor == OemVendor.Samsung) {
+        // Motorola and Samsung have no deep-linkable proprietary battery watchdog screen;
+        // fall through to the standard App Battery Usage page immediately.
+        // TCL has PowerAbnormalAppDisplayActivity (confirmed exported), so skip this
+        // short-circuit for TCL and let the OEM component list resolve it below.
+        if (vendor == OemVendor.Motorola || vendor == OemVendor.Samsung) {
             createAppBatteryUsageIntent(context)?.let { return it }
         }
         val components = oemBackgroundComponents(vendor)
@@ -211,13 +215,20 @@ object BackgroundPersistenceGuidance {
             )
         )
         OemVendor.Tcl -> listOf(
-            ComponentName(
-                "com.tcl.manager",
-                "com.tcl.manager.activity.PermissionManagerActivity"
-            ),
+            // Confirmed exported on TCL devices (MTK/One Touch Booster):
+            // "Abnormal power consumption application management" — TCL's watchdog that
+            // automatically re-restricts apps it flags as high-power consumers, overriding
+            // the standard battery exemption. This is the primary cause of the periodic
+            // exemption revocation on TCL.
             ComponentName(
                 "com.tct.onetouchbooster",
-                "com.tct.onetouchbooster.activity.MainActivity"
+                "com.tct.onetouchbooster.module.battery.activity.PowerAbnormalAppDisplayActivity"
+            ),
+            // Battery hub (Smart Manager → Battery) — secondary landing for "More battery
+            // settings → Battery manager" toggle.
+            ComponentName(
+                "com.tct.onetouchbooster",
+                "com.tct.onetouchbooster.module.battery.activity.PowerSaverActivity"
             )
         )
         OemVendor.Asus -> listOf(

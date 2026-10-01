@@ -37,6 +37,10 @@ object DownloadsPaths {
     ): String {
         val normalized = normalize(downloadsPath.trim())
         if (normalized.isNotBlank() && !normalized.contains(LEGACY_FOLDER_NAME, ignoreCase = true)) {
+            val p = platform.trim().lowercase()
+            if (p == "android" && (normalized.startsWith("/Users/") || normalized.contains(":\\"))) {
+                return fallbackFromRoot(rootPath, platform)
+            }
             return normalized
         }
         return fallbackFromRoot(rootPath, platform)
@@ -44,9 +48,18 @@ object DownloadsPaths {
 
     /** Platform-aware fallback when a peer omits [PeerNodeState.downloadsPath]. */
     fun fallbackFromRoot(rootPath: String, platform: String): String {
+        val p = platform.trim().lowercase()
+        if (p == "android") {
+            val root = rootPath.trim().trimEnd('/', '\\')
+            val base = if (root.isBlank() || root == "/" || (!root.startsWith("/storage") && !root.startsWith("/sdcard"))) {
+                "/storage/emulated/0"
+            } else {
+                root
+            }
+            return "$base/Download/$FOLDER_NAME"
+        }
         val root = rootPath.trim().trimEnd('/', '\\')
         if (root.isBlank()) return defaultDownloadsDir()
-        val p = platform.trim().lowercase()
         val isDesktop = p == "desktop" || p.contains("mac") || p.contains("darwin") ||
             p.contains("windows") || p.contains("win") || p.contains("linux")
         val folder = if (isDesktop) "Downloads" else "Download"

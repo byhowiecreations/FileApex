@@ -2,17 +2,20 @@ package com.fileapex.cloud
 
 import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.data.db.PairedDeviceEntity
+import com.fileapex.data.device.CloudSeedOutcome
 import com.fileapex.data.device.DeviceDisplayNames
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.TimestampDiagnostics
+import com.fileapex.util.cancellableCatching
 import com.fileapex.update.currentAppVersionCode
 import com.fileapex.update.currentAppVersionName
 import kotlinx.coroutines.CoroutineScope
@@ -621,7 +624,9 @@ object GoogleLinkCoordinator {
             clientVersion = presence.clientVersion,
             clientVersionCode = presence.clientVersionCode,
             updatedAtEpochMs = presence.updatedAtEpochMs,
-            hardwareFingerprint = presence.hardwareFingerprint
+            hardwareFingerprint = presence.hardwareFingerprint,
+            membershipVersion = presence.membershipVersion,
+            membershipProtocol = presence.membershipProtocol
         )
     }
 
@@ -641,12 +646,15 @@ object GoogleLinkCoordinator {
             updatedAtEpochMs = TimestampDiagnostics.mutatingNow(
                 "GoogleLinkCoordinator.buildSelfPresence.updatedAtEpochMs"
             ),
-            hardwareFingerprint = com.fileapex.platform.localHardwareFingerprint()
+            hardwareFingerprint = com.fileapex.platform.localHardwareFingerprint(),
+            membershipVersion = FileApexServices.deviceRepositoryOrNull()?.selfMembershipVersion() ?: 0L,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
         )
     }
 
     /**
-     * Remote snapshot seeds peers into Room. Never writes Firestore from here.
+     * Remote snapshot seeds peers into Room via [com.fileapex.data.device.DeviceRepository.applyCloudSeed].
+     * The only Firestore write is deleting documents of peers removed after their last refresh.
      *
      * This device's display name is owned locally after a rename. A factory/hardware
      * name may still be replaced by a cloud custom name so an APK update cannot
@@ -657,10 +665,11 @@ object GoogleLinkCoordinator {
         selfId: String,
         epoch: Long
     ) {
-        applyMutex.withLock {
+        val superseded = applyMutex.withLock {
             if (!isSessionLive(epoch)) return
             val repo = FileApexServices.deviceRepositoryOrNull() ?: return
             cachedCloudRecords = records
+            val stale = mutableListOf<String>()
             // Apply peers with usable LAN endpoints first so blank-IP stubs merge into them
             // instead of temporarily winning and deleting the good row.
             records.asSequence()
@@ -680,12 +689,12 @@ object GoogleLinkCoordinator {
                     val mergedPort = remote.port.takeIf { it > 0 } ?: local?.port ?: 0
                     val fingerprintMake = remote.hardwareFingerprint["manufacturer"].orEmpty()
                     val fingerprintModel = remote.hardwareFingerprint["model"].orEmpty()
-                    runCatching {
-                        if (!isSessionLive(epoch)) return@runCatching
-                        repo.reinstateFromCloudSeed(
+                    cancellableCatching {
+                        if (!isSessionLive(epoch)) return@cancellableCatching
+                        val outcome = repo.applyCloudSeed(
                             PairedDeviceEntity(
                                 deviceId = remote.deviceId,
-                                deviceName = remote.deviceName.ifBlank { "Cloud device" },
+                                deviceName = remote.deviceName.ifBlank { local?.deviceName ?: "Cloud device" },
                                 lastKnownIp = mergedIp,
                                 port = mergedPort,
                                 publicKeyHash = remote.publicKeyHash,
@@ -705,8 +714,15 @@ object GoogleLinkCoordinator {
                                 deviceMake = fingerprintMake.ifBlank { local?.deviceMake.orEmpty() },
                                 deviceModel = fingerprintModel.ifBlank { local?.deviceModel.orEmpty() },
                                 lastSeenEpochMs = remote.updatedAtEpochMs.coerceAtLeast(0L)
-                            )
+                            ),
+                            membershipVersion = remote.membershipVersion,
+                            membershipProtocol = remote.membershipProtocol,
+                            docUpdatedAtEpochMs = remote.updatedAtEpochMs
                         )
+                        if (outcome == CloudSeedOutcome.Superseded) stale += remote.deviceId
+                        if (outcome == CloudSeedOutcome.Skipped || outcome == CloudSeedOutcome.Superseded) {
+                            return@cancellableCatching
+                        }
                         val hasLanEndpoint = mergedIp.isNotEmpty() &&
                             mergedIp != "127.0.0.1" &&
                             mergedPort > 0
@@ -726,6 +742,12 @@ object GoogleLinkCoordinator {
                     }
                 }
             runCatching { repo.reconcileDuplicateEndpoints() }
+            stale
+        }
+        for (deviceId in superseded) {
+            if (!isSessionLive(epoch)) return
+            println("GoogleLinkCoordinator: deleting cloud document of removed peer $deviceId")
+            publishRemovedPeer(deviceId)
         }
     }
 
@@ -755,7 +777,8 @@ object GoogleLinkCoordinator {
             rootPath == other.rootPath &&
             platform == other.platform &&
             clientVersion == other.clientVersion &&
-            clientVersionCode == other.clientVersionCode
+            clientVersionCode == other.clientVersionCode &&
+            membershipVersion == other.membershipVersion
 
     private const val SESSION_SETTLE_MS = 50L
 }

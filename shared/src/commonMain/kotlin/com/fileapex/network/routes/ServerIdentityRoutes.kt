@@ -204,4 +204,44 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.InternalServerError, "merge_failed")
         }
     }
+
+    val handleClusterRemove: suspend io.ktor.server.application.ApplicationCall.() -> Unit = {
+        runCatching {
+            val body = receiveText()
+            if (body.isBlank()) {
+                respond(HttpStatusCode.BadRequest, "Empty removal payload")
+                return@runCatching
+            }
+            val record = runCatching {
+                server.json.decodeFromString(com.fileapex.domain.pairing.RemovedDeviceRecord.serializer(), body)
+            }.getOrElse { decodeError ->
+                server.onLog("Invalid removal JSON payload", decodeError)
+                respond(HttpStatusCode.BadRequest, "Invalid removal payload")
+                return@runCatching
+            }
+            val localId = server.identityProvider().deviceId
+            if (record.deviceId == localId) {
+                val applied = withContext(Dispatchers.IO) {
+                    server.onClusterSelfRemoved(record)
+                }
+                server.onLog(
+                    "Cluster revocation for local device " + if (applied) "applied" else "ignored (stale or unversioned)",
+                    null
+                )
+                respond(HttpStatusCode.OK, if (applied) "revoked_acknowledged" else "revocation_ignored")
+                return@runCatching
+            }
+
+            withContext(Dispatchers.IO) {
+                server.onClusterPeerRemoved(record)
+            }
+            respond(HttpStatusCode.OK)
+        }.onFailure { error ->
+            server.onLog("POST cluster/remove failed", error)
+            respond(HttpStatusCode.InternalServerError, "cluster_remove_failed")
+        }
+    }
+
+    post("/api/v1/cluster/remove") { call.handleClusterRemove() }
+    post("/cluster/remove") { call.handleClusterRemove() }
 }

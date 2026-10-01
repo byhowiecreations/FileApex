@@ -156,8 +156,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 /** Approximate device card row height used for desktop window sizing. */
 val DeviceCardSlotHeight = 96.dp
 
-/** Empty space under the last device card (~2 card rows), inside the list section. */
-val DeviceListToAddGap = DeviceCardSlotHeight * 2
+/** Bottom padding under the last device card, inside the list section. */
+val DeviceListToAddGap = 16.dp
 
 private data class DeviceGridLayoutSpec(
     val columnCount: Int,
@@ -270,6 +270,7 @@ fun DevicesScreen(
     selectedDeviceId: String? = null
 ) {
     val state by viewModel.uiState.collectAsState()
+    val isInitialLoadComplete by viewModel.isInitialLoadComplete.collectAsState()
     val deviceRows by viewModel.deviceRows.collectAsState()
     val viewMode by FileApexServices.settings.devicesViewMode.collectAsState()
     val listRows = if (state.deviceOrderEditMode) state.editOrderRows else deviceRows
@@ -454,6 +455,7 @@ fun DevicesScreen(
                     viewMode = viewMode,
                     layoutMode = layoutMode,
                     deviceRows = listRows,
+                    isInitialLoadComplete = isInitialLoadComplete,
                     editMode = editMode,
                     connectingDeviceId = if (editMode) null else state.connectingDeviceId,
                     selectedDeviceId = selectedDeviceId,
@@ -954,6 +956,7 @@ private fun PairedDevicesList(
     viewMode: ExplorerViewMode,
     layoutMode: DevicesScreenLayoutMode,
     deviceRows: List<DeviceListRow>,
+    isInitialLoadComplete: Boolean = true,
     editMode: Boolean,
     connectingDeviceId: String?,
     selectedDeviceId: String?,
@@ -982,6 +985,7 @@ private fun PairedDevicesList(
             when (viewMode) {
                 ExplorerViewMode.Grid -> PairedDevicesGridBrowseList(
                     deviceRows = deviceRows,
+                    isInitialLoadComplete = isInitialLoadComplete,
                     layoutMode = layoutMode,
                     connectingDeviceId = connectingDeviceId,
                     selectedDeviceId = selectedDeviceId,
@@ -997,6 +1001,7 @@ private fun PairedDevicesList(
                 ExplorerViewMode.List -> PairedDevicesBrowseList(
                     listState = listState,
                     deviceRows = deviceRows,
+                    isInitialLoadComplete = isInitialLoadComplete,
                     connectingDeviceId = connectingDeviceId,
                     selectedDeviceId = selectedDeviceId,
                     onAddDevice = onAddDevice,
@@ -1137,6 +1142,7 @@ private fun PairedDevicesEditReorderList(
 private fun PairedDevicesBrowseList(
     listState: LazyListState,
     deviceRows: List<DeviceListRow>,
+    isInitialLoadComplete: Boolean = true,
     connectingDeviceId: String?,
     selectedDeviceId: String?,
     onAddDevice: () -> Unit = {},
@@ -1151,7 +1157,7 @@ private fun PairedDevicesBrowseList(
     val itemSpacing = 14.dp
     val listTopPadding = 8.dp
     val isDemoActive by com.fileapex.domain.demo.DemoModeState.isDemoModeActive.collectAsState()
-    val bottomPadding = if (deviceRows.isEmpty() && !isDemoActive) 24.dp else DeviceListToAddGap
+    val bottomPadding = if (isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive) 24.dp else DeviceListToAddGap
 
     LazyColumn(
         state = listState,
@@ -1171,7 +1177,7 @@ private fun PairedDevicesBrowseList(
                 )
             }
         }
-        if (deviceRows.isEmpty() && !isDemoActive) {
+        if (isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive) {
             item(
                 key = "empty",
                 contentType = "empty"
@@ -1216,6 +1222,7 @@ private fun PairedDevicesBrowseList(
 @Composable
 private fun PairedDevicesGridBrowseList(
     deviceRows: List<DeviceListRow>,
+    isInitialLoadComplete: Boolean = true,
     layoutMode: DevicesScreenLayoutMode,
     connectingDeviceId: String?,
     selectedDeviceId: String?,
@@ -1233,7 +1240,7 @@ private fun PairedDevicesGridBrowseList(
         // Skip first frame(s) with unset constraints so Fixed column count is not computed wrong.
         if (!maxWidth.value.isFinite() || maxWidth <= 0.dp) return@BoxWithConstraints
         val grid = resolveDeviceGridLayout(maxWidth = maxWidth, layoutMode = layoutMode)
-        val bottomPadding = if (deviceRows.isEmpty() && !isDemoActive) 24.dp else DeviceListToAddGap
+        val bottomPadding = if (isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive) 24.dp else DeviceListToAddGap
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columnCount),
             modifier = Modifier.fillMaxSize(),
@@ -1253,7 +1260,7 @@ private fun PairedDevicesGridBrowseList(
                     )
                 }
             }
-            if (deviceRows.isEmpty() && !isDemoActive) {
+            if (isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive) {
                 item(key = "empty", span = { GridItemSpan(grid.columnCount) }) {
                     EmptyDevicesQuickStartCard(
                         onAddDevice = onAddDevice,

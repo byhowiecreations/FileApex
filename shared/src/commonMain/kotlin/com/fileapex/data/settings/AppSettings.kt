@@ -43,6 +43,9 @@ interface AppSettings {
     val autoLaunchOnReboot: StateFlow<Boolean>
     val deviceOrderIds: StateFlow<String>
     val deviceOrderUpdatedAtEpochMs: StateFlow<Long>
+    /** [com.fileapex.domain.peer.ClusterClock] stamp of this device's latest pairing; 0 until it pairs on 0.14.3a+. */
+    val clusterMembershipVersion: StateFlow<Long>
+    val membershipProtocolSinceEpochMs: StateFlow<Long>
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
     val desktopSplitFraction: StateFlow<Float>
     val explorerSplitFraction: StateFlow<Float>
@@ -160,11 +163,14 @@ interface AppSettings {
     fun setDeviceOrderIds(encodedOrder: String)
 
     fun setDeviceOrderUpdatedAtEpochMs(epochMs: Long)
+    fun setClusterMembershipVersion(version: Long)
+    fun setMembershipProtocolSinceEpochMs(epochMs: Long)
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode)
 
-    fun setDesktopSplitFraction(fraction: Float)
-    fun setExplorerSplitFraction(fraction: Float)
+    /** [persist] false updates the flow only; drag gestures persist once on drag end. */
+    fun setDesktopSplitFraction(fraction: Float, persist: Boolean = true)
+    fun setExplorerSplitFraction(fraction: Float, persist: Boolean = true)
 
     fun setDesktopUiStyle(style: DesktopUiStyle)
 
@@ -172,7 +178,7 @@ interface AppSettings {
 
     fun setDevicesViewMode(mode: ExplorerViewMode)
 
-    fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float)
+    fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float, persist: Boolean = true)
 
     fun resetKineticNodeOffsets()
 
@@ -221,6 +227,8 @@ interface AppSettings {
             checkForUpdatesIntervalAmount.value
         )
     }
+
+    fun resetToDefaults()
 }
 
 expect fun createAppSettings(): AppSettings

@@ -20,13 +20,18 @@ class CliDeviceResolverTest {
         override suspend fun getAllDevicesOnce(): List<PairedDeviceEntity> = devices
         override suspend fun getDevice(deviceId: String): PairedDeviceEntity? =
             devices.firstOrNull { it.deviceId == deviceId }
+        override suspend fun getTombstonedDevices(): List<PairedDeviceEntity> = devices.filter { it.isRemoved }
+        override suspend fun getAllDevicesIncludingTombstones(): List<PairedDeviceEntity> = devices
         override suspend fun upsertDevice(device: PairedDeviceEntity) {}
         override suspend fun deleteDevice(deviceId: String) {}
+        override suspend fun deleteAllDevices() {}
         override suspend fun insertRemovedDevice(device: com.fileapex.data.db.RemovedDeviceEntity) {}
         override suspend fun countRemovedById(deviceId: String): Int = 0
         override suspend fun countRemovedByPublicKeyHash(publicKeyHash: String): Int = 0
         override suspend fun clearRemovedDevice(deviceId: String) {}
         override suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String) {}
+        override suspend fun getAllRemovedDevices(): List<com.fileapex.data.db.RemovedDeviceEntity> = emptyList()
+        override suspend fun deleteAllRemovedDevices() {}
         override suspend fun touchLastSeen(deviceId: String, ip: String, port: Int, epochMs: Long) {}
         override suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {}
         override suspend fun updateCardLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String) {}

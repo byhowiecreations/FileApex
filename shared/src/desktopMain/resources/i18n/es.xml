@@ -926,5 +926,28 @@ Toca el hub central (+) para emparejar</string>
     <string name="all_permissions_granted">Todos los permisos concedidos</string>
     <string name="all_permissions_granted_desc">FileApex tiene todos los permisos necesarios para transferir archivos y detectar dispositivos cercanos.</string>
     <string name="back_to_settings">Volver a Configuración</string>
+    <string name="peer_revoked_this_device">%1$s ya no reconoce este dispositivo — vuelve a emparejarlo para unirte</string>
+    <string name="transfer_cancelled">Transferencia cancelada</string>
+    <string name="queue_retry_failed">No se pudo reintentar esta transferencia</string>
+    <string name="queue_retry_now">Reintentar ahora</string>
+    <string name="queue_paused">En pausa — toca reintentar para continuar</string>
+    <string name="show_in_folder">Mostrar en carpeta</string>
+    <string name="error_peer_timeout">El dispositivo tardó demasiado en responder. Comprueba que esté activo y en la misma red Wi-Fi.</string>
+    <string name="error_peer_unreachable">No se pudo conectar con el dispositivo. Comprueba que FileApex esté en ejecución y que ambos estén en la misma red.</string>
+    <string name="error_disk_full">No hay suficiente espacio de almacenamiento para terminar.</string>
+    <string name="error_connection_lost">La conexión se interrumpió. Inténtalo de nuevo.</string>
+    <string name="filter_this_folder">Filtrar esta carpeta</string>
+    <string name="sort_by">Ordenar por</string>
+    <string name="sort_name">Nombre</string>
+    <string name="sort_date">Fecha de modificación</string>
+    <string name="sort_size">Tamaño</string>
+    <string name="clear">Borrar</string>
+    <string name="clipboard_expired">El elemento del portapapeles caducó</string>
+    <string name="copied_to_clipboard">Copiado al portapapeles</string>
+    <string name="copy">Copiar</string>
+    <string name="copy_to_clipboard">Copiar al portapapeles</string>
+    <string name="disabled">Desactivado</string>
+    <string name="enabled">Activado</string>
+    <string name="opening_folder">Abriendo carpeta…</string>
 </resources>
 

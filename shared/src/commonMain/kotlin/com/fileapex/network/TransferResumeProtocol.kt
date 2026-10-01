@@ -155,6 +155,8 @@ object TransferTransactionJournal {
 object TransferResumeProtocol {
     const val MIN_VERSION_CODE = 128
     const val OFFSET_QUERY = "offset"
+    const val LENGTH_QUERY = "length"
+    const val PREPARE_QUERY = "prepare"
     const val TOTAL_SIZE_QUERY = "totalSize"
     const val EXPECTED_SIZE_QUERY = "expectedSize"
     const val TRANSACTION_ID_QUERY = "txId"

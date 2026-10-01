@@ -1,7 +1,10 @@
 package com.fileapex.domain.transfer
 
 import com.fileapex.util.TimeUtils
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,15 +19,23 @@ data class LiveTransferStats(
     val progress: Float = 0f,
     val speedBytesPerSec: Long = 0L,
     val speedFormatted: String = "",
-    val etaFormatted: String = ""
+    val etaFormatted: String = "",
+    /** True while a user-cancelable outbound batch is running. */
+    val cancelable: Boolean = false
 )
 
 /**
  * Tracks in-flight LAN transfers so presence sweeps can yield (battery + throughput),
- * and computes real-time transfer throughput (speed) and dynamic ETA for UI indicators.
+ * and publishes one batch-wide progress, speed and ETA for UI indicators.
+ *
+ * Parallel workers report per stream (one file to one device); [statsFlow] sums them against
+ * the batch total so the bar only moves forward, and emits at most every [EMIT_INTERVAL_MS].
  */
 object TransferActivityGuard {
-    private val activeTransfers = AtomicInteger(0)
+    private const val EMIT_INTERVAL_MS = 150L
+    private const val ANONYMOUS_STREAM = "_"
+
+    private val anonymousActive = AtomicInteger(0)
     private val _isTransferActiveFlow = MutableStateFlow(false)
     val isTransferActiveFlow: StateFlow<Boolean> = _isTransferActiveFlow.asStateFlow()
 
@@ -34,205 +45,214 @@ object TransferActivityGuard {
     private val _statsFlow = MutableStateFlow(LiveTransferStats())
     val statsFlow: StateFlow<LiveTransferStats> = _statsFlow.asStateFlow()
 
-    private class TargetProgress(
+    private class Stream(
         val deviceId: String,
-        var deviceName: String,
-        var fileName: String
+        @Volatile var deviceName: String,
+        @Volatile var fileName: String
     ) {
-        var sentBytes: Long = 0L
-        var totalBytes: Long = 0L
-        var progress: Float = 0f
-        var lastSampleTimeMs: Long = TimeUtils.now()
-        var lastSampleBytes: Long = 0L
-        var smoothedSpeedBps: Long = 0L
-
-        fun toLiveTransferStats(): LiveTransferStats = LiveTransferStats(
-            isActive = true,
-            destinationDeviceId = deviceId,
-            destinationDeviceName = deviceName,
-            currentFileName = fileName,
-            sentBytes = sentBytes,
-            totalBytes = totalBytes,
-            progress = progress,
-            speedBytesPerSec = smoothedSpeedBps,
-            speedFormatted = formatSpeed(smoothedSpeedBps),
-            etaFormatted = formatEta(sentBytes, totalBytes, smoothedSpeedBps)
-        )
+        @Volatile var sentBytes: Long = 0L
+        @Volatile var totalBytes: Long = 0L
     }
 
-    private val activeTargetMap = java.util.concurrent.ConcurrentHashMap<String, TargetProgress>()
+    private val streams = ConcurrentHashMap<String, Stream>()
+    private val batchTotalBytes = AtomicLong(0L)
+    private val batchFinishedBytes = AtomicLong(0L)
+    private val cancelableJobs = ConcurrentHashMap.newKeySet<Job>()
 
-    private var currentFileName: String = ""
-    private var destinationDeviceName: String = ""
+    @Volatile private var currentFileName: String = ""
+    @Volatile private var destinationDeviceName: String = ""
+
+    private val lastEmitMs = AtomicLong(0L)
+    private val publishLock = Any()
+    private val speedLock = Any()
     private var lastSampleTimeMs: Long = 0L
     private var lastSampleBytes: Long = 0L
     private var smoothedSpeedBps: Long = 0L
 
+    /**
+     * Starts a stream when [deviceId] or [streamKey] is set; otherwise marks an untracked
+     * transfer (batch wrapper or inbound upload) as active.
+     */
     fun beginTransfer(
         fileName: String = "",
         destinationDeviceName: String = "",
-        deviceId: String = ""
+        deviceId: String = "",
+        streamKey: String = ""
     ) {
-        if (fileName.isNotBlank()) this.currentFileName = fileName
+        if (fileName.isNotBlank()) currentFileName = fileName
         if (destinationDeviceName.isNotBlank()) this.destinationDeviceName = destinationDeviceName
-
-        if (deviceId.isNotBlank()) {
-            activeTargetMap[deviceId] = TargetProgress(
-                deviceId = deviceId,
-                deviceName = destinationDeviceName,
-                fileName = fileName.ifBlank { this.currentFileName }
-            )
+        val key = streamKey.ifBlank { deviceId }
+        if (key.isNotBlank()) {
+            streams[key] = Stream(deviceId, destinationDeviceName, fileName.ifBlank { currentFileName })
         } else {
-            activeTransfers.incrementAndGet()
+            anonymousActive.incrementAndGet()
         }
-
-        val count = if (activeTargetMap.isNotEmpty()) activeTargetMap.size else activeTransfers.get()
-
-        lastSampleTimeMs = TimeUtils.now()
-        lastSampleBytes = 0L
-        smoothedSpeedBps = 0L
-        _transferProgressFlow.value = 0.0f
-        _isTransferActiveFlow.value = count > 0
         TransferWakeLockCoordinator.acquire()
-        _statsFlow.value = LiveTransferStats(
-            isActive = count > 0,
-            destinationDeviceId = deviceId,
-            currentFileName = this.currentFileName,
-            destinationDeviceName = this.destinationDeviceName
-        )
+        _isTransferActiveFlow.value = true
+        publish(force = true)
     }
 
     fun setTransferContext(fileName: String, destinationDeviceName: String = "", deviceId: String = "") {
-        if (fileName.isNotBlank()) this.currentFileName = fileName
+        if (fileName.isNotBlank()) currentFileName = fileName
         if (destinationDeviceName.isNotBlank()) this.destinationDeviceName = destinationDeviceName
         if (deviceId.isNotBlank()) {
-            activeTargetMap[deviceId]?.let {
+            streams[deviceId]?.let {
                 if (fileName.isNotBlank()) it.fileName = fileName
                 if (destinationDeviceName.isNotBlank()) it.deviceName = destinationDeviceName
             }
         }
-        _statsFlow.value = _statsFlow.value.copy(
-            currentFileName = this.currentFileName,
-            destinationDeviceName = this.destinationDeviceName
-        )
+        publish(force = false)
     }
 
-    fun updateProgress(sentBytes: Long, totalBytes: Long, deviceId: String = "") {
+    /** Bytes the current batch will move in total (files × destinations); called once per planned pass. */
+    fun addBatchBytes(bytes: Long) {
+        if (bytes > 0L) batchTotalBytes.addAndGet(bytes)
+    }
+
+    fun updateProgress(sentBytes: Long, totalBytes: Long, deviceId: String = "", streamKey: String = "") {
         if (totalBytes <= 0L) return
-        val frac = (sentBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-
-        if (deviceId.isNotBlank()) {
-            val target = activeTargetMap.getOrPut(deviceId) {
-                TargetProgress(deviceId, destinationDeviceName, currentFileName)
-            }
-            target.sentBytes = sentBytes
-            target.totalBytes = totalBytes
-            target.progress = frac
-
-            val now = TimeUtils.now()
-            val dtMs = (now - target.lastSampleTimeMs).coerceAtLeast(1L)
-            val dBytes = (sentBytes - target.lastSampleBytes).coerceAtLeast(0L)
-            if (dtMs >= 100L || sentBytes >= totalBytes) {
-                val instantBps = (dBytes * 1000L) / dtMs
-                target.smoothedSpeedBps = if (target.smoothedSpeedBps == 0L) {
-                    instantBps
-                } else {
-                    ((target.smoothedSpeedBps * 7) + (instantBps * 3)) / 10
-                }
-                target.lastSampleTimeMs = now
-                target.lastSampleBytes = sentBytes
-            }
-        }
-
-        _transferProgressFlow.value = frac
-        val now = TimeUtils.now()
-        val dtMs = (now - lastSampleTimeMs).coerceAtLeast(1L)
-        val dBytes = (sentBytes - lastSampleBytes).coerceAtLeast(0L)
-
-        // Refresh rolling speed window every 100ms+ for immediate UI reactivity
-        if (dtMs >= 100L || sentBytes >= totalBytes) {
-            val instantBps = (dBytes * 1000L) / dtMs
-            smoothedSpeedBps = if (smoothedSpeedBps == 0L) {
-                instantBps
-            } else {
-                ((smoothedSpeedBps * 7) + (instantBps * 3)) / 10
-            }
-            lastSampleTimeMs = now
-            lastSampleBytes = sentBytes
-        }
-
-        val speedStr = formatSpeed(smoothedSpeedBps)
-        val etaStr = formatEta(sentBytes, totalBytes, smoothedSpeedBps)
-
-        _statsFlow.value = LiveTransferStats(
-            isActive = true,
-            destinationDeviceId = deviceId,
-            currentFileName = currentFileName,
-            destinationDeviceName = destinationDeviceName,
-            sentBytes = sentBytes,
-            totalBytes = totalBytes,
-            progress = frac,
-            speedBytesPerSec = smoothedSpeedBps,
-            speedFormatted = speedStr,
-            etaFormatted = etaStr
-        )
+        val key = streamKey.ifBlank { deviceId }.ifBlank { ANONYMOUS_STREAM }
+        val stream = streams.getOrPut(key) { Stream(deviceId, destinationDeviceName, currentFileName) }
+        stream.sentBytes = sentBytes.coerceIn(0L, totalBytes)
+        stream.totalBytes = totalBytes
+        currentFileName = stream.fileName.ifBlank { currentFileName }
+        publish(force = sentBytes >= totalBytes)
     }
 
-    fun endTransfer(deviceId: String = "") {
-        if (deviceId.isNotBlank()) {
-            activeTargetMap.remove(deviceId)
-        } else {
-            activeTransfers.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
-        }
-        val count = if (activeTargetMap.isNotEmpty()) {
-            activeTargetMap.size
-        } else {
-            activeTransfers.get()
-        }
-        _transferProgressFlow.value = if (count > 0) _transferProgressFlow.value else 0.0f
-        _isTransferActiveFlow.value = count > 0
-        _statsFlow.value = if (count > 0) {
-            LiveTransferStats(
-                isActive = true,
-                currentFileName = currentFileName,
-                destinationDeviceName = destinationDeviceName,
-                progress = _transferProgressFlow.value,
-                speedFormatted = "",
-                etaFormatted = ""
-            )
-        } else {
-            LiveTransferStats(isActive = false)
+    fun endTransfer(deviceId: String = "", streamKey: String = "") {
+        val key = streamKey.ifBlank { deviceId }
+        if (key.isNotBlank()) {
+            streams.remove(key)?.let { batchFinishedBytes.addAndGet(it.totalBytes.coerceAtLeast(it.sentBytes)) }
+        } else if (anonymousActive.updateAndGet { current -> (current - 1).coerceAtLeast(0) } == 0) {
+            streams.remove(ANONYMOUS_STREAM)?.let { batchFinishedBytes.addAndGet(it.totalBytes) }
         }
         TransferWakeLockCoordinator.release()
-        if (count == 0) {
-            currentFileName = ""
-            destinationDeviceName = ""
-            activeTargetMap.clear()
-            activeTransfers.set(0)
-            _transferProgressFlow.value = 0.0f
+        if (!isTransferActive()) {
+            clearBatch()
+            return
         }
+        publish(force = true)
     }
 
     fun reset() {
         TransferWakeLockCoordinator.releaseAll()
-        activeTargetMap.clear()
-        activeTransfers.set(0)
-        currentFileName = ""
-        destinationDeviceName = ""
-        _transferProgressFlow.value = 0.0f
-        _isTransferActiveFlow.value = false
-        _statsFlow.value = LiveTransferStats(isActive = false)
+        streams.clear()
+        anonymousActive.set(0)
+        cancelableJobs.clear()
+        clearBatch()
+    }
+
+    /** Registers [job] so the live banner, share sheet and queue can cancel it; returns an unregister handle. */
+    fun registerCancelable(job: Job): () -> Unit {
+        cancelableJobs += job
+        publish(force = true)
+        return {
+            cancelableJobs -= job
+            publish(force = true)
+        }
+    }
+
+    fun cancelActiveTransfers(): Boolean {
+        val jobs = cancelableJobs.toList()
+        jobs.forEach { it.cancel() }
+        return jobs.isNotEmpty()
     }
 
     fun getActiveTransfers(): List<LiveTransferStats> {
-        if (activeTargetMap.isNotEmpty()) {
-            return activeTargetMap.values.map { it.toLiveTransferStats() }
-        }
+        val perDevice = streams.values
+            .filter { it.deviceId.isNotBlank() }
+            .groupBy { it.deviceId }
+            .map { (deviceId, group) ->
+                val sent = group.sumOf { it.sentBytes }
+                val total = group.sumOf { it.totalBytes }
+                LiveTransferStats(
+                    isActive = true,
+                    destinationDeviceId = deviceId,
+                    destinationDeviceName = group.first().deviceName,
+                    currentFileName = group.last().fileName,
+                    sentBytes = sent,
+                    totalBytes = total,
+                    progress = fraction(sent, total)
+                )
+            }
+        if (perDevice.isNotEmpty()) return perDevice
         val global = _statsFlow.value
         return if (global.isActive) listOf(global) else emptyList()
     }
 
-    fun isTransferActive(): Boolean = if (activeTargetMap.isNotEmpty()) true else activeTransfers.get() > 0
+    fun isTransferActive(): Boolean = streams.isNotEmpty() || anonymousActive.get() > 0
+
+    private fun clearBatch() = synchronized(publishLock) {
+        if (isTransferActive()) return@synchronized
+        currentFileName = ""
+        destinationDeviceName = ""
+        batchTotalBytes.set(0L)
+        batchFinishedBytes.set(0L)
+        synchronized(speedLock) {
+            lastSampleTimeMs = 0L
+            lastSampleBytes = 0L
+            smoothedSpeedBps = 0L
+        }
+        lastEmitMs.set(0L)
+        _transferProgressFlow.value = 0.0f
+        _isTransferActiveFlow.value = false
+        _statsFlow.value = LiveTransferStats(isActive = false, cancelable = cancelableJobs.isNotEmpty())
+    }
+
+    private fun publish(force: Boolean) {
+        val now = TimeUtils.now()
+        val previous = lastEmitMs.get()
+        if (!force && now - previous < EMIT_INTERVAL_MS) return
+        if (!lastEmitMs.compareAndSet(previous, now) && !force) return
+        synchronized(publishLock) { publishLocked(now) }
+    }
+
+    private fun publishLocked(now: Long) {
+        val active = streams.values.toList()
+        val activeSent = active.sumOf { it.sentBytes }
+        val activeTotal = active.sumOf { it.totalBytes }
+        val finished = batchFinishedBytes.get()
+        val sent = finished + activeSent
+        val total = maxOf(batchTotalBytes.get(), finished + activeTotal)
+        val speed = sampleSpeed(now, sent)
+        val progress = fraction(sent, total)
+        val isActive = isTransferActive()
+        val devices = active.mapNotNull { it.deviceName.takeIf(String::isNotBlank) }.distinct()
+
+        _isTransferActiveFlow.value = isActive
+        _transferProgressFlow.value = if (isActive) progress else 0f
+        _statsFlow.value = LiveTransferStats(
+            isActive = isActive,
+            destinationDeviceId = active.singleOrNull()?.deviceId.orEmpty(),
+            destinationDeviceName = devices.joinToString(", ").ifBlank { destinationDeviceName },
+            currentFileName = active.lastOrNull()?.fileName?.ifBlank { null } ?: currentFileName,
+            sentBytes = sent,
+            totalBytes = total,
+            progress = progress,
+            speedBytesPerSec = speed,
+            speedFormatted = formatSpeed(speed),
+            etaFormatted = formatEta(sent, total, speed),
+            cancelable = cancelableJobs.isNotEmpty()
+        )
+    }
+
+    private fun sampleSpeed(now: Long, sentBytes: Long): Long = synchronized(speedLock) {
+        if (lastSampleTimeMs == 0L || sentBytes < lastSampleBytes) {
+            lastSampleTimeMs = now
+            lastSampleBytes = sentBytes
+            return smoothedSpeedBps
+        }
+        val dtMs = now - lastSampleTimeMs
+        if (dtMs < EMIT_INTERVAL_MS) return smoothedSpeedBps
+        val instantBps = ((sentBytes - lastSampleBytes) * 1000L) / dtMs
+        smoothedSpeedBps = if (smoothedSpeedBps == 0L) instantBps else ((smoothedSpeedBps * 7) + (instantBps * 3)) / 10
+        lastSampleTimeMs = now
+        lastSampleBytes = sentBytes
+        smoothedSpeedBps
+    }
+
+    private fun fraction(sent: Long, total: Long): Float =
+        if (total <= 0L) 0f else (sent.toFloat() / total.toFloat()).coerceIn(0f, 1f)
 
     private fun formatSpeed(bytesPerSec: Long): String {
         if (bytesPerSec <= 0L) return ""

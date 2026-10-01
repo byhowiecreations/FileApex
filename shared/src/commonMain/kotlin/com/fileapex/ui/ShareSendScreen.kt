@@ -153,7 +153,11 @@ fun ShareSendScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
+                            if (state.isSending && !state.isPreparing) {
+                                TransferProgressBlock()
+                            } else {
+                                CircularProgressIndicator()
+                            }
                             Text(
                                 text = state.statusMessage ?: stringRes("sending"),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -247,20 +251,8 @@ fun ShareSendScreen(
                 }
             }
 
-            if (state.isSending) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                    Text(
-                        text = stringRes("sending"),
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
+            if (state.isSending && !state.isDirectSend) {
+                TransferProgressBlock(modifier = Modifier.padding(bottom = 8.dp))
             }
 
             Button(

@@ -120,7 +120,9 @@ actual object CloudAuthBackend {
             clientVersion = record.clientVersion,
             clientVersionCode = record.clientVersionCode,
             updatedAtEpochMs = record.updatedAtEpochMs,
-            hardwareFingerprint = record.hardwareFingerprint
+            hardwareFingerprint = record.hardwareFingerprint,
+            membershipVersion = record.membershipVersion,
+            membershipProtocol = record.membershipProtocol
         )
         patchOrCreateDocument(
             token = token,
@@ -138,7 +140,9 @@ actual object CloudAuthBackend {
                 "clientVersion",
                 "clientVersionCode",
                 "updatedAtEpochMs",
-                "hardwareFingerprint"
+                "hardwareFingerprint",
+                "membershipVersion",
+                "membershipProtocol"
             )
         )
     }
@@ -174,6 +178,14 @@ actual object CloudAuthBackend {
                         }
                     )
                     put("hardwareFingerprint", encodeHardwareFingerprintToFirestore(presence.hardwareFingerprint))
+                    put(
+                        "membershipVersion",
+                        buildJsonObject { put("integerValue", presence.membershipVersion.toString()) }
+                    )
+                    put(
+                        "membershipProtocol",
+                        buildJsonObject { put("integerValue", presence.membershipProtocol.toString()) }
+                    )
                 }
             )
         }
@@ -192,7 +204,9 @@ actual object CloudAuthBackend {
                 "clientVersion",
                 "clientVersionCode",
                 "updatedAtEpochMs",
-                "hardwareFingerprint"
+                "hardwareFingerprint",
+                "membershipVersion",
+                "membershipProtocol"
             )
         )
     }
@@ -631,7 +645,9 @@ actual object CloudAuthBackend {
         clientVersion: String,
         clientVersionCode: Int,
         updatedAtEpochMs: Long,
-        hardwareFingerprint: Map<String, String> = emptyMap()
+        hardwareFingerprint: Map<String, String>,
+        membershipVersion: Long,
+        membershipProtocol: Int
     ): JsonObject = buildJsonObject {
         put(
             "fields",
@@ -653,6 +669,8 @@ actual object CloudAuthBackend {
                     buildJsonObject { put("integerValue", updatedAtEpochMs.toString()) }
                 )
                 put("hardwareFingerprint", encodeHardwareFingerprintToFirestore(hardwareFingerprint))
+                put("membershipVersion", buildJsonObject { put("integerValue", membershipVersion.toString()) })
+                put("membershipProtocol", buildJsonObject { put("integerValue", membershipProtocol.toString()) })
             }
         )
     }
@@ -773,6 +791,8 @@ actual object CloudAuthBackend {
             put("clipboardPublicKey", stringField(fields, "clipboardPublicKey"))
             put("deviceDetailsCloudEnabled", booleanField(fields, "deviceDetailsCloudEnabled"))
             put("hardwareFingerprint", parseHardwareFingerprintFromFirestore(fields))
+            put("membershipVersion", integerField(fields, "membershipVersion"))
+            put("membershipProtocol", integerField(fields, "membershipProtocol")?.toInt())
         }
         return CloudDeviceRecordParsing.fromFirestoreMap(data, documentId)
     }

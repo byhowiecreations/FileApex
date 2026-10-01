@@ -24,7 +24,10 @@ data class CloudDeviceRecord(
     /** Peer opted in to encrypted cloud Device Details when LAN is unavailable. */
     val deviceDetailsCloudEnabled: Boolean = false,
     /** Static hardware parameters (manufacturer, model, device, board) for reconciliation. */
-    val hardwareFingerprint: Map<String, String> = emptyMap()
+    val hardwareFingerprint: Map<String, String> = emptyMap(),
+    /** Publisher's own [com.fileapex.domain.peer.ClusterClock] membership stamp; 0 on older builds. */
+    val membershipVersion: Long = 0L,
+    val membershipProtocol: Int = 0
 )
 
 /**
@@ -41,7 +44,9 @@ data class CloudDevicePresence(
     val clientVersion: String,
     val clientVersionCode: Int,
     val updatedAtEpochMs: Long,
-    val hardwareFingerprint: Map<String, String> = emptyMap()
+    val hardwareFingerprint: Map<String, String> = emptyMap(),
+    val membershipVersion: Long = 0L,
+    val membershipProtocol: Int = 0
 )
 
 data class GoogleAuthSession(

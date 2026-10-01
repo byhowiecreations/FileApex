@@ -180,3 +180,18 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         ).use { statement -> statement.step() }
     }
 }
+
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "ALTER TABLE `paired_devices` ADD COLUMN `clusterVersion` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `paired_devices` ADD COLUMN `isRemoved` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `paired_devices` ADD COLUMN `removedAt` INTEGER"
+        ).forEach { sql ->
+            connection.prepare(sql).use { statement ->
+                statement.step()
+            }
+        }
+    }
+}
+

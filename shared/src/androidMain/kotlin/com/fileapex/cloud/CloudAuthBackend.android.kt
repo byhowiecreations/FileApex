@@ -51,7 +51,9 @@ actual object CloudAuthBackend {
             "clientVersion" to record.clientVersion,
             "clientVersionCode" to record.clientVersionCode,
             "updatedAtEpochMs" to record.updatedAtEpochMs,
-            "hardwareFingerprint" to record.hardwareFingerprint
+            "hardwareFingerprint" to record.hardwareFingerprint,
+            "membershipVersion" to record.membershipVersion,
+            "membershipProtocol" to record.membershipProtocol
         )
         deviceDoc(uid, record.deviceId)
             .set(data, SetOptions.merge())
@@ -69,7 +71,9 @@ actual object CloudAuthBackend {
             "clientVersion" to presence.clientVersion,
             "clientVersionCode" to presence.clientVersionCode,
             "updatedAtEpochMs" to presence.updatedAtEpochMs,
-            "hardwareFingerprint" to presence.hardwareFingerprint
+            "hardwareFingerprint" to presence.hardwareFingerprint,
+            "membershipVersion" to presence.membershipVersion,
+            "membershipProtocol" to presence.membershipProtocol
         )
         val ref = deviceDoc(uid, presence.deviceId)
         runCatching {

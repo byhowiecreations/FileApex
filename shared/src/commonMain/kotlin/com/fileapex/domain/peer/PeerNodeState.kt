@@ -33,8 +33,18 @@ data class PeerNodeState(
     val publicKeyHash: String = "",
     val publicKey: String = "",
     val pinRequired: Boolean = false,
-    val downloadsPath: String = ""
+    val downloadsPath: String = "",
+    /** Legacy wall-clock version kept for builds before 0.14.3a; ignored when [membershipProtocol] is set. */
+    val clusterVersion: Long = 0L,
+    val isRemoved: Boolean = false,
+    val removedAt: Long? = null,
+    /** [ClusterClock] stamp of this device's latest pairing. */
+    val membershipVersion: Long = 0L,
+    val membershipProtocol: Int = 0
 ) {
+    val hasMembershipProtocol: Boolean
+        get() = membershipProtocol >= ClusterClock.MEMBERSHIP_PROTOCOL
+
     val resolvedClientVersion: String
         get() = clientVersion.trim().ifBlank { appVersion.trim() }
 

@@ -6,6 +6,8 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.platform.isDesktopHost
+import com.fileapex.platform.openLocalFile
+import com.fileapex.platform.revealInFolder
 import com.fileapex.ui.DesktopLayoutToggle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.Image
@@ -27,6 +29,10 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CopyAll
 import androidx.compose.foundation.BorderStroke
@@ -41,12 +47,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -74,6 +85,8 @@ import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.domain.demo.DemoModeState
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerActionCopy
+import com.fileapex.presentation.ExplorerListOrdering
+import com.fileapex.presentation.ExplorerSortMode
 import com.fileapex.presentation.ExplorerUiState
 import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.util.NetworkUtils
@@ -110,10 +123,37 @@ fun FileExplorerScreen(
         }
     }
 
+    var filterQuery by remember(state.currentPath) { mutableStateOf("") }
+    var sortMode by remember { mutableStateOf(ExplorerSortMode.Name) }
+    val visibleDirectories = remember(state.contentDirectories, filterQuery, sortMode) {
+        ExplorerListOrdering.apply(state.contentDirectories, filterQuery, sortMode)
+    }
+    val visibleFiles = remember(state.contentFiles, filterQuery, sortMode) {
+        ExplorerListOrdering.apply(state.contentFiles, filterQuery, sortMode)
+    }
+    val openActionLabel = stringRes("open")
+    val showInFolderLabel = stringRes("show_in_folder")
     LaunchedEffect(state.statusMessage, state.errorMessage) {
-        state.statusMessage?.let {
-            snackbarHostState.showSnackbar(it)
+        state.statusMessage?.let { message ->
+            val downloaded = state.lastDownloadedPaths
+            if (downloaded.isEmpty()) {
+                snackbarHostState.showSnackbar(message)
+                viewModel.dismissMessages()
+                return@let
+            }
             viewModel.dismissMessages()
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = if (downloaded.size == 1) openActionLabel else showInFolderLabel,
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                if (downloaded.size == 1) {
+                    openLocalFile(downloaded.first())
+                } else {
+                    revealInFolder(downloaded.first())
+                }
+            }
         }
         state.errorMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -293,13 +333,19 @@ fun FileExplorerScreen(
                                     }
                                 }
                             }
+                            ExplorerFilterBar(
+                                query = filterQuery,
+                                onQueryChange = { filterQuery = it },
+                                sortMode = sortMode,
+                                onSortModeChange = { sortMode = it }
+                            )
                             AdaptiveExplorerView(
                                 isWideDisplay = isWide,
                                 viewMode = state.viewMode,
                                 panePath = state.panePath,
                                 paneDirectories = state.paneDirectories,
-                                contentDirectories = state.contentDirectories,
-                                contentFiles = state.contentFiles,
+                                contentDirectories = visibleDirectories,
+                                contentFiles = visibleFiles,
                                 selectedFolderPath = state.selectedFolderPath,
                                 canNavigateUp = state.canNavigateUp,
                                 isSelectionMode = state.isSelectionMode,
@@ -649,3 +695,61 @@ private fun ExplorerTopBarActions(
 
     }
 }
+
+@Composable
+private fun ExplorerFilterBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    sortMode: ExplorerSortMode,
+    onSortModeChange: (ExplorerSortMode) -> Unit
+) {
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            placeholder = { Text(stringRes("filter_this_folder")) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(Icons.Filled.Close, contentDescription = stringRes("clear"))
+                    }
+                }
+            },
+            textStyle = MaterialTheme.typography.bodyMedium
+        )
+        Box {
+            IconButton(onClick = { sortMenuOpen = true }) {
+                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringRes("sort_by"))
+            }
+            DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                ExplorerSortMode.entries.forEach { mode ->
+                    val label = when (mode) {
+                        ExplorerSortMode.Name -> stringRes("sort_name")
+                        ExplorerSortMode.Date -> stringRes("sort_date")
+                        ExplorerSortMode.Size -> stringRes("sort_size")
+                    }
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        leadingIcon = {
+                            if (mode == sortMode) Icon(Icons.Filled.Check, contentDescription = null)
+                        },
+                        onClick = {
+                            onSortModeChange(mode)
+                            sortMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+

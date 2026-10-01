@@ -200,14 +200,20 @@ fun AdaptiveExplorerView(
                         .pointerInput(totalWidthPx) {
                             detectHorizontalDragGestures(
                                 onDragStart = { isDraggingDivider = true },
-                                onDragEnd = { isDraggingDivider = false },
-                                onDragCancel = { isDraggingDivider = false }
+                                onDragEnd = {
+                                    isDraggingDivider = false
+                                    FileApexServices.settings.setExplorerSplitFraction(FileApexServices.settings.explorerSplitFraction.value)
+                                },
+                                onDragCancel = {
+                                    isDraggingDivider = false
+                                    FileApexServices.settings.setExplorerSplitFraction(FileApexServices.settings.explorerSplitFraction.value)
+                                }
                             ) { change, dragAmount ->
                                 change.consume()
                                 if (totalWidthPx > 0f) {
                                     val current = FileApexServices.settings.explorerSplitFraction.value
                                     val deltaFraction = dragAmount / totalWidthPx
-                                    FileApexServices.settings.setExplorerSplitFraction(current + deltaFraction)
+                                    FileApexServices.settings.setExplorerSplitFraction(current + deltaFraction, persist = false)
                                 }
                             }
                         },

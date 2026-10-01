@@ -6,6 +6,7 @@ import com.fileapex.data.db.RemovedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.i18n.AppI18n
 import com.fileapex.domain.pairing.RemovedDeviceRecord
+import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.util.TimeUtils
@@ -28,11 +29,147 @@ data class LocalDeviceRef(
     }
 }
 
+/** Persisted membership state of this node; [InMemory] backs tests. */
+interface MembershipStore {
+    var selfVersion: Long
+
+    /** First launch on [ClusterClock.MEMBERSHIP_PROTOCOL]; tombstones stamped earlier may be legacy re-stamps. */
+    var protocolSince: Long
+
+    class InMemory : MembershipStore {
+        @Volatile
+        override var selfVersion: Long = 0L
+
+        @Volatile
+        override var protocolSince: Long = 0L
+    }
+}
+
+enum class CloudSeedOutcome {
+    Applied,
+    Unchanged,
+    Skipped,
+
+    /** Peer is tombstoned and its cloud document predates the removal. */
+    Superseded
+}
+
+/**
+ * Membership is last-writer-wins on [ClusterClock] stamps. Each pairing or removal is stamped once
+ * by the node where it happened; receivers apply it only when strictly newer than what they hold
+ * and never mint versions for incoming events. Removals travel only as [RemovedDeviceRecord]s.
+ */
 class DeviceRepository(
     private val deviceDao: DeviceDao,
-    private val localDeviceProvider: () -> LocalDeviceRef = { LocalDeviceRef.None }
+    private val localDeviceProvider: () -> LocalDeviceRef = { LocalDeviceRef.None },
+    private val membershipStore: MembershipStore = MembershipStore.InMemory()
 ) {
     private val mutateMutex = Mutex()
+    private var clockSeeded = false
+
+    @Volatile
+    private var tombstoneIndex: TombstoneIndex? = null
+
+    private class TombstoneIndex(
+        private val byId: Map<String, Long>,
+        private val byHash: Map<String, Long>
+    ) {
+        fun versionFor(deviceId: String, publicKeyHash: String): Long =
+            maxOf(byId[deviceId] ?: 0L, publicKeyHash.takeIf { it.isNotEmpty() }?.let { byHash[it] } ?: 0L)
+    }
+
+    fun selfMembershipVersion(): Long = membershipStore.selfVersion
+
+    suspend fun nextMembershipVersion(): Long =
+        mutateMutex.withLock {
+            seedClockLocked()
+            ClusterClock.next()
+        }
+
+    /** Raises this node's own membership stamp; never lowers it. */
+    suspend fun recordSelfMembership(version: Long) {
+        if (!ClusterClock.isAcceptable(version)) return
+        mutateMutex.withLock {
+            seedClockLocked()
+            ClusterClock.observe(version)
+            if (version > membershipStore.selfVersion) {
+                membershipStore.selfVersion = version
+            }
+        }
+    }
+
+    /** A removal of this node counts only when stamped by a current build after our latest pairing. */
+    fun acceptsSelfRemoval(record: RemovedDeviceRecord): Boolean {
+        val version = record.membershipVersion()
+        return record.membershipProtocol >= ClusterClock.MEMBERSHIP_PROTOCOL &&
+            ClusterClock.isAcceptable(version) &&
+            version > membershipStore.selfVersion
+    }
+
+    private suspend fun seedClockLocked() {
+        if (clockSeeded) return
+        clockSeeded = true
+        if (membershipStore.protocolSince <= 0L) {
+            membershipStore.protocolSince = TimeUtils.now()
+        }
+        val fromPaired = deviceDao.getAllDevicesIncludingTombstones().maxOfOrNull { it.membershipVersion() } ?: 0L
+        val fromRemoved = deviceDao.getAllRemovedDevices().maxOfOrNull { it.removedAtEpochMs } ?: 0L
+        ClusterClock.observe(maxOf(fromPaired, fromRemoved, membershipStore.selfVersion))
+    }
+
+    private suspend fun tombstoneIndexLocked(): TombstoneIndex {
+        tombstoneIndex?.let { return it }
+        val byId = HashMap<String, Long>()
+        val byHash = HashMap<String, Long>()
+        for (row in deviceDao.getAllRemovedDevices()) {
+            val version = row.removedAtEpochMs.coerceAtLeast(1L)
+            byId.merge(row.deviceId.trim(), version, ::maxOf)
+            row.publicKeyHash.trim().takeIf { it.isNotEmpty() }?.let { byHash.merge(it, version, ::maxOf) }
+        }
+        for (row in deviceDao.getTombstonedDevices()) {
+            byId.merge(row.deviceId.trim(), row.membershipVersion().coerceAtLeast(1L), ::maxOf)
+        }
+        return TombstoneIndex(byId, byHash).also { tombstoneIndex = it }
+    }
+
+    private suspend fun clearTombstonesLocked(deviceId: String, publicKeyHash: String) {
+        deviceDao.clearRemovedDevice(deviceId)
+        if (publicKeyHash.isNotEmpty()) {
+            deviceDao.clearRemovedByPublicKeyHash(publicKeyHash)
+        }
+        tombstoneIndex = null
+    }
+
+    private suspend fun reinstateLocked(deviceId: String, publicKeyHash: String, version: Long) {
+        clearTombstonesLocked(deviceId, publicKeyHash)
+        val row = deviceDao.getDevice(deviceId)
+        if (row?.isRemoved == true) {
+            deviceDao.upsertDevice(row.copy(isRemoved = false, removedAt = null, clusterVersion = version))
+        }
+        ClusterClock.observe(version)
+    }
+
+    /**
+     * True when a tombstone outranks [device]. With [canReinstate], a strictly newer plausible
+     * [PairedDeviceEntity.clusterVersion] lifts the tombstone instead.
+     */
+    private suspend fun tombstoneBlocksLocked(device: PairedDeviceEntity, canReinstate: Boolean): Boolean {
+        val trimmedId = device.deviceId.trim()
+        if (trimmedId.isEmpty() || trimmedId == LocalIdentity.LOCAL_DEVICE_ID) return false
+        val local = localDeviceProvider()
+        if (local.deviceId.isNotBlank() && trimmedId == local.deviceId) return false
+        val hash = device.publicKeyHash.trim().ifBlank {
+            deviceDao.getDevice(trimmedId)?.publicKeyHash?.trim().orEmpty()
+        }
+        val tombstoneVersion = tombstoneIndexLocked().versionFor(trimmedId, hash)
+        if (tombstoneVersion <= 0L) return false
+        val incoming = device.clusterVersion
+        if (canReinstate && incoming > tombstoneVersion && ClusterClock.isAcceptable(incoming)) {
+            reinstateLocked(trimmedId, hash, incoming)
+            return false
+        }
+        return true
+    }
 
     fun observeDevices(): Flow<List<PairedDeviceEntity>> =
         deviceDao.getAllDevices()
@@ -42,7 +179,11 @@ class DeviceRepository(
     suspend fun listDevices(): List<PairedDeviceEntity> =
         collapseAndExcludeSelf(deviceDao.getAllDevicesOnce())
 
-    suspend fun getDevice(deviceId: String): PairedDeviceEntity? = deviceDao.getDevice(deviceId)
+    suspend fun getDevice(deviceId: String): PairedDeviceEntity? =
+        deviceDao.getDevice(deviceId)?.takeUnless { it.isRemoved }
+
+    suspend fun getDeviceEntry(deviceId: String): PairedDeviceEntity? =
+        deviceDao.getDevice(deviceId)
 
     suspend fun displayNameFor(deviceId: String, incomingName: String = ""): String {
         val id = deviceId.trim()
@@ -66,10 +207,11 @@ class DeviceRepository(
                 purgeLocalRowsLocked()
                 return
             }
-            if (isBlocklistedLocked(normalized)) return
+            if (tombstoneBlocksLocked(normalized, canReinstate = false)) return
             val existing = deviceDao.getDevice(normalized.deviceId)
-            if (existing == normalized) return
-            deviceDao.upsertDevice(normalized)
+            val merged = normalized.withVersionNotBelow(existing)
+            if (existing == merged) return
+            deviceDao.upsertDevice(merged)
         }
     }
 
@@ -87,46 +229,100 @@ class DeviceRepository(
             if (isLocalDevice(normalized)) {
                 return purgeLocalRowsLocked()
             }
-            if (isBlocklistedLocked(normalized)) return false
+            if (tombstoneBlocksLocked(normalized, canReinstate = false)) return false
             upsertReplacingAliasesLocked(normalized)
         }
 
     /**
-     * Cloud registry seed — upserts peers still listed in Firestore.
-     * Does not undo an explicit user/cluster removal; those stay blocklisted until
-     * the user pairs again via [adoptFromPairing].
+     * Cloud registry seed. Never lifts a tombstone; only a LAN intro or a local pairing can.
+     * Rows already in the roster get metadata only. A missing row is created only from a document
+     * stamped by a current build ([membershipProtocol]) with an acceptable [membershipVersion].
+     *
+     * [docUpdatedAtEpochMs] at or before the tombstone means the document was never refreshed after the
+     * removal, so the caller should delete it ([CloudSeedOutcome.Superseded]).
      */
-    suspend fun reinstateFromCloudSeed(device: PairedDeviceEntity): Boolean =
+    suspend fun applyCloudSeed(
+        device: PairedDeviceEntity,
+        membershipVersion: Long,
+        membershipProtocol: Int,
+        docUpdatedAtEpochMs: Long
+    ): CloudSeedOutcome =
         mutateMutex.withLock {
+            seedClockLocked()
             val normalized = normalize(device)
             if (isLocalDevice(normalized)) {
-                return purgeLocalRowsLocked()
+                purgeLocalRowsLocked()
+                return CloudSeedOutcome.Skipped
             }
-            if (isBlocklistedLocked(normalized)) return false
-            if (!hasUsableEndpoint(normalized)) {
-                val existing = deviceDao.getDevice(normalized.deviceId)
-                if (existing == normalized) return false
-                deviceDao.upsertDevice(normalized)
-                return true
+            val existing = deviceDao.getDevice(normalized.deviceId)
+            val hash = normalized.publicKeyHash.trim().ifBlank { existing?.publicKeyHash?.trim().orEmpty() }
+            val tombstoneVersion = tombstoneIndexLocked().versionFor(normalized.deviceId, hash)
+            if (tombstoneVersion > 0L) {
+                return if (docUpdatedAtEpochMs <= tombstoneVersion) CloudSeedOutcome.Superseded else CloudSeedOutcome.Skipped
             }
-            upsertReplacingAliasesLocked(normalized)
+            if (existing == null) {
+                val versioned = membershipProtocol >= ClusterClock.MEMBERSHIP_PROTOCOL &&
+                    ClusterClock.isAcceptable(membershipVersion)
+                if (!versioned || !hasUsableEndpoint(normalized)) return CloudSeedOutcome.Skipped
+                ClusterClock.observe(membershipVersion)
+                upsertReplacingAliasesLocked(normalized.copy(clusterVersion = membershipVersion))
+                return CloudSeedOutcome.Applied
+            }
+            val merged = normalized.withVersionNotBelow(existing)
+            val changed = if (hasUsableEndpoint(merged)) {
+                upsertReplacingAliasesLocked(merged)
+            } else if (existing != merged) {
+                deviceDao.upsertDevice(merged)
+                true
+            } else {
+                false
+            }
+            if (changed) CloudSeedOutcome.Applied else CloudSeedOutcome.Unchanged
         }
 
     /**
-     * Explicit pairing handshake — clears the removal blocklist entry and upserts the peer.
+     * Pairing handshake performed on this device — clears every tombstone for the peer and
+     * stamps the membership with [version] (already minted by [nextMembershipVersion]) or a new stamp.
      */
-    suspend fun adoptFromPairing(device: PairedDeviceEntity): Boolean =
+    suspend fun adoptFromPairing(device: PairedDeviceEntity, version: Long? = null): Boolean =
         mutateMutex.withLock {
+            seedClockLocked()
             val normalized = normalize(device)
             if (isLocalDevice(normalized)) {
                 return purgeLocalRowsLocked()
             }
-            deviceDao.clearRemovedDevice(normalized.deviceId)
-            val hash = normalized.publicKeyHash.trim()
-            if (hash.isNotEmpty()) {
-                deviceDao.clearRemovedByPublicKeyHash(hash)
+            clearTombstonesLocked(normalized.deviceId, normalized.publicKeyHash.trim())
+            ClusterClock.observe(normalized.clusterVersion)
+            val stamp = version?.takeIf { ClusterClock.isAcceptable(it) } ?: ClusterClock.next()
+            val existing = deviceDao.getDevice(normalized.deviceId)
+            val active = normalized.copy(
+                isRemoved = false,
+                removedAt = null,
+                clusterVersion = maxOf(stamp, existing?.membershipVersion() ?: 0L)
+            )
+            upsertReplacingAliasesLocked(active)
+        }
+
+    /**
+     * Peer learned from another node's roster (import or legacy recovery). Last-writer-wins and
+     * never lifts a tombstone — only a [ClusterClock]-stamped intro or a local pairing can.
+     */
+    suspend fun adoptFromRosterIntro(device: PairedDeviceEntity): Boolean =
+        mutateMutex.withLock {
+            seedClockLocked()
+            val normalized = normalize(device)
+            if (isLocalDevice(normalized)) {
+                return purgeLocalRowsLocked()
             }
-            upsertReplacingAliasesLocked(normalized)
+            if (normalized.isRemoved) return false
+            if (tombstoneBlocksLocked(normalized, canReinstate = false)) return false
+            val existing = deviceDao.getDevice(normalized.deviceId)
+            val incoming = normalized.clusterVersion.takeIf { ClusterClock.isAcceptable(it) } ?: 0L
+            if (existing != null && incoming < existing.clusterVersion) return false
+            ClusterClock.observe(incoming)
+            upsertReplacingAliasesLocked(
+                normalized.copy(isRemoved = false, removedAt = null, clusterVersion = incoming).withVersionNotBelow(existing)
+            )
         }
 
     /**
@@ -135,20 +331,50 @@ class DeviceRepository(
      * [rosterDeviceId] is the row id used to reach this peer when it differs from the
      * payload [deviceId] (stale roster restore). Hardware-default names in the payload
      * do not replace a user-assigned [deviceName].
+     *
+     * Metadata only: [PeerNodeState.isRemoved] is never applied. Only states stamped by a current
+     * build ([PeerNodeState.hasMembershipProtocol]) may lift a tombstone or raise the stored version.
      */
     suspend fun applyPeerNodeState(state: PeerNodeState, rosterDeviceId: String? = null): Boolean =
         mutateMutex.withLock {
-            val existingById = deviceDao.getDevice(state.deviceId.trim())
+            seedClockLocked()
+            val trimmedId = state.deviceId.trim()
+            if (trimmedId.isEmpty() || state.isRemoved) return false
+            val existingById = deviceDao.getDevice(trimmedId)
             val rosterId = rosterDeviceId?.trim().orEmpty()
             val existingByRoster = if (rosterId.isNotEmpty()) deviceDao.getDevice(rosterId) else null
             val existing = existingById ?: existingByRoster
-            val entity = PeerNodeStateMapper.toEntity(state, existing)
-            val normalized = normalize(entity, existing)
+            val activeExisting = existing?.takeUnless { it.isRemoved }
+
+            val versioned = state.hasMembershipProtocol
+            val incomingVersion = (if (versioned) state.membershipVersion else state.clusterVersion)
+                .takeIf { ClusterClock.isAcceptable(it) } ?: 0L
+
+            if (activeExisting == null && incomingVersion <= 0L) return false
+            if (versioned && activeExisting != null &&
+                incomingVersion < activeExisting.clusterVersion &&
+                state.lastSeenTimestamp <= activeExisting.lastSeenEpochMs
+            ) {
+                return false
+            }
+
+            val normalized = normalize(PeerNodeStateMapper.toEntity(state, existing), existing)
             if (isLocalDevice(normalized)) {
                 return purgeLocalRowsLocked()
             }
-            if (isBlocklistedLocked(normalized)) return false
-            replacePeerRecordByDeviceId(normalized, rosterDeviceId)
+            if (tombstoneBlocksLocked(normalized.copy(clusterVersion = incomingVersion), canReinstate = versioned)) {
+                return false
+            }
+            ClusterClock.observe(incomingVersion)
+            val storedVersion = when {
+                activeExisting == null -> incomingVersion
+                versioned -> maxOf(activeExisting.clusterVersion, incomingVersion)
+                else -> activeExisting.clusterVersion
+            }
+            replacePeerRecordByDeviceId(
+                normalized.copy(isRemoved = false, removedAt = null, clusterVersion = storedVersion),
+                rosterDeviceId
+            )
         }
 
     /**
@@ -164,6 +390,7 @@ class DeviceRepository(
         val trimmedId = deviceId.trim()
         if (trimmedId.isEmpty()) return false
         val existing = deviceDao.getDevice(trimmedId) ?: return false
+        if (existing.isRemoved) return false
         val cleanedIp = ip.trim()
         val nextEpoch = epochMs.coerceAtLeast(existing.lastSeenEpochMs)
         if (existing.lastSeenEpochMs == nextEpoch &&
@@ -189,6 +416,7 @@ class DeviceRepository(
      */
     suspend fun removePermanently(deviceId: String): Boolean =
         mutateMutex.withLock {
+            seedClockLocked()
             val trimmedId = deviceId.trim()
             if (trimmedId.isEmpty() || trimmedId == LocalIdentity.LOCAL_DEVICE_ID) {
                 return false
@@ -198,10 +426,24 @@ class DeviceRepository(
                 return false
             }
             val device = deviceDao.getDevice(trimmedId) ?: return false
-            val victims = (listOf(device) + findAliasesLocked(device))
-                .distinctBy { it.deviceId }
-            val now = TimeUtils.now()
+            val hash = device.publicKeyHash.trim()
+            val victims = if (hash.isNotEmpty()) {
+                deviceDao.getAllDevicesOnce().filter { it.deviceId == trimmedId || it.publicKeyHash.trim() == hash }
+            } else {
+                listOf(device)
+            }
+            val now = ClusterClock.next()
+            tombstoneIndex = null
             for (victim in victims) {
+                val tombstone = victim.copy(
+                    isRemoved = true,
+                    removedAt = now,
+                    clusterVersion = now,
+                    publicKey = "",
+                    publicKeyHash = "",
+                    e2eeEnabled = false
+                )
+                deviceDao.upsertDevice(tombstone)
                 deviceDao.insertRemovedDevice(
                     RemovedDeviceEntity(
                         deviceId = victim.deviceId,
@@ -211,17 +453,20 @@ class DeviceRepository(
                         removedAtEpochMs = now
                     )
                 )
-                deviceDao.deleteDevice(victim.deviceId)
             }
             true
         }
 
     /**
-     * Apply a removal event from a cluster peer or cloud snapshot.
-     * Blocklists the peer even when it is not currently in the local roster.
+     * Apply a removal stamped by another node. Ignored unless it carries the current membership
+     * protocol and is strictly newer than every version held for that device, so echoes of old
+     * removals and legacy re-stamps can never evict a re-paired peer.
+     *
+     * @return true when applied — the only case in which it should be forwarded.
      */
     suspend fun applyRemoteRemoval(record: RemovedDeviceRecord): Boolean =
         mutateMutex.withLock {
+            seedClockLocked()
             val trimmedId = record.deviceId.trim()
             if (trimmedId.isEmpty() || trimmedId == LocalIdentity.LOCAL_DEVICE_ID) {
                 return false
@@ -230,19 +475,32 @@ class DeviceRepository(
             if (local.deviceId.isNotBlank() && trimmedId == local.deviceId) {
                 return false
             }
+            if (record.membershipProtocol < ClusterClock.MEMBERSHIP_PROTOCOL) return false
+            val version = record.membershipVersion()
+            if (!ClusterClock.isAcceptable(version)) return false
+
             val existing = deviceDao.getDevice(trimmedId)
             val hash = record.publicKeyHash.trim().ifBlank { existing?.publicKeyHash?.trim().orEmpty() }
-            val now = TimeUtils.now()
+            val known = maxOf(
+                existing?.membershipVersion() ?: 0L,
+                tombstoneIndexLocked().versionFor(trimmedId, hash)
+            )
+            if (version <= known) return false
+            ClusterClock.observe(version)
+
+            if (existing != null) {
+                deviceDao.upsertDevice(existing.asTombstone(version, hash))
+            }
             deviceDao.insertRemovedDevice(
                 RemovedDeviceEntity(
                     deviceId = trimmedId,
                     publicKeyHash = hash,
                     lastKnownIp = record.lastKnownIp.trim().ifBlank { existing?.lastKnownIp?.trim().orEmpty() },
                     port = record.port.takeIf { it > 0 } ?: existing?.port ?: 0,
-                    removedAtEpochMs = now
+                    removedAtEpochMs = version
                 )
             )
-            val extraRows = if (existing != null) {
+            val aliases = if (existing != null) {
                 findAliasesLocked(existing)
             } else if (hash.isNotEmpty()) {
                 deviceDao.getAllDevicesOnce().filter { row ->
@@ -251,21 +509,20 @@ class DeviceRepository(
             } else {
                 emptyList()
             }
-            extraRows.forEach { row ->
+            aliases.filter { it.membershipVersion() < version }.forEach { row ->
+                val aliasHash = row.publicKeyHash.trim().ifBlank { hash }
+                deviceDao.upsertDevice(row.asTombstone(version, aliasHash))
                 deviceDao.insertRemovedDevice(
                     RemovedDeviceEntity(
                         deviceId = row.deviceId,
                         publicKeyHash = row.publicKeyHash.trim(),
                         lastKnownIp = row.lastKnownIp.trim(),
                         port = row.port,
-                        removedAtEpochMs = now
+                        removedAtEpochMs = version
                     )
                 )
             }
-            if (existing != null) {
-                deviceDao.deleteDevice(trimmedId)
-            }
-            extraRows.forEach { row -> deviceDao.deleteDevice(row.deviceId) }
+            tombstoneIndex = null
             true
         }
 
@@ -275,10 +532,35 @@ class DeviceRepository(
     suspend fun reconcileDuplicateEndpoints() {
         mutateMutex.withLock {
             purgeLocalRowsLocked()
+            compactNamelessTombstonesLocked()
             val all = deviceDao.getAllDevicesOnce().filterNot { isLocalDevice(it) }
             if (all.size < 2) return
             persistCollapsed(all)
         }
+    }
+
+    /**
+     * Removals of peers never seen locally used to leave blank paired rows; the blocklist entry
+     * in removed_devices is all that is needed.
+     */
+    private suspend fun compactNamelessTombstonesLocked() {
+        val ghosts = deviceDao.getTombstonedDevices().filter { it.deviceName.isBlank() }
+        if (ghosts.isEmpty()) return
+        for (ghost in ghosts) {
+            if (deviceDao.countRemovedById(ghost.deviceId) == 0) {
+                deviceDao.insertRemovedDevice(
+                    RemovedDeviceEntity(
+                        deviceId = ghost.deviceId,
+                        publicKeyHash = ghost.publicKeyHash.trim(),
+                        lastKnownIp = ghost.lastKnownIp.trim(),
+                        port = ghost.port,
+                        removedAtEpochMs = ghost.membershipVersion().coerceAtLeast(1L)
+                    )
+                )
+            }
+            deviceDao.deleteDevice(ghost.deviceId)
+        }
+        tombstoneIndex = null
     }
 
     /**
@@ -503,7 +785,10 @@ class DeviceRepository(
             tilePosX = primary.tilePosX ?: secondary.tilePosX,
             tilePosY = primary.tilePosY ?: secondary.tilePosY,
             tileSortOrder = if (primary.tileSortOrder != 0) primary.tileSortOrder else secondary.tileSortOrder,
-            tileMenuOrder = primary.tileMenuOrder.ifBlank { secondary.tileMenuOrder }
+            tileMenuOrder = primary.tileMenuOrder.ifBlank { secondary.tileMenuOrder },
+            clusterVersion = maxOf(incoming.clusterVersion, primary.clusterVersion, secondary.clusterVersion),
+            isRemoved = existing.isRemoved && incoming.isRemoved,
+            removedAt = if (existing.isRemoved && incoming.isRemoved) primary.removedAt ?: secondary.removedAt else null
         )
     }
 
@@ -567,14 +852,21 @@ class DeviceRepository(
         device: PairedDeviceEntity,
         preserveFrom: PairedDeviceEntity? = null
     ): PairedDeviceEntity {
+        val platformStr = device.platform.trim().ifBlank { preserveFrom?.platform.orEmpty() }
+        val isAndroid = platformStr.trim().equals("android", ignoreCase = true)
+        val defaultRoot = if (isAndroid) "/storage/emulated/0" else "/"
+        val preservedRoot = preserveFrom?.rootPath?.trim()?.takeIf { it.isNotEmpty() && it != "/" }
+        val rootPathCandidate = device.rootPath.trim().takeIf { it.isNotEmpty() && it != "/" }
+            ?: preservedRoot
+            ?: defaultRoot
         val trimmed = device.copy(
             deviceId = device.deviceId.trim(),
             deviceName = device.deviceName.trim(),
             lastKnownIp = device.lastKnownIp.trim(),
             publicKeyHash = device.publicKeyHash.trim(),
-            rootPath = device.rootPath.ifBlank { "/" },
+            rootPath = rootPathCandidate,
             clientVersion = device.clientVersion.trim(),
-            platform = device.platform.trim(),
+            platform = platformStr,
             os = device.os.trim(),
             deviceMake = device.deviceMake.trim(),
             deviceModel = device.deviceModel.trim(),
@@ -584,11 +876,12 @@ class DeviceRepository(
         return trimmed.copy(
             lastKnownIp = trimmed.lastKnownIp.ifBlank { preserveFrom?.lastKnownIp.orEmpty() },
             port = trimmed.port.takeIf { it > 0 } ?: preserveFrom?.port ?: 0,
+            rootPath = trimmed.rootPath.takeIf { it.isNotEmpty() && it != "/" } ?: preservedRoot ?: defaultRoot,
             clientVersion = trimmed.clientVersion.ifBlank { preserveFrom?.clientVersion.orEmpty() },
             clientVersionCode = trimmed.clientVersionCode.takeIf { it > 0 }
                 ?: preserveFrom?.clientVersionCode
                 ?: 0,
-            platform = trimmed.platform.ifBlank { preserveFrom?.platform.orEmpty() },
+            platform = platformStr,
             os = trimmed.os.ifBlank { preserveFrom?.os.orEmpty() },
             deviceMake = trimmed.deviceMake.ifBlank { preserveFrom?.deviceMake.orEmpty() },
             deviceModel = trimmed.deviceModel.ifBlank { preserveFrom?.deviceModel.orEmpty() },
@@ -677,14 +970,135 @@ class DeviceRepository(
     }
 
     suspend fun isBlocklisted(device: PairedDeviceEntity): Boolean =
-        mutateMutex.withLock { isBlocklistedLocked(device) }
+        mutateMutex.withLock { tombstoneBlocksLocked(device, canReinstate = false) }
 
-    private suspend fun isBlocklistedLocked(device: PairedDeviceEntity): Boolean {
-        if (deviceDao.countRemovedById(device.deviceId) > 0) return true
-        val hash = device.publicKeyHash.trim()
-        if (hash.isNotEmpty() && deviceDao.countRemovedByPublicKeyHash(hash) > 0) {
-            return true
+    /**
+     * Request gate. [membershipVersion] is the caller's own [ClusterClock] stamp (`mv`); a stamp
+     * strictly newer than our tombstone means the caller re-paired after the removal, so the row
+     * is reinstated. Reads the in-memory tombstone index without the mutex on the hot path.
+     */
+    suspend fun isDeviceIdRevoked(deviceId: String, membershipVersion: Long = 0L): Boolean {
+        val trimmed = deviceId.trim()
+        if (trimmed.isEmpty() || trimmed == LocalIdentity.LOCAL_DEVICE_ID) return false
+        val local = localDeviceProvider()
+        if (local.deviceId.isNotBlank() && trimmed == local.deviceId) return false
+        val index = tombstoneIndex ?: mutateMutex.withLock { tombstoneIndexLocked() }
+        val hash = deviceDao.getDevice(trimmed)?.publicKeyHash?.trim().orEmpty()
+        val tombstoneVersion = index.versionFor(trimmed, hash)
+        if (tombstoneVersion <= 0L) return false
+        if (membershipVersion <= tombstoneVersion || !ClusterClock.isAcceptable(membershipVersion)) return true
+        mutateMutex.withLock {
+            val current = tombstoneIndexLocked().versionFor(trimmed, hash)
+            if (current > 0L && membershipVersion > current) {
+                reinstateLocked(trimmed, hash, membershipVersion)
+            }
         }
         return false
     }
+
+    suspend fun handleRevocationByCluster(): Boolean =
+        mutateMutex.withLock {
+            deviceDao.deleteAllDevices()
+            deviceDao.deleteAllRemovedDevices()
+            tombstoneIndex = null
+            true
+        }
+
+    /**
+     * Row from another node's returned roster (provenance unknown, possibly a legacy build):
+     * may add or refresh active peers, never tombstones or un-tombstones anyone.
+     */
+    suspend fun reconcileRemotePeer(remote: PairedDeviceEntity): Boolean =
+        mutateMutex.withLock {
+            seedClockLocked()
+            val trimmedId = remote.deviceId.trim()
+            if (trimmedId.isEmpty() || isLocalDevice(remote) || remote.isRemoved) return@withLock false
+            val incomingVersion = remote.clusterVersion.takeIf { ClusterClock.isAcceptable(it) }
+                ?: return@withLock false
+            val existing = deviceDao.getDevice(trimmedId)
+            if (existing != null && !existing.isRemoved && incomingVersion < existing.clusterVersion) {
+                return@withLock false
+            }
+            if (tombstoneBlocksLocked(remote, canReinstate = false)) {
+                return@withLock false
+            }
+            ClusterClock.observe(incomingVersion)
+            val activeEntity = normalize(
+                remote.copy(isRemoved = false, removedAt = null, clusterVersion = incomingVersion),
+                existing
+            )
+            upsertReplacingAliasesLocked(activeEntity)
+        }
+
+    /**
+     * Removals to seed a newly paired peer with. Only stamps made since this node ran the current
+     * membership protocol are marked as such; older ones may be legacy re-stamps and stay advisory.
+     */
+    suspend fun getTombstoneRecords(maxAgeMs: Long = TOMBSTONE_GOSSIP_MAX_AGE_MS): List<RemovedDeviceRecord> =
+        mutateMutex.withLock {
+            seedClockLocked()
+            val since = TimeUtils.now() - maxAgeMs
+            val protocolSince = membershipStore.protocolSince
+            val byId = LinkedHashMap<String, RemovedDeviceRecord>()
+            fun add(record: RemovedDeviceRecord) {
+                val current = byId[record.deviceId]
+                if (current == null || record.membershipVersion() > current.membershipVersion()) {
+                    byId[record.deviceId] = record.copy(
+                        publicKeyHash = record.publicKeyHash.ifBlank { current?.publicKeyHash.orEmpty() }
+                    )
+                } else if (current.publicKeyHash.isBlank() && record.publicKeyHash.isNotBlank()) {
+                    byId[record.deviceId] = current.copy(publicKeyHash = record.publicKeyHash)
+                }
+            }
+            fun protocolFor(version: Long): Int =
+                if (protocolSince > 0L && version >= protocolSince) ClusterClock.MEMBERSHIP_PROTOCOL else 0
+            for (entity in deviceDao.getTombstonedDevices()) {
+                val version = entity.membershipVersion()
+                add(
+                    RemovedDeviceRecord(
+                        deviceId = entity.deviceId,
+                        publicKeyHash = entity.publicKeyHash,
+                        lastKnownIp = entity.lastKnownIp,
+                        port = entity.port,
+                        clusterVersion = version,
+                        removedAt = version,
+                        membershipProtocol = protocolFor(version)
+                    )
+                )
+            }
+            for (entity in deviceDao.getAllRemovedDevices()) {
+                add(
+                    RemovedDeviceRecord(
+                        deviceId = entity.deviceId,
+                        publicKeyHash = entity.publicKeyHash,
+                        lastKnownIp = entity.lastKnownIp,
+                        port = entity.port,
+                        clusterVersion = entity.removedAtEpochMs,
+                        removedAt = entity.removedAtEpochMs,
+                        membershipProtocol = protocolFor(entity.removedAtEpochMs)
+                    )
+                )
+            }
+            byId.values.filter { it.membershipVersion() >= since }
+        }
+
+    private companion object {
+        const val TOMBSTONE_GOSSIP_MAX_AGE_MS = 30L * 24L * 60L * 60L * 1000L
+    }
 }
+
+private fun PairedDeviceEntity.membershipVersion(): Long = maxOf(clusterVersion, removedAt ?: 0L)
+
+private fun PairedDeviceEntity.withVersionNotBelow(existing: PairedDeviceEntity?): PairedDeviceEntity =
+    if (existing == null || existing.clusterVersion <= clusterVersion) this
+    else copy(clusterVersion = existing.clusterVersion)
+
+private fun PairedDeviceEntity.asTombstone(version: Long, publicKeyHash: String): PairedDeviceEntity =
+    copy(
+        isRemoved = true,
+        removedAt = version,
+        clusterVersion = version,
+        publicKey = "",
+        publicKeyHash = publicKeyHash,
+        e2eeEnabled = false
+    )

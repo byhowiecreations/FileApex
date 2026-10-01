@@ -29,7 +29,13 @@ object CloudDeviceRecordParsing {
                     val key = k?.toString()?.trim() ?: return@mapNotNull null
                     val valStr = v?.toString()?.trim() ?: return@mapNotNull null
                     key to valStr
-                }?.toMap().orEmpty()
+                }?.toMap().orEmpty(),
+            membershipVersion = (data["membershipVersion"] as? Number)?.toLong()
+                ?: data["membershipVersion"]?.toString()?.toLongOrNull()
+                ?: 0L,
+            membershipProtocol = (data["membershipProtocol"] as? Number)?.toInt()
+                ?: data["membershipProtocol"]?.toString()?.toIntOrNull()
+                ?: 0
         )
     }
 }

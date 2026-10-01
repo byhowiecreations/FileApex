@@ -33,12 +33,15 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.routing
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -53,6 +56,8 @@ class FileApexServer(
     internal val onPairingRespond: suspend (PairedDeviceEntity) -> Unit = {},
     internal val onPairingRespondComplete: suspend (PairedDeviceEntity) -> Unit = {},
     internal val onClusterMerge: suspend (ClusterSyncRequest) -> Unit = {},
+    internal val onClusterPeerRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Unit = {},
+    internal val onClusterSelfRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Boolean = { false },
     internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
         if (error != null) {
@@ -108,6 +113,31 @@ class FileApexServer(
                 }
 
                 intercept(ApplicationCallPipeline.Call) {
+                    val path = call.request.local.uri
+                    if (!path.startsWith("/api/v1/pairing") && !path.startsWith("/api/v1/auth") && !path.contains("/cluster/remove")) {
+                        val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
+                            call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
+                        }
+                        val membershipVersion = call.request.queryParameters["mv"]?.toLongOrNull()
+                            ?: call.request.headers["X-FileApex-Membership-Version"]?.toLongOrNull()
+                            ?: 0L
+                        if (from.isNotEmpty()) {
+                            val isRevoked = try {
+                                FileApexServices.deviceRepository.isDeviceIdRevoked(from, membershipVersion)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                onLog("Revocation gate failed for $from", error)
+                                false
+                            }
+                            if (isRevoked) {
+                                call.response.headers.append("X-FileApex-Status", "revoked")
+                                call.respond(HttpStatusCode.Unauthorized, "revoked")
+                                finish()
+                                return@intercept
+                            }
+                        }
+                    }
                     rememberInboundPeer(call)
                 }
 
@@ -147,6 +177,7 @@ class FileApexServer(
         val settings = FileApexServices.settings
         val state = PeerNodeStateMapper.selfState(
             identity = identity,
+            membershipVersion = FileApexServices.deviceRepository.selfMembershipVersion(),
             pinRequired = settings.pinRequiredEnabled.value
         )
         call.respondText(
@@ -185,18 +216,34 @@ class FileApexServer(
         val ip = inboundPeerLanIpv4(call) ?: return
         val selfId = runCatching { identityProvider().deviceId }.getOrNull().orEmpty()
         if (from == selfId) return
+        val now = TimeUtils.now()
+        val previous = inboundPeerWrites[from]
+        val persist = previous == null || previous.ip != ip || now - previous.epochMs >= INBOUND_PEER_WRITE_INTERVAL_MS
+        if (persist) {
+            inboundPeerWrites[from] = InboundPeerWrite(ip, now)
+        }
         serverScope.launch {
-            runCatching {
-                val existing = FileApexServices.deviceRepository.getDevice(from) ?: return@runCatching
-                FileApexServices.deviceRepository.touchPeerLastSeen(
-                    deviceId = from,
-                    ip = ip,
-                    port = existing.port
-                )
+            try {
+                if (persist) {
+                    val existing = FileApexServices.deviceRepository.getDevice(from) ?: return@launch
+                    FileApexServices.deviceRepository.touchPeerLastSeen(
+                        deviceId = from,
+                        ip = ip,
+                        port = existing.port
+                    )
+                }
                 FileApexServices.presenceMonitor.notifyPassiveReachability(from)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                onLog("Inbound peer bookkeeping failed for $from", error)
             }
         }
     }
+
+    private data class InboundPeerWrite(val ip: String, val epochMs: Long)
+
+    private val inboundPeerWrites = java.util.concurrent.ConcurrentHashMap<String, InboundPeerWrite>()
 
     internal fun inboundPeerLanIpv4(call: ApplicationCall): String? {
         val raw = call.request.local.remoteAddress.trim()
@@ -237,7 +284,7 @@ class FileApexServer(
         targetPath: String,
         startOffset: Long,
         expectedLength: Long?
-    ): Long {
+    ): Long = withContext(TransferRuntime.inbound) {
         var received = 0L
         var idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
         SocketFileStreamer.openAppender(targetPath, startOffset).use { raf ->
@@ -259,15 +306,73 @@ class FileApexServer(
                     }
                     channel.isClosedForRead -> break
                     expectedLength != null && received >= expectedLength -> break
-                    !channel.awaitContent() -> break
+                    !awaitUploadContent(channel) -> break
                 }
             }
         }
-        return received
+        received
     }
+
+    /**
+     * Writes one byte range of a segmented upload in place. Progress is flushed and recorded
+     * in [RangeLedger] every [TransferRuntime.CHECKPOINT_BYTES] and when the request ends, so
+     * a dropped connection only re-sends the unrecorded tail.
+     */
+    internal suspend fun receiveSegmentBytes(
+        channel: ByteReadChannel,
+        partPath: String,
+        totalSize: Long,
+        offset: Long,
+        length: Long
+    ): Long = withContext(TransferRuntime.inbound) {
+        var received = 0L
+        var recorded = 0L
+        var idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
+        val file = java.io.File(partPath)
+        file.parentFile?.mkdirs()
+        java.io.RandomAccessFile(file, "rw").use { raf ->
+            raf.seek(offset)
+            val buffer = ByteArray(SocketFileStreamer.BUFFER_BYTES)
+            try {
+                while (received < length) {
+                    if (TimeUtils.now() >= idleDeadlineMs) break
+                    val want = minOf(buffer.size.toLong(), length - received).toInt()
+                    val read = channel.readAvailable(buffer, 0, want)
+                    when {
+                        read > 0 -> {
+                            raf.write(buffer, 0, read)
+                            received += read.toLong()
+                            idleDeadlineMs = TimeUtils.now() + UPLOAD_IDLE_TIMEOUT_MS
+                            if (received - recorded >= TransferRuntime.CHECKPOINT_BYTES) {
+                                raf.channel.force(false)
+                                RangeLedger.record(partPath, totalSize, ByteSpan(offset, offset + received))
+                                recorded = received
+                            }
+                        }
+                        channel.isClosedForRead -> break
+                        !awaitUploadContent(channel) -> break
+                    }
+                }
+            } finally {
+                if (received > recorded) {
+                    runCatching {
+                        raf.channel.force(false)
+                        RangeLedger.record(partPath, totalSize, ByteSpan(offset, offset + received))
+                    }
+                }
+            }
+        }
+        received
+    }
+
+    // A sender that stalls without closing must not pin a handler forever.
+    private suspend fun awaitUploadContent(channel: ByteReadChannel): Boolean =
+        withTimeoutOrNull(UPLOAD_IDLE_TIMEOUT_MS) { channel.awaitContent() } ?: false
 
     companion object {
         private const val UPLOAD_IDLE_TIMEOUT_MS = 60_000L
+        /** Every request carries `from`; one Room write per peer per interval is enough for presence grace. */
+        private const val INBOUND_PEER_WRITE_INTERVAL_MS = 45_000L
         internal fun webShareHtml(): String {
             val i18n = buildJsonObject {
                 put("title", AppI18n.t("web_share_title"))

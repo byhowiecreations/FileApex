@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateOf
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -11,7 +12,7 @@ import kotlinx.serialization.json.put
 object AppI18n {
     @Volatile
     private var localeValue: AppLocale = AppLocale.EN
-    private val catalogs = mutableMapOf<AppLocale, StringCatalog>()
+    private val catalogs = ConcurrentHashMap<AppLocale, StringCatalog>()
     private val localeState = mutableStateOf(AppLocale.EN)
 
     val locale: AppLocale
@@ -19,15 +20,19 @@ object AppI18n {
 
     val localeFlowState get() = localeState
 
+    /** Parses the active locale (and the English fallback); other locales load on first use. */
     fun ensureLoaded() {
-        if (catalogs.isNotEmpty()) return
-        AppLocale.entries.forEach { loc ->
-            catalogs[loc] = parseStringXml(readI18nXml(loc))
-        }
+        catalog(localeValue)
+        catalog(AppLocale.EN)
     }
 
+    private fun catalog(locale: AppLocale): StringCatalog =
+        catalogs[locale] ?: synchronized(catalogs) {
+            catalogs.getOrPut(locale) { parseStringXml(readI18nXml(locale)) }
+        }
+
     fun setLocale(next: AppLocale) {
-        ensureLoaded()
+        catalog(next)
         localeValue = next
         localeState.value = next
         applyPlatformLocale(next)
@@ -36,8 +41,7 @@ object AppI18n {
 
     /** Catalog snapshot for native tray / share-extension chrome that cannot call [t] directly. */
     fun runtimeOverlayJson(): String {
-        ensureLoaded()
-        val catalog = catalogs[locale] ?: catalogs[AppLocale.EN] ?: return "{}"
+        val catalog = catalog(locale)
         val stringsObj = buildJsonObject {
             catalog.snapshotStrings().forEach { (key, value) -> put(key, value) }
         }
@@ -66,17 +70,17 @@ object AppI18n {
 
     /** Localized UI copy. Dialogs, toasts, banners, and labels must use this (or [stringRes]) — never hardcoded English. */
     fun t(key: String, vararg args: Any): String {
-        ensureLoaded()
-        val raw = catalogs[locale]?.string(key)
-            ?: catalogs[AppLocale.EN]?.string(key)
+        val current = locale
+        val raw = catalog(current).string(key)
+            ?: (if (current != AppLocale.EN) catalog(AppLocale.EN).string(key) else null)
             ?: key
         return formatTemplate(raw, args)
     }
 
     fun plural(key: String, count: Int, vararg args: Any): String {
-        ensureLoaded()
-        val raw = catalogs[locale]?.plural(key, count, locale)
-            ?: catalogs[AppLocale.EN]?.plural(key, count, AppLocale.EN)
+        val current = locale
+        val raw = catalog(current).plural(key, count, current)
+            ?: (if (current != AppLocale.EN) catalog(AppLocale.EN).plural(key, count, AppLocale.EN) else null)
             ?: t(key, *args)
         return formatTemplate(raw, if (args.isEmpty()) arrayOf(count) else args)
     }

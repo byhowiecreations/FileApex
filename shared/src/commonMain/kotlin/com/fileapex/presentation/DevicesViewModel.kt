@@ -30,6 +30,7 @@ import com.fileapex.platform.purgeDirectShareTarget
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.domain.transfer.MultiCopySource
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
@@ -43,6 +44,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -132,8 +134,10 @@ class DevicesViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(
         DevicesUiState(localDeviceName = LocalDeviceNameStore.current())
-    )
+     )
     val uiState: StateFlow<DevicesUiState> = _uiState.asStateFlow()
+    private val _isInitialLoadComplete = MutableStateFlow(false)
+    val isInitialLoadComplete: StateFlow<Boolean> = _isInitialLoadComplete.asStateFlow()
 
     /**
      * Diffed device rows for LazyColumn.
@@ -178,14 +182,18 @@ class DevicesViewModel : ViewModel() {
         },
         FileApexServices.settings.deviceOrderIds,
         DeviceOrderCoordinator.revisionEpochMs,
-        com.fileapex.domain.demo.DemoModeState.isDemoModeActive
-    ) { rows, _, _, isDemoActive ->
+        com.fileapex.domain.demo.DemoModeState.isDemoModeActive,
+        com.fileapex.domain.demo.DemoModeState.demoDeviceRows
+    ) { rows, _, _, isDemoActive, demoRows ->
         if (rows.isEmpty() && isDemoActive) {
-            com.fileapex.domain.demo.DemoModeState.getDemoDeviceRows()
+            demoRows
         } else {
             DeviceOrderCoordinator.applySavedOrder(rows)
         }
     }
+        .onEach {
+            _isInitialLoadComplete.value = true
+        }
         .distinctUntilChanged { old, new ->
             if (old.size != new.size) return@distinctUntilChanged false
             old.indices.all { index ->
@@ -372,7 +380,7 @@ class DevicesViewModel : ViewModel() {
                 performDeviceConnectHandshake(device)
             }
         }.getOrElse { error ->
-            DeviceConnectOutcome.Unreachable(error.message ?: AppI18n.t("unable_to_reach_device"))
+            DeviceConnectOutcome.Unreachable(UserFacingErrors.message(error, "unable_to_reach_device"))
         }
         val skipMinDelay = outcome is DeviceConnectOutcome.Unreachable && outcome.quickFail
         LanPresenceTiming.awaitConnectHandshakeMinDelay(startedAt, skipMinDelay)
@@ -496,7 +504,7 @@ class DevicesViewModel : ViewModel() {
                 completePairing(payload, pin = null)
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: AppI18n.t("pairing_failed"))
+                    it.copy(errorMessage = UserFacingErrors.message(error, "pairing_failed"))
                 }
             }
         }
@@ -557,7 +565,7 @@ class DevicesViewModel : ViewModel() {
                 _uiState.update { it.copy(pendingPinPairing = null) }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: AppI18n.t("pairing_failed"))
+                    it.copy(errorMessage = UserFacingErrors.message(error, "pairing_failed"))
                 }
             }
         }
@@ -585,7 +593,7 @@ class DevicesViewModel : ViewModel() {
                 action?.invoke(browseTargetFor(pending.device, pinRequired = true))
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: AppI18n.t("incorrect_pin"))
+                    it.copy(errorMessage = UserFacingErrors.message(error, "incorrect_pin"))
                 }
             }
         }
@@ -692,6 +700,13 @@ class DevicesViewModel : ViewModel() {
                 errorMessage = null
             )
         }
+        if (com.fileapex.domain.demo.DemoModeState.isDemoModeActive.value &&
+            com.fileapex.domain.demo.DemoModeState.isDemoDeviceId(deviceId)
+        ) {
+            com.fileapex.domain.demo.DemoModeState.renameDemoDevice(deviceId, trimmed)
+            _uiState.update { it.copy(statusMessage = AppI18n.t("renamed_synced", trimmed)) }
+            return
+        }
         viewModelScope.launch {
             runCatching {
                 if (deviceId == LocalIdentity.LOCAL_DEVICE_ID) {
@@ -710,13 +725,22 @@ class DevicesViewModel : ViewModel() {
                 }
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(errorMessage = error.message ?: AppI18n.t("rename_failed"))
+                    it.copy(errorMessage = UserFacingErrors.message(error, "rename_failed"))
                 }
             }
         }
     }
 
     fun removeDevice(deviceId: String) {
+        if (com.fileapex.domain.demo.DemoModeState.isDemoModeActive.value &&
+            com.fileapex.domain.demo.DemoModeState.isDemoDeviceId(deviceId)
+        ) {
+            val demoRow = com.fileapex.domain.demo.DemoModeState.demoDeviceRows.value.firstOrNull { it.deviceId == deviceId }
+            val name = demoRow?.deviceName ?: deviceId
+            com.fileapex.domain.demo.DemoModeState.removeDemoDevice(deviceId)
+            _uiState.update { it.copy(statusMessage = AppI18n.t("device_removed_restore", name)) }
+            return
+        }
         viewModelScope.launch {
             val device = repository.getDevice(deviceId)
             if (device == null) {
@@ -744,7 +768,7 @@ class DevicesViewModel : ViewModel() {
                 },
                 onFailure = { error ->
                     _uiState.update {
-                        it.copy(errorMessage = error.message ?: AppI18n.t("remove_failed"))
+                        it.copy(errorMessage = UserFacingErrors.message(error, "remove_failed"))
                     }
                 }
             )
@@ -825,7 +849,7 @@ class DevicesViewModel : ViewModel() {
                     _uiState.update {
                         it.copy(
                             statusMessage = null,
-                            errorMessage = error.message ?: AppI18n.t("send_failed")
+                            errorMessage = UserFacingErrors.message(error, "send_failed")
                         )
                     }
                 }
@@ -890,20 +914,16 @@ class DevicesViewModel : ViewModel() {
                 )
             } else {
                 val dev = targetDevice!!
-                val resolvedRoot = runCatching {
-                    val peerState = FileApexServices.client.fetchPeerNodeState(dev.lastKnownIp, dev.port)
-                    com.fileapex.platform.DownloadsPaths.resolveReceiveRoot(
-                        downloadsPath = peerState.downloadsPath,
-                        rootPath = dev.rootPath,
-                        platform = peerState.platform.ifBlank { dev.platform }
-                    )
-                }.getOrElse {
-                    com.fileapex.platform.DownloadsPaths.resolveReceiveRoot(
-                        downloadsPath = "",
-                        rootPath = dev.rootPath,
-                        platform = dev.platform
-                    )
+                val effectiveRoot = if (dev.platform.trim().equals("android", ignoreCase = true) && (dev.rootPath.isBlank() || dev.rootPath == "/")) {
+                    "/storage/emulated/0"
+                } else {
+                    dev.rootPath
                 }
+                val resolvedRoot = com.fileapex.platform.DownloadsPaths.resolveReceiveRoot(
+                    downloadsPath = "",
+                    rootPath = effectiveRoot,
+                    platform = dev.platform
+                )
                 MultiCopyDeviceOption(
                     deviceId = dev.deviceId,
                     deviceName = dev.deviceName,
@@ -994,6 +1014,24 @@ class DevicesViewModel : ViewModel() {
     }
 
     fun requestDeviceDetails(deviceId: String) {
+        if (com.fileapex.domain.demo.DemoModeState.isDemoModeActive.value &&
+            com.fileapex.domain.demo.DemoModeState.isDemoDeviceId(deviceId)
+        ) {
+            val demoRow = com.fileapex.domain.demo.DemoModeState.demoDeviceRows.value.firstOrNull { it.deviceId == deviceId }
+            val name = demoRow?.deviceName ?: deviceId
+            _uiState.update {
+                it.copy(
+                    deviceDetails = DeviceDetailsState(
+                        deviceId = deviceId,
+                        deviceName = name,
+                        loading = false,
+                        snapshot = com.fileapex.domain.demo.DemoModeState.getDemoDeviceDiagnostics(deviceId)
+                    ),
+                    errorMessage = null
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             val device = repository.getDevice(deviceId) ?: return@launch
             requestDeviceDetails(device)

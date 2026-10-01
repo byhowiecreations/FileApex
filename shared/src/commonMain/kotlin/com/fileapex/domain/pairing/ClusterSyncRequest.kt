@@ -19,8 +19,14 @@ data class RemovedDeviceRecord(
     val deviceId: String,
     val publicKeyHash: String = "",
     val lastKnownIp: String = "",
-    val port: Int = 0
-)
+    val port: Int = 0,
+    val clusterVersion: Long = 0L,
+    val removedAt: Long? = null,
+    /** [com.fileapex.domain.peer.ClusterClock.MEMBERSHIP_PROTOCOL] of the build that stamped the removal. */
+    val membershipProtocol: Int = 0
+) {
+    fun membershipVersion(): Long = maxOf(clusterVersion, removedAt ?: 0L)
+}
 
 /**
  * Direct peer metadata delta — receivers ingest [nodeStates] and [removedDevices] only.
@@ -32,6 +38,7 @@ data class ClusterSyncRequest(
     val eventKind: PeerSyncEventKind = PeerSyncEventKind.SELF_METADATA,
     val nodeStates: List<PeerNodeState> = emptyList(),
     val removedDevices: List<RemovedDeviceRecord> = emptyList(),
+    val clusterVersion: Long = 0L,
     @Deprecated("Legacy gossip — ignored on ingest")
     val introducer: PairedDeviceEntity? = null,
     @Deprecated("Legacy gossip — ignored on ingest")

@@ -156,6 +156,7 @@ object DesktopMacTrayBridge {
         contentType: String?,
         filePath: String,
         offsetBytes: Long = 0L,
+        lengthBytes: Long = -1L,
         timeoutMs: Long,
         onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
     ): PeerBoundHttpResponse? {
@@ -168,18 +169,34 @@ object DesktopMacTrayBridge {
                 callback(sentBytes, totalBytes)
             }
         }
+        val timeout = timeoutMs.coerceIn(250L, 600_000L).toInt()
         val rc = runCatching {
-            lib.fileapex_lan_http_upload_file(
-                url,
-                contentType,
-                filePath,
-                offsetBytes,
-                timeoutMs.coerceIn(250L, 600_000L).toInt(),
-                progressCallback,
-                status,
-                bodyPtr,
-                bodyLen
-            )
+            if (lengthBytes >= 0L) {
+                lib.fileapex_lan_http_upload_file_range(
+                    url,
+                    contentType,
+                    filePath,
+                    offsetBytes,
+                    lengthBytes,
+                    timeout,
+                    progressCallback,
+                    status,
+                    bodyPtr,
+                    bodyLen
+                )
+            } else {
+                lib.fileapex_lan_http_upload_file(
+                    url,
+                    contentType,
+                    filePath,
+                    offsetBytes,
+                    timeout,
+                    progressCallback,
+                    status,
+                    bodyPtr,
+                    bodyLen
+                )
+            }
         }.getOrElse { error ->
             println("DesktopMacLanHttp: upload $url failed - ${error.message}")
             return null
@@ -514,6 +531,18 @@ object DesktopMacTrayBridge {
             contentType: String?,
             filePath: String,
             offsetBytes: Long,
+            timeoutMs: Int,
+            progress: UploadProgressCallback?,
+            outStatus: IntByReference,
+            outBody: PointerByReference,
+            outBodyLen: IntByReference
+        ): Int
+        fun fileapex_lan_http_upload_file_range(
+            url: String,
+            contentType: String?,
+            filePath: String,
+            offsetBytes: Long,
+            lengthBytes: Long,
             timeoutMs: Int,
             progress: UploadProgressCallback?,
             outStatus: IntByReference,

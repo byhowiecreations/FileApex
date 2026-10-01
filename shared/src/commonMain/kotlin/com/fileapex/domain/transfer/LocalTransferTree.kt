@@ -93,6 +93,7 @@ object LocalTransferTree {
         if (name.equals(".Spotlight-V100", ignoreCase = true)) return true
         if (name.equals(".Trashes", ignoreCase = true)) return true
         if (name.equals(".fseventsd", ignoreCase = true)) return true
+        if (com.fileapex.network.SocketFileStreamer.isTransferScratchFile(name)) return true
         return false
     }
 }

@@ -911,5 +911,28 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="all_permissions_granted">已授予所有权限</string>
     <string name="all_permissions_granted_desc">FileApex 已拥有传输文件和发现附近设备所需的全部权限。</string>
     <string name="back_to_settings">返回设置</string>
+    <string name="peer_revoked_this_device">%1$s 已不再识别此设备 — 请重新配对以加入</string>
+    <string name="transfer_cancelled">传输已取消</string>
+    <string name="queue_retry_failed">无法重试此传输</string>
+    <string name="queue_retry_now">立即重试</string>
+    <string name="queue_paused">已暂停 — 点击重试以继续</string>
+    <string name="show_in_folder">在文件夹中显示</string>
+    <string name="error_peer_timeout">设备响应超时。请确认它已唤醒并连接到同一 Wi-Fi。</string>
+    <string name="error_peer_unreachable">无法连接到设备。请确认其上的 FileApex 正在运行，且两台设备位于同一网络。</string>
+    <string name="error_disk_full">存储空间不足，无法完成。</string>
+    <string name="error_connection_lost">连接已中断，请重试。</string>
+    <string name="filter_this_folder">筛选此文件夹</string>
+    <string name="sort_by">排序方式</string>
+    <string name="sort_name">名称</string>
+    <string name="sort_date">修改日期</string>
+    <string name="sort_size">大小</string>
+    <string name="clear">清除</string>
+    <string name="clipboard_expired">剪贴板内容已过期</string>
+    <string name="copied_to_clipboard">已复制到剪贴板</string>
+    <string name="copy">复制</string>
+    <string name="copy_to_clipboard">复制到剪贴板</string>
+    <string name="disabled">已停用</string>
+    <string name="enabled">已启用</string>
+    <string name="opening_folder">正在打开文件夹…</string>
 </resources>
 

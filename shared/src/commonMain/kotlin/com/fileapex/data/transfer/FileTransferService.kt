@@ -6,32 +6,34 @@ import com.fileapex.data.files.LocalFileRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.model.ClipboardPayload
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.domain.transfer.LocalTransferTree
 import com.fileapex.domain.transfer.MultiCopyBroadcastEngine
 import com.fileapex.domain.transfer.MultiCopyDestination
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.MultiCopyResult
 import com.fileapex.domain.transfer.MultiCopySource
+import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.domain.transfer.TransferBatchScheduler
+import com.fileapex.domain.transfer.TransferJob
 import com.fileapex.i18n.AppI18n
 import com.fileapex.network.FileApexClient
-import com.fileapex.util.PathUtils
+import com.fileapex.network.SocketFileStreamer
+import com.fileapex.network.TransferRuntime
+import com.fileapex.network.transferCatching
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
+import com.fileapex.platform.generateDeviceId
+import com.fileapex.util.PathUtils
+import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import com.fileapex.domain.transfer.LocalTransferTree
-import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.readAtMostTo
-import kotlinx.io.write
 
 /**
  * Stream I/O for copy/paste/download/browse listing.
  * Outbound Multi Copy and explorer transfer actions enter through [com.fileapex.domain.transfer.TransferManager].
+ * Every multi-item operation runs through [TransferBatchScheduler].
  */
 class FileTransferService(
     private val localFiles: LocalFileRepository = LocalFileRepository(),
@@ -123,52 +125,84 @@ class FileTransferService(
     internal suspend fun multiCopyToDevices(
         sources: List<MultiCopySource>,
         selectedDevices: List<MultiCopyDeviceOption>
-    ): List<MultiCopyResult> = withContext(Dispatchers.IO) {
+    ): List<MultiCopyResult> = withContext(TransferRuntime.outbound) {
         require(sources.isNotEmpty()) { AppI18n.t("select_at_least_one_file") }
         require(selectedDevices.isNotEmpty()) { AppI18n.t("select_destination_device") }
-        val semaphore = kotlinx.coroutines.sync.Semaphore(6)
-        coroutineScope {
-            sources.map { source ->
-                async {
-                    semaphore.withPermit {
-                        val perFileDestinations = selectedDevices.map { option ->
-                            if (option.isLocal) {
-                                SystemFileSystem.createDirectories(Path(option.destinationRoot))
-                            }
-                            val preferred = PathUtils.join(option.destinationRoot, source.relativeDestPath)
-                            val fileTarget = if (option.isLocal) {
-                                if (source.isDirectory) {
-                                    preferred.also { SystemFileSystem.createDirectories(Path(it)) }
-                                } else {
-                                    UniqueFileNames.resolve(preferred).also { resolved ->
-                                        Path(resolved).parent?.let { parent ->
-                                            SystemFileSystem.createDirectories(parent)
-                                        }
-                                    }
-                                }
-                            } else {
-                                preferred
-                            }
-                            if (option.isLocal) {
-                                MultiCopyDestination.LocalDevice(
-                                    deviceId = option.deviceId,
-                                    deviceName = option.deviceName,
-                                    absolutePath = fileTarget
-                                )
-                            } else {
-                                MultiCopyDestination.RemoteDevice(
-                                    deviceId = option.deviceId,
-                                    deviceName = option.deviceName,
-                                    host = option.host,
-                                    port = option.port,
-                                    absolutePath = fileTarget
-                                )
-                            }
-                        }
-                        multiCopyEngine.broadcast(listOf(source), perFileDestinations).first()
-                    }
+        TransferActivityGuard.addBatchBytes(
+            sources.filterNot { it.isDirectory }.sumOf { it.sizeBytes } * selectedDevices.size
+        )
+        val jobs = withDistinctDestinations(sources).map { source ->
+            TransferJob(
+                label = source.fileName,
+                sizeBytes = source.sizeBytes,
+                isDirectory = source.isDirectory,
+                relativePath = source.relativeDestPath
+            ) {
+                multiCopyEngine.broadcast(listOf(source), destinationsFor(source, selectedDevices)).first()
+            }
+        }
+        TransferBatchScheduler.runAll(jobs) { job, failure ->
+            MultiCopyResult(
+                fileName = job.label,
+                succeededDeviceIds = emptySet(),
+                failures = selectedDevices.associate { option ->
+                    option.deviceId to (failure.message ?: AppI18n.t("transfer_failed_on", option.deviceName))
                 }
-            }.awaitAll()
+            )
+        }
+    }
+
+    private fun destinationsFor(
+        source: MultiCopySource,
+        selectedDevices: List<MultiCopyDeviceOption>
+    ): List<MultiCopyDestination> = selectedDevices.map { option ->
+        val preferred = PathUtils.join(option.destinationRoot, source.relativeDestPath)
+        if (option.isLocal) {
+            SystemFileSystem.createDirectories(Path(option.destinationRoot))
+            val target = if (source.isDirectory) {
+                preferred.also { SystemFileSystem.createDirectories(Path(it)) }
+            } else {
+                UniqueFileNames.resolve(preferred).also { resolved ->
+                    Path(resolved).parent?.let { SystemFileSystem.createDirectories(it) }
+                }
+            }
+            MultiCopyDestination.LocalDevice(
+                deviceId = option.deviceId,
+                deviceName = option.deviceName,
+                absolutePath = target
+            )
+        } else {
+            MultiCopyDestination.RemoteDevice(
+                deviceId = option.deviceId,
+                deviceName = option.deviceName,
+                host = option.host,
+                port = option.port,
+                absolutePath = preferred
+            )
+        }
+    }
+
+    /**
+     * Concurrent workers would race on one part file when two flat sources share a name,
+     * so later duplicates get the usual `name (n).ext` before anything is scheduled.
+     */
+    private fun withDistinctDestinations(sources: List<MultiCopySource>): List<MultiCopySource> {
+        val taken = HashSet<String>()
+        return sources.map { source ->
+            val key = source.relativeDestPath.lowercase()
+            if (taken.add(key) || source.isDirectory) return@map source
+            val folder = source.relativeDestPath.substringBeforeLast('/', missingDelimiterValue = "")
+            val name = source.relativeDestPath.substringAfterLast('/')
+            var index = 1
+            var candidate: String
+            do {
+                val numbered = UniqueFileNames.numbered(name, index++)
+                candidate = if (folder.isEmpty()) numbered else "$folder/$numbered"
+            } while (!taken.add(candidate.lowercase()))
+            when (source) {
+                is MultiCopySource.Local -> source.copy(relativeDestPath = candidate)
+                is MultiCopySource.Remote -> source.copy(relativeDestPath = candidate)
+            }
         }
     }
 
@@ -189,7 +223,7 @@ class FileTransferService(
             isDirectory = true,
             relativeDestPath = relativePrefix
         )
-        val children = runCatching { client.listFiles(host, port, baseRemotePath) }.getOrDefault(emptyList())
+        val children = transferCatching { client.listFiles(host, port, baseRemotePath) }.getOrDefault(emptyList())
         for (child in children) {
             if (LocalTransferTree.isIgnoredTransferFile(child.name)) continue
             val relative = "$relativePrefix/${child.name}"
@@ -210,55 +244,33 @@ class FileTransferService(
         out
     }
 
-    suspend fun pasteIntoLocal(targetDirectory: String): List<String> = withContext(Dispatchers.IO) {
+    suspend fun pasteIntoLocal(targetDirectory: String): List<String> = withContext(TransferRuntime.outbound) {
         val payloads = TransferClipboard.peekAll()
         check(payloads.isNotEmpty()) { AppI18n.t("clipboard_empty") }
         val targetPaths = mutableListOf<String>()
+        val jobs = mutableListOf<TransferJob<JobOutcome>>()
         for (payload in payloads) {
-            val targetPath = UniqueFileNames.resolveInDirectory(targetDirectory, payload.fileName)
-            if (payload.isDirectory) {
-                if (payload.isLocalSource) {
-                    copyLocalDirectoryRecursively(payload.remoteAbsolutePath, targetPath)
+            val targetPath = UniqueFileNames.resolveInDirectory(targetDirectory, payload.fileName, targetPaths.toSet())
+            targetPaths += targetPath
+            if (!payload.isDirectory) {
+                jobs += fileJob(payload.fileName, payload.sizeBytes, payload.fileName) {
+                    copyIntoLocal(payload, payload.remoteAbsolutePath, targetPath, payload.sizeBytes)
+                }
+                continue
+            }
+            SystemFileSystem.createDirectories(Path(targetPath))
+            for (entry in treeOf(payload)) {
+                val dest = rebase(targetPath, payload.fileName, entry.relativeDestPath)
+                jobs += if (entry.isDirectory) {
+                    directoryJob(entry) { SystemFileSystem.createDirectories(Path(dest)) }
                 } else {
-                    SystemFileSystem.createDirectories(Path(targetPath))
-                    val remoteTree = listRemoteRecursively(payload.sourceHost, payload.sourcePort, payload.remoteAbsolutePath, payload.fileName)
-                    val semaphore = kotlinx.coroutines.sync.Semaphore(6)
-                    coroutineScope {
-                        remoteTree.map { remoteSource ->
-                            async {
-                                semaphore.withPermit {
-                                    val dest = PathUtils.join(targetDirectory, remoteSource.relativeDestPath)
-                                    if (remoteSource.isDirectory) {
-                                        SystemFileSystem.createDirectories(Path(dest))
-                                    } else {
-                                        Path(dest).parent?.let { SystemFileSystem.createDirectories(it) }
-                                        client.downloadToLocal(
-                                            host = payload.sourceHost,
-                                            port = payload.sourcePort,
-                                            remotePath = remoteSource.absolutePath,
-                                            localTargetPath = dest,
-                                            expectedSizeBytes = remoteSource.sizeBytes.takeIf { it > 0L }
-                                        )
-                                    }
-                                }
-                            }
-                        }.awaitAll()
+                    fileJob(entry.fileName, entry.sizeBytes, entry.relativeDestPath) {
+                        copyIntoLocal(payload, entry.absolutePath, dest, entry.sizeBytes)
                     }
                 }
-            } else {
-                when {
-                    payload.isLocalSource -> copyLocalToLocal(payload.remoteAbsolutePath, targetPath)
-                    else -> client.downloadToLocal(
-                        host = payload.sourceHost,
-                        port = payload.sourcePort,
-                        remotePath = payload.remoteAbsolutePath,
-                        localTargetPath = targetPath,
-                        expectedSizeBytes = payload.sizeBytes.takeIf { it > 0L }
-                    )
-                }
             }
-            targetPaths += targetPath
         }
+        runOrThrow(jobs, "paste_failed")
         targetPaths
     }
 
@@ -266,129 +278,32 @@ class FileTransferService(
         host: String,
         port: Int,
         targetDirectory: String
-    ): List<String> = withContext(Dispatchers.IO) {
+    ): List<String> = withContext(TransferRuntime.outbound) {
         val payloads = TransferClipboard.peekAll()
         check(payloads.isNotEmpty()) { AppI18n.t("clipboard_empty") }
         val targetPaths = mutableListOf<String>()
+        val jobs = mutableListOf<TransferJob<JobOutcome>>()
         for (payload in payloads) {
             val remoteTarget = PathUtils.join(targetDirectory, payload.fileName)
-            if (payload.isDirectory) {
-                if (payload.isLocalSource) {
-                    client.createDirectory(host, port, remoteTarget)
-                    val localTree = LocalTransferTree.expandAbsolutePaths(listOf(payload.remoteAbsolutePath))
-                    val semaphore = kotlinx.coroutines.sync.Semaphore(6)
-                    coroutineScope {
-                        localTree.map { localSource ->
-                            async {
-                                semaphore.withPermit {
-                                    val dest = PathUtils.join(targetDirectory, localSource.relativeDestPath)
-                                    val txId = com.fileapex.platform.generateDeviceId()
-                                    val txTime = com.fileapex.util.TimeUtils.now()
-                                    if (localSource.isDirectory) {
-                                        client.createDirectory(host, port, dest)
-                                    } else {
-                                        client.uploadFromLocal(
-                                            host = host,
-                                            port = port,
-                                            localSourcePath = localSource.absolutePath,
-                                            remoteTargetPath = dest,
-                                            transactionId = txId,
-                                            transactionTimestampEpochMs = txTime
-                                        )
-                                    }
-                                }
-                            }
-                        }.awaitAll()
-                    }
-                } else {
-                    client.createDirectory(host, port, remoteTarget)
-                    val remoteTree = listRemoteRecursively(payload.sourceHost, payload.sourcePort, payload.remoteAbsolutePath, payload.fileName)
-                    val semaphore = kotlinx.coroutines.sync.Semaphore(6)
-                    val tempBase = defaultTempDir()
-                    coroutineScope {
-                        remoteTree.map { remoteSource ->
-                            async {
-                                semaphore.withPermit {
-                                    val dest = PathUtils.join(targetDirectory, remoteSource.relativeDestPath)
-                                    val txId = com.fileapex.platform.generateDeviceId()
-                                    val txTime = com.fileapex.util.TimeUtils.now()
-                                    if (remoteSource.isDirectory) {
-                                        client.createDirectory(host, port, dest)
-                                    } else {
-                                        val tempFile = PathUtils.join(tempBase, "fileapex-paste-${remoteSource.fileName}")
-                                        try {
-                                            client.downloadToLocal(
-                                                host = payload.sourceHost,
-                                                port = payload.sourcePort,
-                                                remotePath = remoteSource.absolutePath,
-                                                localTargetPath = tempFile,
-                                                expectedSizeBytes = remoteSource.sizeBytes.takeIf { it > 0L }
-                                            )
-                                            client.uploadFromLocal(
-                                                host = host,
-                                                port = port,
-                                                localSourcePath = tempFile,
-                                                remoteTargetPath = dest,
-                                                transactionId = txId,
-                                                transactionTimestampEpochMs = txTime
-                                            )
-                                        } finally {
-                                            runCatching {
-                                                val p = Path(tempFile)
-                                                if (SystemFileSystem.exists(p)) SystemFileSystem.delete(p)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }.awaitAll()
-                    }
+            targetPaths += remoteTarget
+            if (!payload.isDirectory) {
+                jobs += fileJob(payload.fileName, payload.sizeBytes, payload.fileName) {
+                    copyIntoRemote(payload, payload.remoteAbsolutePath, payload.sizeBytes, host, port, remoteTarget)
                 }
-            } else {
-                val tempLocal = PathUtils.join(defaultTempDir(), "fileapex-paste-${payload.fileName}")
-                val txId = com.fileapex.platform.generateDeviceId()
-                val txTime = com.fileapex.util.TimeUtils.now()
-                try {
-                    when {
-                        payload.isLocalSource -> {
-                            client.uploadFromLocal(
-                                host = host,
-                                port = port,
-                                localSourcePath = payload.remoteAbsolutePath,
-                                remoteTargetPath = remoteTarget,
-                                transactionId = txId,
-                                transactionTimestampEpochMs = txTime
-                            )
-                        }
-                        else -> {
-                            client.downloadToLocal(
-                                host = payload.sourceHost,
-                                port = payload.sourcePort,
-                                remotePath = payload.remoteAbsolutePath,
-                                localTargetPath = tempLocal,
-                                expectedSizeBytes = payload.sizeBytes.takeIf { it > 0L }
-                            )
-                            client.uploadFromLocal(
-                                host = host,
-                                port = port,
-                                localSourcePath = tempLocal,
-                                remoteTargetPath = remoteTarget,
-                                transactionId = txId,
-                                transactionTimestampEpochMs = txTime
-                            )
-                        }
-                    }
-                } finally {
-                    runCatching {
-                        val path = Path(tempLocal)
-                        if (SystemFileSystem.exists(path)) {
-                            SystemFileSystem.delete(path)
-                        }
+                continue
+            }
+            for (entry in treeOf(payload)) {
+                val dest = PathUtils.join(targetDirectory, entry.relativeDestPath)
+                jobs += if (entry.isDirectory) {
+                    directoryJob(entry) { client.createDirectory(host, port, dest) }
+                } else {
+                    fileJob(entry.fileName, entry.sizeBytes, entry.relativeDestPath) {
+                        copyIntoRemote(payload, entry.absolutePath, entry.sizeBytes, host, port, dest)
                     }
                 }
             }
-            targetPaths += remoteTarget
         }
+        runOrThrow(jobs, "paste_failed")
         targetPaths
     }
 
@@ -399,92 +314,141 @@ class FileTransferService(
         host: String,
         port: Int,
         items: List<RemoteFileItem>
-    ): List<String> = withContext(Dispatchers.IO) {
+    ): List<String> = withContext(TransferRuntime.outbound) {
         require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_download") }
         val downloadsRoot = defaultDownloadsDir()
         SystemFileSystem.createDirectories(Path(downloadsRoot))
-        val semaphore = kotlinx.coroutines.sync.Semaphore(6)
         val downloadedPaths = mutableListOf<String>()
-
+        val jobs = mutableListOf<TransferJob<JobOutcome>>()
         for (item in items) {
-            if (item.isDirectory) {
-                val targetDir = UniqueFileNames.resolveInDirectory(downloadsRoot, item.name)
-                SystemFileSystem.createDirectories(Path(targetDir))
-                val remoteTree = listRemoteRecursively(host, port, item.absolutePath, item.name)
-                coroutineScope {
-                    remoteTree.map { remoteSource ->
-                        async {
-                            semaphore.withPermit {
-                                val destPath = PathUtils.join(downloadsRoot, remoteSource.relativeDestPath)
-                                if (remoteSource.isDirectory) {
-                                    SystemFileSystem.createDirectories(Path(destPath))
-                                } else {
-                                    Path(destPath).parent?.let { SystemFileSystem.createDirectories(it) }
-                                    client.downloadToLocal(
-                                        host = host,
-                                        port = port,
-                                        remotePath = remoteSource.absolutePath,
-                                        localTargetPath = destPath,
-                                        expectedSizeBytes = remoteSource.sizeBytes.takeIf { it > 0L }
-                                    )
-                                }
-                            }
-                        }
-                    }.awaitAll()
+            val targetPath = UniqueFileNames.resolveInDirectory(downloadsRoot, item.name, downloadedPaths.toSet())
+            downloadedPaths += targetPath
+            if (!item.isDirectory) {
+                jobs += fileJob(item.name, item.sizeBytes, item.name) {
+                    download(host, port, item.absolutePath, targetPath, item.sizeBytes)
                 }
-                downloadedPaths += targetDir
-            } else {
-                val targetPath = UniqueFileNames.resolveInDirectory(downloadsRoot, item.name)
-                client.downloadToLocal(
-                    host = host,
-                    port = port,
-                    remotePath = item.absolutePath,
-                    localTargetPath = targetPath,
-                    expectedSizeBytes = item.sizeBytes.takeIf { it > 0L }
-                )
-                downloadedPaths += targetPath
+                continue
+            }
+            SystemFileSystem.createDirectories(Path(targetPath))
+            for (entry in listRemoteRecursively(host, port, item.absolutePath, item.name)) {
+                val dest = rebase(targetPath, item.name, entry.relativeDestPath)
+                jobs += if (entry.isDirectory) {
+                    directoryJob(entry) { SystemFileSystem.createDirectories(Path(dest)) }
+                } else {
+                    fileJob(entry.fileName, entry.sizeBytes, entry.relativeDestPath) {
+                        download(host, port, entry.absolutePath, dest, entry.sizeBytes)
+                    }
+                }
             }
         }
+        runOrThrow(jobs, "download_failed")
         downloadedPaths
     }
 
-    private fun copyLocalDirectoryRecursively(sourceDir: String, targetDir: String) {
-        val sourcePath = Path(sourceDir)
-        val targetPath = Path(targetDir)
-        if (!SystemFileSystem.exists(targetPath)) {
-            SystemFileSystem.createDirectories(targetPath)
+    private suspend fun treeOf(payload: ClipboardPayload): List<MultiCopySource> =
+        if (payload.isLocalSource) {
+            LocalTransferTree.expandAbsolutePaths(listOf(payload.remoteAbsolutePath))
+        } else {
+            listRemoteRecursively(payload.sourceHost, payload.sourcePort, payload.remoteAbsolutePath, payload.fileName)
         }
-        val children = runCatching { SystemFileSystem.list(sourcePath).toList() }.getOrDefault(emptyList())
-        for (child in children) {
-            if (LocalTransferTree.isIgnoredTransferFile(child.name)) continue
-            val childTarget = PathUtils.join(targetDir, child.name)
-            val metadata = SystemFileSystem.metadataOrNull(child) ?: continue
-            if (metadata.isDirectory) {
-                copyLocalDirectoryRecursively(child.toString(), childTarget)
-            } else {
-                copyLocalToLocal(child.toString(), childTarget)
-            }
+
+    private suspend fun copyIntoLocal(payload: ClipboardPayload, sourcePath: String, target: String, sizeBytes: Long) {
+        if (payload.isLocalSource) {
+            copyLocalToLocal(sourcePath, target)
+        } else {
+            download(payload.sourceHost, payload.sourcePort, sourcePath, target, sizeBytes)
         }
+    }
+
+    private suspend fun copyIntoRemote(
+        payload: ClipboardPayload,
+        sourcePath: String,
+        sizeBytes: Long,
+        host: String,
+        port: Int,
+        remoteTarget: String
+    ) {
+        if (payload.isLocalSource) {
+            client.uploadFromLocal(
+                host = host,
+                port = port,
+                localSourcePath = sourcePath,
+                remoteTargetPath = remoteTarget,
+                transactionId = generateDeviceId(),
+                transactionTimestampEpochMs = TimeUtils.now()
+            )
+        } else {
+            client.relayRemoteFile(
+                sourceHost = payload.sourceHost,
+                sourcePort = payload.sourcePort,
+                sourcePath = sourcePath,
+                sizeBytes = sizeBytes,
+                host = host,
+                port = port,
+                remoteTargetPath = remoteTarget,
+                transactionId = generateDeviceId(),
+                transactionTimestampEpochMs = TimeUtils.now()
+            )
+        }
+    }
+
+    private suspend fun download(host: String, port: Int, remotePath: String, target: String, sizeBytes: Long) {
+        Path(target).parent?.let { SystemFileSystem.createDirectories(it) }
+        client.downloadToLocal(
+            host = host,
+            port = port,
+            remotePath = remotePath,
+            localTargetPath = target,
+            expectedSizeBytes = sizeBytes.takeIf { it > 0L }
+        )
+    }
+
+    private fun rebase(targetRoot: String, rootName: String, relativeDestPath: String): String {
+        val inner = relativeDestPath.removePrefix(rootName).trimStart('/')
+        return if (inner.isEmpty()) targetRoot else PathUtils.join(targetRoot, inner)
+    }
+
+    private fun fileJob(
+        label: String,
+        sizeBytes: Long,
+        relativePath: String,
+        action: suspend () -> Unit
+    ) = TransferJob(label, sizeBytes, isDirectory = false, relativePath = relativePath) {
+        action()
+        JobOutcome(label)
+    }
+
+    private fun directoryJob(entry: MultiCopySource, action: suspend () -> Unit) =
+        TransferJob(entry.fileName, 0L, isDirectory = true, relativePath = entry.relativeDestPath) {
+            action()
+            JobOutcome(entry.fileName)
+        }
+
+    private suspend fun runOrThrow(jobs: List<TransferJob<JobOutcome>>, failureKey: String) {
+        val outcomes = TransferBatchScheduler.runAll(jobs) { job, failure -> JobOutcome(job.label, failure) }
+        val failed = outcomes.filter { it.failure != null }
+        if (failed.isEmpty()) return
+        val first = failed.first()
+        val firstError = checkNotNull(first.failure)
+        if (outcomes.size == 1) throw firstError
+        error(
+            "${AppI18n.t(failureKey)} (${failed.size}/${outcomes.size}): ${first.label}: " +
+                (firstError.message ?: firstError::class.simpleName.orEmpty())
+        )
     }
 
     private fun copyLocalToLocal(source: String, target: String) {
-        val sourcePath = Path(source)
-        val targetPath = Path(target)
-        targetPath.parent?.let { parent ->
-            if (!SystemFileSystem.exists(parent)) {
-                SystemFileSystem.createDirectories(parent)
+        Path(target).parent?.let { SystemFileSystem.createDirectories(it) }
+        val partPath = SocketFileStreamer.partPathFor(target)
+        val sourceSize = SocketFileStreamer.fileLength(source)
+        val offset = SocketFileStreamer.fileLength(partPath).coerceIn(0L, sourceSize)
+        SocketFileStreamer.openAppender(partPath, offset).use { raf ->
+            SocketFileStreamer.streamFromOffset(source, offset) { buffer, length ->
+                raf.write(buffer, 0, length)
             }
         }
-        SystemFileSystem.source(sourcePath).buffered().use { input ->
-            SystemFileSystem.sink(targetPath).buffered().use { output ->
-                val buffer = ByteArray(8192)
-                while (!input.exhausted()) {
-                    val read = input.readAtMostTo(buffer)
-                    if (read > 0) output.write(buffer, 0, read)
-                }
-            }
-        }
+        SocketFileStreamer.finalizePart(partPath, target)
     }
-}
 
-internal expect fun defaultTempDir(): String
+    private class JobOutcome(val label: String, val failure: Throwable? = null)
+}

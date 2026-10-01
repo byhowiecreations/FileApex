@@ -22,6 +22,7 @@ interface SettingsKvStore {
     fun putInt(key: String, value: Int)
     fun getLong(key: String, default: Long): Long
     fun putLong(key: String, value: Long)
+    fun clear()
 }
 
 /**
@@ -104,6 +105,8 @@ class BaseAppSettings(
     private val autoLaunchOnRebootFlow = MutableStateFlow(loadAutoLaunchOnReboot())
     private val deviceOrderIdsFlow = MutableStateFlow(store.getString(KEY_DEVICE_ORDER, ""))
     private val deviceOrderUpdatedAt = MutableStateFlow(store.getLong(KEY_DEVICE_ORDER_UPDATED_AT, 0L))
+    private val clusterMembershipVersionFlow = MutableStateFlow(store.getLong(KEY_CLUSTER_MEMBERSHIP_VERSION, 0L))
+    private val membershipProtocolSinceFlow = MutableStateFlow(store.getLong(KEY_MEMBERSHIP_PROTOCOL_SINCE, 0L))
     private val desktopLayout = MutableStateFlow(
         DesktopLayoutMode.fromStorage(store.getString(KEY_DESKTOP_LAYOUT, DesktopLayoutMode.DEFAULT.name))
     )
@@ -373,6 +376,8 @@ class BaseAppSettings(
     override val autoLaunchOnReboot: StateFlow<Boolean> = autoLaunchOnRebootFlow.asStateFlow()
     override val deviceOrderIds: StateFlow<String> = deviceOrderIdsFlow.asStateFlow()
     override val deviceOrderUpdatedAtEpochMs: StateFlow<Long> = deviceOrderUpdatedAt.asStateFlow()
+    override val clusterMembershipVersion: StateFlow<Long> = clusterMembershipVersionFlow.asStateFlow()
+    override val membershipProtocolSinceEpochMs: StateFlow<Long> = membershipProtocolSinceFlow.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
     override val desktopUiStyle: StateFlow<DesktopUiStyle> = desktopUiStyleFlow.asStateFlow()
     override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
@@ -685,21 +690,33 @@ class BaseAppSettings(
         deviceOrderUpdatedAt.value = epochMs
     }
 
+    override fun setClusterMembershipVersion(version: Long) {
+        TimestampDiagnostics.logMutation("AppSettings.clusterMembershipVersion", version)
+        store.putLong(KEY_CLUSTER_MEMBERSHIP_VERSION, version)
+        clusterMembershipVersionFlow.value = version
+    }
+
+    override fun setMembershipProtocolSinceEpochMs(epochMs: Long) {
+        TimestampDiagnostics.logMutation("AppSettings.membershipProtocolSince", epochMs)
+        store.putLong(KEY_MEMBERSHIP_PROTOCOL_SINCE, epochMs)
+        membershipProtocolSinceFlow.value = epochMs
+    }
+
     override fun setDesktopLayoutMode(mode: DesktopLayoutMode) {
         store.putString(KEY_DESKTOP_LAYOUT, mode.name)
         desktopLayout.value = mode
     }
 
-    override fun setDesktopSplitFraction(fraction: Float) {
+    override fun setDesktopSplitFraction(fraction: Float, persist: Boolean) {
         val clamped = fraction.coerceIn(0.20f, 0.65f)
-        store.putString(KEY_DESKTOP_SPLIT_FRACTION, clamped.toString())
         desktopSplitFractionFlow.value = clamped
+        if (persist) store.putString(KEY_DESKTOP_SPLIT_FRACTION, clamped.toString())
     }
 
-    override fun setExplorerSplitFraction(fraction: Float) {
+    override fun setExplorerSplitFraction(fraction: Float, persist: Boolean) {
         val clamped = fraction.coerceIn(0.20f, 0.70f)
-        store.putString(KEY_EXPLORER_SPLIT_FRACTION, clamped.toString())
         explorerSplitFractionFlow.value = clamped
+        if (persist) store.putString(KEY_EXPLORER_SPLIT_FRACTION, clamped.toString())
     }
 
     override fun setDesktopUiStyle(style: DesktopUiStyle) {
@@ -717,10 +734,10 @@ class BaseAppSettings(
         devicesViewModeFlow.value = mode
     }
 
-    override fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float) {
+    override fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float, persist: Boolean) {
         val updated = kineticNodeOffsetsFlow.value + (deviceId to Pair(dx, dy))
         kineticNodeOffsetsFlow.value = updated
-        store.putString(KEY_KINETIC_NODE_OFFSETS, encodeKineticOffsets(updated))
+        if (persist) store.putString(KEY_KINETIC_NODE_OFFSETS, encodeKineticOffsets(updated))
     }
 
     override fun resetKineticNodeOffsets() {
@@ -955,6 +972,100 @@ class BaseAppSettings(
         return store.getBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, true)
     }
 
+    override fun resetToDefaults() {
+        store.clear()
+        google.value = false
+        googleEmail.value = ""
+        googleUid.value = ""
+        googleRestorePendingFlow.value = false
+        googleBackupEmailHintFlow.value = ""
+        multiCopyIntro.value = false
+        clipboardSharing.value = false
+        clipboardDisclosureAckFlow.value = false
+        accessibilityDisclosureAckFlow.value = false
+        installPackagesDisclosureAckFlow.value = false
+        clipboardShareModeFlow.value = ClipboardShareMode.UNSET
+        clipboardTargetDeviceIdsFlow.value = emptySet()
+        clipboardTargetConfiguredFlow.value = false
+        clipboardOptInPromptShownFlow.value = false
+        clipboardViaCellularFlow.value = false
+        clipboardAccessibilityFlow.value = false
+        clipboardSendNotificationFlow.value = false
+        clipboardShizukuFlow.value = false
+        clipboardAutoSendFlow.value = false
+        appLanguageTagFlow.value = ""
+        clipboardPrivateKeyBase64Stored.value = ""
+        transferNotifications.value = false
+        driveRelayNotificationsFlow.value = false
+        notesNotificationsFlow.value = true
+        notesNotificationPromptShownFlow.value = false
+        bulletinRemoteFilePurgePreferenceFlow.value = BulletinRemoteFilePurgePreference.UNCONFIGURED
+        liveTransferCapsuleFlow.value = false
+        liveTransferShowQueueFlow.value = false
+        pinRequired.value = false
+        pin.value = ""
+        pinIdle.value = PinIdleTimeout.DEFAULT
+        checkForUpdates.value = false
+        updateUnit.value = UpdateCheckUnit.Days
+        updateAmount.value = 1
+        lastUpdateCheck.value = 0L
+        skippedUpdateVersionFlow.value = ""
+        serviceWatchdog.value = true
+        autoLaunchOnRebootFlow.value = true
+        deviceOrderIdsFlow.value = ""
+        deviceOrderUpdatedAt.value = 0L
+        clusterMembershipVersionFlow.value = 0L
+        membershipProtocolSinceFlow.value = 0L
+        desktopLayout.value = DesktopLayoutMode.DEFAULT
+        desktopSplitFractionFlow.value = 0.35f
+        explorerSplitFractionFlow.value = 0.38f
+        desktopUiStyleFlow.value = DesktopUiStyle.DEFAULT
+        explorerViewModeFlow.value = ExplorerViewMode.List
+        devicesViewModeFlow.value = ExplorerViewMode.List
+        kineticNodeOffsetsFlow.value = emptyMap()
+        deviceDetailsDisplayPreferencesFlow.value = DeviceDetailsDisplayPreferences.defaults()
+        deviceDetailsAllowOverCellularFlow.value = false
+        cellularEnabledFlow.value = false
+        googleDriveRelayEnabledFlow.value = false
+        driveRelayMaxMbFlow.value = DriveRelayMaxMb.DEFAULT
+        drivePurgeAfter72HoursFlow.value = true
+        driveRelayOptInPromptShownFlow.value = false
+        cellularSendPromptAcknowledgedFlow.value = false
+        cellularReceivePromptAcknowledgedFlow.value = false
+        appThemeFlow.value = AppTheme.DEFAULT
+        fluxIconStyleFlow.value = ThemeIconStyle.FLUX
+        kineticIconStyleFlow.value = ThemeIconStyle.STANDARD
+        freestyleIconStyleFlow.value = ThemeIconStyle.FREESTYLE
+        themeIconStyleFlow.value = computeActiveThemeIconStyle(AppTheme.DEFAULT)
+        bulletinBoardStyleFlow.value = BulletinBoardStyle.DEFAULT
+        kineticSphereCleanModeFlow.value = false
+        kineticSphereConnectedLinesFlow.value = true
+        kineticSphereOrbitalRingsFlow.value = true
+        kineticSpherePersistentWallpaperFlow.value = false
+        freestyleCardOptionsPosXFlow.value = null
+        freestyleCardOptionsPosYFlow.value = null
+        freestyleCardVerticalOptionsPosXFlow.value = null
+        freestyleCardVerticalOptionsPosYFlow.value = null
+        freestyleTileOptionsPosXFlow.value = null
+        freestyleTileOptionsPosYFlow.value = null
+        freestyleLayoutModeFlow.value = FreestyleLayoutMode.DEFAULT
+        freestyleEditTutorialShownFlow.value = false
+        freestyleCardNodeOffsetsFlow.value = emptyMap()
+        freestyleCardVerticalNodeOffsetsFlow.value = emptyMap()
+        freestyleTileNodeOffsetsFlow.value = emptyMap()
+        freestyleCardMenuOrdersFlow.value = emptyMap()
+        freestyleCardVerticalMenuOrdersFlow.value = emptyMap()
+        freestyleTileMenuOrdersFlow.value = emptyMap()
+        freestyleOptionsMenuOrderFlow.value = "files,add_device,join_device,send_clipboard,check_batteries,settings"
+        freestyleCardPinnedActionsFlow.value = emptyMap()
+        freestyleCardVerticalPinnedActionsFlow.value = emptyMap()
+        freestyleTilePinnedActionsFlow.value = emptyMap()
+        settingsGroupSystemPerformanceFlow.value = true
+        settingsGroupAppearanceBehaviorFlow.value = true
+        settingsGroupSecurityAccountFlow.value = true
+        diagnosticsPrivateKeyBase64Stored.value = ""
+    }
+
     companion object {
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
@@ -1025,6 +1136,8 @@ class BaseAppSettings(
         const val KEY_AUTO_LAUNCH_ON_REBOOT = "auto_launch_on_reboot"
         const val KEY_DEVICE_ORDER = "device_order_ids"
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
+        const val KEY_CLUSTER_MEMBERSHIP_VERSION = "cluster_membership_version"
+        const val KEY_MEMBERSHIP_PROTOCOL_SINCE = "membership_protocol_since_epoch_ms"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
         const val KEY_DESKTOP_SPLIT_FRACTION = "desktop_split_fraction"
         const val KEY_EXPLORER_SPLIT_FRACTION = "explorer_split_fraction"

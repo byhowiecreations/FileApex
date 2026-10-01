@@ -62,6 +62,7 @@ class FileShareServerService : Service() {
         if (isForegroundPromoted && ShareServerForegroundNotification.isPosted()) {
             ShareServerPendingStart.clear(this)
             ShareServerKeepAliveCoordinator.onForegroundServiceActive(this)
+            ServerWifiLockCoordinator.acquire(this)
         }
         runBackgroundHousekeeping()
         return START_STICKY
@@ -113,6 +114,7 @@ class FileShareServerService : Service() {
         }
         wakeReceiver?.stop()
         wakeReceiver = null
+        ServerWifiLockCoordinator.release(this)
         ServerLifecycleManager.stop(androidLog)
         super.onDestroy()
     }

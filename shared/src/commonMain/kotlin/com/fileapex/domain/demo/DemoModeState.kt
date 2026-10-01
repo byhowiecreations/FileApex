@@ -1,13 +1,20 @@
 package com.fileapex.domain.demo
 
+import com.fileapex.domain.diagnostics.BatteryDiagnostics
+import com.fileapex.domain.diagnostics.DeviceIdentityDiagnostics
+import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
+import com.fileapex.domain.diagnostics.ProcessorDiagnostics
+import com.fileapex.domain.diagnostics.StorageDiagnostics
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DeviceListRow
+import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -15,21 +22,13 @@ object DemoModeState {
     private val _isDemoModeActive = MutableStateFlow(false)
     val isDemoModeActive = _isDemoModeActive.asStateFlow()
 
-    fun launchDemo() {
-        _isDemoModeActive.value = true
-    }
-
-    fun exitDemo() {
-        _isDemoModeActive.value = false
-    }
-
-    fun getDemoDeviceRows(): List<DeviceListRow> = listOf(
+    private fun initialDemoDeviceRows(): List<DeviceListRow> = listOf(
         DeviceListRow(
             deviceId = "demo_macbook",
             deviceName = "MacBook Pro 16\"",
             online = true,
-            appVersion = "0.14.1a",
-            appVersionCode = 163,
+            appVersion = "0.14.2a",
+            appVersionCode = 165,
             os = "macOS",
             platform = "Desktop",
             deviceMake = "Apple",
@@ -39,8 +38,8 @@ object DemoModeState {
             deviceId = "demo_tablet",
             deviceName = "Pixel Tablet",
             online = true,
-            appVersion = "0.14.1a",
-            appVersionCode = 163,
+            appVersion = "0.14.2a",
+            appVersionCode = 165,
             os = "Android",
             platform = "Android",
             deviceMake = "Google",
@@ -48,8 +47,98 @@ object DemoModeState {
         )
     )
 
+    private val _demoDeviceRows = MutableStateFlow(initialDemoDeviceRows())
+    val demoDeviceRows: StateFlow<List<DeviceListRow>> = _demoDeviceRows.asStateFlow()
+
+    fun launchDemo() {
+        _demoDeviceRows.value = initialDemoDeviceRows()
+        _isDemoModeActive.value = true
+    }
+
+    fun exitDemo() {
+        _isDemoModeActive.value = false
+    }
+
+    fun getDemoDeviceRows(): List<DeviceListRow> = _demoDeviceRows.value
+
+    fun isDemoDeviceId(deviceId: String): Boolean = deviceId.startsWith("demo_")
+
+    fun renameDemoDevice(deviceId: String, newName: String) {
+        _demoDeviceRows.value = _demoDeviceRows.value.map {
+            if (it.deviceId == deviceId) it.copy(deviceName = newName) else it
+        }
+    }
+
+    fun removeDemoDevice(deviceId: String) {
+        _demoDeviceRows.value = _demoDeviceRows.value.filter { it.deviceId != deviceId }
+    }
+
+    fun getDemoDeviceDiagnostics(deviceId: String): PeerDeviceDiagnostics {
+        val now = TimeUtils.now()
+        val isTablet = deviceId == "demo_tablet"
+        val row = _demoDeviceRows.value.firstOrNull { it.deviceId == deviceId }
+        val displayName = row?.deviceName ?: if (isTablet) "Pixel Tablet" else "MacBook Pro 16\""
+
+        return if (isTablet) {
+            PeerDeviceDiagnostics(
+                collectedAtEpochMs = now,
+                platform = "Android",
+                device = DeviceIdentityDiagnostics(
+                    make = "Google",
+                    model = displayName,
+                    kernelVersion = "5.15.137-android14-11-g6333bbba",
+                    osBuildVersion = "Android 14 (AP2A.240805.005)"
+                ),
+                processor = ProcessorDiagnostics(
+                    architecture = "arm64-v8a",
+                    hardware = "Google Tensor G2",
+                    activeCoreCount = 8,
+                    totalCoreCount = 8
+                ),
+                battery = BatteryDiagnostics(
+                    levelPercent = 88,
+                    chargingState = "Discharging",
+                    temperatureCelsius = 28.5,
+                    lowPowerMode = false
+                ),
+                storage = StorageDiagnostics(
+                    usedBytes = 48_318_382_080L,
+                    totalBytes = 137_438_953_472L
+                )
+            )
+        } else {
+            PeerDeviceDiagnostics(
+                collectedAtEpochMs = now,
+                platform = "macOS",
+                device = DeviceIdentityDiagnostics(
+                    make = "Apple",
+                    model = displayName,
+                    kernelVersion = "Darwin 23.4.0",
+                    osBuildVersion = "macOS Sonoma 14.4.1"
+                ),
+                processor = ProcessorDiagnostics(
+                    architecture = "aarch64",
+                    hardware = "Apple M1 Pro",
+                    activeCoreCount = 10,
+                    totalCoreCount = 10
+                ),
+                battery = BatteryDiagnostics(
+                    levelPercent = 94,
+                    chargingState = "AC",
+                    temperatureCelsius = 31.0,
+                    lowPowerMode = false
+                ),
+                storage = StorageDiagnostics(
+                    usedBytes = 300_647_710_720L,
+                    totalBytes = 1_000_204_886_016L
+                )
+            )
+        }
+    }
+
     fun getBrowseTarget(deviceId: String): BrowseTarget.Demo {
-        val name = if (deviceId == "demo_tablet") "Pixel Tablet" else "MacBook Pro 16\""
+        val name = _demoDeviceRows.value.firstOrNull { it.deviceId == deviceId }?.deviceName
+            ?: if (deviceId == "demo_tablet") "Pixel Tablet" else "MacBook Pro 16\""
         return BrowseTarget.Demo(deviceId = deviceId, displayName = name)
     }
 

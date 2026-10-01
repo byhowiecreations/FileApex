@@ -35,7 +35,11 @@ class CliCommandHandler(
 
         return when (val cmd = tokens[0].lowercase()) {
             "dash", "dashboard" -> {
-                val backend = com.fileapex.cli.dash.StandaloneClusterBackend()
+                val backend = if (com.fileapex.cli.ipc.CliIpcClient.isDaemonRunning()) {
+                    com.fileapex.cli.dash.IpcClusterBackend()
+                } else {
+                    com.fileapex.cli.dash.StandaloneClusterBackend()
+                }
                 com.fileapex.cli.dash.CliDashboard(backend, cwd).run()
                 0
             }

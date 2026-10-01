@@ -33,6 +33,9 @@ interface MessageDao {
         "DELETE FROM messages WHERE isPinned = 0 AND timestamp < :cutoff AND isDeleted = 0"
     )
     suspend fun pruneUnpinnedOlderThan(cutoff: Long): Int
+
+    @Query("DELETE FROM messages")
+    suspend fun deleteAllMessages()
 }
 
 @Dao
@@ -51,12 +54,18 @@ interface TombstoneDao {
 
     @Query("SELECT * FROM tombstones WHERE deletedAt > :cutoff ORDER BY deletedAt ASC")
     suspend fun getRecentOnce(cutoff: Long): List<TombstoneEntity>
+
+    @Query("DELETE FROM tombstones")
+    suspend fun deleteAllTombstones()
 }
 
 @Dao
 interface OutboxDao {
     @Query("SELECT * FROM outbox ORDER BY createdAt ASC")
     suspend fun getAllOnce(): List<OutboxEntity>
+
+    @Query("SELECT COUNT(*) FROM outbox")
+    suspend fun count(): Int
 
     @Query(
         "SELECT * FROM outbox WHERE targetDeviceId = :deviceId ORDER BY createdAt ASC LIMIT :limit"
@@ -77,6 +86,9 @@ interface OutboxDao {
 
     @Query("UPDATE outbox SET retryCount = retryCount + 1 WHERE outboxId = :outboxId")
     suspend fun incrementRetry(outboxId: Long)
+
+    @Query("DELETE FROM outbox")
+    suspend fun deleteAllOutbox()
 }
 
 @Dao
@@ -89,6 +101,9 @@ interface ProcessedPacketDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(packets: List<ProcessedPacketEntity>)
+
+    @Query("DELETE FROM processed_packets")
+    suspend fun deleteAllPackets()
 }
 
 @Dao

@@ -2,6 +2,8 @@ package com.fileapex.domain.transfer
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import com.fileapex.platform.androidApplicationContextOrNull
@@ -13,6 +15,21 @@ internal actual object TransferWakeLockCoordinator {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var refs = 0
+    private val safetyHandler by lazy { Handler(Looper.getMainLooper()) }
+
+    /**
+     * WifiLock has no timeout of its own; a leaked ref must not keep the radio in low-latency mode.
+     * Re-armed on every acquire, so it only fires an hour after the last stream started.
+     */
+    private val safetyRelease = Runnable {
+        synchronized(lock) {
+            if (refs > 0) {
+                Log.w(TAG, "Safety timeout - releasing transfer locks held by $refs leaked ref(s)")
+                refs = 0
+                cleanupLocks()
+            }
+        }
+    }
 
     actual fun acquire() {
         synchronized(lock) {
@@ -49,7 +66,11 @@ internal actual object TransferWakeLockCoordinator {
                     }.onFailure { Log.w(TAG, "Failed to acquire WifiLock: ${it.message}") }
                     Log.i(TAG, "Acquired transfer WakeLock and WifiLock")
                 }
+            } else {
+                runCatching { wakeLock?.acquire(SAFETY_TIMEOUT_MS) }
             }
+            safetyHandler.removeCallbacks(safetyRelease)
+            safetyHandler.postDelayed(safetyRelease, SAFETY_TIMEOUT_MS)
             refs++
         }
     }
@@ -76,6 +97,7 @@ internal actual object TransferWakeLockCoordinator {
     }
 
     private fun cleanupLocks() {
+        safetyHandler.removeCallbacks(safetyRelease)
         runCatching {
             wakeLock?.let {
                 if (it.isHeld) it.release()

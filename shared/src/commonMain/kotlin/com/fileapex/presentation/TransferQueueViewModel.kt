@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,8 +46,20 @@ class TransferQueueViewModel : ViewModel() {
         viewModelScope.launch {
             runCatching { queue.remove(id) }.onFailure { error ->
                 _uiState.update {
-                it.copy(errorMessage = error.message ?: AppI18n.t("no_queued_remove"))
+                it.copy(errorMessage = UserFacingErrors.message(error, "no_queued_remove"))
                 }
+            }
+        }
+    }
+
+    fun cancelSending(id: String) {
+        queue.cancelSending(id)
+    }
+
+    fun retryNow(id: String) {
+        viewModelScope.launch {
+            runCatching { queue.retryNow(id) }.onFailure { error ->
+                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "queue_retry_failed")) }
             }
         }
     }

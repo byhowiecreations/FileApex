@@ -50,7 +50,7 @@ internal object DesktopRosterRecovery {
                         publicKeyHash = statement.getText(4),
                         rootPath = statement.getText(5)
                     )
-                    if (repository.adoptFromPairing(entity)) {
+                    if (repository.adoptFromRosterIntro(entity)) {
                         count++
                     }
                 }

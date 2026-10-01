@@ -30,8 +30,12 @@ object CliRunner {
 
         val cwd = System.getProperty("user.dir") ?: "."
         if (first == "dash" || first == "dashboard") {
-            ensureHeadlessBootstrap()
-            val backend = StandaloneClusterBackend()
+            val backend = if (CliIpcClient.isDaemonRunning()) {
+                IpcClusterBackend()
+            } else {
+                ensureHeadlessBootstrap()
+                StandaloneClusterBackend()
+            }
             CliDashboard(backend, cwd).run()
             exitProcess(0)
         }

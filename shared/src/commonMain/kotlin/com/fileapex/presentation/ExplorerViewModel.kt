@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.domain.browse.BrowseListing
 import com.fileapex.domain.browse.BrowserCoordinator
 import com.fileapex.domain.model.RemoteFileItem
@@ -14,6 +15,7 @@ import com.fileapex.domain.transfer.ExplorerTransferManager
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.decodeImageBytes
+import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,6 +49,8 @@ data class ExplorerUiState(
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
+    /** Local paths from the last completed download, for the snackbar Open / Show-in-folder action. */
+    val lastDownloadedPaths: List<String> = emptyList(),
     val clipboardLabel: String? = null,
     val canPaste: Boolean = false,
     val isSelectionMode: Boolean = false,
@@ -308,7 +312,7 @@ class ExplorerViewModel(
                         isLoading = false,
                         loadingFolderPath = null,
                         isRefreshing = false,
-                        errorMessage = retryError.message ?: AppI18n.t("unable_to_open_folder")
+                        errorMessage = UserFacingErrors.message(retryError, "unable_to_open_folder")
                     )
                 }
             }
@@ -341,7 +345,7 @@ class ExplorerViewModel(
                 resume?.invoke()
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(pinUnlockError = error.message ?: AppI18n.t("incorrect_pin"))
+                    it.copy(pinUnlockError = UserFacingErrors.message(error, "incorrect_pin"))
                 }
             }
         }
@@ -517,7 +521,7 @@ class ExplorerViewModel(
             preview.assertPreviewAllowed(item, FilePreviewManager.MAX_PREVIEW_BYTES)
         }.onFailure { error ->
             _uiState.update {
-                it.copy(errorMessage = error.message ?: AppI18n.t("preview_failed"))
+                it.copy(errorMessage = UserFacingErrors.message(error, "preview_failed"))
             }
             return
         }
@@ -537,7 +541,7 @@ class ExplorerViewModel(
                 val bytes = withContext(Dispatchers.IO) {
                     preview.loadPreviewBytes(item, FilePreviewManager.MAX_PREVIEW_BYTES)
                 }
-                decodeImageBytes(bytes)
+                withContext(Dispatchers.Default) { decodeImageBytes(bytes, maxEdge = previewMaxEdgePx()) }
                     ?: error("Unable to decode image")
             }.fold(
                 onSuccess = { bitmap ->
@@ -555,7 +559,7 @@ class ExplorerViewModel(
                             previewImage = null,
                             isPreviewLoading = false,
                             canDownloadPreview = false,
-                            errorMessage = error.message ?: AppI18n.t("preview_failed")
+                            errorMessage = UserFacingErrors.message(error, "preview_failed")
                         )
                     }
                 }
@@ -568,7 +572,7 @@ class ExplorerViewModel(
             preview.assertPreviewAllowed(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
         }.onFailure { error ->
             _uiState.update {
-                it.copy(errorMessage = error.message ?: AppI18n.t("text_preview_too_large"))
+                it.copy(errorMessage = UserFacingErrors.message(error, "text_preview_too_large"))
             }
             return
         }
@@ -605,7 +609,7 @@ class ExplorerViewModel(
                             previewItem = null,
                             isPreviewLoading = false,
                             canDownloadPreview = false,
-                            errorMessage = error.message ?: AppI18n.t("preview_failed")
+                            errorMessage = UserFacingErrors.message(error, "preview_failed")
                         )
                     }
                 }
@@ -722,7 +726,7 @@ class ExplorerViewModel(
                 )
             }
         }.onFailure { error ->
-            _uiState.update { it.copy(errorMessage = error.message ?: AppI18n.t("copy_failed")) }
+            _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "copy_failed")) }
         }
     }
 
@@ -745,7 +749,7 @@ class ExplorerViewModel(
                 )
             }
         }.onFailure { error ->
-            _uiState.update { it.copy(errorMessage = error.message ?: AppI18n.t("copy_failed")) }
+            _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "copy_failed")) }
         }
     }
 
@@ -919,7 +923,8 @@ class ExplorerViewModel(
                                 AppI18n.t("downloaded_to", paths.first())
                             } else {
                                 AppI18n.t("downloaded_files_to", paths.size, DownloadsPaths.displayLabel())
-                            }
+                            },
+                            lastDownloadedPaths = paths
                         )
                     }
                 },
@@ -927,7 +932,7 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            errorMessage = error.message ?: AppI18n.t("download_failed")
+                            errorMessage = UserFacingErrors.message(error, "download_failed")
                         )
                     }
                 }
@@ -954,7 +959,8 @@ class ExplorerViewModel(
                                 AppI18n.t("downloaded_to", paths.first())
                             } else {
                                 AppI18n.t("downloaded_files_to", paths.size, DownloadsPaths.displayLabel())
-                            }
+                            },
+                            lastDownloadedPaths = paths
                         )
                     }
                 },
@@ -962,7 +968,7 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            errorMessage = error.message ?: AppI18n.t("download_failed")
+                            errorMessage = UserFacingErrors.message(error, "download_failed")
                         )
                     }
                 }
@@ -981,7 +987,8 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            statusMessage = AppI18n.t("downloaded_to", paths.first())
+                            statusMessage = AppI18n.t("downloaded_to", paths.first()),
+                            lastDownloadedPaths = paths
                         )
                     }
                 },
@@ -989,7 +996,7 @@ class ExplorerViewModel(
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
-                            errorMessage = error.message ?: AppI18n.t("download_failed")
+                            errorMessage = UserFacingErrors.message(error, "download_failed")
                         )
                     }
                 }
@@ -1012,7 +1019,7 @@ class ExplorerViewModel(
                 }
                 refresh()
             }.onFailure { error ->
-                _uiState.update { it.copy(errorMessage = error.message ?: AppI18n.t("paste_failed")) }
+                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "paste_failed")) }
             }
         }
     }
@@ -1030,7 +1037,7 @@ class ExplorerViewModel(
     }
 
     fun dismissMessages() {
-        _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+        _uiState.update { it.copy(statusMessage = null, errorMessage = null, lastDownloadedPaths = emptyList()) }
     }
 }
 

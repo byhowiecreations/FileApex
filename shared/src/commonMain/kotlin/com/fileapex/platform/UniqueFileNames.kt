@@ -20,18 +20,24 @@ object UniqueFileNames {
         return resolveInDirectory(parent, fileName)
     }
 
-    fun resolveInDirectory(directory: String, fileName: String): String {
+    /** [reserved] holds paths already handed out in the same batch but not yet on disk. */
+    fun resolveInDirectory(directory: String, fileName: String, reserved: Set<String> = emptySet()): String {
+        fun isTaken(candidate: String) = candidate in reserved || SystemFileSystem.exists(Path(candidate))
         val preferred = PathUtils.join(directory, fileName)
-        if (!SystemFileSystem.exists(Path(preferred))) return preferred
+        if (!isTaken(preferred)) return preferred
+        var index = 1
+        while (true) {
+            val candidate = PathUtils.join(directory, numbered(fileName, index))
+            if (!isTaken(candidate)) return candidate
+            index++
+        }
+    }
+
+    fun numbered(fileName: String, index: Int): String {
         val dot = fileName.lastIndexOf('.')
         val base = if (dot > 0) fileName.substring(0, dot) else fileName
         val ext = if (dot > 0) fileName.substring(dot) else ""
-        var index = 1
-        while (true) {
-            val candidate = PathUtils.join(directory, "$base ($index)$ext")
-            if (!SystemFileSystem.exists(Path(candidate))) return candidate
-            index++
-        }
+        return "$base ($index)$ext"
     }
 
     fun matchesOriginalOrCollision(originalFileName: String, candidateName: String): Boolean {

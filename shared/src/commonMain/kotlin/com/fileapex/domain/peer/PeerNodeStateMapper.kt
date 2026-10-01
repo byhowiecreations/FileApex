@@ -23,6 +23,7 @@ object PeerNodeStateMapper {
 
     fun selfState(
         identity: LocalIdentity,
+        membershipVersion: Long,
         deviceName: String = LocalDeviceNameStore.current().ifBlank { identity.deviceName },
         pinRequired: Boolean = false,
         lastSeenTimestamp: Long = TimeUtils.now()
@@ -47,7 +48,12 @@ object PeerNodeStateMapper {
             publicKeyHash = DeviceIdentityMarkers.fingerprint(identity.deviceId),
             publicKey = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64(),
             pinRequired = pinRequired,
-            downloadsPath = defaultDownloadsDir()
+            downloadsPath = defaultDownloadsDir(),
+            clusterVersion = lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now(),
+            isRemoved = false,
+            removedAt = null,
+            membershipVersion = membershipVersion,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
         )
     }
 
@@ -62,6 +68,9 @@ object PeerNodeStateMapper {
             make = make,
             model = model
         )
+        val incomingVersion = state.clusterVersion
+        val existingVersion = existing?.clusterVersion ?: 0L
+        val version = if (incomingVersion > 0L) incomingVersion else existingVersion
         return PairedDeviceEntity(
             deviceId = deviceId,
             deviceName = name.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") },
@@ -70,7 +79,14 @@ object PeerNodeStateMapper {
             publicKeyHash = state.publicKeyHash.trim().ifBlank { existing?.publicKeyHash.orEmpty() },
             publicKey = state.publicKey.trim().ifBlank { existing?.publicKey.orEmpty() },
             e2eeEnabled = state.publicKey.trim().isNotEmpty() || existing?.e2eeEnabled == true,
-            rootPath = state.rootPath.ifBlank { existing?.rootPath?.ifBlank { "/" } ?: "/" },
+            rootPath = run {
+                val platformStr = state.platform.trim().ifBlank { existing?.platform.orEmpty() }
+                val isAndroid = platformStr.trim().equals("android", ignoreCase = true)
+                val defaultRoot = if (isAndroid) "/storage/emulated/0" else "/"
+                state.rootPath.trim().takeIf { it.isNotEmpty() && it != "/" }
+                    ?: existing?.rootPath?.trim()?.takeIf { it.isNotEmpty() && it != "/" }
+                    ?: defaultRoot
+            },
             clientVersion = state.resolvedClientVersion.ifBlank { existing?.clientVersion.orEmpty() },
             clientVersionCode = state.resolvedClientVersionCode.takeIf { it > 0 }
                 ?: existing?.clientVersionCode
@@ -82,9 +98,14 @@ object PeerNodeStateMapper {
             supportedProtocolsJson = encodeProtocols(
                 state.supportedProtocols.ifEmpty { PeerNodeProtocols.DEFAULT }
             ),
-            lastSeenEpochMs = state.lastSeenTimestamp.takeIf { it > 0L }
-                ?: existing?.lastSeenEpochMs
-                ?: 0L
+            lastSeenEpochMs = maxOf(
+                state.lastSeenTimestamp,
+                existing?.lastSeenEpochMs ?: 0L,
+                TimeUtils.now()
+            ),
+            clusterVersion = version,
+            isRemoved = state.isRemoved,
+            removedAt = state.removedAt ?: if (state.isRemoved) version else null
         )
     }
 
@@ -104,7 +125,12 @@ object PeerNodeStateMapper {
             lastSeenTimestamp = entity.lastSeenEpochMs,
             rootPath = entity.rootPath,
             publicKeyHash = entity.publicKeyHash,
-            publicKey = entity.publicKey
+            publicKey = entity.publicKey,
+            clusterVersion = entity.clusterVersion,
+            isRemoved = entity.isRemoved,
+            removedAt = entity.removedAt,
+            membershipVersion = entity.clusterVersion,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
         )
     }
 

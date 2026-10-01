@@ -8,7 +8,9 @@ public typealias FileApexUploadProgressCallback = @convention(c) (Int64, Int64) 
 /// local-network policy daemon. Java BSD sockets are blocked in that context.
 enum LanHttpClient {
     private static let queue = DispatchQueue(label: "com.fileapex.lan-http", attributes: .concurrent)
-    private static let slots = DispatchSemaphore(value: 6)
+    private static let generalSlots = DispatchSemaphore(value: 8)
+    // Matches TransferRuntime.TOTAL_STREAM_BUDGET so parallel ranges are not serialized here.
+    private static let transferSlots = DispatchSemaphore(value: 8)
     private static let streamBufferBytes = 256 * 1024
 
     static func execute(
@@ -38,7 +40,7 @@ enum LanHttpClient {
             request.append(body)
         }
         log("\(method) \(target.host):\(target.port)\(target.path)")
-        return transact(target: target, request: request, timeoutMs: timeoutMs)
+        return transact(target: target, request: request, timeoutMs: timeoutMs, isTransfer: false)
     }
 
     static func uploadFile(
@@ -46,6 +48,7 @@ enum LanHttpClient {
         contentType: String?,
         filePath: String,
         offsetBytes: UInt64,
+        lengthBytes: UInt64? = nil,
         timeoutMs: Int,
         progress: FileApexUploadProgressCallback? = nil
     ) -> (status: Int, body: Data)? {
@@ -64,8 +67,9 @@ enum LanHttpClient {
                 log("upload offset \(offsetBytes) past size \(end)")
                 return nil
             }
-            totalBytes = end
-            remaining = end - offsetBytes
+            let toEnd = end - offsetBytes
+            remaining = lengthBytes.map { min($0, toEnd) } ?? toEnd
+            totalBytes = offsetBytes + remaining
             try handle.seek(toOffset: offsetBytes)
         } catch {
             log("upload seek failed \(error.localizedDescription)")
@@ -81,6 +85,7 @@ enum LanHttpClient {
             target: target,
             request: Data(header.utf8),
             timeoutMs: timeoutMs,
+            isTransfer: true,
             extraSender: { connection, done in
                 sendFile(
                     handle,
@@ -139,11 +144,13 @@ enum LanHttpClient {
         target: Target,
         request: Data,
         timeoutMs: Int,
+        isTransfer: Bool = false,
         extraSender: ((NWConnection, @escaping (Bool) -> Void) -> Void)? = nil
     ) -> (status: Int, body: Data)? {
         guard let port = NWEndpoint.Port(rawValue: target.port) else { return nil }
-        slots.wait()
-        defer { slots.signal() }
+        let sem = isTransfer ? transferSlots : generalSlots
+        sem.wait()
+        defer { sem.signal() }
         let host: NWEndpoint.Host = IPv4Address(target.host).map { .ipv4($0) } ?? NWEndpoint.Host(target.host)
         let connection = NWConnection(
             to: .hostPort(host: host, port: port),
@@ -303,6 +310,7 @@ enum LanHttpClient {
         completion: @escaping (Bool) -> Void
     ) {
         var bytesSent = offsetBytes
+        var nextReadOffset = offsetBytes
         let lock = NSLock()
         var hasFailed = false
         var activeSends = 0
@@ -315,7 +323,11 @@ enum LanHttpClient {
             while !hasFailed && !isEof && activeSends < maxInFlight {
                 let chunk: Data
                 do {
-                    chunk = try handle.read(upToCount: streamBufferBytes) ?? Data()
+                    // totalBytes is the range end, so ranged uploads stop at their boundary.
+                    let left = totalBytes > nextReadOffset ? totalBytes - nextReadOffset : 0
+                    let want = Int(min(UInt64(streamBufferBytes), left))
+                    chunk = want > 0 ? (try handle.read(upToCount: want) ?? Data()) : Data()
+                    nextReadOffset += UInt64(chunk.count)
                 } catch {
                     hasFailed = true
                     log("upload read failed \(error.localizedDescription)")
@@ -379,8 +391,8 @@ enum LanHttpClient {
         timeoutMs: Int
     ) -> Int? {
         guard let port = NWEndpoint.Port(rawValue: target.port) else { return nil }
-        slots.wait()
-        defer { slots.signal() }
+        transferSlots.wait()
+        defer { transferSlots.signal() }
         let host: NWEndpoint.Host = IPv4Address(target.host).map { .ipv4($0) } ?? NWEndpoint.Host(target.host)
         let connection = NWConnection(
             to: .hostPort(host: host, port: port),
@@ -818,6 +830,36 @@ public func fileapex_lan_http_upload_file(
         contentType: contentType.map { String(cString: $0) },
         filePath: String(cString: filePath),
         offsetBytes: offset,
+        timeoutMs: Int(timeoutMs),
+        progress: progress
+    ) else {
+        return -1
+    }
+    writeHttpResult(result.status, result.body, outStatus, outBody, outBodyLen)
+    return 0
+}
+
+@_cdecl("fileapex_lan_http_upload_file_range")
+public func fileapex_lan_http_upload_file_range(
+    url: UnsafePointer<CChar>?,
+    contentType: UnsafePointer<CChar>?,
+    filePath: UnsafePointer<CChar>?,
+    offsetBytes: Int64,
+    lengthBytes: Int64,
+    timeoutMs: Int32,
+    progress: FileApexUploadProgressCallback?,
+    outStatus: UnsafeMutablePointer<Int32>?,
+    outBody: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
+    outBodyLen: UnsafeMutablePointer<Int32>?
+) -> Int32 {
+    guard let url, let filePath, lengthBytes >= 0 else { return -1 }
+    let offset = offsetBytes > 0 ? UInt64(offsetBytes) : 0
+    guard let result = LanHttpClient.uploadFile(
+        urlString: String(cString: url),
+        contentType: contentType.map { String(cString: $0) },
+        filePath: String(cString: filePath),
+        offsetBytes: offset,
+        lengthBytes: UInt64(lengthBytes),
         timeoutMs: Int(timeoutMs),
         progress: progress
     ) else {

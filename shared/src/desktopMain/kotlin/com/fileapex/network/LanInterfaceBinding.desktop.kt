@@ -2,6 +2,7 @@ package com.fileapex.network
 
 import com.fileapex.platform.DesktopMacTrayBridge
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.util.NetworkUtils
 import java.io.File
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -159,7 +160,7 @@ actual suspend fun peerHttpUploadFromChannel(
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
     contentLength: Long?
-): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         val tmp = File.createTempFile("fileapex-up-", ".bin")
         try {
@@ -206,13 +207,14 @@ actual suspend fun peerHttpUploadFromFile(
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
     onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
-): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         return@withContext DesktopMacTrayBridge.lanHttpUploadFile(
             url = macLanUrl(host, port, pathWithQuery),
             contentType = contentType,
             filePath = sourcePath,
             offsetBytes = offset,
+            lengthBytes = length,
             timeoutMs = uploadIdleTimeoutMs,
             onProgress = onProgress
         )
@@ -249,7 +251,7 @@ actual suspend fun peerHttpGetStreaming(
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray, Int) -> Unit,
     onStatus: ((Int) -> Unit)?
-): PeerBoundStreamResult? = withContext(Dispatchers.IO) {
+): PeerBoundStreamResult? = withContext(TransferRuntime.outbound) {
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         return@withContext macNativeDownload(
             host = host,
@@ -353,6 +355,7 @@ private fun executeBoundHttp(
         if (response != null && response.statusCode > 0) {
             return response
         }
+        if (!NetworkUtils.shouldTryNextBindCandidate(localIp, host)) break
     }
     return null
 }

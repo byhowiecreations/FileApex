@@ -15,6 +15,7 @@ import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.platform.isWebUrl
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,7 +43,7 @@ object ClipboardShareCoordinator {
         if (started) return
         started = true
         ClipboardPushDeduper.beginInitialization()
-        val initialText = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+        val initialText = cancellableCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
         if (!initialText.isNullOrBlank()) {
             ClipboardPushDeduper.remember(initialText)
         }
@@ -128,7 +129,7 @@ object ClipboardShareCoordinator {
         scope.launch {
             ClipboardChangeMonitor.onAppForegrounded()
             if (ClipboardPushDeduper.isInitializing) {
-                val initClip = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+                val initClip = cancellableCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
                 if (!initClip.isNullOrBlank()) {
                     ClipboardPushDeduper.remember(initClip)
                 }
@@ -146,7 +147,7 @@ object ClipboardShareCoordinator {
         ClipboardChangeMonitor.onWindowFocusChanged(hasFocus)
         if (!hasFocus || currentPlatformLabel() != "Android") return
         if (ClipboardPushDeduper.isInitializing) {
-            val initClip = runCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
+            val initClip = cancellableCatching { PlatformClipboard.getSystemClipboardText() }.getOrNull()
             if (!initClip.isNullOrBlank()) {
                 ClipboardPushDeduper.remember(initClip)
             }
@@ -309,7 +310,7 @@ object ClipboardShareCoordinator {
         if (!settings.clipboardViaCellularEnabled.value) return
         if (currentPlatformLabel() != "Android") return
         val capturedAt = capturedAtEpochMs?.toLongOrNull() ?: 0L
-        runCatching {
+        cancellableCatching {
             applyInbound(
                 senderDeviceId = senderDeviceId,
                 senderDeviceName = senderDeviceName,
@@ -387,7 +388,7 @@ object ClipboardShareCoordinator {
         var optInMessage: String? = null
         for (deviceId in remaining) {
             val device = FileApexServices.deviceRepository.getDevice(deviceId) ?: continue
-            val (delivered, error) = runCatching {
+            val (delivered, error) = cancellableCatching {
                 deliverToDeviceWithDetail(device, snapshot.text, snapshot.capturedAtEpochMs)
             }.getOrElse { Pair(false, it) }
             if (delivered) {
@@ -468,14 +469,14 @@ object ClipboardShareCoordinator {
             localBindIps = NetworkUtils.lanBindCandidates()
         )
         if (lanOk) {
-            val statusResult = runCatching {
+            val statusResult = cancellableCatching {
                 FileApexServices.client.getClipboardStatus(device.lastKnownIp, device.port)
             }
             if (statusResult.isSuccess) {
                 val status = statusResult.getOrThrow()
                 if (!status.sharingEnabled) {
                     val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
-                    runCatching {
+                    cancellableCatching {
                         FileApexServices.client.requestClipboardOptIn(
                             host = device.lastKnownIp,
                             port = device.port,
@@ -486,7 +487,7 @@ object ClipboardShareCoordinator {
                     }
                     val settings = FileApexServices.settings
                     if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
-                        runCatching {
+                        cancellableCatching {
                             FcmWakeCoordinator.dispatchClipboardOptIn(
                                 targetDeviceId = device.deviceId,
                                 senderDeviceName = identity.deviceName,
@@ -498,7 +499,7 @@ object ClipboardShareCoordinator {
                     return Pair(false, IllegalStateException(msg))
                 }
             }
-            val lanResult = runCatching {
+            val lanResult = cancellableCatching {
                 FileApexServices.client.sendClipboard(
                     host = device.lastKnownIp,
                     port = device.port,
@@ -512,7 +513,7 @@ object ClipboardShareCoordinator {
                 lastError = error
                 if (error.message?.contains("clipboard_disabled") == true) {
                     val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
-                    runCatching {
+                    cancellableCatching {
                         FileApexServices.client.requestClipboardOptIn(
                             host = device.lastKnownIp,
                             port = device.port,
@@ -523,7 +524,7 @@ object ClipboardShareCoordinator {
                     }
                     val settings = FileApexServices.settings
                     if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
-                        runCatching {
+                        cancellableCatching {
                             FcmWakeCoordinator.dispatchClipboardOptIn(
                                 targetDeviceId = device.deviceId,
                                 senderDeviceName = identity.deviceName,
@@ -568,12 +569,12 @@ object ClipboardShareCoordinator {
         val cloud = GoogleLinkCoordinator.cloudRecordFor(device.deviceId)
             ?.clipboardPublicKey.orEmpty().trim()
         if (cloud.isNotEmpty()) return cloud
-        val live = runCatching {
+        val live = cancellableCatching {
             FileApexServices.client.fetchPeerNodeState(device.lastKnownIp, device.port)
         }.getOrNull() ?: return ""
         val key = live.publicKey.trim()
         if (key.isNotEmpty()) {
-            runCatching {
+            cancellableCatching {
                 FileApexServices.deviceRepository.applyPeerNodeState(live, device.deviceId)
             }
         }
@@ -591,7 +592,7 @@ object ClipboardShareCoordinator {
     }
 
     private suspend fun publishClipboardPublicKey() {
-        runCatching {
+        cancellableCatching {
             GoogleLinkCoordinator.publishClipboardPublicKey(ClipboardE2ee.publicKeyBase64())
         }
     }

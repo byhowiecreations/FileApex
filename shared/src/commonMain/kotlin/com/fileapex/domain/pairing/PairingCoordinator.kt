@@ -1,16 +1,26 @@
 package com.fileapex.domain.pairing
 
+import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.peer.PeerNodeState
+import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.network.FileApexClient
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Coordinates one-time pairing/rename/removal deltas and local-only metadata broadcasts.
@@ -24,6 +34,8 @@ class PairingCoordinator(
     private val identityProvider: () -> LocalIdentity,
     private val onPassiveReachability: suspend (deviceIds: List<String>, epochMs: Long) -> Unit = { _, _ -> }
 ) {
+    private val forwardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /**
      * Broadcaster path: inbound POST /pairing/respond from a scanner (persist only).
      * [propagatePairingComplete] runs after the HTTP 201 so the scanner can receive merge packets.
@@ -61,44 +73,97 @@ class PairingCoordinator(
     suspend fun mergeIncoming(request: ClusterSyncRequest) {
         val localId = identityProvider().deviceId
         for (record in request.removedDevices) {
-            if (record.deviceId.isBlank() || record.deviceId == localId) {
+            if (record.deviceId.isBlank()) {
                 continue
             }
-            runCatching { repository.applyRemoteRemoval(record) }
-                .onFailure { error ->
-                    println(
-                        "PairingCoordinator: remote removal failed for ${record.deviceId} - ${error.message}"
-                    )
-                }
+            if (record.deviceId == localId) {
+                if (handleSelfRemoval(record)) return
+                continue
+            }
+            handlePeerRemoval(record, forward = false)
         }
         for (state in request.nodeStates) {
-            if (state.deviceId.isBlank() || state.deviceId == localId) {
+            if (state.deviceId.isBlank()) {
                 continue
             }
-            if (request.eventKind == PeerSyncEventKind.PAIRING_INTRO) {
-                runCatching {
-                    val entity = PeerNodeStateMapper.toEntity(state)
-                    if (repository.isBlocklisted(entity)) {
-                        return@runCatching
-                    }
-                    repository.adoptFromPairing(entity)
+            if (state.deviceId == localId) {
+                if (request.eventKind == PeerSyncEventKind.PAIRING_INTRO && state.hasMembershipProtocol) {
+                    repository.recordSelfMembership(state.membershipVersion)
+                }
+                continue
+            }
+            val applied = try {
+                repository.applyPeerNodeState(state)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                println("PairingCoordinator: node state apply failed for ${state.deviceId} - ${error.message}")
+                false
+            }
+            if (applied && request.eventKind == PeerSyncEventKind.PAIRING_INTRO) {
+                repository.getDevice(state.deviceId.trim())?.let { entity ->
                     FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(entity)
-                }.onFailure { error ->
-                    println(
-                        "PairingCoordinator: pairing intro adopt failed for ${state.deviceId} - ${error.message}"
-                    )
                 }
             }
-            runCatching { repository.applyPeerNodeState(state) }
-                .onSuccess {
-                    val epochMs = state.lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now()
-                    onPassiveReachability(listOf(state.deviceId.trim()), epochMs)
-                }
-                .onFailure { error ->
-                    println(
-                        "PairingCoordinator: node state apply failed for ${state.deviceId} - ${error.message}"
-                    )
-                }
+            val epochMs = state.lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now()
+            onPassiveReachability(listOf(state.deviceId.trim()), epochMs)
+        }
+    }
+
+    /**
+     * Removal of another peer. Forwarded to the rest of the roster only when it changed local
+     * state, so echoes stop after one hop.
+     */
+    suspend fun handlePeerRemoval(record: RemovedDeviceRecord, forward: Boolean): Boolean {
+        val applied = try {
+            repository.applyRemoteRemoval(record)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            println("PairingCoordinator: remote removal failed for ${record.deviceId} - ${error.message}")
+            false
+        }
+        if (!applied) return false
+        com.fileapex.session.DeviceSessionManager.clearSession(record.deviceId)
+        FileApexServices.presenceMonitor.refreshOnlineSnapshot()
+        forwardScope.launch {
+            GoogleLinkCoordinator.publishRemovedPeer(record.deviceId)
+        }
+        if (forward) {
+            forwardScope.launch {
+                broadcastRemovalToCluster(record)
+            }
+        }
+        return true
+    }
+
+    /** Wipes the local cluster only for a removal stamped after this node's latest pairing. */
+    suspend fun handleSelfRemoval(record: RemovedDeviceRecord): Boolean {
+        if (!repository.acceptsSelfRemoval(record)) {
+            println(
+                "PairingCoordinator: ignored self removal v=${record.membershipVersion()} " +
+                    "protocol=${record.membershipProtocol} (membership v=${repository.selfMembershipVersion()})"
+            )
+            return false
+        }
+        repository.handleRevocationByCluster()
+        com.fileapex.session.DeviceSessionManager.clearAllSessions()
+        FileApexServices.presenceMonitor.refreshOnlineSnapshot()
+        return true
+    }
+
+    /** Rows a peer returned from cluster sync; may only add or refresh active peers. */
+    private suspend fun reconcileReturnedRoster(roster: List<PairedDeviceEntity>) {
+        val me = identityProvider().deviceId
+        for (remote in roster) {
+            if (remote.deviceId.isBlank() || remote.deviceId == me) continue
+            try {
+                repository.reconcileRemotePeer(remote)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                println("PairingCoordinator: roster reconcile failed for ${remote.deviceId} - ${error.message}")
+            }
         }
     }
 
@@ -112,56 +177,122 @@ class PairingCoordinator(
         }
         val selfState = selfNodeState()
         val peers = repository.listDevices()
-        for (peer in peers) {
-            val host = peer.lastKnownIp.trim()
-            if (!NetworkUtils.isUsableLanIpv4(host)) {
-                continue
-            }
-            runCatching {
-                client.postClusterSync(
-                    host = peer.lastKnownIp,
-                    port = peer.port,
-                    request = ClusterSyncRequest(
-                        eventKind = PeerSyncEventKind.SELF_METADATA,
-                        nodeStates = listOf(selfState)
-                    )
-                )
-            }.onFailure { error ->
-                println(
-                    "PairingCoordinator: failed to broadcast self metadata to " +
-                        "${peer.deviceName}: ${error.message}"
-                )
-            }
+        coroutineScope {
+            peers.map { peer ->
+                async(Dispatchers.IO) {
+                    val host = peer.lastKnownIp.trim()
+                    if (!NetworkUtils.isUsableLanIpv4(host)) {
+                        return@async
+                    }
+                    runCatching {
+                        val returnedRoster = client.postClusterSync(
+                            host = peer.lastKnownIp,
+                            port = peer.port,
+                            request = ClusterSyncRequest(
+                                eventKind = PeerSyncEventKind.SELF_METADATA,
+                                nodeStates = listOf(selfState),
+                                clusterVersion = selfState.clusterVersion
+                            )
+                        )
+                        reconcileReturnedRoster(returnedRoster)
+                    }.onFailure { error ->
+                        println(
+                            "PairingCoordinator: failed to broadcast self metadata to " +
+                                "${peer.deviceName}: ${error.message}"
+                        )
+                    }
+                }
+            }.awaitAll()
         }
     }
 
     /**
-     * Fan-out a permanent removal to every remaining paired peer so they blocklist and drop it.
+     * Fan-out a permanent removal:
+     * 1. Priority direct removal notification to the removed device if reachable on LAN.
+     * 2. Parallel tombstone broadcast to every remaining paired peer.
      */
     suspend fun broadcastDeviceRemoval(removed: PairedDeviceEntity) {
+        val entry = repository.getDeviceEntry(removed.deviceId)
+        val clusterVersion = entry?.takeIf { it.isRemoved }?.let { maxOf(it.clusterVersion, it.removedAt ?: 0L) }
+            ?.takeIf { it > 0L }
+            ?: run {
+                println("PairingCoordinator: skip removal broadcast for ${removed.deviceId} - no local tombstone")
+                return
+            }
         val removal = RemovedDeviceRecord(
             deviceId = removed.deviceId,
             publicKeyHash = removed.publicKeyHash,
             lastKnownIp = removed.lastKnownIp,
-            port = removed.port
+            port = removed.port,
+            clusterVersion = clusterVersion,
+            removedAt = clusterVersion,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
         )
-        val peers = repository.listDevices().filter { it.deviceId != removed.deviceId }
-        for (peer in peers) {
+
+        val targetHost = removed.lastKnownIp.trim()
+        if (NetworkUtils.isUsableLanIpv4(targetHost)) {
             runCatching {
-                client.postClusterSync(
-                    host = peer.lastKnownIp,
-                    port = peer.port,
-                    request = ClusterSyncRequest(
-                        eventKind = PeerSyncEventKind.REMOVAL,
-                        removedDevices = listOf(removal)
-                    )
-                )
+                client.postClusterRemove(targetHost, removed.port, removal)
             }.onFailure { error ->
                 println(
-                    "PairingCoordinator: failed to broadcast removal of " +
-                        "${removed.deviceName} to ${peer.deviceName}: ${error.message}"
+                    "PairingCoordinator: direct priority removal notification to " +
+                        "${removed.deviceName} failed - ${error.message}"
                 )
             }
+        }
+
+        val peers = repository.listDevices().filter { it.deviceId != removed.deviceId }
+        coroutineScope {
+            peers.map { peer ->
+                async(Dispatchers.IO) {
+                    val peerHost = peer.lastKnownIp.trim()
+                    if (!NetworkUtils.isUsableLanIpv4(peerHost)) return@async
+                    runCatching {
+                        val returnedRoster = client.postClusterSync(
+                            host = peerHost,
+                            port = peer.port,
+                            request = ClusterSyncRequest(
+                                eventKind = PeerSyncEventKind.REMOVAL,
+                                removedDevices = listOf(removal),
+                                clusterVersion = clusterVersion
+                            )
+                        )
+                        reconcileReturnedRoster(returnedRoster)
+                    }.onFailure { error ->
+                        println(
+                            "PairingCoordinator: failed to broadcast removal of " +
+                                "${removed.deviceName} to ${peer.deviceName}: ${error.message}"
+                        )
+                    }
+                }
+            }.awaitAll()
+        }
+    }
+
+    /**
+     * Re-broadcasts an incoming peer removal to all other peers in the local roster.
+     */
+    suspend fun broadcastRemovalToCluster(removal: RemovedDeviceRecord) {
+        val me = identityProvider().deviceId
+        val peers = repository.listDevices().filter { it.deviceId != removal.deviceId && it.deviceId != me }
+        coroutineScope {
+            peers.map { peer ->
+                async(Dispatchers.IO) {
+                    val peerHost = peer.lastKnownIp.trim()
+                    if (!NetworkUtils.isUsableLanIpv4(peerHost)) return@async
+                    runCatching {
+                        client.postClusterSync(
+                            host = peerHost,
+                            port = peer.port,
+                            request = ClusterSyncRequest(
+                                eventKind = PeerSyncEventKind.REMOVAL,
+                                removedDevices = listOf(removal),
+                                clusterVersion = removal.clusterVersion
+                            )
+                        )
+                    }
+                }
+            }.awaitAll()
         }
     }
 
@@ -178,23 +309,27 @@ class PairingCoordinator(
         val peers = repository.listDevices().filter { peer ->
             peer.deviceId != localId && peer.deviceId !in excludeDeviceIds
         }
-        for (peer in peers) {
-            val host = peer.lastKnownIp.trim()
-            if (!NetworkUtils.isUsableLanIpv4(host)) continue
-            runCatching {
-                client.postClusterSync(
-                    host = host,
-                    port = peer.port,
-                    request = ClusterSyncRequest(
-                        eventKind = PeerSyncEventKind.PAIRING_INTRO,
-                        nodeStates = listOf(selfState)
-                    )
-                )
-            }.onFailure { error ->
-                println(
-                    "PairingCoordinator: failed self announce to ${peer.deviceName}: ${error.message}"
-                )
-            }
+        coroutineScope {
+            peers.map { peer ->
+                async(Dispatchers.IO) {
+                    val host = peer.lastKnownIp.trim()
+                    if (!NetworkUtils.isUsableLanIpv4(host)) return@async
+                    runCatching {
+                        client.postClusterSync(
+                            host = host,
+                            port = peer.port,
+                            request = ClusterSyncRequest(
+                                eventKind = PeerSyncEventKind.PAIRING_INTRO,
+                                nodeStates = listOf(selfState)
+                            )
+                        )
+                    }.onFailure { error ->
+                        println(
+                            "PairingCoordinator: failed self announce to ${peer.deviceName}: ${error.message}"
+                        )
+                    }
+                }
+            }.awaitAll()
         }
     }
 
@@ -270,7 +405,7 @@ class PairingCoordinator(
         for (device in remoteDevices) {
             val deviceId = device.deviceId.trim()
             if (deviceId.isEmpty() || deviceId == localId || deviceId in excludeDeviceIds) continue
-            val adopted = runCatching { repository.adoptFromPairing(device) }
+            val adopted = runCatching { repository.adoptFromRosterIntro(device) }
                 .onFailure { error ->
                     println(
                         "PairingCoordinator: roster adopt failed for ${device.deviceName} - ${error.message}"
@@ -300,62 +435,81 @@ class PairingCoordinator(
      */
     private suspend fun broadcastPairingCompleteOnce(newlyPaired: PairedDeviceEntity) {
         val me = identityProvider()
-        val selfState = selfNodeState()
-        val newPeerState = resolvePeerState(newlyPaired)
+        val pairingVersion = repository.nextMembershipVersion()
+        repository.adoptFromPairing(newlyPaired, version = pairingVersion)
+        repository.recordSelfMembership(pairingVersion)
+        val updatedNewcomer = repository.getDevice(newlyPaired.deviceId)
+            ?: newlyPaired.copy(clusterVersion = pairingVersion, isRemoved = false, removedAt = null)
+
+        val selfState = selfNodeState().copy(clusterVersion = pairingVersion)
+        val newPeerState = PeerNodeStateMapper.fromEntity(updatedNewcomer).copy(
+            clusterVersion = pairingVersion,
+            membershipVersion = maxOf(pairingVersion, updatedNewcomer.clusterVersion)
+        )
 
         val existing = repository.listDevices()
             .filter { it.deviceId != newlyPaired.deviceId && it.deviceId != me.deviceId }
+
+        // 1. Announce the newcomer to all existing cluster peers FIRST with the new clusterVersion
+        // so their tombstones are cleared before the newcomer starts communicating with them.
+        if (existing.isNotEmpty()) {
+            coroutineScope {
+                existing.map { peer ->
+                    async(Dispatchers.IO) {
+                        runCatching {
+                            withTimeoutOrNull(3000L) {
+                                val returnedRoster = client.postClusterSync(
+                                    host = peer.lastKnownIp,
+                                    port = peer.port,
+                                    request = ClusterSyncRequest(
+                                        eventKind = PeerSyncEventKind.PAIRING_INTRO,
+                                        nodeStates = listOf(newPeerState),
+                                        clusterVersion = pairingVersion
+                                    )
+                                )
+                                reconcileReturnedRoster(returnedRoster)
+                            }
+                        }.onFailure { error ->
+                            println(
+                                "PairingCoordinator: failed pairing intro for ${newlyPaired.deviceName} " +
+                                    "to ${peer.deviceName}: ${error.message}"
+                            )
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
+
+        // 2. Seed the newcomer with every cluster device, plus its own stamp so its revocation-gate
+        // version outranks any tombstone peers still hold from before this pairing.
         val rosterForNewcomer = buildList {
             add(selfState)
-            existing.forEach { peer -> add(resolvePeerState(peer)) }
+            add(newPeerState)
+            existing.forEach { peer -> add(PeerNodeStateMapper.fromEntity(peer)) }
         }
+        val tombstones = repository.getTombstoneRecords().filter { it.deviceId != newlyPaired.deviceId }
         runCatching {
-            client.postClusterSync(
+            val returnedRoster = client.postClusterSync(
                 host = newlyPaired.lastKnownIp,
                 port = newlyPaired.port,
                 request = ClusterSyncRequest(
                     eventKind = PeerSyncEventKind.PAIRING_INTRO,
-                    nodeStates = rosterForNewcomer
+                    nodeStates = rosterForNewcomer,
+                    removedDevices = tombstones,
+                    clusterVersion = pairingVersion
                 )
             )
+            reconcileReturnedRoster(returnedRoster)
         }.onFailure { error ->
             println(
                 "PairingCoordinator: failed roster seed to ${newlyPaired.deviceName}: ${error.message}"
             )
         }
-
-        for (peer in existing) {
-            runCatching {
-                client.postClusterSync(
-                    host = peer.lastKnownIp,
-                    port = peer.port,
-                    request = ClusterSyncRequest(
-                        eventKind = PeerSyncEventKind.PAIRING_INTRO,
-                        nodeStates = listOf(newPeerState)
-                    )
-                )
-            }.onFailure { error ->
-                println(
-                    "PairingCoordinator: failed pairing intro for ${newlyPaired.deviceName} " +
-                        "to ${peer.deviceName}: ${error.message}"
-                )
-            }
-        }
-    }
-
-    private suspend fun resolvePeerState(peer: PairedDeviceEntity): PeerNodeState {
-        val host = peer.lastKnownIp.trim()
-        if (host.isNotEmpty()) {
-            runCatching { client.fetchPeerNodeState(host, peer.port) }.getOrNull()?.let { state ->
-                val resolvedIp = state.resolvedIpAddress.ifBlank { host }
-                return if (resolvedIp == state.ipAddress) state else state.copy(ipAddress = resolvedIp)
-            }
-        }
-        return PeerNodeStateMapper.fromEntity(peer)
     }
 
     private fun selfNodeState() = PeerNodeStateMapper.selfState(
         identity = identityProvider(),
+        membershipVersion = repository.selfMembershipVersion(),
         pinRequired = FileApexServices.settings.pinRequiredEnabled.value
     )
 

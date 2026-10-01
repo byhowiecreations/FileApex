@@ -13,6 +13,7 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.QueuedSourceSnapshot
 import com.fileapex.data.db.QueuedTransferSourceKind
 import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
@@ -20,13 +21,22 @@ import com.fileapex.domain.presence.PeerPresenceMonitor
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
+import com.fileapex.network.TransferCancelledException
 import com.fileapex.util.TimeUtils
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -45,7 +55,8 @@ data class PendingTransferItem(
     val pendingDeviceNames: List<String>,
     val sourceSummary: String,
     val lastError: String?,
-    val isSending: Boolean = false
+    val isSending: Boolean = false,
+    val isPaused: Boolean = false
 )
 
 /**
@@ -82,6 +93,8 @@ class TransferQueueCoordinator(
     private val drainMutex = Mutex()
     private var drainWatcherStarted = false
     private var pendingDrainJob: Job? = null
+    private val sendingJobs = ConcurrentHashMap<String, Job>()
+    private val removalRequested = ConcurrentHashMap.newKeySet<String>()
 
     val pendingItems: Flow<List<PendingTransferItem>> =
         dao.observeAll().map { rows -> rows.mapNotNull { it.toUiItem() } }
@@ -96,7 +109,14 @@ class TransferQueueCoordinator(
             presenceMonitor.reachabilityEpochMs.collect { requestDrain() }
         }
         scope.launch {
-            presenceMonitor.onlineSnapshotEpochMs.collect { requestDrain() }
+            presenceMonitor.onlineDeviceIds.collect { requestDrain() }
+        }
+        scope.launch {
+            TransferActivityGuard.statsFlow
+                .map { it.isActive }
+                .distinctUntilChanged()
+                .filter { active -> !active }
+                .collect { requestDrain() }
         }
     }
 
@@ -135,9 +155,16 @@ class TransferQueueCoordinator(
         val (routable, blocked) = partitionByLanReachability(remoteDevices)
         val sendNow = localDevices + routable
         val batch = if (sendNow.isNotEmpty()) {
-            runCatching {
+            try {
                 transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = true)
-            }.getOrNull()
+            } catch (cancelled: TransferCancelledException) {
+                throw cancelled
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                println("TransferQueue: immediate send failed, queueing - ${error.message}")
+                null
+            }
         } else {
             null
         }
@@ -182,9 +209,36 @@ class TransferQueueCoordinator(
         )
     }
 
+    /** A row that is sending is cancelled first; its staging files are deleted once the send unwinds. */
     suspend fun remove(id: String) {
         val entity = dao.getById(id) ?: return
+        val job = sendingJobs[id]
+        if (job != null) {
+            removalRequested += id
+            job.cancel()
+            return
+        }
         deleteQueueItem(entity)
+    }
+
+    fun cancelSending(id: String): Boolean {
+        val job = sendingJobs[id] ?: return false
+        job.cancel()
+        return true
+    }
+
+    /** Re-queues a paused or failed row and drains immediately, skipping the retry backoff. */
+    suspend fun retryNow(id: String) {
+        val entity = dao.getById(id) ?: return
+        if (entity.status == PendingTransferStatus.Sending.name) return
+        dao.upsert(
+            entity.copy(
+                status = PendingTransferStatus.Queued.name,
+                lastError = null,
+                lastAttemptEpochMs = 0L
+            )
+        )
+        scheduleDrain()
     }
 
     suspend fun drainEligible() {
@@ -296,14 +350,22 @@ class TransferQueueCoordinator(
             }
         }
 
+        var userCancelled = false
         if (routableTargets.isNotEmpty()) {
-            val batch = runCatching {
-                transferManager.sendToDevices(
-                    sources,
-                    routableTargets.map { it.second },
-                    skipTransferPrepare = false
-                )
-            }.getOrElse { error ->
+            val batch = try {
+                sendTracked(entity.id) {
+                    transferManager.sendToDevices(
+                        sources,
+                        routableTargets.map { it.second },
+                        skipTransferPrepare = false
+                    )
+                }
+            } catch (cancelled: TransferCancelledException) {
+                userCancelled = true
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
                 lastError = error.message
                 null
             }
@@ -320,11 +382,24 @@ class TransferQueueCoordinator(
         }
 
         val stillPending = pendingIds.filter { it !in delivered }
-        if (stillPending.isEmpty()) {
+        if (stillPending.isEmpty() || removalRequested.remove(entity.id)) {
             deleteQueueItem(entity)
             return
         }
         val names = deviceNames(stillPending)
+        if (userCancelled) {
+            dao.upsert(
+                entity.copy(
+                    status = PendingTransferStatus.Paused.name,
+                    pendingDeviceIdsJson = json.encodeToString(stillPending),
+                    displayLabel = buildDisplayLabel(sourceSummaryFromEntity(entity), names),
+                    lastError = USER_CANCELLED,
+                    lastAttemptEpochMs = now,
+                    attemptCount = entity.attemptCount + 1
+                )
+            )
+            return
+        }
         dao.upsert(
             entity.copy(
                 status = PendingTransferStatus.Queued.name,
@@ -340,6 +415,19 @@ class TransferQueueCoordinator(
                 delay(DRAIN_RETRY_BACKOFF_MS)
                 scheduleDrain()
             }
+        }
+    }
+
+    private suspend fun <T> sendTracked(id: String, block: suspend () -> T): T = coroutineScope {
+        val work = async { block() }
+        sendingJobs[id] = work
+        try {
+            work.await()
+        } catch (cancelled: CancellationException) {
+            if (work.isCancelled && currentCoroutineContext().isActive) throw TransferCancelledException()
+            throw cancelled
+        } finally {
+            sendingJobs.remove(id, work)
         }
     }
 
@@ -555,9 +643,7 @@ class TransferQueueCoordinator(
     private fun PendingTransferEntity.toUiItem(): PendingTransferItem? {
         val statusEnum = runCatching { PendingTransferStatus.valueOf(status) }.getOrNull()
             ?: return null
-        if (statusEnum != PendingTransferStatus.Queued && statusEnum != PendingTransferStatus.Sending) {
-            return null
-        }
+
         val pendingIds = decodeDeviceIds(pendingDeviceIdsJson)
         val targetLabel = displayLabel.substringAfter(" → ", "devices")
         return PendingTransferItem(
@@ -568,7 +654,8 @@ class TransferQueueCoordinator(
             pendingDeviceNames = listOf(targetLabel),
             sourceSummary = sourceSummaryFromEntity(this),
             lastError = localizeQueueError(lastError),
-            isSending = statusEnum == PendingTransferStatus.Sending
+            isSending = statusEnum == PendingTransferStatus.Sending,
+            isPaused = statusEnum == PendingTransferStatus.Paused
         )
     }
 
@@ -719,6 +806,7 @@ class TransferQueueCoordinator(
         private const val DRAIN_TRIGGER_DEBOUNCE_MS = 750L
         private const val DRAIN_RETRY_BACKOFF_MS = 30_000L
         private const val WAITING_DRIVE_GRANT = "waiting_drive_grant"
+        private const val USER_CANCELLED = "user_cancelled"
         private const val WAITING_DRIVE_GRANT_LEGACY = "Waiting for Google Drive grant"
 
         private fun isWaitingDriveGrant(error: String?): Boolean =
@@ -727,13 +815,14 @@ class TransferQueueCoordinator(
         private fun localizeQueueError(raw: String?): String? = when {
             raw.isNullOrEmpty() -> raw
             isWaitingDriveGrant(raw) -> AppI18n.t("waiting_drive_grant")
+            raw == USER_CANCELLED -> AppI18n.t("transfer_cancelled")
             raw == "Drive relay did not finish" -> AppI18n.t("drive_relay_did_not_finish")
             raw == "Nothing to send — empty folder or missing files" ||
                 raw == "Nothing to send" -> AppI18n.t("nothing_to_send_empty_folder")
             raw == "Nothing to queue" -> AppI18n.t("nothing_to_queue")
             raw == "Send did not finish — retrying" -> AppI18n.t("send_did_not_finish_retrying")
             raw == "Source read failed" || raw.startsWith("Missing local file") -> AppI18n.t("source_read_failed")
-            else -> raw
+            else -> UserFacingErrors.messageForRaw(raw) ?: raw
         }
     }
 }

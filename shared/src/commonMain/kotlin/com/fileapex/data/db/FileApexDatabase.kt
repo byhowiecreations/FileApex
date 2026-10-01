@@ -53,7 +53,10 @@ data class PairedDeviceEntity(
     val tilePosX: Float? = null,
     val tilePosY: Float? = null,
     val tileSortOrder: Int = 0,
-    val tileMenuOrder: String = ""
+    val tileMenuOrder: String = "",
+    val clusterVersion: Long = 0L,
+    val isRemoved: Boolean = false,
+    val removedAt: Long? = null
 )
 
 @Entity(tableName = "note_records")
@@ -105,14 +108,20 @@ fun NoteRecord.toEntity(): NoteEntity = NoteEntity(
 
 @Dao
 interface DeviceDao {
-    @Query("SELECT * FROM paired_devices ORDER BY deviceName COLLATE NOCASE ASC")
+    @Query("SELECT * FROM paired_devices WHERE isRemoved = 0 ORDER BY deviceName COLLATE NOCASE ASC")
     fun getAllDevices(): Flow<List<PairedDeviceEntity>>
 
-    @Query("SELECT * FROM paired_devices ORDER BY deviceName COLLATE NOCASE ASC")
+    @Query("SELECT * FROM paired_devices WHERE isRemoved = 0 ORDER BY deviceName COLLATE NOCASE ASC")
     suspend fun getAllDevicesOnce(): List<PairedDeviceEntity>
 
     @Query("SELECT * FROM paired_devices WHERE deviceId = :deviceId LIMIT 1")
     suspend fun getDevice(deviceId: String): PairedDeviceEntity?
+
+    @Query("SELECT * FROM paired_devices WHERE isRemoved = 1")
+    suspend fun getTombstonedDevices(): List<PairedDeviceEntity>
+
+    @Query("SELECT * FROM paired_devices ORDER BY deviceName COLLATE NOCASE ASC")
+    suspend fun getAllDevicesIncludingTombstones(): List<PairedDeviceEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDevice(device: PairedDeviceEntity)
@@ -144,6 +153,9 @@ interface DeviceDao {
     @Query("DELETE FROM paired_devices WHERE deviceId = :deviceId")
     suspend fun deleteDevice(deviceId: String)
 
+    @Query("DELETE FROM paired_devices")
+    suspend fun deleteAllDevices()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRemovedDevice(device: RemovedDeviceEntity)
 
@@ -164,6 +176,12 @@ interface DeviceDao {
             "WHERE publicKeyHash = :publicKeyHash AND publicKeyHash != ''"
     )
     suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String)
+
+    @Query("SELECT * FROM removed_devices")
+    suspend fun getAllRemovedDevices(): List<RemovedDeviceEntity>
+
+    @Query("DELETE FROM removed_devices")
+    suspend fun deleteAllRemovedDevices()
 }
 
 @Dao
@@ -189,6 +207,9 @@ interface NoteDao {
     @Query("DELETE FROM note_records WHERE noteId = :noteId")
     suspend fun deleteNote(noteId: String)
 
+    @Query("DELETE FROM note_records")
+    suspend fun deleteAllNotes()
+
     @Query("SELECT COUNT(*) FROM note_records WHERE noteId = :noteId OR (checksum IS NOT NULL AND checksum = :checksum AND checksum != '')")
     suspend fun countNoteOrChecksum(noteId: String, checksum: String?): Int
 }
@@ -201,7 +222,7 @@ interface NoteDao {
         PendingTransferEntity::class,
         NoteEntity::class
     ],
-    version = 11
+    version = 12
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {

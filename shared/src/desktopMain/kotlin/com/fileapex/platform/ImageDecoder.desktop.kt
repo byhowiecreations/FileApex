@@ -11,6 +11,7 @@ import org.jetbrains.skia.FilterMode
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.MipmapMode
 import org.jetbrains.skia.Rect
+import java.awt.GraphicsEnvironment
 
 actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
     if (bytes.isEmpty()) return null
@@ -47,6 +48,17 @@ actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
         )
         Image.makeFromBitmap(scaled).toComposeImageBitmap()
     }.getOrNull()
+}
+
+actual fun previewMaxEdgePx(): Int {
+    val edge = runCatching {
+        val config = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration
+        val bounds = config.bounds
+        val scale = config.defaultTransform.scaleX.coerceAtLeast(1.0)
+        (maxOf(bounds.width, bounds.height) * scale).toInt()
+    }.getOrDefault(0)
+    if (edge <= 0) return PREVIEW_FALLBACK_EDGE_PX
+    return edge.coerceIn(PREVIEW_MIN_EDGE_PX, PREVIEW_MAX_EDGE_PX)
 }
 
 private fun calculateInSampleSize(
