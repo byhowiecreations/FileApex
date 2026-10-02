@@ -18,11 +18,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
-import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.supportedIconStyles
+import com.fileapex.data.settings.traits
 import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -219,7 +219,7 @@ fun SettingsScreen(
     var page by remember { mutableStateOf(SettingsPage.Root) }
 
     val currentTheme = LocalAppTheme.current
-    val isFreestyleCompact = currentTheme == AppTheme.FREESTYLE && layoutMode == SettingsScreenLayoutMode.CompactShell
+    val isFreestyleCompact = currentTheme.traits.canvasHome && layoutMode == SettingsScreenLayoutMode.CompactShell
     val allowRootBack = showRootBackNavigation || isFreestyleCompact
 
     val leavePage: () -> Unit = {
@@ -364,6 +364,7 @@ fun SettingsScreen(
             onBack = { page = SettingsPage.Root },
             onSelectTheme = viewModel::setAppTheme,
             onSelectThemeIconStyle = { viewModel.setThemeIconStyle(state.appTheme, it) },
+            onSelectKineticStyle = viewModel::setKineticStyle,
             onToggleConnectedLines = viewModel::setKineticSphereConnectedLinesEnabled,
             onToggleOrbitalRings = viewModel::setKineticSphereOrbitalRingsEnabled,
             onTogglePersistentWallpaper = viewModel::setKineticSpherePersistentWallpaperEnabled
@@ -2337,7 +2338,7 @@ internal fun SettingsPageShell(
     content: @Composable (Modifier) -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
+    val isCustomGlass = currentTheme.traits.glassChrome
     val containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background
     val onHome = LocalSettingsHomeAction.current
 
@@ -2358,7 +2359,7 @@ internal fun SettingsPageShell(
             }
         }
         SettingsScreenLayoutMode.CompactShell -> {
-            val isFreestyle = currentTheme == AppTheme.FREESTYLE
+            val isFreestyle = currentTheme.traits.canvasHome
             val homeAction: @Composable RowScope.() -> Unit = {
                 if (isFreestyle && onHome != null) {
                     IconButton(
@@ -2597,7 +2598,7 @@ private fun CollapsibleCategoryHeader(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val isFluxGlass = LocalAppTheme.current.traits.fluxSurfaces
     val rotationAngle by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         animationSpec = tween(durationMillis = 300),

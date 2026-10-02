@@ -15,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.ui.theme.FileApexTeal
@@ -81,12 +82,15 @@ object ExplorerEntryIcons {
 fun ExplorerEntryIcon(
     item: RemoteFileItem,
     modifier: Modifier = Modifier,
-    tintFolder: Boolean = true
+    tintFolder: Boolean = true,
+    folderColor: Color? = null,
+    fileColor: Color? = null
 ) {
     val vector = ExplorerEntryIcons.iconFor(item)
     val tint = when {
-        item.isDirectory && tintFolder -> FileApexTeal
-        else -> MaterialTheme.colorScheme.primary
+        item.isDirectory && tintFolder -> folderColor ?: FileApexTeal
+        item.isDirectory -> MaterialTheme.colorScheme.primary
+        else -> fileColor ?: MaterialTheme.colorScheme.primary
     }
     Icon(
         imageVector = vector,

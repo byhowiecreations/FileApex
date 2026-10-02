@@ -5,6 +5,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.fileapex.ui.theme.FluxGlassPalette
+import com.fileapex.ui.theme.FreestylePalette
+import com.fileapex.ui.theme.KineticPalette
 
 /**
  * Global UI theme selection for FileApex (Android and macOS Desktop).
@@ -38,23 +41,23 @@ fun AppTheme.backgroundBrush(): Brush? {
         AppTheme.CLEAN -> null
         AppTheme.FLUX_GLASS -> Brush.verticalGradient(
             colors = listOf(
-                Color(0xFF0D1D22),
-                Color(0xFF070B0E),
-                Color(0xFF05080A)
+                FluxGlassPalette.backgroundTop,
+                FluxGlassPalette.backgroundMid,
+                FluxGlassPalette.backgroundBottom
             )
         )
         AppTheme.KINETIC_SPHERE -> Brush.verticalGradient(
             colors = listOf(
-                Color(0xFF030914),
-                Color(0xFF071220),
-                Color(0xFF02050B)
+                KineticPalette.backgroundTop,
+                KineticPalette.backgroundMid,
+                KineticPalette.backgroundBottom
             )
         )
         AppTheme.FREESTYLE -> Brush.verticalGradient(
             colors = listOf(
-                Color(0xFF09131F),
-                Color(0xFF060B12),
-                Color(0xFF04070B)
+                FreestylePalette.backgroundTop,
+                FreestylePalette.backgroundMid,
+                FreestylePalette.backgroundBottom
             )
         )
     }
@@ -66,9 +69,9 @@ fun AppTheme.backgroundBrush(): Brush? {
 fun AppTheme.cardContainerColor(defaultColor: Color = Color.White): Color {
     return when (this) {
         AppTheme.CLEAN -> defaultColor
-        AppTheme.FLUX_GLASS -> Color(0x880D1F29)
-        AppTheme.KINETIC_SPHERE -> Color(0x99091824)
-        AppTheme.FREESTYLE -> Color(0x990E1D2D)
+        AppTheme.FLUX_GLASS -> FluxGlassPalette.cardContainer
+        AppTheme.KINETIC_SPHERE -> KineticPalette.cardContainer
+        AppTheme.FREESTYLE -> FreestylePalette.cardContainer
     }
 }
 
@@ -79,8 +82,8 @@ fun AppTheme.cardBorder(defaultBorder: BorderStroke): BorderStroke {
     return when (this) {
         AppTheme.CLEAN -> defaultBorder
         AppTheme.FLUX_GLASS -> BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
-        AppTheme.KINETIC_SPHERE -> BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.35f))
-        AppTheme.FREESTYLE -> BorderStroke(1.dp, Color(0xFF64B5F6).copy(alpha = 0.32f))
+        AppTheme.KINETIC_SPHERE -> BorderStroke(1.dp, FluxGlassPalette.cyan.copy(alpha = 0.35f))
+        AppTheme.FREESTYLE -> BorderStroke(1.dp, FreestylePalette.cardBorder.copy(alpha = 0.32f))
     }
 }
 
@@ -117,3 +120,23 @@ fun AppTheme.defaultIconStyle(): ThemeIconStyle = when (this) {
     AppTheme.KINETIC_SPHERE -> ThemeIconStyle.STANDARD
     AppTheme.FREESTYLE -> ThemeIconStyle.FREESTYLE
 }
+
+/**
+ * Visual treatment for [AppTheme.KINETIC_SPHERE]. Missing or unknown stored values stay [SPACE].
+ */
+enum class KineticStyle(val displayName: String) {
+    SPACE("Space"),
+    FROSTED("Frosted"),
+    JADED_STEEL("Jaded Steel");
+
+    companion object {
+        val DEFAULT = SPACE
+
+        fun fromStorage(value: String?): KineticStyle {
+            if (value.isNullOrBlank()) return DEFAULT
+            return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: DEFAULT
+        }
+    }
+}
+
+val LocalKineticStyle = staticCompositionLocalOf { KineticStyle.SPACE }

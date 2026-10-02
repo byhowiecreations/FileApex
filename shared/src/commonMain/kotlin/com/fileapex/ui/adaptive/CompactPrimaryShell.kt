@@ -1,6 +1,7 @@
 package com.fileapex.ui.adaptive
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,8 +30,16 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.fileapex.ui.theme.LocalJadedHazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.HomeTab
@@ -39,12 +48,14 @@ import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileApexBottomBar
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.fileApexHeaderActionTint
+import com.fileapex.ui.theme.isFileApexJadedSteel
 
-import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.di.FileApexServices
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -55,6 +66,7 @@ import com.fileapex.ui.FileApexIcons
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.GridView
 import com.fileapex.platform.isDesktopHost
@@ -88,11 +100,11 @@ fun CompactPrimaryShell(
     content: @Composable () -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
+    val isCustomGlass = currentTheme.traits.glassChrome
     Scaffold(
         containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (currentTheme != AppTheme.FREESTYLE) {
+            if (!currentTheme.traits.canvasHome) {
                 FileApexBottomBar(
                     selected = selectedTab,
                     onMainHomeScreen = onMainHomeScreen,
@@ -106,7 +118,7 @@ fun CompactPrimaryShell(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (currentTheme == AppTheme.FREESTYLE) Modifier else Modifier.padding(padding))
+                .then(if (currentTheme.traits.canvasHome) Modifier else Modifier.padding(padding))
         ) {
             // Omit separate top teal strip so Default theme matches Flux Glass unified header structure.
             content()
@@ -144,19 +156,20 @@ fun FluxGlassHeader(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
+    val isCustomGlass = currentTheme.traits.glassChrome
     val titleColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isCustomGlass) Color.White.copy(alpha = 0.72f) else MaterialTheme.colorScheme.onSurfaceVariant
-    val accentTint = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+    val accentTint = if (isCustomGlass) FluxGlassPalette.accent else FileApexTeal
     val resolvedSecondary = secondaryTitle ?: stringRes("paired_devices_title")
 
-    val headerBg = if (currentTheme == AppTheme.FREESTYLE) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
+    val headerBg = if (currentTheme.traits.canvasHome) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
+    val jadedHeader = isFileApexJadedSteel()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(headerBg)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else Modifier.background(headerBg))
+            .padding(horizontal = if (jadedHeader) 14.dp else 16.dp, vertical = if (jadedHeader) 4.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -165,7 +178,7 @@ fun FluxGlassHeader(
                 text = primaryTitle,
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 30.sp,
+                    fontSize = if (jadedHeader) 22.sp else 30.sp,
                     letterSpacing = (-0.5).sp
                 ),
                 color = titleColor,
@@ -173,7 +186,7 @@ fun FluxGlassHeader(
                 softWrap = false,
                 overflow = TextOverflow.Clip
             )
-            if (resolvedSecondary.isNotBlank()) {
+            if (!jadedHeader && resolvedSecondary.isNotBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = resolvedSecondary,
@@ -199,16 +212,17 @@ fun FluxGlassHeader(
             }
 
             if (onOpenNotes != null) {
-                val noteIconKind = when (currentTheme) {
-                    AppTheme.FLUX_GLASS, AppTheme.KINETIC_SPHERE, AppTheme.FREESTYLE -> NoteIconKind.GREEN
-                    else -> NoteIconKind.BLACK
+                val noteIconKind = if (isFileApexJadedSteel() || currentTheme.traits.glassChrome) {
+                    NoteIconKind.GREEN
+                } else {
+                    NoteIconKind.BLACK
                 }
                 NoteHeaderButton(onOpenNotes = onOpenNotes, iconKind = noteIconKind)
             }
 
             if (showLayoutView && onToggleLayoutView != null) {
                 val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
-                val icon = if (currentTheme == AppTheme.FREESTYLE) {
+                val icon = if (currentTheme.traits.canvasHome) {
                     when (freestyleMode) {
                         FreestyleLayoutMode.CARDS_VERTICAL -> Icons.Filled.TableRows
                         FreestyleLayoutMode.CARDS_HORIZONTAL -> Icons.Filled.ViewColumn
@@ -217,7 +231,7 @@ fun FluxGlassHeader(
                 } else {
                     Icons.Filled.GridView
                 }
-                val desc = if (currentTheme == AppTheme.FREESTYLE) {
+                val desc = if (currentTheme.traits.canvasHome) {
                     when (freestyleMode) {
                         FreestyleLayoutMode.CARDS_VERTICAL -> "Vertical Cards Layout"
                         FreestyleLayoutMode.CARDS_HORIZONTAL -> "Horizontal Cards Layout"
@@ -249,26 +263,7 @@ fun FluxGlassHeader(
             actions()
 
             if (showCloseService && onCloseService != null) {
-                IconButton(
-                    onClick = onCloseService,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Surface(
-                        modifier = Modifier.size(28.dp),
-                        shape = CircleShape,
-                        color = Color(0x3300E676),
-                        border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.PowerSettingsNew,
-                                contentDescription = stringRes("exit_fileapex"),
-                                tint = Color(0xFF00E676),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
+                FileApexPowerButton(onClick = onCloseService)
             }
         }
     }
@@ -285,7 +280,7 @@ fun CompactDevicesTitleBand(
     onOpenTransferQueue: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
-    val allowLayoutView = showLayoutView && currentTheme != AppTheme.KINETIC_SPHERE
+    val allowLayoutView = showLayoutView && !currentTheme.traits.orbitalHome
     FluxGlassHeader(
         primaryTitle = "FileApex",
         secondaryTitle = stringRes("paired_devices_title"),
@@ -309,7 +304,7 @@ fun CompactHomeTitleBand(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
+    val isCustomGlass = currentTheme.traits.glassChrome
     if (isCustomGlass && style == CompactHomeTitleStyle.Prominent) {
         FluxGlassHeader(
             primaryTitle = "FileApex",
@@ -383,13 +378,14 @@ private fun CompactHomeTitleBandRow(
     titleContent: @Composable () -> Unit
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
-    val headerBg = if (currentTheme == AppTheme.FREESTYLE) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
+    val isCustomGlass = currentTheme.traits.glassChrome
+    val headerBg = if (currentTheme.traits.canvasHome) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
+    val jadedHeader = isFileApexJadedSteel()
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else Modifier.background(headerBg))
             .defaultMinSize(minHeight = CompactHomeChrome.titleBandMinHeight)
-            .background(headerBg)
             .padding(
                 horizontal = CompactHomeChrome.titleBandHorizontalPadding,
                 vertical = CompactHomeChrome.titleBandVerticalPadding
@@ -417,6 +413,93 @@ private fun compactHomeHeadlineStyle() =
         fontSize = 34.sp,
         letterSpacing = (-0.5).sp
     )
+
+@Composable
+internal fun JadedRaisedTile(
+    tileSize: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val tile = RoundedCornerShape(8.dp)
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .size(tileSize)
+                .blur(8.dp)
+                .background(Color(0x736366F1), tile)
+        )
+        Box(
+            modifier = Modifier
+                .size(tileSize)
+                .clip(tile)
+                .background(Color(0x596366F1))
+                .border(1.dp, Color(0x73A0AAFF), tile),
+            contentAlignment = Alignment.Center
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun Modifier.jadedCompactHeaderPanel(): Modifier {
+    val shape = RoundedCornerShape(20.dp)
+    val haze = LocalJadedHazeState.current
+    return this
+        .padding(horizontal = 10.dp, vertical = 4.dp)
+        .clip(shape)
+        .then(
+            if (haze != null) {
+                Modifier.hazeEffect(
+                    state = haze,
+                    style = HazeStyle(
+                        backgroundColor = Color.Transparent,
+                        tints = listOf(HazeTint(Color.White.copy(alpha = 0.16f))),
+                        blurRadius = 24.dp,
+                        noiseFactor = 0.04f
+                    )
+                )
+            } else {
+                Modifier
+            }
+        )
+        .background(
+            Brush.verticalGradient(
+                0f to Color.White.copy(alpha = 0.22f),
+                1f to Color.White.copy(alpha = 0.10f)
+            )
+        )
+        .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
+}
+
+@Composable
+fun FileApexPowerButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val jaded = isFileApexJadedSteel()
+    val accent = if (jaded) KineticStyleLook.steel else Color(0xFF00E676)
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(40.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(28.dp),
+            shape = CircleShape,
+            color = if (jaded) Color(0xCC101820) else accent.copy(alpha = 0.20f),
+            border = BorderStroke(1.dp, accent.copy(alpha = if (jaded) 0.90f else 0.70f))
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Filled.PowerSettingsNew,
+                    contentDescription = stringRes("exit_fileapex"),
+                    tint = accent,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
 
 /** @deprecated Use [CompactHomeTitleBand] with [CompactHomeTitleStyle.Detail]. */
 @Composable

@@ -263,6 +263,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="icon_style_standard">标准</string>
     <string name="icon_style_flux">Flux</string>
     <string name="icon_style_freestyle">自由风格</string>
+    <string name="icon_pack">图标包</string>
+    <string name="kinetic_style">样式</string>
+    <string name="kinetic_style_space">太空</string>
+    <string name="kinetic_style_frosted">磨砂</string>
+    <string name="kinetic_style_jaded_steel">玉钢</string>
     <string name="freestyle_onboarding_hint">编辑模式：拖动元素以重新调整位置。使用拖动手柄重新排序菜单选项。</string>
     <string name="theme_lines_desc">从中心枢纽向每个设备节点绘制虚线。</string>
     <string name="theme_rings_desc">在轨道网络后显示深空星云壁纸。</string>

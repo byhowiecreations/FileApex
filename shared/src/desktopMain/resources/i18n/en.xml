@@ -263,6 +263,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="icon_style_standard">Standard</string>
     <string name="icon_style_flux">Flux</string>
     <string name="icon_style_freestyle">Freestyle</string>
+    <string name="icon_pack">Icon Pack</string>
+    <string name="kinetic_style">Style</string>
+    <string name="kinetic_style_space">Space</string>
+    <string name="kinetic_style_frosted">Frosted</string>
+    <string name="kinetic_style_jaded_steel">Jaded Steel</string>
     <string name="freestyle_onboarding_hint">Edit Mode: Drag elements to reposition. Reorder menu options with drag handles.</string>
     <string name="theme_lines_desc">Draw dashed spoke connector lines from the central hub to each device node.</string>
     <string name="theme_rings_desc">Display deep space nebula wallpaper behind the orbital network.</string>

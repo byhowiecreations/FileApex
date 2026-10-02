@@ -3,14 +3,27 @@ package com.fileapex.ui
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 
-import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.LocalKineticStyle
+import com.fileapex.data.settings.traits
+import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.platform.openLocalFile
 import com.fileapex.platform.revealInFolder
 import com.fileapex.ui.DesktopLayoutToggle
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import com.fileapex.ui.theme.LocalJadedHazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
 
 
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +45,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CopyAll
@@ -43,6 +57,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -61,6 +76,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -161,8 +177,16 @@ fun FileExplorerScreen(
         }
     }
 
+    val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
+        LocalKineticStyle.current == KineticStyle.JADED_STEEL
     Scaffold(
-        containerColor = if (LocalAppTheme.current == AppTheme.FLUX_GLASS) Color.Transparent else MaterialTheme.colorScheme.background,
+        containerColor = when {
+            jadedOrbital -> Color.Transparent
+            LocalAppTheme.current.traits.orbitalHome && LocalKineticStyle.current == KineticStyle.FROSTED ->
+                Color.Transparent
+            LocalAppTheme.current.traits.fluxSurfaces -> Color.Transparent
+            else -> MaterialTheme.colorScheme.background
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
 
 
@@ -201,6 +225,17 @@ fun FileExplorerScreen(
                             onBack = onBack,
                             viewModel = viewModel
                         )
+                    },
+                    colors = if (jadedOrbital) {
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent,
+                            titleContentColor = KineticStyleLook.ink,
+                            navigationIconContentColor = KineticStyleLook.ink,
+                            actionIconContentColor = KineticStyleLook.steel
+                        )
+                    } else {
+                        TopAppBarDefaults.topAppBarColors()
                     }
                 )
             }
@@ -239,13 +274,7 @@ fun FileExplorerScreen(
             }
         }
     ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = state.isRefreshing,
-            onRefresh = viewModel::refresh,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
+        val explorerBody: @Composable () -> Unit = {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val isWide = maxWidth >= 600.dp
                 when {
@@ -420,6 +449,17 @@ fun FileExplorerScreen(
                     }
                 }
             }
+        }
+        if (isDesktopHost()) {
+            Box(Modifier.fillMaxSize().padding(padding)) { explorerBody() }
+        } else {
+            PullToRefreshBox(
+                isRefreshing = state.isRefreshing,
+                onRefresh = viewModel::refresh,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) { explorerBody() }
         }
     }
 
@@ -685,6 +725,25 @@ private fun ExplorerTopBarActions(
                     DesktopLayoutToggle()
                 }
             }
+            val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
+                LocalKineticStyle.current == KineticStyle.JADED_STEEL
+            IconButton(
+                onClick = viewModel::refresh,
+                enabled = !state.isRefreshing
+            ) {
+                if (state.isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = stringRes("refresh"),
+                        tint = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
             TextButton(onClick = { viewModel.enterSelectionMode() }) {
                 Text(stringRes("select"))
             }
@@ -710,25 +769,98 @@ private fun ExplorerFilterBar(
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.weight(1f),
-            singleLine = true,
-            placeholder = { Text(stringRes("filter_this_folder")) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = stringRes("clear"))
+        val jadedField = LocalAppTheme.current.traits.orbitalHome &&
+            LocalKineticStyle.current == KineticStyle.JADED_STEEL
+        if (jadedField) {
+            val pill = RoundedCornerShape(50)
+            val ink = Color(0xFFE4EEEF)
+            val hint = Color(0xFFB7C4C6)
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = ink),
+                cursorBrush = SolidColor(ink),
+                modifier = Modifier.weight(1f).height(44.dp),
+                decorationBox = { inner ->
+                    val haze = LocalJadedHazeState.current
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(pill)
+                            .then(
+                                if (haze != null) {
+                                    Modifier.hazeEffect(
+                                        state = haze,
+                                        style = HazeStyle(
+                                            backgroundColor = Color.Transparent,
+                                            tints = listOf(HazeTint(Color.White.copy(alpha = 0.09f))),
+                                            blurRadius = 24.dp,
+                                            noiseFactor = 0.04f
+                                        )
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .background(Color.White.copy(alpha = 0.09f))
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.verticalGradient(
+                                    0f to Color.White.copy(alpha = 0.28f),
+                                    1f to Color.White.copy(alpha = 0.10f)
+                                ),
+                                shape = pill
+                            )
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Search, contentDescription = null, tint = hint)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (query.isEmpty()) {
+                                Text(
+                                    text = stringRes("filter_this_folder"),
+                                    color = hint,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            inner()
+                        }
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { onQueryChange("") }) {
+                                Icon(Icons.Filled.Close, contentDescription = stringRes("clear"), tint = hint)
+                            }
+                        }
                     }
                 }
-            },
-            textStyle = MaterialTheme.typography.bodyMedium
-        )
+            )
+        } else {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                placeholder = { Text(stringRes("filter_this_folder")) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(Icons.Filled.Close, contentDescription = stringRes("clear"))
+                        }
+                    }
+                },
+                textStyle = MaterialTheme.typography.bodyMedium
+            )
+        }
         Box {
             IconButton(onClick = { sortMenuOpen = true }) {
-                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringRes("sort_by"))
+                Icon(
+                    Icons.AutoMirrored.Filled.Sort,
+                    contentDescription = stringRes("sort_by"),
+                    tint = if (LocalAppTheme.current.traits.glassChrome) Color.White else LocalContentColor.current
+                )
             }
             DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
                 ExplorerSortMode.entries.forEach { mode ->

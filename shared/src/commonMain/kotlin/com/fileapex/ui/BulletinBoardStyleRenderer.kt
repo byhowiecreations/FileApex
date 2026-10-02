@@ -35,10 +35,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.FluxGlassPalette
 import kotlin.math.sin
 
 // Core Logo Palette
@@ -290,13 +291,13 @@ fun BulletinBubbleContainer(
                     RoundedCornerShape(16.dp, 16.dp, 16.dp, 2.dp)
                 }
                 val bg = if (isMine) {
-                    if (isCustomGlass) Color(0x4400E676) else FileApexTeal.copy(alpha = 0.20f)
+                    if (isCustomGlass) FluxGlassPalette.accentFill else FileApexTeal.copy(alpha = 0.20f)
                 } else {
-                    if (isCustomGlass) Color(0xFF15222A) else cardBg
+                    if (isCustomGlass) FluxGlassPalette.notesCard else cardBg
                 }
 
                 val borderColor = when {
-                    highlighted -> if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
+                    highlighted -> if (isCustomGlass) FluxGlassPalette.cyan else FileApexTeal
                     isCustomGlass -> Color.White.copy(alpha = 0.18f)
                     else -> Color.White.copy(alpha = 0.10f)
                 }
@@ -330,7 +331,7 @@ fun BulletinBubbleContainer(
                     Brush.verticalGradient(listOf(IosModernCyanTop, IosModernApexBlue, IosModernBlueBottom))
                 } else {
                     Brush.verticalGradient(
-                        if (isCustomGlass) listOf(Color(0xFF243038), Color(0xFF1B242A))
+                        if (isCustomGlass) listOf(FluxGlassPalette.bulletinTop, FluxGlassPalette.bulletinBottom)
                         else listOf(Color(0xFF323236), Color(0xFF242427))
                     )
                 }
@@ -578,8 +579,7 @@ fun BulletinStylePreviewCard(
     modifier: Modifier = Modifier
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS ||
-        currentTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme.traits.glassNotesSurfaces
     val isPinned = style == BulletinBoardStyle.STICKY_NOTE || style == BulletinBoardStyle.TORN_LEDGER
 
     Box(
@@ -610,7 +610,7 @@ fun BulletinStylePreviewCard(
                             fontSize = if (compact) 10.sp else 11.sp
                         ),
                         color = when (style) {
-                            BulletinBoardStyle.DEFAULT -> if (isCustomGlass) Color(0xFF00E676) else FileApexTeal
+                            BulletinBoardStyle.DEFAULT -> if (isCustomGlass) FluxGlassPalette.accent else FileApexTeal
                             BulletinBoardStyle.STICKY_NOTE -> Color(0xFFB71C1C)
                             BulletinBoardStyle.TORN_LEDGER -> Color(0xFF1E5BB0)
                             BulletinBoardStyle.IOS_MODERN -> Color.White

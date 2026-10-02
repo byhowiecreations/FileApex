@@ -1,7 +1,7 @@
 package com.fileapex.ui.adaptive
 
-import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Row
@@ -36,7 +36,7 @@ fun FileApexPaneSectionHeader(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
-    val isGlassTheme = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
+    val isGlassTheme = currentTheme.traits.glassChrome
     Row(
         modifier = modifier
             .fillMaxWidth()

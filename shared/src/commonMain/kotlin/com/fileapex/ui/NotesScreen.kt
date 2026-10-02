@@ -114,6 +114,9 @@ import com.fileapex.platform.rememberGoogleDriveAuthLauncher
 import com.fileapex.platform.rememberGoogleSignInLauncher
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
+import com.fileapex.ui.theme.FluxGlassPalette
+import com.fileapex.ui.theme.KineticPalette
 import com.fileapex.di.FileApexServices
 import com.fileapex.ui.dialogs.GoogleDrivePermissionDialog
 import com.fileapex.ui.dnd.deviceFileDropTarget
@@ -139,7 +142,7 @@ fun NotesScreen(
     viewModel: NotesViewModel = viewModel { NotesViewModel() }
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme.traits.glassNotesSurfaces
     val state by viewModel.uiState.collectAsState()
     val displayNotes = state.rawNotes
     val downloadingAttachmentIds = state.downloadingAttachmentIds
@@ -374,12 +377,12 @@ fun NotesScreen(
 
     val backgroundColor = when (currentTheme) {
         AppTheme.FLUX_GLASS -> Color.Transparent
-        AppTheme.KINETIC_SPHERE -> Color(0xFF030B14)
+        AppTheme.KINETIC_SPHERE -> KineticPalette.notesBackground
         else -> MaterialTheme.colorScheme.background
     }
     val cardBg = when (currentTheme) {
-        AppTheme.FLUX_GLASS -> Color(0xFF15222A)
-        AppTheme.KINETIC_SPHERE -> Color(0xFF12202E)
+        AppTheme.FLUX_GLASS -> FluxGlassPalette.notesCard
+        AppTheme.KINETIC_SPHERE -> KineticPalette.notesCard
         else -> MaterialTheme.colorScheme.surface
     }
     val textColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface

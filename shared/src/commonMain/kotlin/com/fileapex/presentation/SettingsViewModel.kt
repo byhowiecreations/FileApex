@@ -15,6 +15,7 @@ import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
+import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
@@ -64,6 +65,7 @@ data class SettingsUiState(
     val liveTransferShowQueueEnabled: Boolean = false,
     val appTheme: AppTheme = AppTheme.CLEAN,
     val themeIconStyle: ThemeIconStyle = ThemeIconStyle.STANDARD,
+    val kineticStyle: KineticStyle = KineticStyle.SPACE,
     val bulletinBoardStyle: BulletinBoardStyle = BulletinBoardStyle.DEFAULT,
     val pinRequiredEnabled: Boolean = false,
     val devicePin: String = "",
@@ -130,6 +132,7 @@ class SettingsViewModel : ViewModel() {
             liveTransferShowQueueEnabled = settings.liveTransferShowQueueEnabled.value,
             appTheme = settings.appTheme.value,
             themeIconStyle = settings.themeIconStyle.value,
+            kineticStyle = settings.kineticStyle.value,
             bulletinBoardStyle = settings.bulletinBoardStyle.value,
             pinRequiredEnabled = settings.pinRequiredEnabled.value,
             devicePin = settings.devicePin.value,
@@ -309,6 +312,11 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.themeIconStyle.collect { style ->
                 _uiState.update { it.copy(themeIconStyle = style) }
+            }
+        }
+        viewModelScope.launch {
+            settings.kineticStyle.collect { style ->
+                _uiState.update { it.copy(kineticStyle = style) }
             }
         }
         viewModelScope.launch {
@@ -598,6 +606,11 @@ class SettingsViewModel : ViewModel() {
     fun setThemeIconStyle(theme: AppTheme, style: ThemeIconStyle) {
         settings.setThemeIconStyle(theme, style)
         _uiState.update { it.copy(themeIconStyle = settings.themeIconStyle.value) }
+    }
+
+    fun setKineticStyle(style: KineticStyle) {
+        settings.setKineticStyle(style)
+        _uiState.update { it.copy(kineticStyle = style) }
     }
 
     fun setBulletinBoardStyle(style: BulletinBoardStyle) {

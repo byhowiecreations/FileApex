@@ -3,6 +3,7 @@ package com.fileapex.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.defaultMinSize
@@ -93,6 +94,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.geometry.Offset
@@ -113,8 +115,13 @@ import com.fileapex.presentation.DeviceDetailsState
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
-import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.LocalKineticStyle
+import com.fileapex.data.settings.traits
+import com.fileapex.ui.adaptive.JadedRaisedTile
+import com.fileapex.ui.theme.KineticStyleLook
+import com.fileapex.ui.theme.isFileApexJadedSteel
 import com.fileapex.platform.isDesktopHost
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -141,6 +148,7 @@ import com.fileapex.ui.adaptive.widthSizeClassFor
 import com.fileapex.ui.dnd.deviceFileDropTarget
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FileApexTealDark
+import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.ui.theme.fileApexChromeContainerColor
@@ -285,9 +293,9 @@ fun DevicesScreen(
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         val currentTheme = LocalAppTheme.current
-        val isGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.FREESTYLE
-        val editTint = if (isGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.onSurface
-        if (currentTheme != AppTheme.KINETIC_SPHERE) {
+        val isGlass = currentTheme.traits.reorderAccent
+        val editTint = if (isGlass) FluxGlassPalette.accent else MaterialTheme.colorScheme.onSurface
+        if (!currentTheme.traits.orbitalHome) {
             if (editMode) {
                 TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
                     Text(stringRes("revert"), color = editTint)
@@ -334,13 +342,13 @@ fun DevicesScreen(
     }
 
     val currentTheme = LocalAppTheme.current
-    val isGlassTheme = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
+    val isGlassTheme = currentTheme.traits.glassChrome
     Scaffold(
         containerColor = if (isGlassTheme) Color.Transparent else MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        val isKineticSphere = currentTheme == AppTheme.KINETIC_SPHERE
-        val isFreestyle = currentTheme == AppTheme.FREESTYLE
+        val isKineticSphere = currentTheme.traits.orbitalHome
+        val isFreestyle = currentTheme.traits.canvasHome
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -490,7 +498,7 @@ fun DevicesScreen(
 
             // Always pinned above bottom navigation — not overlapping the list.
             if (!editMode && !isKineticSphere && !isFreestyle) {
-                val isFlux = LocalAppTheme.current == AppTheme.FLUX_GLASS
+                val isFlux = LocalAppTheme.current.traits.fluxSurfaces
                 if (isFlux) {
                     Box(
                         modifier = Modifier
@@ -513,10 +521,10 @@ fun DevicesScreen(
                                     .weight(1f)
                                     .fillMaxHeight(),
                                 shape = RoundedCornerShape(percent = 50),
-                                color = Color(0xEE0D1C22),
+                                color = FluxGlassPalette.actionPill,
                                 border = BorderStroke(
                                     1.dp,
-                                    Color(0xFF00E5FF).copy(alpha = if (state.isSendingClipboard) 0.25f else 0.55f)
+                                    FluxGlassPalette.cyan.copy(alpha = if (state.isSendingClipboard) 0.25f else 0.55f)
                                 ),
                                 shadowElevation = if (state.isSendingClipboard) 2.dp else 8.dp
                             ) {
@@ -531,13 +539,13 @@ fun DevicesScreen(
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(16.dp),
                                             strokeWidth = 2.dp,
-                                            color = Color(0xFF00E5FF)
+                                            color = FluxGlassPalette.cyan
                                         )
                                     } else {
                                         Icon(
                                             imageVector = Icons.Filled.ContentPaste,
                                             contentDescription = null,
-                                            tint = Color(0xFF00E5FF),
+                                            tint = FluxGlassPalette.cyan,
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
@@ -564,8 +572,8 @@ fun DevicesScreen(
                                     onClick = { addMenuOpen = true },
                                     modifier = Modifier.fillMaxSize(),
                                     shape = RoundedCornerShape(percent = 50),
-                                    color = Color(0xEE0D1C22),
-                                    border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.65f)),
+                                    color = FluxGlassPalette.actionPill,
+                                    border = BorderStroke(1.dp, FluxGlassPalette.accent.copy(alpha = 0.65f)),
                                     shadowElevation = 8.dp
                                 ) {
                                     Row(
@@ -578,7 +586,7 @@ fun DevicesScreen(
                                         Icon(
                                             imageVector = Icons.Filled.Add,
                                             contentDescription = null,
-                                            tint = Color(0xFF00E676),
+                                            tint = FluxGlassPalette.accent,
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -890,23 +898,36 @@ internal fun SendClipboardActionChip(
     isLoading: Boolean = false
 ) {
     val glass = isFileApexCustomGlassTheme()
+    val kineticStyle = if (LocalAppTheme.current.traits.orbitalHome) LocalKineticStyle.current else null
+    val jaded = kineticStyle == KineticStyle.JADED_STEEL
+    val frosted = kineticStyle == KineticStyle.FROSTED
     Surface(
         onClick = onClick,
         enabled = enabled && !isLoading,
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        color = if (glass) Color(0xDD0D1C22) else MaterialTheme.colorScheme.surface,
+        color = when {
+            jaded -> KineticStyleLook.jadedCard
+            frosted -> KineticStyleLook.frostedCard
+            glass -> FluxGlassPalette.clipboardChip
+            else -> MaterialTheme.colorScheme.surface
+        },
         border = BorderStroke(
             1.dp,
-            if (isLoading) {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-            } else if (glass) {
-                Color(0xFF00E5FF).copy(alpha = 0.50f)
-            } else {
-                FileApexTeal.copy(alpha = 0.55f)
+            when {
+                isLoading -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                jaded -> KineticStyleLook.jadedCardEdge
+                frosted -> KineticStyleLook.cyan.copy(alpha = 0.55f)
+                glass -> FluxGlassPalette.cyan.copy(alpha = 0.50f)
+                else -> FileApexTeal.copy(alpha = 0.55f)
             }
         ),
-        shadowElevation = if (isLoading) 1.dp else if (glass) 8.dp else 2.dp
+        shadowElevation = when {
+            isLoading -> 1.dp
+            jaded -> 0.dp
+            glass || frosted -> 8.dp
+            else -> 2.dp
+        }
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -917,13 +938,13 @@ internal fun SendClipboardActionChip(
                 CircularProgressIndicator(
                     modifier = Modifier.size(15.dp),
                     strokeWidth = 2.dp,
-                    color = if (glass) Color(0xFF00E676) else FileApexTeal
+                    color = if (glass) FluxGlassPalette.accent else FileApexTeal
                 )
             } else {
                 Icon(
                     imageVector = Icons.Filled.ContentPaste,
                     contentDescription = null,
-                    tint = if (glass) Color(0xFF00E676) else FileApexTeal,
+                    tint = if (glass) FluxGlassPalette.accent else FileApexTeal,
                     modifier = Modifier.size(15.dp)
                 )
             }
@@ -1314,7 +1335,8 @@ private fun DeviceGridCell(
     val hasOverflow = titleOverflow || subtitleOverflow || statOverflow
 
     val currentTheme = LocalAppTheme.current
-    val allowHoverPopOver = isDesktopHost() && (currentTheme == AppTheme.CLEAN || currentTheme == AppTheme.FLUX_GLASS) && hasOverflow
+    val isFlux = currentTheme.traits.fluxSurfaces
+    val allowHoverPopOver = isDesktopHost() && currentTheme.traits.desktopHoverPopOver && hasOverflow
     val cardInteractionSource = remember { MutableInteractionSource() }
     val isCardHovered by cardInteractionSource.collectIsHoveredAsState()
     val popupInteractionSource = remember { MutableInteractionSource() }
@@ -1364,14 +1386,14 @@ private fun DeviceGridCell(
     } else {
         MaterialTheme.typography.bodySmall
     }
+    val titleColor = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
+    val subtitleColor = if (isFlux) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
     val containerColor = when {
         dropHover -> FileApexTeal.copy(alpha = 0.22f)
         selected -> FileApexTeal.copy(alpha = 0.12f)
-        else -> if (fluent) {
-            MaterialTheme.colorScheme.surface
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        }
+        isFlux -> FluxGlassPalette.deviceCard
+        fluent -> MaterialTheme.colorScheme.surface
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     }
 
     val liveStats by TransferActivityGuard.statsFlow.collectAsState()
@@ -1397,6 +1419,7 @@ private fun DeviceGridCell(
                 .clickable(enabled = !connecting, onClick = onClick),
         shape = cellShape,
         color = containerColor,
+        contentColor = titleColor,
         tonalElevation = 0.dp,
         shadowElevation = if (fluent || highlighted) 0.dp else 1.dp,
         border = BorderStroke(
@@ -1430,6 +1453,7 @@ private fun DeviceGridCell(
                 Text(
                     text = row.title,
                     style = titleStyle.copy(textAlign = TextAlign.Center),
+                    color = titleColor,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.fillMaxWidth(),
@@ -1490,7 +1514,7 @@ private fun DeviceGridCell(
                     Text(
                         text = DeviceListRow.localizedSubtitle(row),
                         style = subtitleStyle.copy(textAlign = TextAlign.Center),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = subtitleColor,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         softWrap = true,
@@ -1511,7 +1535,7 @@ private fun DeviceGridCell(
                     Icon(
                         imageVector = Icons.Filled.MoreHoriz,
                         contentDescription = stringRes("device_options"),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = subtitleColor,
                         modifier = Modifier.size(if (grid.compactTypography) 16.dp else 18.dp)
                     )
                 }
@@ -1587,8 +1611,8 @@ private fun HomeTopBar(
     onOpenTransferQueue: (() -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE || currentTheme == AppTheme.FREESTYLE
-    val allowLayoutView = onToggleLayoutView != null && currentTheme != AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme.traits.glassChrome
+    val allowLayoutView = onToggleLayoutView != null && !currentTheme.traits.orbitalHome
     if (isCustomGlass) {
         FluxGlassHeader(
             primaryTitle = "FileApex",
@@ -1627,16 +1651,17 @@ fun FileApexBottomBar(
 ) {
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
     val currentTheme = LocalAppTheme.current
-    if (currentTheme == AppTheme.FREESTYLE) return
+    if (currentTheme.traits.canvasHome) return
 
-    val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+    val isCustomGlass = currentTheme.traits.glassNotesSurfaces
+    val jadedNav = isFileApexJadedSteel()
 
     if (isCustomGlass) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp, top = 4.dp),
+                .padding(bottom = if (jadedNav) 8.dp else 12.dp, top = if (jadedNav) 2.dp else 4.dp),
             contentAlignment = Alignment.Center
         ) {
             val pillWidth = if (maxWidth < 480.dp) {
@@ -1648,11 +1673,11 @@ fun FileApexBottomBar(
             Surface(
                 modifier = Modifier
                     .width(pillWidth)
-                    .height(64.dp),
-                shape = RoundedCornerShape(32.dp),
-                color = Color(0xEE0D1C22),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f)),
-                shadowElevation = 10.dp
+                    .height(if (jadedNav) 58.dp else 64.dp),
+                shape = RoundedCornerShape(if (jadedNav) 20.dp else 32.dp),
+                color = if (jadedNav) Color(0xCC121E28) else FluxGlassPalette.actionPill,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = if (jadedNav) 0.10f else 0.30f)),
+                shadowElevation = if (jadedNav) 0.dp else 10.dp
             ) {
                 Row(
                     modifier = Modifier
@@ -1666,6 +1691,7 @@ fun FileApexBottomBar(
                         onClick = onDevices,
                         icon = Icons.Filled.Devices,
                         label = devicesLabel,
+                        jaded = jadedNav,
                         modifier = Modifier.weight(1f)
                     )
                     CustomGlassNavItem(
@@ -1673,6 +1699,7 @@ fun FileApexBottomBar(
                         onClick = onFiles,
                         icon = Icons.Filled.Folder,
                         label = stringRes("local_files"),
+                        jaded = jadedNav,
                         modifier = Modifier.weight(1f)
                     )
                     CustomGlassNavItem(
@@ -1680,6 +1707,7 @@ fun FileApexBottomBar(
                         onClick = onSettings,
                         icon = Icons.Filled.Settings,
                         label = stringRes("settings"),
+                        jaded = jadedNav,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1772,6 +1800,7 @@ private fun CustomGlassNavItem(
     onClick: () -> Unit,
     icon: ImageVector,
     label: String,
+    jaded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val activeBg = Color(0xFF00E676).copy(alpha = 0.22f)
@@ -1782,35 +1811,71 @@ private fun CustomGlassNavItem(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = if (jaded) 0.dp else 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(width = 52.dp, height = 30.dp)
-                .clip(RoundedCornerShape(15.dp))
-                .background(if (selected) activeBg else Color.Transparent),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (selected) activeTint else inactiveTint,
-                modifier = Modifier.size(22.dp)
-            )
+        if (jaded && selected) {
+            JadedRaisedTile(tileSize = 22.dp) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = Color(0xFF8DB8F5),
+                    modifier = Modifier.size(13.dp)
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .then(
+                        if (jaded) {
+                            Modifier.size(22.dp)
+                        } else {
+                            Modifier
+                                .size(width = 52.dp, height = 30.dp)
+                                .clip(RoundedCornerShape(15.dp))
+                                .background(if (selected) activeBg else Color.Transparent)
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = when {
+                        jaded -> Color(0xFFC5D0D2)
+                        selected -> activeTint
+                        else -> inactiveTint
+                    },
+                    modifier = Modifier.size(if (jaded) 16.dp else 22.dp)
+                )
+            }
         }
-        Spacer(modifier = Modifier.height(3.dp))
+        Spacer(modifier = Modifier.height(if (jaded) 2.dp else 3.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 fontSize = 11.sp,
-                lineHeight = 13.sp
+                lineHeight = 13.sp,
+                lineHeightStyle = if (jaded) {
+                    LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.Both
+                    )
+                } else {
+                    null
+                }
             ),
-            color = if (selected) Color.White else inactiveTint,
-            maxLines = 2,
-            softWrap = true,
+            color = when {
+                jaded && selected -> Color.White
+                jaded -> Color(0xFFC5D0D2)
+                selected -> Color.White
+                else -> inactiveTint
+            },
+            maxLines = if (jaded) 1 else 2,
+            softWrap = !jaded,
+            overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
         )
     }
@@ -1867,13 +1932,13 @@ private fun DeviceCardPopOver(
     val activeSending = pendingItems.firstOrNull { it.isSending }
     val isSendingToThis = liveStats.isActive && (activeSending != null && (row.deviceId in activeSending.pendingDeviceIds || activeSending.pendingDeviceNames.any { it.equals(row.title, ignoreCase = true) }))
 
-    val isFlux = currentTheme == AppTheme.FLUX_GLASS
-    val containerColor = if (isFlux) Color(0xFF0F1E1B) else MaterialTheme.colorScheme.surface
+    val isFlux = currentTheme.traits.fluxSurfaces
+    val containerColor = if (isFlux) FluxGlassPalette.deviceCard else MaterialTheme.colorScheme.surface
     val textColor = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isFlux) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
-    val iconContainerColor = if (isFlux) Color(0x3300E676) else MaterialTheme.colorScheme.primaryContainer
-    val iconTint = if (isFlux) Color(0xFF00E676) else FileApexTealDark
-    val borderColor = if (isFlux) Color(0xFF00E676) else FileApexTeal
+    val iconContainerColor = if (isFlux) FluxGlassPalette.accentSoft else MaterialTheme.colorScheme.primaryContainer
+    val iconTint = if (isFlux) FluxGlassPalette.accent else FileApexTealDark
+    val borderColor = if (isFlux) FluxGlassPalette.accent else FileApexTeal
     val menuIconTint = if (isFlux) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
 
     Card(
@@ -1935,7 +2000,7 @@ private fun DeviceCardPopOver(
                         Text(
                             text = statText,
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal,
+                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal,
                             softWrap = false
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -1945,8 +2010,8 @@ private fun DeviceCardPopOver(
                                 .fillMaxWidth()
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(1.5.dp)),
-                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal,
-                            trackColor = (if (isFlux) Color(0xFF00E676) else FileApexTeal).copy(alpha = 0.2f)
+                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal,
+                            trackColor = (if (isFlux) FluxGlassPalette.accent else FileApexTeal).copy(alpha = 0.2f)
                         )
                     }
                 } else if (connecting) {
@@ -1954,13 +2019,13 @@ private fun DeviceCardPopOver(
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal
+                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringRes("connecting"),
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isFlux) Color(0xFF00E676) else FileApexTeal,
+                            color = if (isFlux) FluxGlassPalette.accent else FileApexTeal,
                             softWrap = false
                         )
                     }
@@ -2053,7 +2118,7 @@ private fun DeviceCard(
     val hasOverflow = titleOverflow || subtitleOverflow || statOverflow
 
     val currentTheme = LocalAppTheme.current
-    val allowHoverPopOver = isDesktopHost() && (currentTheme == AppTheme.CLEAN || currentTheme == AppTheme.FLUX_GLASS) && !editMode && !dragging && hasOverflow
+    val allowHoverPopOver = isDesktopHost() && currentTheme.traits.desktopHoverPopOver && !editMode && !dragging && hasOverflow
     val cardInteractionSource = remember { MutableInteractionSource() }
     val isCardHovered by cardInteractionSource.collectIsHoveredAsState()
     val popupInteractionSource = remember { MutableInteractionSource() }

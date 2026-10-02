@@ -27,8 +27,13 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.fileapex.data.settings.KineticStyle
+import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.LocalThemeIconStyle
 import com.fileapex.data.settings.ThemeIconStyle
+import com.fileapex.platform.frostBlurSupported
+import com.fileapex.ui.theme.JadedSteelWash
+import com.fileapex.ui.theme.KineticStyleLook
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -62,9 +67,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.fileapex.di.FileApexServices
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -111,12 +119,33 @@ const val USE_ELLIPSES_CONNECTED = false
 
 @Composable
 fun KineticSphereWallpaperBackground(modifier: Modifier = Modifier) {
-    Image(
-        painter = painterResource(Res.drawable.bg),
-        contentDescription = null,
-        modifier = modifier.fillMaxSize(),
-        contentScale = ContentScale.Crop
-    )
+    when (LocalKineticStyle.current) {
+        KineticStyle.JADED_STEEL -> JadedSteelWash(modifier.fillMaxSize())
+        KineticStyle.FROSTED -> Box(modifier.fillMaxSize()) {
+            Image(
+                painter = painterResource(Res.drawable.bg),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (frostBlurSupported()) {
+                            Modifier.blur(18.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentScale = ContentScale.Crop
+            )
+            Box(Modifier.fillMaxSize().background(KineticStyleLook.frostedScrim))
+            Box(Modifier.fillMaxSize().background(KineticStyleLook.illumination()))
+        }
+        KineticStyle.SPACE -> Image(
+            painter = painterResource(Res.drawable.bg),
+            contentDescription = null,
+            modifier = modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+    }
 }
 
 @Composable
@@ -239,8 +268,7 @@ fun KineticSphereDevicesView(
             rawPositions
         }
 
-        val isExpandedDisplay = maxWidth >= 600.dp
-        val layoutScopePrefix = if (isExpandedDisplay) "exp:" else "cmp:"
+        val layoutBucket = deviceLayoutBucket(maxWidth, maxHeight)
 
         val persistedNodeOffsets by FileApexServices.settings.kineticNodeOffsets.collectAsState()
 
@@ -250,7 +278,7 @@ fun KineticSphereDevicesView(
             deviceRows,
             widthPx,
             heightPx,
-            layoutScopePrefix,
+            layoutBucket,
             baseRadiusPx
         ) {
             val marginPx = with(density) { 70.dp.toPx() }
@@ -262,17 +290,24 @@ fun KineticSphereDevicesView(
 
             // Place all devices with user-assigned or persisted offsets first
             deviceRows.forEachIndexed { index, row ->
-                val abs = persistedNodeOffsets["pos:$layoutScopePrefix${row.deviceId}"]
-                    ?: persistedNodeOffsets["pos:${row.deviceId}"]
-                    ?: persistedNodeOffsets["pos:exp:${row.deviceId}"]
-                    ?: persistedNodeOffsets["pos:cmp:${row.deviceId}"]
-                if (abs != null) {
-                    val clampedX = if (widthPx > marginPx * 2) abs.first.coerceIn(marginPx, widthPx - marginPx) else abs.first
-                    val clampedY = if (heightPx > topMarginPx + marginPx) abs.second.coerceIn(topMarginPx, heightPx - marginPx) else abs.second
+                val stored = kineticStoredNode(
+                    offsets = persistedNodeOffsets,
+                    bucket = layoutBucket,
+                    deviceId = row.deviceId,
+                    widthPx = widthPx,
+                    heightPx = heightPx,
+                    marginPx = marginPx,
+                    topMarginPx = topMarginPx
+                )
+                if (stored != null) {
+                    val rawX = if (stored.fractional) stored.x * widthPx else stored.x
+                    val rawY = if (stored.fractional) stored.y * heightPx else stored.y
+                    val clampedX = if (widthPx > marginPx * 2) rawX.coerceIn(marginPx, widthPx - marginPx) else rawX
+                    val clampedY = if (heightPx > topMarginPx + marginPx) rawY.coerceIn(topMarginPx, heightPx - marginPx) else rawY
                     placedPositions[index] = Offset(clampedX, clampedY)
-                } else {
-                    val scopedKey = layoutScopePrefix + row.deviceId
-                    val legacy = persistedNodeOffsets[scopedKey] ?: persistedNodeOffsets[row.deviceId]
+                } else if (layoutBucket.startsWith("land-")) {
+                    val deltaKey = if (layoutBucket.endsWith("-cmp")) "cmp:${row.deviceId}" else "exp:${row.deviceId}"
+                    val legacy = persistedNodeOffsets[deltaKey] ?: persistedNodeOffsets[row.deviceId]
                     if (legacy != null) {
                         val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
                         placedPositions[index] = Offset(
@@ -350,8 +385,38 @@ fun KineticSphereDevicesView(
             }
         }
 
+        val positionsForBucket by rememberUpdatedState(effectiveNodePositions)
+        val widthForBucket by rememberUpdatedState(widthPx)
+        val heightForBucket by rememberUpdatedState(heightPx)
+        val bucketDeviceIds = deviceRows.joinToString(",") { it.deviceId }
+        LaunchedEffect(layoutBucket, bucketDeviceIds) {
+            delay(500)
+            val canvasW = widthForBucket
+            val canvasH = heightForBucket
+            if (canvasW < 200f || canvasH < 200f) return@LaunchedEffect
+            val current = FileApexServices.settings.kineticNodeOffsets.value
+            deviceRows.forEachIndexed { index, row ->
+                val key = kineticFractionKey(layoutBucket, row.deviceId)
+                if (current.containsKey(key)) return@forEachIndexed
+                val pos = positionsForBucket.getOrNull(index) ?: return@forEachIndexed
+                FileApexServices.settings.setKineticNodeOffset(
+                    key,
+                    (pos.x / canvasW).coerceIn(0f, 1f),
+                    (pos.y / canvasH).coerceIn(0f, 1f)
+                )
+            }
+        }
+
         val showConnectedLines by FileApexServices.settings.kineticSphereConnectedLinesEnabled.collectAsState()
+        val kineticStyle = LocalKineticStyle.current
         Canvas(modifier = Modifier.fillMaxSize()) {
+            if (kineticStyle == KineticStyle.FROSTED) {
+                drawCircle(
+                    brush = KineticStyleLook.illumination(),
+                    radius = size.minDimension * 0.55f,
+                    center = Offset(centerX, centerY)
+                )
+            }
 
             val stars = listOf(
                 Offset(centerX * 0.3f, centerY * 0.4f),
@@ -361,8 +426,10 @@ fun KineticSphereDevicesView(
                 Offset(centerX * 1.4f, centerY * 0.8f),
                 Offset(centerX * 0.6f, centerY * 1.2f)
             )
-            stars.forEach { star ->
-                drawCircle(color = Color.White.copy(alpha = 0.4f), radius = 2f, center = star)
+            if (kineticStyle != KineticStyle.JADED_STEEL) {
+                stars.forEach { star ->
+                    drawCircle(color = Color.White.copy(alpha = 0.4f), radius = 2f, center = star)
+                }
             }
 
             if (showConnectedLines) {
@@ -370,12 +437,18 @@ fun KineticSphereDevicesView(
                     val row = deviceRows.getOrNull(index) ?: return@forEachIndexed
                     val online = row.online
                     val statusGlow = if (online) Color(0xFF00E676) else Color(0xFFFFC107)
+                    val lineColor = if (kineticStyle == KineticStyle.JADED_STEEL) {
+                        statusGlow
+                    } else {
+                        statusGlow.copy(alpha = 0.50f)
+                    }
+                    val lineWidth = if (kineticStyle == KineticStyle.JADED_STEEL) 1f else 1.5f.dp.toPx()
 
                     drawLine(
-                        color = statusGlow.copy(alpha = 0.50f),
+                        color = lineColor,
                         start = Offset(centerX, centerY),
                         end = pos,
-                        strokeWidth = 1.5f.dp.toPx(),
+                        strokeWidth = lineWidth,
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
                     )
                 }
@@ -393,17 +466,38 @@ fun KineticSphereDevicesView(
                 modifier = Modifier
                     .size(hubSizeDp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                Color(0x9900E5FF),
-                                Color(0x660A2A4A),
-                                Color(0x22030B14)
+                    .then(
+                        when (kineticStyle) {
+                            KineticStyle.JADED_STEEL -> Modifier.background(KineticStyleLook.jadedCard)
+                            KineticStyle.FROSTED -> Modifier.background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xCC00E5FF),
+                                        Color(0xE6101822),
+                                        Color(0xF0061016)
+                                    )
+                                )
                             )
-                        )
+                            KineticStyle.SPACE -> Modifier.background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0x9900E5FF),
+                                        Color(0x660A2A4A),
+                                        Color(0x22030B14)
+                                    )
+                                )
+                            )
+                        }
                     )
                     .border(
-                        BorderStroke(2.dp, Color(0xFF00E5FF).copy(alpha = 0.85f)),
+                        when (kineticStyle) {
+                            KineticStyle.JADED_STEEL -> BorderStroke(
+                                1.dp,
+                                KineticStyleLook.jadedCardEdge
+                            )
+                            KineticStyle.FROSTED -> BorderStroke(2.dp, KineticStyleLook.cyan.copy(alpha = 0.85f))
+                            KineticStyle.SPACE -> BorderStroke(2.dp, Color(0xFF00E5FF).copy(alpha = 0.85f))
+                        },
                         CircleShape
                     )
                     .clickable { addMenuOpen = true },
@@ -416,7 +510,7 @@ fun KineticSphereDevicesView(
                     Icon(
                         imageVector = Icons.Filled.Add,
                         contentDescription = stringRes("add_new_device"),
-                        tint = Color(0xFF00E5FF),
+                        tint = if (kineticStyle == KineticStyle.JADED_STEEL) KineticStyleLook.jade else Color(0xFF00E5FF),
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
@@ -526,9 +620,17 @@ fun KineticSphereDevicesView(
                 Surface(
                     onClick = onCheckBatteries,
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xDD0D1C22),
-                    border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.50f)),
-                    shadowElevation = 8.dp
+                    color = when (kineticStyle) {
+                        KineticStyle.JADED_STEEL -> KineticStyleLook.jadedCard
+                        KineticStyle.FROSTED -> KineticStyleLook.frostedCard
+                        KineticStyle.SPACE -> Color(0xDD0D1C22)
+                    },
+                    border = when (kineticStyle) {
+                        KineticStyle.JADED_STEEL -> BorderStroke(1.dp, KineticStyleLook.jadedCardEdge)
+                        KineticStyle.FROSTED -> BorderStroke(1.dp, KineticStyleLook.cyan.copy(alpha = 0.55f))
+                        KineticStyle.SPACE -> BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.50f))
+                    },
+                    shadowElevation = if (kineticStyle == KineticStyle.JADED_STEEL) 0.dp else 8.dp
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -609,57 +711,76 @@ fun KineticSphereDevicesView(
                             }
                         )
                         .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    if (dropHover) Color(0xAA00E676) else (if (isFocused) Color(0xAA00E5FF) else Color(0x7714344D)),
-                                    if (isFocused) Color(0x660A2A4A) else Color(0x440B1B2B),
-                                    Color(0x11040B14)
+                        .then(
+                            when (kineticStyle) {
+                                KineticStyle.JADED_STEEL -> Modifier.background(
+                                    if (dropHover || isFocused) KineticStyleLook.jadedCardSelected else KineticStyleLook.jadedCard
                                 )
-                            )
+                                KineticStyle.FROSTED -> Modifier.background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            if (dropHover) Color(0xCC00E676) else if (isFocused) Color(0xCC00E5FF) else Color(0xE6142834),
+                                            Color(0xF0101822),
+                                            KineticStyleLook.frostedScrim
+                                        )
+                                    )
+                                )
+                                KineticStyle.SPACE -> Modifier.background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            if (dropHover) Color(0xAA00E676) else (if (isFocused) Color(0xAA00E5FF) else Color(0x7714344D)),
+                                            if (isFocused) Color(0x660A2A4A) else Color(0x440B1B2B),
+                                            Color(0x11040B14)
+                                        )
+                                    )
+                                )
+                            }
                         )
                         .border(
                             BorderStroke(
-                                width = 1.5.dp + (2.dp * focusProgress),
-                                color = if (dropHover) Color(0xFF00E676) else (if (isFocused) Color(0xFF00E5FF) else statusColor)
+                                width = if (kineticStyle == KineticStyle.JADED_STEEL) {
+                                    with(density) { 1f.toDp() }
+                                } else {
+                                    1.5.dp + (2.dp * focusProgress)
+                                },
+                                color = when (kineticStyle) {
+                                    KineticStyle.JADED_STEEL -> if (dropHover || isFocused) KineticStyleLook.jade else statusColor
+                                    KineticStyle.FROSTED -> if (dropHover) KineticStyleLook.jade else if (isFocused) KineticStyleLook.cyan else statusColor
+                                    KineticStyle.SPACE -> if (dropHover) Color(0xFF00E676) else (if (isFocused) Color(0xFF00E5FF) else statusColor)
+                                }
                             ),
                             CircleShape
                         )
                         // Do not key on nodeCx/nodeCy — that restarts the gesture mid-drag and locks nodes.
-                        .pointerInput(row.deviceId, layoutScopePrefix) {
+                        .pointerInput(row.deviceId, layoutBucket) {
                             var dragX = 0f
                             var dragY = 0f
+                            var dragged = false
+                            fun saveDrag(persist: Boolean) {
+                                if (!dragged || widthPx <= 1f || heightPx <= 1f) return
+                                FileApexServices.settings.setKineticNodeOffset(
+                                    kineticFractionKey(layoutBucket, row.deviceId),
+                                    (dragX / widthPx).coerceIn(0f, 1f),
+                                    (dragY / heightPx).coerceIn(0f, 1f),
+                                    persist = persist
+                                )
+                            }
                             detectDragGestures(
                                 onDragStart = {
                                     activeRadialNodeId = null
+                                    dragged = false
                                     dragX = latestNodeCx
                                     dragY = latestNodeCy
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
+                                    dragged = true
                                     dragX += dragAmount.x
                                     dragY += dragAmount.y
-                                    FileApexServices.settings.setKineticNodeOffset(
-                                        "pos:$layoutScopePrefix${row.deviceId}",
-                                        dragX,
-                                        dragY,
-                                        persist = false
-                                    )
+                                    saveDrag(persist = false)
                                 },
-                                onDragCancel = {
-                                    FileApexServices.settings.setKineticNodeOffset(
-                                        "pos:$layoutScopePrefix${row.deviceId}",
-                                        dragX,
-                                        dragY
-                                    )
-                                },
-                                onDragEnd = {
-                                    FileApexServices.settings.setKineticNodeOffset(
-                                        "pos:$layoutScopePrefix${row.deviceId}",
-                                        dragX,
-                                        dragY
-                                    )
-                                }
+                                onDragCancel = { saveDrag(persist = true) },
+                                onDragEnd = { saveDrag(persist = true) }
                             )
                         }
                         .clickable {
@@ -770,7 +891,7 @@ fun KineticSphereDevicesView(
                         fontWeight = FontWeight.Medium,
                         fontSize = 14.sp
                     ),
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = if (kineticStyle == KineticStyle.JADED_STEEL) KineticStyleLook.ink else Color.White.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center
                 )
             }
@@ -797,6 +918,7 @@ private fun KineticGlassActionCapsule(
     onRemove: () -> Unit
 ) {
     val density = LocalDensity.current
+    val kineticStyle = LocalKineticStyle.current
     val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFC107)
 
     val dx = centerPx.x - hubCenter.x
@@ -832,24 +954,46 @@ private fun KineticGlassActionCapsule(
                 alpha = expansionProgress.coerceIn(0f, 1f)
             }
             .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0B1F30),
-                        Color(0xFF061420)
-                    )
-                )
-            )
-            .border(
-                BorderStroke(
-                    width = 1.5.dp,
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF00E5FF),
-                            Color(0xFF00E676)
+            .then(
+                when (kineticStyle) {
+                    KineticStyle.JADED_STEEL -> Modifier.background(KineticStyleLook.jadedCard)
+                    KineticStyle.FROSTED -> Modifier.background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xF0102430), Color(0xF008141C))
                         )
                     )
-                ),
+                    KineticStyle.SPACE -> Modifier.background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF0B1F30),
+                                Color(0xFF061420)
+                            )
+                        )
+                    )
+                }
+            )
+            .border(
+                when (kineticStyle) {
+                    KineticStyle.JADED_STEEL -> BorderStroke(1.dp, KineticStyleLook.jadedCardEdge)
+                    KineticStyle.FROSTED -> BorderStroke(
+                        width = 1.5.dp,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                KineticStyleLook.cyan.copy(alpha = 0.9f),
+                                KineticStyleLook.jade.copy(alpha = 0.9f)
+                            )
+                        )
+                    )
+                    KineticStyle.SPACE -> BorderStroke(
+                        width = 1.5.dp,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0xFF00E5FF),
+                                Color(0xFF00E676)
+                            )
+                        )
+                    )
+                },
                 RoundedCornerShape(20.dp)
             )
             .padding(vertical = 10.dp, horizontal = 10.dp)

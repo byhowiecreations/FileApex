@@ -1,10 +1,15 @@
 package com.fileapex.ui
 
-import com.fileapex.data.settings.AppTheme
-import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.i18n.stringRes
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import com.fileapex.ui.theme.LocalJadedHazeState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.filled.Folder
 import com.fileapex.ui.dnd.deviceFileDragSource
@@ -12,6 +17,7 @@ import com.fileapex.ui.dnd.deviceFileDragSource
 
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -36,6 +42,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -134,7 +141,7 @@ fun AdaptiveExplorerView(
     }
 
     if (isWideDisplay) {
-        val rightDirs = if (showingPaneRootFiles) emptyList() else contentDirectories
+        val rightDirs = contentDirectories
         val rightFiles = contentFiles
         val rightEmpty = rightDirs.isEmpty() && rightFiles.isEmpty()
 
@@ -145,12 +152,30 @@ fun AdaptiveExplorerView(
             val dividerInteraction = remember { MutableInteractionSource() }
             val isHovered by dividerInteraction.collectIsHoveredAsState()
 
+            val ink = explorerInk()
             Row(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     modifier = Modifier
                         .weight(splitFraction)
                         .fillMaxHeight()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                        .background(ink.paneBackground)
+                        .then(
+                            if (ink.jadedGlyphs) {
+                                Modifier.drawBehind {
+                                    val shadow = 10.dp.toPx()
+                                    drawRect(
+                                        brush = Brush.horizontalGradient(
+                                            0f to Color.Transparent,
+                                            1f to Color.Black.copy(alpha = 0.35f)
+                                        ),
+                                        topLeft = Offset(size.width - shadow, 0f),
+                                        size = Size(shadow, size.height)
+                                    )
+                                }
+                            } else {
+                                Modifier
+                            }
+                        ),
                     contentPadding = listPadding
                 ) {
                     if (canNavigateUp) {
@@ -193,7 +218,7 @@ fun AdaptiveExplorerView(
                 }
                 Box(
                     modifier = Modifier
-                        .width(10.dp)
+                        .width(if (ink.jadedGlyphs) 14.dp else 10.dp)
                         .fillMaxHeight()
                         .hoverable(dividerInteraction)
                         .pointerHoverIcon(horizontalResizePointerIcon())
@@ -221,12 +246,18 @@ fun AdaptiveExplorerView(
                 ) {
                     VerticalDivider(
                         thickness = if (isHovered || isDraggingDivider) 2.dp else 1.dp,
-                        color = if (isHovered || isDraggingDivider) FileApexTeal else MaterialTheme.colorScheme.outlineVariant
+                        color = when {
+                            ink.jadedGlyphs && !isHovered && !isDraggingDivider -> Color.Black.copy(alpha = 0.35f)
+                            isHovered || isDraggingDivider ->
+                                if (ink.styledKinetic) ink.accent else FileApexTeal
+                            ink.styledKinetic -> ink.divider
+                            else -> MaterialTheme.colorScheme.outlineVariant
+                        }
                     )
                 }
                 ExplorerContentPane(
-                    viewMode = viewMode,
-                    canNavigateUp = canNavigateUp,
+                    viewMode = if (ink.jadedGlyphs) ExplorerViewMode.Grid else viewMode,
+                    canNavigateUp = false,
                     directories = rightDirs,
                     files = rightFiles,
                     isEmpty = rightEmpty,
@@ -265,7 +296,7 @@ fun AdaptiveExplorerView(
 
     val empty = contentDirectories.isEmpty() && contentFiles.isEmpty()
     if (empty && !canNavigateUp) {
-        val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+        val ink = explorerInk()
         Box(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -273,7 +304,7 @@ fun AdaptiveExplorerView(
             Text(
                 text = stringRes("folder_empty"),
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                color = ink.muted
             )
         }
         return
@@ -515,12 +546,23 @@ private fun ExplorerGridContent(
     onSendItemToDevice: (RemoteFileItem) -> Unit,
     onDownloadItem: (RemoteFileItem) -> Unit
 ) {
+    val jadedGrid = explorerInk().jadedGlyphs
+    val gridGap = if (jadedGrid) 12.dp else 8.dp
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 108.dp),
         modifier = modifier,
-        contentPadding = listPadding,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = if (jadedGrid) {
+            PaddingValues(
+                start = 12.dp,
+                top = 12.dp,
+                end = 12.dp,
+                bottom = maxOf(listPadding.calculateBottomPadding(), 12.dp)
+            )
+        } else {
+            listPadding
+        },
+        horizontalArrangement = Arrangement.spacedBy(gridGap),
+        verticalArrangement = Arrangement.spacedBy(gridGap)
     ) {
         if (canNavigateUp) {
             item(key = "parent", span = { GridItemSpan(maxLineSpan) }) {
@@ -582,7 +624,7 @@ private fun ExplorerGridContent(
 
 @Composable
 private fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val ink = explorerInk()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -595,14 +637,14 @@ private fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(22.dp),
                     strokeWidth = 2.dp,
-                    color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                    color = ink.accent
                 )
             }
         } else {
             Icon(
                 imageVector = Icons.Filled.Folder,
                 contentDescription = stringRes("up"),
-                tint = if (isFluxGlass) Color(0xFF00E676) else FileApexTeal,
+                tint = ink.folderTint,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -614,27 +656,27 @@ private fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
             Text(
                 text = "..",
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                color = ink.title,
                 maxLines = 1
             )
             Text(
                 text = stringRes("up_one_folder"),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                color = ink.muted
             )
         }
     }
-    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(color = ink.divider)
 }
 
 @Composable
 private fun EmptyHint(text: String) {
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val ink = explorerInk()
     Text(
         text = text,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
         style = MaterialTheme.typography.bodyMedium,
-        color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+        color = ink.muted
     )
 }
 
@@ -660,7 +702,7 @@ private fun PaneDirectoryRow(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val ink = explorerInk()
     val rowModifier = explorerItemRowModifier(
         desktopSelection = desktopSelection,
         isSelectionMode = isSelectionMode,
@@ -673,19 +715,10 @@ private fun PaneDirectoryRow(
     )
 
     Box {
+        val selectedInPane = isChecked || isSelectedInPane
         Row(
             modifier = rowModifier
-                .background(
-                    if (isFluxGlass) {
-                        if (isChecked) Color(0x4400E676)
-                        else if (isSelectedInPane) Color(0x4400E676)
-                        else Color.Transparent
-                    } else {
-                        if (isChecked) FileApexTeal.copy(alpha = 0.14f)
-                        else if (isSelectedInPane) FileApexTeal.copy(alpha = 0.14f)
-                        else Color.Transparent
-                    }
-                )
+                .background(if (selectedInPane) ink.paneSelected else Color.Transparent)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -699,11 +732,15 @@ private fun PaneDirectoryRow(
                     CircularProgressIndicator(
                         modifier = Modifier.size(22.dp),
                         strokeWidth = 2.dp,
-                        color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                        color = ink.accent
                     )
                 }
             } else {
-                ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+                ExplorerEntryIcon(
+                    item = dir,
+                    modifier = Modifier.size(28.dp),
+                    folderColor = if (ink.styledKinetic) ink.folderTint else null
+                )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(
@@ -715,16 +752,27 @@ private fun PaneDirectoryRow(
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = if (isSelectedInPane || isChecked) FontWeight.SemiBold else FontWeight.Normal
                     ),
-                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    color = ink.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = com.fileapex.i18n.AppI18n.t("folder"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = ink.muted
                 )
             }
+        }
+        val bar = ink.selectionBar
+        if (bar != null && selectedInPane) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .wrapContentWidth(Alignment.Start)
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(bar)
+            )
         }
         ItemContextMenu(
             expanded = menuExpanded,
@@ -735,7 +783,7 @@ private fun PaneDirectoryRow(
             onDownload = onDownload
         )
     }
-    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(color = ink.divider)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -760,7 +808,7 @@ private fun DirectoryListRow(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val ink = explorerInk()
     val rowModifier = explorerItemRowModifier(
         desktopSelection = desktopSelection,
         isSelectionMode = isSelectionMode,
@@ -784,13 +832,7 @@ private fun DirectoryListRow(
     Box(modifier = Modifier.then(dragModifier)) {
         Row(
             modifier = rowModifier
-                .background(
-                    if (isFluxGlass) {
-                        if (isSelected) Color(0x4400E676) else Color.Transparent
-                    } else {
-                        if (isSelected) FileApexTeal.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface
-                    }
-                )
+                .background(if (isSelected) ink.listSelected else ink.listIdle)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -804,11 +846,15 @@ private fun DirectoryListRow(
                     CircularProgressIndicator(
                         modifier = Modifier.size(22.dp),
                         strokeWidth = 2.dp,
-                        color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                        color = ink.accent
                     )
                 }
             } else {
-                ExplorerEntryIcon(item = dir, modifier = Modifier.size(28.dp))
+                ExplorerEntryIcon(
+                    item = dir,
+                    modifier = Modifier.size(28.dp),
+                    folderColor = if (ink.styledKinetic) ink.folderTint else null
+                )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(
@@ -818,14 +864,14 @@ private fun DirectoryListRow(
                 Text(
                     text = dir.name,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    color = ink.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = com.fileapex.i18n.AppI18n.t("folder"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = ink.muted
                 )
             }
         }
@@ -838,7 +884,7 @@ private fun DirectoryListRow(
             onDownload = onDownload
         )
     }
-    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(color = ink.divider)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -861,7 +907,7 @@ private fun FileListRow(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val ink = explorerInk()
     val rowModifier = explorerItemRowModifier(
         desktopSelection = desktopSelection,
         isSelectionMode = isSelectionMode,
@@ -885,13 +931,7 @@ private fun FileListRow(
     Box(modifier = Modifier.then(dragModifier)) {
         Row(
             modifier = rowModifier
-                .background(
-                    if (isFluxGlass) {
-                        if (isSelected) Color(0x4400E676) else Color.Transparent
-                    } else {
-                        if (isSelected) FileApexTeal.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface
-                    }
-                )
+                .background(if (isSelected) ink.listSelected else ink.listIdle)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -899,7 +939,11 @@ private fun FileListRow(
                 SelectionIndicator(selected = isSelected)
                 Spacer(modifier = Modifier.width(12.dp))
             }
-            ExplorerEntryIcon(item = file, modifier = Modifier.size(28.dp))
+            ExplorerEntryIcon(
+                item = file,
+                modifier = Modifier.size(28.dp),
+                fileColor = if (ink.styledKinetic) ink.accent else null
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column(
                 modifier = Modifier.weight(1f),
@@ -908,14 +952,14 @@ private fun FileListRow(
                 Text(
                     text = file.name,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                    color = ink.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = formatBytes(file.sizeBytes),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = ink.muted
                 )
             }
         }
@@ -928,7 +972,7 @@ private fun FileListRow(
             onDownload = onDownload
         )
     }
-    HorizontalDivider(color = if (isFluxGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(color = ink.divider)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -954,7 +998,7 @@ private fun ExplorerGridCell(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val isFluxGlass = LocalAppTheme.current == AppTheme.FLUX_GLASS
+    val ink = explorerInk()
     val interactionModifier = if (desktopSelection) {
         Modifier.desktopItemClicks(
             isSelectionMode = isSelectionMode,
@@ -980,17 +1024,110 @@ private fun ExplorerGridCell(
         )
     } else Modifier
 
+    val jadedShape = RoundedCornerShape(16.dp)
+    val cardChrome = if (ink.jadedGlyphs) {
+        val haze = LocalJadedHazeState.current
+        Modifier
+            .aspectRatio(1f)
+            .clip(jadedShape)
+            .then(
+                if (haze != null) {
+                    Modifier.hazeEffect(
+                        state = haze,
+                        style = HazeStyle(
+                            backgroundColor = Color.Transparent,
+                            tints = listOf(HazeTint(Color.White.copy(alpha = 0.10f))),
+                            blurRadius = 24.dp,
+                            noiseFactor = 0.04f
+                        )
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.White.copy(alpha = 0.16f),
+                    1f to Color.White.copy(alpha = 0.05f)
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    0f to Color.White.copy(alpha = 0.22f),
+                    1f to Color.White.copy(alpha = 0.10f)
+                ),
+                shape = jadedShape
+            )
+    } else {
+        Modifier
+    }
     Box(modifier = Modifier.then(dragModifier)) {
+        if (ink.jadedGlyphs) {
+            Box(modifier = interactionModifier.then(cardChrome)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    val isItemLoading = isLoading && loadingFolderPath != null && pathsEqual(item.absolutePath, loadingFolderPath)
+                    if (isItemLoading) {
+                        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(32.dp),
+                                strokeWidth = 3.dp,
+                                color = ink.accent
+                            )
+                        }
+                    } else if (item.isDirectory) {
+                        JadedFolderGlyph(name = item.name, modifier = Modifier.size(36.dp))
+                    } else {
+                        JadedFileGlyph(item = item, modifier = Modifier.size(40.dp))
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = item.name,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = ink.title,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ink.muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                if (!item.isDirectory) {
+                    JadedCardCornerBadge(
+                        item = item,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                    )
+                }
+                if (isSelectionMode && isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                    ) {
+                        SelectionIndicator(selected = true)
+                    }
+                }
+            }
+        } else {
         Surface(
             modifier = interactionModifier
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(12.dp)),
-            color = if (isFluxGlass) {
-                if (isSelected) Color(0x4400E676) else Color(0x221E2D34)
-            } else {
-                if (isSelected) FileApexTeal.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            },
-            border = if (isFluxGlass) BorderStroke(1.dp, if (isSelected) Color(0xFF00E676) else Color.White.copy(alpha = 0.15f)) else null,
+                .clip(RoundedCornerShape(ink.gridCorner)),
+            color = ink.gridFill(isSelected),
+            border = ink.gridBorder?.invoke(isSelected),
             tonalElevation = 0.dp
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -1007,9 +1144,13 @@ private fun ExplorerGridCell(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(32.dp),
                                 strokeWidth = 3.dp,
-                                color = if (isFluxGlass) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
+                                color = ink.accent
                             )
                         }
+                    } else if (ink.jadedGlyphs && item.isDirectory) {
+                        JadedFolderGlyph(name = item.name, modifier = Modifier.size(36.dp))
+                    } else if (ink.jadedGlyphs) {
+                        JadedFileGlyph(item = item, modifier = Modifier.size(40.dp))
                     } else {
                         ExplorerEntryIcon(item = item, modifier = Modifier.size(40.dp))
                     }
@@ -1017,7 +1158,7 @@ private fun ExplorerGridCell(
                     Text(
                         text = item.name,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (isFluxGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                        color = ink.title,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center
@@ -1026,7 +1167,7 @@ private fun ExplorerGridCell(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isFluxGlass) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = ink.muted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center
@@ -1042,6 +1183,7 @@ private fun ExplorerGridCell(
                     }
                 }
             }
+        }
         }
         ItemContextMenu(
             expanded = menuExpanded,

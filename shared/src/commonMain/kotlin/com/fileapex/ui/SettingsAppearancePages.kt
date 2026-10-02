@@ -1,6 +1,7 @@
 package com.fileapex.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,12 +31,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.fileapex.ui.theme.FluxGlassPalette
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.BulletinBoardStyle
+import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.supportedIconStyles
 import com.fileapex.i18n.stringRes
@@ -57,6 +60,71 @@ internal fun localizedThemeDescription(theme: AppTheme): String = when (theme) {
     AppTheme.FLUX_GLASS -> stringRes("theme_flux_desc")
     AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic_desc")
     AppTheme.FREESTYLE -> stringRes("theme_freestyle_desc")
+}
+
+@Composable
+internal fun localizedKineticStyleName(style: KineticStyle): String = when (style) {
+    KineticStyle.SPACE -> stringRes("kinetic_style_space")
+    KineticStyle.FROSTED -> stringRes("kinetic_style_frosted")
+    KineticStyle.JADED_STEEL -> stringRes("kinetic_style_jaded_steel")
+}
+
+@Composable
+private fun KineticSegmentRow(
+    label: String,
+    options: List<Pair<String, Boolean>>,
+    onSelect: (Int) -> Unit
+) {
+    val isCustomTheme = isFileApexCustomGlassTheme()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = if (isCustomTheme) FluxGlassPalette.explorerMuted else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = if (isCustomTheme) FluxGlassPalette.unselectedFill else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            border = BorderStroke(
+                1.dp,
+                if (isCustomTheme) Color.White.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+            )
+        ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(3.dp)) {
+                options.forEachIndexed { index, (title, selected) ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (selected) {
+                                    if (isCustomTheme) FluxGlassPalette.accent else MaterialTheme.colorScheme.primary
+                                } else {
+                                    Color.Transparent
+                                }
+                            )
+                            .clickable { onSelect(index) }
+                            .padding(horizontal = 6.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (selected) {
+                                if (isCustomTheme) FluxGlassPalette.onPrimary else Color.White
+                            } else if (isCustomTheme) {
+                                Color.White
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -94,6 +162,7 @@ internal fun ThemesSettingsPage(
     onBack: () -> Unit,
     onSelectTheme: (AppTheme) -> Unit,
     onSelectThemeIconStyle: (ThemeIconStyle) -> Unit,
+    onSelectKineticStyle: (KineticStyle) -> Unit,
     onToggleConnectedLines: (Boolean) -> Unit,
     onToggleOrbitalRings: (Boolean) -> Unit,
     onTogglePersistentWallpaper: (Boolean) -> Unit = {}
@@ -130,7 +199,7 @@ internal fun ThemesSettingsPage(
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { onSelectTheme(theme) },
                     color = if (isCustomTheme) {
-                        if (selected) Color(0x3300E676) else Color(0x221E2D34)
+                        if (selected) FluxGlassPalette.accentSoft else FluxGlassPalette.unselectedFill
                     } else {
                         if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -138,7 +207,7 @@ internal fun ThemesSettingsPage(
                     border = BorderStroke(
                         width = if (selected) 2.dp else 1.dp,
                         color = if (isCustomTheme) {
-                            if (selected) Color(0xFF00E676) else Color.White.copy(alpha = 0.2f)
+                            if (selected) FluxGlassPalette.accent else Color.White.copy(alpha = 0.2f)
                         } else {
                             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                         }
@@ -162,7 +231,7 @@ internal fun ThemesSettingsPage(
                                 if (theme == AppTheme.CLEAN) {
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Surface(
-                                        color = if (isCustomTheme) Color(0x44FFFFFF) else MaterialTheme.colorScheme.secondaryContainer,
+                                        color = if (isCustomTheme) FluxGlassPalette.badgeScrim else MaterialTheme.colorScheme.secondaryContainer,
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Text(
@@ -178,7 +247,7 @@ internal fun ThemesSettingsPage(
                             Text(
                                 text = localizedThemeDescription(theme),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (isCustomTheme) Color(0xFFCBD5E1) else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isCustomTheme) FluxGlassPalette.explorerMuted else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
@@ -188,7 +257,7 @@ internal fun ThemesSettingsPage(
                             selected = selected,
                             onClick = { onSelectTheme(theme) },
                             colors = RadioButtonDefaults.colors(
-                                selectedColor = if (isCustomTheme) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                                selectedColor = if (isCustomTheme) FluxGlassPalette.accent else MaterialTheme.colorScheme.primary,
                                 unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         )
@@ -196,7 +265,25 @@ internal fun ThemesSettingsPage(
                 }
 
                 val supportedIcons = theme.supportedIconStyles()
-                if (selected && supportedIcons.size > 1) {
+                if (selected && theme == AppTheme.KINETIC_SPHERE) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 32.dp, end = 16.dp, top = 2.dp, bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        KineticSegmentRow(
+                            label = stringRes("icon_pack"),
+                            options = supportedIcons.map { localizedIconStyleName(it) to (state.themeIconStyle == it) },
+                            onSelect = { index -> onSelectThemeIconStyle(supportedIcons[index]) }
+                        )
+                        KineticSegmentRow(
+                            label = stringRes("kinetic_style"),
+                            options = KineticStyle.entries.map { localizedKineticStyleName(it) to (state.kineticStyle == it) },
+                            onSelect = { index -> onSelectKineticStyle(KineticStyle.entries[index]) }
+                        )
+                    }
+                } else if (selected && supportedIcons.size > 1) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -211,7 +298,7 @@ internal fun ThemesSettingsPage(
                                     .clip(RoundedCornerShape(10.dp))
                                     .clickable { onSelectThemeIconStyle(iconStyle) },
                                 color = if (isCustomTheme) {
-                                    if (isIconSelected) Color(0x3300E676) else Color(0x221E2D34)
+                                    if (isIconSelected) FluxGlassPalette.accentSoft else FluxGlassPalette.unselectedFill
                                 } else {
                                     if (isIconSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -219,7 +306,7 @@ internal fun ThemesSettingsPage(
                                 border = BorderStroke(
                                     width = if (isIconSelected) 1.5.dp else 1.dp,
                                     color = if (isCustomTheme) {
-                                        if (isIconSelected) Color(0xFF00E676) else Color.White.copy(alpha = 0.18f)
+                                        if (isIconSelected) FluxGlassPalette.accent else Color.White.copy(alpha = 0.18f)
                                     } else {
                                         if (isIconSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
                                     }
@@ -237,7 +324,7 @@ internal fun ThemesSettingsPage(
                                         text = localizedIconStyleName(iconStyle),
                                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                                         color = if (isCustomTheme) {
-                                            if (isIconSelected) Color(0xFF00E676) else Color(0xFFFFB74D)
+                                            if (isIconSelected) FluxGlassPalette.accent else Color(0xFFFFB74D)
                                         } else {
                                             if (isIconSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         },
@@ -249,7 +336,7 @@ internal fun ThemesSettingsPage(
                                         onClick = { onSelectThemeIconStyle(iconStyle) },
                                         modifier = Modifier.size(20.dp),
                                         colors = RadioButtonDefaults.colors(
-                                            selectedColor = if (isCustomTheme) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                                            selectedColor = if (isCustomTheme) FluxGlassPalette.accent else MaterialTheme.colorScheme.primary,
                                             unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     )
@@ -358,7 +445,7 @@ internal fun BulletinBoardStylesSettingsPage(
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { onSelectStyle(style) },
                     color = if (isCustomTheme) {
-                        if (selected) Color(0x3300E676) else Color(0x221E2D34)
+                        if (selected) FluxGlassPalette.accentSoft else FluxGlassPalette.unselectedFill
                     } else {
                         if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -366,7 +453,7 @@ internal fun BulletinBoardStylesSettingsPage(
                     border = BorderStroke(
                         width = if (selected) 2.dp else 1.dp,
                         color = if (isCustomTheme) {
-                            if (selected) Color(0xFF00E676) else Color.White.copy(alpha = 0.2f)
+                            if (selected) FluxGlassPalette.accent else Color.White.copy(alpha = 0.2f)
                         } else {
                             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                         }
@@ -395,7 +482,7 @@ internal fun BulletinBoardStylesSettingsPage(
                                 if (style == BulletinBoardStyle.DEFAULT) {
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Surface(
-                                        color = if (isCustomTheme) Color(0x44FFFFFF) else MaterialTheme.colorScheme.secondaryContainer,
+                                        color = if (isCustomTheme) FluxGlassPalette.badgeScrim else MaterialTheme.colorScheme.secondaryContainer,
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Text(
@@ -426,7 +513,7 @@ internal fun BulletinBoardStylesSettingsPage(
                             selected = selected,
                             onClick = { onSelectStyle(style) },
                             colors = RadioButtonDefaults.colors(
-                                selectedColor = if (isCustomTheme) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
+                                selectedColor = if (isCustomTheme) FluxGlassPalette.accent else MaterialTheme.colorScheme.primary,
                                 unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         )

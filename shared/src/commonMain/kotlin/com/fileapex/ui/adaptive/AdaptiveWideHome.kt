@@ -21,12 +21,15 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material.icons.filled.ViewColumn
 import com.fileapex.ui.FileApexIcons
 import com.fileapex.data.settings.FreestyleLayoutMode
+import com.fileapex.data.settings.KineticStyle
+import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.LocalKineticStyle
+import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,16 +51,24 @@ import androidx.compose.runtime.getValue
 import com.fileapex.domain.transfer.TransferActivityGuard
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import com.fileapex.ui.theme.LocalJadedHazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
@@ -77,6 +88,7 @@ import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.isMainHomeScreen
 import com.fileapex.ui.theme.FileApexTeal
+import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
@@ -88,8 +100,8 @@ import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
 import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import com.fileapex.ui.theme.fileApexNavigationRailItemColors
 
-import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
 import com.fileapex.platform.horizontalResizePointerIcon
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.ui.DesktopLayoutToggle
@@ -145,8 +157,8 @@ fun AdaptiveWideHome(
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         val currentTheme = LocalAppTheme.current
-        val isGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.FREESTYLE
-        val editTint = if (isGlass) Color(0xFF00E676) else fileApexChromeContentColor()
+        val isGlass = currentTheme.traits.reorderAccent
+        val editTint = if (isGlass) FluxGlassPalette.accent else fileApexChromeContentColor()
         if (editMode) {
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
                 TextButton(
@@ -187,7 +199,7 @@ fun AdaptiveWideHome(
             onOpenNotes = onOpenNotes,
             deviceOrderHeaderActions = deviceOrderHeaderActions
         )
-        val isFreestyle = LocalAppTheme.current == AppTheme.FREESTYLE
+        val isFreestyle = LocalAppTheme.current.traits.canvasHome
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (!isFreestyle) {
                 FileApexNavigationRail(
@@ -209,14 +221,16 @@ fun AdaptiveWideHome(
                     onSettings = { onSelectTab(HomeTab.Settings) }
                 )
             }
-            val isSpatialTheme = LocalAppTheme.current == AppTheme.KINETIC_SPHERE || LocalAppTheme.current == AppTheme.FREESTYLE
+            val isSpatialTheme = LocalAppTheme.current.traits.spatialHome
             when (selectedTab) {
                 HomeTab.Settings -> {
+                    val jadedSettings = LocalAppTheme.current.traits.orbitalHome &&
+                        LocalKineticStyle.current == KineticStyle.JADED_STEEL
                     Surface(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        color = MaterialTheme.colorScheme.surface
+                        color = if (jadedSettings) Color.Transparent else MaterialTheme.colorScheme.surface
                     ) {
                         SettingsScreen(
                             appVersionName = appVersionName,
@@ -355,11 +369,13 @@ fun AdaptiveWideHome(
                     }
                 }
                 HomeTab.Files -> {
+                    val jadedFiles = LocalAppTheme.current.traits.orbitalHome &&
+                        LocalKineticStyle.current == KineticStyle.JADED_STEEL
                     Surface(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        color = MaterialTheme.colorScheme.surface
+                        color = if (jadedFiles) Color.Transparent else MaterialTheme.colorScheme.surface
                     ) {
                         val localTarget = (selectedTarget as? BrowseTarget.Local)
                             ?: devicesViewModel.thisDeviceTarget()
@@ -392,15 +408,50 @@ private fun WideTopBar(
     onOpenNotes: (() -> Unit)? = null,
     deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {}
 ) {
-    val isKineticSphere = LocalAppTheme.current == AppTheme.KINETIC_SPHERE
+    val isKineticSphere = LocalAppTheme.current.traits.orbitalHome
+    val jadedHeader = isKineticSphere && LocalKineticStyle.current == KineticStyle.JADED_STEEL
     val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail && !isKineticSphere
     val showExplorerViewToggle = selectedTab == HomeTab.Files || hasActiveDetail
+    val headerShape = RoundedCornerShape(20.dp)
+    val headerHaze = LocalJadedHazeState.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .fileApexChromeBottomEdge()
-            .background(fileApexChromeContainerColor())
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .then(
+                if (jadedHeader) {
+                    Modifier
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                        .clip(headerShape)
+                        .then(
+                            if (headerHaze != null) {
+                                Modifier.hazeEffect(
+                                    state = headerHaze,
+                                    style = HazeStyle(
+                                        backgroundColor = Color.Transparent,
+                                        tints = listOf(HazeTint(Color.White.copy(alpha = 0.16f))),
+                                        blurRadius = 24.dp,
+                                        noiseFactor = 0.04f
+                                    )
+                                )
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = 0.22f),
+                                1f to Color.White.copy(alpha = 0.10f)
+                            )
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.18f), headerShape)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                } else {
+                    Modifier
+                        .fileApexChromeBottomEdge()
+                        .background(fileApexChromeContainerColor())
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                }
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
@@ -409,10 +460,17 @@ private fun WideTopBar(
         ) {
             Text(
                 text = "FileApex",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                style = if (jadedHeader) {
+                    MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 28.sp
+                    )
+                } else {
+                    MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                },
                 color = fileApexChromeContentColor()
             )
-            if (selectedTab == HomeTab.Devices && !hasActiveDetail) {
+            if (!jadedHeader && selectedTab == HomeTab.Devices && !hasActiveDetail) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = stringRes("paired_devices_title"),
@@ -461,14 +519,11 @@ private fun WideTopBar(
             iconTint = headerIconTint
         )
         if (onOpenNotes != null) {
-            val noteIconKind = when (currentTheme) {
-                AppTheme.FLUX_GLASS, AppTheme.KINETIC_SPHERE, AppTheme.FREESTYLE -> NoteIconKind.GREEN
-                else -> NoteIconKind.WHITE
-            }
+            val noteIconKind = if (currentTheme.traits.glassChrome) NoteIconKind.GREEN else NoteIconKind.WHITE
             NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode, iconKind = noteIconKind, modifier = Modifier.size(40.dp))
         }
         if (showDevicesViewToggle) {
-            val isFreestyle = currentTheme == AppTheme.FREESTYLE
+            val isFreestyle = currentTheme.traits.canvasHome
             if (isFreestyle) {
                 val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
                 val icon = when (freestyleMode) {
@@ -508,37 +563,19 @@ private fun WideTopBar(
             }
             deviceOrderHeaderActions()
         } else if (showExplorerViewToggle) {
-            ExplorerViewModeToggle(
-                viewMode = explorerViewMode,
-                onToggle = onToggleExplorerViewMode,
-                iconTint = headerIconTint,
-                modifier = Modifier.size(40.dp)
-            )
+            if (!jadedHeader) {
+                ExplorerViewModeToggle(
+                    viewMode = explorerViewMode,
+                    onToggle = onToggleExplorerViewMode,
+                    iconTint = headerIconTint,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
             if (isDesktopHost()) {
                 DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
             }
         }
-        IconButton(
-            onClick = onExitClick,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .size(28.dp),
-                shape = CircleShape,
-                color = Color(0x3300E676),
-                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.70f))
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.PowerSettingsNew,
-                        contentDescription = stringRes("exit_fileapex"),
-                        tint = Color(0xFF00E676),
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-        }
+        FileApexPowerButton(onClick = onExitClick)
     }
 }
 
@@ -551,11 +588,28 @@ fun FileApexNavigationRail(
     onSettings: () -> Unit
 ) {
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
+    val jadedRail = LocalAppTheme.current.traits.orbitalHome &&
+        LocalKineticStyle.current == KineticStyle.JADED_STEEL
     BoxWithConstraints(modifier = Modifier.fillMaxHeight()) {
         val isPortrait = maxHeight > maxWidth
         NavigationRail(
-            modifier = Modifier.fillMaxHeight(),
-            containerColor = fileApexChromeContainerColor(),
+            modifier = Modifier
+                .fillMaxHeight()
+                .then(
+                    if (jadedRail) {
+                        Modifier.drawBehind {
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.10f),
+                                start = Offset(size.width - 0.5f, 0f),
+                                end = Offset(size.width - 0.5f, size.height),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                ),
+            containerColor = if (jadedRail) Color(0x66101820) else fileApexChromeContainerColor(),
             contentColor = fileApexChromeContentColor()
         ) {
             if (isPortrait) {
@@ -595,31 +649,59 @@ private fun RailItem(
     icon: ImageVector,
     label: String
 ) {
+    val jadedSelected = selected &&
+        LocalAppTheme.current.traits.orbitalHome &&
+        LocalKineticStyle.current == KineticStyle.JADED_STEEL
     NavigationRailItem(
         selected = selected,
         onClick = onClick,
         icon = {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (selected) fileApexNavSelectedBackgroundColor() else Color.Transparent),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = if (selected) {
-                        fileApexNavSelectedIconColor()
-                    } else {
-                        fileApexNavUnselectedIconColor()
-                    }
-                )
+            val tile = RoundedCornerShape(10.dp)
+            Box(contentAlignment = Alignment.Center) {
+                if (jadedSelected) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .blur(16.dp)
+                            .background(Color(0x736366F1), tile)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(if (jadedSelected) 48.dp else 40.dp)
+                        .clip(if (jadedSelected) tile else RoundedCornerShape(12.dp))
+                        .then(
+                            if (jadedSelected) {
+                                Modifier
+                                    .background(Color(0x596366F1))
+                                    .border(1.dp, Color(0x73A0AAFF), tile)
+                            } else {
+                                Modifier.background(
+                                    if (selected) fileApexNavSelectedBackgroundColor() else Color.Transparent
+                                )
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        modifier = Modifier.size(if (jadedSelected) 24.dp else 24.dp),
+                        tint = when {
+                            jadedSelected -> Color(0xFF8DB8F5)
+                            selected -> fileApexNavSelectedIconColor()
+                            LocalAppTheme.current.traits.orbitalHome &&
+                                LocalKineticStyle.current == KineticStyle.JADED_STEEL -> Color(0xFFC5D0D2)
+                            else -> fileApexNavUnselectedIconColor()
+                        }
+                    )
+                }
             }
         },
         label = {
             Text(
                 label,
+                fontWeight = if (jadedSelected) FontWeight.Bold else FontWeight.Normal,
                 color = if (selected) {
                     fileApexNavSelectedTextColor()
                 } else {

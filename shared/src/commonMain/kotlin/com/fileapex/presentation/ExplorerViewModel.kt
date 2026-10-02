@@ -94,7 +94,6 @@ class ExplorerViewModel(
     /** Anchor for desktop Shift-click range selection. */
     private var selectionAnchorId: String? = null
     private var browseJob: Job? = null
-    private var splitPanePreviewJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         ExplorerUiState(
@@ -244,43 +243,13 @@ class ExplorerViewModel(
         }
     }
 
-    /**
-     * Wide layout only: fill the right pane with the first folder. Failures are ignored so a
-     * missing/empty child (e.g. Alarms) cannot fail the browse or mark the peer unreachable.
-     * Does not change [ExplorerUiState.currentPath], so compact nav and transfers stay put.
-     */
-    fun previewFirstSplitPaneFolder() {
-        val state = _uiState.value
-        if (state.selectedFolderPath != null) return
-        val first = state.paneDirectories.firstOrNull() ?: return
-        val paneSnapshot = browser.normalizePath(state.panePath.ifBlank { browseRoot })
-        splitPanePreviewJob?.cancel()
-        splitPanePreviewJob = viewModelScope.launch {
-            runCatching {
-                val resolved = browser.resolveWithinRoot(first.absolutePath)
-                val listing = browser.listAt(resolved)
-                _uiState.update { current ->
-                    val paneNow = browser.normalizePath(current.panePath.ifBlank { browseRoot })
-                    if (paneNow != paneSnapshot || current.selectedFolderPath != null) {
-                        current
-                    } else {
-                        current.copy(
-                            selectedFolderPath = resolved,
-                            contentDirectories = listing.directories,
-                            contentFiles = listing.files
-                        )
-                    }
-                }
-            }
-        }
-    }
+    fun previewFirstSplitPaneFolder() = Unit
 
     fun onDirectoryClick(item: RemoteFileItem) {
         onContentDirectoryClick(item)
     }
 
     private fun launchBrowse(block: suspend () -> Unit) {
-        splitPanePreviewJob?.cancel()
         browseJob?.cancel()
         browseJob = viewModelScope.launch { block() }
     }

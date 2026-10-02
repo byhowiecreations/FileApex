@@ -22,7 +22,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.LocalKineticStyle
+import com.fileapex.data.settings.traits
 import com.fileapex.platform.fluentUiFontFamily
 
 
@@ -79,23 +82,23 @@ private val FluentColorScheme = lightColorScheme(
 )
 
 private val FluxGlassColorScheme = darkColorScheme(
-    primary = Color(0xFF00E676),
-    onPrimary = Color(0xFF050B0E),
-    primaryContainer = Color(0x3300E676),
-    onPrimaryContainer = Color(0xFF00E676),
-    secondary = Color(0xFF00B0FF),
+    primary = FluxGlassPalette.accent,
+    onPrimary = FluxGlassPalette.onPrimary,
+    primaryContainer = FluxGlassPalette.accentSoft,
+    onPrimaryContainer = FluxGlassPalette.accent,
+    secondary = FluxGlassPalette.secondary,
     onSecondary = Color.Black,
-    secondaryContainer = Color(0x3300B0FF),
-    onSecondaryContainer = Color(0xFF80D8FF),
-    background = Color(0xFF070B0E),
-    onBackground = Color(0xFFF8FAFC),
-    surface = Color(0x331E2D34),
-    onSurface = Color(0xFFF8FAFC),
-    surfaceVariant = Color(0x2828383F),
-    onSurfaceVariant = Color(0xFFCBD5E1),
-    outline = Color(0x33FFFFFF),
-    outlineVariant = Color(0x1FFFFFFF),
-    error = Color(0xFFFF5252),
+    secondaryContainer = FluxGlassPalette.secondaryContainer,
+    onSecondaryContainer = FluxGlassPalette.onSecondaryContainer,
+    background = FluxGlassPalette.backgroundMid,
+    onBackground = FluxGlassPalette.onBackground,
+    surface = FluxGlassPalette.surface,
+    onSurface = FluxGlassPalette.onBackground,
+    surfaceVariant = FluxGlassPalette.surfaceVariant,
+    onSurfaceVariant = FluxGlassPalette.explorerMuted,
+    outline = FluxGlassPalette.outline,
+    outlineVariant = FluxGlassPalette.outlineVariant,
+    error = FluxGlassPalette.error,
     onError = Color.White
 )
 
@@ -137,12 +140,13 @@ fun FileApexTheme(
     uiStyle: DesktopUiStyle = DesktopUiStyle.Standard,
     appTheme: AppTheme = AppTheme.CLEAN,
     themeIconStyle: com.fileapex.data.settings.ThemeIconStyle = com.fileapex.data.settings.ThemeIconStyle.STANDARD,
+    kineticStyle: KineticStyle = KineticStyle.SPACE,
     content: @Composable () -> Unit
 ) {
     val fluent = uiStyle == DesktopUiStyle.WindowsFluent
     val fontFamily = if (fluent) fluentUiFontFamily() else FontFamily.Default
     val colorScheme = when {
-        appTheme == AppTheme.FLUX_GLASS || appTheme == AppTheme.KINETIC_SPHERE || appTheme == AppTheme.FREESTYLE -> FluxGlassColorScheme
+        appTheme.traits.glassChrome -> FluxGlassColorScheme
         fluent -> FluentColorScheme
         else -> StandardColorScheme
     }
@@ -162,6 +166,7 @@ fun FileApexTheme(
     CompositionLocalProvider(
         LocalFileApexUiStyle provides uiStyle,
         LocalAppTheme provides appTheme,
+        LocalKineticStyle provides kineticStyle,
         com.fileapex.data.settings.LocalThemeIconStyle provides themeIconStyle
     ) {
         MaterialTheme(

@@ -111,6 +111,9 @@ private fun isCliInvocation(args: Array<String>): Boolean {
 }
 
 private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload?) {
+    if (DesktopPlatformPaths.isMacOs()) {
+        System.setProperty("apple.awt.application.appearance", "NSAppearanceNameDarkAqua")
+    }
     MacLaunchSplash.show()
     // Decode Freestyle/Flux PNGs off the UI thread while the window comes up.
     ThemeDeviceIconPreloader.startFor(createAppSettings().themeIconStyle.value)

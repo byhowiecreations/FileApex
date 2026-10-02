@@ -32,9 +32,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
 import androidx.compose.ui.graphics.Brush
-import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.backgroundBrush
 import com.fileapex.data.settings.DesktopLayoutMode
+import com.fileapex.data.settings.KineticStyle
+import com.fileapex.data.settings.traits
+import com.fileapex.ui.theme.JadedSteelWash
+import com.fileapex.ui.theme.KineticStyleLook
+import com.fileapex.ui.theme.ProvideJadedHaze
+import com.fileapex.ui.theme.rememberJadedHazeState
 
 import com.fileapex.data.settings.DesktopUiStyle
 
@@ -243,11 +248,12 @@ fun App(
     val desktopUiStyle by desktopUiStyleFlow.collectAsState()
     val appTheme by FileApexServices.settings.appTheme.collectAsState()
     val themeIconStyle by FileApexServices.settings.themeIconStyle.collectAsState()
+    val kineticStyle by FileApexServices.settings.kineticStyle.collectAsState()
     val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
     val kineticSphereWallpaperOn by FileApexServices.settings.kineticSphereOrbitalRingsEnabled.collectAsState()
     val kineticSpherePersistentWallpaperOn by FileApexServices.settings.kineticSpherePersistentWallpaperEnabled.collectAsState()
-    val isKineticSphere = appTheme == AppTheme.KINETIC_SPHERE
-    val isCustomGlass = isKineticSphere || appTheme == AppTheme.FLUX_GLASS || appTheme == AppTheme.FREESTYLE
+    val isKineticSphere = appTheme.traits.orbitalHome
+    val isCustomGlass = appTheme.traits.glassChrome
     val appLocale by AppI18n.localeFlowState
     var showLanguagePrompt by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -264,7 +270,8 @@ fun App(
     FileApexTheme(
         uiStyle = desktopUiStyle,
         appTheme = appTheme,
-        themeIconStyle = themeIconStyle
+        themeIconStyle = themeIconStyle,
+        kineticStyle = kineticStyle
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val widthClass = widthSizeClassFor(maxWidth)
@@ -286,13 +293,16 @@ fun App(
                 route is AppRoute.Devices
             }
 
-            val showKineticWallpaper = isKineticSphere && kineticSphereWallpaperOn &&
-                (kineticSpherePersistentWallpaperOn || onDevicesPage)
+            val jadedHazeState = rememberJadedHazeState()
+            val jadedSteel = isKineticSphere && kineticStyle == KineticStyle.JADED_STEEL
+            val showKineticWallpaper = isKineticSphere && kineticStyle != KineticStyle.JADED_STEEL &&
+                kineticSphereWallpaperOn && (kineticSpherePersistentWallpaperOn || onDevicesPage)
 
-            val bgBrush = if (showKineticWallpaper) {
-                null
-            } else {
-                appTheme.backgroundBrush()
+            val bgBrush = when {
+                showKineticWallpaper -> null
+                isKineticSphere && kineticStyle == KineticStyle.FROSTED -> KineticStyleLook.frostedBackground()
+                jadedSteel -> null
+                else -> appTheme.backgroundBrush()
             }
 
             Box(
@@ -301,6 +311,8 @@ fun App(
                     .then(
                         if (bgBrush != null) {
                             Modifier.background(bgBrush)
+                        } else if (jadedSteel) {
+                            Modifier
                         } else if (isKineticSphere) {
                             Modifier.background(Color(0xFF02050B))
                         } else {
@@ -311,10 +323,17 @@ fun App(
                         }
                     )
             ) {
+                if (jadedSteel) {
+                    JadedSteelWash(
+                        modifier = Modifier.fillMaxSize(),
+                        hazeState = jadedHazeState
+                    )
+                }
                 if (showKineticWallpaper) {
                     KineticSphereWallpaperBackground(modifier = Modifier.fillMaxSize())
                 }
 
+                ProvideJadedHaze(if (jadedSteel) jadedHazeState else null) {
                 Surface(
                     modifier = Modifier
                         .fillMaxSize()
@@ -414,9 +433,13 @@ fun App(
                                     // Folded while browsing in dual-pane → push detail full-screen.
                                     route = AppRoute.Explorer(wideSelectedTarget!!)
                                 } else if (isWide && route is AppRoute.Explorer) {
-                                    // Unfolded while on explorer → restore list-detail.
-                                    wideSelectedTarget = (route as AppRoute.Explorer).target
-                                    wideHomeTab = HomeTab.Devices
+                                    val explorerRoute = route as AppRoute.Explorer
+                                    wideSelectedTarget = explorerRoute.target
+                                    wideHomeTab = if (explorerRoute.target is BrowseTarget.Local) {
+                                        HomeTab.Files
+                                    } else {
+                                        HomeTab.Devices
+                                    }
                                     route = AppRoute.Devices
                                 } else if (isWide && route is AppRoute.Settings) {
                                     wideHomeTab = HomeTab.Settings
@@ -538,6 +561,7 @@ fun App(
             }
         }
         }
+    }
     }
 
     LaunchedEffect(onboardingComplete) {

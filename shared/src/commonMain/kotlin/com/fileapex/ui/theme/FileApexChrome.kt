@@ -15,9 +15,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.DesktopUiStyle
-
-import com.fileapex.data.settings.AppTheme
+import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.LocalKineticStyle
+import com.fileapex.data.settings.traits
 import com.fileapex.platform.isDesktopHost
 
 @Composable
@@ -26,19 +27,19 @@ fun isFileApexFluentUi(): Boolean =
 
 @Composable
 fun isFileApexFluxGlass(): Boolean =
-    LocalAppTheme.current == AppTheme.FLUX_GLASS
+    LocalAppTheme.current.traits.fluxSurfaces
 
 @Composable
 fun isFileApexKineticSphere(): Boolean =
-    LocalAppTheme.current == AppTheme.KINETIC_SPHERE
+    LocalAppTheme.current.traits.orbitalHome
 
 @Composable
 fun isFileApexFreestyle(): Boolean =
-    LocalAppTheme.current == AppTheme.FREESTYLE
+    LocalAppTheme.current.traits.canvasHome
 
 @Composable
 fun isFileApexCustomGlassTheme(): Boolean =
-    isFileApexFluxGlass() || isFileApexKineticSphere() || isFileApexFreestyle()
+    LocalAppTheme.current.traits.glassChrome
 
 /** Top/bottom nav and title-strip background. Pure Black on Freestyle; Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent; Teal on Standard. */
 @Composable
@@ -57,24 +58,29 @@ fun fileApexChromeContentColor(): Color = when {
     else -> Color.White
 }
 
+@Composable
+fun isFileApexJadedSteel(): Boolean =
+    isFileApexKineticSphere() && LocalKineticStyle.current == KineticStyle.JADED_STEEL
+
 /** Action icons in header/chrome (toggle view mode, queued transfers, panel toggle). */
 @Composable
 fun fileApexHeaderActionTint(): Color = when {
-    isFileApexCustomGlassTheme() -> Color(0xFF00E676)
+    isFileApexJadedSteel() -> KineticStyleLook.steel
+    isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
     isDesktopHost() -> fileApexChromeContentColor()
     else -> MaterialTheme.colorScheme.onSurface
 }
 
 @Composable
 fun fileApexNavSelectedBackgroundColor(): Color = when {
-    isFileApexCustomGlassTheme() -> Color(0xFF00E676).copy(alpha = 0.22f)
+    isFileApexCustomGlassTheme() -> FluxGlassPalette.accent.copy(alpha = 0.22f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.primaryContainer
     else -> Color.White
 }
 
 @Composable
 fun fileApexNavSelectedIconColor(): Color = when {
-    isFileApexCustomGlassTheme() -> Color(0xFF00E676)
+    isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
     isFileApexFluentUi() -> FileApexTeal
     else -> FileApexTealDark
 }

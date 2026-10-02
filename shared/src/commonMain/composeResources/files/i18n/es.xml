@@ -263,6 +263,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="icon_style_standard">Estándar</string>
     <string name="icon_style_flux">Flux</string>
     <string name="icon_style_freestyle">Estilo Libre</string>
+    <string name="icon_pack">Paquete de iconos</string>
+    <string name="kinetic_style">Estilo</string>
+    <string name="kinetic_style_space">Espacio</string>
+    <string name="kinetic_style_frosted">Escarchado</string>
+    <string name="kinetic_style_jaded_steel">Acero jade</string>
     <string name="freestyle_onboarding_hint">Modo edición: Arrastra elementos para reposicionar. Reordena opciones de menú con controles de arrastre.</string>
     <string name="theme_lines_desc">Dibuja líneas desde el hub central hasta cada dispositivo.</string>
     <string name="theme_rings_desc">Muestra el fondo de nebulosa espacial detrás de la red orbital.</string>

@@ -40,8 +40,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.i18n.stringRes
@@ -69,7 +69,7 @@ fun LiveTransferBanner(
         modifier = modifier
     ) {
         val currentTheme = LocalAppTheme.current
-        val isCustomGlass = currentTheme == AppTheme.FLUX_GLASS || currentTheme == AppTheme.KINETIC_SPHERE
+        val isCustomGlass = currentTheme.traits.glassNotesSurfaces
         val accentColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal
         val surfaceColor = if (isCustomGlass) {
             Color(0xFF0F172A).copy(alpha = 0.92f)
