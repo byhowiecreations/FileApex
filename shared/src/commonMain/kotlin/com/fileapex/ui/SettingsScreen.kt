@@ -185,6 +185,7 @@ enum class SettingsScreenLayoutMode {
 }
 
 private val LocalSettingsHomeAction = compositionLocalOf<(() -> Unit)?> { null }
+private val LocalSettingsExitAction = compositionLocalOf<(() -> Unit)?> { null }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -211,6 +212,7 @@ fun SettingsScreen(
     onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
     deniedOnboardingStepIds: Set<String> = emptySet(),
     onGrantOnboardingStep: (String) -> Unit = {},
+    onExitApp: (() -> Unit)? = null,
     viewModel: SettingsViewModel = viewModel { SettingsViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -243,7 +245,10 @@ fun SettingsScreen(
         onBack()
     }
 
-    CompositionLocalProvider(LocalSettingsHomeAction provides handleGoHome) {
+    CompositionLocalProvider(
+        LocalSettingsHomeAction provides handleGoHome,
+        LocalSettingsExitAction provides onExitApp
+    ) {
         when (page) {
         SettingsPage.Root -> SettingsRootPage(
             appVersionName = appVersionName,
@@ -2341,6 +2346,7 @@ internal fun SettingsPageShell(
     val isCustomGlass = currentTheme.traits.glassChrome
     val containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background
     val onHome = LocalSettingsHomeAction.current
+    val onExit = LocalSettingsExitAction.current
 
     when (layoutMode) {
         SettingsScreenLayoutMode.FullScreen -> {
@@ -2388,6 +2394,8 @@ internal fun SettingsPageShell(
                         secondaryLine = title,
                         style = CompactHomeTitleStyle.Prominent,
                         onOpenTransferQueue = onOpenTransferQueue,
+                        showCloseService = onExit != null,
+                        onCloseService = onExit,
                         actions = homeAction
                     )
                 }

@@ -154,29 +154,52 @@ fun AdaptiveExplorerView(
 
             val ink = explorerInk()
             Row(modifier = Modifier.fillMaxSize()) {
-                LazyColumn(
-                    modifier = Modifier
+                val leftPaneModifier = if (ink.jadedGlyphs) {
+                    val haze = LocalJadedHazeState.current
+                    val paneShape = RoundedCornerShape(16.dp)
+                    Modifier
                         .weight(splitFraction)
                         .fillMaxHeight()
-                        .background(ink.paneBackground)
+                        .padding(start = 12.dp, top = 8.dp, end = 6.dp, bottom = contentBottomPadding)
+                        .clip(paneShape)
                         .then(
-                            if (ink.jadedGlyphs) {
-                                Modifier.drawBehind {
-                                    val shadow = 10.dp.toPx()
-                                    drawRect(
-                                        brush = Brush.horizontalGradient(
-                                            0f to Color.Transparent,
-                                            1f to Color.Black.copy(alpha = 0.35f)
-                                        ),
-                                        topLeft = Offset(size.width - shadow, 0f),
-                                        size = Size(shadow, size.height)
+                            if (haze != null) {
+                                Modifier.hazeEffect(
+                                    state = haze,
+                                    style = HazeStyle(
+                                        backgroundColor = Color.Transparent,
+                                        tints = listOf(HazeTint(Color.White.copy(alpha = 0.10f))),
+                                        blurRadius = 24.dp,
+                                        noiseFactor = 0.04f
                                     )
-                                }
+                                )
                             } else {
                                 Modifier
                             }
-                        ),
-                    contentPadding = listPadding
+                        )
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = 0.16f),
+                                1f to Color.White.copy(alpha = 0.05f)
+                            )
+                        )
+                        .border(
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = 0.22f),
+                                1f to Color.White.copy(alpha = 0.10f)
+                            ),
+                            shape = paneShape
+                        )
+                } else {
+                    Modifier
+                        .weight(splitFraction)
+                        .fillMaxHeight()
+                        .background(ink.paneBackground)
+                }
+                LazyColumn(
+                    modifier = leftPaneModifier,
+                    contentPadding = if (ink.jadedGlyphs) PaddingValues(0.dp) else listPadding
                 ) {
                     if (canNavigateUp) {
                         item(key = "pane-parent") {
@@ -247,7 +270,7 @@ fun AdaptiveExplorerView(
                     VerticalDivider(
                         thickness = if (isHovered || isDraggingDivider) 2.dp else 1.dp,
                         color = when {
-                            ink.jadedGlyphs && !isHovered && !isDraggingDivider -> Color.Black.copy(alpha = 0.35f)
+                            ink.jadedGlyphs && !isHovered && !isDraggingDivider -> Color.Transparent
                             isHovered || isDraggingDivider ->
                                 if (ink.styledKinetic) ink.accent else FileApexTeal
                             ink.styledKinetic -> ink.divider
@@ -640,6 +663,8 @@ private fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
                     color = ink.accent
                 )
             }
+        } else if (ink.jadedGlyphs) {
+            JadedFolderGlyph(name = "..", modifier = Modifier.size(28.dp))
         } else {
             Icon(
                 imageVector = Icons.Filled.Folder,
@@ -666,7 +691,7 @@ private fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
             )
         }
     }
-    HorizontalDivider(color = ink.divider)
+    HorizontalDivider(color = if (ink.jadedGlyphs) Color.White.copy(alpha = 0.08f) else ink.divider)
 }
 
 @Composable
@@ -735,6 +760,8 @@ private fun PaneDirectoryRow(
                         color = ink.accent
                     )
                 }
+            } else if (ink.jadedGlyphs) {
+                JadedFolderGlyph(name = dir.name, modifier = Modifier.size(28.dp))
             } else {
                 ExplorerEntryIcon(
                     item = dir,
@@ -783,7 +810,7 @@ private fun PaneDirectoryRow(
             onDownload = onDownload
         )
     }
-    HorizontalDivider(color = ink.divider)
+    HorizontalDivider(color = if (ink.jadedGlyphs) Color.White.copy(alpha = 0.08f) else ink.divider)
 }
 
 @OptIn(ExperimentalFoundationApi::class)

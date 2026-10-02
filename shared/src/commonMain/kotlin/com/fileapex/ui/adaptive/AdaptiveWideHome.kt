@@ -21,10 +21,12 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material.icons.filled.ViewColumn
 import com.fileapex.ui.FileApexIcons
+import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
@@ -46,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.fileapex.domain.transfer.TransferActivityGuard
@@ -74,6 +77,7 @@ import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.DevicesScreenLayoutMode
+import com.fileapex.ui.ExplorerHeaderCommands
 import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.ExplorerViewModeToggle
@@ -155,6 +159,26 @@ fun AdaptiveWideHome(
     val deviceRows by devicesViewModel.deviceRows.collectAsState()
     val editMode = state.deviceOrderEditMode
 
+    var explorerRefreshCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var explorerIsRefreshing by remember { mutableStateOf(false) }
+    var explorerHeaderCommands by remember { mutableStateOf<ExplorerHeaderCommands?>(null) }
+    val explorerChromeVisible = selectedTab == HomeTab.Files ||
+        (selectedTab == HomeTab.Devices && selectedTarget != null)
+    LaunchedEffect(explorerChromeVisible) {
+        if (!explorerChromeVisible) {
+            explorerRefreshCallback = null
+            explorerIsRefreshing = false
+            explorerHeaderCommands = null
+        }
+    }
+    val onRegisterRefresh: (Boolean, () -> Unit) -> Unit = { isRefreshing, doRefresh ->
+        explorerIsRefreshing = isRefreshing
+        explorerRefreshCallback = doRefresh
+    }
+    val onRegisterHeaderCommands: (ExplorerHeaderCommands?) -> Unit = { commands ->
+        explorerHeaderCommands = commands
+    }
+
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         val currentTheme = LocalAppTheme.current
         val isGlass = currentTheme.traits.reorderAccent
@@ -176,12 +200,29 @@ fun AdaptiveWideHome(
                 }
             }
         } else if (deviceRows.isNotEmpty()) {
-            IconButton(onClick = devicesViewModel::enterDeviceOrderEditMode) {
-                Icon(
-                    imageVector = Icons.Filled.Edit,
-                    contentDescription = stringRes("reorder_devices"),
-                    tint = editTint
-                )
+            val isJaded = LocalAppTheme.current.traits.orbitalHome && LocalKineticStyle.current == KineticStyle.JADED_STEEL
+            if (isJaded) {
+                Box(
+                    modifier = Modifier.size(40.dp).clickable(onClick = devicesViewModel::enterDeviceOrderEditMode),
+                    contentAlignment = Alignment.Center
+                ) {
+                    JadedRaisedTile(tileSize = 28.dp) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = stringRes("reorder_devices"),
+                            tint = KineticStyleLook.steel,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            } else {
+                IconButton(onClick = devicesViewModel::enterDeviceOrderEditMode) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = stringRes("reorder_devices"),
+                        tint = editTint
+                    )
+                }
             }
         }
     }
@@ -197,6 +238,9 @@ fun AdaptiveWideHome(
             onToggleExplorerViewMode = onToggleExplorerViewMode,
             onOpenTransferQueue = onOpenTransferQueue,
             onOpenNotes = onOpenNotes,
+            onRefreshExplorer = if (explorerChromeVisible) explorerRefreshCallback else null,
+            isExplorerRefreshing = explorerIsRefreshing,
+            explorerHeaderCommands = if (explorerChromeVisible) explorerHeaderCommands else null,
             deviceOrderHeaderActions = deviceOrderHeaderActions
         )
         val isFreestyle = LocalAppTheme.current.traits.canvasHome
@@ -284,7 +328,9 @@ fun AdaptiveWideHome(
                         ) {
                             FileExplorerScreen(
                                 target = selectedTarget,
-                                onBack = onClearDetail
+                                onBack = onClearDetail,
+                                onRegisterRefresh = onRegisterRefresh,
+                                onRegisterHeaderCommands = onRegisterHeaderCommands
                             )
                         }
                     } else {
@@ -360,7 +406,9 @@ fun AdaptiveWideHome(
                                     } else {
                                         FileExplorerScreen(
                                             target = detailTarget,
-                                            onBack = onClearDetail
+                                            onBack = onClearDetail,
+                                            onRegisterRefresh = onRegisterRefresh,
+                                            onRegisterHeaderCommands = onRegisterHeaderCommands
                                         )
                                     }
                                 }
@@ -385,7 +433,9 @@ fun AdaptiveWideHome(
                                 onClearDetail()
                                 onSelectTab(HomeTab.Devices)
                             },
-                            titleOverride = com.fileapex.i18n.AppI18n.t("local_files")
+                            titleOverride = com.fileapex.i18n.AppI18n.t("local_files"),
+                            onRegisterRefresh = onRegisterRefresh,
+                            onRegisterHeaderCommands = onRegisterHeaderCommands
                         )
                     }
                 }
@@ -406,12 +456,16 @@ private fun WideTopBar(
     onToggleExplorerViewMode: () -> Unit,
     onOpenTransferQueue: () -> Unit = {},
     onOpenNotes: (() -> Unit)? = null,
+    onRefreshExplorer: (() -> Unit)? = null,
+    isExplorerRefreshing: Boolean = false,
+    explorerHeaderCommands: ExplorerHeaderCommands? = null,
     deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {}
 ) {
     val isKineticSphere = LocalAppTheme.current.traits.orbitalHome
     val jadedHeader = isKineticSphere && LocalKineticStyle.current == KineticStyle.JADED_STEEL
     val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail && !isKineticSphere
-    val showExplorerViewToggle = selectedTab == HomeTab.Files || hasActiveDetail
+    val showExplorerViewToggle = selectedTab == HomeTab.Files ||
+        (selectedTab == HomeTab.Devices && hasActiveDetail)
     val headerShape = RoundedCornerShape(20.dp)
     val headerHaze = LocalJadedHazeState.current
     Row(
@@ -518,61 +572,129 @@ private fun WideTopBar(
             onClick = onOpenTransferQueue,
             iconTint = headerIconTint
         )
-        if (onOpenNotes != null) {
+        val isDevicesTab = selectedTab == HomeTab.Devices && !hasActiveDetail
+        if (onOpenNotes != null && isDevicesTab) {
             val noteIconKind = if (currentTheme.traits.glassChrome) NoteIconKind.GREEN else NoteIconKind.WHITE
             NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode, iconKind = noteIconKind, modifier = Modifier.size(40.dp))
         }
-        if (showDevicesViewToggle) {
-            val isFreestyle = currentTheme.traits.canvasHome
-            if (isFreestyle) {
-                val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
-                val icon = when (freestyleMode) {
-                    FreestyleLayoutMode.CARDS_VERTICAL -> Icons.Filled.TableRows
-                    FreestyleLayoutMode.CARDS_HORIZONTAL -> Icons.Filled.ViewColumn
-                    FreestyleLayoutMode.TILES -> FileApexIcons.Atr
-                }
-                val desc = when (freestyleMode) {
-                    FreestyleLayoutMode.CARDS_VERTICAL -> "Vertical Cards Layout"
-                    FreestyleLayoutMode.CARDS_HORIZONTAL -> "Horizontal Cards Layout"
-                    FreestyleLayoutMode.TILES -> "Tiles Layout"
-                }
-                IconButton(
-                    onClick = {
-                        val current = FileApexServices.settings.freestyleLayoutMode.value
-                        FileApexServices.settings.setFreestyleLayoutMode(current.next())
-                    },
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = desc,
-                        tint = headerIconTint,
-                        modifier = Modifier.size(22.dp)
+        if (isDevicesTab) {
+            if (showDevicesViewToggle) {
+                val isFreestyle = currentTheme.traits.canvasHome
+                if (isFreestyle) {
+                    val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
+                    val icon = when (freestyleMode) {
+                        FreestyleLayoutMode.CARDS_VERTICAL -> Icons.Filled.TableRows
+                        FreestyleLayoutMode.CARDS_HORIZONTAL -> Icons.Filled.ViewColumn
+                        FreestyleLayoutMode.TILES -> FileApexIcons.Atr
+                    }
+                    val desc = when (freestyleMode) {
+                        FreestyleLayoutMode.CARDS_VERTICAL -> "Vertical Cards Layout"
+                        FreestyleLayoutMode.CARDS_HORIZONTAL -> "Horizontal Cards Layout"
+                        FreestyleLayoutMode.TILES -> "Tiles Layout"
+                    }
+                    IconButton(
+                        onClick = {
+                            val current = FileApexServices.settings.freestyleLayoutMode.value
+                            FileApexServices.settings.setFreestyleLayoutMode(current.next())
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = desc,
+                            tint = headerIconTint,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                } else {
+                    ExplorerViewModeToggle(
+                        viewMode = devicesViewMode,
+                        onToggle = onToggleDevicesViewMode,
+                        iconTint = headerIconTint,
+                        modifier = Modifier.size(40.dp)
                     )
                 }
-            } else {
-                ExplorerViewModeToggle(
-                    viewMode = devicesViewMode,
-                    onToggle = onToggleDevicesViewMode,
-                    iconTint = headerIconTint,
-                    modifier = Modifier.size(40.dp)
-                )
-                if (isDesktopHost()) {
-                    DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
-                }
-            }
-            deviceOrderHeaderActions()
-        } else if (showExplorerViewToggle) {
-            if (!jadedHeader) {
-                ExplorerViewModeToggle(
-                    viewMode = explorerViewMode,
-                    onToggle = onToggleExplorerViewMode,
-                    iconTint = headerIconTint,
-                    modifier = Modifier.size(40.dp)
-                )
             }
             if (isDesktopHost()) {
                 DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
+            }
+            if (showDevicesViewToggle) {
+                deviceOrderHeaderActions()
+            }
+        } else if (showExplorerViewToggle) {
+            explorerHeaderCommands?.let { commands ->
+                TextButton(onClick = commands.onSelect) {
+                    Text(
+                        text = stringRes("select"),
+                        color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                commands.onPaste?.let { onPaste ->
+                    TextButton(onClick = onPaste) {
+                        Text(
+                            text = stringRes("paste"),
+                            color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+            ExplorerViewModeToggle(
+                viewMode = explorerViewMode,
+                onToggle = onToggleExplorerViewMode,
+                iconTint = headerIconTint,
+                modifier = Modifier.size(40.dp)
+            )
+            if (isDesktopHost()) {
+                DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
+            }
+            if (onRefreshExplorer != null) {
+                if (jadedHeader) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable(enabled = !isExplorerRefreshing, onClick = onRefreshExplorer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        JadedRaisedTile(tileSize = 28.dp) {
+                            if (isExplorerRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = KineticStyleLook.steel
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = stringRes("refresh"),
+                                    tint = KineticStyleLook.steel,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    IconButton(
+                        onClick = onRefreshExplorer,
+                        enabled = !isExplorerRefreshing,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        if (isExplorerRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = stringRes("refresh"),
+                                tint = headerIconTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
         FileApexPowerButton(onClick = onExitClick)

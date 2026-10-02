@@ -26,6 +26,13 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.MaterialTheme
+import com.fileapex.ui.adaptive.JadedRaisedTile
+import com.fileapex.ui.theme.KineticStyleLook
+import com.fileapex.ui.theme.isFileApexJadedSteel
+
 object QueueBadgeAnchor {
     var windowRect by mutableStateOf<Rect?>(null)
 }
@@ -60,21 +67,43 @@ fun QueuedFilesButton(
         return
     }
 
+    val jaded = isFileApexJadedSteel()
     BadgedBox(
         modifier = positionMod,
         badge = {
-            Badge {
+            Badge(
+                containerColor = if (jaded) Color(0xFF6366F1) else MaterialTheme.colorScheme.error,
+                contentColor = Color.White
+            ) {
                 Text(text = if (count > 99) "99+" else count.toString())
             }
         }
     ) {
-        IconButton(onClick = onClick) {
-            Icon(
-                imageVector = Icons.Filled.Schedule,
-                contentDescription = stringRes("queued_files"),
-                tint = iconTint,
-                modifier = Modifier.size(24.dp)
-            )
+        if (jaded) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clickable(onClick = onClick),
+                contentAlignment = Alignment.Center
+            ) {
+                JadedRaisedTile(tileSize = 28.dp) {
+                    Icon(
+                        imageVector = Icons.Filled.Schedule,
+                        contentDescription = stringRes("queued_files"),
+                        tint = KineticStyleLook.steel,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        } else {
+            IconButton(onClick = onClick) {
+                Icon(
+                    imageVector = Icons.Filled.Schedule,
+                    contentDescription = stringRes("queued_files"),
+                    tint = iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }

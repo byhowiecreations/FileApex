@@ -19,11 +19,13 @@ import com.fileapex.ui.theme.LocalJadedHazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.draw.clip
+import com.fileapex.ui.adaptive.JadedRaisedTile
 
 
 import androidx.compose.foundation.layout.Arrangement
@@ -110,6 +112,11 @@ import com.fileapex.ui.adaptive.CompactHomeTitleBand
 import com.fileapex.ui.adaptive.CompactHomeTitleStyle
 import com.fileapex.ui.theme.FileApexTeal
 
+class ExplorerHeaderCommands(
+    val onSelect: () -> Unit,
+    val onPaste: (() -> Unit)?
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileExplorerScreen(
@@ -122,9 +129,27 @@ fun FileExplorerScreen(
     titleOverride: String? = null,
     embeddedInCompactShell: Boolean = false,
     onOpenTransferQueue: () -> Unit = {},
+    onRegisterRefresh: (((isRefreshing: Boolean, doRefresh: () -> Unit) -> Unit))? = null,
+    onRegisterHeaderCommands: ((ExplorerHeaderCommands?) -> Unit)? = null,
+    onExitApp: (() -> Unit)? = null,
     viewModel: ExplorerViewModel = viewModel(key = target.deviceId) { ExplorerViewModel(target) }
 ) {
     val state by viewModel.uiState.collectAsState()
+    LaunchedEffect(state.isRefreshing, viewModel) {
+        onRegisterRefresh?.invoke(state.isRefreshing, viewModel::refresh)
+    }
+    LaunchedEffect(state.isSelectionMode, state.canPaste, viewModel) {
+        onRegisterHeaderCommands?.invoke(
+            if (state.isSelectionMode) {
+                null
+            } else {
+                ExplorerHeaderCommands(
+                    onSelect = viewModel::enterSelectionMode,
+                    onPaste = if (state.canPaste) viewModel::pasteHere else null
+                )
+            }
+        )
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val showCopyFabs = state.isSelectionMode && state.selectedFileIds.isNotEmpty() && !state.isMultiCopying
     var pinText by remember { mutableStateOf("") }
@@ -223,7 +248,8 @@ fun FileExplorerScreen(
                             state = state,
                             embeddedInCompactShell = false,
                             onBack = onBack,
-                            viewModel = viewModel
+                            viewModel = viewModel,
+                            hasExternalRefresh = onRegisterRefresh != null
                         )
                     },
                     colors = if (jadedOrbital) {
@@ -293,6 +319,8 @@ fun FileExplorerScreen(
                                     secondaryLine = explorerSubtitle(state),
                                     style = CompactHomeTitleStyle.Detail,
                                     onOpenTransferQueue = onOpenTransferQueue,
+                                    showCloseService = onExitApp != null,
+                                    onCloseService = onExitApp,
                                     actions = {
                                         ExplorerNavigationAction(
                                             state = state,
@@ -326,8 +354,8 @@ fun FileExplorerScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(3.dp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    color = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary,
+                                    trackColor = if (jadedOrbital) KineticStyleLook.steel.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                                 )
                             } else {
                                 Spacer(modifier = Modifier.height(3.dp))
@@ -353,12 +381,15 @@ fun FileExplorerScreen(
                                             .weight(1f)
                                             .padding(start = 8.dp),
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        color = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     TextButton(onClick = viewModel::pasteHere) {
-                                        Text(stringRes("paste_here"))
+                                        Text(
+                                            text = stringRes("paste_here"),
+                                            color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                                        )
                                     }
                                 }
                             }
@@ -415,7 +446,10 @@ fun FileExplorerScreen(
                             shape = RoundedCornerShape(20.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
                             shadowElevation = 8.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            border = BorderStroke(
+                                1.dp,
+                                (if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary).copy(alpha = 0.5f)
+                            )
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -424,7 +458,7 @@ fun FileExplorerScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -681,15 +715,20 @@ private fun ExplorerNavigationAction(
     onNavigate: () -> Unit,
     onBack: () -> Unit
 ) {
+    val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
+        LocalKineticStyle.current == KineticStyle.JADED_STEEL
     val label = when {
         state.isSelectionMode -> stringRes("cancel")
         state.canNavigateUp -> stringRes("up")
         embeddedInCompactShell -> null
-        else -> stringRes("devices")
+        else -> null
     }
     if (label != null) {
         TextButton(onClick = onNavigate) {
-            Text(label)
+            Text(
+                label,
+                color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+            )
         }
     }
 }
@@ -699,11 +738,11 @@ private fun ExplorerTopBarActions(
     state: ExplorerUiState,
     embeddedInCompactShell: Boolean,
     onBack: () -> Unit,
-    viewModel: ExplorerViewModel
+    viewModel: ExplorerViewModel,
+    hasExternalRefresh: Boolean = false
 ) {
-    if (!embeddedInCompactShell && state.canNavigateUp && !state.isSelectionMode) {
-        TextButton(onClick = onBack) { Text(stringRes("devices")) }
-    }
+    val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
+        LocalKineticStyle.current == KineticStyle.JADED_STEEL
     when {
         state.isSelectionMode -> {
             if (state.isRemoteTarget) {
@@ -711,11 +750,33 @@ private fun ExplorerTopBarActions(
                     onClick = viewModel::downloadSelected,
                     enabled = state.canDownloadSelection && !state.isDownloading
                 ) {
-                    Text(if (state.isDownloading) "…" else stringRes("download"))
+                    Text(
+                        if (state.isDownloading) "…" else stringRes("download"),
+                        color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                    )
                 }
+            }
+            if (embeddedInCompactShell && isDesktopHost()) {
+                DesktopLayoutToggle()
             }
         }
         else -> {
+            if (!hasExternalRefresh) {
+                TextButton(onClick = { viewModel.enterSelectionMode() }) {
+                    Text(
+                        text = stringRes("select"),
+                        color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                    )
+                }
+                if (state.canPaste) {
+                    TextButton(onClick = viewModel::pasteHere) {
+                        Text(
+                            text = stringRes("paste"),
+                            color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                        )
+                    }
+                }
+            }
             if (embeddedInCompactShell) {
                 ExplorerViewModeToggle(
                     viewMode = state.viewMode,
@@ -725,30 +786,50 @@ private fun ExplorerTopBarActions(
                     DesktopLayoutToggle()
                 }
             }
-            val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
-                LocalKineticStyle.current == KineticStyle.JADED_STEEL
-            IconButton(
-                onClick = viewModel::refresh,
-                enabled = !state.isRefreshing
-            ) {
-                if (state.isRefreshing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp
-                    )
+            if (!hasExternalRefresh) {
+                if (jadedOrbital) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable(enabled = !state.isRefreshing, onClick = viewModel::refresh),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        JadedRaisedTile(tileSize = 28.dp) {
+                            if (state.isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = KineticStyleLook.steel
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = stringRes("refresh"),
+                                    tint = KineticStyleLook.steel,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
                 } else {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = stringRes("refresh"),
-                        tint = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary
-                    )
+                    IconButton(
+                        onClick = viewModel::refresh,
+                        enabled = !state.isRefreshing
+                    ) {
+                        if (state.isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = stringRes("refresh"),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
-            }
-            TextButton(onClick = { viewModel.enterSelectionMode() }) {
-                Text(stringRes("select"))
-            }
-            if (state.canPaste) {
-                TextButton(onClick = viewModel::pasteHere) { Text(stringRes("paste")) }
             }
         }
 
@@ -859,7 +940,11 @@ private fun ExplorerFilterBar(
                 Icon(
                     Icons.AutoMirrored.Filled.Sort,
                     contentDescription = stringRes("sort_by"),
-                    tint = if (LocalAppTheme.current.traits.glassChrome) Color.White else LocalContentColor.current
+                    tint = when {
+                        jadedField -> KineticStyleLook.steel
+                        LocalAppTheme.current.traits.glassChrome -> Color.White
+                        else -> LocalContentColor.current
+                    }
                 )
             }
             DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {

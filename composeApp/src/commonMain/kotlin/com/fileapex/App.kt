@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -150,6 +151,7 @@ fun App(
     // Wide-layout detail state (list-detail). Survives compact/wide transitions.
     var wideSelectedTarget by remember { mutableStateOf<BrowseTarget?>(null) }
     var wideHomeTab by remember { mutableStateOf(HomeTab.Devices) }
+    var tabWhileWide by remember { mutableStateOf(HomeTab.Devices) }
     var previouslyWide by remember { mutableStateOf(false) }
 
     LaunchedEffect(scannedPayload) {
@@ -427,36 +429,73 @@ fun App(
                                 null -> widthClass.isWide
                             }
 
-                            // Fold / unfold synchronization with the selected detail target.
-                            LaunchedEffect(isWide, wideSelectedTarget, route) {
-                                if (!isWide && previouslyWide && wideSelectedTarget != null) {
-                                    // Folded while browsing in dual-pane → push detail full-screen.
-                                    route = AppRoute.Explorer(wideSelectedTarget!!)
-                                } else if (isWide && route is AppRoute.Explorer) {
-                                    val explorerRoute = route as AppRoute.Explorer
-                                    wideSelectedTarget = explorerRoute.target
-                                    wideHomeTab = if (explorerRoute.target is BrowseTarget.Local) {
-                                        HomeTab.Files
-                                    } else {
-                                        HomeTab.Devices
-                                    }
-                                    route = AppRoute.Devices
-                                } else if (isWide && route is AppRoute.Settings) {
-                                    wideHomeTab = HomeTab.Settings
-                                    route = AppRoute.Devices
+                            SideEffect {
+                                if (isWide) tabWhileWide = wideHomeTab
+                            }
+                            val compactRoute = if (!isWide && previouslyWide) {
+                                when (tabWhileWide) {
+                                    HomeTab.Settings -> AppRoute.Settings
+                                    HomeTab.Files -> AppRoute.Explorer(
+                                        (wideSelectedTarget as? BrowseTarget.Local)
+                                            ?: devicesViewModel.thisDeviceTarget()
+                                    )
+                                    HomeTab.Devices -> wideSelectedTarget?.let { AppRoute.Explorer(it) }
+                                        ?: AppRoute.Devices
                                 }
+                            } else {
+                                route
+                            }
+                            val routeTarget = (route as? AppRoute.Explorer)?.target
+                            val wideTab = when {
+                                route is AppRoute.Settings -> HomeTab.Settings
+                                routeTarget is BrowseTarget.Local -> HomeTab.Files
+                                routeTarget != null -> HomeTab.Devices
+                                else -> wideHomeTab
+                            }
+                            val wideTarget = routeTarget ?: wideSelectedTarget
+
+                            // Fold / unfold synchronization with the selected detail target.
+                            // previouslyWide is updated before route writes so a restart of this
+                            // effect cannot treat the new route as another collapse.
+                            LaunchedEffect(isWide, wideSelectedTarget, route) {
+                                val wasWide = previouslyWide
                                 previouslyWide = isWide
+                                when {
+                                    !isWide && wasWide -> {
+                                        val next = when (tabWhileWide) {
+                                            HomeTab.Settings -> AppRoute.Settings
+                                            HomeTab.Files -> AppRoute.Explorer(
+                                                (wideSelectedTarget as? BrowseTarget.Local)
+                                                    ?: devicesViewModel.thisDeviceTarget()
+                                            )
+                                            HomeTab.Devices -> wideSelectedTarget?.let { AppRoute.Explorer(it) }
+                                                ?: AppRoute.Devices
+                                        }
+                                        if (route != next) route = next
+                                    }
+                                    isWide && route is AppRoute.Explorer -> {
+                                        val explorerRoute = route as AppRoute.Explorer
+                                        wideSelectedTarget = explorerRoute.target
+                                        wideHomeTab = if (explorerRoute.target is BrowseTarget.Local) {
+                                            HomeTab.Files
+                                        } else {
+                                            HomeTab.Devices
+                                        }
+                                        route = AppRoute.Devices
+                                    }
+                                    isWide && route is AppRoute.Settings -> {
+                                        wideHomeTab = HomeTab.Settings
+                                        route = AppRoute.Devices
+                                    }
+                                }
                             }
 
-                            if (isWide &&
-                                route !is AppRoute.Explorer &&
-                                route !is AppRoute.Settings
-                            ) {
+                            if (isWide) {
                                 AdaptiveWideHome(
-                                    selectedTab = wideHomeTab,
+                                    selectedTab = wideTab,
                                     onSelectTab = { wideHomeTab = it },
-                                    selectedTarget = wideSelectedTarget,
-                                    selectedDeviceId = wideSelectedTarget?.deviceId,
+                                    selectedTarget = wideTarget,
+                                    selectedDeviceId = wideTarget?.deviceId,
                                     onSelectDevice = { target ->
                                         wideSelectedTarget = target
                                         wideHomeTab = HomeTab.Devices
@@ -516,7 +555,7 @@ fun App(
                                 )
                             } else {
                                 CompactHomeContent(
-                                    route = route,
+                                    route = compactRoute,
                                     devicesViewModel = devicesViewModel,
                                     appVersionName = appVersionName,
                                     onOpenDevice = { route = AppRoute.Explorer(it) },
@@ -808,12 +847,14 @@ private fun CompactHomeContent(
                 onOpenTransferQueue = onOpenTransferQueue,
                 onboardingSteps = onboardingSteps,
                 deniedOnboardingStepIds = deniedOnboardingStepIds,
-                onGrantOnboardingStep = onGrantOnboardingStep
+                onGrantOnboardingStep = onGrantOnboardingStep,
+                onExitApp = onExitApp
             )
             is AppRoute.Explorer -> FileExplorerScreen(
                 target = current.target,
                 embeddedInCompactShell = true,
                 onOpenTransferQueue = onOpenTransferQueue,
+                onExitApp = onExitApp,
                 onBack = {
                     DeviceSessionManager.clearSession(current.target.deviceId)
                     onNavigateHome()

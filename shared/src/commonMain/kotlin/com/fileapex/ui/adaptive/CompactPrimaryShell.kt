@@ -149,6 +149,7 @@ fun FluxGlassHeader(
     secondaryTitle: String? = null,
     showLayoutView: Boolean = false,
     onToggleLayoutView: (() -> Unit)? = null,
+    showDesktopLayoutToggle: Boolean = false,
     showCloseService: Boolean = false,
     onCloseService: (() -> Unit)? = null,
     onOpenNotes: (() -> Unit)? = null,
@@ -241,23 +242,42 @@ fun FluxGlassHeader(
                     stringRes("layout_view")
                 }
                 val layoutIconTint = fileApexHeaderActionTint()
-                IconButton(
-                    onClick = onToggleLayoutView,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = desc,
-                        tint = layoutIconTint,
-                        modifier = Modifier.size(22.dp)
-                    )
+                if (jadedHeader) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable(onClick = onToggleLayoutView),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        JadedRaisedTile(tileSize = 28.dp) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = desc,
+                                tint = KineticStyleLook.steel,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                } else {
+                    IconButton(
+                        onClick = onToggleLayoutView,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = desc,
+                            tint = layoutIconTint,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
-                if (isDesktopHost()) {
-                    DesktopLayoutToggle(
-                        modifier = Modifier.size(40.dp),
-                        iconTint = layoutIconTint
-                    )
-                }
+            }
+
+            if (showDesktopLayoutToggle && isDesktopHost()) {
+                DesktopLayoutToggle(
+                    modifier = Modifier.size(40.dp),
+                    iconTint = headerIconTint
+                )
             }
 
             actions()
@@ -286,6 +306,7 @@ fun CompactDevicesTitleBand(
         secondaryTitle = stringRes("paired_devices_title"),
         showLayoutView = allowLayoutView,
         onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
+        showDesktopLayoutToggle = isDesktopHost(),
         showCloseService = showCloseService,
         onCloseService = onCloseService,
         onOpenNotes = onOpenNotes,
@@ -301,10 +322,13 @@ fun CompactHomeTitleBand(
     style: CompactHomeTitleStyle = CompactHomeTitleStyle.Detail,
     modifier: Modifier = Modifier,
     onOpenTransferQueue: (() -> Unit)? = null,
+    showCloseService: Boolean = false,
+    onCloseService: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme.traits.glassChrome
+    val jadedHeader = isFileApexJadedSteel()
     if (isCustomGlass && style == CompactHomeTitleStyle.Prominent) {
         FluxGlassHeader(
             primaryTitle = "FileApex",
@@ -314,13 +338,20 @@ fun CompactHomeTitleBand(
                 primaryLine
             },
             onOpenTransferQueue = onOpenTransferQueue,
+            showCloseService = showCloseService,
+            onCloseService = onCloseService,
             actions = actions
         )
     } else {
         CompactHomeTitleBandRow(
             modifier = modifier,
             onOpenTransferQueue = onOpenTransferQueue,
-            actions = actions
+            actions = {
+                actions()
+                if (showCloseService && onCloseService != null) {
+                    FileApexPowerButton(onClick = onCloseService)
+                }
+            }
         ) {
             when (style) {
                 CompactHomeTitleStyle.Prominent -> {
@@ -347,19 +378,26 @@ fun CompactHomeTitleBand(
                 CompactHomeTitleStyle.Detail -> {
                     Text(
                         text = primaryLine,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        style = if (jadedHeader) {
+                            MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                letterSpacing = (-0.5).sp
+                            )
+                        } else {
+                            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                        },
                         color = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     if (!secondaryLine.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(CompactHomeChrome.eyebrowHeadlineGap))
+                        Spacer(modifier = Modifier.height(if (jadedHeader) 1.dp else CompactHomeChrome.eyebrowHeadlineGap))
                         Text(
                             text = secondaryLine,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             color = if (isCustomGlass) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -385,10 +423,10 @@ private fun CompactHomeTitleBandRow(
         modifier = modifier
             .fillMaxWidth()
             .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else Modifier.background(headerBg))
-            .defaultMinSize(minHeight = CompactHomeChrome.titleBandMinHeight)
+            .defaultMinSize(minHeight = if (jadedHeader) Dp.Unspecified else CompactHomeChrome.titleBandMinHeight)
             .padding(
-                horizontal = CompactHomeChrome.titleBandHorizontalPadding,
-                vertical = CompactHomeChrome.titleBandVerticalPadding
+                horizontal = if (jadedHeader) 14.dp else CompactHomeChrome.titleBandHorizontalPadding,
+                vertical = if (jadedHeader) 4.dp else CompactHomeChrome.titleBandVerticalPadding
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -479,23 +517,41 @@ fun FileApexPowerButton(
 ) {
     val jaded = isFileApexJadedSteel()
     val accent = if (jaded) KineticStyleLook.steel else Color(0xFF00E676)
-    IconButton(
-        onClick = onClick,
-        modifier = modifier.size(40.dp)
-    ) {
-        Surface(
-            modifier = Modifier.size(28.dp),
-            shape = CircleShape,
-            color = if (jaded) Color(0xCC101820) else accent.copy(alpha = 0.20f),
-            border = BorderStroke(1.dp, accent.copy(alpha = if (jaded) 0.90f else 0.70f))
+    if (jaded) {
+        Box(
+            modifier = modifier
+                .size(40.dp)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
         ) {
-            Box(contentAlignment = Alignment.Center) {
+            JadedRaisedTile(tileSize = 28.dp) {
                 Icon(
                     imageVector = Icons.Filled.PowerSettingsNew,
                     contentDescription = stringRes("exit_fileapex"),
-                    tint = accent,
+                    tint = KineticStyleLook.steel,
                     modifier = Modifier.size(16.dp)
                 )
+            }
+        }
+    } else {
+        IconButton(
+            onClick = onClick,
+            modifier = modifier.size(40.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(28.dp),
+                shape = CircleShape,
+                color = accent.copy(alpha = 0.20f),
+                border = BorderStroke(1.dp, accent.copy(alpha = 0.70f))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.PowerSettingsNew,
+                        contentDescription = stringRes("exit_fileapex"),
+                        tint = accent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
