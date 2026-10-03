@@ -49,6 +49,7 @@ interface AppSettings {
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
     val desktopSplitFraction: StateFlow<Float>
     val explorerSplitFraction: StateFlow<Float>
+    val explorerSplitEnabled: StateFlow<Boolean>
     /** Windows only; ignored on Android and non-Windows desktops. */
     val desktopUiStyle: StateFlow<DesktopUiStyle>
     val explorerViewMode: StateFlow<ExplorerViewMode>
@@ -173,6 +174,7 @@ interface AppSettings {
     /** [persist] false updates the flow only; drag gestures persist once on drag end. */
     fun setDesktopSplitFraction(fraction: Float, persist: Boolean = true)
     fun setExplorerSplitFraction(fraction: Float, persist: Boolean = true)
+    fun setExplorerSplitEnabled(enabled: Boolean)
 
     fun setDesktopUiStyle(style: DesktopUiStyle)
 

@@ -15,13 +15,21 @@ import com.fileapex.domain.transfer.ExplorerTransferManager
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.decodeImageBytes
+import com.fileapex.platform.decodeLocalImageFile
+import com.fileapex.platform.DirectoryWatch
+import com.fileapex.platform.moveLocalEntryInto
+import com.fileapex.platform.renameLocalEntry
+import com.fileapex.platform.trashLocalEntries
+import com.fileapex.platform.unzipLocalEntry
+import com.fileapex.platform.watchLocalDirectory
+import com.fileapex.platform.zipLocalEntry
 import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.session.DeviceSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,7 +80,8 @@ data class ExplorerUiState(
     val pendingPinUnlock: Boolean = false,
     val pinUnlockError: String? = null,
     val viewMode: ExplorerViewMode = ExplorerViewMode.List,
-    val sourceDeviceId: String? = null
+    val sourceDeviceId: String? = null,
+    val remoteSleeping: Boolean = false,
 )
 
 class ExplorerViewModel(
@@ -87,6 +96,8 @@ class ExplorerViewModel(
     )
     private val settings = FileApexServices.settings
     private val browseRoot: String = browser.browseRoot
+
+    fun browseRootPath(): String = browseRoot
     private val isRemote: Boolean = browser.isRemote || target is BrowseTarget.Demo
     private val remoteDeviceId: String? = (target as? BrowseTarget.Remote)?.deviceId
     /** Resume after mid-explorer PIN re-entry. */
@@ -94,6 +105,12 @@ class ExplorerViewModel(
     /** Anchor for desktop Shift-click range selection. */
     private var selectionAnchorId: String? = null
     private var browseJob: Job? = null
+    private var browseGeneration = 0
+    private var localWatchDebounce: Job? = null
+    private var contentWatch: DirectoryWatch? = null
+    private var paneWatch: DirectoryWatch? = null
+    private var watchedContent: String? = null
+    private var watchedPane: String? = null
 
     private val _uiState = MutableStateFlow(
         ExplorerUiState(
@@ -127,10 +144,11 @@ class ExplorerViewModel(
 
     fun openPath(path: String) {
         val resolved = browser.resolveWithinRoot(path)
+        val localOnly = target is BrowseTarget.Local
         _uiState.update {
             it.copy(
-                isLoading = true,
-                loadingFolderPath = resolved,
+                isLoading = !localOnly,
+                loadingFolderPath = if (localOnly) null else resolved,
                 errorMessage = null,
                 selectedFolderPath = null,
                 previewItem = null,
@@ -176,7 +194,14 @@ class ExplorerViewModel(
             return
         }
         val resolved = browser.resolveWithinRoot(item.absolutePath)
-        _uiState.update { it.copy(isLoading = true, loadingFolderPath = resolved, errorMessage = null) }
+        val localOnly = target is BrowseTarget.Local
+        _uiState.update {
+            it.copy(
+                isLoading = !localOnly,
+                loadingFolderPath = if (localOnly) null else resolved,
+                errorMessage = null
+            )
+        }
         launchBrowse {
             browseWithPinRetry {
                 val listing = browser.listAt(resolved)
@@ -208,7 +233,14 @@ class ExplorerViewModel(
             return
         }
         val newContent = browser.resolveWithinRoot(item.absolutePath)
-        _uiState.update { it.copy(isLoading = true, loadingFolderPath = newContent, errorMessage = null) }
+        val localOnly = target is BrowseTarget.Local
+        _uiState.update {
+            it.copy(
+                isLoading = !localOnly,
+                loadingFolderPath = if (localOnly) null else newContent,
+                errorMessage = null
+            )
+        }
         launchBrowse {
             browseWithPinRetry {
                 val newPane = browser.parentWithinRoot(newContent) ?: browseRoot
@@ -250,6 +282,7 @@ class ExplorerViewModel(
     }
 
     private fun launchBrowse(block: suspend () -> Unit) {
+        browseGeneration++
         browseJob?.cancel()
         browseJob = viewModelScope.launch { block() }
     }
@@ -266,24 +299,13 @@ class ExplorerViewModel(
                 requestPinThen { browseWithPinRetry(block) }
                 return
             }
-            runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
-            runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
-            delay(500)
-            try {
-                block()
-            } catch (retryError: Throwable) {
-                if (retryError is PinSessionRequiredException || retryError.message?.contains("pin_required", ignoreCase = true) == true) {
-                    requestPinThen { browseWithPinRetry(block) }
-                    return
-                }
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        loadingFolderPath = null,
-                        isRefreshing = false,
-                        errorMessage = UserFacingErrors.message(retryError, "unable_to_open_folder")
-                    )
-                }
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    loadingFolderPath = null,
+                    isRefreshing = false,
+                    errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")
+                )
             }
         }
     }
@@ -361,6 +383,7 @@ class ExplorerViewModel(
                 isRefreshing = false
             )
         }
+        syncLocalWatch(normalizedContent, normalizedPane)
     }
 
     fun onFileClick(item: RemoteFileItem) {
@@ -429,8 +452,12 @@ class ExplorerViewModel(
             preview.isImageFile(item) -> openImagePreview(item)
             preview.isTextFile(item) -> openTextPreview(item)
             else -> {
-                _uiState.update {
-                    it.copy(statusMessage = "${item.name} · ${preview.formatBytes(item.sizeBytes)}")
+                if (target is BrowseTarget.Local) {
+                    com.fileapex.platform.openLocalFile(item.absolutePath, item.name)
+                } else {
+                    _uiState.update {
+                        it.copy(statusMessage = "${item.name} · ${preview.formatBytes(item.sizeBytes)}")
+                    }
                 }
             }
         }
@@ -486,6 +513,39 @@ class ExplorerViewModel(
     }
 
     private fun openImagePreview(item: RemoteFileItem) {
+        if (target is BrowseTarget.Local) {
+            viewModelScope.launch {
+                _uiState.update {
+                    it.copy(
+                        previewItem = item,
+                        previewText = null,
+                        previewImage = null,
+                        isPreviewLoading = true,
+                        canDownloadPreview = false,
+                        statusMessage = null,
+                        errorMessage = null
+                    )
+                }
+                val bitmap = withContext(Dispatchers.IO) {
+                    decodeLocalImageFile(item.absolutePath, previewMaxEdgePx().coerceAtMost(1600))
+                }
+                if (bitmap == null) {
+                    _uiState.update {
+                        it.copy(
+                            previewItem = null,
+                            previewImage = null,
+                            isPreviewLoading = false,
+                            errorMessage = AppI18n.t("preview_failed")
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(previewImage = bitmap, isPreviewLoading = false)
+                    }
+                }
+            }
+            return
+        }
         runCatching {
             preview.assertPreviewAllowed(item, FilePreviewManager.MAX_PREVIEW_BYTES)
         }.onFailure { error ->
@@ -510,7 +570,7 @@ class ExplorerViewModel(
                 val bytes = withContext(Dispatchers.IO) {
                     preview.loadPreviewBytes(item, FilePreviewManager.MAX_PREVIEW_BYTES)
                 }
-                withContext(Dispatchers.Default) { decodeImageBytes(bytes, maxEdge = previewMaxEdgePx()) }
+                withContext(Dispatchers.Default) { decodeImageBytes(bytes, maxEdge = previewMaxEdgePx().coerceAtMost(1600)) }
                     ?: error("Unable to decode image")
             }.fold(
                 onSuccess = { bitmap ->
@@ -603,7 +663,14 @@ class ExplorerViewModel(
         }
 
         val newContent = browser.resolveWithinRoot(parent)
-        _uiState.update { it.copy(isLoading = true, loadingFolderPath = newContent, errorMessage = null) }
+        val localOnly = target is BrowseTarget.Local
+        _uiState.update {
+            it.copy(
+                isLoading = !localOnly,
+                loadingFolderPath = if (localOnly) null else newContent,
+                errorMessage = null
+            )
+        }
         launchBrowse {
             browseWithPinRetry {
                 val newPane = browser.parentWithinRoot(newContent) ?: browseRoot
@@ -638,37 +705,222 @@ class ExplorerViewModel(
         return false
     }
 
+    fun renameItem(item: RemoteFileItem, newName: String) {
+        if (target !is BrowseTarget.Local) return
+        viewModelScope.launch {
+            val renamed = withContext(Dispatchers.IO) {
+                runCatching { renameLocalEntry(item.absolutePath, newName) }
+            }
+            renamed.onSuccess { refresh() }
+                .onFailure { error ->
+                    _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
+                }
+        }
+    }
+
+    fun compressItem(item: RemoteFileItem) {
+        if (target !is BrowseTarget.Local) return
+        viewModelScope.launch {
+            val zipped = withContext(Dispatchers.IO) {
+                runCatching { zipLocalEntry(item.absolutePath) }
+            }
+            zipped.onSuccess { refresh() }
+                .onFailure { error ->
+                    _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
+                }
+        }
+    }
+
+    fun uncompressItem(item: RemoteFileItem) {
+        if (target !is BrowseTarget.Local) return
+        viewModelScope.launch {
+            val unpacked = withContext(Dispatchers.IO) {
+                runCatching { unzipLocalEntry(item.absolutePath) }
+            }
+            unpacked.onSuccess { refresh() }
+                .onFailure { error ->
+                    _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
+                }
+        }
+    }
+
+    fun deleteItem(item: RemoteFileItem) {
+        if (target !is BrowseTarget.Local) return
+        val items = if (item.id in _uiState.value.selectedFileIds) {
+            selectedItems().ifEmpty { listOf(item) }
+        } else {
+            listOf(item)
+        }
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { trashLocalEntries(items.map { it.absolutePath }) }
+            }
+            outcome.onSuccess { finished ->
+                TransferClipboard.dropPaths(items.map { it.absolutePath }.toSet())
+                _uiState.update {
+                    it.copy(
+                        isSelectionMode = false,
+                        selectedFileIds = emptySet(),
+                        canDownloadSelection = false,
+                        statusMessage = if (finished) AppI18n.t("moved_to_trash") else null,
+                        clipboardLabel = TransferClipboard.label(),
+                        canPaste = TransferClipboard.hasContent()
+                    )
+                }
+                if (finished) refresh()
+            }.onFailure { error ->
+                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "trash_failed")) }
+            }
+        }
+    }
+
+    fun importDropped(paths: List<String>, destinationDirectory: String? = null) {
+        if (paths.isEmpty()) return
+        val destination = destinationDirectory?.takeIf { it.isNotBlank() }
+            ?: _uiState.value.currentPath.ifBlank { browseRoot }
+        viewModelScope.launch {
+            val failed = withContext(Dispatchers.IO) {
+                when (val browseTarget = target) {
+                    is BrowseTarget.Local -> paths.mapNotNull { payload ->
+                        runCatching { dropOntoLocal(payload, destination) }.exceptionOrNull()
+                    }
+                    is BrowseTarget.Remote -> {
+                        val localPaths = paths.mapNotNull { localPathOfDrop(it) }
+                        if (localPaths.isEmpty()) emptyList()
+                        else runCatching {
+                            val sources = com.fileapex.domain.transfer.LocalTransferTree.expandAbsolutePaths(localPaths)
+                            FileApexServices.transferService.multiCopyToDevices(
+                                sources,
+                                listOf(
+                                    MultiCopyDeviceOption(
+                                        deviceId = browseTarget.deviceId,
+                                        deviceName = browseTarget.displayName,
+                                        isLocal = false,
+                                        host = browseTarget.host,
+                                        port = browseTarget.port,
+                                        destinationRoot = destination
+                                    )
+                                )
+                            )
+                        }.exceptionOrNull()?.let { listOf(it) }.orEmpty()
+                    }
+                    is BrowseTarget.Demo -> emptyList()
+                }
+            }
+            if (failed.isNotEmpty()) {
+                _uiState.update {
+                    it.copy(errorMessage = UserFacingErrors.message(failed.first(), "unable_to_open_folder"))
+                }
+            }
+            refresh()
+        }
+    }
+
+    private suspend fun dropOntoLocal(payload: String, destination: String) {
+        val parsed = parseDropPayload(payload)
+        if (parsed.remoteDeviceId == null) {
+            moveLocalEntryInto(parsed.path, destination)
+            return
+        }
+        val device = FileApexServices.deviceRepository.getDevice(parsed.remoteDeviceId) ?: error("device missing")
+        FileApexServices.transferService.downloadRemoteToDownloads(
+            host = device.lastKnownIp,
+            port = device.port,
+            items = listOf(
+                RemoteFileItem(
+                    id = parsed.path,
+                    name = parsed.name,
+                    absolutePath = parsed.path,
+                    sizeBytes = parsed.size,
+                    lastModified = 0L,
+                    isDirectory = false,
+                    mimeType = "application/octet-stream"
+                )
+            ),
+            destinationDirectory = destination
+        )
+    }
+
+    private data class DropPayload(
+        val path: String,
+        val name: String,
+        val size: Long,
+        val remoteDeviceId: String?
+    )
+
+    private fun parseDropPayload(payload: String): DropPayload {
+        if (!payload.startsWith("fileapex-transfer://")) {
+            val fileName = payload.substringAfterLast('/')
+            return DropPayload(payload, fileName, 0L, null)
+        }
+        val withoutScheme = payload.removePrefix("fileapex-transfer://")
+        val sourceId = withoutScheme.substringBefore('/')
+        val rest = withoutScheme.substringAfter('/', "")
+        val rawPath = rest.substringBefore('?')
+        val query = rest.substringAfter('?', "")
+        val name = query.substringAfter("name=", "").substringBefore('&').ifBlank {
+            rawPath.substringAfterLast('/')
+        }
+        val size = query.substringAfter("size=", "0").substringBefore('&').toLongOrNull() ?: 0L
+        return if (sourceId == "local") {
+            DropPayload(rawPath, name, size, null)
+        } else {
+            DropPayload(rawPath, name, size, sourceId)
+        }
+    }
+
+    private fun localPathOfDrop(payload: String): String? {
+        val parsed = parseDropPayload(payload)
+        return if (parsed.remoteDeviceId == null) parsed.path else null
+    }
+
     fun toggleViewMode() {
-        settings.setExplorerViewMode(_uiState.value.viewMode.toggled())
+        settings.setExplorerViewMode(_uiState.value.viewMode.cycled())
     }
 
     fun refresh() {
+        reloadListing(showRefreshing = true)
+    }
+
+    fun clearPendingCopy() {
+        TransferClipboard.clear()
+        _uiState.update { it.copy(canPaste = false, clipboardLabel = null) }
+    }
+
+    private fun reloadListing(showRefreshing: Boolean) {
         val state = _uiState.value
         val contentPath = state.currentPath.ifBlank { browseRoot }
         val panePath = state.panePath.ifBlank { contentPath }
         val selected = state.selectedFolderPath
-        browser.invalidateCache()
+        if (showRefreshing) {
+            _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
+        }
         launchBrowse {
             browseWithPinRetry {
-                _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
-                val paneListing = browser.listAt(browser.resolveWithinRoot(panePath))
-                if (selected == null ||
-                    browser.normalizePath(contentPath) == browser.normalizePath(panePath)
-                ) {
+                val paneResolved = browser.resolveWithinRoot(panePath)
+                val contentResolved = browser.resolveWithinRoot(contentPath)
+                val sameFolder = selected == null ||
+                    browser.normalizePath(contentResolved) == browser.normalizePath(paneResolved)
+                if (sameFolder) {
+                    val listing = browser.listAt(paneResolved, forceRefresh = true)
                     applyPaneAndContent(
-                        panePath = browser.resolveWithinRoot(panePath),
-                        contentPath = browser.resolveWithinRoot(panePath),
-                        paneDirectories = paneListing.directories,
-                        paneFiles = paneListing.files,
-                        contentDirectories = paneListing.directories,
-                        contentFiles = paneListing.files,
+                        panePath = paneResolved,
+                        contentPath = paneResolved,
+                        paneDirectories = listing.directories,
+                        paneFiles = listing.files,
+                        contentDirectories = listing.directories,
+                        contentFiles = listing.files,
                         selectedFolderPath = null
                     )
                 } else {
-                    val contentListing = browser.listAt(browser.resolveWithinRoot(contentPath))
+                    val (paneListing, contentListing) = coroutineScope {
+                        val paneDeferred = async { browser.listAt(paneResolved, forceRefresh = true) }
+                        val contentDeferred = async { browser.listAt(contentResolved, forceRefresh = true) }
+                        paneDeferred.await() to contentDeferred.await()
+                    }
                     applyPaneAndContent(
-                        panePath = browser.resolveWithinRoot(panePath),
-                        contentPath = browser.resolveWithinRoot(contentPath),
+                        panePath = paneResolved,
+                        contentPath = contentResolved,
                         paneDirectories = paneListing.directories,
                         paneFiles = paneListing.files,
                         contentDirectories = contentListing.directories,
@@ -1007,6 +1259,44 @@ class ExplorerViewModel(
 
     fun dismissMessages() {
         _uiState.update { it.copy(statusMessage = null, errorMessage = null, lastDownloadedPaths = emptyList()) }
+    }
+
+    private fun syncLocalWatch(contentPath: String, panePath: String) {
+        if (target !is BrowseTarget.Local) return
+        if (contentPath == watchedContent && panePath == watchedPane) return
+        contentWatch?.close()
+        paneWatch?.close()
+        contentWatch = null
+        paneWatch = null
+        watchedContent = contentPath
+        watchedPane = panePath
+        contentWatch = openLocalWatch(contentPath)
+        if (panePath != contentPath) {
+            paneWatch = openLocalWatch(panePath)
+        }
+    }
+
+    private fun openLocalWatch(path: String): DirectoryWatch? {
+        if (path.isBlank()) return null
+        return runCatching { watchLocalDirectory(path, ::onLocalFolderChanged) }.getOrNull()
+    }
+
+    private fun onLocalFolderChanged() {
+        val generation = browseGeneration
+        localWatchDebounce?.cancel()
+        localWatchDebounce = viewModelScope.launch {
+            delay(400)
+            if (generation != browseGeneration) return@launch
+            if (target !is BrowseTarget.Local) return@launch
+            reloadListing(showRefreshing = false)
+        }
+    }
+
+    override fun onCleared() {
+        localWatchDebounce?.cancel()
+        contentWatch?.close()
+        paneWatch?.close()
+        super.onCleared()
     }
 }
 

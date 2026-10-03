@@ -41,7 +41,7 @@ class BrowserCoordinator(
         }
         val result = when (val browseTarget = target) {
             is BrowseTarget.Local -> {
-                val listing = transfer.listLocal(path)
+                val listing = transfer.listLocal(path, bypassCache = forceRefresh)
                 BrowseListing(
                     directories = listing.directories,
                     files = listing.files

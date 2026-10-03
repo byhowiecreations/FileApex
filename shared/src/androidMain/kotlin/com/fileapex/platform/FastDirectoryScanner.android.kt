@@ -5,6 +5,8 @@ import com.fileapex.data.files.isHiddenDotName
 import com.fileapex.domain.model.RemoteFileItem
 import java.io.File
 
+actual suspend fun prepareLocalDirectoryAccess(absolutePath: String) = Unit
+
 actual fun fastScanDirectory(absolutePath: String): Pair<List<RemoteFileItem>, List<RemoteFileItem>> {
     val dir = File(absolutePath)
     if (!dir.exists()) error("Path does not exist: $absolutePath")

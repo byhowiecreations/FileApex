@@ -69,15 +69,7 @@ class FilePreviewManager(
             name.endsWith(".csv")
     }
 
-    fun formatBytes(bytes: Long): String {
-        if (bytes < 1024) return "$bytes B"
-        val kb = bytes / 1024.0
-        if (kb < 1024) return "${(kb * 10).toInt() / 10.0} KB"
-        val mb = kb / 1024.0
-        if (mb < 1024) return "${(mb * 10).toInt() / 10.0} MB"
-        val gb = mb / 1024.0
-        return "${(gb * 10).toInt() / 10.0} GB"
-    }
+    fun formatBytes(bytes: Long): String = com.fileapex.platform.formatHostFileSize(bytes)
 
     companion object {
         const val MAX_PREVIEW_BYTES = 25L * 1024L * 1024L

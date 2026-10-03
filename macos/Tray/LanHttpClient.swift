@@ -26,7 +26,7 @@ enum LanHttpClient {
         }
         var header = "\(method) \(target.path) HTTP/1.1\r\n"
         header += "Host: \(target.host):\(target.port)\r\n"
-        header += "Connection: close\r\n"
+        header += "Connection: keep-alive\r\n"
         header += "Accept: */*\r\n"
         if let contentType {
             header += "Content-Type: \(contentType)\r\n"
@@ -40,7 +40,7 @@ enum LanHttpClient {
             request.append(body)
         }
         log("\(method) \(target.host):\(target.port)\(target.path)")
-        return transact(target: target, request: request, timeoutMs: timeoutMs, isTransfer: false)
+        return pooledExecute(target: target, request: request, timeoutMs: timeoutMs)
     }
 
     static func uploadFile(
@@ -138,6 +138,205 @@ enum LanHttpClient {
             }
             self.path = path
         }
+    }
+
+    private final class HeldSocket {
+        let connection: NWConnection
+        let key: String
+        var pending = Data()
+        var lastUsed = Date()
+        init(connection: NWConnection, key: String) {
+            self.connection = connection
+            self.key = key
+        }
+    }
+
+    private static let poolLock = NSLock()
+    private static var heldSockets: [String: HeldSocket] = [:]
+    private static var warmedAt: [String: Date] = [:]
+
+    private static func pooledExecute(target: Target, request: Data, timeoutMs: Int) -> (status: Int, body: Data)? {
+        let key = "\(target.host):\(target.port)"
+        sweepSockets()
+        if let existing = takeSocket(key) {
+            if let hit = exchange(on: existing, request: request, timeoutMs: min(timeoutMs, 4_000), fresh: false) {
+                if hit.keep {
+                    parkSocket(existing)
+                } else {
+                    existing.connection.cancel()
+                }
+                return (hit.status, hit.body)
+            }
+            existing.connection.cancel()
+        }
+        guard let opened = openSocket(target: target, key: key, timeoutMs: timeoutMs) else {
+            return nil
+        }
+        if let hit = exchange(on: opened, request: request, timeoutMs: timeoutMs, fresh: true) {
+            if hit.keep {
+                parkSocket(opened)
+            } else {
+                opened.connection.cancel()
+            }
+            return (hit.status, hit.body)
+        }
+        opened.connection.cancel()
+        return nil
+    }
+
+    private static func sweepSockets() {
+        let cutoff = Date().addingTimeInterval(-120)
+        poolLock.lock()
+        let stale = heldSockets.filter { $0.value.lastUsed < cutoff }
+        stale.keys.forEach { heldSockets.removeValue(forKey: $0) }
+        poolLock.unlock()
+        stale.values.forEach { $0.connection.cancel() }
+    }
+
+    private static func takeSocket(_ key: String) -> HeldSocket? {
+        poolLock.lock()
+        defer { poolLock.unlock() }
+        guard let item = heldSockets.removeValue(forKey: key) else { return nil }
+        if item.connection.state != .ready {
+            item.connection.cancel()
+            return nil
+        }
+        return item
+    }
+
+    private static func parkSocket(_ item: HeldSocket) {
+        item.lastUsed = Date()
+        poolLock.lock()
+        if let previous = heldSockets.removeValue(forKey: item.key) {
+            previous.connection.cancel()
+        }
+        heldSockets[item.key] = item
+        warmedAt[item.key] = Date()
+        poolLock.unlock()
+    }
+
+    private static func recentlyWarmed(_ key: String) -> Bool {
+        poolLock.lock()
+        defer { poolLock.unlock() }
+        guard let at = warmedAt[key] else { return false }
+        return Date().timeIntervalSince(at) < 180
+    }
+
+    private static func openSocket(target: Target, key: String, timeoutMs: Int) -> HeldSocket? {
+        guard let port = NWEndpoint.Port(rawValue: target.port) else { return nil }
+        let host: NWEndpoint.Host = IPv4Address(target.host).map { .ipv4($0) } ?? NWEndpoint.Host(target.host)
+        let connection = NWConnection(to: .hostPort(host: host, port: port), using: unicastTcpParams())
+        let lock = DispatchSemaphore(value: 0)
+        let stateLock = NSLock()
+        var finished = false
+        func finish(_ value: Bool) {
+            stateLock.lock()
+            let first = !finished
+            if first {
+                finished = true
+            }
+            stateLock.unlock()
+            guard first else { return }
+            _ = value
+            lock.signal()
+        }
+        let fast = recentlyWarmed(key)
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                finish(true)
+            case .failed, .cancelled:
+                finish(false)
+            case .waiting:
+                if fast {
+                    queue.asyncAfter(deadline: .now() + 1.5) { finish(false) }
+                }
+            default:
+                break
+            }
+        }
+        connection.start(queue: queue)
+        let seconds = fast ? 2.0 : max(TimeInterval(timeoutMs) / 1000.0, 0.25) + 1.0
+        _ = lock.wait(timeout: .now() + seconds)
+        stateLock.lock()
+        if !finished { finished = true }
+        stateLock.unlock()
+        connection.stateUpdateHandler = nil
+        if connection.state == .ready {
+            return HeldSocket(connection: connection, key: key)
+        }
+        connection.cancel()
+        return nil
+    }
+
+    private static func exchange(
+        on socket: HeldSocket,
+        request: Data,
+        timeoutMs: Int,
+        fresh: Bool
+    ) -> (status: Int, body: Data, keep: Bool)? {
+        let lock = DispatchSemaphore(value: 0)
+        let stateLock = NSLock()
+        var result: (Int, Data, Bool)?
+        var finished = false
+        func finish(_ value: (Int, Data, Bool)?) {
+            stateLock.lock()
+            let first = !finished
+            if first {
+                finished = true
+                result = value
+            }
+            stateLock.unlock()
+            guard first else { return }
+            lock.signal()
+        }
+        socket.connection.send(content: request, isComplete: false, completion: .contentProcessed { error in
+            if error != nil {
+                finish(nil)
+                return
+            }
+            func pull() {
+                    if let parsed = HttpResponseParser.parseFramed(socket.pending) {
+                    let keep = parsed.keepAlive
+                    socket.pending = Data(socket.pending.dropFirst(parsed.consumed))
+                    finish((parsed.status, parsed.body, keep))
+                    return
+                }
+                socket.connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { content, _, isComplete, error in
+                    if error != nil {
+                        finish(nil)
+                        return
+                    }
+                    if let content, !content.isEmpty {
+                        socket.pending.append(content)
+                    }
+                    if let parsed = HttpResponseParser.parseFramed(socket.pending) {
+                        let keep = parsed.keepAlive && !isComplete
+                        socket.pending = Data(socket.pending.dropFirst(parsed.consumed))
+                        finish((parsed.status, parsed.body, keep))
+                        return
+                    }
+                    if isComplete {
+                        finish(nil)
+                        return
+                    }
+                    pull()
+                }
+            }
+            pull()
+        })
+        let seconds = max(TimeInterval(timeoutMs) / 1000.0, 0.25) + 1.0
+        _ = lock.wait(timeout: .now() + seconds)
+        stateLock.lock()
+        let timedOut = !finished
+        if timedOut { finished = true }
+        stateLock.unlock()
+        if timedOut {
+            log("timeout \(socket.key)")
+            return nil
+        }
+        _ = fresh
+        return result
     }
 
     private static func transact(
@@ -708,6 +907,61 @@ enum LanHttpClient {
 }
 
 private enum HttpResponseParser {
+    static func parseFramed(_ data: Data) -> (status: Int, body: Data, consumed: Int, keepAlive: Bool)? {
+        let separator = Data("\r\n\r\n".utf8)
+        guard let range = data.range(of: separator) else { return nil }
+        let headerBytes = data.subdata(in: 0..<range.lowerBound)
+        let body = data.subdata(in: range.upperBound..<data.count)
+        guard let headerText = String(data: headerBytes, encoding: .isoLatin1) else { return nil }
+        let lines = headerText.split(separator: "\r\n", omittingEmptySubsequences: false)
+        guard let statusLine = lines.first else { return nil }
+        let status = statusLine.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? 0
+        guard status > 0 else { return nil }
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let key = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            headers[key] = value
+        }
+        let keepAlive = headers["connection"]?.lowercased() != "close"
+        let headerCount = data.distance(from: data.startIndex, to: range.upperBound)
+        if headers["transfer-encoding"]?.lowercased().contains("chunked") == true {
+            guard let decoded = decodeChunked(body) else { return nil }
+            guard let used = chunkedByteCount(body) else { return nil }
+            return (status, decoded, headerCount + used, keepAlive)
+        }
+        guard let length = headers["content-length"].flatMap({ Int($0) }) else { return nil }
+        if body.count < length { return nil }
+        return (status, Data(body.prefix(length)), headerCount + length, keepAlive)
+    }
+
+    private static func chunkedByteCount(_ data: Data) -> Int? {
+        var remaining = data
+        var used = 0
+        while !remaining.isEmpty {
+            guard let lineEnd = remaining.range(of: Data("\r\n".utf8)) else { return nil }
+            let sizeLine = remaining.subdata(in: 0..<lineEnd.lowerBound)
+            let lineBytes = remaining.distance(from: remaining.startIndex, to: lineEnd.upperBound)
+            remaining = remaining.subdata(in: lineEnd.upperBound..<remaining.count)
+            used += lineBytes
+            let hex = String(data: sizeLine, encoding: .isoLatin1)?
+                .split(separator: ";").first?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let size = Int(hex, radix: 16) else { return nil }
+            if size == 0 {
+                if remaining.starts(with: Data("\r\n".utf8)) {
+                    used += 2
+                }
+                return used
+            }
+            guard remaining.count >= size + 2 else { return nil }
+            remaining = Data(remaining.dropFirst(size + 2))
+            used += size + 2
+        }
+        return nil
+    }
+
     static func parse(_ data: Data) -> (status: Int, body: Data)? {
         let separator = Data("\r\n\r\n".utf8)
         guard let range = data.range(of: separator) else { return nil }

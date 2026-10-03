@@ -17,3 +17,14 @@ actual fun sendWakeBroadcast() {
         socket.send(packet)
     }
 }
+
+actual fun sendWakeToHost(host: String) {
+    val trimmed = host.trim()
+    if (trimmed.isEmpty()) return
+    val payload = WakeProtocol.PAYLOAD.toByteArray(Charsets.UTF_8)
+    DatagramSocket().use { socket ->
+        val address = InetAddress.getByName(trimmed)
+        val packet = DatagramPacket(payload, payload.size, address, WakeProtocol.PORT)
+        socket.send(packet)
+    }
+}

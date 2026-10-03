@@ -118,6 +118,10 @@ class BaseAppSettings(
         (store.getString(KEY_EXPLORER_SPLIT_FRACTION, "").toFloatOrNull() ?: 0.38f).coerceIn(0.20f, 0.70f)
     )
     override val explorerSplitFraction: StateFlow<Float> = explorerSplitFractionFlow.asStateFlow()
+    private val explorerSplitEnabledFlow = MutableStateFlow(
+        store.getString(KEY_EXPLORER_SPLIT_ENABLED, "true") != "false"
+    )
+    override val explorerSplitEnabled: StateFlow<Boolean> = explorerSplitEnabledFlow.asStateFlow()
     private val desktopUiStyleFlow = MutableStateFlow(
         DesktopUiStyle.fromStorage(store.getString(KEY_DESKTOP_UI_STYLE, DesktopUiStyle.DEFAULT.name))
     )
@@ -734,6 +738,11 @@ class BaseAppSettings(
         desktopUiStyleFlow.value = style
     }
 
+    override fun setExplorerSplitEnabled(enabled: Boolean) {
+        explorerSplitEnabledFlow.value = enabled
+        store.putString(KEY_EXPLORER_SPLIT_ENABLED, enabled.toString())
+    }
+
     override fun setExplorerViewMode(mode: ExplorerViewMode) {
         store.putString(KEY_EXPLORER_VIEW_MODE, mode.name)
         explorerViewModeFlow.value = mode
@@ -1029,6 +1038,7 @@ class BaseAppSettings(
         desktopLayout.value = DesktopLayoutMode.DEFAULT
         desktopSplitFractionFlow.value = 0.35f
         explorerSplitFractionFlow.value = 0.38f
+        explorerSplitEnabledFlow.value = true
         desktopUiStyleFlow.value = DesktopUiStyle.DEFAULT
         explorerViewModeFlow.value = ExplorerViewMode.List
         devicesViewModeFlow.value = ExplorerViewMode.List
@@ -1153,6 +1163,7 @@ class BaseAppSettings(
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
         const val KEY_DESKTOP_SPLIT_FRACTION = "desktop_split_fraction"
         const val KEY_EXPLORER_SPLIT_FRACTION = "explorer_split_fraction"
+        const val KEY_EXPLORER_SPLIT_ENABLED = "explorer_split_enabled"
         const val KEY_DESKTOP_UI_STYLE = "desktop_ui_style"
         const val KEY_EXPLORER_VIEW_MODE = "explorer_view_mode"
         const val KEY_DEVICES_VIEW_MODE = "devices_view_mode"

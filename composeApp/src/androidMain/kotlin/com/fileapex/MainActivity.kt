@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +41,7 @@ import com.fileapex.platform.AndroidStorageAccess
 import com.fileapex.platform.BackgroundPersistenceGuidance
 import com.fileapex.platform.BatteryBulletinCoordinator
 import com.fileapex.platform.FileApexAndroidBootstrap
+import com.fileapex.platform.bindAndroidTrashPrompt
 import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.platform.toUiState
 import com.fileapex.platform.ServiceWatchdog
@@ -119,6 +121,10 @@ class MainActivity : ComponentActivity() {
         refreshPermissions()
     }
 
+    private val trashPromptLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { }
+
     private val phoneStatePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -139,6 +145,9 @@ class MainActivity : ComponentActivity() {
         com.fileapex.di.FileApexServices.buildChannel = BuildConfig.BUILD_CHANNEL
         // Complete init if this process deferred Application.onCreate during Direct Boot.
         FileApexAndroidBootstrap.ensureInitialized(this)
+        bindAndroidTrashPrompt { sender ->
+            trashPromptLauncher.launch(IntentSenderRequest.Builder(sender).build())
+        }
         BatteryBulletinCoordinator.onProcessStart(this)
         configureVisibleSystemBars()
         refreshPermissions()

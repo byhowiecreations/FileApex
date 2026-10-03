@@ -85,7 +85,7 @@ class FileApexClient(
                 port = port,
                 params = mapOf("path" to path)
             ),
-            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+            timeoutMs = LIST_REQUEST_TIMEOUT_MS
         )
         rejectPinRequired(response, com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
         requireSuccess(response, "List failed (${response.statusCode}): $host:$port$path")
@@ -1604,6 +1604,7 @@ class FileApexClient(
         private const val PEER_CONNECT_TIMEOUT_MS = 5_000L
         private const val TRANSFER_IDLE_TIMEOUT_MS = 10 * 60 * 1000L
         private const val PEER_REQUEST_TIMEOUT_MS = 15_000L
+        private const val LIST_REQUEST_TIMEOUT_MS = 4_000L
         private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
         private const val PEER_STATE_TIMEOUT_MS = 5_000L
         private const val BATTERY_CHECK_TIMEOUT_MS = 20_000L

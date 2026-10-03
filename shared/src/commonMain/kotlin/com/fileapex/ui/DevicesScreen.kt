@@ -1019,7 +1019,7 @@ private fun PairedDevicesList(
                     onFilesDropped = onFilesDropped,
                     modifier = modifier
                 )
-                ExplorerViewMode.List -> PairedDevicesBrowseList(
+                ExplorerViewMode.List, ExplorerViewMode.Split -> PairedDevicesBrowseList(
                     listState = listState,
                     deviceRows = deviceRows,
                     isInitialLoadComplete = isInitialLoadComplete,

@@ -15,6 +15,23 @@ import kotlinx.coroutines.launch
 object FcmWakeCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    fun dispatchPresenceWakeToDevice(deviceId: String) {
+        if (deviceId.isBlank()) return
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        if (!FcmWakeBackend.isConfigured()) return
+        val selfId = loadLocalIdentity().deviceId
+        scope.launch {
+            runCatching {
+                val target = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(deviceId))
+                    .firstOrNull() ?: return@runCatching
+                FcmWakeBackend.sendPresenceWake(
+                    targetFcmToken = target.fcmToken,
+                    sourceDeviceId = selfId
+                )
+            }
+        }
+    }
+
     fun dispatchPresenceWakeToLinkedPeers() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
         if (!FcmWakeBackend.isConfigured()) return

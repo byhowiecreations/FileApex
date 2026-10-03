@@ -5,11 +5,21 @@ package com.fileapex.presentation
  */
 enum class ExplorerViewMode {
     List,
-    Grid;
+    Grid,
+    Split;
 
+    /** Devices home stays list or grid. */
     fun toggled(): ExplorerViewMode = when (this) {
         List -> Grid
         Grid -> List
+        Split -> List
+    }
+
+    /** Local Files cycles list, grid, then two navigators. */
+    fun cycled(): ExplorerViewMode = when (this) {
+        List -> Grid
+        Grid -> Split
+        Split -> List
     }
 
     companion object {

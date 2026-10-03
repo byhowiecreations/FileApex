@@ -59,6 +59,7 @@ object FileApexAndroidBootstrap {
             initAndroidClipboardOptInNotifier(appContext)
             initAndroidDriveRelayNotifier(appContext)
             initAndroidBriefToast(appContext)
+            initAndroidLocalTrash(appContext)
             initAndroidUpdateAvailableNotifier(appContext)
             if (!FileApexServices.isDatabaseReady()) {
                 FileApexServices.init(createFileApexDatabase(appContext))

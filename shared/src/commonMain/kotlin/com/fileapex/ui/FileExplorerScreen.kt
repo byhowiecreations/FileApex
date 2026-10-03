@@ -25,15 +25,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import com.fileapex.ui.adaptive.JadedRaisedTile
 
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -63,6 +67,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
@@ -78,10 +83,12 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -99,6 +106,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.platform.DownloadsPaths
+import com.fileapex.ui.dnd.ExplorerDropHighlight
+import com.fileapex.ui.dnd.LocalExplorerDropHighlight
+import com.fileapex.ui.dnd.localFolderDropTarget
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.domain.demo.DemoModeState
 import com.fileapex.presentation.BrowseTarget
@@ -106,6 +116,7 @@ import com.fileapex.presentation.ExplorerActionCopy
 import com.fileapex.presentation.ExplorerListOrdering
 import com.fileapex.presentation.ExplorerSortMode
 import com.fileapex.presentation.ExplorerUiState
+import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.util.NetworkUtils
 import com.fileapex.ui.adaptive.CompactHomeTitleBand
@@ -132,7 +143,17 @@ fun FileExplorerScreen(
     onRegisterRefresh: (((isRefreshing: Boolean, doRefresh: () -> Unit) -> Unit))? = null,
     onRegisterHeaderCommands: ((ExplorerHeaderCommands?) -> Unit)? = null,
     onExitApp: (() -> Unit)? = null,
-    viewModel: ExplorerViewModel = viewModel(key = target.deviceId) { ExplorerViewModel(target) }
+    paneId: ExplorerPaneId = ExplorerPaneId.Primary,
+    hostSplit: Boolean = true,
+    layoutExpanded: Boolean = false,
+    paneLabel: String? = null,
+    secondaryTarget: BrowseTarget? = null,
+    readyDevices: List<com.fileapex.presentation.DeviceListRow> = emptyList(),
+    onSelectSecondaryLocal: () -> Unit = {},
+    onSelectSecondaryDevice: (String) -> Unit = {},
+    viewModelKey: String = target.deviceId,
+    showTopBar: Boolean = true,
+    viewModel: ExplorerViewModel = viewModel(key = viewModelKey) { ExplorerViewModel(target) }
 ) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(state.isRefreshing, viewModel) {
@@ -156,7 +177,17 @@ fun FileExplorerScreen(
     val topBarTitle = titleOverride
         ?: if (target is BrowseTarget.Local) stringRes("local_files") else state.deviceTitle
 
-    FileApexBackHandler(enabled = true) {
+    val paneFocus = LocalExplorerPaneFocus.current
+    val splitOpen = hostSplit &&
+        state.viewMode == ExplorerViewMode.Split &&
+        target is BrowseTarget.Local
+    val folderPane = layoutExpanded && hostSplit && !splitOpen
+    val backEnabled = when {
+        paneFocus == null -> true
+        !splitOpen && paneId == ExplorerPaneId.Primary -> true
+        else -> paneFocus.active == paneId
+    }
+    FileApexBackHandler(enabled = backEnabled) {
         when {
             state.showMultiCopyPicker -> viewModel.dismissMultiCopyPicker()
             state.showMultiCopyIntro -> viewModel.dismissMultiCopyIntro()
@@ -202,6 +233,17 @@ fun FileExplorerScreen(
         }
     }
 
+    val ownedFocus = paneFocus ?: remember { ExplorerPaneFocus() }
+    CompositionLocalProvider(
+        LocalExplorerPaneFocus provides ownedFocus,
+        LocalExplorerMutations provides ExplorerMutations(
+            rename = viewModel::renameItem,
+            compress = viewModel::compressItem,
+            uncompress = viewModel::uncompressItem,
+            delete = viewModel::deleteItem,
+            importDropped = viewModel::importDropped,
+        )
+    ) {
     val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
     Scaffold(
@@ -218,18 +260,18 @@ fun FileExplorerScreen(
 
 
         topBar = {
-            if (!embeddedInCompactShell) {
+            if (showTopBar && !embeddedInCompactShell && onRegisterRefresh == null) {
                 TopAppBar(
                     title = {
-                        Column {
-                            Text(topBarTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                text = explorerSubtitle(state),
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Text(
+                            text = if (target is BrowseTarget.Local) {
+                                state.currentPath.substringAfterLast('/').ifBlank { state.currentPath }
+                            } else {
+                                topBarTitle
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     },
                     navigationIcon = {
                         ExplorerNavigationAction(
@@ -249,7 +291,7 @@ fun FileExplorerScreen(
                             embeddedInCompactShell = false,
                             onBack = onBack,
                             viewModel = viewModel,
-                            hasExternalRefresh = onRegisterRefresh != null
+                            hasExternalRefresh = false
                         )
                     },
                     colors = if (jadedOrbital) {
@@ -300,9 +342,37 @@ fun FileExplorerScreen(
             }
         }
     ) { padding ->
+        val dropHighlight = remember { ExplorerDropHighlight() }
+        val openFolder = state.currentPath.ifBlank { viewModel.browseRootPath() }
+        val acceptDrop: (List<String>) -> Unit = { files ->
+            val destination = dropHighlight.destinationOr(openFolder)
+            dropHighlight.clearHover()
+            viewModel.importDropped(files, destination)
+        }
         val explorerBody: @Composable () -> Unit = {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val isWide = maxWidth >= 600.dp
+            CompositionLocalProvider(LocalExplorerDropHighlight provides dropHighlight) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .localFolderDropTarget(
+                        enabled = !splitOpen,
+                        onHoverChanged = { active -> if (!active) dropHighlight.clearHover() },
+                        onDragMove = { position -> dropHighlight.hoverAt(position, openFolder) },
+                        onDragEnded = { dropHighlight.clear() },
+                        onFiles = acceptDrop
+                    )
+                    .pointerInput(paneId, ownedFocus, splitOpen) {
+                        if (splitOpen && paneId == ExplorerPaneId.Primary) return@pointerInput
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type == PointerEventType.Press) {
+                                    ownedFocus.active = paneId
+                                }
+                            }
+                        }
+                    }
+            ) {
                 when {
                     state.isLoading &&
                         state.paneDirectories.isEmpty() &&
@@ -315,8 +385,8 @@ fun FileExplorerScreen(
                         Column(modifier = Modifier.fillMaxSize()) {
                             if (embeddedInCompactShell) {
                                 CompactHomeTitleBand(
-                                    primaryLine = topBarTitle,
-                                    secondaryLine = explorerSubtitle(state),
+                                    primaryLine = "FileApex",
+                                    secondaryLine = null,
                                     style = CompactHomeTitleStyle.Detail,
                                     onOpenTransferQueue = onOpenTransferQueue,
                                     showCloseService = onExitApp != null,
@@ -349,7 +419,7 @@ fun FileExplorerScreen(
                                     }
                                 )
                             }
-                            if (state.isLoading || state.isRefreshing) {
+                            if (state.isRemoteTarget && (state.isLoading || state.isRefreshing)) {
                                 LinearProgressIndicator(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -391,8 +461,172 @@ fun FileExplorerScreen(
                                             color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
                                         )
                                     }
+                                    IconButton(onClick = viewModel::clearPendingCopy) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = stringRes("clear_pending_copy"),
+                                            tint = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
+                            val breadcrumbLabel = when {
+                                splitOpen && paneId == ExplorerPaneId.Primary -> stringRes("pane_local")
+                                !paneLabel.isNullOrBlank() -> paneLabel
+                                else -> null
+                            }
+                            if (splitOpen) {
+                                val secondaryLocal = remember(target.deviceId, target.rootPath, target.displayName) {
+                                    BrowseTarget.Local(
+                                        deviceId = target.deviceId,
+                                        displayName = target.displayName,
+                                        rootPath = target.rootPath
+                                    )
+                                }
+                                val rightTarget = secondaryTarget ?: secondaryLocal
+                                val rightKey = if (rightTarget is BrowseTarget.Remote) {
+                                    rightTarget.deviceId
+                                } else {
+                                    LOCAL_SECONDARY_VM_KEY
+                                }
+                                val focus = LocalExplorerPaneFocus.current
+                                val glow = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary
+                                val leftActive = focus == null || focus.active == ExplorerPaneId.Primary
+                                val rightActive = focus?.active == ExplorerPaneId.Secondary
+                                @Composable
+                                fun LeftPane(modifier: Modifier) {
+                                    Column(
+                                        modifier = modifier
+                                            .activePaneGlow(leftActive, glow)
+                                            .localFolderDropTarget(
+                                                enabled = true,
+                                                onHoverChanged = { active -> if (!active) dropHighlight.clearHover() },
+                                                onDragMove = { position -> dropHighlight.hoverAt(position, openFolder) },
+                                                onDragEnded = { dropHighlight.clear() },
+                                                onFiles = acceptDrop
+                                            )
+                                            .pointerInput(Unit) {
+                                                awaitPointerEventScope {
+                                                    while (true) {
+                                                        val event = awaitPointerEvent()
+                                                        if (event.type == PointerEventType.Press) {
+                                                            focus?.active = ExplorerPaneId.Primary
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                    ) {
+                                        PaneSourceLabel(stringRes("pane_local"))
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        ExplorerBreadcrumb(
+                                            label = null,
+                                            path = state.currentPath,
+                                            rootPath = viewModel.browseRootPath(),
+                                            onJump = viewModel::openPath,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                        )
+                                        ExplorerFilterBar(
+                                            query = filterQuery,
+                                            onQueryChange = { filterQuery = it },
+                                            sortMode = sortMode,
+                                            onSortModeChange = { sortMode = it }
+                                        )
+                                        AdaptiveExplorerView(
+                                            isWideDisplay = false,
+                                            viewMode = ExplorerViewMode.List,
+                                            panePath = state.panePath,
+                                            paneDirectories = state.paneDirectories,
+                                            contentDirectories = visibleDirectories,
+                                            contentFiles = visibleFiles,
+                                            selectedFolderPath = state.selectedFolderPath,
+                                            canNavigateUp = state.canNavigateUp,
+                                            isSelectionMode = state.isSelectionMode,
+                                            selectedFileIds = state.selectedFileIds,
+                                            isRemoteTarget = false,
+                                            sourceDeviceId = null,
+                                            loadingFolderPath = null,
+                                            isLoading = false,
+                                            onNavigateUp = viewModel::navigateUp,
+                                            onPaneFolderClick = viewModel::onPaneFolderClick,
+                                            onContentDirectoryClick = viewModel::onContentDirectoryClick,
+                                            onFileOpen = viewModel::onFileClick,
+                                            onFileLongPress = viewModel::onFileLongClick,
+                                            onPreviewFirstSplitPaneFolder = viewModel::previewFirstSplitPaneFolder,
+                                            onFileSelectExclusive = viewModel::selectFileExclusive,
+                                            onFileToggleSelect = viewModel::toggleFileSelectionDesktop,
+                                            onFileExtendSelect = viewModel::extendFileSelection,
+                                            onFileActivate = viewModel::activateFile,
+                                            onCopyItem = viewModel::copyItem,
+                                            onSendItemToDevice = viewModel::sendItemToDevices,
+                                            onDownloadItem = viewModel::downloadItem,
+                                            contentBottomPadding = if (showCopyFabs) 140.dp else 24.dp,
+                                            contentDropPath = state.currentPath,
+                                            modifier = Modifier.weight(1f).fillMaxWidth()
+                                        )
+                                    }
+                                }
+                                @Composable
+                                fun RightPane(modifier: Modifier) {
+                                    Column(
+                                        modifier = modifier
+                                            .activePaneGlow(rightActive, glow)
+                                            .pointerInput(Unit) {
+                                                awaitPointerEventScope {
+                                                    while (true) {
+                                                        val event = awaitPointerEvent()
+                                                        if (event.type == PointerEventType.Press) {
+                                                            focus?.active = ExplorerPaneId.Secondary
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                    ) {
+                                        SecondarySourcePicker(
+                                            secondaryTarget = secondaryTarget,
+                                            readyDevices = readyDevices,
+                                            onSelectLocal = onSelectSecondaryLocal,
+                                            onSelectDevice = onSelectSecondaryDevice
+                                        )
+                                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                            FileExplorerScreen(
+                                                target = rightTarget,
+                                                onBack = {},
+                                                embeddedInCompactShell = false,
+                                                paneId = ExplorerPaneId.Secondary,
+                                                hostSplit = false,
+                                                layoutExpanded = false,
+                                                showTopBar = false,
+                                                paneLabel = null,
+                                                viewModelKey = rightKey
+                                            )
+                                        }
+                                    }
+                                }
+                                if (layoutExpanded) {
+                                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                        LeftPane(Modifier.weight(1f).fillMaxHeight())
+                                        VerticalDivider()
+                                        RightPane(Modifier.weight(1f).fillMaxHeight())
+                                    }
+                                } else {
+                                    Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                        LeftPane(Modifier.weight(1f).fillMaxWidth())
+                                        HorizontalDivider()
+                                        RightPane(Modifier.weight(1f).fillMaxWidth())
+                                    }
+                                }
+                            } else {
+                            ExplorerBreadcrumb(
+                                label = breadcrumbLabel,
+                                path = state.currentPath,
+                                rootPath = viewModel.browseRootPath(),
+                                onJump = viewModel::openPath,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
                             ExplorerFilterBar(
                                 query = filterQuery,
                                 onQueryChange = { filterQuery = it },
@@ -400,8 +634,8 @@ fun FileExplorerScreen(
                                 onSortModeChange = { sortMode = it }
                             )
                             AdaptiveExplorerView(
-                                isWideDisplay = isWide,
-                                viewMode = state.viewMode,
+                                isWideDisplay = folderPane,
+                                viewMode = if (state.viewMode == ExplorerViewMode.Split) ExplorerViewMode.List else state.viewMode,
                                 panePath = state.panePath,
                                 paneDirectories = state.paneDirectories,
                                 contentDirectories = visibleDirectories,
@@ -428,14 +662,16 @@ fun FileExplorerScreen(
                                 onSendItemToDevice = viewModel::sendItemToDevices,
                                 onDownloadItem = viewModel::downloadItem,
                                 contentBottomPadding = if (showCopyFabs) 140.dp else 24.dp,
+                                contentDropPath = state.currentPath,
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
                             )
+                            }
                         }
                     }
                 }
-                if (state.isLoading && (state.paneDirectories.isNotEmpty() || state.contentDirectories.isNotEmpty() || state.contentFiles.isNotEmpty())) {
+                if (state.isRemoteTarget && state.isLoading && (state.paneDirectories.isNotEmpty() || state.contentDirectories.isNotEmpty() || state.contentFiles.isNotEmpty())) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -482,6 +718,7 @@ fun FileExplorerScreen(
                         }
                     }
                 }
+            }
             }
         }
         if (isDesktopHost()) {
@@ -698,6 +935,7 @@ fun FileExplorerScreen(
             }
         )
     }
+    }
 }
 
 private fun explorerSubtitle(state: ExplorerUiState): String =
@@ -780,7 +1018,8 @@ private fun ExplorerTopBarActions(
             if (embeddedInCompactShell) {
                 ExplorerViewModeToggle(
                     viewMode = state.viewMode,
-                    onToggle = viewModel::toggleViewMode
+                    onToggle = viewModel::toggleViewMode,
+                    includeSplit = true
                 )
                 if (isDesktopHost()) {
                     DesktopLayoutToggle()
@@ -968,5 +1207,22 @@ private fun ExplorerFilterBar(
             }
         }
     }
+}
+
+private const val LOCAL_SECONDARY_VM_KEY = "explorer-local-secondary"
+
+private fun Modifier.activePaneGlow(active: Boolean, color: Color): Modifier {
+    if (!active) return this
+    val shape = RoundedCornerShape(12.dp)
+    return this
+        .padding(3.dp)
+        .shadow(
+            elevation = 8.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = color.copy(alpha = 0.5f),
+            spotColor = color.copy(alpha = 0.35f),
+        )
+        .border(1.5.dp, color.copy(alpha = 0.9f), shape)
 }
 

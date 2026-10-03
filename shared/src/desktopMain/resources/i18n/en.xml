@@ -45,6 +45,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="retry">Retry</string>
     <string name="remove">Remove</string>
     <string name="rename">Rename</string>
+    <string name="split_view">Split</string>
+    <string name="get_info">Get Info</string>
+    <string name="compress">Compress</string>
+    <string name="uncompress">Uncompress</string>
+    <string name="pane_local">Local</string>
+    <string name="reconnect_folder">Reconnect</string>
     <string name="delete">Delete</string>
     <string name="confirm">Confirm</string>
     <string name="allow">Allow</string>
@@ -427,6 +433,9 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="files_land_in">Files land in %1$s on each selected device. Leave This device unchecked to skip local storage.</string>
     <string name="send_to">Send To</string>
     <string name="copy_action">Copy</string>
+    <string name="clear_pending_copy">Clear pending copy</string>
+    <string name="moved_to_trash">Moved to Trash</string>
+    <string name="trash_failed">Couldn\'t move to Trash</string>
     <string name="selection_mode_helper">Copy = save for Paste later · Send To = send files to paired devices now</string>
     <string name="send_to_intro_body">Send To delivers the selected file(s) to one or more paired devices immediately. Copy only stores a clipboard entry for Paste on this device.</string>
     <string name="send_to_picker_title">Send To devices</string>
@@ -685,6 +694,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="onboard_perm_oem_generic">Manufacturer Background Settings</string>
     <string name="folder_outside_root">That folder is outside this device\'s browsable root</string>
     <string name="unable_to_open_folder">Unable to open folder</string>
+    <string name="unable_to_open_file">Unable to open file</string>
     <string name="preview_failed">Preview failed</string>
     <string name="text_preview_too_large">Text file is too large to preview</string>
     <string name="select_destination_device">Select at least one destination device</string>

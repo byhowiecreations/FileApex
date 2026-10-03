@@ -7,6 +7,16 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Paths
 import java.nio.file.attribute.BasicFileAttributes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+actual suspend fun prepareLocalDirectoryAccess(absolutePath: String) {
+    withContext(Dispatchers.Main) {
+        runCatching {
+            Files.newDirectoryStream(Paths.get(absolutePath)).close()
+        }
+    }
+}
 
 actual fun fastScanDirectory(absolutePath: String): Pair<List<RemoteFileItem>, List<RemoteFileItem>> {
     val dirPath = Paths.get(absolutePath)

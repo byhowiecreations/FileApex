@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -24,12 +25,21 @@ import com.fileapex.ui.theme.isFileApexJadedSteel
 fun ExplorerViewModeToggle(
     viewMode: ExplorerViewMode,
     onToggle: () -> Unit,
+    includeSplit: Boolean = false,
     modifier: Modifier = Modifier,
     iconTint: Color = fileApexHeaderActionTint()
 ) {
-    val showGridNext = viewMode == ExplorerViewMode.List
-    val icon = if (showGridNext) Icons.Filled.GridView else Icons.AutoMirrored.Filled.ViewList
-    val desc = if (showGridNext) stringRes("switch_to_grid") else stringRes("switch_to_list")
+    val next = if (includeSplit) viewMode.cycled() else viewMode.toggled()
+    val icon = when (next) {
+        ExplorerViewMode.Grid -> Icons.Filled.GridView
+        ExplorerViewMode.Split -> Icons.Filled.VerticalSplit
+        ExplorerViewMode.List -> Icons.AutoMirrored.Filled.ViewList
+    }
+    val desc = when (next) {
+        ExplorerViewMode.Grid -> stringRes("switch_to_grid")
+        ExplorerViewMode.Split -> stringRes("split_view")
+        ExplorerViewMode.List -> stringRes("switch_to_list")
+    }
     val jaded = isFileApexJadedSteel()
     if (jaded) {
         Box(
@@ -53,6 +63,43 @@ fun ExplorerViewModeToggle(
                 imageVector = icon,
                 contentDescription = desc,
                 tint = iconTint
+            )
+        }
+    }
+}
+
+@Composable
+fun ExplorerSplitToggle(
+    enabled: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconTint: Color = fileApexHeaderActionTint()
+) {
+    val desc = stringRes("split_view")
+    val tint = if (enabled) iconTint else iconTint.copy(alpha = 0.45f)
+    val jaded = isFileApexJadedSteel()
+    if (jaded) {
+        Box(
+            modifier = modifier
+                .size(40.dp)
+                .clickable(onClick = onToggle),
+            contentAlignment = Alignment.Center
+        ) {
+            JadedRaisedTile(tileSize = 28.dp) {
+                Icon(
+                    imageVector = Icons.Filled.VerticalSplit,
+                    contentDescription = desc,
+                    tint = if (enabled) KineticStyleLook.steel else KineticStyleLook.steel.copy(alpha = 0.45f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    } else {
+        IconButton(onClick = onToggle, modifier = modifier) {
+            Icon(
+                imageVector = Icons.Filled.VerticalSplit,
+                contentDescription = desc,
+                tint = tint
             )
         }
     }

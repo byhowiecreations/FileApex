@@ -78,7 +78,8 @@ actual fun Modifier.deviceFileDragSource(
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
             )
         }
-    ) { offset ->
+    ) { _ ->
+        ActiveDrag.sourcePath = absolutePath
         DragAndDropTransferData(
             transferable = DragAndDropTransferable(transferable),
             supportedActions = listOf(DragAndDropTransferAction.Copy)

@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DevicesViewModel
+import com.fileapex.presentation.ExplorerSplitSession
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.DevicesScreen
 import com.fileapex.ui.DevicesScreenLayoutMode
@@ -136,6 +137,7 @@ fun AdaptiveWideHome(
     onClearDetail: () -> Unit,
     appVersionName: String,
     devicesViewModel: DevicesViewModel,
+    splitSession: ExplorerSplitSession,
     devicesViewMode: ExplorerViewMode = ExplorerViewMode.List,
     onToggleDevicesViewMode: () -> Unit = {},
     explorerViewMode: ExplorerViewMode = ExplorerViewMode.List,
@@ -162,6 +164,8 @@ fun AdaptiveWideHome(
     var explorerRefreshCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var explorerIsRefreshing by remember { mutableStateOf(false) }
     var explorerHeaderCommands by remember { mutableStateOf<ExplorerHeaderCommands?>(null) }
+    val secondaryTarget by splitSession.secondaryTarget.collectAsState()
+    val readyDevices = deviceRows.filter { it.online }
     val explorerChromeVisible = selectedTab == HomeTab.Files ||
         (selectedTab == HomeTab.Devices && selectedTarget != null)
     LaunchedEffect(explorerChromeVisible) {
@@ -329,6 +333,7 @@ fun AdaptiveWideHome(
                             FileExplorerScreen(
                                 target = selectedTarget,
                                 onBack = onClearDetail,
+                                layoutExpanded = true,
                                 onRegisterRefresh = onRegisterRefresh,
                                 onRegisterHeaderCommands = onRegisterHeaderCommands
                             )
@@ -407,6 +412,7 @@ fun AdaptiveWideHome(
                                         FileExplorerScreen(
                                             target = detailTarget,
                                             onBack = onClearDetail,
+                                            layoutExpanded = true,
                                             onRegisterRefresh = onRegisterRefresh,
                                             onRegisterHeaderCommands = onRegisterHeaderCommands
                                         )
@@ -429,13 +435,22 @@ fun AdaptiveWideHome(
                             ?: devicesViewModel.thisDeviceTarget()
                         FileExplorerScreen(
                             target = localTarget,
+                            layoutExpanded = true,
                             onBack = {
                                 onClearDetail()
                                 onSelectTab(HomeTab.Devices)
                             },
                             titleOverride = com.fileapex.i18n.AppI18n.t("local_files"),
                             onRegisterRefresh = onRegisterRefresh,
-                            onRegisterHeaderCommands = onRegisterHeaderCommands
+                            onRegisterHeaderCommands = onRegisterHeaderCommands,
+                            secondaryTarget = secondaryTarget,
+                            readyDevices = readyDevices,
+                            onSelectSecondaryLocal = splitSession::selectLocal,
+                            onSelectSecondaryDevice = { deviceId ->
+                                devicesViewModel.openDeviceOrExplain(deviceId) { opened ->
+                                    splitSession.select(opened)
+                                }
+                            }
                         )
                     }
                 }
@@ -623,26 +638,37 @@ private fun WideTopBar(
             }
         } else if (showExplorerViewToggle) {
             explorerHeaderCommands?.let { commands ->
-                TextButton(onClick = commands.onSelect) {
-                    Text(
-                        text = stringRes("select"),
-                        color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                commands.onPaste?.let { onPaste ->
-                    TextButton(onClick = onPaste) {
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                    TextButton(
+                        onClick = commands.onSelect,
+                        modifier = Modifier.height(40.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    ) {
                         Text(
-                            text = stringRes("paste"),
+                            text = stringRes("select"),
                             color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
                             fontWeight = FontWeight.SemiBold
                         )
+                    }
+                    commands.onPaste?.let { onPaste ->
+                        TextButton(
+                            onClick = onPaste,
+                            modifier = Modifier.height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                text = stringRes("paste"),
+                                color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
             ExplorerViewModeToggle(
                 viewMode = explorerViewMode,
                 onToggle = onToggleExplorerViewMode,
+                includeSplit = true,
                 iconTint = headerIconTint,
                 modifier = Modifier.size(40.dp)
             )

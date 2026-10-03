@@ -5,3 +5,5 @@ package com.fileapex.network
  * can start their local share server.
  */
 expect fun sendWakeBroadcast()
+
+expect fun sendWakeToHost(host: String)

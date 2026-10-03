@@ -3,25 +3,12 @@ package com.fileapex.domain.diagnostics
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.formatLocalizedNumber
 import com.fileapex.util.TimeUtils
-import kotlin.math.roundToInt
 
 /** Human-readable labels for [PeerDeviceDiagnostics] UI rows. */
 object DeviceDiagnosticsFormatter {
     fun formatBytes(bytes: Long?): String {
         if (bytes == null || bytes < 0L) return "—"
-        val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        var value = bytes.toDouble()
-        var unitIndex = 0
-        while (value >= 1024.0 && unitIndex < units.lastIndex) {
-            value /= 1024.0
-            unitIndex++
-        }
-        val rounded = if (unitIndex == 0) {
-            value.roundToInt().toString()
-        } else {
-            String.format("%.1f", value)
-        }
-        return "$rounded ${units[unitIndex]}"
+        return com.fileapex.platform.formatHostFileSize(bytes)
     }
 
     fun formatPercent(value: Int?): String =

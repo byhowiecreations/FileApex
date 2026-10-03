@@ -20,6 +20,7 @@ import com.fileapex.network.FileApexClient
 import com.fileapex.network.SocketFileStreamer
 import com.fileapex.network.TransferRuntime
 import com.fileapex.network.transferCatching
+import com.fileapex.platform.prepareLocalDirectoryAccess
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.generateDeviceId
@@ -41,8 +42,11 @@ class FileTransferService(
 ) {
     private val multiCopyEngine = MultiCopyBroadcastEngine(client)
 
-    suspend fun listLocal(path: String): DirectoryListing = withContext(Dispatchers.IO) {
-        localFiles.listDirectory(path).getOrThrow()
+    suspend fun listLocal(path: String, bypassCache: Boolean = false): DirectoryListing {
+        prepareLocalDirectoryAccess(path)
+        return withContext(Dispatchers.IO) {
+            localFiles.listDirectory(path, bypassCache = bypassCache).getOrThrow()
+        }
     }
 
     suspend fun listRemote(host: String, port: Int, path: String): List<RemoteFileItem> =
@@ -313,10 +317,11 @@ class FileTransferService(
     suspend fun downloadRemoteToDownloads(
         host: String,
         port: Int,
-        items: List<RemoteFileItem>
+        items: List<RemoteFileItem>,
+        destinationDirectory: String? = null
     ): List<String> = withContext(TransferRuntime.outbound) {
         require(items.isNotEmpty()) { AppI18n.t("select_at_least_one_file_to_download") }
-        val downloadsRoot = defaultDownloadsDir()
+        val downloadsRoot = destinationDirectory?.takeIf { it.isNotBlank() } ?: defaultDownloadsDir()
         SystemFileSystem.createDirectories(Path(downloadsRoot))
         val downloadedPaths = mutableListOf<String>()
         val jobs = mutableListOf<TransferJob<JobOutcome>>()

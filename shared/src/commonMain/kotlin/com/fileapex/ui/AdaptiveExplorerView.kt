@@ -12,7 +12,12 @@ import dev.chrisbanes.haze.hazeEffect
 import com.fileapex.ui.theme.LocalJadedHazeState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.filled.Folder
+import com.fileapex.ui.dnd.LocalDropParentPath
+import com.fileapex.ui.dnd.LocalExplorerDropHighlight
 import com.fileapex.ui.dnd.deviceFileDragSource
+import com.fileapex.ui.dnd.dropParentOf
+import com.fileapex.ui.dnd.reportDropSpot
+import androidx.compose.runtime.CompositionLocalProvider
 
 
 
@@ -60,8 +65,13 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -89,9 +99,18 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.platform.horizontalResizePointerIcon
 import com.fileapex.platform.usesDesktopFileSelection
+import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.traits
+import com.fileapex.data.settings.ThemeShapeStyle
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.theme.FileApexTeal
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.graphics.ImageBitmap
+import com.fileapex.domain.preview.FilePreviewManager
+import com.fileapex.platform.decodeLocalImageFile
+import com.fileapex.platform.decodeVideoPoster
 
 /**
  * Phone: single list or grid of folders + files with ".." at top.
@@ -128,9 +147,11 @@ fun AdaptiveExplorerView(
     onDownloadItem: (RemoteFileItem) -> Unit = {},
     onPreviewFirstSplitPaneFolder: () -> Unit = {},
     modifier: Modifier = Modifier,
-    contentBottomPadding: Dp = 24.dp
+    contentBottomPadding: Dp = 24.dp,
+    contentDropPath: String = ""
 ) {
     val listPadding = PaddingValues(bottom = contentBottomPadding)
+    val contentParent = contentDropPath.ifBlank { selectedFolderPath ?: panePath }
     val showingPaneRootFiles = selectedFolderPath == null
     val desktopSelection = usesDesktopFileSelection()
 
@@ -197,8 +218,10 @@ fun AdaptiveExplorerView(
                         .fillMaxHeight()
                         .background(ink.paneBackground)
                 }
+                CompositionLocalProvider(LocalDropParentPath provides panePath) {
+                Column(modifier = leftPaneModifier) {
                 LazyColumn(
-                    modifier = leftPaneModifier,
+                    modifier = Modifier.weight(1f).fillMaxWidth().listingDropChrome(),
                     contentPadding = if (ink.jadedGlyphs) PaddingValues(0.dp) else listPadding
                 ) {
                     if (canNavigateUp) {
@@ -239,6 +262,8 @@ fun AdaptiveExplorerView(
                         }
                     }
                 }
+                }
+                }
                 Box(
                     modifier = Modifier
                         .width(if (ink.jadedGlyphs) 14.dp else 10.dp)
@@ -278,8 +303,9 @@ fun AdaptiveExplorerView(
                         }
                     )
                 }
+                CompositionLocalProvider(LocalDropParentPath provides contentParent) {
                 ExplorerContentPane(
-                    viewMode = if (ink.jadedGlyphs) ExplorerViewMode.Grid else viewMode,
+                    viewMode = viewMode,
                     canNavigateUp = false,
                     directories = rightDirs,
                     files = rightFiles,
@@ -312,16 +338,18 @@ fun AdaptiveExplorerView(
                     onSendItemToDevice = onSendItemToDevice,
                     onDownloadItem = onDownloadItem
                 )
+                }
             }
         }
         return
     }
 
+    CompositionLocalProvider(LocalDropParentPath provides contentParent) {
     val empty = contentDirectories.isEmpty() && contentFiles.isEmpty()
     if (empty && !canNavigateUp) {
         val ink = explorerInk()
         Box(
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier.fillMaxSize().listingDropChrome(),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -330,7 +358,7 @@ fun AdaptiveExplorerView(
                 color = ink.muted
             )
         }
-        return
+        return@CompositionLocalProvider
     }
 
     ExplorerContentPane(
@@ -361,6 +389,7 @@ fun AdaptiveExplorerView(
         onSendItemToDevice = onSendItemToDevice,
         onDownloadItem = onDownloadItem
     )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -395,6 +424,33 @@ private fun ExplorerContentPane(
 ) {
     when (viewMode) {
         ExplorerViewMode.List -> ExplorerListContent(
+            canNavigateUp = canNavigateUp,
+            directories = directories,
+            files = files,
+            isEmpty = isEmpty,
+            emptyHint = emptyHint,
+            isSelectionMode = isSelectionMode,
+            selectedFileIds = selectedFileIds,
+            desktopSelection = desktopSelection,
+            isRemoteTarget = isRemoteTarget,
+            sourceDeviceId = sourceDeviceId,
+            isLoading = isLoading,
+            loadingFolderPath = loadingFolderPath,
+            listPadding = listPadding,
+            modifier = modifier,
+            onNavigateUp = onNavigateUp,
+            onDirectoryClick = onDirectoryClick,
+            onFileOpen = onFileOpen,
+            onFileLongPress = onFileLongPress,
+            onFileSelectExclusive = onFileSelectExclusive,
+            onFileToggleSelect = onFileToggleSelect,
+            onFileExtendSelect = onFileExtendSelect,
+            onFileActivate = onFileActivate,
+            onCopyItem = onCopyItem,
+            onSendItemToDevice = onSendItemToDevice,
+            onDownloadItem = onDownloadItem
+        )
+        ExplorerViewMode.Split -> ExplorerListContent(
             canNavigateUp = canNavigateUp,
             directories = directories,
             files = files,
@@ -481,7 +537,7 @@ private fun ExplorerListContent(
     onDownloadItem: (RemoteFileItem) -> Unit
 ) {
     LazyColumn(
-        modifier = modifier,
+        modifier = modifier.listingDropChrome(),
         contentPadding = listPadding
     ) {
         if (canNavigateUp) {
@@ -573,7 +629,7 @@ private fun ExplorerGridContent(
     val gridGap = if (jadedGrid) 12.dp else 8.dp
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 108.dp),
-        modifier = modifier,
+        modifier = modifier.listingDropChrome(),
         contentPadding = if (jadedGrid) {
             PaddingValues(
                 start = 12.dp,
@@ -648,9 +704,14 @@ private fun ExplorerGridContent(
 @Composable
 private fun ParentRow(onClick: () -> Unit, isLoading: Boolean = false) {
     val ink = explorerInk()
+    val parentDest = dropParentOf(LocalDropParentPath.current).orEmpty()
+    val hot = dropTargetHot(parentDest)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .reportDropSpot(key = "up:$parentDest", destinationPath = parentDest)
+            .dropDestinationFrame(hot)
+            .background(if (hot) dropTargetTint() else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -732,18 +793,30 @@ private fun PaneDirectoryRow(
         desktopSelection = desktopSelection,
         isSelectionMode = isSelectionMode,
         onClick = onClick,
-        onLongClick = onLongClick,
+        onLongClick = { menuExpanded = true },
         onToggleSelect = onToggleSelect,
         onExtendSelect = onExtendSelect,
         onActivate = onActivate,
         onSecondaryClick = { menuExpanded = true }
     )
 
-    Box {
+    val folderHot = dropTargetHot(dir.absolutePath)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .reportDropSpot(key = "pane:${dir.absolutePath}", destinationPath = dir.absolutePath)
+            .dropDestinationFrame(folderHot)
+    ) {
         val selectedInPane = isChecked || isSelectedInPane
         Row(
             modifier = rowModifier
-                .background(if (selectedInPane) ink.paneSelected else Color.Transparent)
+                .background(
+                    when {
+                        folderHot -> dropTargetTint()
+                        selectedInPane -> ink.paneSelected
+                        else -> Color.Transparent
+                    }
+                )
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -807,7 +880,10 @@ private fun PaneDirectoryRow(
             isRemoteTarget = isRemoteTarget,
             onCopy = onCopy,
             onSendToDevice = onSendToDevice,
-            onDownload = onDownload
+            onDownload = onDownload,
+            item = dir,
+            onOpen = onActivate,
+            onSelect = onLongClick
         )
     }
     HorizontalDivider(color = if (ink.jadedGlyphs) Color.White.copy(alpha = 0.08f) else ink.divider)
@@ -840,7 +916,7 @@ private fun DirectoryListRow(
         desktopSelection = desktopSelection,
         isSelectionMode = isSelectionMode,
         onClick = onClick,
-        onLongClick = onLongClick,
+        onLongClick = { menuExpanded = true },
         onToggleSelect = onToggleSelect,
         onExtendSelect = onExtendSelect,
         onActivate = onActivate,
@@ -856,10 +932,23 @@ private fun DirectoryListRow(
         )
     } else Modifier
 
-    Box(modifier = Modifier.then(dragModifier)) {
+    val folderHot = dropTargetHot(dir.absolutePath)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .reportDropSpot(key = "dir:${dir.absolutePath}", destinationPath = dir.absolutePath)
+            .then(dragModifier)
+            .dropDestinationFrame(folderHot)
+    ) {
         Row(
             modifier = rowModifier
-                .background(if (isSelected) ink.listSelected else ink.listIdle)
+                .background(
+                    when {
+                        folderHot -> dropTargetTint()
+                        isSelected -> ink.listSelected
+                        else -> ink.listIdle
+                    }
+                )
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -876,6 +965,8 @@ private fun DirectoryListRow(
                         color = ink.accent
                     )
                 }
+            } else if (ink.jadedGlyphs) {
+                JadedFolderGlyph(name = dir.name, modifier = Modifier.size(28.dp))
             } else {
                 ExplorerEntryIcon(
                     item = dir,
@@ -908,7 +999,10 @@ private fun DirectoryListRow(
             isRemoteTarget = isRemoteTarget,
             onCopy = onCopy,
             onSendToDevice = onSendToDevice,
-            onDownload = onDownload
+            onDownload = onDownload,
+            item = dir,
+            onOpen = onActivate,
+            onSelect = onLongClick
         )
     }
     HorizontalDivider(color = ink.divider)
@@ -939,7 +1033,7 @@ private fun FileListRow(
         desktopSelection = desktopSelection,
         isSelectionMode = isSelectionMode,
         onClick = onClick,
-        onLongClick = onLongClick,
+        onLongClick = { menuExpanded = true },
         onToggleSelect = onToggleSelect,
         onExtendSelect = onExtendSelect,
         onActivate = onActivate,
@@ -955,7 +1049,11 @@ private fun FileListRow(
         )
     } else Modifier
 
-    Box(modifier = Modifier.then(dragModifier)) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(dragModifier)
+    ) {
         Row(
             modifier = rowModifier
                 .background(if (isSelected) ink.listSelected else ink.listIdle)
@@ -966,10 +1064,11 @@ private fun FileListRow(
                 SelectionIndicator(selected = isSelected)
                 Spacer(modifier = Modifier.width(12.dp))
             }
-            ExplorerEntryIcon(
+            ExplorerFileVisual(
                 item = file,
-                modifier = Modifier.size(28.dp),
-                fileColor = if (ink.styledKinetic) ink.accent else null
+                jaded = ink.jadedGlyphs,
+                isRemoteTarget = isRemoteTarget,
+                modifier = Modifier.size(40.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(
@@ -996,7 +1095,10 @@ private fun FileListRow(
             isRemoteTarget = isRemoteTarget,
             onCopy = onCopy,
             onSendToDevice = onSendToDevice,
-            onDownload = onDownload
+            onDownload = onDownload,
+            item = file,
+            onOpen = onActivate,
+            onSelect = onLongClick
         )
     }
     HorizontalDivider(color = ink.divider)
@@ -1036,9 +1138,9 @@ private fun ExplorerGridCell(
             onSecondaryClick = { menuExpanded = true }
         )
     } else {
-        Modifier.combinedClickable(
+        Modifier.androidPressThenRelease(
             onClick = onClick,
-            onLongClick = onLongClick
+            onLongPressRelease = { menuExpanded = true }
         )
     }
 
@@ -1089,7 +1191,19 @@ private fun ExplorerGridCell(
     } else {
         Modifier
     }
-    Box(modifier = Modifier.then(dragModifier)) {
+    val cellHot = item.isDirectory && dropTargetHot(item.absolutePath)
+    Box(
+        modifier = Modifier
+            .then(
+                if (item.isDirectory) {
+                    Modifier.reportDropSpot(key = "grid:${item.absolutePath}", destinationPath = item.absolutePath)
+                } else {
+                    Modifier
+                }
+            )
+            .then(dragModifier)
+            .dropDestinationFrame(cellHot)
+    ) {
         if (ink.jadedGlyphs) {
             Box(modifier = interactionModifier.then(cardChrome)) {
                 Column(
@@ -1111,7 +1225,12 @@ private fun ExplorerGridCell(
                     } else if (item.isDirectory) {
                         JadedFolderGlyph(name = item.name, modifier = Modifier.size(36.dp))
                     } else {
-                        JadedFileGlyph(item = item, modifier = Modifier.size(40.dp))
+                        ExplorerFileVisual(
+                            item = item,
+                            jaded = true,
+                            isRemoteTarget = isRemoteTarget,
+                            modifier = Modifier.size(40.dp)
+                        )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -1176,10 +1295,13 @@ private fun ExplorerGridCell(
                         }
                     } else if (ink.jadedGlyphs && item.isDirectory) {
                         JadedFolderGlyph(name = item.name, modifier = Modifier.size(36.dp))
-                    } else if (ink.jadedGlyphs) {
-                        JadedFileGlyph(item = item, modifier = Modifier.size(40.dp))
                     } else {
-                        ExplorerEntryIcon(item = item, modifier = Modifier.size(40.dp))
+                        ExplorerFileVisual(
+                            item = item,
+                            jaded = ink.jadedGlyphs,
+                            isRemoteTarget = isRemoteTarget,
+                            modifier = Modifier.size(40.dp)
+                        )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -1218,7 +1340,10 @@ private fun ExplorerGridCell(
             isRemoteTarget = isRemoteTarget,
             onCopy = onCopy,
             onSendToDevice = onSendToDevice,
-            onDownload = onDownload
+            onDownload = onDownload,
+            item = item,
+            onOpen = onActivate,
+            onSelect = onLongClick
         )
     }
 }
@@ -1230,12 +1355,48 @@ private fun ItemContextMenu(
     isRemoteTarget: Boolean,
     onCopy: () -> Unit,
     onSendToDevice: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    item: RemoteFileItem? = null,
+    onOpen: () -> Unit = {},
+    onSelect: () -> Unit = {},
 ) {
+    val mutations = LocalExplorerMutations.current
+    var infoOpen by remember { mutableStateOf(false) }
+    var renameOpen by remember { mutableStateOf(false) }
+    var renameText by remember(item?.id) { mutableStateOf(item?.name.orEmpty()) }
+    val traits = LocalAppTheme.current.traits
+    val menuShape = when (traits.shapeStyle) {
+        ThemeShapeStyle.Pill -> RoundedCornerShape(percent = 50)
+        ThemeShapeStyle.RoundedSquare -> RoundedCornerShape(12.dp)
+    }
     DropdownMenu(
         expanded = expanded,
-        onDismissRequest = onDismissRequest
+        onDismissRequest = onDismissRequest,
+        shape = menuShape
     ) {
+        if (item != null) {
+            DropdownMenuItem(
+                text = { Text(stringRes("open")) },
+                onClick = {
+                    onDismissRequest()
+                    onOpen()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringRes("get_info")) },
+                onClick = {
+                    onDismissRequest()
+                    infoOpen = true
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringRes("select")) },
+                onClick = {
+                    onDismissRequest()
+                    onSelect()
+                }
+            )
+        }
         DropdownMenuItem(
             text = { Text(stringRes("copy_action")) },
             onClick = {
@@ -1250,6 +1411,31 @@ private fun ItemContextMenu(
                 onSendToDevice()
             }
         )
+        if (item != null && !isRemoteTarget && mutations != null) {
+            DropdownMenuItem(
+                text = { Text(stringRes("rename")) },
+                onClick = {
+                    onDismissRequest()
+                    renameText = item.name
+                    renameOpen = true
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringRes("delete")) },
+                onClick = {
+                    onDismissRequest()
+                    mutations.delete(item)
+                }
+            )
+            val zip = item.name.endsWith(".zip", ignoreCase = true)
+            DropdownMenuItem(
+                text = { Text(stringRes(if (zip) "uncompress" else "compress")) },
+                onClick = {
+                    onDismissRequest()
+                    if (zip) mutations.uncompress(item) else mutations.compress(item)
+                }
+            )
+        }
         if (isRemoteTarget) {
             DropdownMenuItem(
                 text = { Text(stringRes("download")) },
@@ -1259,6 +1445,44 @@ private fun ItemContextMenu(
                 }
             )
         }
+    }
+    if (infoOpen && item != null) {
+        AlertDialog(
+            onDismissRequest = { infoOpen = false },
+            title = { Text(item.name) },
+            text = {
+                Text(
+                    listOf(item.absolutePath, formatBytes(item.sizeBytes), item.mimeType)
+                        .filter { it.isNotBlank() }
+                        .joinToString("\n")
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { infoOpen = false }) { Text(stringRes("close")) }
+            }
+        )
+    }
+    if (renameOpen && item != null && mutations != null) {
+        AlertDialog(
+            onDismissRequest = { renameOpen = false },
+            title = { Text(stringRes("rename")) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    renameOpen = false
+                    mutations.rename(item, renameText)
+                }) { Text(stringRes("rename")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameOpen = false }) { Text(stringRes("cancel")) }
+            }
+        )
     }
 }
 
@@ -1286,11 +1510,48 @@ private fun explorerItemRowModifier(
 } else {
     Modifier
         .fillMaxWidth()
-        .combinedClickable(
-            onClick = onClick,
-            onLongClick = onLongClick
-        )
+        .androidPressThenRelease(onClick = onClick, onLongPressRelease = onLongClick)
 }
+
+private val holdWithoutOpening: () -> Unit = {}
+
+private fun Modifier.androidPressThenRelease(
+    onClick: () -> Unit,
+    onLongPressRelease: () -> Unit
+): Modifier = this
+    .combinedClickable(onClick = onClick, onLongClick = holdWithoutOpening)
+    .pointerInput(onClick, onLongPressRelease) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val start = down.position
+            val slop = viewConfiguration.touchSlop
+            val deadline = System.nanoTime() + viewConfiguration.longPressTimeoutMillis * 1_000_000L
+            var held = true
+            while (System.nanoTime() < deadline) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                if (!change.pressed) {
+                    held = false
+                    break
+                }
+                if ((change.position - start).getDistance() > slop) return@awaitEachGesture
+            }
+            if (!held) return@awaitEachGesture
+            var dragged = false
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                if ((change.position - start).getDistance() > slop) dragged = true
+                if (!change.pressed) {
+                    if (!dragged) {
+                        change.consume()
+                        onLongPressRelease()
+                    }
+                    return@awaitEachGesture
+                }
+            }
+        }
+    }
 
 private fun Modifier.desktopItemClicks(
     isSelectionMode: Boolean,
@@ -1376,12 +1637,79 @@ private fun pathsEqual(a: String, b: String): Boolean {
     return norm(a) == norm(b)
 }
 
-private fun formatBytes(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val kb = bytes / 1024.0
-    if (kb < 1024) return "${(kb * 10).toInt() / 10.0} KB"
-    val mb = kb / 1024.0
-    if (mb < 1024) return "${(mb * 10).toInt() / 10.0} MB"
-    val gb = mb / 1024.0
-    return "${(gb * 10).toInt() / 10.0} GB"
+@Composable
+private fun ExplorerFileVisual(
+    item: RemoteFileItem,
+    jaded: Boolean,
+    isRemoteTarget: Boolean,
+    modifier: Modifier
+) {
+    val thumb = rememberMediaThumb(item, isRemoteTarget)
+    if (thumb != null) {
+        Image(
+            bitmap = thumb,
+            contentDescription = item.name,
+            modifier = modifier.clip(RoundedCornerShape(8.dp)),
+            contentScale = ContentScale.Crop
+        )
+    } else if (jaded) {
+        JadedFileGlyph(item = item, modifier = modifier)
+    } else {
+        ExplorerEntryIcon(item = item, modifier = modifier)
+    }
+}
+
+@Composable
+private fun rememberMediaThumb(item: RemoteFileItem, isRemoteTarget: Boolean): ImageBitmap? {
+    if (isRemoteTarget || item.isDirectory) return null
+    val image = item.mimeType.startsWith("image/")
+    val video = item.mimeType.startsWith("video/")
+    if (!image && !video) return null
+    if (item.absolutePath.isBlank()) return null
+    var bitmap by remember(item.absolutePath) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(item.absolutePath) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                if (video) {
+                    decodeVideoPoster(item.absolutePath, 256)
+                } else {
+                    decodeLocalImageFile(item.absolutePath, 256)
+                }
+            }.getOrNull()
+        }
+    }
+    return bitmap
+}
+
+private fun formatBytes(bytes: Long): String = com.fileapex.platform.formatHostFileSize(bytes)
+
+@Composable
+private fun dropTargetTint(): Color {
+    val ink = explorerInk()
+    val color = if (ink.jadedGlyphs || ink.styledKinetic) ink.accent else MaterialTheme.colorScheme.primary
+    return color.copy(alpha = 0.22f)
+}
+
+@Composable
+private fun dropTargetHot(path: String): Boolean {
+    if (path.isBlank()) return false
+    return LocalExplorerDropHighlight.current.path == path
+}
+
+@Composable
+private fun Modifier.dropDestinationFrame(active: Boolean): Modifier {
+    if (!active) return this
+    val ink = explorerInk()
+    val color = if (ink.jadedGlyphs || ink.styledKinetic) ink.accent else MaterialTheme.colorScheme.primary
+    return this.border(2.dp, color, RoundedCornerShape(10.dp))
+}
+
+@Composable
+private fun Modifier.listingDropChrome(): Modifier {
+    val parent = LocalDropParentPath.current
+    val hot = dropTargetHot(parent)
+    val framed = this
+        .reportDropSpot(key = "list:$parent", destinationPath = parent)
+        .dropDestinationFrame(hot)
+    return if (hot) framed.background(dropTargetTint()) else framed
 }

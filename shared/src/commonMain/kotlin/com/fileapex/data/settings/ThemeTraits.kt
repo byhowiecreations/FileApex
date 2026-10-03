@@ -1,5 +1,10 @@
 package com.fileapex.data.settings
 
+enum class ThemeShapeStyle {
+    RoundedSquare,
+    Pill,
+}
+
 data class ThemeTraits(
     val glassChrome: Boolean,
     val glassNotesSurfaces: Boolean,
@@ -9,6 +14,11 @@ data class ThemeTraits(
     val fluxSurfaces: Boolean,
     val orbitalHome: Boolean,
     val canvasHome: Boolean,
+    val shapeStyle: ThemeShapeStyle = ThemeShapeStyle.RoundedSquare,
+    val surfaceAlpha: Float = 0.16f,
+    val borderWidthDp: Float = 1f,
+    val blurRadiusDp: Float = 0f,
+    val headerBarHeightDp: Float = 64f,
 )
 
 private val cleanTraits = ThemeTraits(
@@ -42,6 +52,9 @@ private val kineticSphereTraits = ThemeTraits(
     fluxSurfaces = false,
     orbitalHome = true,
     canvasHome = false,
+    surfaceAlpha = 0.16f,
+    borderWidthDp = 1f,
+    blurRadiusDp = 24f,
 )
 
 private val freestyleTraits = ThemeTraits(

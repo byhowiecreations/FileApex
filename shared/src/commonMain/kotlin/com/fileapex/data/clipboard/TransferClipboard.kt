@@ -15,12 +15,20 @@ object TransferClipboard {
     val payloads: StateFlow<List<ClipboardPayload>> = _payloads.asStateFlow()
 
     fun copy(payload: ClipboardPayload) {
-        _payloads.value = listOf(payload)
+        copyAll(listOf(payload))
     }
 
     fun copyAll(items: List<ClipboardPayload>) {
         require(items.isNotEmpty()) { "Clipboard copy requires at least one file" }
-        _payloads.value = items.toList()
+        val additions = items.distinctBy { it.clipKey() }
+        val additionKeys = additions.map { it.clipKey() }.toSet()
+        val kept = _payloads.value.filter { it.clipKey() !in additionKeys }
+        _payloads.value = kept + additions
+    }
+
+    fun dropPaths(paths: Set<String>) {
+        if (paths.isEmpty()) return
+        _payloads.value = _payloads.value.filter { it.remoteAbsolutePath !in paths }
     }
 
     fun peek(): ClipboardPayload? = _payloads.value.firstOrNull()
@@ -40,3 +48,5 @@ object TransferClipboard {
         return "${items.first().fileName} +${items.size - 1} more"
     }
 }
+
+private fun ClipboardPayload.clipKey(): String = sourceDeviceId + "\u0000" + remoteAbsolutePath

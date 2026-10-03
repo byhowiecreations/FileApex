@@ -4,4 +4,5 @@
     <cache-path name="note_attachments" path="note-attachments/" />
     <cache-path name="diagnostics" path="." />
     <external-path name="fileapex_downloads" path="Download/FileApex/" />
+    <external-path name="external_storage" path="." />
 </paths>

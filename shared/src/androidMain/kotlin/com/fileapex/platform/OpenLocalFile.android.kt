@@ -52,11 +52,17 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
         return
     }
 
-    val uri = FileProvider.getUriForFile(
-        context,
-        FileApexFileProvider.authority(context),
-        file
-    )
+    val uri = runCatching {
+        FileProvider.getUriForFile(
+            context,
+            FileApexFileProvider.authority(context),
+            file
+        )
+    }.getOrElse { error ->
+        println("openLocalFile: ${error.message}")
+        BriefToast.show(AppI18n.t("unable_to_open_file"))
+        return
+    }
     val mimeType = resolveMimeType(fileName)
 
     val testIntent = Intent(Intent.ACTION_VIEW).apply {

@@ -53,7 +53,9 @@ import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.BrowseTarget
+import com.fileapex.presentation.ExplorerSplitSession
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.update.AppUpdateCoordinator
@@ -146,6 +148,9 @@ fun App(
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
     val transferQueueViewModel: TransferQueueViewModel = viewModel { TransferQueueViewModel() }
+    // Same store key as FileExplorerScreen, so the home-folder scan finishes before Local Files opens.
+    val localFilesTarget = remember { devicesViewModel.thisDeviceTarget() }
+    viewModel(key = localFilesTarget.deviceId) { ExplorerViewModel(localFilesTarget) }
     val setupComplete = onboardingComplete
 
     // Wide-layout detail state (list-detail). Survives compact/wide transitions.
@@ -217,6 +222,8 @@ fun App(
     val onNavigateHome: () -> Unit = {
         route = AppRoute.Devices
         wideHomeTab = HomeTab.Devices
+        wideSelectedTarget = null
+        tabWhileWide = HomeTab.Devices
     }
 
     // Platform exit hooks own teardown (Android stops FGS; desktop uses shutdownForQuit).
@@ -452,11 +459,17 @@ fun App(
                                 routeTarget != null -> HomeTab.Devices
                                 else -> wideHomeTab
                             }
-                            val wideTarget = routeTarget ?: wideSelectedTarget
+                            val wideTarget = when {
+                                routeTarget != null -> routeTarget
+                                wideTab != HomeTab.Files && wideSelectedTarget is BrowseTarget.Local -> null
+                                else -> wideSelectedTarget
+                            }
 
                             // Fold / unfold synchronization with the selected detail target.
                             // previouslyWide is updated before route writes so a restart of this
                             // effect cannot treat the new route as another collapse.
+                            val splitSession = viewModel { ExplorerSplitSession() }
+
                             LaunchedEffect(isWide, wideSelectedTarget, route) {
                                 val wasWide = previouslyWide
                                 previouslyWide = isWide
@@ -486,6 +499,10 @@ fun App(
                                     isWide && route is AppRoute.Settings -> {
                                         wideHomeTab = HomeTab.Settings
                                         route = AppRoute.Devices
+                                    }
+                                    isWide && wideHomeTab != HomeTab.Files &&
+                                        wideSelectedTarget is BrowseTarget.Local -> {
+                                        wideSelectedTarget = null
                                     }
                                 }
                             }
@@ -517,7 +534,7 @@ fun App(
                                     explorerViewMode = explorerViewMode,
                                     onToggleExplorerViewMode = {
                                         FileApexServices.settings.setExplorerViewMode(
-                                            explorerViewMode.toggled()
+                                            explorerViewMode.cycled()
                                         )
                                     },
                                     onGenerateQr = {
@@ -538,6 +555,7 @@ fun App(
                                     },
                                     appVersionName = appVersionName,
                                     devicesViewModel = devicesViewModel,
+                                    splitSession = splitSession,
                                     backgroundPersistence = backgroundPersistence,
                                     onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
                                     onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
@@ -557,6 +575,7 @@ fun App(
                                 CompactHomeContent(
                                     route = compactRoute,
                                     devicesViewModel = devicesViewModel,
+                                    splitSession = splitSession,
                                     appVersionName = appVersionName,
                                     onOpenDevice = { route = AppRoute.Explorer(it) },
                                     onOpenLocalFiles = {
@@ -757,6 +776,7 @@ private fun compactHomeTab(route: AppRoute): HomeTab = when (route) {
 private fun CompactHomeContent(
     route: AppRoute,
     devicesViewModel: DevicesViewModel,
+    splitSession: ExplorerSplitSession,
     appVersionName: String,
     onOpenDevice: (BrowseTarget) -> Unit,
     onOpenLocalFiles: () -> Unit,
@@ -809,8 +829,9 @@ private fun CompactHomeContent(
                 showExplorerViewToggle -> {
                     ExplorerViewModeToggle(
                         viewMode = explorerViewMode,
+                        includeSplit = true,
                         onToggle = {
-                            FileApexServices.settings.setExplorerViewMode(explorerViewMode.toggled())
+                            FileApexServices.settings.setExplorerViewMode(explorerViewMode.cycled())
                         }
                     )
                 }
@@ -850,16 +871,28 @@ private fun CompactHomeContent(
                 onGrantOnboardingStep = onGrantOnboardingStep,
                 onExitApp = onExitApp
             )
-            is AppRoute.Explorer -> FileExplorerScreen(
-                target = current.target,
-                embeddedInCompactShell = true,
-                onOpenTransferQueue = onOpenTransferQueue,
-                onExitApp = onExitApp,
-                onBack = {
-                    DeviceSessionManager.clearSession(current.target.deviceId)
-                    onNavigateHome()
-                }
-            )
+            is AppRoute.Explorer -> {
+                val secondaryTarget by splitSession.secondaryTarget.collectAsState()
+                val deviceRows by devicesViewModel.deviceRows.collectAsState()
+                FileExplorerScreen(
+                    target = current.target,
+                    embeddedInCompactShell = true,
+                    onOpenTransferQueue = onOpenTransferQueue,
+                    onExitApp = onExitApp,
+                    secondaryTarget = if (current.target is BrowseTarget.Local) secondaryTarget else null,
+                    readyDevices = deviceRows.filter { it.online },
+                    onSelectSecondaryLocal = splitSession::selectLocal,
+                    onSelectSecondaryDevice = { deviceId ->
+                        devicesViewModel.openDeviceOrExplain(deviceId) { opened ->
+                            splitSession.select(opened)
+                        }
+                    },
+                    onBack = {
+                        DeviceSessionManager.clearSession(current.target.deviceId)
+                        onNavigateHome()
+                    }
+                )
+            }
             else -> DevicesScreen(
                 onOpenDevice = onOpenDevice,
                 onOpenLocalFiles = onOpenLocalFiles,
