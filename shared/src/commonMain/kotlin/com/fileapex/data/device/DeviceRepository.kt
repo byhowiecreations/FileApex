@@ -320,8 +320,14 @@ class DeviceRepository(
             val incoming = normalized.clusterVersion.takeIf { ClusterClock.isAcceptable(it) } ?: 0L
             if (existing != null && incoming < existing.clusterVersion) return false
             ClusterClock.observe(incoming)
+            val seen = maxOf(normalized.lastSeenEpochMs, existing?.lastSeenEpochMs ?: 0L)
             upsertReplacingAliasesLocked(
-                normalized.copy(isRemoved = false, removedAt = null, clusterVersion = incoming).withVersionNotBelow(existing)
+                normalized.copy(
+                    isRemoved = false,
+                    removedAt = null,
+                    clusterVersion = incoming,
+                    lastSeenEpochMs = seen
+                ).withVersionNotBelow(existing)
             )
         }
 
@@ -923,7 +929,10 @@ class DeviceRepository(
             deviceMake = device.deviceMake.trim(),
             deviceModel = device.deviceModel.trim(),
             supportedProtocolsJson = device.supportedProtocolsJson.ifBlank { "[]" },
-            lastSeenEpochMs = device.lastSeenEpochMs.coerceAtLeast(0L),
+            lastSeenEpochMs = maxOf(
+                device.lastSeenEpochMs.coerceAtLeast(0L),
+                preserveFrom?.lastSeenEpochMs?.coerceAtLeast(0L) ?: 0L
+            ),
             tailnetHostname = device.tailnetHostname.trim().ifBlank { preserveFrom?.tailnetHostname.orEmpty() },
             tailnetIpv4 = device.tailnetIpv4.trim().let { incoming ->
                 if (com.fileapex.tailscale.isTailscaleIPv4(incoming)) {

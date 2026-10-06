@@ -1,6 +1,7 @@
 package com.fileapex.domain.peer
 
 import kotlinx.serialization.Serializable
+import com.fileapex.data.db.PairedDeviceEntity
 
 /**
  * Peer metadata payload for LAN identity broadcasts.
@@ -53,4 +54,21 @@ data class PeerNodeState(
 
     val resolvedIpAddress: String
         get() = ipAddress.trim().ifBlank { lastKnownIp.trim() }
+
+    /** Docker does not publish presence. Its clientVersion is the marker. */
+    fun publishesPresence(): Boolean = publishesPresence(clientVersion)
+}
+
+/** A peer with clientVersion "docker" does not supply last-seen for anyone. */
+fun publishesPresence(clientVersion: String): Boolean =
+    !clientVersion.trim().equals("docker", ignoreCase = true)
+
+fun rosterWithoutRelayedPresence(
+    sourceClientVersion: String,
+    roster: List<PairedDeviceEntity>
+): List<PairedDeviceEntity> {
+    if (publishesPresence(sourceClientVersion)) return roster
+    return roster.map { device ->
+        if (device.lastSeenEpochMs == 0L) device else device.copy(lastSeenEpochMs = 0L)
+    }
 }

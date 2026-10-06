@@ -99,9 +99,8 @@ object PeerNodeStateMapper {
                 state.supportedProtocols.ifEmpty { PeerNodeProtocols.DEFAULT }
             ),
             lastSeenEpochMs = maxOf(
-                state.lastSeenTimestamp,
-                existing?.lastSeenEpochMs ?: 0L,
-                TimeUtils.now()
+                if (state.publishesPresence()) state.lastSeenTimestamp.coerceAtLeast(0L) else 0L,
+                existing?.lastSeenEpochMs ?: 0L
             ),
             clusterVersion = version,
             isRemoved = state.isRemoved,

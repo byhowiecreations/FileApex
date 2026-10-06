@@ -664,7 +664,8 @@ class DevicesViewModel : ViewModel() {
                 val importedCount = FileApexServices.pairingCoordinator.importDirectPeerRoster(
                     host = payload.host,
                     port = payload.port,
-                    excludeDeviceIds = setOf(broadcasterId)
+                    excludeDeviceIds = setOf(broadcasterId),
+                    sourceClientVersion = verified?.clientVersion.orEmpty()
                 )
                 FileApexServices.pairingCoordinator.announceSelfToCluster(
                     excludeDeviceIds = setOf(broadcasterId)

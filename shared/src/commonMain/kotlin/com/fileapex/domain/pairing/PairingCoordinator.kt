@@ -7,6 +7,7 @@ import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.domain.peer.PeerNodeStateMapper
+import com.fileapex.domain.peer.rosterWithoutRelayedPresence
 import com.fileapex.network.FileApexClient
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.util.NetworkUtils
@@ -105,8 +106,9 @@ class PairingCoordinator(
                     FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(entity)
                 }
             }
-            val epochMs = state.lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now()
-            onPassiveReachability(listOf(state.deviceId.trim()), epochMs)
+            if (state.lastSeenTimestamp > 0L && state.publishesPresence()) {
+                onPassiveReachability(listOf(state.deviceId.trim()), state.lastSeenTimestamp)
+            }
         }
     }
 
@@ -153,9 +155,13 @@ class PairingCoordinator(
     }
 
     /** Rows a peer returned from cluster sync; may only add or refresh active peers. */
-    private suspend fun reconcileReturnedRoster(roster: List<PairedDeviceEntity>) {
+    private suspend fun reconcileReturnedRoster(
+        roster: List<PairedDeviceEntity>,
+        source: PairedDeviceEntity? = null
+    ) {
         val me = identityProvider().deviceId
-        for (remote in roster) {
+        val rows = rosterWithoutRelayedPresence(source?.clientVersion.orEmpty(), roster)
+        for (remote in rows) {
             if (remote.deviceId.isBlank() || remote.deviceId == me) continue
             try {
                 repository.reconcileRemotePeer(remote)
@@ -194,7 +200,7 @@ class PairingCoordinator(
                                 clusterVersion = selfState.clusterVersion
                             )
                         )
-                        reconcileReturnedRoster(returnedRoster)
+                        reconcileReturnedRoster(returnedRoster, source = peer)
                     }.onFailure { error ->
                         println(
                             "PairingCoordinator: failed to broadcast self metadata to " +
@@ -257,7 +263,7 @@ class PairingCoordinator(
                                 clusterVersion = clusterVersion
                             )
                         )
-                        reconcileReturnedRoster(returnedRoster)
+                        reconcileReturnedRoster(returnedRoster, source = peer)
                     }.onFailure { error ->
                         println(
                             "PairingCoordinator: failed to broadcast removal of " +
@@ -357,7 +363,8 @@ class PairingCoordinator(
     suspend fun importDirectPeerRoster(
         host: String,
         port: Int,
-        excludeDeviceIds: Set<String> = emptySet()
+        excludeDeviceIds: Set<String> = emptySet(),
+        sourceClientVersion: String = ""
     ): Int {
         var imported = 0
         repeat(ROSTER_IMPORT_ATTEMPTS) { attempt ->
@@ -377,7 +384,7 @@ class PairingCoordinator(
                 println("PairingCoordinator: roster import - broadcaster returned no importable peers")
                 return 0
             }
-            imported = ingestRosterDevices(remoteDevices, excludeDeviceIds)
+            imported = ingestRosterDevices(remoteDevices, excludeDeviceIds, sourceClientVersion)
             if (imported > 0) {
                 return imported
             }
@@ -398,14 +405,19 @@ class PairingCoordinator(
 
     private suspend fun ingestRosterDevices(
         remoteDevices: List<PairedDeviceEntity>,
-        excludeDeviceIds: Set<String>
+        excludeDeviceIds: Set<String>,
+        sourceClientVersion: String = ""
     ): Int {
         val localId = identityProvider().deviceId
         var imported = 0
         for (device in remoteDevices) {
             val deviceId = device.deviceId.trim()
             if (deviceId.isEmpty() || deviceId == localId || deviceId in excludeDeviceIds) continue
-            val adopted = runCatching { repository.adoptFromRosterIntro(device) }
+            val adopted = runCatching {
+                repository.adoptFromRosterIntro(
+                    rosterWithoutRelayedPresence(sourceClientVersion, listOf(device)).first()
+                )
+            }
                 .onFailure { error ->
                     println(
                         "PairingCoordinator: roster adopt failed for ${device.deviceName} - ${error.message}"
@@ -421,8 +433,10 @@ class PairingCoordinator(
                 .getOrNull()
                 ?.let { state ->
                     repository.applyPeerNodeState(state, rosterDeviceId = device.deviceId)
-                    val epochMs = state.lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now()
-                    onPassiveReachability(listOf(state.deviceId.trim()), epochMs)
+                    if (state.publishesPresence()) {
+                        val epochMs = state.lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now()
+                        onPassiveReachability(listOf(state.deviceId.trim()), epochMs)
+                    }
                 }
         }
         return imported
@@ -467,7 +481,7 @@ class PairingCoordinator(
                                         clusterVersion = pairingVersion
                                     )
                                 )
-                                reconcileReturnedRoster(returnedRoster)
+                                reconcileReturnedRoster(returnedRoster, source = peer)
                             }
                         }.onFailure { error ->
                             println(
@@ -499,7 +513,7 @@ class PairingCoordinator(
                     clusterVersion = pairingVersion
                 )
             )
-            reconcileReturnedRoster(returnedRoster)
+            reconcileReturnedRoster(returnedRoster, source = updatedNewcomer)
         }.onFailure { error ->
             println(
                 "PairingCoordinator: failed roster seed to ${newlyPaired.deviceName}: ${error.message}"

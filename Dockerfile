@@ -7,8 +7,9 @@
 # devices must be able to reach the address this container advertises.
 # FILEAPEX_NAME, FILEAPEX_PORT, FILEAPEX_INBOX, FILEAPEX_ADVERTISE_IP, and
 # FILEAPEX_PIN override defaults.
-# A terminal shows the setup menu; without one, the container listens to join.
-# --join listens immediately. --setup reopens the menu (choice 4 resets).
+# On Unraid the container listens automatically. A real terminal shows the menu
+# on other hosts. --join listens immediately. --setup reopens the menu
+# (choice 4 resets), including on Unraid.
 # --tailscale (or --ts) adds Tailscale after a local join. --reset clears the
 # cluster and Tailscale setup and keeps the device id.
 

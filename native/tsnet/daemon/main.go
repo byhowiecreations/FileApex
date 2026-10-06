@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"fileapex.dev/tsnetbridge"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -84,34 +86,26 @@ func main() {
 			log.Fatalf("Daemon stopped: %v", err)
 		}
 		return
-	case *setupFlag:
+	case *setupFlag || (stdinIsTerminal() && !runningOnUnraid() && !*joinFlag && !explicitJoinMode()):
 		if !stdinIsTerminal() {
 			log.Fatal("--setup needs a terminal.")
 		}
-		if err := runMenu(ctx, node); err != nil && !errors.Is(err, context.Canceled) {
-			log.Fatalf("Daemon stopped: %v", err)
+		err := runMenu(ctx, node)
+		if errors.Is(err, io.EOF) {
+			log.Printf("No keyboard on this start. Listening for a pairing broadcast.")
+			err = runLocal(ctx, node, node.isJoined())
 		}
-		return
-	case *joinFlag:
-		log.Printf("Listening for a pairing broadcast.")
-		if err := runLocal(ctx, node, node.isJoined()); err != nil && !errors.Is(err, context.Canceled) {
-			log.Fatalf("Daemon stopped: %v", err)
-		}
-		return
-	case node.isJoined() || (cfg != nil && cfg.Mode == "local" && cfg.Joined && !node.wasRemoved()):
-		log.Printf("Already in a cluster. Resuming as %s.", node.deviceName())
-		if err := runLocal(ctx, node, true); err != nil && !errors.Is(err, context.Canceled) {
-			log.Fatalf("Daemon stopped: %v", err)
-		}
-		return
-	case localModeRequested():
-		log.Printf("Listening for a pairing broadcast.")
-		if err := runLocal(ctx, node, false); err != nil && !errors.Is(err, context.Canceled) {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			log.Fatalf("Daemon stopped: %v", err)
 		}
 		return
 	default:
-		if err := runMenu(ctx, node); err != nil && !errors.Is(err, context.Canceled) {
+		if node.isJoined() {
+			log.Printf("Already in a cluster. Resuming as %s.", node.deviceName())
+		} else {
+			log.Printf("No cluster saved. Listening for a pairing broadcast.")
+		}
+		if err := runLocal(ctx, node, node.isJoined()); err != nil && !errors.Is(err, context.Canceled) {
 			log.Fatalf("Daemon stopped: %v", err)
 		}
 	}
@@ -233,23 +227,35 @@ func applyEnv(node *Node) error {
 	return nil
 }
 
-func localModeRequested() bool {
+func explicitJoinMode() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("FILEAPEX_MODE"))) {
 	case "1", "local", "join":
 		return true
-	case "":
-		return !stdinIsTerminal()
 	default:
 		return false
 	}
 }
 
 func stdinIsTerminal() bool {
-	info, err := os.Stdin.Stat()
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
+// Unraid's kernel release ends in "-Unraid". Containers share the host kernel,
+// so a normal Unraid start can be recognized without a terminal.
+func runningOnUnraid() bool {
+	return unraidKernel(kernelRelease())
+}
+
+func unraidKernel(release string) bool {
+	return strings.Contains(strings.ToLower(release), "unraid")
+}
+
+func kernelRelease() string {
+	body, err := os.ReadFile("/proc/version")
 	if err != nil {
-		return false
+		return ""
 	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return string(body)
 }
 
 func runRemoved(ctx context.Context, node *Node) error {

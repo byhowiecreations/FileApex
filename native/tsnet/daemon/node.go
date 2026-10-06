@@ -51,7 +51,7 @@ type deviceRecord struct {
 	DeviceMake             string `json:"deviceMake"`
 	DeviceModel            string `json:"deviceModel"`
 	SupportedProtocolsJSON string `json:"supportedProtocolsJson"`
-	LastSeenEpochMs        int64  `json:"lastSeenEpochMs"`
+	LastSeenEpochMs        int64  `json:"lastSeenEpochMs,omitempty"`
 	ClusterVersion         int64  `json:"clusterVersion"`
 	IsRemoved              bool   `json:"isRemoved"`
 	RemovedAt              *int64 `json:"removedAt"`
@@ -75,7 +75,7 @@ type nodeState struct {
 	DeviceMake         string   `json:"deviceMake"`
 	DeviceModel        string   `json:"deviceModel"`
 	SupportedProtocols []string `json:"supportedProtocols"`
-	LastSeenTimestamp  int64    `json:"lastSeenTimestamp"`
+	LastSeenTimestamp  int64    `json:"lastSeenTimestamp,omitempty"`
 	RootPath           string   `json:"rootPath"`
 	PublicKeyHash      string   `json:"publicKeyHash"`
 	PublicKey          string   `json:"publicKey"`
@@ -301,6 +301,7 @@ func (n *Node) loadCluster() error {
 		if peer.DeviceID == "" || peer.DeviceID == n.identity.DeviceID || peer.IsRemoved {
 			continue
 		}
+		peer.LastSeenEpochMs = 0
 		n.peers[peer.DeviceID] = peer
 	}
 	for _, tomb := range disk.Tombstones {
@@ -316,6 +317,7 @@ func (n *Node) persistLocked() {
 	peers := make([]deviceRecord, 0, len(n.peers))
 	for _, peer := range n.peers {
 		if !peer.IsRemoved {
+			peer.LastSeenEpochMs = 0
 			peers = append(peers, peer)
 		}
 	}
@@ -584,7 +586,7 @@ func (n *Node) handshake(ctx context.Context, beacon pairingBeacon, pin string) 
 		return fmt.Errorf("no LAN address other devices can reach (saw %q)", ip)
 	}
 
-	host := deviceFromState(remote, 0, time.Now().UnixMilli())
+	host := deviceFromState(remote, 0)
 	host.DeviceID = hostID
 	if host.DeviceName == "" {
 		host.DeviceName = beacon.DeviceName
@@ -1081,13 +1083,13 @@ func (n *Node) applyStateLocked(event string, state nodeState, now int64) {
 		canReinstate = true
 	}
 	existing, exists := n.peers[id]
-	if exists && version < existing.ClusterVersion && state.LastSeenTimestamp <= existing.LastSeenEpochMs {
+	if exists && version < existing.ClusterVersion {
 		return
 	}
 	if n.blockedByTombstoneLocked(id, state.PublicKeyHash, version, canReinstate) {
 		return
 	}
-	rec := deviceFromState(state, version, now)
+	rec := deviceFromState(state, version)
 	if parsed := net.ParseIP(rec.LastKnownIP); parsed == nil || parsed.IsLoopback() || parsed.IsUnspecified() {
 		rec.LastKnownIP = ""
 	}
@@ -1170,6 +1172,7 @@ func (n *Node) adoptTrusted(list []deviceRecord) {
 		}
 		peer.IsRemoved = false
 		peer.RemovedAt = nil
+		peer.LastSeenEpochMs = 0
 		n.peers[peer.DeviceID] = peer
 		changed = true
 	}
@@ -1305,17 +1308,12 @@ func (n *Node) noteContact(id, remote string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	peer, ok := n.peers[id]
-	if !ok || peer.IsRemoved {
+	if !ok || peer.IsRemoved || peer.LastKnownIP == ip {
 		return
 	}
-	peer.LastSeenEpochMs = time.Now().UnixMilli()
-	if peer.LastKnownIP != ip {
-		peer.LastKnownIP = ip
-		n.peers[id] = peer
-		n.persistLocked()
-		return
-	}
+	peer.LastKnownIP = ip
 	n.peers[id] = peer
+	n.persistLocked()
 }
 
 func (n *Node) roster() []deviceRecord {
@@ -1326,12 +1324,23 @@ func (n *Node) roster() []deviceRecord {
 		if peer.IsRemoved || peer.DeviceID == "" || peer.DeviceID == n.identity.DeviceID {
 			continue
 		}
+		peer.LastSeenEpochMs = 0
 		out = append(out, peer)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].DeviceName) < strings.ToLower(out[j].DeviceName)
 	})
 	return out
+}
+
+// publishedRoster is the list returned to other devices. This node does not
+// keep or send last-seen; a caller records presence only from its own contacts.
+func (n *Node) publishedRoster() []deviceRecord {
+	peers := n.roster()
+	for i := range peers {
+		peers[i].LastSeenEpochMs = 0
+	}
+	return peers
 }
 
 func (n *Node) logRoster() {
@@ -1373,7 +1382,6 @@ func (n *Node) selfState() nodeState {
 		DeviceMake:         "FileApex",
 		DeviceModel:        "OMV",
 		SupportedProtocols: supportedProtocols,
-		LastSeenTimestamp:  now,
 		RootPath:           n.inbox,
 		PublicKeyHash:      fingerprint(n.identity.DeviceID),
 		PinRequired:        false,
@@ -1406,7 +1414,6 @@ func (n *Node) selfRecord(ip string) deviceRecord {
 		DeviceMake:             "FileApex",
 		DeviceModel:            "OMV",
 		SupportedProtocolsJSON: string(protocols),
-		LastSeenEpochMs:        now,
 		ClusterVersion:         version,
 	}
 }
@@ -1449,14 +1456,10 @@ func (n *Node) rememberCompleted(entry diskTx) {
 	n.persistLocked()
 }
 
-func deviceFromState(state nodeState, version, now int64) deviceRecord {
+func deviceFromState(state nodeState, version int64) deviceRecord {
 	ip := strings.TrimSpace(state.IPAddress)
 	if ip == "" {
 		ip = strings.TrimSpace(state.LastKnownIP)
-	}
-	seen := state.LastSeenTimestamp
-	if seen < now {
-		seen = now
 	}
 	root := strings.TrimSpace(state.RootPath)
 	if root == "" {
@@ -1490,7 +1493,6 @@ func deviceFromState(state nodeState, version, now int64) deviceRecord {
 		DeviceMake:             strings.TrimSpace(state.DeviceMake),
 		DeviceModel:            strings.TrimSpace(state.DeviceModel),
 		SupportedProtocolsJSON: string(encoded),
-		LastSeenEpochMs:        seen,
 		ClusterVersion:         version,
 	}
 }

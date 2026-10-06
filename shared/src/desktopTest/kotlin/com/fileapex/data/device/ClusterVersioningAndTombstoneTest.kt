@@ -6,6 +6,7 @@ import com.fileapex.data.db.RemovedDeviceEntity
 import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.domain.peer.PeerNodeState
+import com.fileapex.domain.peer.rosterWithoutRelayedPresence
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -780,5 +781,42 @@ class ClusterVersioningAndTombstoneTest {
         val reinstated = repo.getDevice("dev-x")!!
         assertEquals(tombstoneTime + 1000L, reinstated.clusterVersion)
         assertFalse(repo.isDeviceIdRevoked("dev-x"))
+    }
+
+    @Test
+    fun testMissingLastSeenDoesNotReplaceALocalObservation() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(peer("cmf", "192.168.1.40"))
+        assertTrue(repo.touchPeerLastSeen("cmf", "192.168.1.40", 49428, 1_700_000_000_000L))
+        val echoed = repo.getDevice("cmf")!!.copy(lastSeenEpochMs = 0L)
+        repo.reconcileRemotePeer(echoed)
+        assertEquals(1_700_000_000_000L, repo.getDevice("cmf")!!.lastSeenEpochMs)
+    }
+
+    @Test
+    fun testDockerIdentityDoesNotSupplyLastSeen() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(peer("docker", "192.168.1.8"))
+        assertTrue(repo.touchPeerLastSeen("docker", "192.168.1.8", 49428, 1_600_000_000_000L))
+        val stored = repo.getDevice("docker")!!
+        val state = nodeState("docker", "192.168.1.8").copy(
+            clientVersion = "docker",
+            lastSeenTimestamp = TimeUtils.now() + 60_000L,
+            membershipVersion = stored.clusterVersion + 1,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+        )
+
+        assertTrue(repo.applyPeerNodeState(state))
+        assertEquals(1_600_000_000_000L, repo.getDevice("docker")!!.lastSeenEpochMs)
+    }
+
+    @Test
+    fun testDockerRosterDropsRelayedLastSeen() {
+        val phone = peer("honor", "192.168.1.9").copy(lastSeenEpochMs = 1_700_000_000_000L)
+        val fromDocker = rosterWithoutRelayedPresence("docker", listOf(phone))
+        val fromPhone = rosterWithoutRelayedPresence("0.16.1c", listOf(phone))
+
+        assertEquals(0L, fromDocker.single().lastSeenEpochMs)
+        assertEquals(1_700_000_000_000L, fromPhone.single().lastSeenEpochMs)
     }
 }

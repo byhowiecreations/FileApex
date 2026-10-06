@@ -487,13 +487,15 @@ func TestRosterResponseIsNotChunked(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		id := fmt.Sprintf("peer-%02d", i)
 		node.peers[id] = deviceRecord{
-			DeviceID:      id,
-			DeviceName:    "Phone " + id + " with a long display name",
-			LastKnownIP:   "192.168.1." + strconv.Itoa(i+1),
-			Port:          8080,
-			PublicKeyHash: "e84efb9f89616366",
-			Platform:      "android",
-			OS:            "android",
+			DeviceID:        id,
+			DeviceName:      "Phone " + id + " with a long display name",
+			LastKnownIP:     "192.168.1." + strconv.Itoa(i+1),
+			Port:            8080,
+			PublicKeyHash:   "e84efb9f89616366",
+			Platform:        "android",
+			OS:              "android",
+			LastSeenEpochMs: 1_700_000_000_000,
+			ClusterVersion:  9_000 + int64(i),
 		}
 	}
 	node.mu.Unlock()
@@ -523,6 +525,40 @@ func TestRosterResponseIsNotChunked(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(resp.Header.Get("Transfer-Encoding")), "chunked") {
 		t.Fatal("roster response was chunked")
+	}
+	if strings.Contains(string(got), "lastSeenEpochMs") {
+		t.Fatalf("roster included lastSeenEpochMs: %s", got)
+	}
+	var published []deviceRecord
+	if err := json.Unmarshal(got, &published); err != nil {
+		t.Fatal(err)
+	}
+	if len(published) != 40 {
+		t.Fatalf("published %d peers", len(published))
+	}
+	for _, peer := range published {
+		if peer.LastSeenEpochMs != 0 {
+			t.Fatalf("published lastSeen for %s = %d", peer.DeviceID, peer.LastSeenEpochMs)
+		}
+		if peer.ClusterVersion == 0 {
+			t.Fatalf("cluster version was cleared for %s", peer.DeviceID)
+		}
+	}
+	stored := node.roster()
+	if len(stored) != 40 || stored[0].LastSeenEpochMs != 0 {
+		t.Fatalf("stored lastSeen leaked: %+v", stored[0])
+	}
+}
+
+func TestUnraidKernelDetection(t *testing.T) {
+	if !unraidKernel("Linux version 6.12.24-Unraid (root@tower)") {
+		t.Fatal("expected Unraid kernel to be recognized")
+	}
+	if unraidKernel("Linux version 6.1.0-21-amd64") {
+		t.Fatal("debian kernel was treated as Unraid")
+	}
+	if unraidKernel("") {
+		t.Fatal("empty release was treated as Unraid")
 	}
 }
 

@@ -112,7 +112,7 @@ func (n *Node) handleDevices(w http.ResponseWriter, r *http.Request) {
 	if !n.pass(w, r, "open") {
 		return
 	}
-	writeJSON(w, http.StatusOK, n.roster())
+	writeJSON(w, http.StatusOK, n.publishedRoster())
 }
 
 func (n *Node) handleCapabilities(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +160,7 @@ func (n *Node) handleMerge(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Printf("Cluster sync %s from %s (%d peers now)", req.EventKind, id, len(n.roster()))
 	}
-	writeJSON(w, http.StatusOK, n.roster())
+	writeJSON(w, http.StatusOK, n.publishedRoster())
 }
 
 func (n *Node) handleRemove(w http.ResponseWriter, r *http.Request) {
