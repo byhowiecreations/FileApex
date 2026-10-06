@@ -3,6 +3,7 @@ package com.fileapex.platform
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import java.awt.Window
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -180,6 +181,7 @@ object DesktopMacTrayCoordinator {
                     )
                 }
             }.collect { snapshots ->
+                publishShareReadyIds(snapshots)
                 DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
             }
         }
@@ -194,7 +196,22 @@ object DesktopMacTrayCoordinator {
                 isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
             )
         }
+        publishShareReadyIds(snapshots)
         DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
+    }
+
+    private fun publishShareReadyIds(snapshots: List<DesktopTrayDeviceSnapshot>) {
+        val file = DesktopPlatformPaths.readyDeviceIdsFile()
+        val payload = json.encodeToString(shareReadyDeviceIds(snapshots))
+        runCatching {
+            if (file.isFile && file.readText() == payload) return
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            tmp.writeText(payload)
+            if (!tmp.renameTo(file)) {
+                file.writeText(payload)
+                tmp.delete()
+            }
+        }
     }
 
     private fun handleSend(deviceIdsJson: String, filePathsJson: String) {
@@ -226,6 +243,8 @@ object DesktopMacTrayCoordinator {
                     )
                 }
                 DesktopMacTrayBridge.showToast(toastMessage)
+            } catch (error: kotlin.coroutines.cancellation.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 DesktopMacTrayBridge.showToast(error.message ?: com.fileapex.i18n.AppI18n.t("send_failed"))
             } finally {

@@ -1,6 +1,8 @@
 package com.fileapex.network
 
 import com.fileapex.platform.isActiveLanConnectivity
+import com.fileapex.tailscale.TailscaleNodeRuntime
+import com.fileapex.tailscale.usesUserspaceDial
 import com.fileapex.util.NetworkUtils
 
 /**
@@ -9,6 +11,7 @@ import com.fileapex.util.NetworkUtils
 object PeerLanHttpPolicy {
     /** Non-throwing check used by background probes (presence sweep, health ping). */
     fun canRoute(host: String): Boolean {
+        if (isTailnetRoute(host)) return true
         if (!NetworkUtils.isPrivateLanPeerHost(host)) return false
         if (!isActiveLanConnectivity()) return false
         if (LanInterfaceBinding.lanBindCandidates().isEmpty()) return false
@@ -16,6 +19,7 @@ object PeerLanHttpPolicy {
     }
 
     fun ensureRoute(host: String) {
+        if (isTailnetRoute(host)) return
         require(NetworkUtils.isPrivateLanPeerHost(host)) {
             "Peer host must be a private LAN address: $host"
         }
@@ -32,4 +36,8 @@ object PeerLanHttpPolicy {
 
     fun unreachableMessage(host: String, port: Int): String =
         com.fileapex.i18n.AppI18n.t("peer_unreachable_wifi", host, port.toString())
+
+    /** Tailnet addresses use the userspace splice and do not need a LAN interface. */
+    private fun isTailnetRoute(host: String): Boolean =
+        usesUserspaceDial(host, TailscaleNodeRuntime.state.value.phase)
 }

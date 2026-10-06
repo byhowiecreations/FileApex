@@ -112,6 +112,12 @@
 -keep class rikka.shizuku.** { *; }
 
 # -----------------------------------------------------------------------------
+# Userspace Tailscale (gomobile). Loaded by name, so R8 must keep the JNI class.
+# -----------------------------------------------------------------------------
+-keep class go.** { *; }
+-keep class tsnetbridge.** { *; }
+
+# -----------------------------------------------------------------------------
 # General Suppression of Missing Optional Platform Dependencies
 # -----------------------------------------------------------------------------
 -dontwarn org.slf4j.**

@@ -395,9 +395,21 @@ fun KineticSphereDevicesView(
             val canvasH = heightForBucket
             if (canvasW < 200f || canvasH < 200f) return@LaunchedEffect
             val current = FileApexServices.settings.kineticNodeOffsets.value
+            val marginPx = with(density) { 70.dp.toPx() }
+            val topMarginPx = with(density) { 55.dp.toPx() }
             deviceRows.forEachIndexed { index, row ->
                 val key = kineticFractionKey(layoutBucket, row.deviceId)
                 if (current.containsKey(key)) return@forEachIndexed
+                val stored = kineticStoredNode(
+                    offsets = current,
+                    bucket = layoutBucket,
+                    deviceId = row.deviceId,
+                    widthPx = canvasW,
+                    heightPx = canvasH,
+                    marginPx = marginPx,
+                    topMarginPx = topMarginPx
+                )
+                if (stored == null || stored.fractional) return@forEachIndexed
                 val pos = positionsForBucket.getOrNull(index) ?: return@forEachIndexed
                 FileApexServices.settings.setKineticNodeOffset(
                     key,
@@ -758,12 +770,25 @@ fun KineticSphereDevicesView(
                             var dragged = false
                             fun saveDrag(persist: Boolean) {
                                 if (!dragged || widthPx <= 1f || heightPx <= 1f) return
+                                val edge = with(density) { 70.dp.toPx() }
+                                val top = with(density) { 55.dp.toPx() }
+                                val maxX = (widthPx - edge).coerceAtLeast(edge)
+                                val maxY = (heightPx - edge).coerceAtLeast(top)
+                                val px = dragX.coerceIn(edge, maxX).roundToInt().toFloat().coerceIn(edge, maxX)
+                                val py = dragY.coerceIn(top, maxY).roundToInt().toFloat().coerceIn(top, maxY)
                                 FileApexServices.settings.setKineticNodeOffset(
                                     kineticFractionKey(layoutBucket, row.deviceId),
-                                    (dragX / widthPx).coerceIn(0f, 1f),
-                                    (dragY / heightPx).coerceIn(0f, 1f),
+                                    (px / widthPx).coerceIn(0f, 1f),
+                                    (py / heightPx).coerceIn(0f, 1f),
                                     persist = persist
                                 )
+                                val pixelKey = if (layoutBucket.endsWith("-cmp")) {
+                                    "pos:cmp:${row.deviceId}"
+                                } else {
+                                    "pos:exp:${row.deviceId}"
+                                }
+                                FileApexServices.settings.setKineticNodeOffset(pixelKey, px, py, persist = persist)
+                                FileApexServices.settings.setKineticNodeOffset("pos:${row.deviceId}", px, py, persist = persist)
                             }
                             detectDragGestures(
                                 onDragStart = {

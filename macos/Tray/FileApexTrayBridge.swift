@@ -16,6 +16,7 @@ private var dropBoxVisibilityCallback: FileApexBoolCallback?
 private var saveDropBoxFrameCallback: FileApexSaveDropBoxFrameCallback?
 private var refreshDevicesCallback: FileApexVoidCallback?
 private var prepareDropBoxCallback: FileApexVoidCallback?
+private var cancelSendCallback: FileApexVoidCallback?
 private var backgroundActivityToken: NSObjectProtocol?
 private var clipboardCallback: FileApexClipboardCallback?
 private var clipboardTimer: Timer?
@@ -98,6 +99,14 @@ public func fileapex_tray_set_refresh_devices_callback(_ callback: FileApexVoidC
         MacTrayManager.shared.onRefreshDevices = {
             refreshDevicesCallback?()
         }
+    }
+}
+
+@_cdecl("fileapex_tray_set_cancel_send_callback")
+public func fileapex_tray_set_cancel_send_callback(_ callback: FileApexVoidCallback?) {
+    cancelSendCallback = callback
+    DropBoxWindowManager.shared.onCancelSend = {
+        cancelSendCallback?()
     }
 }
 

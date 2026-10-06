@@ -7,6 +7,8 @@ import android.os.IBinder
 import android.util.Log
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.presence.PresenceBackgroundWake
+import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.tailscale.TailscaleNodeRuntime
 import com.fileapex.platform.BatteryBulletinCoordinator
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.ServiceWatchdog
@@ -91,6 +93,8 @@ class FileShareServerService : Service() {
         val cleanStop = ServiceWatchdogState.consumeCleanStop(this)
         val timeoutStop = ServiceWatchdogState.consumeTimeoutStop(this)
         val watchdogEnabled = ServiceWatchdogScheduler.isWatchdogEnabled(this)
+        val workStillActive = TransferActivityGuard.isTransferActive() ||
+            TailscaleNodeRuntime.activeTailnetConnections() > 0
         val retainRecoveryJob = watchdogEnabled && !cleanStop
         ShareServerKeepAliveCoordinator.onForegroundServiceInactive(
             this,
@@ -98,6 +102,10 @@ class FileShareServerService : Service() {
         )
         ShareServerForegroundNotification.resetPostedState()
         when {
+            workStillActive && !timeoutStop -> {
+                Log.i(TAG, "Transfer or tailnet connection still active - scheduling share-server recovery")
+                ServiceWatchdog.scheduleImmediateAlarmIfEnabled()
+            }
             cleanStop || !ServiceWatchdogScheduler.isWatchdogEnabled(this) -> {
                 ServiceWatchdog.cancelAlarm()
                 if (cleanStop) {

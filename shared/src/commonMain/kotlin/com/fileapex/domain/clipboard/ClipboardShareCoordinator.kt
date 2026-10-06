@@ -7,6 +7,8 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.peer.PeerPlatform
+import com.fileapex.domain.presence.isTailscaleEnabled
+import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.PeerLanHttpPolicy
 import com.fileapex.platform.BriefToast
 import com.fileapex.platform.ClipboardChangeMonitor
@@ -463,6 +465,43 @@ object ClipboardShareCoordinator {
             capturedAtEpochMs = capturedAtEpochMs
         )
         var lastError: Throwable? = null
+        if (isTailscaleEnabled()) {
+            val viaTailnet = resolvePeerEndpoint(device, tailnetUp = true)?.takeIf { it.tailnet }
+            if (viaTailnet != null) {
+                val tailnetResult = cancellableCatching {
+                    FileApexServices.client.sendClipboard(
+                        host = viaTailnet.host,
+                        port = viaTailnet.port,
+                        senderDeviceId = identity.deviceId,
+                        senderDeviceName = identity.deviceName,
+                        senderPublicKey = ClipboardE2ee.publicKeyBase64(),
+                        ciphertext = ciphertext,
+                        capturedAtEpochMs = capturedAtEpochMs
+                    )
+                }
+                if (tailnetResult.isSuccess) return Pair(true, null)
+                val tailnetError = tailnetResult.exceptionOrNull()
+                if (tailnetError?.message?.contains("clipboard_disabled") == true) {
+                    val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
+                    cancellableCatching {
+                        FileApexServices.client.requestClipboardOptIn(
+                            host = viaTailnet.host,
+                            port = viaTailnet.port,
+                            senderDeviceId = identity.deviceId,
+                            senderDeviceName = identity.deviceName,
+                            pendingPayload = pendingPayload
+                        )
+                    }
+                    return Pair(
+                        false,
+                        IllegalStateException(
+                            com.fileapex.i18n.AppI18n.t("peer_clipboard_disabled_opt_in_sent", peerName)
+                        )
+                    )
+                }
+                lastError = tailnetError
+            }
+        }
         val lanOk = ClipboardSharePolicy.canUseLocalLan(
             lanConnected = isActiveLanConnectivity() && PeerLanHttpPolicy.canRoute(device.lastKnownIp),
             peerHost = device.lastKnownIp,
@@ -569,8 +608,12 @@ object ClipboardShareCoordinator {
         val cloud = GoogleLinkCoordinator.cloudRecordFor(device.deviceId)
             ?.clipboardPublicKey.orEmpty().trim()
         if (cloud.isNotEmpty()) return cloud
+        val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
         val live = cancellableCatching {
-            FileApexServices.client.fetchPeerNodeState(device.lastKnownIp, device.port)
+            FileApexServices.client.fetchPeerNodeState(
+                dial?.host ?: device.lastKnownIp,
+                dial?.port ?: device.port
+            )
         }.getOrNull() ?: return ""
         val key = live.publicKey.trim()
         if (key.isNotEmpty()) {

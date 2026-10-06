@@ -1,8 +1,14 @@
 package com.fileapex.network
 
+import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.platform.DesktopMacTrayBridge
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.tailscale.tailscaleLoopbackOrNull
+import com.fileapex.tailscale.writeTailscaleDialToken
 import com.fileapex.util.NetworkUtils
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import java.io.File
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -99,6 +105,22 @@ actual suspend fun peerHttpGet(
     path: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundHttpOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                method = "GET",
+                path = path,
+                body = null,
+                contentType = null,
+                timeoutMs = timeoutMs
+            )
+        }.getOrNull()
+    }
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         return@withContext macNativeHttp(
             "GET",
@@ -129,6 +151,22 @@ actual suspend fun peerHttpPost(
     contentType: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundHttpOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                method = "POST",
+                path = path,
+                body = body,
+                contentType = contentType,
+                timeoutMs = timeoutMs
+            )
+        }.getOrNull()
+    }
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         return@withContext macNativeHttp(
             method = "POST",
@@ -161,6 +199,29 @@ actual suspend fun peerHttpUploadFromChannel(
     uploadIdleTimeoutMs: Long,
     contentLength: Long?
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundUploadOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                pathWithQuery = pathWithQuery,
+                contentType = contentType,
+                connectTimeoutMs = connectTimeoutMs,
+                uploadIdleTimeoutMs = uploadIdleTimeoutMs,
+                contentLength = contentLength,
+                writeBody = { output ->
+                    for (chunk in chunks) {
+                        output.write(chunk)
+                    }
+                }
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) null else throw error
+        }
+    }
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         val tmp = File.createTempFile("fileapex-up-", ".bin")
         try {
@@ -169,12 +230,14 @@ actual suspend fun peerHttpUploadFromChannel(
                     out.write(chunk)
                 }
             }
-            return@withContext DesktopMacTrayBridge.lanHttpUploadFile(
-                url = macLanUrl(host, port, pathWithQuery),
-                contentType = contentType,
-                filePath = tmp.absolutePath,
-                offsetBytes = 0L,
-                timeoutMs = uploadIdleTimeoutMs
+            return@withContext finishUnlessCancelled(
+                DesktopMacTrayBridge.lanHttpUploadFile(
+                    url = macLanUrl(host, port, pathWithQuery),
+                    contentType = contentType,
+                    filePath = tmp.absolutePath,
+                    offsetBytes = 0L,
+                    timeoutMs = uploadIdleTimeoutMs
+                )
             )
         } finally {
             tmp.delete()
@@ -208,15 +271,48 @@ actual suspend fun peerHttpUploadFromFile(
     uploadIdleTimeoutMs: Long,
     onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
+        var currentSent = offset
+        return@withContext runCatching {
+            executeBoundUploadOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                pathWithQuery = pathWithQuery,
+                contentType = contentType,
+                connectTimeoutMs = connectTimeoutMs,
+                uploadIdleTimeoutMs = uploadIdleTimeoutMs,
+                contentLength = length.takeIf { it >= 0L },
+                writeBody = { output ->
+                    SocketFileStreamer.streamFromOffset(
+                        sourcePath = sourcePath,
+                        offset = offset,
+                        byteLimit = length
+                    ) { buffer, read ->
+                        output.write(buffer, 0, read)
+                        currentSent += read
+                        onProgress?.invoke(currentSent, total)
+                    }
+                }
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) null else throw error
+        }
+    }
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
-        return@withContext DesktopMacTrayBridge.lanHttpUploadFile(
-            url = macLanUrl(host, port, pathWithQuery),
-            contentType = contentType,
-            filePath = sourcePath,
-            offsetBytes = offset,
-            lengthBytes = length,
-            timeoutMs = uploadIdleTimeoutMs,
-            onProgress = onProgress
+        return@withContext finishUnlessCancelled(
+            DesktopMacTrayBridge.lanHttpUploadFile(
+                url = macLanUrl(host, port, pathWithQuery),
+                contentType = contentType,
+                filePath = sourcePath,
+                offsetBytes = offset,
+                lengthBytes = length,
+                timeoutMs = uploadIdleTimeoutMs,
+                onProgress = onProgress
+            )
         )
     }
     val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
@@ -252,6 +348,24 @@ actual suspend fun peerHttpGetStreaming(
     onChunk: suspend (ByteArray, Int) -> Unit,
     onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? = withContext(TransferRuntime.outbound) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundGetStreamingOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                pathWithQuery = pathWithQuery,
+                connectTimeoutMs = connectTimeoutMs,
+                readIdleTimeoutMs = readIdleTimeoutMs,
+                onChunk = onChunk,
+                onStatus = onStatus
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) null else throw error
+        }
+    }
     if (DesktopPlatformPaths.isMacOs() && DesktopMacTrayBridge.isLoaded) {
         return@withContext macNativeDownload(
             host = host,
@@ -403,7 +517,8 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
     connectTimeoutMs: Long,
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray, Int) -> Unit,
-    onStatus: ((Int) -> Unit)?
+    onStatus: ((Int) -> Unit)?,
+    dialToken: String = ""
 ): PeerBoundStreamResult {
     val connectTimeout = connectTimeoutForBindAttempt(localIp, connectTimeoutMs)
     val idleTimeout = readIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
@@ -420,6 +535,7 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
         }
         socket.soTimeout = idleTimeout
         val output = socket.getOutputStream()
+        writeTailscaleDialToken(output, dialToken)
         val request = buildString {
             append("GET ")
             append(pathWithQuery)
@@ -547,12 +663,13 @@ private suspend fun executeBoundUploadOnLocalIp(
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
     contentLength: Long? = null,
+    dialToken: String = "",
     writeBody: suspend (java.io.OutputStream) -> Unit
 ): PeerBoundHttpResponse {
     val connectTimeout = connectTimeoutForBindAttempt(localIp, connectTimeoutMs)
     val idleTimeout = uploadIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
     val socket = Socket()
-    try {
+    return withTrackedTransferSocket(socket) {
         if (localIp.isNotBlank()) {
             socket.bind(InetSocketAddress(localIp, 0))
         }
@@ -560,10 +677,14 @@ private suspend fun executeBoundUploadOnLocalIp(
             socket.connect(InetSocketAddress(host, port), connectTimeout)
         }.onFailure {
             socket.close()
+            if (TransferActivityGuard.transferCancelRequested()) {
+                throw CancellationException("transfer cancelled")
+            }
             throw BoundConnectFailed()
         }
         socket.soTimeout = idleTimeout
         val output = socket.getOutputStream()
+        writeTailscaleDialToken(output, dialToken)
         val header = buildString {
             append("POST ")
             append(pathWithQuery)
@@ -591,10 +712,15 @@ private suspend fun executeBoundUploadOnLocalIp(
             socket.shutdownOutput()
         }
         val raw = readHttpResponse(socket.getInputStream())
-        return parseHttpResponse(raw)
-    } finally {
-        runCatching { socket.close() }
+        parseHttpResponse(raw)
     }
+}
+
+private suspend fun finishUnlessCancelled(response: PeerBoundHttpResponse?): PeerBoundHttpResponse? {
+    if (TransferActivityGuard.transferCancelRequested() || !currentCoroutineContext().isActive) {
+        throw CancellationException("transfer cancelled")
+    }
+    return response
 }
 
 private fun executeBoundHttpOnLocalIp(
@@ -605,7 +731,8 @@ private fun executeBoundHttpOnLocalIp(
     path: String,
     body: String?,
     contentType: String?,
-    timeoutMs: Long
+    timeoutMs: Long,
+    dialToken: String = ""
 ): PeerBoundHttpResponse {
     val connectTimeout = connectTimeoutForBindAttempt(localIp, timeoutMs)
     val readTimeout = timeoutMs.coerceIn(250L, 60_000L).toInt()
@@ -642,6 +769,7 @@ private fun executeBoundHttpOnLocalIp(
             }
         }
         val output = socket.getOutputStream()
+        writeTailscaleDialToken(output, dialToken)
         output.write(request.toByteArray(Charsets.UTF_8))
         output.flush()
         val raw = readHttpResponse(socket.getInputStream())

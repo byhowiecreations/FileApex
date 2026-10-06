@@ -28,7 +28,28 @@ public struct PairedDevice: Identifiable, Hashable, Sendable {
     }
 }
 
-/// Read-only access to `~/Library/Application Support/com.fileapex/fileapex.db` (Room schema v2).
+/// Share sheet includes a paired row only when the app already marked that device Ready.
+public enum ShareRoster {
+    public static func isListed(
+        isRemoved: Bool,
+        deviceId: String,
+        readyDeviceIds: Set<String>
+    ) -> Bool {
+        !isRemoved && readyDeviceIds.contains(deviceId)
+    }
+
+    public static func loadReadyDeviceIds() -> Set<String> {
+        let url = FileApexPaths.readyDeviceIdsURL
+        guard let data = try? Data(contentsOf: url),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return Set(ids)
+    }
+}
+
+/// Read-only access to `~/Library/Application Support/com.fileapex/fileapex.db`.
+/// Removed peers stay in `paired_devices` (`isRemoved = 1`) so the cluster can reject them.
 public enum PairedDeviceStore {
     public static func loadDevices() throws -> [PairedDevice] {
         // Always the host app DB — never a Containers/... path.
@@ -49,6 +70,7 @@ public enum PairedDeviceStore {
         let sql = """
             SELECT deviceId, deviceName, lastKnownIp, port, publicKeyHash, rootPath
             FROM paired_devices
+            WHERE isRemoved = 0
             ORDER BY deviceName COLLATE NOCASE ASC
             """
         var statement: OpaquePointer?
@@ -57,11 +79,18 @@ public enum PairedDeviceStore {
         }
         defer { sqlite3_finalize(statement) }
 
+        let ready = ShareRoster.loadReadyDeviceIds()
         var devices: [PairedDevice] = []
         while sqlite3_step(statement) == SQLITE_ROW {
+            let deviceId = columnText(statement, 0)
+            guard ShareRoster.isListed(
+                isRemoved: false,
+                deviceId: deviceId,
+                readyDeviceIds: ready
+            ) else { continue }
             devices.append(
                 PairedDevice(
-                    deviceId: columnText(statement, 0),
+                    deviceId: deviceId,
                     deviceName: columnText(statement, 1),
                     lastKnownIp: columnText(statement, 2),
                     port: Int(sqlite3_column_int(statement, 3)),

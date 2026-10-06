@@ -296,6 +296,9 @@ class BaseAppSettings(
     private val freestyleTilePinnedActionsFlow = MutableStateFlow(
         decodeKineticOffsets(store.getString(KEY_FREESTYLE_TILE_PINNED_ACTIONS, ""))
     )
+    private val settingsGroupGeneralFlow = MutableStateFlow(
+        store.getBoolean(KEY_SETTINGS_GROUP_GENERAL, true)
+    )
     private val settingsGroupSystemPerformanceFlow = MutableStateFlow(
         store.getBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, true)
     )
@@ -304,6 +307,18 @@ class BaseAppSettings(
     )
     private val settingsGroupSecurityAccountFlow = MutableStateFlow(
         store.getBoolean(KEY_SETTINGS_GROUP_SECURITY_ACCOUNT, true)
+    )
+    private val tailscaleSetupExpandedFlow = MutableStateFlow(
+        store.getBoolean(KEY_TAILSCALE_SETUP_EXPANDED, false)
+    )
+    private val tailscaleEnabledFlow = MutableStateFlow(
+        store.getBoolean(KEY_TAILSCALE_ENABLED, false)
+    )
+    private val tailscaleAuthKeyFlow = MutableStateFlow(
+        store.getString(KEY_TAILSCALE_AUTH_KEY, "")
+    )
+    private val tailscaleAuthKeyFingerprintFlow = MutableStateFlow(
+        store.getString(KEY_TAILSCALE_AUTH_KEY_FINGERPRINT, "")
     )
     private val diagnosticsPrivateKeyBase64Stored = MutableStateFlow(
         store.getString(KEY_DIAGNOSTICS_PRIVATE_KEY, "")
@@ -371,12 +386,18 @@ class BaseAppSettings(
     override val freestyleCardPinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardPinnedActionsFlow.asStateFlow()
     override val freestyleCardVerticalPinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardVerticalPinnedActionsFlow.asStateFlow()
     override val freestyleTilePinnedActions: StateFlow<Map<String, Pair<Float, Float>>> = freestyleTilePinnedActionsFlow.asStateFlow()
+    override val settingsGroupGeneralExpanded: StateFlow<Boolean> =
+        settingsGroupGeneralFlow.asStateFlow()
     override val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean> =
         settingsGroupSystemPerformanceFlow.asStateFlow()
     override val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean> =
         settingsGroupAppearanceBehaviorFlow.asStateFlow()
     override val settingsGroupSecurityAccountExpanded: StateFlow<Boolean> =
         settingsGroupSecurityAccountFlow.asStateFlow()
+    override val tailscaleSetupExpanded: StateFlow<Boolean> = tailscaleSetupExpandedFlow.asStateFlow()
+    override val tailscaleEnabled: StateFlow<Boolean> = tailscaleEnabledFlow.asStateFlow()
+    override val tailscaleAuthKey: StateFlow<String> = tailscaleAuthKeyFlow.asStateFlow()
+    override val tailscaleAuthKeyFingerprint: StateFlow<String> = tailscaleAuthKeyFingerprintFlow.asStateFlow()
 
     override val pinRequiredEnabled: StateFlow<Boolean> = pinRequired.asStateFlow()
     override val devicePin: StateFlow<String> = pin.asStateFlow()
@@ -625,6 +646,11 @@ class BaseAppSettings(
         kineticSpherePersistentWallpaperFlow.value = enabled
     }
 
+    override fun setSettingsGroupGeneralExpanded(expanded: Boolean) {
+        store.putBoolean(KEY_SETTINGS_GROUP_GENERAL, expanded)
+        settingsGroupGeneralFlow.value = expanded
+    }
+
     override fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean) {
         store.putBoolean(KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE, expanded)
         settingsGroupSystemPerformanceFlow.value = expanded
@@ -638,6 +664,26 @@ class BaseAppSettings(
     override fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean) {
         store.putBoolean(KEY_SETTINGS_GROUP_SECURITY_ACCOUNT, expanded)
         settingsGroupSecurityAccountFlow.value = expanded
+    }
+
+    override fun setTailscaleSetupExpanded(expanded: Boolean) {
+        store.putBoolean(KEY_TAILSCALE_SETUP_EXPANDED, expanded)
+        tailscaleSetupExpandedFlow.value = expanded
+    }
+
+    override fun setTailscaleEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_TAILSCALE_ENABLED, enabled)
+        tailscaleEnabledFlow.value = enabled
+    }
+
+    override fun setTailscaleAuthKey(authKey: String) {
+        store.putString(KEY_TAILSCALE_AUTH_KEY, authKey)
+        tailscaleAuthKeyFlow.value = authKey
+    }
+
+    override fun setTailscaleAuthKeyFingerprint(fingerprint: String) {
+        store.putString(KEY_TAILSCALE_AUTH_KEY_FINGERPRINT, fingerprint)
+        tailscaleAuthKeyFingerprintFlow.value = fingerprint
     }
 
 
@@ -1081,9 +1127,14 @@ class BaseAppSettings(
         freestyleCardPinnedActionsFlow.value = emptyMap()
         freestyleCardVerticalPinnedActionsFlow.value = emptyMap()
         freestyleTilePinnedActionsFlow.value = emptyMap()
+        settingsGroupGeneralFlow.value = true
         settingsGroupSystemPerformanceFlow.value = true
         settingsGroupAppearanceBehaviorFlow.value = true
         settingsGroupSecurityAccountFlow.value = true
+        tailscaleSetupExpandedFlow.value = false
+        tailscaleEnabledFlow.value = false
+        tailscaleAuthKeyFlow.value = ""
+        tailscaleAuthKeyFingerprintFlow.value = ""
         diagnosticsPrivateKeyBase64Stored.value = ""
     }
 
@@ -1178,7 +1229,12 @@ class BaseAppSettings(
         const val KEY_CELLULAR_RECEIVE_PROMPT_ACK = "cellular_receive_prompt_ack"
         const val KEY_DIAGNOSTICS_PRIVATE_KEY = "diagnostics_private_key_b64"
         const val KEY_KINETIC_NODE_OFFSETS = "kinetic_node_offsets"
+        const val KEY_SETTINGS_GROUP_GENERAL = "settings_group_general_expanded"
         const val KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE = "settings_group_system_performance_expanded"
+        const val KEY_TAILSCALE_SETUP_EXPANDED = "tailscale_setup_expanded"
+        const val KEY_TAILSCALE_ENABLED = "tailscale_enabled"
+        const val KEY_TAILSCALE_AUTH_KEY = "tailscale_auth_key"
+        const val KEY_TAILSCALE_AUTH_KEY_FINGERPRINT = "tailscale_auth_key_fingerprint"
         const val KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR = "settings_group_appearance_behavior_expanded"
         const val KEY_SETTINGS_GROUP_SECURITY_ACCOUNT = "settings_group_security_account_expanded"
     }

@@ -11,6 +11,8 @@ import com.fileapex.domain.clipboard.ClipboardCopySignals
 import android.app.PendingIntent
 import android.graphics.BitmapFactory
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.i18n.AppI18n
@@ -159,12 +161,14 @@ actual object PlatformClipboard {
 
     actual fun openUrlInDefaultBrowser(url: String) {
         val context = androidAppContextOrNull() ?: return
-        runCatching {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val launch = Runnable {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
             }
-            context.startActivity(intent)
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) launch.run() else Handler(Looper.getMainLooper()).post(launch)
     }
 
     actual fun sharePlainText(text: String, title: String) {

@@ -314,7 +314,7 @@ class TransferManager(
         val stale = devices.filter { it.deviceId in unreachableIds }
         presenceMonitor().primePeersForTransfer(stale)
         val staleById = stale.associateBy { it.deviceId }
-        val moved = refreshRemoteHosts(stale).filter { refreshed ->
+        val moved = refreshRemoteHosts(stale, allowTailnet = false).filter { refreshed ->
             val before = staleById.getValue(refreshed.deviceId)
             refreshed.host.isNotBlank() && (refreshed.host != before.host || refreshed.port != before.port)
         }
@@ -346,11 +346,12 @@ class TransferManager(
     }
 
     private suspend fun refreshRemoteHosts(
-        options: List<MultiCopyDeviceOption>
+        options: List<MultiCopyDeviceOption>,
+        allowTailnet: Boolean = true
     ): List<MultiCopyDeviceOption> = options.map { option ->
         if (option.isLocal) return@map option
         val peer = deviceRepository().getDevice(option.deviceId) ?: return@map option
-        presenceMonitor().resolveOutboundEndpoint(peer)?.let { direct ->
+        presenceMonitor().resolveOutboundEndpoint(peer, allowTailnet = allowTailnet)?.let { direct ->
             return@map option.copy(host = direct.host, port = direct.port)
         }
         val host = peer.lastKnownIp.trim()

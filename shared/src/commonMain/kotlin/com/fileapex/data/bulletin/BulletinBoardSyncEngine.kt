@@ -4,6 +4,8 @@ import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.presence.isTailscaleEnabled
+import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.PeerLanHttpPolicy
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.textContainsWebUrl
@@ -271,8 +273,9 @@ class BulletinBoardSyncEngine(
         val origin = FileApexServices.deviceRepositoryOrNull()?.getDevice(originId)
             ?: FileApexServices.deviceRepositoryOrNull()?.getDevice(message.originDeviceId)
             ?: return null
-        val host = origin.lastKnownIp
-        val port = origin.port
+        val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(origin, tailnetUp = true) else null
+        val host = dial?.host ?: origin.lastKnownIp
+        val port = dial?.port ?: origin.port
         if (host.isBlank() || port <= 0) return null
         ServerLifecycleManager.ensureRunning()
         return runCatching {
@@ -321,8 +324,9 @@ class BulletinBoardSyncEngine(
             val pending = mutableListOf<PeerDrainJob>()
             for (device in devices) {
                 if (device.deviceId == selfId) continue
-                val host = device.lastKnownIp
-                val port = device.port
+                val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+                val host = dial?.host ?: device.lastKnownIp
+                val port = dial?.port ?: device.port
                 if (!BulletinOutboxDrainPolicy.shouldAttemptPeer(
                         supportsBulletinSync = device.supportsBulletinSync(),
                         host = host,

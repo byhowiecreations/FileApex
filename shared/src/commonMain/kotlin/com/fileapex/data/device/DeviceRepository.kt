@@ -403,6 +403,49 @@ class DeviceRepository(
         true
     }
 
+    /** Extends the online window without replacing the LAN address. Used for tailnet probes. */
+    suspend fun touchPeerLastSeenEpoch(
+        deviceId: String,
+        epochMs: Long = TimeUtils.now()
+    ): Boolean = mutateMutex.withLock {
+        val trimmedId = deviceId.trim()
+        if (trimmedId.isEmpty()) return false
+        val existing = deviceDao.getDevice(trimmedId) ?: return false
+        if (existing.isRemoved) return false
+        val nextEpoch = epochMs.coerceAtLeast(existing.lastSeenEpochMs)
+        if (existing.lastSeenEpochMs == nextEpoch) return false
+        deviceDao.touchLastSeenEpoch(trimmedId, nextEpoch)
+        true
+    }
+
+    /** Stores a tailnet address only after /api/v1/identity matched [deviceId]. */
+    suspend fun recordVerifiedTailnet(
+        deviceId: String,
+        hostname: String,
+        ipv4: String
+    ): Boolean = mutateMutex.withLock {
+        val trimmedId = deviceId.trim()
+        val host = hostname.trim()
+        val ip = ipv4.trim()
+        if (trimmedId.isEmpty() || host.isEmpty() || !com.fileapex.tailscale.isTailscaleIPv4(ip)) {
+            return false
+        }
+        val existing = deviceDao.getDevice(trimmedId) ?: return false
+        if (existing.isRemoved) return false
+        if (existing.tailnetHostname == host && existing.tailnetIpv4 == ip) return false
+        deviceDao.updateTailnet(trimmedId, host, ip)
+        true
+    }
+
+    suspend fun clearTailnet(deviceId: String): Boolean = mutateMutex.withLock {
+        val trimmedId = deviceId.trim()
+        if (trimmedId.isEmpty()) return false
+        val existing = deviceDao.getDevice(trimmedId) ?: return false
+        if (existing.tailnetHostname.isEmpty() && existing.tailnetIpv4.isEmpty()) return false
+        deviceDao.updateTailnet(trimmedId, "", "")
+        true
+    }
+
     /**
      * LAN identity probe replaces a stale Room row when ids diverge
      * (common after roster restore from an older database file).
@@ -788,7 +831,16 @@ class DeviceRepository(
             tileMenuOrder = primary.tileMenuOrder.ifBlank { secondary.tileMenuOrder },
             clusterVersion = maxOf(incoming.clusterVersion, primary.clusterVersion, secondary.clusterVersion),
             isRemoved = existing.isRemoved && incoming.isRemoved,
-            removedAt = if (existing.isRemoved && incoming.isRemoved) primary.removedAt ?: secondary.removedAt else null
+            removedAt = if (existing.isRemoved && incoming.isRemoved) primary.removedAt ?: secondary.removedAt else null,
+            tailnetHostname = firstNonBlank(
+                incoming.tailnetHostname,
+                primary.tailnetHostname,
+                secondary.tailnetHostname
+            ),
+            tailnetIpv4 = listOf(incoming.tailnetIpv4, primary.tailnetIpv4, secondary.tailnetIpv4)
+                .firstOrNull { com.fileapex.tailscale.isTailscaleIPv4(it.trim()) }
+                ?.trim()
+                .orEmpty()
         )
     }
 
@@ -871,7 +923,17 @@ class DeviceRepository(
             deviceMake = device.deviceMake.trim(),
             deviceModel = device.deviceModel.trim(),
             supportedProtocolsJson = device.supportedProtocolsJson.ifBlank { "[]" },
-            lastSeenEpochMs = device.lastSeenEpochMs.coerceAtLeast(0L)
+            lastSeenEpochMs = device.lastSeenEpochMs.coerceAtLeast(0L),
+            tailnetHostname = device.tailnetHostname.trim().ifBlank { preserveFrom?.tailnetHostname.orEmpty() },
+            tailnetIpv4 = device.tailnetIpv4.trim().let { incoming ->
+                if (com.fileapex.tailscale.isTailscaleIPv4(incoming)) {
+                    incoming
+                } else {
+                    preserveFrom?.tailnetIpv4?.trim().orEmpty()
+                        .takeIf { com.fileapex.tailscale.isTailscaleIPv4(it) }
+                        .orEmpty()
+                }
+            }
         )
         return trimmed.copy(
             lastKnownIp = trimmed.lastKnownIp.ifBlank { preserveFrom?.lastKnownIp.orEmpty() },
@@ -1089,9 +1151,23 @@ class DeviceRepository(
 
 private fun PairedDeviceEntity.membershipVersion(): Long = maxOf(clusterVersion, removedAt ?: 0L)
 
-private fun PairedDeviceEntity.withVersionNotBelow(existing: PairedDeviceEntity?): PairedDeviceEntity =
-    if (existing == null || existing.clusterVersion <= clusterVersion) this
-    else copy(clusterVersion = existing.clusterVersion)
+private fun PairedDeviceEntity.withVersionNotBelow(existing: PairedDeviceEntity?): PairedDeviceEntity {
+    val kept = if (existing == null) {
+        this
+    } else {
+        copy(
+            tailnetHostname = tailnetHostname.ifBlank { existing.tailnetHostname },
+            tailnetIpv4 = tailnetIpv4.takeIf { com.fileapex.tailscale.isTailscaleIPv4(it) }
+                ?: existing.tailnetIpv4.takeIf { com.fileapex.tailscale.isTailscaleIPv4(it) }
+                ?: ""
+        )
+    }
+    return if (existing == null || existing.clusterVersion <= kept.clusterVersion) {
+        kept
+    } else {
+        kept.copy(clusterVersion = existing.clusterVersion)
+    }
+}
 
 private fun PairedDeviceEntity.asTombstone(version: Long, publicKeyHash: String): PairedDeviceEntity =
     copy(

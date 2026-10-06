@@ -5,6 +5,8 @@ import com.fileapex.cloud.drive.DriveRelayPolicy
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.presence.isTailscaleEnabled
+import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.ServerLifecycleManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +45,9 @@ object BulletinLegacyRelay {
         )
         scope.launch {
             for (device in peers) {
-                val host = device.lastKnownIp
-                val port = device.port
+                val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+                val host = dial?.host ?: device.lastKnownIp
+                val port = dial?.port ?: device.port
                 if (host.isBlank() || port <= 0) continue
                 runCatching {
                     FileApexServices.client.postNoteDelete(
@@ -68,8 +71,9 @@ object BulletinLegacyRelay {
             record.attachmentSizeBytes <= DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
         ServerLifecycleManager.ensureRunning()
         for (device in peers) {
-            val host = device.lastKnownIp
-            val port = device.port
+            val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+            val host = dial?.host ?: device.lastKnownIp
+            val port = dial?.port ?: device.port
             if (host.isBlank() || port <= 0) continue
             runCatching {
                 FileApexServices.client.postNote(host, port, record)

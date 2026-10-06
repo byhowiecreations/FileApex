@@ -195,3 +195,16 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "ALTER TABLE `paired_devices` ADD COLUMN `tailnetHostname` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `paired_devices` ADD COLUMN `tailnetIpv4` TEXT NOT NULL DEFAULT ''"
+        ).forEach { sql ->
+            connection.prepare(sql).use { statement ->
+                statement.step()
+            }
+        }
+    }
+}
+

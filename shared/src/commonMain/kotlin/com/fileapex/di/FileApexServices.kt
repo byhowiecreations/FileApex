@@ -161,6 +161,9 @@ object FileApexServices {
         presenceMonitor.scheduleColdLaunchProbeOnce()
         transferQueue.ensureDrainWatcher()
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.ensureStarted()
+        bootstrapScope.launch(Dispatchers.IO) {
+            runCatching { com.fileapex.tailscale.TailscaleNodeRuntime.attach() }
+        }
         bootstrapScope.launch {
             runCatching {
                 recoverEmptyRosterIfNeeded(deviceRepository)

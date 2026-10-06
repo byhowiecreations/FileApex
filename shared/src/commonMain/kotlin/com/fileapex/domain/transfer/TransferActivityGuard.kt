@@ -1,6 +1,7 @@
 package com.fileapex.domain.transfer
 
 import com.fileapex.util.TimeUtils
+import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -58,6 +59,10 @@ object TransferActivityGuard {
     private val batchTotalBytes = AtomicLong(0L)
     private val batchFinishedBytes = AtomicLong(0L)
     private val cancelableJobs = ConcurrentHashMap.newKeySet<Job>()
+    private val transferSockets = ConcurrentHashMap.newKeySet<Socket>()
+
+    @Volatile
+    private var cancelRequested = false
 
     @Volatile private var currentFileName: String = ""
     @Volatile private var destinationDeviceName: String = ""
@@ -139,6 +144,9 @@ object TransferActivityGuard {
         streams.clear()
         anonymousActive.set(0)
         cancelableJobs.clear()
+        transferSockets.forEach { socket -> runCatching { socket.close() } }
+        transferSockets.clear()
+        cancelRequested = false
         clearBatch()
     }
 
@@ -148,14 +156,42 @@ object TransferActivityGuard {
         publish(force = true)
         return {
             cancelableJobs -= job
+            finishCancelIfIdle()
             publish(force = true)
         }
     }
 
+    fun trackTransferSocket(socket: Socket) {
+        transferSockets += socket
+        if (cancelRequested) runCatching { socket.close() }
+    }
+
+    fun releaseTransferSocket(socket: Socket) {
+        transferSockets -= socket
+        finishCancelIfIdle()
+    }
+
+    fun transferCancelRequested(): Boolean = cancelRequested
+
+    /**
+     * Closes in-flight transfer sockets, then cancels the batch job.
+     * A blocked write does not see cancellation until its socket is closed.
+     */
     fun cancelActiveTransfers(): Boolean {
         val jobs = cancelableJobs.toList()
-        jobs.forEach { it.cancel() }
-        return jobs.isNotEmpty()
+        val sockets = transferSockets.toList()
+        if (jobs.isEmpty() && sockets.isEmpty()) return false
+        cancelRequested = true
+        sockets.forEach { socket -> runCatching { socket.close() } }
+        abortInFlightPlatformTransfers()
+        jobs.forEach { job -> job.cancel() }
+        return true
+    }
+
+    private fun finishCancelIfIdle() {
+        if (cancelableJobs.isEmpty() && transferSockets.isEmpty()) {
+            cancelRequested = false
+        }
     }
 
     fun getActiveTransfers(): List<LiveTransferStats> {

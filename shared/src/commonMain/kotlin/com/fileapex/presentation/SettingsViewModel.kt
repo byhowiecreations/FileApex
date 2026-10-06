@@ -95,9 +95,11 @@ data class SettingsUiState(
     val kineticSphereConnectedLinesEnabled: Boolean = true,
     val kineticSphereOrbitalRingsEnabled: Boolean = true,
     val kineticSpherePersistentWallpaperEnabled: Boolean = false,
+    val generalExpanded: Boolean = true,
     val systemPerformanceExpanded: Boolean = true,
     val appearanceBehaviorExpanded: Boolean = true,
     val securityAccountExpanded: Boolean = true,
+    val tailscaleSetupExpanded: Boolean = false,
     val showAccessibilityRestrictedHelp: Boolean = false,
     val deviceNameBroadcasting: String = "",
     val deviceNameDraft: String = "",
@@ -157,9 +159,11 @@ class SettingsViewModel : ViewModel() {
             kineticSphereConnectedLinesEnabled = settings.kineticSphereConnectedLinesEnabled.value,
             kineticSphereOrbitalRingsEnabled = settings.kineticSphereOrbitalRingsEnabled.value,
             kineticSpherePersistentWallpaperEnabled = settings.kineticSpherePersistentWallpaperEnabled.value,
+            generalExpanded = settings.settingsGroupGeneralExpanded.value,
             systemPerformanceExpanded = settings.settingsGroupSystemPerformanceExpanded.value,
             appearanceBehaviorExpanded = settings.settingsGroupAppearanceBehaviorExpanded.value,
-            securityAccountExpanded = settings.settingsGroupSecurityAccountExpanded.value
+            securityAccountExpanded = settings.settingsGroupSecurityAccountExpanded.value,
+            tailscaleSetupExpanded = settings.tailscaleSetupExpanded.value
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -281,6 +285,11 @@ class SettingsViewModel : ViewModel() {
             }
         }
         viewModelScope.launch {
+            settings.settingsGroupGeneralExpanded.collect { expanded ->
+                _uiState.update { it.copy(generalExpanded = expanded) }
+            }
+        }
+        viewModelScope.launch {
             settings.settingsGroupSystemPerformanceExpanded.collect { expanded ->
                 _uiState.update { it.copy(systemPerformanceExpanded = expanded) }
             }
@@ -293,6 +302,11 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             settings.settingsGroupSecurityAccountExpanded.collect { expanded ->
                 _uiState.update { it.copy(securityAccountExpanded = expanded) }
+            }
+        }
+        viewModelScope.launch {
+            settings.tailscaleSetupExpanded.collect { expanded ->
+                _uiState.update { it.copy(tailscaleSetupExpanded = expanded) }
             }
         }
         viewModelScope.launch {
@@ -336,6 +350,12 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun toggleGeneralGroup() {
+        val newExpanded = !_uiState.value.generalExpanded
+        settings.setSettingsGroupGeneralExpanded(newExpanded)
+        _uiState.update { it.copy(generalExpanded = newExpanded) }
+    }
+
     fun toggleSystemPerformanceGroup() {
         val newExpanded = !_uiState.value.systemPerformanceExpanded
         settings.setSettingsGroupSystemPerformanceExpanded(newExpanded)
@@ -346,6 +366,11 @@ class SettingsViewModel : ViewModel() {
         val newExpanded = !_uiState.value.appearanceBehaviorExpanded
         settings.setSettingsGroupAppearanceBehaviorExpanded(newExpanded)
         _uiState.update { it.copy(appearanceBehaviorExpanded = newExpanded) }
+    }
+
+    fun setTailscaleSetupExpanded(expanded: Boolean) {
+        settings.setTailscaleSetupExpanded(expanded)
+        _uiState.update { it.copy(tailscaleSetupExpanded = expanded) }
     }
 
     fun toggleSecurityAccountGroup() {

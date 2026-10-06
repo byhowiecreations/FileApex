@@ -108,6 +108,10 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
+            val tsnetAar = rootProject.file("native/tsnet/build/tsnetbridge.aar")
+            if (tsnetAar.isFile) {
+                implementation(files(tsnetAar))
+            }
         }
 
         val desktopMain by getting {
@@ -573,9 +577,57 @@ tasks.register("buildMacTrayBridge") {
     }
 }
 
+tasks.register("buildMacTsnet") {
+    group = "distribution"
+    description = "Compile libFileApexTsnet.dylib (in-process userspace Tailscale)"
+    onlyIf { isMacHost() }
+    inputs.dir(rootProject.layout.projectDirectory.dir("native/tsnet"))
+    inputs.file(rootProject.layout.projectDirectory.file("macos/scripts/build_tsnet.sh"))
+    outputs.file(rootProject.layout.projectDirectory.file("macos/build/Tsnet/libFileApexTsnet.dylib"))
+    doLast {
+        val script = rootProject.layout.projectDirectory.file("macos/scripts/build_tsnet.sh").asFile
+        check(script.isFile) { "Missing ${script.absolutePath}" }
+        val process = ProcessBuilder("bash", script.absolutePath)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+        val code = process.waitFor()
+        check(code == 0) { "build_tsnet.sh exited $code" }
+        val dylib = rootProject.layout.projectDirectory.file("macos/build/Tsnet/libFileApexTsnet.dylib").asFile
+        check(dylib.isFile) { "libFileApexTsnet.dylib was not produced" }
+    }
+}
+
+tasks.register("buildWindowsTsnet") {
+    group = "distribution"
+    description = "Compile libFileApexTsnet.dll (in-process userspace Tailscale)"
+    onlyIf { isWindowsHost() }
+    inputs.dir(rootProject.layout.projectDirectory.dir("native/tsnet"))
+    inputs.file(rootProject.layout.projectDirectory.file("windows/scripts/build_tsnet.bat"))
+    outputs.file(rootProject.layout.projectDirectory.file("windows/build/Tsnet/libFileApexTsnet.dll"))
+    doLast {
+        val script = rootProject.layout.projectDirectory.file("windows/scripts/build_tsnet.bat").asFile
+        check(script.isFile) { "Missing ${script.absolutePath}" }
+        val process = ProcessBuilder("cmd", "/c", script.absolutePath)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+        val code = process.waitFor()
+        check(code == 0) { "build_tsnet.bat exited $code" }
+        val dll = rootProject.layout.projectDirectory.file("windows/build/Tsnet/libFileApexTsnet.dll").asFile
+        check(dll.isFile) { "libFileApexTsnet.dll was not produced" }
+    }
+}
+
 tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDistributable" }.configureEach {
     if (isMacHost()) {
         dependsOn("buildMacTrayBridge")
+        dependsOn("buildMacTsnet")
+    }
+}
+tasks.matching { it.name == "createReleaseDistributable" }.configureEach {
+    if (isWindowsHost()) {
+        dependsOn("buildWindowsTsnet")
     }
 }
 
@@ -653,6 +705,21 @@ private fun Project.embedMacTrayBridgeIn(appBundle: File) {
         .start()
         .waitFor()
     logger.lifecycle("Embedded native tray bridge at ${dest.absolutePath}")
+}
+
+private fun Project.embedMacTsnetIn(appBundle: File) {
+    if (!isMacHost()) return
+    val dylib = rootProject.layout.projectDirectory.file("macos/build/Tsnet/libFileApexTsnet.dylib").asFile
+    check(dylib.isFile) { "libFileApexTsnet.dylib missing — the Tailscale node cannot start" }
+    val frameworksDir = appBundle.resolve("Contents/Frameworks")
+    frameworksDir.mkdirs()
+    val dest = frameworksDir.resolve("libFileApexTsnet.dylib")
+    Files.copy(dylib.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    ProcessBuilder("/usr/bin/codesign", "--force", "--sign", "-", dest.absolutePath)
+        .inheritIO()
+        .start()
+        .waitFor()
+    logger.lifecycle("Embedded userspace tsnet at ${dest.absolutePath}")
 }
 
 private fun Project.embedMacInfoPlistStrings(appBundle: File) {
@@ -1025,6 +1092,13 @@ private fun signMacAppWithPluginEntitlements(
             tray.absolutePath
         )
     }
+    val tsnet = appBundle.resolve("Contents/Frameworks/libFileApexTsnet.dylib")
+    if (tsnet.isFile) {
+        runCodesign(
+            "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+            tsnet.absolutePath
+        )
+    }
     runCodesign(
         "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
         "--entitlements", hostEnts.absolutePath, appBundle.absolutePath
@@ -1160,6 +1234,7 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         return
     }
     embedMacTrayBridgeIn(appBundle)
+    embedMacTsnetIn(appBundle)
     embedMacInfoPlistStrings(appBundle)
     patchMacRuntimeLocalNetworkPlist(appBundle)
     val embedScript = rootProject.layout.projectDirectory.file("macos/scripts/embed_extensions.sh").asFile
@@ -1467,6 +1542,17 @@ tasks.register("packageInnoExe") {
         check(isccExe.exists()) { "ISCC.exe not found at ${isccExe.absolutePath}" }
         check(issFile.exists()) { "FileApex.iss not found at ${issFile.absolutePath}" }
 
+        val tsnetDll = rootProject.layout.projectDirectory.file("windows/build/Tsnet/libFileApexTsnet.dll").asFile
+        check(tsnetDll.isFile) { "libFileApexTsnet.dll missing — the Windows Tailscale node cannot start" }
+        val appRoot = layout.buildDirectory.dir("compose/binaries/main-release/app/FileApex").get().asFile
+        check(appRoot.isDirectory) { "Windows app image missing at ${appRoot.absolutePath}" }
+        Files.copy(
+            tsnetDll.toPath(),
+            appRoot.resolve("libFileApexTsnet.dll").toPath(),
+            StandardCopyOption.REPLACE_EXISTING
+        )
+        logger.lifecycle("Embedded userspace tsnet beside FileApex.exe")
+
         val threadCount = innoSetupThreadCount()
         logger.lifecycle(
             "Inno Setup: ${Runtime.getRuntime().availableProcessors()} logical CPUs → " +
@@ -1658,6 +1744,7 @@ tasks.register("packageSiliconApp") {
             embedMacExtensionsIn(stagingApp)
         }
         embedMacTrayBridgeIn(stagingApp)
+        embedMacTsnetIn(stagingApp)
         patchAppInfoPlistVersions(stagingApp, fileapexVersionName, fileapexVersionCode)
         finalizeMacAppSignature(stagingApp)
 
@@ -1744,6 +1831,7 @@ tasks.register("packageSiliconDmg") {
 
         // Fresh dylib — buildMacTrayBridge may have run after createDistributable cached the .app.
         embedMacTrayBridgeIn(stagingApp)
+        embedMacTsnetIn(stagingApp)
         patchAppInfoPlistVersions(stagingApp, fileapexVersionName, fileapexVersionCode)
         finalizeMacAppSignature(stagingApp)
 

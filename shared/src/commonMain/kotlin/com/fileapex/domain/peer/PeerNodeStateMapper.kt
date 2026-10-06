@@ -105,7 +105,9 @@ object PeerNodeStateMapper {
             ),
             clusterVersion = version,
             isRemoved = state.isRemoved,
-            removedAt = state.removedAt ?: if (state.isRemoved) version else null
+            removedAt = state.removedAt ?: if (state.isRemoved) version else null,
+            tailnetHostname = existing?.tailnetHostname.orEmpty(),
+            tailnetIpv4 = existing?.tailnetIpv4.orEmpty()
         )
     }
 

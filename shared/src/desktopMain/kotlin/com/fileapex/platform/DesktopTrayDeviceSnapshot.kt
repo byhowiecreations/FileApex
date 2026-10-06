@@ -9,3 +9,7 @@ data class DesktopTrayDeviceSnapshot(
     val name: String,
     val isOnline: Boolean
 )
+
+/** Ids the Devices tab is already showing as Ready. */
+fun shareReadyDeviceIds(snapshots: List<DesktopTrayDeviceSnapshot>): List<String> =
+    snapshots.filter { it.isOnline }.map { it.id }

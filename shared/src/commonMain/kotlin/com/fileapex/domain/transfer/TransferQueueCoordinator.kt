@@ -18,6 +18,8 @@ import com.fileapex.data.device.DeviceRepository
 import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.domain.presence.PeerPresenceMonitor
+import com.fileapex.domain.presence.isTailscaleEnabled
+import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
@@ -215,6 +217,7 @@ class TransferQueueCoordinator(
         val job = sendingJobs[id]
         if (job != null) {
             removalRequested += id
+            TransferActivityGuard.cancelActiveTransfers()
             job.cancel()
             return
         }
@@ -223,6 +226,7 @@ class TransferQueueCoordinator(
 
     fun cancelSending(id: String): Boolean {
         val job = sendingJobs[id] ?: return false
+        TransferActivityGuard.cancelActiveTransfers()
         job.cancel()
         return true
     }
@@ -453,6 +457,10 @@ class TransferQueueCoordinator(
     }
 
     private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? {
+        if (isTailscaleEnabled()) {
+            val endpoint = resolvePeerEndpoint(peer, tailnetUp = true)
+            if (endpoint?.tailnet == true) return endpoint.host to endpoint.port
+        }
         val host = peer.lastKnownIp.trim()
         val port = peer.port
         if (host.isNotEmpty() && NetworkUtils.isPrivateLanPeerHost(host) && port > 0) {

@@ -22,6 +22,8 @@ import com.fileapex.domain.pairing.PairingBeacon
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
+import com.fileapex.domain.presence.isTailscaleEnabled
+import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.PlatformClipboard
@@ -408,7 +410,7 @@ class DevicesViewModel : ViewModel() {
     }
 
     private suspend fun performDeviceConnectHandshake(device: PairedDeviceEntity): DeviceConnectOutcome {
-        if (!isActiveLanConnectivity()) {
+        if (!isTailscaleEnabled() && !isActiveLanConnectivity()) {
             return DeviceConnectOutcome.Unreachable(
                 detail = PeerReachabilityMessages.localWifiRequired(),
                 quickFail = true
@@ -581,16 +583,19 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             runCatching {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
+                val endpoint = presence.resolveOutboundEndpoint(pending.device)
+                val host = endpoint?.host ?: pending.device.lastKnownIp
+                val port = endpoint?.port ?: pending.device.port
                 FileApexServices.client.verifyPin(
-                    host = pending.device.lastKnownIp,
-                    port = pending.device.port,
+                    host = host,
+                    port = port,
                     pin = pin.trim()
                 )
                 DeviceSessionManager.markDeviceAccessed(pending.device.deviceId)
                 val action = pendingOpenAction
                 pendingOpenAction = null
                 _uiState.update { it.copy(pendingPinUnlock = null) }
-                action?.invoke(browseTargetFor(pending.device, pinRequired = true))
+                action?.invoke(browseTargetFor(pending.device, host, port, pinRequired = true))
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(errorMessage = UserFacingErrors.message(error, "incorrect_pin"))
@@ -934,12 +939,17 @@ class DevicesViewModel : ViewModel() {
                 )
             }
 
+            val sourceEndpoint = if (isTailscaleEnabled()) {
+                resolvePeerEndpoint(sourceDevice, tailnetUp = true)
+            } else {
+                null
+            }
             val source = MultiCopySource.Remote(
                 fileName = fileName,
                 sizeBytes = fileSize,
                 absolutePath = remotePath,
-                host = sourceDevice.lastKnownIp,
-                port = sourceDevice.port,
+                host = sourceEndpoint?.host ?: sourceDevice.lastKnownIp,
+                port = sourceEndpoint?.port ?: sourceDevice.port,
                 isDirectory = false,
                 relativeDestPath = fileName
             )

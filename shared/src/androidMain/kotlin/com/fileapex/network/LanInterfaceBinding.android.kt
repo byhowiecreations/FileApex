@@ -1,6 +1,10 @@
 package com.fileapex.network
 
+import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.tailscale.tailscaleLoopbackOrNull
+import com.fileapex.tailscale.writeTailscaleDialToken
 import com.fileapex.util.NetworkUtils
+import kotlin.coroutines.cancellation.CancellationException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
@@ -96,6 +100,22 @@ actual suspend fun peerHttpGet(
     path: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundHttpOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                method = "GET",
+                path = path,
+                body = null,
+                contentType = null,
+                timeoutMs = timeoutMs
+            )
+        }.getOrNull()
+    }
     executeBoundHttp(
         host = host,
         port = port,
@@ -115,6 +135,22 @@ actual suspend fun peerHttpPost(
     contentType: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundHttpOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                method = "POST",
+                path = path,
+                body = body,
+                contentType = contentType,
+                timeoutMs = timeoutMs
+            )
+        }.getOrNull()
+    }
     executeBoundHttp(
         host = host,
         port = port,
@@ -136,6 +172,29 @@ actual suspend fun peerHttpUploadFromChannel(
     uploadIdleTimeoutMs: Long,
     contentLength: Long?
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundUploadOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                pathWithQuery = pathWithQuery,
+                contentType = contentType,
+                connectTimeoutMs = connectTimeoutMs,
+                uploadIdleTimeoutMs = uploadIdleTimeoutMs,
+                contentLength = contentLength,
+                writeBody = { output ->
+                    for (chunk in chunks) {
+                        output.write(chunk)
+                    }
+                }
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) null else throw error
+        }
+    }
     executeBoundUpload(
         host = host,
         port = port,
@@ -164,6 +223,37 @@ actual suspend fun peerHttpUploadFromFile(
     uploadIdleTimeoutMs: Long,
     onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
+        var currentSent = offset
+        return@withContext runCatching {
+            executeBoundUploadOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                pathWithQuery = pathWithQuery,
+                contentType = contentType,
+                connectTimeoutMs = connectTimeoutMs,
+                uploadIdleTimeoutMs = uploadIdleTimeoutMs,
+                contentLength = length.takeIf { it >= 0L },
+                writeBody = { output ->
+                    SocketFileStreamer.streamFromOffset(
+                        sourcePath = sourcePath,
+                        offset = offset,
+                        byteLimit = length
+                    ) { buffer, read ->
+                        output.write(buffer, 0, read)
+                        currentSent += read
+                        onProgress?.invoke(currentSent, total)
+                    }
+                }
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) null else throw error
+        }
+    }
     val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
     var currentSent = offset
     executeBoundUpload(
@@ -197,6 +287,24 @@ actual suspend fun peerHttpGetStreaming(
     onChunk: suspend (ByteArray, Int) -> Unit,
     onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? = withContext(TransferRuntime.outbound) {
+    val loop = tailscaleLoopbackOrNull(host, port)
+    if (loop != null) {
+        return@withContext runCatching {
+            executeBoundGetStreamingOnLocalIp(
+                localIp = "127.0.0.1",
+                host = loop.host,
+                port = loop.port,
+                dialToken = loop.token,
+                pathWithQuery = pathWithQuery,
+                connectTimeoutMs = connectTimeoutMs,
+                readIdleTimeoutMs = readIdleTimeoutMs,
+                onChunk = onChunk,
+                onStatus = onStatus
+            )
+        }.getOrElse { error ->
+            if (error is BoundConnectFailed) null else throw error
+        }
+    }
     executeBoundGetStreaming(
         host = host,
         port = port,
@@ -289,7 +397,8 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
     connectTimeoutMs: Long,
     readIdleTimeoutMs: Long,
     onChunk: suspend (ByteArray, Int) -> Unit,
-    onStatus: ((Int) -> Unit)?
+    onStatus: ((Int) -> Unit)?,
+    dialToken: String = ""
 ): PeerBoundStreamResult {
     val connectTimeout = connectTimeoutMs.coerceIn(250L, 60_000L).toInt()
     val idleTimeout = readIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
@@ -304,6 +413,7 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
         }
         socket.soTimeout = idleTimeout
         val output = socket.getOutputStream()
+        writeTailscaleDialToken(output, dialToken)
         val request = buildString {
             append("GET ")
             append(pathWithQuery)
@@ -408,21 +518,26 @@ private suspend fun executeBoundUploadOnLocalIp(
     connectTimeoutMs: Long,
     uploadIdleTimeoutMs: Long,
     contentLength: Long? = null,
+    dialToken: String = "",
     writeBody: suspend (java.io.OutputStream) -> Unit
 ): PeerBoundHttpResponse {
     val connectTimeout = connectTimeoutMs.coerceIn(250L, 60_000L).toInt()
     val idleTimeout = uploadIdleTimeoutMs.coerceIn(1000L, 600_000L).toInt()
     val socket = Socket()
-    try {
+    return withTrackedTransferSocket(socket) {
         socket.bind(InetSocketAddress(localIp, 0))
         runCatching {
             socket.connect(InetSocketAddress(host, port), connectTimeout)
         }.onFailure {
             socket.close()
+            if (TransferActivityGuard.transferCancelRequested()) {
+                throw CancellationException("transfer cancelled")
+            }
             throw BoundConnectFailed()
         }
         socket.soTimeout = idleTimeout
         val output = socket.getOutputStream()
+        writeTailscaleDialToken(output, dialToken)
         val header = buildString {
             append("POST ")
             append(pathWithQuery)
@@ -450,9 +565,7 @@ private suspend fun executeBoundUploadOnLocalIp(
             socket.shutdownOutput()
         }
         val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)
-        return parseHttpResponse(raw)
-    } finally {
-        runCatching { socket.close() }
+        parseHttpResponse(raw)
     }
 }
 
@@ -464,7 +577,8 @@ private fun executeBoundHttpOnLocalIp(
     path: String,
     body: String?,
     contentType: String?,
-    timeoutMs: Long
+    timeoutMs: Long,
+    dialToken: String = ""
 ): PeerBoundHttpResponse {
     val timeout = timeoutMs.coerceIn(250L, 60_000L).toInt()
     Socket().use { socket ->
@@ -472,6 +586,8 @@ private fun executeBoundHttpOnLocalIp(
         socket.connect(InetSocketAddress(host, port), timeout)
         socket.soTimeout = timeout
         val payload = body.orEmpty()
+        val output = socket.getOutputStream()
+        writeTailscaleDialToken(output, dialToken)
         val request = buildString {
             append(method)
             append(' ')
@@ -497,7 +613,6 @@ private fun executeBoundHttpOnLocalIp(
                 append(payload)
             }
         }
-        val output = socket.getOutputStream()
         output.write(request.toByteArray(Charsets.UTF_8))
         output.flush()
         val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)

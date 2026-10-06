@@ -56,7 +56,11 @@ data class PairedDeviceEntity(
     val tileMenuOrder: String = "",
     val clusterVersion: Long = 0L,
     val isRemoved: Boolean = false,
-    val removedAt: Long? = null
+    val removedAt: Long? = null,
+    /** MagicDNS label confirmed against /api/v1/identity. Empty until that check passes. */
+    val tailnetHostname: String = "",
+    /** Tailnet IPv4 confirmed against /api/v1/identity. Never copied into lastKnownIp. */
+    val tailnetIpv4: String = ""
 )
 
 @Entity(tableName = "note_records")
@@ -137,6 +141,14 @@ interface DeviceDao {
             "WHERE deviceId = :deviceId"
     )
     suspend fun touchLastSeen(deviceId: String, ip: String, port: Int, epochMs: Long)
+
+    @Query("UPDATE paired_devices SET lastSeenEpochMs = :epochMs WHERE deviceId = :deviceId")
+    suspend fun touchLastSeenEpoch(deviceId: String, epochMs: Long)
+
+    @Query(
+        "UPDATE paired_devices SET tailnetHostname = :hostname, tailnetIpv4 = :ipv4 WHERE deviceId = :deviceId"
+    )
+    suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String)
 
     @Query(
         "UPDATE paired_devices SET cardPosX = :x, cardPosY = :y, cardSortOrder = :order, cardMenuOrder = :menuOrder " +
@@ -222,7 +234,7 @@ interface NoteDao {
         PendingTransferEntity::class,
         NoteEntity::class
     ],
-    version = 12
+    version = 13
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {

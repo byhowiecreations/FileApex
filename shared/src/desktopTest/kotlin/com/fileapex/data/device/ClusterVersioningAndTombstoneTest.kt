@@ -80,6 +80,18 @@ class ClusterVersioningAndTombstoneTest {
             }
         }
 
+        override suspend fun touchLastSeenEpoch(deviceId: String, epochMs: Long) {
+            devices[deviceId]?.let {
+                devices[deviceId] = it.copy(lastSeenEpochMs = epochMs)
+            }
+        }
+
+        override suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String) {
+            devices[deviceId]?.let {
+                devices[deviceId] = it.copy(tailnetHostname = hostname, tailnetIpv4 = ipv4)
+            }
+        }
+
         override suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {
             devices[deviceId]?.let {
                 devices[deviceId] = it.copy(lastKnownIp = ip, port = port)

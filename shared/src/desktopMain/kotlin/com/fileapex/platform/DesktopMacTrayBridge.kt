@@ -38,6 +38,8 @@ object DesktopMacTrayBridge {
     @Volatile
     private var prepareDropBoxCallback: VoidTrayCallback? = null
     @Volatile
+    private var cancelSendCallback: VoidTrayCallback? = null
+    @Volatile
     private var lanPeerCallback: LanPeerCallback? = null
     @Volatile
     private var lanPeerListener: ((String, Int, String?) -> Unit)? = null
@@ -284,6 +286,9 @@ object DesktopMacTrayBridge {
         dropBoxVisibilityCallback = PopoverCallback { visible -> onDropBoxVisible(visible) }
         refreshDevicesCallback = VoidTrayCallback { onRefreshDevices() }
         prepareDropBoxCallback = VoidTrayCallback { onPrepareDropBox() }
+        cancelSendCallback = VoidTrayCallback {
+            com.fileapex.domain.transfer.TransferActivityGuard.cancelActiveTransfers()
+        }
 
         lib.fileapex_tray_register_callbacks(
             sendCallback,
@@ -295,6 +300,7 @@ object DesktopMacTrayBridge {
         lib.fileapex_tray_set_dropbox_visibility_callback(dropBoxVisibilityCallback)
         lib.fileapex_tray_set_refresh_devices_callback(refreshDevicesCallback)
         lib.fileapex_tray_set_prepare_dropbox_callback(prepareDropBoxCallback)
+        runCatching { lib.fileapex_tray_set_cancel_send_callback(cancelSendCallback) }
         seedDropBoxFrame()
     }
 
@@ -417,6 +423,11 @@ object DesktopMacTrayBridge {
             clipboardCallback = null
             false
         }
+    }
+
+    fun cancelLanTransfers() {
+        if (!DesktopPlatformPaths.isMacOs()) return
+        runCatching { native?.fileapex_lan_http_cancel_transfers() }
     }
 
     fun noteClipboardApplied() {
@@ -556,6 +567,7 @@ object DesktopMacTrayBridge {
             outStatus: IntByReference
         ): Int
         fun fileapex_lan_http_free(pointer: Pointer?)
+        fun fileapex_lan_http_cancel_transfers()
         fun fileapex_tray_set_app_icon_path(path: String)
         fun fileapex_tray_bind_main_window(nsWindowPtr: Long)
         fun fileapex_tray_register_callbacks(
@@ -568,6 +580,7 @@ object DesktopMacTrayBridge {
         fun fileapex_tray_set_dropbox_visibility_callback(visible: PopoverCallback?)
         fun fileapex_tray_set_refresh_devices_callback(refreshDevices: VoidTrayCallback?)
         fun fileapex_tray_set_prepare_dropbox_callback(prepareDropBox: VoidTrayCallback?)
+        fun fileapex_tray_set_cancel_send_callback(cancelSend: VoidTrayCallback?)
         fun fileapex_tray_hide_main_window()
         fun fileapex_tray_close_dropbox()
         fun fileapex_tray_dropbox_seed_frame(x: Double, y: Double, width: Double, height: Double)

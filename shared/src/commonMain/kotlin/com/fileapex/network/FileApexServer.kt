@@ -248,7 +248,11 @@ class FileApexServer(
     internal fun inboundPeerLanIpv4(call: ApplicationCall): String? {
         val raw = call.request.local.remoteAddress.trim()
             .ifBlank { call.request.local.remoteHost.trim() }
+        // Tailnet connections are spliced to this server from 127.0.0.1. That address
+        // is not a peer and must not be stored or treated as a local shortcut.
+        if (isSplicedLoopbackOrigin(raw)) return null
         val host = sanitizeInboundIpv4(raw) ?: return null
+        if (isSplicedLoopbackOrigin(host)) return null
         return host.takeIf { NetworkUtils.isPrivateLanPeerHost(it) }
     }
 
@@ -494,4 +498,19 @@ class FileApexServer(
             """.trimIndent()
         }
     }
+}
+
+/** Loopback is the splice address. It never grants a local-request shortcut. */
+internal fun isSplicedLoopbackOrigin(raw: String): Boolean {
+    var value = raw.trim().removePrefix("/").substringBefore('%').lowercase()
+    if (value.startsWith("::ffff:")) {
+        value = value.substringAfter("::ffff:")
+    }
+    if (value == "::1" || value.startsWith("[::1]") || value == "localhost") return true
+    val host = if (value.startsWith("[")) {
+        value.substringAfter("[").substringBefore("]")
+    } else {
+        value.substringBefore(':')
+    }
+    return host == "127.0.0.1" || host == "::1" || host == "localhost" || host == "0.0.0.0"
 }

@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.fileapex.tailscale.FileApexForegroundActivity.attach(this)
         configureVisibleSystemBars()
         val previouslyComplete = onboardingComplete
         completePendingOnboardingReturns()
@@ -270,6 +271,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        com.fileapex.tailscale.FileApexForegroundActivity.detach(this)
         stageJob?.cancel()
         super.onDestroy()
     }
@@ -335,6 +337,10 @@ class MainActivity : ComponentActivity() {
         intent?.data?.let { uri ->
             val scheme = uri.scheme?.lowercase()
             val host = uri.host?.lowercase()
+            if (host == "auth-callback" && (scheme == "fileapex" || scheme == "apex")) {
+                com.fileapex.tailscale.TailscaleNodeRuntime.onBrowserLoginReturned()
+                return
+            }
             if (host == "pair" && scheme in PAIRING_URI_SCHEMES) {
                 val candidates = listOf(
                     pairingTextFromDeepLink(uri),

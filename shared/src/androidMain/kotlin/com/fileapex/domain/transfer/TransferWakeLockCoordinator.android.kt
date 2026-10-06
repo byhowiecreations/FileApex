@@ -7,6 +7,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import com.fileapex.platform.androidApplicationContextOrNull
+import com.fileapex.tailscale.holdTailscaleProcess
 
 internal actual object TransferWakeLockCoordinator {
     private const val TAG = "TransferWakeLock"
@@ -32,6 +33,7 @@ internal actual object TransferWakeLockCoordinator {
     }
 
     actual fun acquire() {
+        holdTailscaleProcess()
         synchronized(lock) {
             if (refs == 0) {
                 val context = androidApplicationContextOrNull()

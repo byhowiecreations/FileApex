@@ -7,6 +7,7 @@ public enum FileApexPaths {
     public static let mainBundleId = "com.fileapex"
     public static let shareExtensionBundleId = "com.fileapex.ShareExtension"
     public static let databaseFileName = "fileapex.db"
+    public static let readyDeviceIdsFileName = "ready-device-ids.json"
 
     /// Real user home from the passwd database — never the App Extension container home.
     /// `FileManager.homeDirectoryForCurrentUser` / `NSHomeDirectory()` resolve inside
@@ -35,6 +36,11 @@ public enum FileApexPaths {
             "FileApexPaths.databaseURL must not resolve inside an App Extension container"
         )
         return url
+    }
+
+    /// Device ids the running app has already marked Ready. Written beside `fileapex.db`.
+    public static var readyDeviceIdsURL: URL {
+        databaseURL.deletingLastPathComponent().appendingPathComponent(readyDeviceIdsFileName)
     }
 
     /// Landing folder for files received by this Mac (matches Kotlin `defaultDownloadsDir`).

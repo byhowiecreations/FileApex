@@ -44,6 +44,8 @@ composeApp/release/
 
 # macOS extension build products
 macos/build/
+native/tsnet/build/
+windows/build/
 macos/**/DerivedData/
 
 
@@ -52,3 +54,6 @@ macos/**/DerivedData/
 *.xcuserstate
 docs/
 
+# Docker build artifacts and local runtime data
+fileapex-daemon
+/app/data/

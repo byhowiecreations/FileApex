@@ -73,6 +73,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -107,6 +108,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -144,9 +147,17 @@ import com.fileapex.ui.adaptive.CompactHomeTitleBand
 import com.fileapex.ui.adaptive.CompactHomeTitleStyle
 import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
 import com.fileapex.ui.theme.fileApexTopAppBarColors
+import com.fileapex.tailscale.TailscaleNodeRuntime
 import com.fileapex.platform.supportsDeviceNameSettingsPage
 import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
 import kotlinx.coroutines.delay
+
+private val settingsPageSaver = Saver<SettingsPage, String>(
+    save = { page -> page.name },
+    restore = { name ->
+        runCatching { SettingsPage.valueOf(name) }.getOrDefault(SettingsPage.Root)
+    }
+)
 
 private enum class SettingsPage {
     Root,
@@ -170,6 +181,7 @@ private enum class SettingsPage {
     WindowsDesign,
     Language,
     DeviceName,
+    Tailscale,
     LeaveClusterWipe
 }
 
@@ -218,7 +230,7 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsState()
     val updateStatus by viewModel.updateStatusMessage.collectAsState()
     val googleLinkStatus by viewModel.googleLinkStatus.collectAsState()
-    var page by remember { mutableStateOf(SettingsPage.Root) }
+    var page by rememberSaveable(stateSaver = settingsPageSaver) { mutableStateOf(SettingsPage.Root) }
 
     val currentTheme = LocalAppTheme.current
     val isFreestyleCompact = currentTheme.traits.canvasHome && layoutMode == SettingsScreenLayoutMode.CompactShell
@@ -273,6 +285,8 @@ fun SettingsScreen(
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
             onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
+            onOpenTailscale = { page = SettingsPage.Tailscale },
+            onToggleGeneralGroup = viewModel::toggleGeneralGroup,
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
             onToggleAppearanceBehaviorGroup = viewModel::toggleAppearanceBehaviorGroup,
             onToggleSecurityAccountGroup = viewModel::toggleSecurityAccountGroup,
@@ -528,6 +542,12 @@ fun SettingsScreen(
             onDraftChange = viewModel::setDeviceNameDraft,
             onSave = viewModel::saveDeviceName
         )
+        SettingsPage.Tailscale -> TailscaleSettingsPage(
+            layoutMode = layoutMode,
+            setupExpanded = state.tailscaleSetupExpanded,
+            onSetupExpandedChange = viewModel::setTailscaleSetupExpanded,
+            onBack = { page = SettingsPage.Root }
+        )
         SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root }
@@ -573,6 +593,8 @@ private fun SettingsRootPage(
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
     onOpenLeaveClusterWipe: () -> Unit = {},
+    onOpenTailscale: () -> Unit = {},
+    onToggleGeneralGroup: () -> Unit,
     onToggleSystemPerformanceGroup: () -> Unit,
     onToggleAppearanceBehaviorGroup: () -> Unit,
     onToggleSecurityAccountGroup: () -> Unit,
@@ -649,142 +671,150 @@ private fun SettingsRootPage(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
-                SettingsCategoryGroup(
-                    title = stringRes("system_app_performance"),
-                    expanded = state.systemPerformanceExpanded,
-                    onToggle = onToggleSystemPerformanceGroup
-                ) {
-                    if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
-                        SettingsNavItem(
-                            title = stringRes("check_for_updates"),
-                            subtitle = if (state.checkForUpdatesEnabled) {
-                                UpdateCheckFrequency.label(
-                                    state.checkForUpdatesIntervalUnit,
-                                    state.checkForUpdatesIntervalAmount
+                val tailscale by TailscaleNodeRuntime.state.collectAsState()
+                val menuEntries = settingsMenuEntries(
+                    playStoreBuild = com.fileapex.di.FileApexServices.isPlayStoreBuild,
+                    desktopFileSelection = usesDesktopFileSelection(),
+                    deviceNamePage = supportsDeviceNameSettingsPage(),
+                    windowsFluent = supportsWindowsFluentDesign()
+                )
+                SettingsMenuSection.entries.forEach { section ->
+                    val rows = menuEntries.filter { it.section == section }
+                    if (rows.isEmpty()) return@forEach
+                    val expanded = when (section) {
+                        SettingsMenuSection.General -> state.generalExpanded
+                        SettingsMenuSection.SystemPerformance -> state.systemPerformanceExpanded
+                        SettingsMenuSection.Appearance -> state.appearanceBehaviorExpanded
+                        SettingsMenuSection.Security -> state.securityAccountExpanded
+                    }
+                    val onToggle = when (section) {
+                        SettingsMenuSection.General -> onToggleGeneralGroup
+                        SettingsMenuSection.SystemPerformance -> onToggleSystemPerformanceGroup
+                        SettingsMenuSection.Appearance -> onToggleAppearanceBehaviorGroup
+                        SettingsMenuSection.Security -> onToggleSecurityAccountGroup
+                    }
+                    SettingsCategoryGroup(
+                        title = stringRes(section.titleKey()),
+                        expanded = expanded,
+                        onToggle = onToggle
+                    ) {
+                        rows.forEach { entry ->
+                            when (entry.id) {
+                                SettingsMenuIds.DEVICE_NAME -> SettingsNavItem(
+                                    title = stringRes("device_name"),
+                                    subtitle = state.deviceNameBroadcasting.ifBlank { stringRes("paired_device") },
+                                    onClick = onOpenDeviceName
                                 )
-                            } else {
-                                stringRes("off")
-                            },
-                            onClick = onOpenCheckForUpdates
-                        )
+                                SettingsMenuIds.LANGUAGE -> SettingsNavItem(
+                                    title = stringRes("language"),
+                                    subtitle = AppI18n.languageRowLabel(AppI18n.locale),
+                                    onClick = onOpenLanguage
+                                )
+                                SettingsMenuIds.CHECK_FOR_UPDATES -> SettingsNavItem(
+                                    title = stringRes("check_for_updates"),
+                                    subtitle = if (state.checkForUpdatesEnabled) {
+                                        UpdateCheckFrequency.label(
+                                            state.checkForUpdatesIntervalUnit,
+                                            state.checkForUpdatesIntervalAmount
+                                        )
+                                    } else {
+                                        stringRes("off")
+                                    },
+                                    onClick = onOpenCheckForUpdates
+                                )
+                                SettingsMenuIds.REPORT_ISSUE -> SettingsNavItem(
+                                    title = stringRes("report_issue_feedback"),
+                                    subtitle = stringRes("report_issue_feedback_desc"),
+                                    onClick = { showFeedbackDialog = true }
+                                )
+                                SettingsMenuIds.BACKGROUND_PERSISTENCE -> SettingsNavItem(
+                                    title = stringRes("background_persistence"),
+                                    subtitle = backgroundPersistenceSubtitle(
+                                        watchdogEnabled = state.enableServiceWatchdog,
+                                        backgroundPersistence = backgroundPersistence,
+                                        exactAlarmWarningActive = exactAlarmWarningActive
+                                    ),
+                                    onClick = onOpenBackgroundPersistence
+                                )
+                                SettingsMenuIds.AUTO_LAUNCH -> SettingsNavItem(
+                                    title = stringRes("auto_launch_on_reboot"),
+                                    subtitle = if (state.autoLaunchOnReboot) stringRes("on") else stringRes("off"),
+                                    onClick = onOpenAutoLaunchOnReboot
+                                )
+                                SettingsMenuIds.TAILSCALE -> SettingsNavItem(
+                                    title = stringRes("tailscale_overlay"),
+                                    subtitle = tailscaleRowSubtitle(tailscale),
+                                    onClick = onOpenTailscale
+                                )
+                                SettingsMenuIds.THEMES -> SettingsNavItem(
+                                    title = stringRes("themes"),
+                                    subtitle = localizedThemeName(state.appTheme),
+                                    onClick = onOpenThemes
+                                )
+                                SettingsMenuIds.BULLETIN_BOARD_STYLES -> SettingsNavItem(
+                                    title = stringRes("bulletin_board_styles"),
+                                    subtitle = localizedBulletinBoardStyleName(state.bulletinBoardStyle),
+                                    onClick = onOpenBulletinBoardStyles
+                                )
+                                SettingsMenuIds.NOTIFICATIONS -> SettingsNavItem(
+                                    title = stringRes("notifications"),
+                                    subtitle = if (
+                                        state.notesNotificationsEnabled ||
+                                        state.driveRelayNotificationsEnabled ||
+                                        state.fileTransferNotificationsEnabled ||
+                                        state.liveTransferCapsuleEnabled
+                                    ) stringRes("on") else stringRes("off"),
+                                    onClick = onOpenNotifications
+                                )
+                                SettingsMenuIds.CLIPBOARD -> SettingsNavItem(
+                                    title = stringRes("clipboard"),
+                                    subtitle = clipboardSettingsSubtitle(state),
+                                    onClick = onOpenClipboard
+                                )
+                                SettingsMenuIds.DEVICE_DETAILS -> SettingsNavItem(
+                                    title = stringRes("device_details"),
+                                    subtitle = stringRes("peer_telemetry_fields"),
+                                    onClick = onOpenDeviceDetails
+                                )
+                                SettingsMenuIds.DESKTOP_LAYOUT -> SettingsNavItem(
+                                    title = stringRes("desktop_layout"),
+                                    subtitle = localizedDesktopLayout(state.desktopLayoutMode),
+                                    onClick = onOpenDesktopLayout
+                                )
+                                SettingsMenuIds.WINDOWS_DESIGN -> SettingsNavItem(
+                                    title = stringRes("windows_design"),
+                                    subtitle = localizedDesktopUiStyle(state.desktopUiStyle),
+                                    onClick = onOpenWindowsDesign
+                                )
+                                SettingsMenuIds.PIN_REQUIRED -> SettingsNavItem(
+                                    title = stringRes("pin_required"),
+                                    subtitle = AppI18n.t(
+                                        "pin_subtitle",
+                                        if (state.pinRequiredEnabled) AppI18n.t("on") else AppI18n.t("off"),
+                                        localizedPinIdle(state.pinIdleTimeout)
+                                    ),
+                                    onClick = onOpenPinRequired
+                                )
+                                SettingsMenuIds.GOOGLE_ACCOUNT -> SettingsNavItem(
+                                    title = stringRes("google_account"),
+                                    subtitle = googleAccountSubtitle(state),
+                                    onClick = onOpenGoogleAccount
+                                )
+                                SettingsMenuIds.REMOTE_FILE_DELETION -> SettingsNavItem(
+                                    title = stringRes("allow_remote_file_deletion"),
+                                    subtitle = if (state.allowRemoteFileDeletion) stringRes("on") else stringRes("off"),
+                                    onClick = onOpenRemoteFileDeletion
+                                )
+                                SettingsMenuIds.LEAVE_CLUSTER -> SettingsNavItem(
+                                    title = stringRes("leave_cluster_wipe_title"),
+                                    subtitle = stringRes("leave_cluster_wipe_desc"),
+                                    isDestructive = true,
+                                    leadingIcon = Icons.Filled.Warning,
+                                    onClick = onOpenLeaveClusterWipe
+                                )
+                            }
+                        }
                     }
-                    SettingsNavItem(
-                        title = stringRes("report_issue_feedback"),
-                        subtitle = stringRes("report_issue_feedback_desc"),
-                        onClick = { showFeedbackDialog = true }
-                    )
-                    SettingsNavItem(
-                        title = stringRes("background_persistence"),
-                        subtitle = backgroundPersistenceSubtitle(
-                            watchdogEnabled = state.enableServiceWatchdog,
-                            backgroundPersistence = backgroundPersistence,
-                            exactAlarmWarningActive = exactAlarmWarningActive
-                        ),
-                        onClick = onOpenBackgroundPersistence
-                    )
-                    if (!usesDesktopFileSelection()) {
-                        SettingsNavItem(
-                            title = stringRes("auto_launch_on_reboot"),
-                            subtitle = if (state.autoLaunchOnReboot) stringRes("on") else stringRes("off"),
-                            onClick = onOpenAutoLaunchOnReboot
-                        )
-                    }
-                    if (supportsDeviceNameSettingsPage()) {
-                        SettingsNavItem(
-                            title = stringRes("device_name"),
-                            subtitle = state.deviceNameBroadcasting.ifBlank { stringRes("paired_device") },
-                            onClick = onOpenDeviceName
-                        )
-                    }
-                    SettingsNavItem(
-                        title = stringRes("language"),
-                        subtitle = AppI18n.languageRowLabel(AppI18n.locale),
-                        onClick = onOpenLanguage
-                    )
-                }
-
-                SettingsCategoryGroup(
-                    title = stringRes("appearance_behavior"),
-                    expanded = state.appearanceBehaviorExpanded,
-                    onToggle = onToggleAppearanceBehaviorGroup
-                ) {
-                    SettingsNavItem(
-                        title = stringRes("themes"),
-                        subtitle = localizedThemeName(state.appTheme),
-                        onClick = onOpenThemes
-                    )
-                    SettingsNavItem(
-                        title = stringRes("bulletin_board_styles"),
-                        subtitle = localizedBulletinBoardStyleName(state.bulletinBoardStyle),
-                        onClick = onOpenBulletinBoardStyles
-                    )
-                    SettingsNavItem(
-                        title = stringRes("notifications"),
-                        subtitle = if (
-                            state.notesNotificationsEnabled ||
-                            state.driveRelayNotificationsEnabled ||
-                            state.fileTransferNotificationsEnabled ||
-                            state.liveTransferCapsuleEnabled
-                        ) stringRes("on") else stringRes("off"),
-                        onClick = onOpenNotifications
-                    )
-                    SettingsNavItem(
-                        title = stringRes("clipboard"),
-                        subtitle = clipboardSettingsSubtitle(state),
-                        onClick = onOpenClipboard
-                    )
-                    SettingsNavItem(
-                        title = stringRes("device_details"),
-                        subtitle = stringRes("peer_telemetry_fields"),
-                        onClick = onOpenDeviceDetails
-                    )
-                    if (usesDesktopFileSelection()) {
-                        SettingsNavItem(
-                            title = stringRes("desktop_layout"),
-                            subtitle = localizedDesktopLayout(state.desktopLayoutMode),
-                            onClick = onOpenDesktopLayout
-                        )
-                    }
-                    if (supportsWindowsFluentDesign()) {
-                        SettingsNavItem(
-                            title = stringRes("windows_design"),
-                            subtitle = localizedDesktopUiStyle(state.desktopUiStyle),
-                            onClick = onOpenWindowsDesign
-                        )
-                    }
-                }
-
-                SettingsCategoryGroup(
-                    title = stringRes("security_account"),
-                    expanded = state.securityAccountExpanded,
-                    onToggle = onToggleSecurityAccountGroup
-                ) {
-                    SettingsNavItem(
-                        title = stringRes("pin_required"),
-                        subtitle = AppI18n.t(
-                            "pin_subtitle",
-                            if (state.pinRequiredEnabled) AppI18n.t("on") else AppI18n.t("off"),
-                            localizedPinIdle(state.pinIdleTimeout)
-                        ),
-                        onClick = onOpenPinRequired
-                    )
-                    SettingsNavItem(
-                        title = stringRes("google_account"),
-                        subtitle = googleAccountSubtitle(state),
-                        onClick = onOpenGoogleAccount
-                    )
-                    SettingsNavItem(
-                        title = stringRes("allow_remote_file_deletion"),
-                        subtitle = if (state.allowRemoteFileDeletion) stringRes("on") else stringRes("off"),
-                        onClick = onOpenRemoteFileDeletion
-                    )
-                    SettingsNavItem(
-                        title = stringRes("leave_cluster_wipe_title"),
-                        subtitle = stringRes("leave_cluster_wipe_desc"),
-                        isDestructive = true,
-                        leadingIcon = Icons.Filled.Warning,
-                        onClick = onOpenLeaveClusterWipe
-                    )
                 }
             }
             val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
@@ -2471,10 +2501,22 @@ private fun SettingsNavItem(
 ) {
     val headlineColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     val trailingTint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    val destructiveColors = if (isDestructive) {
+        ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+            headlineColor = MaterialTheme.colorScheme.onErrorContainer,
+            supportingColor = MaterialTheme.colorScheme.onErrorContainer,
+            leadingIconColor = MaterialTheme.colorScheme.error,
+            trailingIconColor = MaterialTheme.colorScheme.error
+        )
+    } else {
+        ListItemDefaults.colors()
+    }
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
+        colors = destructiveColors,
         leadingContent = leadingIcon?.let { icon ->
             {
                 Icon(

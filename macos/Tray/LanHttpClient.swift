@@ -153,6 +153,8 @@ enum LanHttpClient {
 
     private static let poolLock = NSLock()
     private static var heldSockets: [String: HeldSocket] = [:]
+    private static let transferLock = NSLock()
+    private static var transferConnections: [ObjectIdentifier: NWConnection] = [:]
     private static var warmedAt: [String: Date] = [:]
 
     private static func pooledExecute(target: Target, request: Data, timeoutMs: Int) -> (status: Int, body: Data)? {
@@ -418,9 +420,15 @@ enum LanHttpClient {
                 break
             }
         }
+        if isTransfer {
+            trackTransfer(connection)
+        }
         connection.start(queue: queue)
         let seconds = max(TimeInterval(timeoutMs) / 1000.0, 0.25) + 1.0
         _ = lock.wait(timeout: .now() + seconds)
+        if isTransfer {
+            untrackTransfer(connection)
+        }
         stateLock.lock()
         let timedOut = !finished
         if timedOut {
@@ -439,6 +447,26 @@ enum LanHttpClient {
             log("status \(result.0) \(target.host):\(target.port)")
         }
         return result
+    }
+
+    private static func trackTransfer(_ connection: NWConnection) {
+        transferLock.lock()
+        transferConnections[ObjectIdentifier(connection)] = connection
+        transferLock.unlock()
+    }
+
+    private static func untrackTransfer(_ connection: NWConnection) {
+        transferLock.lock()
+        transferConnections.removeValue(forKey: ObjectIdentifier(connection))
+        transferLock.unlock()
+    }
+
+    static func cancelTransfers() {
+        transferLock.lock()
+        let open = Array(transferConnections.values)
+        transferConnections.removeAll()
+        transferLock.unlock()
+        open.forEach { $0.cancel() }
     }
 
     private static func unicastTcpParams() -> NWParameters {
@@ -941,9 +969,9 @@ private enum HttpResponseParser {
         var used = 0
         while !remaining.isEmpty {
             guard let lineEnd = remaining.range(of: Data("\r\n".utf8)) else { return nil }
-            let sizeLine = remaining.subdata(in: 0..<lineEnd.lowerBound)
+            let sizeLine = remaining.subdata(in: remaining.startIndex..<lineEnd.lowerBound)
             let lineBytes = remaining.distance(from: remaining.startIndex, to: lineEnd.upperBound)
-            remaining = remaining.subdata(in: lineEnd.upperBound..<remaining.count)
+            remaining = remaining.subdata(in: lineEnd.upperBound..<remaining.endIndex)
             used += lineBytes
             let hex = String(data: sizeLine, encoding: .isoLatin1)?
                 .split(separator: ";").first?
@@ -1015,19 +1043,23 @@ private enum HttpResponseParser {
         var out = Data()
         while !remaining.isEmpty {
             guard let lineEnd = remaining.range(of: Data("\r\n".utf8)) else { return nil }
-            let sizeLine = remaining.subdata(in: 0..<lineEnd.lowerBound)
-            remaining = remaining.subdata(in: lineEnd.upperBound..<remaining.count)
+            // dropFirst keeps the old startIndex. subdata(in: 0..<…) then traps (SIGTRAP).
+            let sizeLine = remaining.subdata(in: remaining.startIndex..<lineEnd.lowerBound)
+            remaining = remaining.subdata(in: lineEnd.upperBound..<remaining.endIndex)
             let hex = String(data: sizeLine, encoding: .isoLatin1)?
                 .split(separator: ";").first?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard let size = Int(hex, radix: 16) else { return nil }
             if size == 0 { return out }
             guard remaining.count >= size + 2 else { return nil }
-            out.append(remaining.prefix(size))
-            remaining = remaining.dropFirst(size)
-            if remaining.starts(with: Data("\r\n".utf8)) {
-                remaining = remaining.dropFirst(2)
+            let chunkEnd = remaining.index(remaining.startIndex, offsetBy: size)
+            out.append(remaining.subdata(in: remaining.startIndex..<chunkEnd))
+            var rest = remaining.subdata(in: chunkEnd..<remaining.endIndex)
+            if rest.starts(with: Data("\r\n".utf8)) {
+                let afterCRLF = rest.index(rest.startIndex, offsetBy: 2)
+                rest = rest.subdata(in: afterCRLF..<rest.endIndex)
             }
+            remaining = rest
         }
         return nil
     }
@@ -1063,6 +1095,11 @@ public func fileapex_lan_http_execute(
     }
     writeHttpResult(result.status, result.body, outStatus, outBody, outBodyLen)
     return 0
+}
+
+@_cdecl("fileapex_lan_http_cancel_transfers")
+public func fileapex_lan_http_cancel_transfers() {
+    LanHttpClient.cancelTransfers()
 }
 
 @_cdecl("fileapex_lan_http_upload_file")

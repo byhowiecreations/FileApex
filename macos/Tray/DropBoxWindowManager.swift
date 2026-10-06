@@ -76,6 +76,7 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
     private var isSubmittingSend = false
 
     public var onSend: ((_ deviceIdsJson: String, _ filePathsJson: String) -> Void)?
+    public var onCancelSend: (() -> Void)?
     public var onFrameChanged: ((_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> Void)?
     public var onVisibilityChanged: ((Bool) -> Void)?
 
@@ -119,6 +120,9 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
                 },
                 onSend: { [weak self] in
                     self?.submitSend() ?? false
+                },
+                onCancelSend: { [weak self] in
+                    self?.onCancelSend?()
                 }
             )
         )
@@ -445,6 +449,7 @@ struct DropBoxContentView: View {
     @ObservedObject var state: DropBoxState
     let onFilesChanged: ([String]) -> Void
     let onSend: () -> Bool
+    let onCancelSend: () -> Void
 
     @ObservedObject private var copy = AppCopy.shared
     @State private var isTargeted = false
@@ -522,14 +527,17 @@ struct DropBoxContentView: View {
                 if !state.filePaths.isEmpty {
                     HStack(spacing: 10) {
                         Button(role: .cancel) {
-                            clearFiles()
+                            if state.isSending {
+                                onCancelSend()
+                            } else {
+                                clearFiles()
+                            }
                         } label: {
                             Text(copy.t("cancel"))
                                 .frame(minWidth: 60)
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.regular)
-                        .disabled(state.isSending)
 
                         Button {
                             guard !state.isSending else { return }
