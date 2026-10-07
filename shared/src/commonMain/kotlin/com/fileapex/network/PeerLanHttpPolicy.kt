@@ -35,7 +35,11 @@ object PeerLanHttpPolicy {
         PeerReachabilityMessages.localWifiRequired()
 
     fun unreachableMessage(host: String, port: Int): String =
-        com.fileapex.i18n.AppI18n.t("peer_unreachable_wifi", host, port.toString())
+        com.fileapex.i18n.AppI18n.t(
+            if (isTailnetRoute(host)) "peer_unreachable_tailnet" else "peer_unreachable_wifi",
+            host,
+            port.toString()
+        )
 
     /** Tailnet addresses use the userspace splice and do not need a LAN interface. */
     private fun isTailnetRoute(host: String): Boolean =

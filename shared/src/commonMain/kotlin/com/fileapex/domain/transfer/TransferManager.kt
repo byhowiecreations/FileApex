@@ -201,7 +201,10 @@ class TransferManager(
             return coroutineScope {
                 // A child job, so a user cancel stops this batch without cancelling the caller (queue drain).
                 val work = async { sendPrepared(sources, selectedDevices, skipTransferPrepare) }
-                val unregisterCancel = TransferActivityGuard.registerCancelable(work)
+                val unregisterCancel = TransferActivityGuard.registerCancelable(
+                    work,
+                    currentCoroutineContext()[TransferOwner]?.id.orEmpty()
+                )
                 try {
                     work.await()
                 } catch (cancelled: CancellationException) {

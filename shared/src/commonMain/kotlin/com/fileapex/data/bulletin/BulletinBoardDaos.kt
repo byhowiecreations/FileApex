@@ -14,6 +14,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE isDeleted = 0 ORDER BY timestamp ASC")
     suspend fun getActiveOnce(): List<MessageEntity>
 
+    @Query("SELECT COUNT(*) FROM messages WHERE isDeleted = 0")
+    suspend fun countActive(): Int
+
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MessageEntity?
 

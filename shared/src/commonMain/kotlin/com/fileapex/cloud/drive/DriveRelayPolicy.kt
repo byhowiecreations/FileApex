@@ -12,6 +12,8 @@ object DriveRelayPolicy {
     const val PURGE_AFTER_MS: Long = 72L * 60L * 60L * 1000L
     /** Background log.md ETag poll — 15 minutes keeps Drive well under rate limits. */
     const val LEDGER_POLL_INTERVAL_MS: Long = 15L * 60L * 1000L
+    /** Desktop only, and only while on AC power: an unchanged ledger is one tiny conditional request. */
+    const val LEDGER_POLL_INTERVAL_AC_MS: Long = 2L * 60L * 1000L
     const val RECEIVE_RETRIES: Int = 2
 
     fun receiveRetryDelayMs(): Long = 3_000L + Random.nextLong(15_001L)

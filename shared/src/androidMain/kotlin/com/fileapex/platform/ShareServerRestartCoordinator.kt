@@ -69,6 +69,12 @@ object ShareServerRestartCoordinator {
     fun restoreFromExternalWake(context: Context, source: String) {
         val appContext = context.applicationContext
         ShareServerPendingStart.consume(appContext)
+        if (com.fileapex.network.ServerLifecycleManager.isRunning &&
+            ServiceWatchdogScheduler.isShareServerRunning(appContext)
+        ) {
+            Log.d(TAG, "Share server already running - $source needs no restart")
+            return
+        }
         runCatching {
             val start = Intent().setClassName(appContext.packageName, FILE_SHARE_SERVER_SERVICE).apply {
                 action = "com.fileapex.action.START_SHARE_SERVER"

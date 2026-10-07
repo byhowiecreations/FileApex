@@ -5,7 +5,10 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.domain.clipboard.ClipboardE2ee
 import com.fileapex.domain.transfer.MultiCopySource
+import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.domain.transfer.TransferOwner
 import com.fileapex.platform.DriveRelayNotifier
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
@@ -14,6 +17,12 @@ import com.fileapex.util.TimeUtils
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +39,7 @@ import kotlinx.io.files.SystemFileSystem
  * Google Drive relay: upload, ledger, FCM pointer, download, pin, and 72-hour purge.
  */
 object DriveRelayCoordinator {
+    private const val DOWNLOAD_PROGRESS_INTERVAL_MS = 500L
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val processedHashes = mutableSetOf<String>()
@@ -206,38 +216,110 @@ object DriveRelayCoordinator {
         require(!DriveRelayPolicy.payloadExceedsRelayLimit(sources.map { it.sizeBytes })) {
             DriveRelayPolicy.relayLimitExceededMessage(sources.map { it.sizeBytes })
         }
-        for (source in sources) {
-            require(source.absolutePath.isNotBlank()) {
-                "Drive relay source path is missing for ${source.fileName}"
+        val encrypt = FileApexServices.settings.driveRelayEncryptionEnabled.value
+        // Fail closed: with encryption on, a target that has no key yet must not get a plaintext copy.
+        val targetKeys = if (encrypt) {
+            targetDeviceIds.associateWith { id ->
+                val peer = FileApexServices.deviceRepository.getDevice(id)
+                peer?.publicKey?.takeIf { it.isNotBlank() }
+                    ?: error("Drive encryption is on but ${peer?.deviceName ?: id} has no encryption key")
             }
-            driveLog("upload start name=${source.fileName} bytesPath=${source.absolutePath}")
-            val uploaded = GoogleDriveClient.uploadResumable(
-                source.absolutePath,
-                uniqueRemoteName(source.fileName)
-            )
-            driveLog("upload ok id=${uploaded.id} bytes=${uploaded.sizeBytes} name=${source.fileName}")
-            for (targetId in targetDeviceIds) {
-                val now = TimeUtils.now()
-                val entry = DriveLedgerEntry(
-                    entryId = generateDeviceId(),
-                    uploadedAtEpochMs = now,
-                    sourceDeviceId = selfId,
-                    driveFileId = uploaded.id,
-                    contentHash = uploaded.contentHash,
-                    fileName = source.fileName,
-                    sizeBytes = uploaded.sizeBytes,
-                    targetScope = targetId,
-                    kind = DriveLedgerKinds.FILE_TRANSFER,
-                    retrievedBy = emptyList(),
-                    delivery = listOf(
-                        DriveTargetStatus(targetId, DriveDeliveryStates.PENDING_SYNC, now)
-                    ),
-                    pinned = false,
-                    relativeDestPath = source.relativeDestPath.ifBlank { source.fileName }
-                )
-                appendLedger(entry)
-                created += entry
+        } else {
+            emptyMap()
+        }
+        val totalBytes = sources.sumOf { it.sizeBytes }
+        var uploadedBytes = 0L
+        val handle = Job(currentCoroutineContext()[Job])
+        TransferActivityGuard.beginTransfer(fileName = sources.first().fileName)
+        TransferActivityGuard.beginDriveRelay()
+        val unregister = TransferActivityGuard.registerCancelable(
+            handle,
+            currentCoroutineContext()[TransferOwner]?.id.orEmpty()
+        )
+        try {
+            withContext(handle) {
+                for (source in sources) {
+                    require(source.absolutePath.isNotBlank()) {
+                        "Drive relay source path is missing for ${source.fileName}"
+                    }
+                    driveLog("upload start name=${source.fileName} bytesPath=${source.absolutePath}")
+                    val before = uploadedBytes
+                    var uploadPath = source.absolutePath
+                    var remoteName = uniqueRemoteName(source.fileName)
+                    var encryption: DriveEntryEncryption? = null
+                    var encryptedTemp: java.io.File? = null
+                    if (encrypt) {
+                        val job = currentCoroutineContext()[Job]
+                        val fileKey = DriveRelayCrypto.newKey()
+                        val temp = java.io.File.createTempFile("fileapex-relay-", ".fxe")
+                        encryptedTemp = temp
+                        val sealed = withContext(Dispatchers.IO) {
+                            DriveRelayCrypto.encryptFile(
+                                java.io.File(source.absolutePath),
+                                temp,
+                                fileKey
+                            ) { job?.ensureActive() }
+                        }
+                        encryption = DriveEntryEncryption(
+                            plainSizeBytes = sealed.plainSizeBytes,
+                            plainSha256 = sealed.plainSha256,
+                            wrappedKeys = targetKeys.mapValues { (id, publicKey) ->
+                                ClipboardE2ee.encrypt(fileKey, selfId, id, publicKey)
+                            }
+                        )
+                        uploadPath = temp.absolutePath
+                        remoteName = "${TimeUtils.now()}-${generateDeviceId().take(8)}.fxe"
+                    }
+                    val uploaded = try {
+                        GoogleDriveClient.uploadResumable(
+                            uploadPath,
+                            remoteName,
+                            onProgress = { sent, _ ->
+                                if (totalBytes > 0L) TransferActivityGuard.updateProgress(before + sent, totalBytes)
+                            }
+                        )
+                    } finally {
+                        encryptedTemp?.delete()
+                    }
+                    uploadedBytes += uploaded.sizeBytes
+                    driveLog("upload ok id=${uploaded.id} bytes=${uploaded.sizeBytes} name=${source.fileName}")
+                    for (targetId in targetDeviceIds) {
+                        val now = TimeUtils.now()
+                        val entry = DriveLedgerEntry(
+                            entryId = generateDeviceId(),
+                            uploadedAtEpochMs = now,
+                            sourceDeviceId = selfId,
+                            driveFileId = uploaded.id,
+                            contentHash = uploaded.contentHash,
+                            fileName = source.fileName,
+                            sizeBytes = uploaded.sizeBytes,
+                            targetScope = targetId,
+                            kind = DriveLedgerKinds.FILE_TRANSFER,
+                            retrievedBy = emptyList(),
+                            delivery = listOf(
+                                DriveTargetStatus(targetId, DriveDeliveryStates.PENDING_SYNC, now)
+                            ),
+                            pinned = false,
+                            relativeDestPath = source.relativeDestPath.ifBlank { source.fileName },
+                            encryption = encryption
+                        )
+                        appendLedger(entry)
+                        created += entry
+                    }
+                }
             }
+        } catch (error: CancellationException) {
+            if (handle.isCancelled && currentCoroutineContext().isActive &&
+                TransferActivityGuard.removeFromDriveRequested()
+            ) {
+                withContext(NonCancellable) { removeUploadedEntries(created) }
+            }
+            throw error
+        } finally {
+            unregister()
+            handle.complete()
+            TransferActivityGuard.endDriveRelay()
+            TransferActivityGuard.endTransfer()
         }
         if (created.isEmpty()) {
             error("Drive relay did not upload any files")
@@ -247,6 +329,23 @@ object DriveRelayCoordinator {
             targetDeviceIds = targetDeviceIds
         )
         return created
+    }
+
+    /** "Cancel and remove from Drive": deletes what a cancelled send already put on Drive. */
+    private suspend fun removeUploadedEntries(entries: List<DriveLedgerEntry>) {
+        if (entries.isEmpty()) return
+        val entryIds = entries.map { it.entryId }.toSet()
+        entries.map { it.driveFileId }.distinct().forEach { driveFileId ->
+            runCatching { GoogleDriveClient.deleteFile(driveFileId) }
+        }
+        runCatching {
+            mutex.withLock {
+                mutateLedger { ledger ->
+                    ledger.copy(entries = ledger.entries.filterNot { it.entryId in entryIds })
+                }
+            }
+        }
+        driveLog("removed ${entries.size} cancelled relay entr(ies) from Drive")
     }
 
     suspend fun setNoteAttachmentPinned(driveFileId: String, pinned: Boolean) {
@@ -358,6 +457,11 @@ object DriveRelayCoordinator {
                     val key = "${entry.entryId}:${selfId}"
                     if (key in processedHashes) continue
                     val result = retrieveWithRetries(entry)
+                    if (result == RetrieveResult.CANCELLED) {
+                        // Stays on Drive; not re-fetched until the app restarts.
+                        processedHashes += key
+                        continue
+                    }
                     if (result == RetrieveResult.GONE) {
                         goneIds += entry.entryId
                         dirty = true
@@ -446,10 +550,99 @@ object DriveRelayCoordinator {
                 driveLogError("retrieve ${entry.entryId} attempt ${attempt + 1} failed", error)
                 RetrieveResult.FAILED
             }
-            if (result == RetrieveResult.OK || result == RetrieveResult.GONE) return result
+            if (result == RetrieveResult.OK || result == RetrieveResult.GONE ||
+                result == RetrieveResult.CANCELLED
+            ) {
+                return result
+            }
             if (attempt >= DriveRelayPolicy.RECEIVE_RETRIES) return RetrieveResult.FAILED
             delay(DriveRelayPolicy.receiveRetryDelayMs())
             attempt += 1
+        }
+    }
+
+    private enum class DownloadOutcome { DONE, CANCELLED, CANCELLED_REMOVE }
+
+    /**
+     * Downloads [entry] with live progress and a Cancel the user can reach from the banner or the
+     * queue screen. A cancel either keeps the file on Drive for later or removes it from Drive.
+     */
+    private suspend fun downloadWithProgress(entry: DriveLedgerEntry, partPath: String): DownloadOutcome {
+        val handle = Job(currentCoroutineContext()[Job])
+        TransferActivityGuard.beginTransfer(fileName = entry.fileName)
+        TransferActivityGuard.beginDriveRelay()
+        val unregister = TransferActivityGuard.registerCancelable(
+            handle,
+            currentCoroutineContext()[TransferOwner]?.id.orEmpty()
+        )
+        try {
+            coroutineScope {
+                val ticker = launch {
+                    while (isActive) {
+                        val have = SystemFileSystem.metadataOrNull(Path(partPath))?.size ?: 0L
+                        if (entry.sizeBytes > 0L) {
+                            TransferActivityGuard.updateProgress(have, entry.sizeBytes)
+                        }
+                        delay(DOWNLOAD_PROGRESS_INTERVAL_MS)
+                    }
+                }
+                try {
+                    withContext(handle) {
+                        GoogleDriveClient.downloadToPath(entry.driveFileId, partPath, entry.sizeBytes)
+                    }
+                } finally {
+                    ticker.cancel()
+                }
+            }
+            return DownloadOutcome.DONE
+        } catch (error: CancellationException) {
+            if (handle.isCancelled && currentCoroutineContext().isActive) {
+                return if (TransferActivityGuard.consumeRemoveFromDrive()) {
+                    DownloadOutcome.CANCELLED_REMOVE
+                } else {
+                    DownloadOutcome.CANCELLED
+                }
+            }
+            throw error
+        } finally {
+            unregister()
+            handle.complete()
+            TransferActivityGuard.endDriveRelay()
+            TransferActivityGuard.endTransfer()
+        }
+    }
+
+    /** Opens the file key sealed for this device, decrypts, and checks both size and SHA-256. */
+    private suspend fun decryptReceived(
+        entry: DriveLedgerEntry,
+        encryption: DriveEntryEncryption,
+        cipherPath: String,
+        plainPath: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val job = currentCoroutineContext()[Job]
+        try {
+            val selfId = loadLocalIdentity().deviceId
+            val wrapped = encryption.wrappedKeys[selfId]
+                ?: error("no file key was sealed for this device")
+            val senderKey = FileApexServices.deviceRepository.getDevice(entry.sourceDeviceId)
+                ?.publicKey?.takeIf { it.isNotBlank() }
+                ?: error("sender key is not known yet")
+            val fileKey = ClipboardE2ee.decrypt(wrapped, selfId, entry.sourceDeviceId, senderKey)
+            val result = DriveRelayCrypto.decryptFile(
+                java.io.File(cipherPath),
+                java.io.File(plainPath),
+                fileKey
+            ) { job?.ensureActive() }
+            check(result.plainSizeBytes == encryption.plainSizeBytes) { "decrypted size does not match" }
+            check(result.plainSha256.equals(encryption.plainSha256, ignoreCase = true)) {
+                "decrypted checksum does not match"
+            }
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            driveLogError("decrypt ${entry.entryId} failed", error)
+            false
         }
     }
 
@@ -471,9 +664,10 @@ object DriveRelayCoordinator {
         val preferred = "${destRoot.trimEnd('/', '\\')}/${relative.trimStart('/', '\\')}"
         val preferredPath = Path(preferred)
         val existingSize = SystemFileSystem.metadataOrNull(preferredPath)?.size
+        val finalSize = entry.encryption?.plainSizeBytes ?: entry.sizeBytes
         if (SystemFileSystem.exists(preferredPath) &&
-            entry.sizeBytes > 0L &&
-            existingSize == entry.sizeBytes
+            finalSize > 0L &&
+            existingSize == finalSize
         ) {
             driveLog("retrieve already on disk ${entry.fileName} bytes=$existingSize")
             bindRetrievedNote(entry, preferred)
@@ -486,7 +680,22 @@ object DriveRelayCoordinator {
         }
         val partPath = "$destPath.part"
         driveLog("retrieve ${entry.fileName} bytes=${entry.sizeBytes} dest=$destPath")
-        GoogleDriveClient.downloadToPath(entry.driveFileId, partPath, entry.sizeBytes)
+        when (downloadWithProgress(entry, partPath)) {
+            DownloadOutcome.DONE -> Unit
+            DownloadOutcome.CANCELLED -> {
+                runCatching { SystemFileSystem.delete(Path(partPath)) }
+                driveLog("retrieve cancelled by user ${entry.fileName}; kept on Drive")
+                return RetrieveResult.CANCELLED
+            }
+            DownloadOutcome.CANCELLED_REMOVE -> {
+                runCatching { SystemFileSystem.delete(Path(partPath)) }
+                withContext(NonCancellable) {
+                    runCatching { GoogleDriveClient.deleteFile(entry.driveFileId) }
+                }
+                driveLog("retrieve cancelled by user ${entry.fileName}; removed from Drive")
+                return RetrieveResult.GONE
+            }
+        }
         val part = Path(partPath)
         if (!SystemFileSystem.exists(part)) return RetrieveResult.FAILED
         val have = SystemFileSystem.metadataOrNull(part)?.size
@@ -495,10 +704,20 @@ object DriveRelayCoordinator {
             return RetrieveResult.FAILED
         }
         val dest = Path(destPath)
+        val readyPart = entry.encryption?.let { encryption ->
+            val plainPath = "$destPath.dec.part"
+            val decrypted = decryptReceived(entry, encryption, partPath, plainPath)
+            runCatching { SystemFileSystem.delete(part) }
+            if (!decrypted) {
+                runCatching { SystemFileSystem.delete(Path(plainPath)) }
+                return RetrieveResult.FAILED
+            }
+            Path(plainPath)
+        } ?: part
         if (SystemFileSystem.exists(dest)) {
             SystemFileSystem.delete(dest)
         }
-        SystemFileSystem.atomicMove(part, dest)
+        SystemFileSystem.atomicMove(readyPart, dest)
         bindRetrievedNote(entry, destPath)
         return if (SystemFileSystem.exists(Path(destPath))) RetrieveResult.OK else RetrieveResult.FAILED
     }
@@ -606,5 +825,6 @@ object DriveRelayCoordinator {
 private enum class RetrieveResult {
     OK,
     FAILED,
-    GONE
+    GONE,
+    CANCELLED
 }

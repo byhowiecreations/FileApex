@@ -308,7 +308,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="icon_pack">图标包</string>
     <string name="kinetic_style">样式</string>
     <string name="kinetic_style_space">太空</string>
-    <string name="kinetic_style_frosted">磨砂</string>
     <string name="kinetic_style_jaded_steel">玉钢</string>
     <string name="freestyle_onboarding_hint">编辑模式：拖动元素以重新调整位置。使用拖动手柄重新排序菜单选项。</string>
     <string name="theme_lines_desc">从中心枢纽向每个设备节点绘制虚线。</string>
@@ -488,6 +487,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shared_files">共享文件</string>
     <string name="n_files">%1$s 个文件</string>
     <string name="sending">正在发送…</string>
+    <string name="send_continues_in_background">关闭后仍会继续发送。</string>
+    <string name="transfer_no_data">已有 %1$s 秒没有数据。仍在重试，连接恢复后会自动继续。</string>
     <string name="loading_devices">正在加载设备…</string>
     <string name="choose_destination">选择目标</string>
     <string name="save_to">保存到 %1$s</string>
@@ -621,6 +622,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="relay_firestore_permission_denied">云端设备详情被 Firestore 安全规则阻止。请在 Firebase Console → Firestore → Rules 中添加 diagnosticsRelay 规则并发布。</string>
     <string name="relay_load_failed">无法通过移动网络加载设备详情</string>
     <string name="peer_unreachable_wifi">无法通过 Wi-Fi 在 %1$s:%2$s 访问对端。请确认两台设备位于同一本地网络。</string>
+    <string name="peer_unreachable_tailnet">Tailnet 对端 %1$s:%2$s 未响应。它可能已离线或路径中断，请稍后重试。</string>
     <string name="file_nav_off_wifi">离开本地 Wi‑Fi 前无法浏览文件。</string>
     <string name="file_transfer_off_wifi_queued">%1$s 不在本地 Wi‑Fi — 传输已排队，待重新连上 Wi‑Fi。</string>
     <string name="file_transfer_off_wifi_queued_multiple">%1$s 不在本地 Wi‑Fi — 传输已排队，待重新连上 Wi‑Fi。</string>
@@ -788,6 +790,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="icon_tablet">平板电脑</string>
     <string name="icon_android_phone">Android 手机</string>
     <string name="icon_desktop">桌面电脑</string>
+    <string name="icon_docker">Docker</string>
+    <string name="icon_linux">Linux</string>
     <string name="storage_used">已使用 %1$s / %2$s</string>
     <string name="memory_free_of">可用 %1$s / 共 %2$s（已用 %3$s）</string>
     <string name="cores_active_total">%1$s 个活动 / 共 %2$s</string>
@@ -981,5 +985,25 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="disabled">已停用</string>
     <string name="enabled">已启用</string>
     <string name="opening_folder">正在打开文件夹…</string>
+    <string name="trash_failed">无法移到废纸篓</string>
+    <string name="compress">压缩</string>
+    <string name="uncompress">解压</string>
+    <string name="reconnect_folder">重新连接</string>
+    <string name="clear_pending_copy">清除待粘贴的复制</string>
+    <string name="unable_to_open_file">无法打开文件</string>
+    <string name="moved_to_trash">已移到废纸篓</string>
+    <string name="pane_local">本地</string>
+    <string name="get_info">显示简介</string>
+    <string name="split_view">分屏</string>
+    <string name="cancel_drive_title">取消 Drive 传输？</string>
+    <string name="cancel_drive_body">此传输通过 Google Drive 进行。你可以取消并稍后重试，或取消并从 Drive 中删除该文件，使其不会被下载。</string>
+    <string name="cancel_try_later">取消，稍后重试</string>
+    <string name="cancel_remove_from_drive">取消并从 Drive 删除</string>
+    <string name="cancel_keep_going">继续传输</string>
+    <string name="queued_sending_background">已加入队列：正在后台发送到 %1$s。可在传输队列中查看进度。</string>
+    <string name="queued_source_changed">%1$s 在加入队列后已更改，因此未发送。重试即可发送当前版本。</string>
+    <string name="drive_encrypt">加密文件</string>
+    <string name="drive_encrypt_off">已关闭。文件将原样上传到 Drive，你也可以直接在 Drive 下载。</string>
+    <string name="drive_encrypt_on">已开启。文件上传前加密，仅你已配对的设备可以打开。文件名仍可见。</string>
 </resources>
 

@@ -50,5 +50,7 @@ data class QueuedSourceSnapshot(
     val absolutePath: String,
     val relativeDestPath: String,
     val remoteHost: String? = null,
-    val remotePort: Int? = null
+    val remotePort: Int? = null,
+    /** Local file's last-modified time when queued; 0 when unknown. A later change means a different file. */
+    val modifiedEpochMs: Long = 0L
 )

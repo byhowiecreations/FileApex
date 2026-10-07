@@ -713,7 +713,8 @@ object GoogleLinkCoordinator {
                                 platform = remote.platform.ifBlank { local?.platform.orEmpty() },
                                 deviceMake = fingerprintMake.ifBlank { local?.deviceMake.orEmpty() },
                                 deviceModel = fingerprintModel.ifBlank { local?.deviceModel.orEmpty() },
-                                lastSeenEpochMs = remote.updatedAtEpochMs.coerceAtLeast(0L)
+                                // Presence is never taken from the cloud; this device's own sweep sets it.
+                                lastSeenEpochMs = local?.lastSeenEpochMs ?: 0L
                             ),
                             membershipVersion = remote.membershipVersion,
                             membershipProtocol = remote.membershipProtocol,

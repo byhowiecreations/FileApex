@@ -1,5 +1,6 @@
 package com.fileapex.cloud.drive
 
+import com.fileapex.platform.collectFastBatteryDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,12 +17,22 @@ actual object DriveSyncScheduler {
         if (loopJob?.isActive == true) return
         loopJob = scope.launch {
             while (isActive) {
-                delay(DriveRelayPolicy.LEDGER_POLL_INTERVAL_MS)
+                delay(pollIntervalMs())
                 runCatching { DriveRelayCoordinator.sweep() }
                     .onFailure { error ->
                         println("DriveSyncScheduler: sweep failed - ${error.message}")
                     }
             }
+        }
+    }
+
+    // Battery and unknown power sources keep the slow cadence so a laptop is never woken more often.
+    private fun pollIntervalMs(): Long {
+        val state = runCatching { collectFastBatteryDiagnostics().chargingState }.getOrDefault("")
+        return if (state == "AC" || state == "Full") {
+            DriveRelayPolicy.LEDGER_POLL_INTERVAL_AC_MS
+        } else {
+            DriveRelayPolicy.LEDGER_POLL_INTERVAL_MS
         }
     }
 

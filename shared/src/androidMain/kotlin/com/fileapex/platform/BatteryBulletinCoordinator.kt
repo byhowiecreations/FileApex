@@ -32,6 +32,7 @@ object BatteryBulletinCoordinator {
     private const val PREFS_NAME = "fileapex_battery_bulletin"
     private const val KEY_ALERTED_THIS_CYCLE = "alerted_this_discharge_cycle"
     private const val KEY_LAST_ALERTED_LEVEL = "last_alerted_level_percent"
+    private const val KEY_RETRACT_PENDING = "retract_pending"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
@@ -45,6 +46,9 @@ object BatteryBulletinCoordinator {
     @Volatile
     private var postInFlight = false
 
+    @Volatile
+    private var lastWakeReconcileMs = 0L
+
     data class Snapshot(
         val levelPercent: Int?,
         val charging: Boolean
@@ -55,6 +59,32 @@ object BatteryBulletinCoordinator {
         registerDynamicReceiver(appContext)
         ShareServerKeepAliveCoordinator.scheduleJobIfNeeded(appContext)
         reconcile(appContext, onComplete)
+    }
+
+    /**
+     * Push-driven process start. Every FCM delivery can create the messaging service again, so
+     * this follows the same tiers as the keep-alive job: plugged in with nothing to retract, or
+     * above the alert tiers, there is nothing to evaluate. Below that the tier interval applies.
+     */
+    fun onProcessStartFromWake(context: Context) {
+        val appContext = context.applicationContext
+        val minIntervalMs = wakeReconcileIntervalMs(appContext, currentSnapshot(appContext)) ?: return
+        val now = System.currentTimeMillis()
+        synchronized(lock) {
+            if (now - lastWakeReconcileMs < minIntervalMs) return
+            lastWakeReconcileMs = now
+        }
+        onProcessStart(appContext)
+    }
+
+    /** Null when there is nothing to evaluate. */
+    private fun wakeReconcileIntervalMs(context: Context, snapshot: Snapshot): Long? {
+        if (snapshot.charging) return if (isRetractPending(context)) 0L else null
+        return BatteryBulletinPolicy.jobIntervalMs(
+            levelPercent = snapshot.levelPercent,
+            charging = false,
+            alreadyAlertedThisCycle = isAlertedThisCycle(context)
+        )
     }
 
     fun onBatteryLow(context: Context, onComplete: (() -> Unit)? = null) {
@@ -150,7 +180,7 @@ object BatteryBulletinCoordinator {
             val level = knownLevel ?: readBatteryLevelPercent(context)
             val note = FileApexServices.noteRepository.sendBatteryAlert(level)
             if (isDevicePluggedIn(context)) {
-                retractIfNeeded(context, reason = "charging during post")
+                retractIfNeeded(context, reason = "charging during post", force = true)
                 Log.i(TAG, "Retracted low battery bulletin immediately (charging during post)")
             } else {
                 markAlerted(context, level)
@@ -161,11 +191,36 @@ object BatteryBulletinCoordinator {
         }
     }
 
-    private suspend fun retractIfNeeded(context: Context, reason: String) {
+    /**
+     * A retract is sent to every peer and wakes them, so it only goes out when this device
+     * posted an alert that has not been retracted yet. Retracting on every launch while
+     * charging made linked devices wake each other in a loop.
+     */
+    private suspend fun retractIfNeeded(context: Context, reason: String, force: Boolean = false) {
+        if (!force && !isRetractPending(context)) return
         val selfId = runCatching { loadLocalIdentity().deviceId }.getOrDefault("")
         if (selfId.isEmpty()) return
         FileApexServices.noteRepository.retractBulletinsByKind(selfId, BulletinContentType.BATTERY_LOW)
+        setRetractPending(context, false)
         Log.i(TAG, "Retracted low battery bulletins for $selfId ($reason)")
+    }
+
+    private fun isRetractPending(context: Context): Boolean {
+        synchronized(lock) {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            // Installs from before this flag existed fall back to the discharge-cycle latch.
+            return prefs.getBoolean(KEY_RETRACT_PENDING, prefs.getBoolean(KEY_ALERTED_THIS_CYCLE, false))
+        }
+    }
+
+    private fun setRetractPending(context: Context, pending: Boolean) {
+        synchronized(lock) {
+            context.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_RETRACT_PENDING, pending)
+                .apply()
+        }
     }
 
     private fun registerDynamicReceiver(context: Context) {
@@ -211,6 +266,7 @@ object BatteryBulletinCoordinator {
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(KEY_ALERTED_THIS_CYCLE, true)
+                .putBoolean(KEY_RETRACT_PENDING, true)
             if (level != null) {
                 editor.putInt(KEY_LAST_ALERTED_LEVEL, level)
             }

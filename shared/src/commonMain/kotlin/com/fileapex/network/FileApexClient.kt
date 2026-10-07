@@ -23,6 +23,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
@@ -674,7 +675,7 @@ class FileApexClient(
                     )
                 }
             }.exceptionOrNull() ?: return
-            if (failure is PeerUnreachableException) throw failure
+            if (failure is PeerUnreachableException || failure is TransferCancelledException) throw failure
             lastError = failure
         }
         throw lastError ?: error(AppI18n.t("download_failed"))
@@ -792,7 +793,11 @@ class FileApexClient(
                     streamRangeToPart(host, port, remotePath, partPath, totalSize, from, segment.endExclusive, isLast, onBytes)
                 }
             }.exceptionOrNull() ?: return
-            if (failure is PeerUnreachableException || failure is SourceSizeChangedException) throw failure
+            if (failure is PeerUnreachableException || failure is SourceSizeChangedException ||
+                failure is TransferCancelledException
+            ) {
+                throw failure
+            }
             lastError = failure
         }
         throw lastError ?: error(AppI18n.t("download_failed"))
@@ -1039,7 +1044,7 @@ class FileApexClient(
                 onProgress?.invoke(totalSize, totalSize)
                 return
             }
-            if (failure is PeerUnreachableException) throw failure
+            if (failure is PeerUnreachableException || failure is TransferCancelledException) throw failure
             lastError = failure
         }
         throw lastError ?: error(AppI18n.t("upload_failed"))
@@ -1212,7 +1217,7 @@ class FileApexClient(
                     }
                 }
             }.exceptionOrNull() ?: return
-            if (failure is PeerUnreachableException) throw failure
+            if (failure is PeerUnreachableException || failure is TransferCancelledException) throw failure
             lastError = failure
         }
         throw lastError ?: error(AppI18n.t("upload_failed"))
@@ -1241,9 +1246,33 @@ class FileApexClient(
                 onProgress?.invoke(totalSize, totalSize)
                 return
             }
-            val sent = AtomicLong(TransferRanges.coveredBytes(state.ranges).coerceAtMost(totalSize))
-            onProgress?.invoke(sent.get(), totalSize)
+            // Progress is what the receiver confirms, not what the socket accepted: userspace and
+            // carrier buffers can hold tens of MB that have not arrived.
+            val confirmed = AtomicLong(TransferRanges.coveredBytes(state.ranges).coerceAtMost(totalSize))
+            onProgress?.invoke(confirmed.get(), totalSize)
             coroutineScope {
+                val poller = launch(TransferRuntime.outbound) {
+                    while (true) {
+                        delay(CONFIRM_POLL_INTERVAL_MS)
+                        val polled = try {
+                            withTimeoutOrNull(CONFIRM_POLL_TIMEOUT_MS) {
+                                querySegmentState(host, port, remoteTargetPath, totalSize, transactionId, prepare = false)
+                            }
+                        } catch (cancelled: TransferCancelledException) {
+                            throw cancelled
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            null
+                        } ?: continue
+                        if (polled.complete) continue
+                        val landed = (TransferRanges.coveredBytes(polled.ranges) + polled.inFlightBytes)
+                            .coerceIn(0L, totalSize)
+                        val shown = confirmed.updateAndGet { previous -> maxOf(previous, landed) }
+                        onProgress?.invoke(shown, totalSize)
+                    }
+                }
+                try {
                 plan.map { segment ->
                     async(TransferRuntime.outbound) {
                         uploadOneSegment(
@@ -1256,11 +1285,12 @@ class FileApexClient(
                             segment = segment,
                             initial = state.ranges,
                             sendRange = sendRange
-                        ) { delta ->
-                            onProgress?.invoke(sent.addAndGet(delta).coerceIn(0L, totalSize), totalSize)
-                        }
+                        ) { _ -> }
                     }
                 }.awaitAll()
+                } finally {
+                    poller.cancel()
+                }
             }
             val response = boundPost(
                 host = host,
@@ -1337,11 +1367,16 @@ class FileApexClient(
                 }
             }
             val failure = result.exceptionOrNull()
-            if (failure is PeerUnreachableException || failure is SourceSizeChangedException) throw failure
+            if (failure is PeerUnreachableException || failure is SourceSizeChangedException ||
+                failure is TransferCancelledException
+            ) {
+                throw failure
+            }
             val response = result.getOrNull()
             when {
                 response == null -> lastError = failure
                 response.statusCode in 200..299 -> return
+                response.statusCode == 410 -> throw TransferCancelledException()
                 response.statusCode == 403 -> error(AppI18n.t("pin_required_open_device"))
                 else -> lastError = IllegalStateException("${AppI18n.t("upload_failed")} (${response.statusCode})")
             }
@@ -1374,6 +1409,7 @@ class FileApexClient(
         if (response.statusCode == 403) {
             error(AppI18n.t("pin_required_open_device"))
         }
+        if (response.statusCode == 410) throw TransferCancelledException()
         requireSuccess(response, "Segment state failed (${response.statusCode})")
         return json.decodeFromString(SegmentStateResponse.serializer(), response.body)
     }
@@ -1438,6 +1474,7 @@ class FileApexClient(
         if (response.statusCode == 403) {
             error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
         }
+        if (response.statusCode == 410) throw TransferCancelledException()
         require(response.statusCode in 200..299) {
             "${AppI18n.t("upload_failed")} (${response.statusCode})"
         }
@@ -1602,7 +1639,11 @@ class FileApexClient(
     companion object {
         const val CHUNK_SIZE = SocketFileStreamer.BUFFER_BYTES
         private const val PEER_CONNECT_TIMEOUT_MS = 5_000L
-        private const val TRANSFER_IDLE_TIMEOUT_MS = 10 * 60 * 1000L
+        /**
+         * A stream that moves no bytes for this long is abandoned and its range resumes from the
+         * ledger. The progress sheet starts reporting silence well before this.
+         */
+        private const val TRANSFER_IDLE_TIMEOUT_MS = 2 * 60 * 1000L
         private const val PEER_REQUEST_TIMEOUT_MS = 15_000L
         private const val LIST_REQUEST_TIMEOUT_MS = 4_000L
         private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
@@ -1613,6 +1654,8 @@ class FileApexClient(
         private const val CAPABILITY_CACHE_MS = 10 * 60 * 1000L
         private const val RELAY_CHANNEL_CAPACITY = 2
         private const val SEGMENT_COMPLETE_ROUNDS = 2
+        private const val CONFIRM_POLL_INTERVAL_MS = 1_000L
+        private const val CONFIRM_POLL_TIMEOUT_MS = 5_000L
     }
 }
 

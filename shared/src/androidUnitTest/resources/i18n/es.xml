@@ -308,7 +308,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="icon_pack">Paquete de iconos</string>
     <string name="kinetic_style">Estilo</string>
     <string name="kinetic_style_space">Espacio</string>
-    <string name="kinetic_style_frosted">Escarchado</string>
     <string name="kinetic_style_jaded_steel">Acero jade</string>
     <string name="freestyle_onboarding_hint">Modo edición: Arrastra elementos para reposicionar. Reordena opciones de menú con controles de arrastre.</string>
     <string name="theme_lines_desc">Dibuja líneas desde el hub central hasta cada dispositivo.</string>
@@ -489,6 +488,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shared_files">Archivos compartidos</string>
     <string name="n_files">%1$s archivos</string>
     <string name="sending">Enviando…</string>
+    <string name="send_continues_in_background">Sigue enviando aunque cierres esto.</string>
+    <string name="transfer_no_data">Sin datos desde hace %1$s s. Sigue intentando; se reanuda solo si la conexión se recupera.</string>
     <string name="loading_devices">Cargando dispositivos…</string>
     <string name="choose_destination">Elige destino</string>
     <string name="save_to">Guardar en %1$s</string>
@@ -624,6 +625,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="relay_firestore_permission_denied">Detalles del dispositivo en la nube está bloqueado por las reglas de Firestore. En Firebase Console → Firestore → Rules, añade un bloque diagnosticsRelay y publícalo.</string>
     <string name="relay_load_failed">No se pudieron cargar los detalles del dispositivo por datos móviles</string>
     <string name="peer_unreachable_wifi">Par inalcanzable por Wi-Fi en %1$s:%2$s. Confirma que ambos dispositivos están en la misma red local.</string>
+    <string name="peer_unreachable_tailnet">El par de la tailnet en %1$s:%2$s no respondió. Puede estar sin conexión o su ruta caída; inténtalo de nuevo en breve.</string>
     <string name="file_nav_off_wifi">La navegación de archivos no está disponible hasta volver a la Wi‑Fi local.</string>
     <string name="file_transfer_off_wifi_queued">%1$s está fuera de la Wi‑Fi local — transferencia en cola hasta volver a Wi‑Fi.</string>
     <string name="file_transfer_off_wifi_queued_multiple">%1$s fuera de la Wi‑Fi local — transferencia(s) en cola hasta volver a Wi‑Fi.</string>
@@ -791,6 +793,8 @@ Toca el hub central (+) para emparejar</string>
     <string name="icon_tablet">Tableta</string>
     <string name="icon_android_phone">Teléfono Android</string>
     <string name="icon_desktop">Escritorio</string>
+    <string name="icon_docker">Docker</string>
+    <string name="icon_linux">Linux</string>
     <string name="storage_used">%1$s de %2$s usados</string>
     <string name="memory_free_of">%1$s libres de %2$s (%3$s usados)</string>
     <string name="cores_active_total">%1$s activos / %2$s en total</string>
@@ -996,5 +1000,25 @@ Toca el hub central (+) para emparejar</string>
     <string name="disabled">Desactivado</string>
     <string name="enabled">Activado</string>
     <string name="opening_folder">Abriendo carpeta…</string>
+    <string name="trash_failed">No se pudo mover a la Papelera</string>
+    <string name="compress">Comprimir</string>
+    <string name="uncompress">Descomprimir</string>
+    <string name="reconnect_folder">Reconectar</string>
+    <string name="clear_pending_copy">Borrar copia pendiente</string>
+    <string name="unable_to_open_file">No se puede abrir el archivo</string>
+    <string name="moved_to_trash">Movido a la Papelera</string>
+    <string name="pane_local">Local</string>
+    <string name="get_info">Obtener información</string>
+    <string name="split_view">Dividir</string>
+    <string name="cancel_drive_title">¿Cancelar la transferencia de Drive?</string>
+    <string name="cancel_drive_body">Esta transferencia pasa por Google Drive. Cancélala y vuelve a intentarlo más tarde, o cancélala y elimina el archivo de Drive para que nunca se descargue.</string>
+    <string name="cancel_try_later">Cancelar, intentar luego</string>
+    <string name="cancel_remove_from_drive">Cancelar y quitar de Drive</string>
+    <string name="cancel_keep_going">Continuar</string>
+    <string name="queued_sending_background">En cola: enviando a %1$s en segundo plano. Sigue el progreso en la cola de transferencias.</string>
+    <string name="queued_source_changed">%1$s cambió después de ponerse en cola, así que no se envió. Reintenta para enviar la versión actual.</string>
+    <string name="drive_encrypt">Cifrar archivos</string>
+    <string name="drive_encrypt_off">Desactivado. Los archivos llegan a Drive tal cual, así que también puedes descargarlos allí.</string>
+    <string name="drive_encrypt_on">Activado. Los archivos se cifran antes de subirse y solo tus dispositivos vinculados pueden abrirlos. Los nombres siguen visibles.</string>
 </resources>
 

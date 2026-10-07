@@ -79,6 +79,7 @@ func (n *Node) routes() http.Handler {
 	mux.HandleFunc("/api/v1/files/resume", n.handleResume)
 	mux.HandleFunc("/api/v1/files/upload", n.handleUpload)
 	mux.HandleFunc("/api/v1/files/mkdir", n.handleMkdir)
+	mux.HandleFunc("/api/v1/diagnostics", n.handleDiagnostics)
 	return mux
 }
 

@@ -59,16 +59,17 @@ data class PeerNodeState(
     fun publishesPresence(): Boolean = publishesPresence(clientVersion)
 }
 
-/** A peer with clientVersion "docker" does not supply last-seen for anyone. */
+/** Docker does not publish presence of its own. */
 fun publishesPresence(clientVersion: String): Boolean =
     !clientVersion.trim().equals("docker", ignoreCase = true)
 
+/**
+ * A roster never supplies presence for anyone: each device learns `lastSeen` only from its own
+ * direct contact with that peer. [sourceClientVersion] is kept for callers; it no longer matters.
+ */
 fun rosterWithoutRelayedPresence(
-    sourceClientVersion: String,
+    @Suppress("UNUSED_PARAMETER") sourceClientVersion: String,
     roster: List<PairedDeviceEntity>
-): List<PairedDeviceEntity> {
-    if (publishesPresence(sourceClientVersion)) return roster
-    return roster.map { device ->
-        if (device.lastSeenEpochMs == 0L) device else device.copy(lastSeenEpochMs = 0L)
-    }
+): List<PairedDeviceEntity> = roster.map { device ->
+    if (device.lastSeenEpochMs == 0L) device else device.copy(lastSeenEpochMs = 0L)
 }

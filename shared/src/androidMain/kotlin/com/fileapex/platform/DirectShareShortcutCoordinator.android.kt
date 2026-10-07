@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Android Direct Share device shortcuts.
@@ -45,24 +47,34 @@ object DirectShareShortcutCoordinator {
 
     private const val SHORTCUT_PREFIX = "share-device-"
     private const val RATE_LIMIT_RETRY_MS = 30_000L
+    /** Order-only changes (a peer went on or offline) wait this long since the last publish. */
+    private const val REORDER_MIN_INTERVAL_MS = 60_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val publishMutex = Mutex()
     private var observeJob: Job? = null
     private var rateLimitRetryJob: Job? = null
     @Volatile
     private var pendingPublishPeers: List<PairedDeviceEntity>? = null
+    @Volatile
+    private var lastPublishedSignature: String? = null
+    @Volatile
+    private var lastPublishedMembership: String? = null
+    @Volatile
+    private var lastPublishedAtMs = 0L
     private lateinit var appContext: Context
 
     fun start(context: Context) {
         if (observeJob?.isActive == true) return
         appContext = context.applicationContext
         observeJob = scope.launch {
-            // Publish once DB roster is ready, then on roster / online-rank changes.
+            // Publish once DB roster is ready, then when the roster, a name or the usage order changes.
+            // Online state is not part of the order: a shortcut cannot show it, and the target is
+            // checked against the roster when it is picked.
             FileApexServices.deviceRepository.observeDevices()
                 .map { devices -> rankPeersForShare(devices) }
                 .distinctUntilChanged { old, new ->
-                    old.map { Triple(it.deviceId, it.deviceName, onlineRankKey(it)) } ==
-                        new.map { Triple(it.deviceId, it.deviceName, onlineRankKey(it)) }
+                    old.map { it.deviceId to it.deviceName } == new.map { it.deviceId to it.deviceName }
                 }
                 .collect { peers -> publishShortcuts(peers) }
         }
@@ -96,6 +108,8 @@ object DirectShareShortcutCoordinator {
             appContext,
             listOf(shortcutId(deviceId))
         )
+        lastPublishedSignature = null
+        lastPublishedMembership = null
         DirectShareUsageStore.clearShareCount(appContext, deviceId)
     }
 
@@ -159,18 +173,11 @@ object DirectShareShortcutCoordinator {
         }
     }
 
-    private fun onlineRankKey(device: PairedDeviceEntity): Int =
-        if (FileApexServices.presenceMonitor.isDeviceOnline(device)) 1 else 0
-
     private fun rankPeersForShare(devices: List<PairedDeviceEntity>): List<PairedDeviceEntity> {
-        val presence = FileApexServices.presenceMonitor
         return devices.sortedWith(
             compareByDescending<PairedDeviceEntity> {
-                if (presence.isDeviceOnline(it)) 1 else 0
+                DirectShareUsageStore.shareCount(appContext, it.deviceId)
             }
-                .thenByDescending {
-                    DirectShareUsageStore.shareCount(appContext, it.deviceId)
-                }
                 .thenByDescending { if (isMacLike(it.deviceName)) 1 else 0 }
                 .thenBy { it.deviceName.lowercase() }
         )
@@ -183,6 +190,12 @@ object DirectShareShortcutCoordinator {
 
     private suspend fun publishShortcuts(peers: List<PairedDeviceEntity>) {
         if (!::appContext.isInitialized) return
+        publishMutex.withLock {
+            publishShortcutsLocked(peers)
+        }
+    }
+
+    private suspend fun publishShortcutsLocked(peers: List<PairedDeviceEntity>) {
         if (!FileApexServices.isDatabaseReady()) {
             println("DirectShareShortcutCoordinator: skip publish - database not ready")
             return
@@ -196,9 +209,25 @@ object DirectShareShortcutCoordinator {
 
         val maxCount = ShortcutManagerCompat.getMaxShortcutCountPerActivity(appContext)
             .coerceAtLeast(1)
-        val bulletinShortcut = buildBulletinBoardShortcut()
         val peerSlots = (maxCount - 1).coerceAtLeast(0)
         val peersToPublish = rankPeersForShare(peers).take(peerSlots)
+        val signature = peersToPublish.joinToString(separator = "|") { peer ->
+            "${peer.deviceId}\u0000${peer.deviceName}"
+        }
+        if (signature == lastPublishedSignature) {
+            return
+        }
+        val membership = peersToPublish
+            .map { "${it.deviceId}\u0000${it.deviceName}" }
+            .sorted()
+            .joinToString(separator = "|")
+        val sinceLastPublishMs = System.currentTimeMillis() - lastPublishedAtMs
+        if (membership == lastPublishedMembership && sinceLastPublishMs < REORDER_MIN_INTERVAL_MS) {
+            pendingPublishPeers = peers
+            scheduleRateLimitRetry(REORDER_MIN_INTERVAL_MS - sinceLastPublishMs)
+            return
+        }
+        val bulletinShortcut = buildBulletinBoardShortcut()
         val targetIds = peersToPublish.map { shortcutId(it.deviceId) }.toSet() + BULLETIN_SHORTCUT_ID
 
         val staleIds = ShortcutManagerCompat.getDynamicShortcuts(appContext)
@@ -218,6 +247,7 @@ object DirectShareShortcutCoordinator {
             if (ok) {
                 pendingPublishPeers = null
                 rateLimitRetryJob?.cancel()
+                markPublished(signature, membership)
                 println("DirectShareShortcutCoordinator: published Bulletin Board share shortcut only")
             } else {
                 pendingPublishPeers = peers
@@ -250,6 +280,7 @@ object DirectShareShortcutCoordinator {
 
         pendingPublishPeers = null
         rateLimitRetryJob?.cancel()
+        markPublished(signature, membership)
 
         peersToPublish.take(SHARE_SHEET_VISIBLE_HINT).forEach { peer ->
             val usage = DirectShareUsageStore.shareCount(appContext, peer.deviceId)
@@ -288,10 +319,16 @@ object DirectShareShortcutCoordinator {
             .build()
     }
 
-    private fun scheduleRateLimitRetry() {
+    private fun markPublished(signature: String, membership: String) {
+        lastPublishedSignature = signature
+        lastPublishedMembership = membership
+        lastPublishedAtMs = System.currentTimeMillis()
+    }
+
+    private fun scheduleRateLimitRetry(delayMs: Long = RATE_LIMIT_RETRY_MS) {
         if (rateLimitRetryJob?.isActive == true) return
         rateLimitRetryJob = scope.launch {
-            delay(RATE_LIMIT_RETRY_MS)
+            delay(delayMs)
             if (!isActive) return@launch
             val pending = pendingPublishPeers ?: return@launch
             publishShortcuts(pending)

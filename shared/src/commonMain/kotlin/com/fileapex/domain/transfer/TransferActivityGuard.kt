@@ -22,7 +22,9 @@ data class LiveTransferStats(
     val speedFormatted: String = "",
     val etaFormatted: String = "",
     /** True while a user-cancelable outbound batch is running. */
-    val cancelable: Boolean = false
+    val cancelable: Boolean = false,
+    /** True while the active transfer goes through the Google Drive relay (Cancel then asks what to do with Drive). */
+    val driveRelay: Boolean = false
 )
 
 /**
@@ -32,6 +34,11 @@ data class LiveTransferStats(
  * Parallel workers report per stream (one file to one device); [statsFlow] sums them against
  * the batch total so the bar only moves forward, and emits at most every [EMIT_INTERVAL_MS].
  */
+/** Marks a coroutine tree as belonging to one queue row, so Cancel can target just that row. */
+class TransferOwner(val id: String) : kotlin.coroutines.AbstractCoroutineContextElement(TransferOwner) {
+    companion object Key : kotlin.coroutines.CoroutineContext.Key<TransferOwner>
+}
+
 object TransferActivityGuard {
     private const val EMIT_INTERVAL_MS = 150L
     private const val ANONYMOUS_STREAM = "_"
@@ -56,13 +63,81 @@ object TransferActivityGuard {
     }
 
     private val streams = ConcurrentHashMap<String, Stream>()
+
+    /** Last time any stream of the batch moved forward; 0 when nothing is running. */
+    @Volatile
+    private var lastProgressAtMs = 0L
+
+    /** Milliseconds since any byte moved in the running batch, so the UI can say a transfer went quiet. */
+    fun millisSinceProgress(): Long {
+        val last = lastProgressAtMs
+        return if (last == 0L) 0L else (TimeUtils.now() - last).coerceAtLeast(0L)
+    }
     private val batchTotalBytes = AtomicLong(0L)
     private val batchFinishedBytes = AtomicLong(0L)
-    private val cancelableJobs = ConcurrentHashMap.newKeySet<Job>()
-    private val transferSockets = ConcurrentHashMap.newKeySet<Socket>()
+    /** Job or socket -> owner id (a queue row id, or blank when it belongs to no row). */
+    private val cancelableJobs = ConcurrentHashMap<Job, String>()
+    private val transferSockets = ConcurrentHashMap<Socket, String>()
+    private val cancelledOwners = ConcurrentHashMap.newKeySet<String>()
 
     @Volatile
     private var cancelRequested = false
+
+    private val driveRelayActive = java.util.concurrent.atomic.AtomicInteger(0)
+
+    @Volatile
+    private var removeFromDriveRequested = false
+
+    private val _driveCancelChoicePending = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /** True while the app should ask whether a Drive transfer's Cancel keeps or removes the Drive copy. */
+    val driveCancelChoicePending: kotlinx.coroutines.flow.StateFlow<Boolean> =
+        _driveCancelChoicePending
+
+    /**
+     * Cancel as the user taps it. A Drive-relay transfer asks first ("try later" vs "remove from Drive");
+     * everything else cancels at once.
+     */
+    fun requestUserCancel(owner: String = ""): Boolean {
+        if (driveRelayActive.get() > 0 && cancelableJobs.isNotEmpty()) {
+            driveCancelOwner = owner
+            _driveCancelChoicePending.value = true
+            return true
+        }
+        return if (owner.isNotEmpty()) cancelOwner(owner) else cancelActiveTransfers()
+    }
+
+    @Volatile
+    private var driveCancelOwner = ""
+
+    /** [removeFromDrive] null dismisses the question and keeps the transfer going. */
+    fun resolveDriveCancelChoice(removeFromDrive: Boolean?) {
+        _driveCancelChoicePending.value = false
+        if (removeFromDrive == null) return
+        val owner = driveCancelOwner
+        driveCancelOwner = ""
+        if (owner.isNotEmpty()) cancelOwner(owner, removeFromDrive) else cancelActiveTransfers(removeFromDrive)
+    }
+
+    fun beginDriveRelay() {
+        driveRelayActive.incrementAndGet()
+        publish(force = true)
+    }
+
+    fun endDriveRelay() {
+        driveRelayActive.updateAndGet { (it - 1).coerceAtLeast(0) }
+        publish(force = true)
+    }
+
+    /** True when the user chose "cancel and remove from Drive"; Drive code reads this while unwinding. */
+    fun removeFromDriveRequested(): Boolean = removeFromDriveRequested
+
+    /** Reads and clears the remove-from-Drive request (the queue owner consumes it once). */
+    fun consumeRemoveFromDrive(): Boolean {
+        val requested = removeFromDriveRequested
+        removeFromDriveRequested = false
+        return requested
+    }
 
     @Volatile private var currentFileName: String = ""
     @Volatile private var destinationDeviceName: String = ""
@@ -118,7 +193,9 @@ object TransferActivityGuard {
         if (totalBytes <= 0L) return
         val key = streamKey.ifBlank { deviceId }.ifBlank { ANONYMOUS_STREAM }
         val stream = streams.getOrPut(key) { Stream(deviceId, destinationDeviceName, currentFileName) }
-        stream.sentBytes = sentBytes.coerceIn(0L, totalBytes)
+        val moved = sentBytes.coerceIn(0L, totalBytes)
+        if (moved > stream.sentBytes || lastProgressAtMs == 0L) lastProgressAtMs = TimeUtils.now()
+        stream.sentBytes = moved
         stream.totalBytes = totalBytes
         currentFileName = stream.fileName.ifBlank { currentFileName }
         publish(force = sentBytes >= totalBytes)
@@ -144,43 +221,51 @@ object TransferActivityGuard {
         streams.clear()
         anonymousActive.set(0)
         cancelableJobs.clear()
-        transferSockets.forEach { socket -> runCatching { socket.close() } }
+        transferSockets.keys.forEach { socket -> runCatching { socket.close() } }
         transferSockets.clear()
+        cancelledOwners.clear()
         cancelRequested = false
         clearBatch()
     }
 
-    /** Registers [job] so the live banner, share sheet and queue can cancel it; returns an unregister handle. */
-    fun registerCancelable(job: Job): () -> Unit {
-        cancelableJobs += job
+    /**
+     * Registers [job] so the live banner, share sheet and queue can cancel it; returns an unregister handle.
+     * [owner] ties it to one queue row so that row can be cancelled without touching the others.
+     */
+    fun registerCancelable(job: Job, owner: String = ""): () -> Unit {
+        cancelableJobs[job] = owner
         publish(force = true)
         return {
-            cancelableJobs -= job
+            cancelableJobs.remove(job)
             finishCancelIfIdle()
             publish(force = true)
         }
     }
 
-    fun trackTransferSocket(socket: Socket) {
-        transferSockets += socket
-        if (cancelRequested) runCatching { socket.close() }
+    fun trackTransferSocket(socket: Socket, owner: String = "") {
+        transferSockets[socket] = owner
+        if (cancelRequested || (owner.isNotEmpty() && owner in cancelledOwners)) {
+            runCatching { socket.close() }
+        }
     }
 
     fun releaseTransferSocket(socket: Socket) {
-        transferSockets -= socket
+        transferSockets.remove(socket)
         finishCancelIfIdle()
     }
 
-    fun transferCancelRequested(): Boolean = cancelRequested
+    fun transferCancelRequested(owner: String = ""): Boolean =
+        cancelRequested || (owner.isNotEmpty() && owner in cancelledOwners)
 
     /**
      * Closes in-flight transfer sockets, then cancels the batch job.
      * A blocked write does not see cancellation until its socket is closed.
      */
-    fun cancelActiveTransfers(): Boolean {
-        val jobs = cancelableJobs.toList()
-        val sockets = transferSockets.toList()
+    fun cancelActiveTransfers(removeFromDrive: Boolean = false): Boolean {
+        val jobs = cancelableJobs.keys.toList()
+        val sockets = transferSockets.keys.toList()
         if (jobs.isEmpty() && sockets.isEmpty()) return false
+        removeFromDriveRequested = removeFromDrive
         cancelRequested = true
         sockets.forEach { socket -> runCatching { socket.close() } }
         abortInFlightPlatformTransfers()
@@ -188,9 +273,26 @@ object TransferActivityGuard {
         return true
     }
 
+    /** Cancels only what belongs to [owner]; every other transfer keeps running. */
+    fun cancelOwner(owner: String, removeFromDrive: Boolean = false): Boolean {
+        if (owner.isEmpty()) return false
+        val jobs = cancelableJobs.filterValues { it == owner }.keys.toList()
+        val sockets = transferSockets.filterValues { it == owner }.keys.toList()
+        if (jobs.isEmpty() && sockets.isEmpty()) return false
+        removeFromDriveRequested = removeFromDrive
+        cancelledOwners += owner
+        sockets.forEach { socket -> runCatching { socket.close() } }
+        jobs.forEach { job -> job.cancel() }
+        return true
+    }
+
     private fun finishCancelIfIdle() {
         if (cancelableJobs.isEmpty() && transferSockets.isEmpty()) {
             cancelRequested = false
+            removeFromDriveRequested = false
+        }
+        cancelledOwners.removeIf { owner ->
+            cancelableJobs.values.none { it == owner } && transferSockets.values.none { it == owner }
         }
     }
 
@@ -232,7 +334,12 @@ object TransferActivityGuard {
         lastEmitMs.set(0L)
         _transferProgressFlow.value = 0.0f
         _isTransferActiveFlow.value = false
-        _statsFlow.value = LiveTransferStats(isActive = false, cancelable = cancelableJobs.isNotEmpty())
+        lastProgressAtMs = 0L
+        _statsFlow.value = LiveTransferStats(
+            isActive = false,
+            cancelable = cancelableJobs.isNotEmpty(),
+            driveRelay = driveRelayActive.get() > 0
+        )
     }
 
     private fun publish(force: Boolean) {
@@ -268,7 +375,8 @@ object TransferActivityGuard {
             speedBytesPerSec = speed,
             speedFormatted = formatSpeed(speed),
             etaFormatted = formatEta(sent, total, speed),
-            cancelable = cancelableJobs.isNotEmpty()
+            cancelable = cancelableJobs.isNotEmpty(),
+            driveRelay = driveRelayActive.get() > 0
         )
     }
 

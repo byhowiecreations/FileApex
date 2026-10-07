@@ -172,7 +172,7 @@ fun LiveTransferBanner(
                     if (liveStats.cancelable) {
                         Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
-                            onClick = { TransferActivityGuard.cancelActiveTransfers() },
+                            onClick = { TransferActivityGuard.requestUserCancel() },
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(

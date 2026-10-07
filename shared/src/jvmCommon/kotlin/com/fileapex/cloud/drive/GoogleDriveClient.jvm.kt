@@ -37,7 +37,12 @@ actual object GoogleDriveClient {
     private const val FILES_URL = "https://www.googleapis.com/drive/v3/files"
     private const val UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
     private const val CHUNK_BYTES = 256 * 1024 * 8
-    private const val DOWNLOAD_CHUNK_BYTES = 512 * 1024
+    /**
+     * Each range is one HTTPS round trip with its own auth check, so 512 KB pieces capped a download
+     * near 1 MB/s no matter how fast the line was. Larger ranges keep resume-from-offset but stream.
+     */
+    private const val DOWNLOAD_CHUNK_BYTES = 32L * 1024 * 1024
+    private const val DOWNLOAD_REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
     private const val MAX_RETRIES = 5
 
     private const val RELAY_FOLDER_NAME = "FileApex Relay"
@@ -51,7 +56,8 @@ actual object GoogleDriveClient {
     actual suspend fun uploadResumable(
         localAbsolutePath: String,
         fileName: String,
-        mimeType: String
+        mimeType: String,
+        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
     ): DriveUploadedFile {
         val file = File(localAbsolutePath)
         require(file.isFile) { "File not found: $localAbsolutePath" }
@@ -63,7 +69,7 @@ actual object GoogleDriveClient {
             initiateResumable(token, fileName, mimeType, size, folderId)
         }
         val remoteId = authorized { token ->
-            putChunks(sessionUrl, token, file, size)
+            putChunks(sessionUrl, token, file, size, onProgress)
         }
         return DriveUploadedFile(id = remoteId, sizeBytes = size, contentHash = hash)
     }
@@ -236,7 +242,7 @@ actual object GoogleDriveClient {
         val response = FileApexServices.httpClient.get("$FILES_URL/$driveFileId") {
             header(HttpHeaders.Authorization, "Bearer $token")
             parameter("alt", "media")
-            driveApiTimeout(requestMs = 90_000L, connectMs = 20_000L)
+            driveApiTimeout(requestMs = DOWNLOAD_REQUEST_TIMEOUT_MS, connectMs = 20_000L)
             header(HttpHeaders.Range, "bytes=$offset-$chunkEnd")
         }
         when (response.status.value) {
@@ -630,7 +636,13 @@ actual object GoogleDriveClient {
             ?: throw DriveHttpException(response.status.value, "Missing resumable session URL")
     }
 
-    private suspend fun putChunks(sessionUrl: String, token: String, file: File, size: Long): String {
+    private suspend fun putChunks(
+        sessionUrl: String,
+        token: String,
+        file: File,
+        size: Long,
+        onProgress: ((Long, Long) -> Unit)?
+    ): String {
         var offset = 0L
         var uploadedId: String? = null
         RandomAccessFile(file, "r").use { raf ->
@@ -656,6 +668,7 @@ actual object GoogleDriveClient {
                             throw DriveUnauthorizedException("Drive chunk unauthorized")
                         response.status.value == 308 -> {
                             offset = parseNextOffset(response, offset + toRead)
+                            onProgress?.invoke(offset, size)
                             break
                         }
                         response.status.isSuccess() -> {

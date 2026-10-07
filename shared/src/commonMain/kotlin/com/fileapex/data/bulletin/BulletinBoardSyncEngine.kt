@@ -229,6 +229,7 @@ class BulletinBoardSyncEngine(
                 }
             }
         }
+        val boardWasEmpty = messageDao.countActive() == 0
         val newlyArrived = incomingMessages.filter { messageDao.getById(it.id) == null }
         transactionDao.ingestSyncBatch(
             messages = incomingMessages,
@@ -244,7 +245,11 @@ class BulletinBoardSyncEngine(
             BulletinRemoteFilePurgeHandler.handle(messageId)
         }
         if (newlyArrived.isNotEmpty() || incomingTombstones.isNotEmpty()) {
-            FileApexServices.noteRepository.onPeerBulletinBatchIngested(newlyArrived, incomingTombstones)
+            FileApexServices.noteRepository.onPeerBulletinBatchIngested(
+                newlyArrived,
+                incomingTombstones,
+                boardWasEmpty
+            )
         }
         if (kindRetractedMessageIds.isNotEmpty()) {
             FileApexServices.noteRepository.onPeerBulletinKindRetracted(kindRetractedMessageIds)

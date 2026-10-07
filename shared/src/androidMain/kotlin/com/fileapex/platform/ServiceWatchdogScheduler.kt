@@ -22,6 +22,7 @@ object ServiceWatchdogScheduler {
     private const val KEY_BATTERY_OPTIMIZATION_WARNING = "battery_optimization_active"
     private const val KEY_SHARE_SERVER_HEARTBEAT_EPOCH_MS = "share_server_heartbeat_epoch_ms"
     /** Disk flush cadence — in-memory skip until this age. 15 min stays inside the 25 min stale window. */
+    private const val DUPLICATE_SCHEDULE_WINDOW_MS = 3_000L
     private const val HEARTBEAT_WRITE_MIN_INTERVAL_MS = 15 * 60 * 1000L
 
     fun scheduleNext(context: Context) {
@@ -40,7 +41,19 @@ object ServiceWatchdogScheduler {
         )
     }
 
+    @Volatile private var lastScheduledTriggerAt = 0L
+    @Volatile private var lastScheduledDelayMs = 0L
+
     private fun scheduleAt(context: Context, triggerAt: Long, delayLabelMs: Long) {
+        // Several owners re-arm the same alarm within one tick; collapse those into one.
+        val lastTrigger = lastScheduledTriggerAt
+        if (lastScheduledDelayMs == delayLabelMs && lastTrigger != 0L &&
+            kotlin.math.abs(triggerAt - lastTrigger) < DUPLICATE_SCHEDULE_WINDOW_MS
+        ) {
+            return
+        }
+        lastScheduledTriggerAt = triggerAt
+        lastScheduledDelayMs = delayLabelMs
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pendingIntent = pendingIntent(context)
         val useExact = !com.fileapex.di.FileApexServices.isPlayStoreBuild && canScheduleExactAlarms(alarmManager)
@@ -88,6 +101,7 @@ object ServiceWatchdogScheduler {
     }
 
     fun cancel(context: Context) {
+        lastScheduledTriggerAt = 0L
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         runCatching {
             alarmManager.cancel(pendingIntent(context))

@@ -30,6 +30,8 @@ fun tailnetNodeUp(): Boolean = isTailscaleEnabled()
  * When it is true and this peer has a verified tailnet address, that address is dialed
  * through tsnet. Server.Dial picks a direct path or a relay. A missing tailnet address
  * still returns the LAN address so the peer is not dropped.
+ * Callers that move file data go through PeerPresenceMonitor.resolveOutboundEndpoint, which
+ * prefers a verified LAN address because the userspace tailnet path is much slower.
  */
 fun resolvePeerEndpoint(peer: PairedDeviceEntity, tailnetUp: Boolean): ResolvedPeerEndpoint? {
     val port = peer.port

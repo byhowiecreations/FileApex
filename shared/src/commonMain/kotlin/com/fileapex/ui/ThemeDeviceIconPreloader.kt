@@ -9,6 +9,7 @@ import fileapex.shared.generated.resources.dev_flux_folding
 import fileapex.shared.generated.resources.dev_flux_laptop
 import fileapex.shared.generated.resources.dev_flux_slab
 import fileapex.shared.generated.resources.dev_flux_tablet
+import fileapex.shared.generated.resources.dev_fs_container
 import fileapex.shared.generated.resources.dev_fs_flip8
 import fileapex.shared.generated.resources.dev_fs_fold8
 import fileapex.shared.generated.resources.dev_fs_generic
@@ -24,6 +25,7 @@ import fileapex.shared.generated.resources.dev_fs_oppo_find_x9_pro
 import fileapex.shared.generated.resources.dev_fs_pixel_11_pro
 import fileapex.shared.generated.resources.dev_fs_pixel_11_pro_fold
 import fileapex.shared.generated.resources.dev_fs_poco
+import fileapex.shared.generated.resources.dev_fs_server
 import fileapex.shared.generated.resources.dev_fs_windows
 import fileapex.shared.generated.resources.opt_flux_battery
 import fileapex.shared.generated.resources.opt_flux_clipboard
@@ -122,6 +124,7 @@ object ThemeDeviceIconPreloader {
     )
 
     private val freestyleResources: List<DrawableResource> = listOf(
+        Res.drawable.dev_fs_container,
         Res.drawable.dev_fs_flip8,
         Res.drawable.dev_fs_fold8,
         Res.drawable.dev_fs_generic,
@@ -137,6 +140,7 @@ object ThemeDeviceIconPreloader {
         Res.drawable.dev_fs_pixel_11_pro,
         Res.drawable.dev_fs_pixel_11_pro_fold,
         Res.drawable.dev_fs_poco,
+        Res.drawable.dev_fs_server,
         Res.drawable.dev_fs_windows,
         Res.drawable.opt_fs_battery,
         Res.drawable.opt_fs_clipboard,

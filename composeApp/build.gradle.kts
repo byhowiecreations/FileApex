@@ -577,11 +577,16 @@ tasks.register("buildMacTrayBridge") {
     }
 }
 
+/** The in-process library does not use the Docker daemon sources or the AAR output kept under native/tsnet/build. */
+val tsnetLibraryInputs = rootProject.fileTree(rootProject.layout.projectDirectory.dir("native/tsnet")) {
+    exclude("daemon/**", "build/**")
+}
+
 tasks.register("buildMacTsnet") {
     group = "distribution"
     description = "Compile libFileApexTsnet.dylib (in-process userspace Tailscale)"
     onlyIf { isMacHost() }
-    inputs.dir(rootProject.layout.projectDirectory.dir("native/tsnet"))
+    inputs.files(tsnetLibraryInputs)
     inputs.file(rootProject.layout.projectDirectory.file("macos/scripts/build_tsnet.sh"))
     outputs.file(rootProject.layout.projectDirectory.file("macos/build/Tsnet/libFileApexTsnet.dylib"))
     doLast {
@@ -602,7 +607,7 @@ tasks.register("buildWindowsTsnet") {
     group = "distribution"
     description = "Compile libFileApexTsnet.dll (in-process userspace Tailscale)"
     onlyIf { isWindowsHost() }
-    inputs.dir(rootProject.layout.projectDirectory.dir("native/tsnet"))
+    inputs.files(tsnetLibraryInputs)
     inputs.file(rootProject.layout.projectDirectory.file("windows/scripts/build_tsnet.bat"))
     outputs.file(rootProject.layout.projectDirectory.file("windows/build/Tsnet/libFileApexTsnet.dll"))
     doLast {

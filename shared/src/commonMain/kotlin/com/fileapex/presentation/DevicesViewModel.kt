@@ -23,7 +23,6 @@ import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.PlatformClipboard
@@ -50,6 +49,8 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -119,6 +120,9 @@ private sealed interface DeviceConnectOutcome {
         val quickFail: Boolean = false
     ) : DeviceConnectOutcome
 }
+
+private const val BATTERY_FETCH_CONCURRENCY = 4
+private const val BATTERY_CACHE_MS = 15_000L
 
 class DevicesViewModel : ViewModel() {
     private val repository = FileApexServices.deviceRepository
@@ -605,6 +609,8 @@ class DevicesViewModel : ViewModel() {
     }
 
     private suspend fun completePairing(payload: PairingPayload, pin: String?) {
+        // Snapshot before anything is adopted: only this pre-pairing cluster is ours to announce.
+        val preexistingIds = repository.listDevices().map { it.deviceId }.toSet()
         val verified = runCatching {
             FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
         }.getOrNull()
@@ -623,7 +629,7 @@ class DevicesViewModel : ViewModel() {
         )
         repository.adoptFromPairing(broadcasterEntity)
         verified?.let { state ->
-            repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId)
+            repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
         }
 
         val scannerHost = NetworkUtils.preferredLanIpv4()
@@ -667,10 +673,20 @@ class DevicesViewModel : ViewModel() {
                     excludeDeviceIds = setOf(broadcasterId),
                     sourceClientVersion = verified?.clientVersion.orEmpty()
                 )
-                FileApexServices.pairingCoordinator.announceSelfToCluster(
-                    excludeDeviceIds = setOf(broadcasterId)
+                // Introduce ourselves only to peers just imported from the broadcaster; our own
+                // cluster already knows us and is told about the broadcaster by afterOutboundPair.
+                val importedIds = repository.listDevices().map { it.deviceId }.toSet() -
+                    preexistingIds - broadcasterId
+                if (importedIds.isNotEmpty()) {
+                    FileApexServices.pairingCoordinator.announceSelfToCluster(
+                        excludeDeviceIds = setOf(broadcasterId),
+                        onlyDeviceIds = importedIds
+                    )
+                }
+                FileApexServices.pairingCoordinator.afterOutboundPair(
+                    broadcasterEntity,
+                    preexistingDeviceIds = preexistingIds
                 )
-                FileApexServices.pairingCoordinator.afterOutboundPair(broadcasterEntity)
                 if (importedCount > 0) {
                     _uiState.update {
                         it.copy(
@@ -941,7 +957,7 @@ class DevicesViewModel : ViewModel() {
             }
 
             val sourceEndpoint = if (isTailscaleEnabled()) {
-                resolvePeerEndpoint(sourceDevice, tailnetUp = true)
+                presence.resolveOutboundEndpoint(sourceDevice)
             } else {
                 null
             }
@@ -1103,6 +1119,18 @@ class DevicesViewModel : ViewModel() {
         return DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId)
     }
 
+    private val batteryCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, BatteryDiagnostics>>()
+
+    /** A second tap a few seconds later reuses the first answer instead of polling every device again. */
+    private fun cachedBattery(deviceId: String): BatteryDiagnostics? {
+        val entry = batteryCache[deviceId] ?: return null
+        return entry.second.takeIf { TimeUtils.now() - entry.first < BATTERY_CACHE_MS }
+    }
+
+    private fun rememberBattery(deviceId: String, battery: BatteryDiagnostics) {
+        batteryCache[deviceId] = TimeUtils.now() to battery
+    }
+
     private suspend fun fetchDeviceBattery(device: PairedDeviceEntity): BatteryDiagnostics? {
         presence.resolveOutboundEndpoint(device)?.let { direct ->
             val directResult = runCatching {
@@ -1121,8 +1149,14 @@ class DevicesViewModel : ViewModel() {
 
     fun checkBatteries() {
         viewModelScope.launch {
-            runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
-            runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
+            // Only devices that look offline need a wake. Online ones are queried directly below.
+            val sleeping = deviceRows.value.filter { !it.online }
+            if (sleeping.isNotEmpty()) {
+                runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
+                sleeping.forEach { row ->
+                    runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToDevice(row.deviceId) }
+                }
+            }
             val initialLogs = listOf(
                 "FileApex Linux v${com.fileapex.update.currentAppVersionName()} (tty1)",
                 "login: fileapex",
@@ -1183,13 +1217,16 @@ class DevicesViewModel : ViewModel() {
             // 2. Query online devices concurrently - display each as soon as it responds
             val (onlineRows, offlineRows) = rows.partition { it.online }
 
+            val fetchGate = Semaphore(BATTERY_FETCH_CONCURRENCY)
             withContext(Dispatchers.IO) {
                 coroutineScope {
                     onlineRows.forEach { row ->
                         launch {
                             val deviceEntity = repository.getDevice(row.deviceId)
                             val battery = if (deviceEntity != null) {
-                                fetchDeviceBattery(deviceEntity)
+                                cachedBattery(row.deviceId) ?: fetchGate.withPermit {
+                                    fetchDeviceBattery(deviceEntity)
+                                }?.also { rememberBattery(row.deviceId, it) }
                             } else null
 
                             val level = battery?.levelPercent

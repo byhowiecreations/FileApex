@@ -2,6 +2,7 @@ package com.fileapex.presentation
 
 import fileapex.shared.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
+import com.fileapex.domain.peer.publishesPresence
 
 /**
  * Resolved device glyph — shared by list cards, grid cells, and platform shortcuts.
@@ -9,6 +10,8 @@ import org.jetbrains.compose.resources.DrawableResource
 enum class DeviceIconKind {
     MacDesktop,
     WindowsPc,
+    Docker,
+    LinuxServer,
     FoldablePhone,
     FlipPhone,
     PixelPhone,
@@ -21,7 +24,8 @@ enum class DeviceIconKind {
 data class DeviceIconProfile(
     val deviceId: String = "",
     val deviceName: String = "",
-    val hardware: DeviceHardwareProfile = DeviceHardwareProfile()
+    val hardware: DeviceHardwareProfile = DeviceHardwareProfile(),
+    val clientVersion: String = ""
 )
 
 /**
@@ -52,6 +56,12 @@ fun resolveDeviceIconKind(profile: DeviceIconProfile): DeviceIconKind {
     val platform = profile.hardware.platform.trim().lowercase()
     val make = inferredMake.trim().lowercase()
 
+    if (!publishesPresence(profile.clientVersion) ||
+        (make == "fileapex" && profile.hardware.deviceModel.trim().equals("OMV", ignoreCase = true))
+    ) {
+        return DeviceIconKind.Docker
+    }
+
     if (os == "macos" || make == "apple" ||
         "macbook" in haystack || "imac" in haystack ||
         "mac mini" in haystack || "mac studio" in haystack || "mac pro" in haystack
@@ -61,6 +71,10 @@ fun resolveDeviceIconKind(profile: DeviceIconProfile): DeviceIconKind {
 
     if (os == "windows" || "windows" in haystack || "surface" in haystack) {
         return DeviceIconKind.WindowsPc
+    }
+
+    if (os == "linux" || platform == "linux") {
+        return DeviceIconKind.LinuxServer
     }
 
     if ("fold" in haystack || "foldable" in haystack || "razr fold" in haystack ||
@@ -90,7 +104,7 @@ fun resolveDeviceIconKind(profile: DeviceIconProfile): DeviceIconKind {
         return DeviceIconKind.AndroidTablet
     }
 
-    if (platform == "desktop" || os == "linux" ||
+    if (platform == "desktop" ||
         "desktop" in haystack || "laptop" in haystack || " pc" in haystack
     ) {
         return DeviceIconKind.GenericDesktop
@@ -110,7 +124,8 @@ fun DeviceListRow.iconKind(): DeviceIconKind =
         DeviceIconProfile(
             deviceId = deviceId,
             deviceName = deviceName,
-            hardware = DeviceHardwareProfile.from(this)
+            hardware = DeviceHardwareProfile.from(this),
+            clientVersion = appVersion.orEmpty()
         )
     )
 
@@ -119,7 +134,9 @@ fun resolveFluxDrawable(profile: DeviceIconProfile): DrawableResource {
     return when (kind) {
         DeviceIconKind.MacDesktop,
         DeviceIconKind.WindowsPc,
-        DeviceIconKind.GenericDesktop -> Res.drawable.dev_flux_laptop
+        DeviceIconKind.GenericDesktop,
+        DeviceIconKind.Docker,
+        DeviceIconKind.LinuxServer -> Res.drawable.dev_flux_laptop
 
         DeviceIconKind.FoldablePhone -> Res.drawable.dev_flux_folding
         DeviceIconKind.FlipPhone -> Res.drawable.dev_flux_flip
@@ -152,7 +169,18 @@ fun resolveFreestyleDrawable(profile: DeviceIconProfile): DrawableResource {
     }.lowercase()
 
     val os = profile.hardware.os.trim().lowercase()
+    val platform = profile.hardware.platform.trim().lowercase()
     val make = inferredMake.trim().lowercase()
+
+    if (!publishesPresence(profile.clientVersion) ||
+        (make == "fileapex" && profile.hardware.deviceModel.trim().equals("OMV", ignoreCase = true))
+    ) {
+        return Res.drawable.dev_fs_container
+    }
+
+    if (os == "linux" || platform == "linux") {
+        return Res.drawable.dev_fs_server
+    }
 
     if (os == "macos" || make == "apple" ||
         "macbook" in haystack || "imac" in haystack ||

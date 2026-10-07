@@ -352,6 +352,7 @@ class FileApexServer(
                                 RangeLedger.record(partPath, totalSize, ByteSpan(offset, offset + received))
                                 recorded = received
                             }
+                            InFlightSegmentBytes.update(partPath, offset, received - recorded)
                         }
                         channel.isClosedForRead -> break
                         !awaitUploadContent(channel) -> break
@@ -364,6 +365,7 @@ class FileApexServer(
                         RangeLedger.record(partPath, totalSize, ByteSpan(offset, offset + received))
                     }
                 }
+                InFlightSegmentBytes.clear(partPath, offset)
             }
         }
         received

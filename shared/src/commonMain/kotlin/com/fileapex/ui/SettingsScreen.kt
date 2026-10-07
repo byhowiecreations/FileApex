@@ -502,6 +502,7 @@ fun SettingsScreen(
             onDriveRelayChange = viewModel::setGoogleDriveRelayEnabled,
             onDriveRelayMaxMbSelected = viewModel::setDriveRelayMaxMb,
             onDriveAuthResult = viewModel::onGoogleDriveAuthResult,
+            onEncryptionChange = viewModel::setDriveRelayEncryptionEnabled,
             onPurgeChange = viewModel::setDrivePurgeAfter72Hours,
             onPurgeNow = viewModel::purgeDriveRelayNow
         )

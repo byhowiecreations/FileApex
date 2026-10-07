@@ -148,9 +148,6 @@ fun App(
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
     val transferQueueViewModel: TransferQueueViewModel = viewModel { TransferQueueViewModel() }
-    // Same store key as FileExplorerScreen, so the home-folder scan finishes before Local Files opens.
-    val localFilesTarget = remember { devicesViewModel.thisDeviceTarget() }
-    viewModel(key = localFilesTarget.deviceId) { ExplorerViewModel(localFilesTarget) }
     val setupComplete = onboardingComplete
 
     // Wide-layout detail state (list-detail). Survives compact/wide transitions.
@@ -179,7 +176,9 @@ fun App(
         val payload = incomingShare ?: return@LaunchedEffect
         if (!setupComplete) return@LaunchedEffect
         route = AppRoute.ShareSend(payload, directShareDeviceId)
-        onIncomingShareConsumed()
+        val staged = payload.files.isNotEmpty() &&
+            payload.files.all { it.absolutePath.isNotBlank() && it.sizeBytes > 0L }
+        if (staged) onIncomingShareConsumed()
     }
 
     LaunchedEffect(requestShowUpdateSheet) {
@@ -218,6 +217,7 @@ fun App(
     val devicesViewMode by FileApexServices.settings.devicesViewMode.collectAsState()
     val pendingCellularSend by com.fileapex.cloud.drive.DriveRelayCoordinator.pendingSendPrompt.collectAsState()
     val pendingCellularReceive by com.fileapex.cloud.drive.DriveRelayCoordinator.pendingReceivePrompt.collectAsState()
+    val driveCancelChoice by com.fileapex.domain.transfer.TransferActivityGuard.driveCancelChoicePending.collectAsState()
 
     val onNavigateHome: () -> Unit = {
         route = AppRoute.Devices
@@ -301,15 +301,21 @@ fun App(
             } else {
                 route is AppRoute.Devices
             }
+            // Share intake paints a spinner, then the destination list. Neither needs the
+            // orbital canvas or a haze layer; building those first was delaying the sheet.
+            val shareOverlay = isPreparingShare ||
+                incomingShare != null ||
+                sharePrepareError != null ||
+                route is AppRoute.ShareSend
 
             val jadedHazeState = rememberJadedHazeState()
             val jadedSteel = isKineticSphere && kineticStyle == KineticStyle.JADED_STEEL
-            val showKineticWallpaper = isKineticSphere && kineticStyle != KineticStyle.JADED_STEEL &&
+            val showKineticWallpaper = !shareOverlay &&
+                isKineticSphere && kineticStyle != KineticStyle.JADED_STEEL &&
                 kineticSphereWallpaperOn && (kineticSpherePersistentWallpaperOn || onDevicesPage)
 
             val bgBrush = when {
                 showKineticWallpaper -> null
-                isKineticSphere && kineticStyle == KineticStyle.FROSTED -> KineticStyleLook.frostedBackground()
                 jadedSteel -> null
                 else -> appTheme.backgroundBrush()
             }
@@ -332,7 +338,7 @@ fun App(
                         }
                     )
             ) {
-                if (jadedSteel) {
+                if (!shareOverlay && jadedSteel) {
                     JadedSteelWash(
                         modifier = Modifier.fillMaxSize(),
                         hazeState = jadedHazeState
@@ -342,7 +348,7 @@ fun App(
                     KineticSphereWallpaperBackground(modifier = Modifier.fillMaxSize())
                 }
 
-                ProvideJadedHaze(if (jadedSteel) jadedHazeState else null) {
+                ProvideJadedHaze(if (!shareOverlay && jadedSteel) jadedHazeState else null) {
                 Surface(
                     modifier = Modifier
                         .fillMaxSize()
@@ -365,6 +371,19 @@ fun App(
                         onGrantStep = onGrantOnboardingStep,
                         onSkipStep = onSkipOnboardingStep,
                         onContinueToApp = onContinueToApp
+                    )
+                } else if (incomingShare != null || route is AppRoute.ShareSend) {
+                    val liveShare = incomingShare
+                    val routedShare = route as? AppRoute.ShareSend
+                    ShareSendScreen(
+                        payload = liveShare ?: routedShare!!.payload,
+                        directTargetDeviceId = if (liveShare != null) {
+                            directShareDeviceId
+                        } else {
+                            routedShare?.directTargetDeviceId
+                        },
+                        stagingError = sharePrepareError,
+                        onFinished = finishShareFlow
                     )
                 } else if (isPreparingShare) {
                     Column(
@@ -396,6 +415,8 @@ fun App(
                         }
                     }
                 } else {
+                    val localFilesTarget = remember { devicesViewModel.thisDeviceTarget() }
+                    viewModel(key = localFilesTarget.deviceId) { ExplorerViewModel(localFilesTarget) }
                     LaunchedEffect(Unit) {
                         if (!usesDesktopFileSelection()) {
                             onStartShareServer()
@@ -409,11 +430,7 @@ fun App(
                             onBack = onNavigateHome,
                             viewModel = devicesViewModel
                         )
-                        is AppRoute.ShareSend -> ShareSendScreen(
-                            payload = overlay.payload,
-                            directTargetDeviceId = overlay.directTargetDeviceId,
-                            onFinished = finishShareFlow
-                        )
+                        is AppRoute.ShareSend -> Unit
                         AppRoute.TransferQueue -> TransferQueueScreen(
                             onBack = onNavigateHome,
                             viewModel = transferQueueViewModel
@@ -657,6 +674,36 @@ fun App(
                 TextButton(
                     onClick = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissSendPrompt() }
                 ) { Text(stringRes("not_now")) }
+            }
+        )
+    }
+    if (driveCancelChoice) {
+        AlertDialog(
+            onDismissRequest = {
+                com.fileapex.domain.transfer.TransferActivityGuard.resolveDriveCancelChoice(null)
+            },
+            title = { Text(stringRes("cancel_drive_title")) },
+            text = { Text(stringRes("cancel_drive_body")) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        com.fileapex.domain.transfer.TransferActivityGuard.resolveDriveCancelChoice(false)
+                    }
+                ) { Text(stringRes("cancel_try_later")) }
+            },
+            dismissButton = {
+                androidx.compose.foundation.layout.Row {
+                    TextButton(
+                        onClick = {
+                            com.fileapex.domain.transfer.TransferActivityGuard.resolveDriveCancelChoice(true)
+                        }
+                    ) { Text(stringRes("cancel_remove_from_drive")) }
+                    TextButton(
+                        onClick = {
+                            com.fileapex.domain.transfer.TransferActivityGuard.resolveDriveCancelChoice(null)
+                        }
+                    ) { Text(stringRes("cancel_keep_going")) }
+                }
             }
         )
     }

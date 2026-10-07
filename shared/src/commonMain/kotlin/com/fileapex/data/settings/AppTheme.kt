@@ -126,7 +126,6 @@ fun AppTheme.defaultIconStyle(): ThemeIconStyle = when (this) {
  */
 enum class KineticStyle(val displayName: String) {
     SPACE("Space"),
-    FROSTED("Frosted"),
     JADED_STEEL("Jaded Steel");
 
     companion object {

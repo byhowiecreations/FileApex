@@ -816,11 +816,29 @@ func (n *Node) announceSelf(ctx context.Context, eventKind string) {
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
-	var wg sync.WaitGroup
+	var targets []deviceRecord
 	for _, peer := range peers {
-		if !n.shouldDial(peer.LastKnownIP) || peer.Port <= 0 {
-			continue
+		if n.shouldDial(peer.LastKnownIP) && peer.Port > 0 {
+			targets = append(targets, peer)
 		}
+	}
+	// A phone that is asleep often needs longer than a quick first try, so
+	// whoever stays silent gets one slower retry before it is reported.
+	silent := n.announceRound(ctx, targets, state, eventKind, timeout)
+	if len(silent) > 0 && ctx.Err() == nil {
+		silent = n.announceRound(ctx, silent, state, eventKind, timeout*4)
+	}
+	n.logSilentPeers(silent)
+}
+
+// announceRound sends one announce to each peer and returns those that did not answer.
+func (n *Node) announceRound(ctx context.Context, peers []deviceRecord, state nodeState, eventKind string, timeout time.Duration) []deviceRecord {
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		silent []deviceRecord
+	)
+	for _, peer := range peers {
 		wg.Add(1)
 		go func(peer deviceRecord) {
 			defer wg.Done()
@@ -836,7 +854,13 @@ func (n *Node) announceSelf(ctx context.Context, eventKind string) {
 				if err == nil {
 					err = fmt.Errorf("HTTP %d", status)
 				}
-				n.logAnnounceFailure(peer, err)
+				if status != 0 {
+					n.logAnnounceFailure(peer, err)
+					return
+				}
+				mu.Lock()
+				silent = append(silent, peer)
+				mu.Unlock()
 				return
 			}
 			var roster []deviceRecord
@@ -846,6 +870,25 @@ func (n *Node) announceSelf(ctx context.Context, eventKind string) {
 		}(peer)
 	}
 	wg.Wait()
+	return silent
+}
+
+// logSilentPeers reports non-responders as one line, at most once per 10 minutes.
+func (n *Node) logSilentPeers(silent []deviceRecord) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	var names []string
+	for _, peer := range silent {
+		if last, ok := n.announceLogged[peer.DeviceID]; ok && time.Since(last) < 10*time.Minute {
+			continue
+		}
+		n.announceLogged[peer.DeviceID] = time.Now()
+		names = append(names, peer.DeviceName)
+	}
+	if len(names) > 0 {
+		sort.Strings(names)
+		log.Printf("No answer to the announce from %d device(s): %s. They may be asleep or offline.", len(names), strings.Join(names, ", "))
+	}
 }
 
 func (n *Node) postSync(ctx context.Context, peer deviceRecord, req clusterSync, timeout time.Duration) ([]byte, int, error) {

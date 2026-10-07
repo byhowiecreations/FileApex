@@ -39,10 +39,8 @@ object ServerLifecycleManager {
     private fun ensureRunningLocked(onLog: (String, Throwable?) -> Unit) {
         val current = serverInstance
         if (current != null && current.isRunning) {
-            val identity = loadLocalIdentity()
-            BackgroundPresenceServices.onShareServerStarted(identity.sharePort, identity.deviceId)
+            // Already serving: advertising, shortcuts and the presence services were set up when it started.
             BackgroundPresenceServices.start()
-            syncDirectShareTargetsFromPeers()
             return
         }
         runCatching { current?.stop() }

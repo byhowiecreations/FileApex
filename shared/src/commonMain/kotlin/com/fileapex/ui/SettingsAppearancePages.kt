@@ -65,7 +65,6 @@ internal fun localizedThemeDescription(theme: AppTheme): String = when (theme) {
 @Composable
 internal fun localizedKineticStyleName(style: KineticStyle): String = when (style) {
     KineticStyle.SPACE -> stringRes("kinetic_style_space")
-    KineticStyle.FROSTED -> stringRes("kinetic_style_frosted")
     KineticStyle.JADED_STEEL -> stringRes("kinetic_style_jaded_steel")
 }
 

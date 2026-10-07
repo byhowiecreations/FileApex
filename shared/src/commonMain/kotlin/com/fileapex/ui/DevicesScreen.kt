@@ -215,7 +215,7 @@ private fun resolveDeviceGridLayout(
         DeviceGridLayoutSpec(
             columnCount = columnCount,
             cellHeight = 92.dp,
-            iconSize = 22.dp,
+            iconSize = 24.dp,
             contentPadding = contentPadding,
             cellSpacing = 8.dp,
             innerPadding = 6.dp,
@@ -900,15 +900,14 @@ internal fun SendClipboardActionChip(
     val glass = isFileApexCustomGlassTheme()
     val kineticStyle = if (LocalAppTheme.current.traits.orbitalHome) LocalKineticStyle.current else null
     val jaded = kineticStyle == KineticStyle.JADED_STEEL
-    val frosted = kineticStyle == KineticStyle.FROSTED
+    val chipShape = RoundedCornerShape(16.dp)
     Surface(
         onClick = onClick,
         enabled = enabled && !isLoading,
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = chipShape,
         color = when {
             jaded -> KineticStyleLook.jadedCard
-            frosted -> KineticStyleLook.frostedCard
             glass -> FluxGlassPalette.clipboardChip
             else -> MaterialTheme.colorScheme.surface
         },
@@ -917,7 +916,6 @@ internal fun SendClipboardActionChip(
             when {
                 isLoading -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                 jaded -> KineticStyleLook.jadedCardEdge
-                frosted -> KineticStyleLook.cyan.copy(alpha = 0.55f)
                 glass -> FluxGlassPalette.cyan.copy(alpha = 0.50f)
                 else -> FileApexTeal.copy(alpha = 0.55f)
             }
@@ -925,7 +923,7 @@ internal fun SendClipboardActionChip(
         shadowElevation = when {
             isLoading -> 1.dp
             jaded -> 0.dp
-            glass || frosted -> 8.dp
+            glass -> 8.dp
             else -> 2.dp
         }
     ) {
@@ -944,7 +942,10 @@ internal fun SendClipboardActionChip(
                 Icon(
                     imageVector = Icons.Filled.ContentPaste,
                     contentDescription = null,
-                    tint = if (glass) FluxGlassPalette.accent else FileApexTeal,
+                    tint = when {
+                        glass -> FluxGlassPalette.accent
+                        else -> FileApexTeal
+                    },
                     modifier = Modifier.size(15.dp)
                 )
             }
@@ -1670,12 +1671,16 @@ fun FileApexBottomBar(
                 (maxWidth * 0.333f).coerceIn(320.dp, 440.dp)
             }
 
+            val pillShape = RoundedCornerShape(if (jadedNav) 20.dp else 32.dp)
             Surface(
                 modifier = Modifier
                     .width(pillWidth)
                     .height(if (jadedNav) 58.dp else 64.dp),
-                shape = RoundedCornerShape(if (jadedNav) 20.dp else 32.dp),
-                color = if (jadedNav) Color(0xCC121E28) else FluxGlassPalette.actionPill,
+                shape = pillShape,
+                color = when {
+                    jadedNav -> Color(0xCC121E28)
+                    else -> FluxGlassPalette.actionPill
+                },
                 border = BorderStroke(1.dp, Color.White.copy(alpha = if (jadedNav) 0.10f else 0.30f)),
                 shadowElevation = if (jadedNav) 0.dp else 10.dp
             ) {
@@ -1968,10 +1973,10 @@ private fun DeviceCardPopOver(
                 val iconStyle = LocalThemeIconStyle.current
                 DeviceEntryIcon(
                     row = row,
-                    modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
-                        Modifier.size(24.dp)
-                    } else {
+                    modifier = if (deviceIconFillsOrb(iconStyle)) {
                         Modifier.fillMaxSize().padding(2.dp)
+                    } else {
+                        Modifier.size(24.dp)
                     },
                     tint = iconTint
                 )
@@ -2226,10 +2231,10 @@ private fun DeviceCard(
                 val iconStyle = LocalThemeIconStyle.current
                 DeviceEntryIcon(
                     row = row,
-                    modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
-                        Modifier.size(24.dp)
-                    } else {
+                    modifier = if (deviceIconFillsOrb(iconStyle)) {
                         Modifier.fillMaxSize().padding(2.dp)
+                    } else {
+                        Modifier.size(24.dp)
                     },
                     tint = FileApexTealDark
                 )

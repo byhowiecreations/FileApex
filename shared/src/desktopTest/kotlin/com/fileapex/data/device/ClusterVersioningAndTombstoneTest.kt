@@ -811,12 +811,51 @@ class ClusterVersioningAndTombstoneTest {
     }
 
     @Test
-    fun testDockerRosterDropsRelayedLastSeen() {
+    fun testRosterNeverSuppliesLastSeen() {
         val phone = peer("honor", "192.168.1.9").copy(lastSeenEpochMs = 1_700_000_000_000L)
         val fromDocker = rosterWithoutRelayedPresence("docker", listOf(phone))
         val fromPhone = rosterWithoutRelayedPresence("0.16.1c", listOf(phone))
 
         assertEquals(0L, fromDocker.single().lastSeenEpochMs)
-        assertEquals(1_700_000_000_000L, fromPhone.single().lastSeenEpochMs)
+        assertEquals(0L, fromPhone.single().lastSeenEpochMs)
+    }
+
+    @Test
+    fun testRelayedNodeStateAndRosterDoNotRaiseLastSeen() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(peer("magic", "192.168.1.30"))
+        val stored = repo.getDevice("magic")!!
+        val relayed = nodeState("magic", "192.168.1.30").copy(
+            lastSeenTimestamp = TimeUtils.now(),
+            membershipVersion = stored.clusterVersion + 1,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+        )
+        repo.applyPeerNodeState(relayed)
+        assertEquals(0L, repo.getDevice("magic")!!.lastSeenEpochMs)
+
+        repo.adoptFromRosterIntro(
+            repo.getDevice("magic")!!.copy(lastSeenEpochMs = TimeUtils.now())
+        )
+        assertEquals(0L, repo.getDevice("magic")!!.lastSeenEpochMs)
+
+        repo.reconcileRemotePeer(
+            repo.getDevice("magic")!!.copy(lastSeenEpochMs = TimeUtils.now())
+        )
+        assertEquals(0L, repo.getDevice("magic")!!.lastSeenEpochMs)
+    }
+
+    @Test
+    fun testDirectlyObservedNodeStateStampsLocalClock() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(peer("magic", "192.168.1.30"))
+        val stored = repo.getDevice("magic")!!
+        val before = TimeUtils.now()
+        val fetched = nodeState("magic", "192.168.1.30").copy(
+            lastSeenTimestamp = 1L,
+            membershipVersion = stored.clusterVersion + 1,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+        )
+        repo.applyPeerNodeState(fetched, observedDirectly = true)
+        assertTrue(repo.getDevice("magic")!!.lastSeenEpochMs >= before)
     }
 }

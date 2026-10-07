@@ -249,8 +249,6 @@ fun FileExplorerScreen(
     Scaffold(
         containerColor = when {
             jadedOrbital -> Color.Transparent
-            LocalAppTheme.current.traits.orbitalHome && LocalKineticStyle.current == KineticStyle.FROSTED ->
-                Color.Transparent
             LocalAppTheme.current.traits.fluxSurfaces -> Color.Transparent
             else -> MaterialTheme.colorScheme.background
         },
@@ -868,12 +866,27 @@ fun FileExplorerScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                TextButton(
-                    onClick = viewModel::confirmMultiCopy,
-                    enabled = state.selectedMultiCopyDeviceIds.isNotEmpty() && !state.isMultiCopying,
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text(ExplorerActionCopy.SEND_TO_PICKER_CONFIRM)
+                if (state.isMultiCopying) {
+                    TransferProgressBlock(modifier = Modifier.padding(bottom = 4.dp))
+                    Text(
+                        text = stringRes("send_continues_in_background"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+                Row(modifier = Modifier.align(Alignment.End)) {
+                    if (state.isMultiCopying) {
+                        TextButton(onClick = viewModel::hideMultiCopyPicker) {
+                            Text(stringRes("close"))
+                        }
+                    }
+                    TextButton(
+                        onClick = viewModel::confirmMultiCopy,
+                        enabled = state.selectedMultiCopyDeviceIds.isNotEmpty() && !state.isMultiCopying
+                    ) {
+                        Text(ExplorerActionCopy.SEND_TO_PICKER_CONFIRM)
+                    }
                 }
             }
         }

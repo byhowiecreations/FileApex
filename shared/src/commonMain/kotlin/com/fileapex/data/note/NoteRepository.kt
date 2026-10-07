@@ -37,6 +37,9 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
 
+/** Older posts arriving this soon after a new device's first sync are history, not news. */
+private const val BACKFILL_WINDOW_MS = 10 * 60 * 1000L
+
 class NoteRepository {
     private val mutex = Mutex()
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
@@ -53,6 +56,9 @@ class NoteRepository {
     private var bulletinSyncEngine: BulletinBoardSyncEngine? = null
 
     private val notifiedNoteIds = mutableSetOf<String>()
+
+    @Volatile
+    private var silentBackfillStartedAt = 0L
 
     private val _downloadingAttachmentIds = MutableStateFlow<Set<String>>(emptySet())
     val downloadingAttachmentIds: StateFlow<Set<String>> = _downloadingAttachmentIds.asStateFlow()
@@ -475,10 +481,20 @@ class NoteRepository {
         return false
     }
 
+    /**
+     * [boardWasEmpty] marks the first batch a new device receives. That history, and any older posts
+     * that follow within [BACKFILL_WINDOW_MS], is stored without notifying; posts made after the
+     * backfill began still notify.
+     */
     suspend fun onPeerBulletinBatchIngested(
         newMessages: List<com.fileapex.data.bulletin.MessageEntity>,
         tombstones: List<com.fileapex.data.bulletin.TombstoneEntity>,
+        boardWasEmpty: Boolean = false,
     ) {
+        val now = com.fileapex.util.TimeUtils.now()
+        if (boardWasEmpty && newMessages.isNotEmpty()) silentBackfillStartedAt = now
+        val backfillStartedAt = silentBackfillStartedAt
+        val backfillActive = backfillStartedAt > 0L && now - backfillStartedAt < BACKFILL_WINDOW_MS
         for (message in newMessages) {
             val note = message.toNoteRecord()
             val shouldAutoUpdate = !note.isMine && BulletinApkUpdatePolicy.shouldAutoUpdateNote(
@@ -489,6 +505,8 @@ class NoteRepository {
             )
             if (shouldAutoUpdate) {
                 BulletinApkUpdateCoordinator.handleIncomingApkUpdate(note)
+            } else if (backfillActive && note.epochMs < backfillStartedAt) {
+                notifiedNoteIds += note.noteId
             } else {
                 maybeNotifyIncoming(note)
             }

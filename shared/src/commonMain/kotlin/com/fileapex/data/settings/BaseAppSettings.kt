@@ -154,6 +154,9 @@ class BaseAppSettings(
     private val drivePurgeAfter72HoursFlow = MutableStateFlow(
         store.getBoolean(KEY_DRIVE_PURGE_AFTER_72H, true)
     )
+    private val driveRelayEncryptionFlow = MutableStateFlow(
+        store.getBoolean(KEY_DRIVE_RELAY_ENCRYPTION, false)
+    )
     private val cellularSendPromptAcknowledgedFlow = MutableStateFlow(
         store.getBoolean(KEY_CELLULAR_SEND_PROMPT_ACK, false)
     )
@@ -430,6 +433,8 @@ class BaseAppSettings(
         driveRelayMaxMbFlow.asStateFlow()
     override val drivePurgeAfter72Hours: StateFlow<Boolean> =
         drivePurgeAfter72HoursFlow.asStateFlow()
+    override val driveRelayEncryptionEnabled: StateFlow<Boolean> =
+        driveRelayEncryptionFlow.asStateFlow()
     override val cellularSendPromptAcknowledged: StateFlow<Boolean> =
         cellularSendPromptAcknowledgedFlow.asStateFlow()
     override val cellularReceivePromptAcknowledged: StateFlow<Boolean> =
@@ -988,6 +993,11 @@ class BaseAppSettings(
         driveRelayMaxMbFlow.value = limit
     }
 
+    override fun setDriveRelayEncryptionEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_DRIVE_RELAY_ENCRYPTION, enabled)
+        driveRelayEncryptionFlow.value = enabled
+    }
+
     override fun setDrivePurgeAfter72Hours(enabled: Boolean) {
         store.putBoolean(KEY_DRIVE_PURGE_AFTER_72H, enabled)
         drivePurgeAfter72HoursFlow.value = enabled
@@ -1095,6 +1105,7 @@ class BaseAppSettings(
         googleDriveRelayEnabledFlow.value = false
         driveRelayMaxMbFlow.value = DriveRelayMaxMb.DEFAULT
         drivePurgeAfter72HoursFlow.value = true
+        driveRelayEncryptionFlow.value = false
         driveRelayOptInPromptShownFlow.value = false
         cellularSendPromptAcknowledgedFlow.value = false
         cellularReceivePromptAcknowledgedFlow.value = false
@@ -1225,6 +1236,7 @@ class BaseAppSettings(
         const val KEY_DRIVE_RELAY_MAX_MB = "drive_relay_max_mb"
         const val KEY_DRIVE_RELAY_OPT_IN_PROMPT_SHOWN = "drive_relay_opt_in_prompt_shown"
         const val KEY_DRIVE_PURGE_AFTER_72H = "drive_purge_after_72h"
+        const val KEY_DRIVE_RELAY_ENCRYPTION = "drive_relay_encryption"
         const val KEY_CELLULAR_SEND_PROMPT_ACK = "cellular_send_prompt_ack"
         const val KEY_CELLULAR_RECEIVE_PROMPT_ACK = "cellular_receive_prompt_ack"
         const val KEY_DIAGNOSTICS_PRIVATE_KEY = "diagnostics_private_key_b64"

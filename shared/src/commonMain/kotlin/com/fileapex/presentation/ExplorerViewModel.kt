@@ -9,7 +9,6 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.domain.browse.BrowseListing
 import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.domain.browse.BrowserCoordinator
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.preview.FilePreviewManager
@@ -825,7 +824,7 @@ class ExplorerViewModel(
             return
         }
         val device = FileApexServices.deviceRepository.getDevice(parsed.remoteDeviceId) ?: error("device missing")
-        val endpoint = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+        val endpoint = if (isTailscaleEnabled()) FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) else null
         FileApexServices.transferService.downloadRemoteToDownloads(
             host = endpoint?.host ?: device.lastKnownIp,
             port = endpoint?.port ?: device.port,
@@ -1013,6 +1012,11 @@ class ExplorerViewModel(
 
     fun dismissMultiCopyIntro() {
         _uiState.update { it.copy(showMultiCopyIntro = false) }
+    }
+
+    /** Closes the picker and leaves a running send alone; it reports through the status message. */
+    fun hideMultiCopyPicker() {
+        _uiState.update { it.copy(showMultiCopyPicker = false) }
     }
 
     fun dismissMultiCopyPicker() {

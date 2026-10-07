@@ -26,7 +26,7 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
     override fun onCreate() {
         super.onCreate()
         if (FileApexAndroidBootstrap.ensureInitialized(applicationContext)) {
-            BatteryBulletinCoordinator.onProcessStart(applicationContext)
+            BatteryBulletinCoordinator.onProcessStartFromWake(applicationContext)
         }
     }
 

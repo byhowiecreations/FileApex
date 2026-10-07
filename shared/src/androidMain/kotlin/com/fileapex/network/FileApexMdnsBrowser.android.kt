@@ -21,6 +21,8 @@ actual object FileApexMdnsBrowser {
     private val resolveExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val discoveryRestartAttempts = AtomicInteger(0)
+    @Volatile
+    private var lastProbeEpochMs = 0L
     private var pendingRestartRunnable: Runnable? = null
 
     actual fun start(onPeerDiscovered: (host: String, port: Int, hintedDeviceId: String?) -> Unit) {
@@ -52,11 +54,17 @@ actual object FileApexMdnsBrowser {
             }
             return
         }
+        val now = System.currentTimeMillis()
+        if (now - lastProbeEpochMs < PROBE_COALESCE_MS) return
+        lastProbeEpochMs = now
         androidApplicationContextOrNull()?.let { acquireLegacyMulticastLockIfNeeded(it) }
-        val listener = discoveryListener ?: return
+        val previous = discoveryListener ?: return
+        // NsdManager rejects a listener that is still registered, so the new browse gets its own.
+        val fresh = createDiscoveryListener()
+        discoveryListener = fresh
+        runCatching { manager.stopServiceDiscovery(previous) }
         runCatching {
-            manager.stopServiceDiscovery(listener)
-            manager.discoverServices(FileApexMdns.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+            manager.discoverServices(FileApexMdns.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, fresh)
         }.onFailure { error ->
             println("FileApexMdnsBrowser: requestProbe failed - ${error.message}")
             scheduleDiscoveryRestart()
@@ -229,6 +237,8 @@ actual object FileApexMdnsBrowser {
     }
 
     private const val MAX_DISCOVERY_RESTART_ATTEMPTS = 5
+    /** Several peers asking for a probe at once need one browse, not one each. */
+    private const val PROBE_COALESCE_MS = 2_000L
     private const val DISCOVERY_RESTART_BASE_MS = 2_000L
     private const val LEGACY_MULTICAST_BURST_MS = 10_000L
 }

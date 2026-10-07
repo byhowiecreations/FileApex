@@ -1,7 +1,10 @@
 package com.fileapex.network.routes
 
 import com.fileapex.network.FileApexServer
+import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.network.InFlightSegmentBytes
 import com.fileapex.network.RangeLedger
+import com.fileapex.network.ReceiverCancelRegistry
 import com.fileapex.network.ResumeOffsetResponse
 import com.fileapex.network.SegmentStateResponse
 import com.fileapex.network.SocketFileStreamer
@@ -26,6 +29,10 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -203,6 +210,11 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 return@runCatching
             }
             val partPath = SocketFileStreamer.partPathFor(targetPathStr)
+            val cancelKey = txId.ifBlank { partPath }
+            if (ReceiverCancelRegistry.isCancelled(cancelKey)) {
+                call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
+                return@runCatching
+            }
             val sessionLength = call.request.headers["Content-Length"]?.toLongOrNull()
             val offset = TransferResumeProtocol.parseByteOffset(
                 queryOffset = call.request.queryParameters[TransferResumeProtocol.OFFSET_QUERY],
@@ -234,11 +246,19 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             val channel = call.receiveChannel()
             val uploadFileName = targetPathStr.substringAfterLast('/').substringAfterLast('\\')
             com.fileapex.domain.transfer.TransferActivityGuard.beginTransfer(fileName = uploadFileName)
-            val received = try {
-                server.receiveUploadBytes(channel, partPath, offset, sessionLength)
+            val receivedOrCancelled = try {
+                receiveCancelable(cancelKey) {
+                    server.receiveUploadBytes(channel, partPath, offset, sessionLength)
+                }
             } finally {
                 com.fileapex.domain.transfer.TransferActivityGuard.endTransfer()
             }
+            if (receivedOrCancelled == null) {
+                discardCancelledPart(partPath)
+                call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
+                return@runCatching
+            }
+            val received: Long = receivedOrCancelled
             val totalReceived = offset + received
             val complete = when {
                 received <= 0L && offset == 0L -> false
@@ -297,6 +317,10 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     get("/api/v1/files/segments") {
         runCatching {
             val target = resolveSegmentTarget(server, call) ?: return@runCatching
+            if (ReceiverCancelRegistry.isCancelled(target.txId.ifBlank { target.partPath })) {
+                call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
+                return@runCatching
+            }
             val prepare = call.request.queryParameters[TransferResumeProtocol.PREPARE_QUERY] == "1"
             if (target.txId.isNotBlank() &&
                 TransferTransactionJournal.findCompleted(target.txId, target.senderId, target.totalSize) != null
@@ -320,7 +344,11 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             call.respondText(
                 text = server.json.encodeToString(
                     SegmentStateResponse.serializer(),
-                    SegmentStateResponse(complete = false, ranges = ranges)
+                    SegmentStateResponse(
+                        complete = false,
+                        ranges = ranges,
+                        inFlightBytes = InFlightSegmentBytes.sum(target.partPath)
+                    )
                 ),
                 contentType = ContentType.Application.Json
             )
@@ -333,6 +361,11 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     post("/api/v1/files/upload-segment") {
         runCatching {
             val target = resolveSegmentTarget(server, call) ?: return@runCatching
+            val cancelKey = target.txId.ifBlank { target.partPath }
+            if (ReceiverCancelRegistry.isCancelled(cancelKey)) {
+                call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
+                return@runCatching
+            }
             val offset = call.request.queryParameters[TransferResumeProtocol.OFFSET_QUERY]?.toLongOrNull() ?: -1L
             val length = call.request.queryParameters[TransferResumeProtocol.LENGTH_QUERY]?.toLongOrNull() ?: -1L
             val sessionLength = call.request.headers["Content-Length"]?.toLongOrNull()
@@ -345,12 +378,20 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             val channel = call.receiveChannel()
             ActiveSegmentWriters.enter(target.partPath)
             com.fileapex.domain.transfer.TransferActivityGuard.beginTransfer(fileName = target.fileName)
-            val received = try {
-                server.receiveSegmentBytes(channel, target.partPath, target.totalSize, offset, length)
+            val receivedOrCancelled = try {
+                receiveCancelable(cancelKey) {
+                    server.receiveSegmentBytes(channel, target.partPath, target.totalSize, offset, length)
+                }
             } finally {
                 com.fileapex.domain.transfer.TransferActivityGuard.endTransfer()
                 ActiveSegmentWriters.exit(target.partPath)
             }
+            if (receivedOrCancelled == null) {
+                discardCancelledPart(target.partPath)
+                call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
+                return@runCatching
+            }
+            val received: Long = receivedOrCancelled
             if (received != length) {
                 server.onLog(
                     "segment paused path=${target.partPath} offset=$offset got=$received want=$length",
@@ -530,4 +571,30 @@ private fun announceReceivedFile(
     } else {
         notifyFilesReceived(listOf(receivedName))
     }
+}
+
+/**
+ * Runs an inbound body write so the receiving user can cancel it from the live banner or queue.
+ * Returns null when the user cancelled (the key is then remembered so the sender stops retrying).
+ */
+private suspend fun <T> receiveCancelable(cancelKey: String, block: suspend () -> T): T? {
+    val handle = Job(currentCoroutineContext()[Job])
+    val unregister = TransferActivityGuard.registerCancelable(handle)
+    try {
+        return withContext(handle) { block() }
+    } catch (cancelled: CancellationException) {
+        if (handle.isCancelled && currentCoroutineContext().isActive) {
+            ReceiverCancelRegistry.mark(cancelKey)
+            return null
+        }
+        throw cancelled
+    } finally {
+        unregister()
+        handle.complete()
+    }
+}
+
+private fun discardCancelledPart(partPath: String) {
+    SocketFileStreamer.deleteQuietly(partPath)
+    SocketFileStreamer.deleteQuietly(RangeLedger.ledgerPathFor(partPath))
 }

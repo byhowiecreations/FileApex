@@ -46,6 +46,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Startup failed: %v", err)
 	}
+	log.Printf("Saved state: identity=%t cluster=%t config=%t joined=%t removed=%t",
+		fileExists(node.identityPath), fileExists(node.clusterPath), fileExists(node.configPath), node.isJoined(), node.wasRemoved())
 	if err := applyEnv(node); err != nil {
 		log.Fatalf("Startup failed: %v", err)
 	}
@@ -86,7 +88,7 @@ func main() {
 			log.Fatalf("Daemon stopped: %v", err)
 		}
 		return
-	case *setupFlag || (stdinIsTerminal() && !runningOnUnraid() && !*joinFlag && !explicitJoinMode()):
+	case *setupFlag || (stdinIsTerminal() && !runningOnUnraid() && !*joinFlag && !explicitJoinMode() && !node.isJoined()):
 		if !stdinIsTerminal() {
 			log.Fatal("--setup needs a terminal.")
 		}
@@ -481,4 +483,9 @@ func loadConfig(path string) (*fileConfig, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

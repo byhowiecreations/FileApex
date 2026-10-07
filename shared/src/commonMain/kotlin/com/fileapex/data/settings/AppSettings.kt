@@ -63,6 +63,7 @@ interface AppSettings {
     val googleDriveRelayEnabled: StateFlow<Boolean>
     val driveRelayMaxMb: StateFlow<DriveRelayMaxMb>
     val drivePurgeAfter72Hours: StateFlow<Boolean>
+    val driveRelayEncryptionEnabled: StateFlow<Boolean>
     val cellularSendPromptAcknowledged: StateFlow<Boolean>
     val cellularReceivePromptAcknowledged: StateFlow<Boolean>
     val driveRelayOptInPromptShown: StateFlow<Boolean>
@@ -224,6 +225,8 @@ interface AppSettings {
     fun setDriveRelayMaxMb(limit: DriveRelayMaxMb)
 
     fun setDrivePurgeAfter72Hours(enabled: Boolean)
+
+    fun setDriveRelayEncryptionEnabled(enabled: Boolean)
 
     fun setDriveRelayOptInPromptShown(shown: Boolean)
 

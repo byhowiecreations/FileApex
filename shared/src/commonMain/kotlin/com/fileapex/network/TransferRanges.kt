@@ -19,8 +19,31 @@ data class TransferCapabilities(
 @Serializable
 data class SegmentStateResponse(
     val complete: Boolean = false,
-    val ranges: List<ByteSpan> = emptyList()
+    val ranges: List<ByteSpan> = emptyList(),
+    /** Bytes the receiver has written for in-flight requests but not yet checkpointed into [ranges]. */
+    val inFlightBytes: Long = 0L
 )
+
+/**
+ * Live per-request byte counts for segment uploads still being written. The ledger only advances
+ * every [TransferRuntime.CHECKPOINT_BYTES], so this is what lets a sender show what actually landed.
+ */
+internal object InFlightSegmentBytes {
+    private val unrecorded = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.ConcurrentHashMap<Long, Long>>()
+
+    fun update(partPath: String, offset: Long, bytes: Long) {
+        unrecorded.getOrPut(partPath) { java.util.concurrent.ConcurrentHashMap() }[offset] = bytes.coerceAtLeast(0L)
+    }
+
+    fun clear(partPath: String, offset: Long) {
+        unrecorded[partPath]?.let { byOffset ->
+            byOffset.remove(offset)
+            if (byOffset.isEmpty()) unrecorded.remove(partPath, byOffset)
+        }
+    }
+
+    fun sum(partPath: String): Long = unrecorded[partPath]?.values?.sum() ?: 0L
+}
 
 object TransferRanges {
     fun plan(totalSize: Long, segments: Int): List<ByteSpan> {

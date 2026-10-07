@@ -28,7 +28,8 @@ data class ShareSendUiState(
     val statusMessage: String? = null,
     val errorMessage: String? = null,
     val sendCompleted: Boolean = false,
-    val isDirectSend: Boolean = false
+    val isDirectSend: Boolean = false,
+    val filesReady: Boolean = false
 )
 
 /**
@@ -36,26 +37,53 @@ data class ShareSendUiState(
  * All outbound work goes through [com.fileapex.domain.transfer.TransferManager].
  */
 class ShareSendViewModel(
-    private val payload: IncomingSharePayload,
+    payload: IncomingSharePayload,
     private val directTargetDeviceId: String? = null
 ) : ViewModel() {
     private val transferManager = FileApexServices.transferManager
+    private var payload: IncomingSharePayload = payload
+    private var directSendStarted = false
 
     private val _uiState = MutableStateFlow(
         ShareSendUiState(
             fileNames = payload.files.map { it.fileName },
             isPreparing = true,
-            isDirectSend = !directTargetDeviceId.isNullOrBlank()
+            isDirectSend = !directTargetDeviceId.isNullOrBlank(),
+            filesReady = payload.isStaged
         )
     )
     val uiState: StateFlow<ShareSendUiState> = _uiState.asStateFlow()
 
     init {
         val targetId = directTargetDeviceId?.trim().orEmpty()
-        if (targetId.isNotEmpty()) {
-            sendDirectToDevice(targetId)
-        } else {
+        if (targetId.isEmpty()) {
             prepareDestinations()
+        } else if (payload.isStaged) {
+            directSendStarted = true
+            sendDirectToDevice(targetId)
+        }
+    }
+
+    /** Staging finishes after the sheet is already on screen. Paths arrive here. */
+    fun updatePayload(next: IncomingSharePayload) {
+        payload = next
+        val ready = next.isStaged
+        _uiState.update { it.copy(fileNames = next.files.map { file -> file.fileName }, filesReady = ready) }
+        val targetId = directTargetDeviceId?.trim().orEmpty()
+        if (ready && targetId.isNotEmpty() && !directSendStarted) {
+            directSendStarted = true
+            sendDirectToDevice(targetId)
+        }
+    }
+
+    fun onStagingFailed(message: String) {
+        _uiState.update {
+            it.copy(
+                isPreparing = false,
+                isSending = false,
+                filesReady = false,
+                errorMessage = message
+            )
         }
     }
 
@@ -163,6 +191,7 @@ class ShareSendViewModel(
             it.copy(isSending = true, errorMessage = null, statusMessage = AppI18n.t("sending"))
         }
         runCatching {
+            check(payload.isStaged) { AppI18n.t("preparing_shared_files") }
             transferManager.awaitReady()
             val sources = payload.files.map { it.toSource().verifiedFromDisk() }
             FileApexServices.transferQueue.sendOrQueue(sources, selected, skipTransferPrepare)
@@ -198,6 +227,9 @@ class ShareSendViewModel(
             }
         )
     }
+
+    private val IncomingSharePayload.isStaged: Boolean
+        get() = files.isNotEmpty() && files.all { it.absolutePath.isNotBlank() && it.sizeBytes > 0L }
 
     private fun IncomingShareFile.toSource(): MultiCopySource.Local =
         MultiCopySource.Local(

@@ -76,12 +76,20 @@ object AndroidShareIntake {
      * FileApex prioritizes referencing the existing file location without duplicating files.
      * Only ephemeral streams without a backing file on disk are staged to app cache.
      */
+    /** Display names only, so the share sheet can open before any file is copied. */
+    fun previewFileNames(context: Context, uris: List<Uri>): List<String> {
+        val resolver = context.contentResolver
+        return uris.mapIndexed { index, uri ->
+            queryDisplayName(resolver, uri)?.takeIf { it.isNotBlank() } ?: "shared-$index"
+        }
+    }
+
     suspend fun stageShareUris(
         context: Context,
-        uris: List<Uri>
+        uris: List<Uri>,
+        sessionId: String = UUID.randomUUID().toString()
     ): IncomingSharePayload = withContext(Dispatchers.IO) {
         require(uris.isNotEmpty()) { com.fileapex.i18n.AppI18n.t("no_shared_file") }
-        val sessionId = UUID.randomUUID().toString()
         val resolver = context.contentResolver
         var stagingDir: File? = null
 
@@ -180,6 +188,25 @@ object AndroidShareIntake {
             if (File(rawPath).let { it.exists() && it.canRead() }) return rawPath
         }
 
+        return resolvePathFromOpenDescriptor(context, uri)
+    }
+
+    /**
+     * Share grants a content URI, not a path. The open descriptor's kernel link is the
+     * source file when the provider is file-backed, so the send can read it in place.
+     */
+    private fun resolvePathFromOpenDescriptor(context: Context, uri: Uri): String? {
+        val descriptor = runCatching {
+            context.contentResolver.openFileDescriptor(uri, "r")
+        }.getOrNull() ?: return null
+        descriptor.use { opened ->
+            val link = runCatching {
+                android.system.Os.readlink("/proc/self/fd/${opened.fd}")
+            }.getOrNull()?.trim().orEmpty()
+            if (link.isEmpty() || link.startsWith("/proc/") || ":" in link) return null
+            val file = File(link)
+            if (file.isFile && file.canRead() && file.length() > 0L) return file.absolutePath
+        }
         return null
     }
 

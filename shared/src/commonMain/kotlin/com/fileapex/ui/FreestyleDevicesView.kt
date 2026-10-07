@@ -1317,10 +1317,10 @@ fun FreestyleDevicesView(
                             val buttonBorderWidth = if (isExpanded || isSelected || dropHover) 2.5.dp else 1.5.dp
                             DeviceEntryIcon(
                                 row = row,
-                                modifier = if (iconStyle == ThemeIconStyle.STANDARD) {
-                                    Modifier.size(32.dp)
-                                } else {
+                                modifier = if (deviceIconFillsOrb(iconStyle)) {
                                     Modifier.fillMaxSize().padding(buttonBorderWidth)
+                                } else {
+                                    Modifier.size(32.dp)
                                 },
                                 tint = if (isExpanded) Color(0xFF64B5F6) else Color.White
                             )
@@ -2169,7 +2169,11 @@ fun FreestyleDevicesView(
                                                     val iconStyle = LocalThemeIconStyle.current
                                                     DeviceEntryIcon(
                                                         row = row,
-                                                        modifier = if (iconStyle == ThemeIconStyle.STANDARD) Modifier.size(24.dp) else Modifier.size(36.dp),
+                                                        modifier = if (deviceIconFillsOrb(iconStyle)) {
+                                                            Modifier.size(36.dp)
+                                                        } else {
+                                                            Modifier.size(24.dp)
+                                                        },
                                                         tint = Color.White
                                                     )
                                                     Spacer(modifier = Modifier.width(12.dp))

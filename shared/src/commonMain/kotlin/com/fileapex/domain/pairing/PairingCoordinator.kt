@@ -38,10 +38,21 @@ class PairingCoordinator(
     private val forwardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
+     * Who this node already knew when a pairing began, keyed by the device that scanned our code.
+     * A node announces and seeds only that pre-pairing cluster: whatever the other side seeds to us
+     * mid-handshake is theirs, and must never be re-announced as new.
+     */
+    private val preexistingByScanner = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
+    /**
      * Broadcaster path: inbound POST /pairing/respond from a scanner (persist only).
      * [propagatePairingComplete] runs after the HTTP 201 so the scanner can receive merge packets.
      */
     suspend fun handleInboundScanner(scanner: PairedDeviceEntity) {
+        preexistingByScanner[scanner.deviceId] = repository.listDevices()
+            .map { it.deviceId }
+            .filter { it != scanner.deviceId }
+            .toSet()
         repository.adoptFromPairing(scanner)
         onPassiveReachability(listOf(scanner.deviceId), TimeUtils.now())
     }
@@ -50,7 +61,7 @@ class PairingCoordinator(
      * Broadcaster path: one-time roster seed + intro fan-out after pairing/respond returns 201.
      */
     suspend fun propagatePairingComplete(newlyPaired: PairedDeviceEntity) {
-        broadcastPairingCompleteOnce(newlyPaired)
+        broadcastPairingCompleteOnce(newlyPaired, preexistingByScanner.remove(newlyPaired.deviceId))
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
         runCatching {
             FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(newlyPaired)
@@ -60,8 +71,8 @@ class PairingCoordinator(
     /**
      * Scanner path: local upsert of broadcaster already done; emit one-time pairing deltas.
      */
-    suspend fun afterOutboundPair(peer: PairedDeviceEntity) {
-        broadcastPairingCompleteOnce(peer)
+    suspend fun afterOutboundPair(peer: PairedDeviceEntity, preexistingDeviceIds: Set<String>? = null) {
+        broadcastPairingCompleteOnce(peer, preexistingDeviceIds)
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
         runCatching {
             FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer)
@@ -105,9 +116,6 @@ class PairingCoordinator(
                 repository.getDevice(state.deviceId.trim())?.let { entity ->
                     FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(entity)
                 }
-            }
-            if (state.lastSeenTimestamp > 0L && state.publishesPresence()) {
-                onPassiveReachability(listOf(state.deviceId.trim()), state.lastSeenTimestamp)
             }
         }
     }
@@ -305,7 +313,10 @@ class PairingCoordinator(
     /**
      * After importing a roster, introduce this node to every paired peer (direct LAN push).
      */
-    suspend fun announceSelfToCluster(excludeDeviceIds: Set<String> = emptySet()) {
+    suspend fun announceSelfToCluster(
+        excludeDeviceIds: Set<String> = emptySet(),
+        onlyDeviceIds: Set<String>? = null
+    ) {
         if (!NetworkUtils.isUsableLanIpv4(NetworkUtils.preferredLanIpv4())) {
             println("PairingCoordinator: skip self announce - no usable LAN IPv4")
             return
@@ -313,7 +324,8 @@ class PairingCoordinator(
         val localId = identityProvider().deviceId
         val selfState = selfNodeState()
         val peers = repository.listDevices().filter { peer ->
-            peer.deviceId != localId && peer.deviceId !in excludeDeviceIds
+            peer.deviceId != localId && peer.deviceId !in excludeDeviceIds &&
+                (onlyDeviceIds == null || peer.deviceId in onlyDeviceIds)
         }
         coroutineScope {
             peers.map { peer ->
@@ -432,10 +444,13 @@ class PairingCoordinator(
             runCatching { client.fetchPeerNodeState(peerHost, device.port) }
                 .getOrNull()
                 ?.let { state ->
-                    repository.applyPeerNodeState(state, rosterDeviceId = device.deviceId)
+                    repository.applyPeerNodeState(
+                        state,
+                        rosterDeviceId = device.deviceId,
+                        observedDirectly = true
+                    )
                     if (state.publishesPresence()) {
-                        val epochMs = state.lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now()
-                        onPassiveReachability(listOf(state.deviceId.trim()), epochMs)
+                        onPassiveReachability(listOf(state.deviceId.trim()), TimeUtils.now())
                     }
                 }
         }
@@ -447,7 +462,10 @@ class PairingCoordinator(
      * - Seed the newcomer's roster with our identity and every other paired peer we know.
      * - Tell each existing peer the newcomer's identity once.
      */
-    private suspend fun broadcastPairingCompleteOnce(newlyPaired: PairedDeviceEntity) {
+    private suspend fun broadcastPairingCompleteOnce(
+        newlyPaired: PairedDeviceEntity,
+        preexistingDeviceIds: Set<String>?
+    ) {
         val me = identityProvider()
         val pairingVersion = repository.nextMembershipVersion()
         repository.adoptFromPairing(newlyPaired, version = pairingVersion)
@@ -461,8 +479,11 @@ class PairingCoordinator(
             membershipVersion = maxOf(pairingVersion, updatedNewcomer.clusterVersion)
         )
 
+        // Only the cluster we held before this pairing. Rows adopted from the other side during the
+        // handshake are its own and are not ours to announce back as new.
         val existing = repository.listDevices()
             .filter { it.deviceId != newlyPaired.deviceId && it.deviceId != me.deviceId }
+            .filter { preexistingDeviceIds == null || it.deviceId in preexistingDeviceIds }
 
         // 1. Announce the newcomer to all existing cluster peers FIRST with the new clusterVersion
         // so their tombstones are cleared before the newcomer starts communicating with them.

@@ -8,6 +8,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DevicesFold
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.FlipCameraAndroid
 import androidx.compose.material.icons.filled.LaptopMac
 import androidx.compose.material.icons.filled.LaptopWindows
@@ -45,7 +46,8 @@ fun DeviceEntryIcon(
         profile = DeviceIconProfile(
             deviceId = row.deviceId,
             deviceName = row.deviceName,
-            hardware = DeviceHardwareProfile.from(row)
+            hardware = DeviceHardwareProfile.from(row),
+            clientVersion = row.appVersion.orEmpty()
         ),
         modifier = modifier,
         tint = tint,
@@ -60,11 +62,12 @@ fun DeviceEntryIcon(
     tint: Color = FileApexTealDark,
     iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
 ) {
-    val description = stringRes(deviceIconDescriptionKey(resolveDeviceIconKind(profile)))
+    val kind = resolveDeviceIconKind(profile)
+    val description = stringRes(deviceIconDescriptionKey(kind))
     when (iconStyle) {
         ThemeIconStyle.STANDARD -> {
             Icon(
-                imageVector = deviceIconVector(resolveDeviceIconKind(profile)),
+                imageVector = deviceIconVector(kind),
                 contentDescription = description,
                 modifier = modifier,
                 tint = tint
@@ -113,9 +116,14 @@ internal fun ThemeDeviceIconImage(
     }
 }
 
+fun deviceIconFillsOrb(iconStyle: ThemeIconStyle): Boolean =
+    iconStyle != ThemeIconStyle.STANDARD
+
 fun deviceIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
     DeviceIconKind.MacDesktop -> Icons.Filled.LaptopMac
     DeviceIconKind.WindowsPc -> Icons.Filled.LaptopWindows
+    DeviceIconKind.Docker -> Icons.Filled.Dns
+    DeviceIconKind.LinuxServer -> Icons.Filled.Computer
     DeviceIconKind.FoldablePhone -> Icons.Filled.DevicesFold
     DeviceIconKind.FlipPhone -> Icons.Filled.FlipCameraAndroid
     DeviceIconKind.PixelPhone -> Icons.Filled.Smartphone
@@ -128,6 +136,8 @@ fun deviceIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
 private fun deviceIconDescriptionKey(kind: DeviceIconKind): String = when (kind) {
     DeviceIconKind.MacDesktop -> "icon_mac"
     DeviceIconKind.WindowsPc -> "icon_windows_pc"
+    DeviceIconKind.Docker -> "icon_docker"
+    DeviceIconKind.LinuxServer -> "icon_linux"
     DeviceIconKind.FoldablePhone -> "icon_foldable_phone"
     DeviceIconKind.FlipPhone -> "icon_flip_phone"
     DeviceIconKind.PixelPhone -> "icon_pixel_phone"

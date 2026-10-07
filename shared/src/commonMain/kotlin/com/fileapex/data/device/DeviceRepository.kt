@@ -320,7 +320,8 @@ class DeviceRepository(
             val incoming = normalized.clusterVersion.takeIf { ClusterClock.isAcceptable(it) } ?: 0L
             if (existing != null && incoming < existing.clusterVersion) return false
             ClusterClock.observe(incoming)
-            val seen = maxOf(normalized.lastSeenEpochMs, existing?.lastSeenEpochMs ?: 0L)
+            // Presence is observed by this device's own sweep; a roster never supplies it.
+            val seen = existing?.lastSeenEpochMs ?: 0L
             upsertReplacingAliasesLocked(
                 normalized.copy(
                     isRemoved = false,
@@ -340,8 +341,16 @@ class DeviceRepository(
      *
      * Metadata only: [PeerNodeState.isRemoved] is never applied. Only states stamped by a current
      * build ([PeerNodeState.hasMembershipProtocol]) may lift a tombstone or raise the stored version.
+     *
+     * Presence: [PeerNodeState.lastSeenTimestamp] is never trusted. A state relayed by another device
+     * leaves `lastSeen` alone; only [observedDirectly] (this device just fetched it from the peer
+     * itself) stamps the local clock.
      */
-    suspend fun applyPeerNodeState(state: PeerNodeState, rosterDeviceId: String? = null): Boolean =
+    suspend fun applyPeerNodeState(
+        state: PeerNodeState,
+        rosterDeviceId: String? = null,
+        observedDirectly: Boolean = false
+    ): Boolean =
         mutateMutex.withLock {
             seedClockLocked()
             val trimmedId = state.deviceId.trim()
@@ -364,7 +373,13 @@ class DeviceRepository(
                 return false
             }
 
-            val normalized = normalize(PeerNodeStateMapper.toEntity(state, existing), existing)
+            val observedAt = if (observedDirectly) TimeUtils.now() else 0L
+            val normalized = normalize(
+                PeerNodeStateMapper.toEntity(state, existing).let { entity ->
+                    entity.copy(lastSeenEpochMs = maxOf(existing?.lastSeenEpochMs ?: 0L, observedAt))
+                },
+                existing
+            )
             if (isLocalDevice(normalized)) {
                 return purgeLocalRowsLocked()
             }
@@ -1095,7 +1110,12 @@ class DeviceRepository(
             }
             ClusterClock.observe(incomingVersion)
             val activeEntity = normalize(
-                remote.copy(isRemoved = false, removedAt = null, clusterVersion = incomingVersion),
+                remote.copy(
+                    isRemoved = false,
+                    removedAt = null,
+                    clusterVersion = incomingVersion,
+                    lastSeenEpochMs = existing?.lastSeenEpochMs ?: 0L
+                ),
                 existing
             )
             upsertReplacingAliasesLocked(activeEntity)

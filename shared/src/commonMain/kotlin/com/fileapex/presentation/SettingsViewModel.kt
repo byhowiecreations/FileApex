@@ -87,6 +87,7 @@ data class SettingsUiState(
     val googleDriveRelayEnabled: Boolean = false,
     val driveRelayMaxMb: DriveRelayMaxMb = DriveRelayMaxMb.DEFAULT,
     val drivePurgeAfter72Hours: Boolean = true,
+    val driveRelayEncryptionEnabled: Boolean = false,
     val allowRemoteFileDeletion: Boolean = false,
     val googleDriveAuthError: String? = null,
     val drivePurgeNowBusy: Boolean = false,
@@ -153,6 +154,7 @@ class SettingsViewModel : ViewModel() {
             googleDriveRelayEnabled = settings.googleDriveRelayEnabled.value,
             driveRelayMaxMb = settings.driveRelayMaxMb.value,
             drivePurgeAfter72Hours = settings.drivePurgeAfter72Hours.value,
+            driveRelayEncryptionEnabled = settings.driveRelayEncryptionEnabled.value,
             allowRemoteFileDeletion =
                 settings.bulletinRemoteFilePurgePreference.value == BulletinRemoteFilePurgePreference.ENABLED,
             kineticSphereCleanMode = settings.kineticSphereCleanMode.value,
@@ -884,6 +886,11 @@ class SettingsViewModel : ViewModel() {
     fun setDriveRelayMaxMb(limit: DriveRelayMaxMb) {
         settings.setDriveRelayMaxMb(limit)
         _uiState.update { it.copy(driveRelayMaxMb = limit) }
+    }
+
+    fun setDriveRelayEncryptionEnabled(enabled: Boolean) {
+        settings.setDriveRelayEncryptionEnabled(enabled)
+        _uiState.update { it.copy(driveRelayEncryptionEnabled = enabled) }
     }
 
     fun setDrivePurgeAfter72Hours(enabled: Boolean) {

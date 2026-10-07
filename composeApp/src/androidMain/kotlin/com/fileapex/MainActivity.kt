@@ -31,6 +31,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.fileapex.domain.pairing.PairingPayload
+import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.network.FileShareServerService
 import com.fileapex.platform.AndroidShareIntake
@@ -52,8 +53,12 @@ import android.util.Log
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.withAppLocale
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: android.content.Context) {
@@ -152,25 +157,20 @@ class MainActivity : ComponentActivity() {
         configureVisibleSystemBars()
         refreshPermissions()
         refreshUnusedAppRestrictionsAsync()
-        if (onboardingComplete) {
-            startShareServer()
-        }
-
-        if (com.fileapex.di.FileApexServices.settings.googleRestorePending.value) {
-            promptReinstallGoogleAccount()
-        }
-
-        lifecycleScope.launch {
-            runCatching {
-                com.fileapex.di.FileApexServices.deviceRepository.observeDevices().collect { devices ->
-                    if (devices.isNotEmpty() && onboardingComplete) {
-                        startShareServer(force = true)
-                    }
-                }
-            }
-        }
 
         handleIncomingIntent(intent)
+        if (openedFromShareSheet) {
+            // Roster lookup and the foreground service start on the main thread were
+            // holding the first frame of the share sheet.
+            Looper.myQueue().addIdleHandler {
+                if (!isDestroyed && !isFinishing) {
+                    startDeferredHomeServices()
+                }
+                false
+            }
+        } else {
+            startDeferredHomeServices()
+        }
 
         setContent {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -240,6 +240,19 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         com.fileapex.tailscale.FileApexForegroundActivity.attach(this)
         configureVisibleSystemBars()
+        if (openedFromShareSheet) {
+            Looper.myQueue().addIdleHandler {
+                if (!isDestroyed && !isFinishing) {
+                    performResumeWork()
+                }
+                false
+            }
+            return
+        }
+        performResumeWork()
+    }
+
+    private fun performResumeWork() {
         val previouslyComplete = onboardingComplete
         completePendingOnboardingReturns()
         refreshPermissions()
@@ -257,6 +270,28 @@ class MainActivity : ComponentActivity() {
         val hasDownloadUpdateExtra = intent?.getBooleanExtra(com.fileapex.platform.EXTRA_DOWNLOAD_UPDATE, false) == true
         if (pendingOffer != null && !hasDownloadUpdateExtra) {
             requestShowUpdateSheet = true
+        }
+    }
+
+    private var homeServicesStarted = false
+
+    private fun startDeferredHomeServices() {
+        if (homeServicesStarted) return
+        homeServicesStarted = true
+        if (com.fileapex.di.FileApexServices.settings.googleRestorePending.value) {
+            promptReinstallGoogleAccount()
+        }
+        if (onboardingComplete) {
+            startShareServer()
+        }
+        lifecycleScope.launch {
+            runCatching {
+                com.fileapex.di.FileApexServices.deviceRepository.observeDevices().collect { devices ->
+                    if (devices.isNotEmpty() && onboardingComplete) {
+                        startShareServer(force = true)
+                    }
+                }
+            }
         }
     }
 
@@ -428,9 +463,20 @@ class MainActivity : ComponentActivity() {
         directShareDeviceId = targetDeviceId
 
         stageJob?.cancel()
+        val sessionId = UUID.randomUUID().toString()
         stageJob = lifecycleScope.launch {
+            val names = withContext(Dispatchers.IO) {
+                AndroidShareIntake.previewFileNames(this@MainActivity, uris)
+            }
+            incomingShare = IncomingSharePayload(
+                sessionId = sessionId,
+                files = names.map { name ->
+                    IncomingShareFile(fileName = name, absolutePath = "", sizeBytes = 0L)
+                }
+            )
+            isPreparingShare = false
             runCatching {
-                AndroidShareIntake.stageShareUris(this@MainActivity, uris)
+                AndroidShareIntake.stageShareUris(this@MainActivity, uris, sessionId)
             }.fold(
                 onSuccess = { payload ->
                     incomingShare = payload
@@ -438,6 +484,7 @@ class MainActivity : ComponentActivity() {
                     sharePrepareError = null
                 },
                 onFailure = { error ->
+                    if (error is CancellationException) throw error
                     isPreparingShare = false
                     sharePrepareError = error.message ?: com.fileapex.i18n.AppI18n.t("could_not_read_shared_files")
                 }
@@ -722,14 +769,26 @@ class MainActivity : ComponentActivity() {
         if (!onboardingComplete) {
             return
         }
-        val hasPaired = runCatching {
-            if (com.fileapex.di.FileApexServices.isDatabaseReady()) {
-                kotlinx.coroutines.runBlocking {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val hasPaired = try {
+                com.fileapex.di.FileApexServices.isDatabaseReady() &&
                     com.fileapex.di.FileApexServices.deviceRepository.listDevices().isNotEmpty()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "paired-device check failed: ${error.message}")
+                false
+            }
+            withContext(Dispatchers.Main.immediate) {
+                if (!isDestroyed && !isFinishing) {
+                    startShareServerWithRoster(force, hasPaired)
                 }
-            } else false
-        }.getOrDefault(false)
+            }
+        }
+    }
 
+    private fun startShareServerWithRoster(force: Boolean, hasPaired: Boolean) {
+        if (!onboardingComplete) return
         val wasPending = ShareServerPendingStart.consume(this)
         if (!force && !hasPaired && !wasPending) {
             Log.i(TAG, "Deferring share server start - 0 paired devices")

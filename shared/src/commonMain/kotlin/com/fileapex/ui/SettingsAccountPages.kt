@@ -48,6 +48,7 @@ internal fun DriveRelaySettingsSection(
     onDriveRelayChange: (Boolean) -> Unit,
     onDriveRelayMaxMbSelected: (DriveRelayMaxMb) -> Unit,
     onDriveAuthResult: (Boolean, String?) -> Unit,
+    onEncryptionChange: (Boolean) -> Unit,
     onPurgeChange: (Boolean) -> Unit,
     onPurgeNow: () -> Unit
 ) {
@@ -123,6 +124,23 @@ internal fun DriveRelaySettingsSection(
             }
         )
         ListItem(
+            headlineContent = { Text(stringRes("drive_encrypt"), softWrap = true) },
+            supportingContent = {
+                Text(
+                    stringRes(
+                        if (state.driveRelayEncryptionEnabled) "drive_encrypt_on" else "drive_encrypt_off"
+                    ),
+                    softWrap = true
+                )
+            },
+            trailingContent = {
+                Switch(
+                    checked = state.driveRelayEncryptionEnabled,
+                    onCheckedChange = onEncryptionChange
+                )
+            }
+        )
+        ListItem(
             headlineContent = { Text(stringRes("purge_after_72h"), softWrap = true) },
             supportingContent = {
                 Text(stringRes("purge_after_72h_desc"), softWrap = true)
@@ -185,6 +203,7 @@ internal fun GoogleAccountSettingsPage(
     onDriveRelayChange: (Boolean) -> Unit,
     onDriveRelayMaxMbSelected: (DriveRelayMaxMb) -> Unit,
     onDriveAuthResult: (Boolean, String?) -> Unit,
+    onEncryptionChange: (Boolean) -> Unit,
     onPurgeChange: (Boolean) -> Unit,
     onPurgeNow: () -> Unit
 ) {
@@ -249,6 +268,7 @@ internal fun GoogleAccountSettingsPage(
                     onDriveRelayChange = onDriveRelayChange,
                     onDriveRelayMaxMbSelected = onDriveRelayMaxMbSelected,
                     onDriveAuthResult = onDriveAuthResult,
+                    onEncryptionChange = onEncryptionChange,
                     onPurgeChange = onPurgeChange,
                     onPurgeNow = onPurgeNow
                 )

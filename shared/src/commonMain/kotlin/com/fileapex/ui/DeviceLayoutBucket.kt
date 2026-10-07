@@ -31,8 +31,9 @@ internal data class KineticStoredNode(
 )
 
 /**
- * Absolute pixel records win. A bucket fraction is used only when no pixel
- * record exists, so a lost or replaced fraction cannot hide the saved layout.
+ * The pixel record for this size class wins, then the unscoped record, then the
+ * other size class. A record that has to be clipped still wins over a different
+ * size class that happens to sit inside the new canvas.
  */
 internal fun kineticStoredNode(
     offsets: Map<String, Pair<Float, Float>>,
@@ -63,25 +64,12 @@ private fun closestAbsolutePixel(
     if (maxX <= marginPx || maxY <= topMarginPx) return null
     val scoped = if (bucket.endsWith("-cmp")) "pos:cmp:$deviceId" else "pos:exp:$deviceId"
     val other = if (bucket.endsWith("-cmp")) "pos:exp:$deviceId" else "pos:cmp:$deviceId"
-    val records = listOf(scoped, "pos:$deviceId", other).mapNotNull { key -> offsets[key] }
-    if (records.isEmpty()) return null
-    val ranked = records.mapIndexed { index, point ->
-        if (point.first < 0f || point.second < 0f) return@mapIndexed null
-        val snapped = snapToWholePixel(point.first, point.second, marginPx, topMarginPx, maxX, maxY)
-        val dx = snapped.first - point.first
-        val dy = snapped.second - point.second
-        RankedPixel(dx * dx + dy * dy, index, snapped)
-    }.filterNotNull()
-    val best = ranked.minWithOrNull(compareBy<RankedPixel> { it.clampDistance }.thenBy { it.preference })
-        ?: return null
-    return KineticStoredNode(best.point.first, best.point.second, fractional = false)
+    val point = listOf(scoped, "pos:$deviceId", other).firstNotNullOfOrNull { key ->
+        offsets[key]?.takeIf { it.first >= 0f && it.second >= 0f }
+    } ?: return null
+    val snapped = snapToWholePixel(point.first, point.second, marginPx, topMarginPx, maxX, maxY)
+    return KineticStoredNode(snapped.first, snapped.second, fractional = false)
 }
-
-private data class RankedPixel(
-    val clampDistance: Float,
-    val preference: Int,
-    val point: Pair<Float, Float>
-)
 
 private fun snapToWholePixel(
     x: Float,

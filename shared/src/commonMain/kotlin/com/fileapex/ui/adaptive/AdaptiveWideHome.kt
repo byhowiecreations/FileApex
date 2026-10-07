@@ -57,8 +57,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import com.fileapex.ui.theme.LocalJadedHazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -68,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -738,21 +737,20 @@ fun FileApexNavigationRail(
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
     val jadedRail = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
+    val jadedRailShape = RoundedCornerShape(topStart = 0.dp, topEnd = 28.dp, bottomEnd = 28.dp, bottomStart = 0.dp)
     BoxWithConstraints(modifier = Modifier.fillMaxHeight()) {
         val isPortrait = maxHeight > maxWidth
         NavigationRail(
             modifier = Modifier
+                .widthIn(min = 92.dp)
+                .padding(horizontal = 4.dp)
                 .fillMaxHeight()
                 .then(
                     if (jadedRail) {
-                        Modifier.drawBehind {
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.10f),
-                                start = Offset(size.width - 0.5f, 0f),
-                                end = Offset(size.width - 0.5f, size.height),
-                                strokeWidth = 1.dp.toPx()
-                            )
-                        }
+                        Modifier
+                            .padding(top = 6.dp, bottom = 10.dp)
+                            .clip(jadedRailShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.10f), jadedRailShape)
                     } else {
                         Modifier
                     }

@@ -19,7 +19,6 @@ import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.domain.presence.PeerLanReachabilityVerdict
 import com.fileapex.domain.presence.PeerPresenceMonitor
 import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
@@ -95,6 +94,8 @@ class TransferQueueCoordinator(
     private val drainMutex = Mutex()
     private var drainWatcherStarted = false
     private var pendingDrainJob: Job? = null
+    /** Rows with a send in flight; each runs on its own so a slow one never holds up the rest. */
+    private val claimedRows = ConcurrentHashMap.newKeySet<String>()
     private val sendingJobs = ConcurrentHashMap<String, Job>()
     private val removalRequested = ConcurrentHashMap.newKeySet<String>()
 
@@ -134,6 +135,11 @@ class TransferQueueCoordinator(
         }
     }
 
+    /** A send the user just asked for starts at once; only background triggers wait out the debounce. */
+    private fun drainNow() {
+        scope.launch { drainEligible() }
+    }
+
     /**
      * Send to LAN-reachable peers now; queue the rest until they return to local Wi‑Fi.
      */
@@ -154,34 +160,18 @@ class TransferQueueCoordinator(
             return QueueAwareSendResult(batch, emptyList(), batch.summaryMessage)
         }
 
-        val (routable, blocked) = partitionByLanReachability(remoteDevices)
-        val sendNow = localDevices + routable
-        val batch = if (sendNow.isNotEmpty()) {
-            try {
-                transferManager.sendToDevices(sources, sendNow, skipTransferPrepare = true)
-            } catch (cancelled: TransferCancelledException) {
-                throw cancelled
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                println("TransferQueue: immediate send failed, queueing - ${error.message}")
-                null
-            }
+        val localBatch = if (localDevices.isNotEmpty()) {
+            transferManager.sendToDevices(sources, localDevices, skipTransferPrepare)
         } else {
             null
         }
-
-        val succeeded = batch?.results?.flatMap { it.succeededDeviceIds }?.toSet().orEmpty()
-        val failedRoutableIds = routable.map { it.deviceId }.filter { it !in succeeded }
-        val offLanIds = (blocked.map { it.deviceId } + failedRoutableIds).distinct()
-        val queuedNames = enqueueSourcesInternal(sources, offLanIds)
-        return buildResult(
-            batch = batch?.takeIf { succeeded.isNotEmpty() },
-            queuedNames = queuedNames,
-            hadImmediateTargets = succeeded.isNotEmpty(),
-            relayedNames = emptyList(),
-            pendingDesktopSyncNames = emptyList(),
-            queueReason = null
+        // Remote sends always go through the queue: it persists across restarts, retries, and starts
+        // right away when the peer is reachable, so the caller never has to wait on the transfer.
+        val queuedNames = enqueueSourcesInternal(sources, remoteDevices.map { it.deviceId })
+        return QueueAwareSendResult(
+            batch = localBatch,
+            queuedDeviceNames = queuedNames,
+            message = AppI18n.t("queued_sending_background", queuedNames.joinToString(", "))
         )
     }
 
@@ -217,7 +207,7 @@ class TransferQueueCoordinator(
         val job = sendingJobs[id]
         if (job != null) {
             removalRequested += id
-            TransferActivityGuard.cancelActiveTransfers()
+            TransferActivityGuard.cancelOwner(id)
             job.cancel()
             return
         }
@@ -226,7 +216,7 @@ class TransferQueueCoordinator(
 
     fun cancelSending(id: String): Boolean {
         val job = sendingJobs[id] ?: return false
-        TransferActivityGuard.cancelActiveTransfers()
+        TransferActivityGuard.cancelOwner(id)
         job.cancel()
         return true
     }
@@ -245,21 +235,45 @@ class TransferQueueCoordinator(
         scheduleDrain()
     }
 
+    /**
+     * Claims every queued row and starts each on its own coroutine. Returns once they are started, so
+     * a new row never waits behind a slow one; [TransferRuntime.streamBudget] still caps the sockets.
+     */
     suspend fun drainEligible() {
-        if (TransferActivityGuard.isTransferActive()) return
         drainMutex.withLock {
+            expireOldRows()
             recoverStaleSendingRows()
-            val queued = dao.listByStatus(PendingTransferStatus.Queued.name)
-            for (entity in queued) {
-                drainOne(entity)
+            for (entity in dao.listByStatus(PendingTransferStatus.Queued.name)) {
+                if (!claimedRows.add(entity.id)) continue
+                scope.launch {
+                    try {
+                        drainOne(entity)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        println("TransferQueue: row ${entity.id} failed - ${error.message}")
+                    } finally {
+                        claimedRows.remove(entity.id)
+                    }
+                }
             }
         }
     }
 
+    /** A row that never got delivered stops waiting after a day; the user can still cancel earlier. */
+    private suspend fun expireOldRows() {
+        val cutoff = TimeUtils.now() - QUEUE_MAX_AGE_MS
+        for (entity in dao.listCreatedBefore(cutoff)) {
+            if (entity.id in claimedRows) continue
+            println("TransferQueue: expired queued item ${entity.id} after 24 hours")
+            deleteQueueItem(entity)
+        }
+    }
+
     private suspend fun recoverStaleSendingRows() {
-        if (TransferActivityGuard.isTransferActive()) return
         val sending = dao.listByStatus(PendingTransferStatus.Sending.name)
         for (entity in sending) {
+            if (entity.id in claimedRows) continue
             dao.upsert(
                 entity.copy(
                     status = PendingTransferStatus.Queued.name,
@@ -302,6 +316,16 @@ class TransferQueueCoordinator(
             deleteQueueItem(entity)
             return
         }
+        changedSourceName(entity)?.let { name ->
+            dao.upsert(
+                entity.copy(
+                    status = PendingTransferStatus.Paused.name,
+                    lastError = AppI18n.t("queued_source_changed", name),
+                    lastAttemptEpochMs = now
+                )
+            )
+            return
+        }
 
         val driveReady = DriveRelayPolicy.ensureReadyForSend() && DriveRelayPolicy.canSend()
         val reachabilityMap = presenceMonitor.reachabilityEpochMs.value
@@ -320,7 +344,8 @@ class TransferQueueCoordinator(
             return
         }
 
-        val routableTargets = if (isActiveLanConnectivity()) {
+        // Off the LAN, a tailnet endpoint is still a direct path; Drive is only for peers with none.
+        val routableTargets = if (isActiveLanConnectivity() || isTailscaleEnabled()) {
             resolveDrainTargets(pendingIds)
         } else {
             emptyList()
@@ -342,20 +367,27 @@ class TransferQueueCoordinator(
         val delivered = mutableSetOf<String>()
         var lastError: String? = null
 
+        var userCancelled = false
         if (offLanIds.isNotEmpty()) {
             driveLog("queue drain via Drive for ${offLanIds.size} off-LAN destination(s)")
-            val outcome = relayOrQueueOffLan(sources, offLanIds)
-            delivered += outcome.relayedIds
-            if (outcome.queueReason == "drive_not_ready") {
-                startDriveGrantIfNeeded()
-                lastError = WAITING_DRIVE_GRANT
-            } else if (outcome.queueIds.isNotEmpty()) {
-                lastError = AppI18n.t("drive_relay_did_not_finish")
+            val outcome = try {
+                sendTracked(entity.id) { relayOrQueueOffLan(sources, offLanIds) }
+            } catch (cancelled: TransferCancelledException) {
+                userCancelled = true
+                null
+            }
+            if (outcome != null) {
+                delivered += outcome.relayedIds
+                if (outcome.queueReason == "drive_not_ready") {
+                    startDriveGrantIfNeeded()
+                    lastError = WAITING_DRIVE_GRANT
+                } else if (outcome.queueIds.isNotEmpty()) {
+                    lastError = AppI18n.t("drive_relay_did_not_finish")
+                }
             }
         }
 
-        var userCancelled = false
-        if (routableTargets.isNotEmpty()) {
+        if (!userCancelled && routableTargets.isNotEmpty()) {
             val batch = try {
                 sendTracked(entity.id) {
                     transferManager.sendToDevices(
@@ -387,6 +419,10 @@ class TransferQueueCoordinator(
 
         val stillPending = pendingIds.filter { it !in delivered }
         if (stillPending.isEmpty() || removalRequested.remove(entity.id)) {
+            deleteQueueItem(entity)
+            return
+        }
+        if (userCancelled && TransferActivityGuard.consumeRemoveFromDrive()) {
             deleteQueueItem(entity)
             return
         }
@@ -423,7 +459,7 @@ class TransferQueueCoordinator(
     }
 
     private suspend fun <T> sendTracked(id: String, block: suspend () -> T): T = coroutineScope {
-        val work = async { block() }
+        val work = async(TransferOwner(id)) { block() }
         sendingJobs[id] = work
         try {
             work.await()
@@ -435,31 +471,9 @@ class TransferQueueCoordinator(
         }
     }
 
-    private suspend fun partitionByLanReachability(
-        remoteDevices: List<MultiCopyDeviceOption>
-    ): Pair<List<MultiCopyDeviceOption>, List<MultiCopyDeviceOption>> {
-        val routable = mutableListOf<MultiCopyDeviceOption>()
-        val blocked = mutableListOf<MultiCopyDeviceOption>()
-        for (device in remoteDevices) {
-            val peer = deviceRepository.getDevice(device.deviceId)
-            if (peer == null) {
-                blocked += device
-                continue
-            }
-            val endpoint = resolveTransferEndpoint(peer)
-            if (endpoint != null) {
-                routable += device.copy(host = endpoint.first, port = endpoint.second)
-            } else {
-                blocked += device
-            }
-        }
-        return routable to blocked
-    }
-
     private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? {
         if (isTailscaleEnabled()) {
-            val endpoint = resolvePeerEndpoint(peer, tailnetUp = true)
-            if (endpoint?.tailnet == true) return endpoint.host to endpoint.port
+            presenceMonitor.resolveOutboundEndpoint(peer)?.let { return it.host to it.port }
         }
         val host = peer.lastKnownIp.trim()
         val port = peer.port
@@ -510,7 +524,7 @@ class TransferQueueCoordinator(
                 displayLabel = displayLabel
             )
         )
-        scheduleDrain()
+        drainNow()
     }
 
     private suspend fun deviceNames(deviceIds: List<String>): List<String> =
@@ -581,6 +595,7 @@ class TransferQueueCoordinator(
                 desktopPendingNames = desktopNamesAmong(deviceIds)
             )
         }.getOrElse { error ->
+            if (error is CancellationException) throw error
             driveLogError("Drive relay failed - queuing", error)
             DriveRelayNotifier.notifyFailed(
                 fileName = localSources.firstOrNull()?.fileName.orEmpty(),
@@ -728,6 +743,23 @@ class TransferQueueCoordinator(
             null -> null
         }
 
+    /** Name of a queued local file that no longer matches what was queued (size or modified time), or null. */
+    private fun changedSourceName(entity: PendingTransferEntity): String? {
+        if (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull() !=
+            QueuedTransferSourceKind.Sources
+        ) {
+            return null
+        }
+        val snapshots = runCatching {
+            json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
+        }.getOrNull() ?: return null
+        return snapshots.firstOrNull { snapshot ->
+            if (!snapshot.remoteHost.isNullOrBlank() || snapshot.modifiedEpochMs <= 0L) return@firstOrNull false
+            val file = java.io.File(snapshot.absolutePath)
+            file.isFile && (file.lastModified() != snapshot.modifiedEpochMs || file.length() != snapshot.sizeBytes)
+        }?.fileName
+    }
+
     private fun healPathIfMissing(rawPath: String): String {
         val path = Path(rawPath)
         if (SystemFileSystem.exists(path)) return rawPath
@@ -812,6 +844,7 @@ class TransferQueueCoordinator(
 
     companion object {
         private const val DRAIN_TRIGGER_DEBOUNCE_MS = 750L
+        private const val QUEUE_MAX_AGE_MS = 24 * 60 * 60 * 1000L
         private const val DRAIN_RETRY_BACKOFF_MS = 30_000L
         private const val WAITING_DRIVE_GRANT = "waiting_drive_grant"
         private const val USER_CANCELLED = "user_cancelled"
@@ -841,7 +874,8 @@ private fun MultiCopySource.toSnapshot(): QueuedSourceSnapshot =
             fileName = fileName,
             sizeBytes = sizeBytes,
             absolutePath = absolutePath,
-            relativeDestPath = relativeDestPath
+            relativeDestPath = relativeDestPath,
+            modifiedEpochMs = java.io.File(absolutePath).lastModified().coerceAtLeast(0L)
         )
         is MultiCopySource.Remote -> QueuedSourceSnapshot(
             fileName = fileName,

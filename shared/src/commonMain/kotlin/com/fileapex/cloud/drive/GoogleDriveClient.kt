@@ -9,7 +9,8 @@ expect object GoogleDriveClient {
     suspend fun uploadResumable(
         localAbsolutePath: String,
         fileName: String,
-        mimeType: String = "application/octet-stream"
+        mimeType: String = "application/octet-stream",
+        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
     ): DriveUploadedFile
 
     suspend fun downloadToPath(

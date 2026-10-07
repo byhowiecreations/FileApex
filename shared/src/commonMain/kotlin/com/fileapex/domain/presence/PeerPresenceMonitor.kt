@@ -5,6 +5,7 @@ import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.network.FileApexClient
@@ -83,6 +84,8 @@ class PeerPresenceMonitor(
 
     private val lastReachableEpochById = mutableMapOf<String, Long>()
     private val nodeStateFetchedAtMs = ConcurrentHashMap<String, Long>()
+    /** deviceId to (verified on LAN, epoch ms the answer expires). */
+    private val lanDirectVerdicts = ConcurrentHashMap<String, Pair<Boolean, Long>>()
     private val lastSweepWakeAtMs = AtomicLong(0L)
     private val discoveredMdnsEndpoints = mutableMapOf<Pair<String, Int>, Long>()
     private val _reachabilityEpochMs = MutableStateFlow<Map<String, Long>>(emptyMap())
@@ -293,6 +296,10 @@ class PeerPresenceMonitor(
         if (trimmedSource.isNotEmpty()) {
             val peer = mutex.withLock { repository.getDevice(trimmedSource) }
             if (peer != null) {
+                println(
+                    "PeerPresenceMonitor: wake from ${peer.deviceId} " +
+                        "(${peer.deviceName}${NetworkUtils.lastOctetLabel(peer.lastKnownIp)})"
+                )
                 primePeer(
                     peer,
                     includeDiscovery = false,
@@ -356,7 +363,7 @@ class PeerPresenceMonitor(
                 }
         } ?: return null
         mutex.withLock {
-            repository.applyPeerNodeState(state, rosterDeviceId = matched.deviceId)
+            repository.applyPeerNodeState(state, rosterDeviceId = matched.deviceId, observedDirectly = true)
         }
         return mutex.withLock { repository.getDevice(matched.deviceId) } ?: matched
     }
@@ -527,6 +534,7 @@ class PeerPresenceMonitor(
     ): PeerLanReachabilityVerdict.Direct? {
         val live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
         if (allowTailnet && isTailscaleEnabled()) {
+            verifiedLanEndpoint(live)?.let { return it }
             val endpoint = resolvePeerEndpoint(live, tailnetUp = true)
             if (endpoint?.tailnet == true) {
                 return PeerLanReachabilityVerdict.Direct(endpoint.host, endpoint.port)
@@ -539,6 +547,43 @@ class PeerPresenceMonitor(
             return PeerLanReachabilityVerdict.Direct(host, port)
         }
         return null
+    }
+
+    /**
+     * The tsnet userspace path is CPU bound and far slower than the local network, so a peer on
+     * the same LAN is used directly even while Tailscale is on. The peer has to answer on its
+     * stored LAN address with its own device id; a private address alone proves nothing because
+     * another network can reuse it. Both answers are cached briefly so a queue of sends pays for one probe.
+     * A peer on the local subnet answers in milliseconds; a stale address costs one short timeout, then
+     * the miss is remembered and the tailnet path is used straight away.
+     */
+    suspend fun verifiedLanEndpoint(peer: PairedDeviceEntity): PeerLanReachabilityVerdict.Direct? {
+        val host = peer.lastKnownIp.trim()
+        val port = peer.port
+        if (port <= 0 || host.isEmpty() || !NetworkUtils.isPrivateLanPeerHost(host)) return null
+        if (!isActiveLanConnectivity() || !PeerLanHttpPolicy.canRoute(host)) return null
+        // A peer outside every local /24 cannot be answering on the LAN, so skip the probe entirely.
+        if (NetworkUtils.lanBindCandidates().none { NetworkUtils.sameIpv4Slash24(it, host) }) return null
+        val now = TimeUtils.now()
+        val cached = lanDirectVerdicts[peer.deviceId]
+        if (cached != null && cached.second > now) {
+            return if (cached.first) PeerLanReachabilityVerdict.Direct(host, port) else null
+        }
+        val state = cancellableCatching {
+            client.fetchPeerNodeState(host, port, LanPresenceTiming.DEVICE_DETAILS_PING_TIMEOUT_MS)
+        }.getOrNull()
+        val verified = state != null && sameDevice(peer, state)
+        val ttl = if (verified) LAN_DIRECT_HIT_TTL_MS else LAN_DIRECT_MISS_TTL_MS
+        lanDirectVerdicts[peer.deviceId] = verified to (TimeUtils.now() + ttl)
+        if (!verified) return null
+        markReachable(peer.deviceId)
+        return PeerLanReachabilityVerdict.Direct(host, port)
+    }
+
+    private fun sameDevice(peer: PairedDeviceEntity, state: PeerNodeState): Boolean {
+        if (state.deviceId.trim() == peer.deviceId) return true
+        val hash = peer.publicKeyHash.trim()
+        return hash.isNotEmpty() && hash == state.publicKeyHash.trim()
     }
 
     private suspend fun tailnetHealth(
@@ -717,7 +762,7 @@ class PeerPresenceMonitor(
             )
             if (discovered != null) {
                 mutex.withLock {
-                    repository.applyPeerNodeState(discovered, rosterDeviceId = peer.deviceId)
+                    repository.applyPeerNodeState(discovered, rosterDeviceId = peer.deviceId, observedDirectly = true)
                 }
                 markReachable(peer.deviceId, discovered.deviceId.trim())
                 return true
@@ -755,7 +800,7 @@ class PeerPresenceMonitor(
                     }.getOrNull()
                     if (state != null) {
                         mutex.withLock {
-                            repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId)
+                            repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId, observedDirectly = true)
                         }
                         markReachable(state.deviceId.trim())
                     }
@@ -785,7 +830,10 @@ class PeerPresenceMonitor(
             if (changed) {
                 _reachabilityEpochMs.value = lastReachableEpochById.toMap()
                 val currentIds = _onlineDeviceIds.value
+                // An old timestamp must not put a device in the online set.
                 val toAdd = deviceIds.map { it.trim() }.filter { it.isNotEmpty() && !currentIds.contains(it) }
+                    .takeIf { TimeUtils.isWithinWindow(epochMs, LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS) }
+                    .orEmpty()
                 if (toAdd.isNotEmpty()) {
                     _onlineDeviceIds.value = currentIds + toAdd
                 }
@@ -806,7 +854,7 @@ class PeerPresenceMonitor(
                                     LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
                                 )
                                 mutex.withLock {
-                                    repository.applyPeerNodeState(state, rosterDeviceId = trimmed)
+                                    repository.applyPeerNodeState(state, rosterDeviceId = trimmed, observedDirectly = true)
                                 }
                             }
                         }
@@ -833,6 +881,8 @@ class PeerPresenceMonitor(
     companion object {
         const val OFFLINE_GRACE_MS = LanPresenceTiming.OFFLINE_GRACE_MS
         private const val SERVER_READY_ATTEMPTS = 25
+        private const val LAN_DIRECT_HIT_TTL_MS = 30_000L
+        private const val LAN_DIRECT_MISS_TTL_MS = 15_000L
         private const val SERVER_READY_POLL_MS = 100L
         private const val SERVER_SETTLE_MS = 250L
     }

@@ -314,7 +314,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="icon_pack">Icon Pack</string>
     <string name="kinetic_style">Style</string>
     <string name="kinetic_style_space">Space</string>
-    <string name="kinetic_style_frosted">Frosted</string>
     <string name="kinetic_style_jaded_steel">Jaded Steel</string>
     <string name="freestyle_onboarding_hint">Edit Mode: Drag elements to reposition. Reorder menu options with drag handles.</string>
     <string name="theme_lines_desc">Draw dashed spoke connector lines from the central hub to each device node.</string>
@@ -498,6 +497,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shared_files">Shared files</string>
     <string name="n_files">%1$s files</string>
     <string name="sending">Sending…</string>
+    <string name="send_continues_in_background">Keeps sending if you close this.</string>
+    <string name="transfer_no_data">No data for %1$s s. Still trying; it resumes on its own if the connection recovers.</string>
     <string name="loading_devices">Loading devices…</string>
     <string name="choose_destination">Choose destination</string>
     <string name="save_to">Save to %1$s</string>
@@ -633,6 +634,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="relay_firestore_permission_denied">Cloud Device Details is blocked by Firestore security rules. In Firebase Console → Firestore → Rules, add a diagnosticsRelay block and publish.</string>
     <string name="relay_load_failed">Could not load device details over cellular</string>
     <string name="peer_unreachable_wifi">Peer unreachable over Wi-Fi at %1$s:%2$s. Confirm both devices are on the same local network.</string>
+    <string name="peer_unreachable_tailnet">Tailnet peer at %1$s:%2$s did not answer. It may be offline or its route may be down; try again shortly.</string>
     <string name="file_nav_off_wifi">File navigation unavailable until back on local Wi‑Fi.</string>
     <string name="file_transfer_off_wifi_queued">%1$s is off local Wi‑Fi — transfer queued until back on Wi‑Fi.</string>
     <string name="file_transfer_off_wifi_queued_multiple">%1$s off local Wi‑Fi — transfer(s) queued until back on Wi‑Fi.</string>
@@ -801,6 +803,8 @@ Tap Central Hub (+) to Pair</string>
     <string name="icon_tablet">Tablet</string>
     <string name="icon_android_phone">Android phone</string>
     <string name="icon_desktop">Desktop</string>
+    <string name="icon_docker">Docker</string>
+    <string name="icon_linux">Linux</string>
     <string name="storage_used">%1$s of %2$s used</string>
     <string name="memory_free_of">%1$s free of %2$s (%3$s used)</string>
     <string name="cores_active_total">%1$s active / %2$s total</string>
@@ -1006,5 +1010,15 @@ Tap Central Hub (+) to Pair</string>
     <string name="disabled">Disabled</string>
     <string name="enabled">Enabled</string>
     <string name="opening_folder">Opening folder…</string>
+    <string name="cancel_drive_title">Cancel Drive transfer?</string>
+    <string name="cancel_drive_body">This transfer goes through Google Drive. Cancel it and try again later, or cancel it and remove the file from Drive so it is never downloaded.</string>
+    <string name="cancel_try_later">Cancel, try later</string>
+    <string name="cancel_remove_from_drive">Cancel and remove from Drive</string>
+    <string name="cancel_keep_going">Keep going</string>
+    <string name="queued_sending_background">Queued: sending to %1$s in the background. Track it in the transfer queue.</string>
+    <string name="queued_source_changed">%1$s changed after it was queued, so it was not sent. Retry to send the current version.</string>
+    <string name="drive_encrypt">Encrypt files</string>
+    <string name="drive_encrypt_off">Off. Files reach Drive as they are, so you can also download them there.</string>
+    <string name="drive_encrypt_on">On. Files are encrypted before upload and only your paired devices can open them. Names stay visible.</string>
 </resources>
 

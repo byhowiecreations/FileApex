@@ -93,6 +93,36 @@ fun TransferQueueScreen(
                 )
             }
 
+            // Incoming and Drive transfers have no queue row; they still need a Cancel here.
+            if (liveStats.isActive && liveStats.cancelable && state.items.none { it.isSending }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = liveStats.currentFileName.ifBlank { stringRes("sending") },
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = buildList {
+                                add("${(liveStats.progress * 100).toInt().coerceIn(0, 100)}%")
+                                if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
+                                if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
+                            }.joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(onClick = { TransferActivityGuard.requestUserCancel() }) {
+                        Text(stringRes("cancel"))
+                    }
+                }
+            }
+
             if (state.items.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -119,7 +149,13 @@ fun TransferQueueScreen(
                             item = item,
                             liveStats = liveStats,
                             onRemove = { viewModel.remove(item.id) },
-                            onCancel = { viewModel.cancelSending(item.id) },
+                            onCancel = {
+                                if (liveStats.driveRelay) {
+                                    TransferActivityGuard.requestUserCancel(item.id)
+                                } else {
+                                    viewModel.cancelSending(item.id)
+                                }
+                            },
                             onRetry = { viewModel.retryNow(item.id) }
                         )
                     }

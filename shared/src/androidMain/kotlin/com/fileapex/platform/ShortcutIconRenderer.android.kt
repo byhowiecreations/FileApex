@@ -53,7 +53,8 @@ internal object ShortcutIconRenderer {
             DeviceIconProfile(
                 deviceId = peer.deviceId,
                 deviceName = peer.deviceName,
-                hardware = DeviceHardwareProfile.from(peer)
+                hardware = DeviceHardwareProfile.from(peer),
+                clientVersion = peer.clientVersion
             )
         )
         return cached(context, kind.name) { canvas, size ->
@@ -66,7 +67,8 @@ internal object ShortcutIconRenderer {
             DeviceIconProfile(
                 deviceId = peer.deviceId,
                 deviceName = peer.deviceName,
-                hardware = DeviceHardwareProfile.from(peer)
+                hardware = DeviceHardwareProfile.from(peer),
+                clientVersion = peer.clientVersion
             )
         )
 

@@ -57,6 +57,7 @@ import kotlinx.coroutines.delay
 fun ShareSendScreen(
     payload: IncomingSharePayload,
     directTargetDeviceId: String? = null,
+    stagingError: String? = null,
     onFinished: () -> Unit,
     viewModel: ShareSendViewModel = viewModel(
         key = "${payload.sessionId}:${directTargetDeviceId.orEmpty()}"
@@ -65,6 +66,14 @@ fun ShareSendScreen(
     }
 ) {
     val state by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(payload) {
+        viewModel.updatePayload(payload)
+    }
+    LaunchedEffect(stagingError) {
+        val message = stagingError?.trim().orEmpty()
+        if (message.isNotEmpty()) viewModel.onStagingFailed(message)
+    }
 
     LaunchedEffect(state.sendCompleted) {
         if (state.sendCompleted) {
@@ -126,6 +135,13 @@ fun ShareSendScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            if (!state.filesReady && !state.isDirectSend) {
+                Text(
+                    text = stringRes("preparing_shared_files"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             state.statusMessage?.let { message ->
                 Text(
                     text = message,
@@ -257,7 +273,8 @@ fun ShareSendScreen(
 
             Button(
                 onClick = viewModel::send,
-                enabled = !state.isDirectSend &&
+                enabled = state.filesReady &&
+                    !state.isDirectSend &&
                     state.selectedDeviceIds.isNotEmpty() &&
                     !state.isSending &&
                     !state.isPreparing,

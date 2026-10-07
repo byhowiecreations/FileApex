@@ -8,7 +8,7 @@ Welcome to the official deployment and configuration guide for running the **Fil
 
 For advanced environments or dedicated setups requiring an independent IP address on your physical subnet, you can deploy using Docker's **macvlan** network driver.
 
-### 1. Create the Macvlan Network
+### 1. Create the Macvlan Network (if you need)
 Create the network by specifying your subnet, gateway, and physical host interface name:
 
 ```bash
@@ -37,7 +37,7 @@ FileApex daemon supports helpful command-line flags to manage your configuration
 | Flag | Purpose | Description |
 | :--- | :--- | :--- |
 | `--reset` | Clear Configuration | Clears the existing configuration file (`/app/data/config.json`) and forces a full re-initialization on startup. |
-| `--setup` | Interactive Menu | Launches the full interactive configuration menu with 4 choices: <br>1. Join local cluster (Auto-detect or manual code entry)<br>2. Connect to Tailscale via browser sign-in<br>3. Enter Tailscale pre-auth key<br>4. Reset configuration and setup new |
+| `--setup` | Interactive Menu | A restart of an already joined node resumes on its own; use this flag to reopen the menu. Launches the full interactive configuration menu with 4 choices: <br>1. Join local cluster (Auto-detect or manual code entry)<br>2. Connect to Tailscale via browser sign-in<br>3. Enter Tailscale pre-auth key<br>4. Reset configuration and setup new |
 | `--tailscale` | Direct Tailscale Setup | Bypasses the main menu and goes directly to Tailscale connection methods (URL browser sign-in or pre-auth key). |
 
 ### Example Usage with Flags
@@ -83,7 +83,23 @@ docker compose up -d
 
 *(For OMV native users, ensure you have the `openmediavault-compose` plugin installed via System -> Plugins).*
 
-### 3. Interacting with Running Containers
+### 3. Deploy on Unraid
+1. Navigate to your **Docker** page and click **Add Container**.
+2. Enter the following:
+```
+Name = fileapex-daemon
+Repository = fileapex/fileapex-daemon:latest
+Network type = host
+Click "Add another path"
+Container path = /app/data
+Host path = /mnt/user/appdata/fileapex
+````
+
+3. Click **Apply** then start.  
+It will automatically enter pairing mode the first time, so on your other device click Add Device and generate the code.
+
+
+### 4. Interacting with Running Containers
 If you need to trigger interactive setup flags on an already deployed container via CLI:
 ```bash
 docker exec -it fileapex-daemon /app/fileapex-daemon --setup

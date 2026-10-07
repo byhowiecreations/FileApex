@@ -57,32 +57,6 @@ internal fun explorerInk(): ExplorerInk {
             styledKinetic = true
         )
     }
-    if (kinetic == KineticStyle.FROSTED) {
-        return ExplorerInk(
-            title = Color.White,
-            muted = Color(0xFFD5E4EA),
-            accent = KineticStyleLook.cyan,
-            folderTint = KineticStyleLook.cyan,
-            paneSelected = Color(0x6630E0FF),
-            listSelected = Color(0x5530E0FF),
-            listIdle = Color.Transparent,
-            divider = Color.White.copy(alpha = 0.16f),
-            paneBackground = KineticStyleLook.frostedCard,
-            gridFill = { selected ->
-                if (selected) KineticStyleLook.frostedSelected else KineticStyleLook.frostedCard
-            },
-            gridBorder = { selected ->
-                BorderStroke(
-                    1.dp,
-                    if (selected) KineticStyleLook.cyan.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.22f)
-                )
-            },
-            gridCorner = 12.dp,
-            selectionBar = null,
-            jadedGlyphs = false,
-            styledKinetic = true
-        )
-    }
     val flux = theme.traits.fluxSurfaces
     val scheme = MaterialTheme.colorScheme
     return ExplorerInk(

@@ -17,6 +17,15 @@ data class DriveTargetStatus(
 )
 
 @Serializable
+data class DriveEntryEncryption(
+    val scheme: String = DriveRelayCrypto.SCHEME,
+    val plainSizeBytes: Long,
+    val plainSha256: String,
+    /** Per paired device, the file key sealed with that pair's shared key. */
+    val wrappedKeys: Map<String, String>
+)
+
+@Serializable
 data class DriveLedgerEntry(
     val entryId: String,
     val uploadedAtEpochMs: Long,
@@ -32,7 +41,9 @@ data class DriveLedgerEntry(
     val delivery: List<DriveTargetStatus> = emptyList(),
     val pinned: Boolean = false,
     val relativeDestPath: String = "",
-    val noteId: String = ""
+    val noteId: String = "",
+    /** Set when the Drive file is encrypted; [sizeBytes] is then the encrypted size. */
+    val encryption: DriveEntryEncryption? = null
 ) {
     fun isRetrievedBy(deviceId: String): Boolean {
         if (deviceId.isBlank()) return false

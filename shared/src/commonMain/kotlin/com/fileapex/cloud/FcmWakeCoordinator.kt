@@ -3,6 +3,8 @@ package com.fileapex.cloud
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.util.TimeUtils
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,10 +17,42 @@ import kotlinx.coroutines.launch
 object FcmWakeCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Receiving a wake makes a device do work that can end in another wake. Without a floor,
+     * two linked devices answering each other exhaust the FCM quota and keep both busy.
+     */
+    private const val PRESENCE_WAKE_MIN_INTERVAL_MS = 20_000L
+    private val lastPresenceWakeToAllMs = AtomicLong(0L)
+    private val lastPresenceWakeToDeviceMs = ConcurrentHashMap<String, Long>()
+
+    private fun allowWakeToAll(): Boolean {
+        val now = TimeUtils.now()
+        while (true) {
+            val last = lastPresenceWakeToAllMs.get()
+            if (now - last < PRESENCE_WAKE_MIN_INTERVAL_MS) return false
+            if (lastPresenceWakeToAllMs.compareAndSet(last, now)) return true
+        }
+    }
+
+    private fun allowWakeToDevice(deviceId: String): Boolean {
+        val now = TimeUtils.now()
+        var allowed = false
+        lastPresenceWakeToDeviceMs.compute(deviceId) { _, last ->
+            if (last == null || now - last >= PRESENCE_WAKE_MIN_INTERVAL_MS) {
+                allowed = true
+                now
+            } else {
+                last
+            }
+        }
+        return allowed
+    }
+
     fun dispatchPresenceWakeToDevice(deviceId: String) {
         if (deviceId.isBlank()) return
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
         if (!FcmWakeBackend.isConfigured()) return
+        if (!allowWakeToDevice(deviceId)) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {
             runCatching {
@@ -35,6 +69,7 @@ object FcmWakeCoordinator {
     fun dispatchPresenceWakeToLinkedPeers() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
         if (!FcmWakeBackend.isConfigured()) return
+        if (!allowWakeToAll()) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {
             runCatching {
