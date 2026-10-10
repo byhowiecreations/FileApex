@@ -379,6 +379,19 @@ object AppUpdateCoordinator {
                             BriefToast.show(com.fileapex.i18n.AppI18n.t("on_current_version"))
                         }
                     }
+                    is UpdateCheckOutcome.NewerThanRelease -> {
+                        settings.setLastUpdateCheckEpochMs(TimeUtils.now())
+                        dropStalePendingOffer()
+                        val message = com.fileapex.i18n.AppI18n.t(
+                            "newer_than_release",
+                            outcome.localVersion,
+                            outcome.latestTag
+                        )
+                        _statusMessage.value = message
+                        if (toastFeedback) {
+                            BriefToast.show(message)
+                        }
+                    }
                     is UpdateCheckOutcome.Available -> {
                         settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                         if (isOfferSkipped(outcome.offer)) {
@@ -412,7 +425,8 @@ object AppUpdateCoordinator {
             setPendingOffer(offer)
             notifyAppUpdateAvailable(offer)
             _statusMessage.value = AppI18n.t("update_available_title", offer.remoteVersion)
-            if (toastFeedback) {
+            // Desktop has no system notification for this, so its alert is the update dialog.
+            if (toastFeedback || com.fileapex.platform.isDesktopHost()) {
                 val local = offer.localFilePath
                 if (local.isNullOrBlank() || !fileExists(local)) {
                     _showUpdateSheet.value = true

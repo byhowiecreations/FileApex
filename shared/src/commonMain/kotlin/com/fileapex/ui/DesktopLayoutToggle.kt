@@ -18,7 +18,8 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.ui.adaptive.JadedRaisedTile
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.fileApexHeaderActionTint
-import com.fileapex.ui.theme.isFileApexJadedSteel
+import com.fileapex.ui.theme.fileApexTileTint
+import com.fileapex.ui.theme.isFileApexTiledChrome
 
 @Composable
 fun DesktopLayoutToggle(
@@ -38,7 +39,7 @@ fun DesktopLayoutToggle(
         FileApexServices.settings.setDesktopLayoutMode(next)
     }
 
-    val jaded = isFileApexJadedSteel()
+    val jaded = isFileApexTiledChrome()
     if (jaded) {
         Box(
             modifier = modifier
@@ -50,7 +51,7 @@ fun DesktopLayoutToggle(
                 Icon(
                     imageVector = icon,
                     contentDescription = desc,
-                    tint = KineticStyleLook.steel,
+                    tint = fileApexTileTint(),
                     modifier = Modifier.size(16.dp)
                 )
             }

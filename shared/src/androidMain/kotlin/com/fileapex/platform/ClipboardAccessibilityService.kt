@@ -183,6 +183,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
         visited: AtomicInteger
     ): String? {
         if (depth > MAX_TREE_DEPTH || visited.incrementAndGet() > MAX_TREE_NODES) return null
+        if (node.isPassword) return null
         val text = node.text?.toString().orEmpty()
         val start = node.textSelectionStart
         val end = node.textSelectionEnd
@@ -251,8 +252,10 @@ class ClipboardAccessibilityService : AccessibilityService() {
     }
 
     private fun nodeEventText(event: AccessibilityEvent): String? {
+        if (event.isPassword) return null
         val source = event.source
         return try {
+            if (source?.isPassword == true) return null
             ClipboardCopySignals.textFromNodeEvent(
                 eventTexts = event.text?.mapNotNull { it?.toString() },
                 sourceText = source?.text?.toString(),

@@ -15,6 +15,7 @@ import com.fileapex.network.routes.registerClipboardRoutes
 import com.fileapex.network.routes.registerDiagnosticRoutes
 import com.fileapex.network.routes.registerFileRoutes
 import com.fileapex.network.routes.registerIdentityRoutes
+import com.fileapex.network.routes.registerNotificationRoutes
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
@@ -147,6 +148,7 @@ class FileApexServer(
                     registerClipboardRoutes(this@FileApexServer)
                     registerBulletinRoutes(this@FileApexServer)
                     registerDiagnosticRoutes(this@FileApexServer)
+                    registerNotificationRoutes(this@FileApexServer)
                 }
             }.start(wait = false)
 
@@ -190,6 +192,14 @@ class FileApexServer(
         val root = identityProvider().rootPath
         val normalized = PathUtils.normalize(absolutePath)
         if (normalized.isBlank() || normalized == "/" || normalized == "\\" || normalized == PathUtils.normalize(root)) return true
+        return PathUtils.isWithinRoot(normalized, root)
+    }
+
+    /** Strictly inside the shared root: the root itself, blank and "/" are never deletable. */
+    internal fun isDeletablePath(absolutePath: String): Boolean {
+        val root = PathUtils.normalize(identityProvider().rootPath)
+        val normalized = PathUtils.normalize(absolutePath)
+        if (normalized.isBlank() || normalized == "/" || normalized == "\\" || normalized == root) return false
         return PathUtils.isWithinRoot(normalized, root)
     }
 

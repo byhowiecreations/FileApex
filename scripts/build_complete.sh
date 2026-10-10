@@ -1,25 +1,24 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Change to project root directory
+# GitHub APK, Play APK + AAB, Silicon app/DMG, Intel DMG, Firefox XPI.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 echo "========================================================"
-echo " Starting Complete Release Build (Silicon + Intel + Android)"
+echo " Starting Complete Release Build"
 echo "========================================================"
 
-# Step 1: Build Apple Silicon DMG + App + Android Release APK
-bash "$SCRIPT_DIR/build_silicon.sh"
+if [ -f "signing.local.env" ]; then
+    echo "Sourcing signing.local.env..."
+    # shellcheck disable=SC1091
+    source signing.local.env
+fi
+unset JAVA_HOME
 
-echo ""
-# Step 2: Build Intel x86_64 DMG
-bash "$SCRIPT_DIR/build_intel.sh"
-
-echo ""
-# Step 3: Firefox extension (once, full build only)
-bash "$SCRIPT_DIR/build_firefox_extension.sh"
+# shipAndroidBuilds + packageBothDmg + Firefox XPI
+./gradlew copyCompleteBuilds
 
 echo ""
 echo "========================================================"

@@ -145,7 +145,7 @@ class PeerPresenceMonitor(
     }
 
     /**
-     * Battery-first LAN poll: 60s foreground / 5 min background; defers during transfers.
+     * Battery-first LAN poll: 5 min foreground and background; defers during transfers.
      */
     fun ensureLanPollLoop() {
         if (tailnetWatchJob?.isActive != true) {

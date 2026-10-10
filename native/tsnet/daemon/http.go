@@ -79,6 +79,7 @@ func (n *Node) routes() http.Handler {
 	mux.HandleFunc("/api/v1/files/resume", n.handleResume)
 	mux.HandleFunc("/api/v1/files/upload", n.handleUpload)
 	mux.HandleFunc("/api/v1/files/mkdir", n.handleMkdir)
+	mux.HandleFunc("/api/v1/files/delete", n.handleDelete)
 	mux.HandleFunc("/api/v1/diagnostics", n.handleDiagnostics)
 	return mux
 }
@@ -128,6 +129,7 @@ func (n *Node) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{
 		"rangedStream":    false,
 		"segmentedUpload": false,
+		"backupSync":      true,
 	})
 }
 
@@ -405,8 +407,13 @@ func (n *Node) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if offset < 0 {
 		offset = 0
 	}
+	// Folder backup (backup=1) replaces an older copy in place; every other upload is numbered.
+	backup := r.URL.Query().Get("backup") == "1"
 	n.uploadMu.Lock()
-	finalPath := uniqueName(resolved)
+	finalPath := resolved
+	if !backup {
+		finalPath = uniqueName(resolved)
+	}
 	part := finalPath + partSuffix
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0o755); err != nil {
 		n.uploadMu.Unlock()
@@ -478,7 +485,7 @@ func (n *Node) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	n.uploadMu.Lock()
 	dest := finalPath
-	if _, err := os.Lstat(dest); err == nil {
+	if _, err := os.Lstat(dest); err == nil && !backup {
 		dest = uniqueName(dest)
 	}
 	renameErr := os.Rename(part, dest)
@@ -523,6 +530,42 @@ func (n *Node) handleMkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeText(w, http.StatusCreated, "ok")
+}
+
+// handleDelete removes a file or folder inside the inbox on behalf of a paired device. There is no
+// trash here, so it is permanent; the sender confirms first. Set FILEAPEX_ALLOW_REMOTE_DELETE=0 to refuse.
+func (n *Node) handleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !n.pass(w, r, "peer") {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("FILEAPEX_ALLOW_REMOTE_DELETE"))) {
+	case "0", "false", "no", "off":
+		http.Error(w, "remote_delete_disabled", http.StatusForbidden)
+		return
+	}
+	raw := strings.TrimSpace(r.URL.Query().Get("targetPath"))
+	if raw == "" {
+		http.Error(w, "Missing targetPath", http.StatusBadRequest)
+		return
+	}
+	// allowRoot=false: the inbox itself can never be deleted.
+	resolved, err := n.resolvePath(raw, false)
+	if err != nil {
+		http.Error(w, "Path outside shared root", http.StatusForbidden)
+		return
+	}
+	if err := os.RemoveAll(resolved); err != nil {
+		log.Printf("Remote delete failed %s: %v", resolved, err)
+		http.Error(w, "delete_failed", http.StatusInternalServerError)
+		return
+	}
+	sender, _ := requestSender(r)
+	log.Printf("Deleted %s at the request of %s", resolved, n.peerLabel(sender))
+	writeText(w, http.StatusOK, "ok")
 }
 
 func (n *Node) pass(w http.ResponseWriter, r *http.Request, kind string) bool {

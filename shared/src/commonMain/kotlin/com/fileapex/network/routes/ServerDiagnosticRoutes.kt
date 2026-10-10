@@ -4,6 +4,7 @@ import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.network.FileApexServer
 import com.fileapex.platform.collectDeviceDiagnostics
+import com.fileapex.platform.collectDeviceSummary
 import com.fileapex.platform.collectDeviceDiagnosticsFallback
 import com.fileapex.platform.collectFastBatteryDiagnostics
 import io.ktor.http.ContentType
@@ -28,8 +29,9 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.Forbidden, "pin_required")
             return@get
         }
+        val summaryOnly = call.request.queryParameters["detail"] == "summary"
         val snapshot = withContext(Dispatchers.IO) {
-            runCatching { collectDeviceDiagnostics() }
+            runCatching { if (summaryOnly) collectDeviceSummary() else collectDeviceDiagnostics() }
                 .getOrElse { error ->
                     server.onLog("GET /api/v1/diagnostics collector failed - returning partial snapshot", error)
                     collectDeviceDiagnosticsFallback()

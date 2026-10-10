@@ -48,6 +48,7 @@ import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 
 @Composable
 internal fun localizedThemeName(theme: AppTheme): String = when (theme) {
+    AppTheme.SIMPLE -> stringRes("theme_simple")
     AppTheme.CLEAN -> stringRes("theme_clean")
     AppTheme.FLUX_GLASS -> stringRes("theme_flux")
     AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic")
@@ -56,6 +57,7 @@ internal fun localizedThemeName(theme: AppTheme): String = when (theme) {
 
 @Composable
 internal fun localizedThemeDescription(theme: AppTheme): String = when (theme) {
+    AppTheme.SIMPLE -> stringRes("theme_simple_desc")
     AppTheme.CLEAN -> stringRes("theme_clean_desc")
     AppTheme.FLUX_GLASS -> stringRes("theme_flux_desc")
     AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic_desc")
@@ -227,7 +229,7 @@ internal fun ThemesSettingsPage(
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSurface
                                 )
-                                if (theme == AppTheme.CLEAN) {
+                                if (theme == AppTheme.DEFAULT) {
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Surface(
                                         color = if (isCustomTheme) FluxGlassPalette.badgeScrim else MaterialTheme.colorScheme.secondaryContainer,

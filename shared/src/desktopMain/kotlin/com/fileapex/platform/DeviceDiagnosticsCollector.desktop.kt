@@ -60,6 +60,25 @@ actual fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics {
     }
 }
 
+actual fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics =
+    runCatching {
+        PeerDeviceDiagnostics(
+            collectedAtEpochMs = 0L,
+            platform = "",
+            device = readDeviceIdentity(),
+            battery = readBattery(),
+            storage = readStorage(),
+            uptime = readUptime(),
+            memory = readMemory()
+        )
+    }.getOrElse {
+        PeerDeviceDiagnostics(
+            collectedAtEpochMs = 0L,
+            device = readDeviceIdentitySafe(),
+            uptime = readUptimeSafe()
+        )
+    }
+
 actual fun collectFastBatteryDiagnostics(): BatteryDiagnostics {
     return runCatching { readBattery() }
         .getOrDefault(BatteryDiagnostics(chargingState = "Not available"))

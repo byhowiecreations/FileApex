@@ -147,7 +147,6 @@ object DemoModeState {
         return if (normalized.isEmpty() || normalized == "/") {
             listOf(
                 RemoteFileItem(
-                    id = "demo_dir_documents",
                     name = "Documents",
                     absolutePath = "/Documents",
                     sizeBytes = 0L,
@@ -156,7 +155,6 @@ object DemoModeState {
                     mimeType = "inode/directory"
                 ),
                 RemoteFileItem(
-                    id = "demo_dir_photos",
                     name = "Photos",
                     absolutePath = "/Photos",
                     sizeBytes = 0L,
@@ -165,7 +163,6 @@ object DemoModeState {
                     mimeType = "inode/directory"
                 ),
                 RemoteFileItem(
-                    id = "demo_dir_notes",
                     name = "Notes",
                     absolutePath = "/Notes",
                     sizeBytes = 0L,
@@ -184,7 +181,6 @@ object DemoModeState {
         return when (normalized) {
             "/Documents" -> listOf(
                 RemoteFileItem(
-                    id = "demo_file_pdf",
                     name = "Project_Summary.pdf",
                     absolutePath = "/Documents/Project_Summary.pdf",
                     sizeBytes = 142_000L,
@@ -195,7 +191,6 @@ object DemoModeState {
             )
             "/Photos" -> listOf(
                 RemoteFileItem(
-                    id = "demo_file_jpg",
                     name = "Sample_Photo.jpg",
                     absolutePath = "/Photos/Sample_Photo.jpg",
                     sizeBytes = 85_000L,
@@ -206,7 +201,6 @@ object DemoModeState {
             )
             "/Notes" -> listOf(
                 RemoteFileItem(
-                    id = "demo_file_txt",
                     name = "Quick_Demo.txt",
                     absolutePath = "/Notes/Quick_Demo.txt",
                     sizeBytes = 12_000L,

@@ -76,21 +76,43 @@ class FileApexClient(
             sessionPins[endpointKey(host, port)]
         }
 
+    /**
+     * Lists a remote directory in pages of [LIST_PAGE_SIZE] so no single response (or its decoded
+     * String) holds the whole directory. Peers that predate paging ignore `limit`/`offset` and return
+     * everything in the first response, which is detected and returned as-is.
+     */
     suspend fun listFiles(host: String, port: Int, path: String): List<RemoteFileItem> {
-        val response = boundGet(
-            host = host,
-            port = port,
-            pathWithQuery = queryPath(
-                basePath = "/api/v1/files/list",
+        val all = ArrayList<RemoteFileItem>()
+        var offset = 0
+        var previousFirstId: String? = null
+        while (true) {
+            val response = boundGet(
                 host = host,
                 port = port,
-                params = mapOf("path" to path)
-            ),
-            timeoutMs = LIST_REQUEST_TIMEOUT_MS
-        )
-        rejectPinRequired(response, com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
-        requireSuccess(response, "List failed (${response.statusCode}): $host:$port$path")
-        return json.decodeFromString(ListSerializer(RemoteFileItem.serializer()), response.body)
+                pathWithQuery = queryPath(
+                    basePath = "/api/v1/files/list",
+                    host = host,
+                    port = port,
+                    params = mapOf(
+                        "path" to path,
+                        "limit" to LIST_PAGE_SIZE.toString(),
+                        "offset" to offset.toString()
+                    )
+                ),
+                timeoutMs = LIST_REQUEST_TIMEOUT_MS
+            )
+            rejectPinRequired(response, com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
+            requireSuccess(response, "List failed (${response.statusCode}): $host:$port$path")
+            val page = json.decodeFromString(ListSerializer(RemoteFileItem.serializer()), response.body)
+            // Older peer: ignored limit/offset and sent the whole directory (more than one page).
+            if (offset == 0 && page.size > LIST_PAGE_SIZE) return page
+            // Older peer whose directory is exactly one page: same page would repeat forever.
+            if (previousFirstId != null && page.firstOrNull()?.id == previousFirstId) return all
+            all += page
+            if (page.size < LIST_PAGE_SIZE || all.size >= LIST_MAX_ITEMS) return all
+            previousFirstId = page.firstOrNull()?.id
+            offset += page.size
+        }
     }
 
     suspend fun fetchPeerNodeState(
@@ -108,14 +130,16 @@ class FileApexClient(
         return json.decodeFromString(PeerNodeState.serializer(), response.body)
     }
 
-    suspend fun fetchDeviceDiagnostics(host: String, port: Int): PeerDeviceDiagnostics {
+    /** [summaryOnly] asks for the quick subset; peers that predate it ignore it and send everything. */
+    suspend fun fetchDeviceDiagnostics(host: String, port: Int, summaryOnly: Boolean = false): PeerDeviceDiagnostics {
         val response = boundGet(
             host = host,
             port = port,
             pathWithQuery = queryPath(
                 basePath = "/api/v1/diagnostics",
                 host = host,
-                port = port
+                port = port,
+                params = if (summaryOnly) mapOf("detail" to "summary") else emptyMap()
             ),
             timeoutMs = DIAGNOSTICS_TIMEOUT_MS
         )
@@ -184,6 +208,93 @@ class FileApexClient(
         }
         requireSuccess(response, "Clipboard transfer failed (${response.statusCode})")
         return json.decodeFromString(com.fileapex.domain.clipboard.ClipboardSendResponse.serializer(), response.body)
+    }
+
+    suspend fun postNotificationEvent(
+        host: String,
+        port: Int,
+        request: com.fileapex.domain.notifications.NotificationEventRequest
+    ) {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(basePath = "/api/v1/notifications/event", host = host, port = port),
+            body = json.encodeToString(com.fileapex.domain.notifications.NotificationEventRequest.serializer(), request),
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Notification delivery failed (${response.statusCode})")
+    }
+
+    suspend fun postNotificationCommand(
+        host: String,
+        port: Int,
+        request: com.fileapex.domain.notifications.NotificationCommandRequest
+    ) {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(basePath = "/api/v1/notifications/command", host = host, port = port),
+            body = json.encodeToString(com.fileapex.domain.notifications.NotificationCommandRequest.serializer(), request),
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Notification command failed (${response.statusCode})")
+    }
+
+    suspend fun postPhoneSettingsPrompt(
+        host: String,
+        port: Int,
+        request: com.fileapex.domain.notifications.PhoneSettingsPromptRequest
+    ) {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(basePath = "/api/v1/notifications/prompt", host = host, port = port),
+            body = json.encodeToString(com.fileapex.domain.notifications.PhoneSettingsPromptRequest.serializer(), request),
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Settings prompt failed (${response.statusCode})")
+    }
+
+    /** Null when the peer answered but has no notification routes (an older build); throws when it could not be reached. */
+    suspend fun getNotificationSyncStatus(
+        host: String,
+        port: Int
+    ): com.fileapex.domain.notifications.NotificationSyncStatus? {
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(basePath = "/api/v1/notifications/status", host = host, port = port),
+            timeoutMs = 3_000
+        )
+        if (response.statusCode == 404) return null
+        requireSuccess(response, "Notification status check failed (${response.statusCode})")
+        return json.decodeFromString(
+            com.fileapex.domain.notifications.NotificationSyncStatus.serializer(),
+            response.body
+        )
+    }
+
+    suspend fun postNotificationSnapshot(
+        host: String,
+        port: Int,
+        request: com.fileapex.domain.notifications.NotificationSnapshotRequest
+    ): com.fileapex.domain.notifications.NotificationSnapshotResponse {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(basePath = "/api/v1/notifications/snapshot", host = host, port = port),
+            body = json.encodeToString(com.fileapex.domain.notifications.NotificationSnapshotRequest.serializer(), request),
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Notification snapshot failed (${response.statusCode})")
+        return json.decodeFromString(
+            com.fileapex.domain.notifications.NotificationSnapshotResponse.serializer(),
+            response.body
+        )
     }
 
     suspend fun getClipboardStatus(
@@ -961,6 +1072,8 @@ class FileApexClient(
         knownResumeOffset: Long? = null,
         transactionId: String? = null,
         transactionTimestampEpochMs: Long? = null,
+        /** Folder backup: the receiver replaces an older copy in place and skips the per-file "received" alert. */
+        backup: Boolean = false,
         onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
     ) {
         val source = Path(localSourcePath)
@@ -968,7 +1081,7 @@ class FileApexClient(
         val totalSize = SystemFileSystem.metadataOrNull(source)?.size?.coerceAtLeast(0L) ?: 0L
         val txTimestamp = transactionTimestampEpochMs ?: TimeUtils.now()
         val segments = TransferRuntime.segmentsFor(totalSize)
-        if (segments > 1 && transferCapabilities(host, port).segmentedUpload) {
+        if (!backup && segments > 1 && transferCapabilities(host, port).segmentedUpload) {
             uploadSegmented(
                 host = host,
                 port = port,
@@ -1021,7 +1134,8 @@ class FileApexClient(
                                 offset = offset,
                                 totalSize = totalSize,
                                 transactionId = txId,
-                                transactionTimestamp = txTimestamp
+                                transactionTimestamp = txTimestamp,
+                                backup = backup
                             )
                         ),
                         contentType = "application/octet-stream",
@@ -1480,6 +1594,29 @@ class FileApexClient(
         }
     }
 
+    /** Deletes [remotePath] on the peer. The peer's owner must have remote deletion switched on. */
+    suspend fun deleteRemote(host: String, port: Int, remotePath: String) {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(
+                basePath = "/api/v1/files/delete",
+                host = host,
+                port = port,
+                params = mapOf("targetPath" to remotePath)
+            ),
+            body = "",
+            contentType = "text/plain",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        when {
+            response.statusCode == 403 -> error(AppI18n.t("pin_required_open_device"))
+            // Peers older than this feature have no such route.
+            response.statusCode == 404 || response.statusCode == 405 -> error(AppI18n.t("remote_delete_unsupported"))
+        }
+        requireSuccess(response, "Delete failed (${response.statusCode}): $remotePath")
+    }
+
     suspend fun createDirectory(
         host: String,
         port: Int,
@@ -1595,10 +1732,12 @@ class FileApexClient(
         offset: Long = 0L,
         totalSize: Long? = null,
         transactionId: String = "",
-        transactionTimestamp: Long = 0L
+        transactionTimestamp: Long = 0L,
+        backup: Boolean = false
     ): String {
         val params = buildMap {
             put("targetPath", remoteTargetPath)
+            if (backup) put("backup", "1")
             if (offset > 0L) {
                 put(TransferResumeProtocol.OFFSET_QUERY, offset.toString())
             }
@@ -1646,6 +1785,8 @@ class FileApexClient(
         private const val TRANSFER_IDLE_TIMEOUT_MS = 2 * 60 * 1000L
         private const val PEER_REQUEST_TIMEOUT_MS = 15_000L
         private const val LIST_REQUEST_TIMEOUT_MS = 4_000L
+        private const val LIST_PAGE_SIZE = 2_000
+        private const val LIST_MAX_ITEMS = 500_000
         private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
         private const val PEER_STATE_TIMEOUT_MS = 5_000L
         private const val BATTERY_CHECK_TIMEOUT_MS = 20_000L

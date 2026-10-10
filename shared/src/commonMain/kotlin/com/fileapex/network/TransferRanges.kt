@@ -13,7 +13,9 @@ data class ByteSpan(val start: Long, val endExclusive: Long) {
 @Serializable
 data class TransferCapabilities(
     val rangedStream: Boolean = false,
-    val segmentedUpload: Boolean = false
+    val segmentedUpload: Boolean = false,
+    /** Accepts `backup=1` uploads: replace an older copy in place and skip the "file received" alert. */
+    val backupSync: Boolean = false
 )
 
 @Serializable

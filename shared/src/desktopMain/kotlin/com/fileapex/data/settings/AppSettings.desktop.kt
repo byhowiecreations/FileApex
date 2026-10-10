@@ -37,7 +37,8 @@ private val desktopSettings = AtomicReference<AppSettings?>(null)
 actual fun createAppSettings(): AppSettings {
     return desktopSettings.updateAndGet { existing ->
         existing ?: BaseAppSettings(
-            DesktopSettingsKvStore(Preferences.userRoot().node("com.fileapex.settings"))
+            DesktopSettingsKvStore(Preferences.userRoot().node("com.fileapex.settings")),
+            existingInstall = com.fileapex.platform.DesktopPlatformPaths.databaseFile().exists()
         )
     }!!
 }

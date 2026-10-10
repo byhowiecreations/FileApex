@@ -78,11 +78,12 @@ object SocketFileStreamer {
         }
     }
 
-    fun finalizePart(partPath: String, preferredFinalPath: String): String {
-        val destPath = UniqueFileNames.resolve(preferredFinalPath)
+    fun finalizePart(partPath: String, preferredFinalPath: String, overwrite: Boolean = false): String {
+        val destPath = if (overwrite) preferredFinalPath else UniqueFileNames.resolve(preferredFinalPath)
         val part = File(partPath)
         val dest = File(destPath)
         dest.parentFile?.mkdirs()
+        if (overwrite && dest.exists()) dest.delete()
         if (part.renameTo(dest)) {
             return destPath
         }

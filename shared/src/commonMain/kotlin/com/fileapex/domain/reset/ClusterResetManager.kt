@@ -87,6 +87,7 @@ object ClusterResetManager {
 
     private fun resetStateAndRestart() {
         runCatching { FileApexServices.settings.resetToDefaults() }
+        runCatching { FileApexServices.settings.markThemeDefaultDecided() }
         runCatching { ServerLifecycleManager.stop() }
         ClusterResetPlatform.stateResetAndRestart()
     }

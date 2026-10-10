@@ -33,6 +33,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +48,21 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.theme.FileApexTeal
+
+/** True where the bottom transfer banner is shown, so a transfer-start snackbar would only repeat it. */
+val LocalShowsTransferBanner = staticCompositionLocalOf { false }
+
+/**
+ * Status snackbars that announce a transfer are dropped when the transfer shows its own progress.
+ * The short wait lets a transfer that is just starting register as active first.
+ */
+suspend fun shouldShowStatusSnackbar(progressShownElsewhere: Boolean): Boolean {
+    if (!progressShownElsewhere) return true
+    delay(STATUS_SNACKBAR_SETTLE_MS)
+    return !TransferActivityGuard.isTransferActiveFlow.value
+}
+
+private const val STATUS_SNACKBAR_SETTLE_MS = 400L
 
 /**
  * Modern Material 3 Expressive (M3E) floating pill transfer capsule shown across

@@ -85,7 +85,7 @@ class LeaveClusterWipeTest {
         assertFalse(settings.pinRequiredEnabled.value)
         assertEquals("", settings.devicePin.value)
         assertEquals(PinIdleTimeout.DEFAULT, settings.pinIdleTimeout.value)
-        assertEquals(AppTheme.CLEAN, settings.appTheme.value)
+        assertEquals(AppTheme.DEFAULT, settings.appTheme.value)
         assertEquals(BulletinBoardStyle.DEFAULT, settings.bulletinBoardStyle.value)
         assertFalse(settings.cellularEnabled.value)
         assertFalse(settings.googleDriveRelayEnabled.value)

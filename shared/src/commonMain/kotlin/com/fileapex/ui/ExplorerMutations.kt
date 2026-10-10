@@ -8,6 +8,7 @@ class ExplorerMutations(
     val compress: (RemoteFileItem) -> Unit,
     val uncompress: (RemoteFileItem) -> Unit,
     val delete: (RemoteFileItem) -> Unit,
+    val move: (RemoteFileItem, String) -> Unit,
     val importDropped: (List<String>) -> Unit,
 )
 

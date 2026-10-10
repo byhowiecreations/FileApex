@@ -33,6 +33,8 @@ interface AppSettings {
     val devicePin: StateFlow<String>
     val pinIdleTimeout: StateFlow<PinIdleTimeout>
     val checkForUpdatesEnabled: StateFlow<Boolean>
+    /** True once the first-run "check for updates?" question has been answered. */
+    val updateCheckPromptShown: StateFlow<Boolean>
     val checkForUpdatesIntervalUnit: StateFlow<UpdateCheckUnit>
     val checkForUpdatesIntervalAmount: StateFlow<Int>
     val lastUpdateCheckEpochMs: StateFlow<Long>
@@ -49,6 +51,9 @@ interface AppSettings {
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
     val desktopSplitFraction: StateFlow<Float>
     val explorerSplitFraction: StateFlow<Float>
+    /** Absolute paths of files and folders the user starred in the file manager. */
+    val explorerFavorites: StateFlow<List<String>>
+    val backupConfig: StateFlow<com.fileapex.domain.backup.BackupConfig>
     val explorerSplitEnabled: StateFlow<Boolean>
     /** Windows only; ignored on Android and non-Windows desktops. */
     val desktopUiStyle: StateFlow<DesktopUiStyle>
@@ -165,6 +170,34 @@ interface AppSettings {
     fun setDevicePin(pinValue: String)
     fun setPinIdleTimeout(timeout: PinIdleTimeout)
     fun setCheckForUpdatesEnabled(enabled: Boolean)
+    fun setUpdateCheckPromptShown(shown: Boolean)
+
+    /** True once the one-time "check out the other themes" hint was shown or is no longer needed. */
+    val otherThemesHintShown: StateFlow<Boolean>
+
+    /** Broadcast Notifications (phone side): all off until the user opts in. */
+    val notificationBroadcastEnabled: StateFlow<Boolean>
+    fun setNotificationBroadcastEnabled(enabled: Boolean)
+    /** The one paired device notifications go to; empty means the only paired device. */
+    val notificationBroadcastTargetDeviceId: StateFlow<String>
+    fun setNotificationBroadcastTargetDeviceId(deviceId: String)
+    /** When on, reading a notification on the other device clears it on this one. Clearing the other way is always on. */
+    val notificationBroadcastSyncDismissal: StateFlow<Boolean>
+    fun setNotificationBroadcastSyncDismissal(enabled: Boolean)
+    /** Windows only: pop up notifications received from the paired phone. */
+    val deviceNotificationPopups: StateFlow<Boolean>
+    fun setDeviceNotificationPopups(enabled: Boolean)
+    val notificationBroadcastVerificationCodes: StateFlow<Boolean>
+    fun setNotificationBroadcastVerificationCodes(enabled: Boolean)
+    /** Package names allowed to broadcast. Empty by default. */
+    val notificationBroadcastApps: StateFlow<Set<String>>
+    fun setNotificationBroadcastApps(packages: Set<String>)
+    /** After a wipe the install is new again: a leftover database file must not read as an upgrade. */
+    fun markThemeDefaultDecided()
+    /** Device the Simple theme browses, shows on Home and sends the clipboard to; empty means first available. */
+    val simpleActiveDeviceId: StateFlow<String>
+    fun setSimpleActiveDeviceId(deviceId: String)
+    fun setOtherThemesHintShown(shown: Boolean)
     fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)
 
@@ -185,6 +218,8 @@ interface AppSettings {
     /** [persist] false updates the flow only; drag gestures persist once on drag end. */
     fun setDesktopSplitFraction(fraction: Float, persist: Boolean = true)
     fun setExplorerSplitFraction(fraction: Float, persist: Boolean = true)
+    fun toggleExplorerFavorite(absolutePath: String)
+    fun updateBackupConfig(transform: (com.fileapex.domain.backup.BackupConfig) -> com.fileapex.domain.backup.BackupConfig)
     fun setExplorerSplitEnabled(enabled: Boolean)
 
     fun setDesktopUiStyle(style: DesktopUiStyle)

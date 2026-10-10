@@ -1,5 +1,7 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.theme.fileApexTileTint
+import com.fileapex.ui.theme.isFileApexTiledChrome
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -34,12 +36,12 @@ fun NoteHeaderButton(
     val isAndroid = com.fileapex.cloud.currentPlatformLabel() == "Android"
     val resolvedIconKind = iconKind ?: when {
         jaded || currentTheme.traits.glassChrome -> NoteIconKind.GREEN
-        currentTheme == AppTheme.CLEAN && isAndroid -> NoteIconKind.BLACK
+        (currentTheme == AppTheme.CLEAN || currentTheme == AppTheme.SIMPLE) && isAndroid -> NoteIconKind.BLACK
         else -> NoteIconKind.WHITE
     }
     val painter = rememberNoteIconPainter(resolvedIconKind)
 
-    if (jaded) {
+    if (isFileApexTiledChrome()) {
         Box(
             modifier = modifier
                 .size(40.dp)
@@ -50,7 +52,7 @@ fun NoteHeaderButton(
                 Image(
                     painter = painter,
                     contentDescription = stringRes("bulletin_board"),
-                    colorFilter = ColorFilter.tint(KineticStyleLook.steel),
+                    colorFilter = ColorFilter.tint(fileApexTileTint()),
                     modifier = Modifier.size(16.dp)
                 )
             }

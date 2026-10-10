@@ -17,3 +17,7 @@ actual fun trashLocalEntries(absolutePaths: List<String>): Boolean {
     }
     return true
 }
+
+actual fun trashLocalEntriesQuietly(absolutePaths: List<String>) {
+    trashLocalEntries(absolutePaths)
+}

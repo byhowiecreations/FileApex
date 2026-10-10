@@ -1,8 +1,8 @@
 package com.fileapex
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -13,6 +13,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -260,7 +261,10 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             // first composition (that path was ~6–10s of Dock bounce / frozen splash).
             var mountApp by remember { mutableStateOf(false) }
 
-            LaunchedEffect(window) {
+            LaunchedEffect(window, mountApp) {
+                // The tray and window-policy setup blocks the UI thread, so it runs after the app's first frame.
+                if (!mountApp) return@LaunchedEffect
+                withFrameNanos { }
                 DesktopAppIcon.loadTrayImage()?.let { window.iconImage = it }
                 if (DesktopPlatformPaths.isMacOs()) {
                     DesktopMacWindowClosePolicy.install(window)
@@ -284,6 +288,8 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             LaunchedEffect(window) {
                 withFrameNanos { }
                 DesktopLifecycleLog.log("Main: first light frame")
+                // The splash stays up until the app's first frame; this only guards against a stuck start.
+                delay(15_000)
                 MacLaunchSplash.hide()
             }
 
@@ -297,7 +303,6 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                     "Main: theme icons ready=${iconsReady} " +
                         "after ${(System.nanoTime() - t0) / 1_000_000L}ms"
                 )
-                withFrameNanos { }
                 mountApp = true
             }
 
@@ -305,6 +310,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 if (!mountApp || !mainWindowVisible) return@LaunchedEffect
                 withFrameNanos { }
                 DesktopLifecycleLog.log("Main: first App frame")
+                MacLaunchSplash.hide()
                 DesktopShareServerController.start()
                 // Let the window take input before LAN/clipboard/cloud storm.
                 repeat(2) { withFrameNanos { } }
@@ -324,12 +330,8 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             }
 
             if (!servicesReady || !mountApp) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+                // Same colour as the launch splash so the hand-off to the app is not visible.
+                Box(modifier = Modifier.fillMaxSize().background(Color(0xFF122A2A)))
                 return@Window
             }
 

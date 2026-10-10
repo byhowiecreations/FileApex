@@ -61,6 +61,7 @@ import java.io.File
 /**
  * Pixel-exact and value baselines for the existing themes. Goldens are recorded once from unchanged code with
  * `-PrecordThemeGoldens=true` and must never be re-recorded together with a theme refactor.
+ * Simple shares Clean's surfaces and has no golden of its own.
  */
 class ThemeBaselineTest {
 
@@ -68,8 +69,10 @@ class ThemeBaselineTest {
     private val diffDir = File(requireNotNull(System.getProperty("fileapex.themeDiffDir")))
     private val recording = System.getProperty("fileapex.recordThemeGoldens") == "true"
 
+    private val baselineThemes = AppTheme.entries.filter { it != AppTheme.SIMPLE }
+
     private val combos: List<Pair<AppTheme, DesktopUiStyle>> =
-        AppTheme.entries.flatMap { theme -> DesktopUiStyle.entries.map { theme to it } }
+        baselineThemes.flatMap { theme -> DesktopUiStyle.entries.map { theme to it } }
 
     @Test
     fun themeSurfacesMatchGoldenPixels() {
@@ -87,7 +90,7 @@ class ThemeBaselineTest {
 
     @Test
     fun iconPacksMatchGoldenPixels() {
-        val mismatches = AppTheme.entries.flatMap { theme ->
+        val mismatches = baselineThemes.flatMap { theme ->
             theme.supportedIconStyles().mapNotNull { iconStyle ->
                 val name = "ICONS-${theme.name}-${iconStyle.name}.png"
                 val actual = renderIcons(theme, iconStyle)

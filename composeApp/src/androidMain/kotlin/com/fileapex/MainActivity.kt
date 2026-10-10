@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
     private var isPreparingShare by mutableStateOf(false)
     private var sharePrepareError by mutableStateOf<String?>(null)
     private var pendingClipboardOptInSender by mutableStateOf<String?>(null)
+    private var pendingOpenSettingsPage by mutableStateOf<String?>(null)
 
     /** True when this activity instance was brought up primarily for ACTION_SEND*. */
     private var openedFromShareSheet = false
@@ -128,7 +129,7 @@ class MainActivity : ComponentActivity() {
 
     private val trashPromptLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { }
+    ) { com.fileapex.platform.StorageToolsEvents.changed.tryEmit(Unit) }
 
     private val phoneStatePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -222,7 +223,9 @@ class MainActivity : ComponentActivity() {
                     pendingOpenDeviceId = pendingOpenDeviceId,
                     onOpenDeviceRequestConsumed = { pendingOpenDeviceId = null },
                     pendingClipboardOptInSender = pendingClipboardOptInSender,
-                    onClipboardOptInConsumed = { pendingClipboardOptInSender = null }
+                    onClipboardOptInConsumed = { pendingClipboardOptInSender = null },
+                    pendingOpenSettingsPage = pendingOpenSettingsPage,
+                    onOpenSettingsPageConsumed = { pendingOpenSettingsPage = null }
                 )
                 com.fileapex.platform.LiveTransferCapsuleOverlay()
             }
@@ -360,6 +363,10 @@ class MainActivity : ComponentActivity() {
             pendingClipboardOptInSender = sender
             intent.removeExtra(com.fileapex.platform.EXTRA_SHOW_CLIPBOARD_OPT_IN)
             intent.removeExtra(com.fileapex.platform.EXTRA_CLIPBOARD_OPT_IN_SENDER)
+        }
+        intent?.getStringExtra(com.fileapex.platform.EXTRA_OPEN_SETTINGS_PAGE)?.let { page ->
+            pendingOpenSettingsPage = page
+            intent.removeExtra(com.fileapex.platform.EXTRA_OPEN_SETTINGS_PAGE)
         }
         val openNoteId = intent?.getStringExtra(com.fileapex.platform.EXTRA_OPEN_NOTE_ID)
             ?.trim()

@@ -6,10 +6,22 @@ import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.util.TimeUtils
 
 expect fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics
+
+/** Only what a summary view shows (identity, battery, storage, memory, uptime); skips the slow probes. */
+expect fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics
 expect fun collectFastBatteryDiagnostics(): BatteryDiagnostics
 
 fun collectDeviceDiagnostics(): PeerDeviceDiagnostics {
     return collectPlatformDeviceDiagnostics()
+        .copy(
+            collectedAtEpochMs = TimeUtils.now(),
+            platform = currentPlatformLabel()
+        )
+        .normalizedForTransport()
+}
+
+fun collectDeviceSummary(): PeerDeviceDiagnostics {
+    return collectPlatformDeviceSummary()
         .copy(
             collectedAtEpochMs = TimeUtils.now(),
             platform = currentPlatformLabel()

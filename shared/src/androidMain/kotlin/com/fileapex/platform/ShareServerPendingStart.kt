@@ -38,9 +38,12 @@ object ShareServerPendingStart {
     }
 
     fun clear(context: Context) {
-        directBootPrefs(context).edit()
-            .remove(KEY_PENDING)
-            .commit()
+        val prefs = directBootPrefs(context)
+        // Called on every FGS start command / watchdog tick: do nothing (no disk commit, no
+        // notification cancel) unless a deferred start is actually pending. Unconditional cancels
+        // were rate-limited by NotificationManager ("Shedding cancel (dupe)").
+        if (!prefs.getBoolean(KEY_PENDING, false)) return
+        prefs.edit().remove(KEY_PENDING).commit()
         cancelRecoveryNotification(context.applicationContext)
     }
 

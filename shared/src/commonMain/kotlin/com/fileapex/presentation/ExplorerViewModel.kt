@@ -126,6 +126,14 @@ class ExplorerViewModel(
 
     init {
         openPath(browseRoot)
+        if (target is BrowseTarget.Remote) {
+            viewModelScope.launch { browser.revalidated.collect(::onFolderRevalidated) }
+        }
+        if (target is BrowseTarget.Local) {
+            viewModelScope.launch {
+                com.fileapex.platform.StorageToolsEvents.changed.collect { refresh() }
+            }
+        }
         viewModelScope.launch {
             settings.explorerViewMode.collect { mode ->
                 _uiState.update { it.copy(viewMode = mode) }
@@ -675,8 +683,11 @@ class ExplorerViewModel(
         launchBrowse {
             browseWithPinRetry {
                 val newPane = browser.parentWithinRoot(newContent) ?: browseRoot
-                val paneListing = browser.listAt(newPane)
-                val contentListing = browser.listAt(newContent)
+                val (paneListing, contentListing) = coroutineScope {
+                    val paneDeferred = async { browser.listAt(newPane) }
+                    val contentDeferred = async { browser.listAt(newContent) }
+                    paneDeferred.await() to contentDeferred.await()
+                }
                 applyPaneAndContent(
                     panePath = newPane,
                     contentPath = newContent,
@@ -712,7 +723,7 @@ class ExplorerViewModel(
             val renamed = withContext(Dispatchers.IO) {
                 runCatching { renameLocalEntry(item.absolutePath, newName) }
             }
-            renamed.onSuccess { refresh() }
+            renamed.onSuccess { afterMutation() }
                 .onFailure { error ->
                     _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
                 }
@@ -725,7 +736,7 @@ class ExplorerViewModel(
             val zipped = withContext(Dispatchers.IO) {
                 runCatching { zipLocalEntry(item.absolutePath) }
             }
-            zipped.onSuccess { refresh() }
+            zipped.onSuccess { afterMutation() }
                 .onFailure { error ->
                     _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
                 }
@@ -738,14 +749,79 @@ class ExplorerViewModel(
             val unpacked = withContext(Dispatchers.IO) {
                 runCatching { unzipLocalEntry(item.absolutePath) }
             }
-            unpacked.onSuccess { refresh() }
+            unpacked.onSuccess { afterMutation() }
                 .onFailure { error ->
                     _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
                 }
         }
     }
 
+    /** Refreshes this folder and tells the Tools lists their data changed. */
+    private fun afterMutation() {
+        refresh()
+        com.fileapex.platform.StorageToolsEvents.changed.tryEmit(Unit)
+    }
+
+    fun moveItem(item: RemoteFileItem, destination: String) {
+        if (target !is BrowseTarget.Local) return
+        val items = if (item.id in _uiState.value.selectedFileIds) {
+            selectedItems().ifEmpty { listOf(item) }
+        } else {
+            listOf(item)
+        }
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { items.forEach { com.fileapex.platform.moveLocalEntryInto(it.absolutePath, destination) } }
+            }
+            outcome.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        isSelectionMode = false,
+                        selectedFileIds = emptySet(),
+                        canDownloadSelection = false,
+                        statusMessage = AppI18n.t("moved_ok")
+                    )
+                }
+                afterMutation()
+            }.onFailure { error ->
+                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
+            }
+        }
+    }
+
+    private fun deleteRemoteItems(remote: BrowseTarget.Remote, item: RemoteFileItem) {
+        val items = if (item.id in _uiState.value.selectedFileIds) {
+            selectedItems().ifEmpty { listOf(item) }
+        } else {
+            listOf(item)
+        }
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching {
+                    browser.ensureBrowseAccess()
+                    items.forEach { FileApexServices.client.deleteRemote(remote.host, remote.port, it.absolutePath) }
+                }
+            }
+            outcome.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        isSelectionMode = false,
+                        selectedFileIds = emptySet(),
+                        canDownloadSelection = false,
+                        statusMessage = AppI18n.t("remote_deleted")
+                    )
+                }
+                refresh()
+            }.onFailure { error ->
+                // Some of a multi-selection may already be gone, so show what the device really has.
+                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "trash_failed")) }
+                refresh()
+            }
+        }
+    }
+
     fun deleteItem(item: RemoteFileItem) {
+        (target as? BrowseTarget.Remote)?.let { return deleteRemoteItems(it, item) }
         if (target !is BrowseTarget.Local) return
         val items = if (item.id in _uiState.value.selectedFileIds) {
             selectedItems().ifEmpty { listOf(item) }
@@ -768,7 +844,7 @@ class ExplorerViewModel(
                         canPaste = TransferClipboard.hasContent()
                     )
                 }
-                if (finished) refresh()
+                if (finished) afterMutation()
             }.onFailure { error ->
                 _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "trash_failed")) }
             }
@@ -830,7 +906,6 @@ class ExplorerViewModel(
             port = endpoint?.port ?: device.port,
             items = listOf(
                 RemoteFileItem(
-                    id = parsed.path,
                     name = parsed.name,
                     absolutePath = parsed.path,
                     sizeBytes = parsed.size,
@@ -882,6 +957,20 @@ class ExplorerViewModel(
 
     fun refresh() {
         reloadListing(showRefreshing = true)
+    }
+
+    private var screenShownBefore = false
+
+    /**
+     * The view model outlives the screen, so reopening a device would otherwise show the folder as it
+     * was last seen. The first showing already loads fresh data; every later one reloads it.
+     */
+    fun onScreenShown() {
+        if (!screenShownBefore) {
+            screenShownBefore = true
+            return
+        }
+        if (isRemote) refresh()
     }
 
     fun clearPendingCopy() {
@@ -1299,7 +1388,30 @@ class ExplorerViewModel(
         }
     }
 
+    /** A remote folder shown from cache changed on the device: swap in the fresh listing unless the user is mid-navigation. */
+    private fun onFolderRevalidated(normalizedPath: String) {
+        val state = _uiState.value
+        if (state.isLoading) return
+        val isContent = browser.normalizePath(state.currentPath) == normalizedPath
+        val isPane = browser.normalizePath(state.panePath.ifBlank { browseRoot }) == normalizedPath
+        if (!isContent && !isPane) return
+        val generation = browseGeneration
+        viewModelScope.launch {
+            val listing = runCatching { browser.listAt(normalizedPath) }.getOrNull() ?: return@launch
+            if (generation != browseGeneration) return@launch
+            _uiState.update {
+                it.copy(
+                    paneDirectories = if (isPane) listing.directories else it.paneDirectories,
+                    paneFiles = if (isPane) listing.files else it.paneFiles,
+                    contentDirectories = if (isContent) listing.directories else it.contentDirectories,
+                    contentFiles = if (isContent) listing.files else it.contentFiles
+                )
+            }
+        }
+    }
+
     override fun onCleared() {
+        browser.close()
         localWatchDebounce?.cancel()
         contentWatch?.close()
         paneWatch?.close()

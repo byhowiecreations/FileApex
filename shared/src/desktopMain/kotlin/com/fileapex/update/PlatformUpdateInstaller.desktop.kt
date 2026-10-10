@@ -14,14 +14,25 @@ actual object PlatformUpdateInstaller {
         return dir.absolutePath
     }
 
+    private fun isWindows(): Boolean = System.getProperty("os.name").orEmpty().lowercase().contains("win")
+
     actual fun selectAsset(assets: List<GitHubReleaseAsset>): GitHubReleaseAsset? {
-        val dmg = assets.firstOrNull { it.name.endsWith(".dmg", ignoreCase = true) }
-        if (dmg != null) return dmg
-        return assets.firstOrNull { it.name.endsWith(".zip", ignoreCase = true) }
+        if (isWindows()) {
+            return assets.firstOrNull { it.name.endsWith(".exe", ignoreCase = true) }
+        }
+        val arch = System.getProperty("os.arch").orEmpty().lowercase()
+        val wantsSilicon = arch == "aarch64" || arch == "arm64"
+        return macAssetFor(assets, wantsSilicon)
     }
 
     actual fun installAndRelaunch(localFilePath: String, remoteVersion: String) {
         val osName = System.getProperty("os.name").orEmpty().lowercase()
+        if (osName.contains("win")) {
+            val installer = File(localFilePath)
+            check(installer.isFile) { AppI18n.t("update_file_missing") }
+            ProcessBuilder("cmd", "/c", "start", "", installer.absolutePath).start()
+            exitProcess(0)
+        }
         check(osName.contains("mac")) {
             AppI18n.t("update_mac_only")
         }
@@ -132,4 +143,19 @@ actual object PlatformUpdateInstaller {
     private fun shellQuote(value: String): String {
         return "'" + value.replace("'", "'\\''") + "'"
     }
+}
+
+private val siliconTags = listOf("silicon", "arm64", "aarch64")
+private val intelTags = listOf("intel", "x86_64", "x64", "amd64")
+
+/** The DMG built for this Mac's chip. A DMG tagged for the other chip is never chosen. */
+internal fun macAssetFor(assets: List<GitHubReleaseAsset>, wantsSilicon: Boolean): GitHubReleaseAsset? {
+    fun GitHubReleaseAsset.tagged(tags: List<String>) = tags.any { name.contains(it, ignoreCase = true) }
+    val installers = assets.filter {
+        it.name.endsWith(".dmg", ignoreCase = true) || it.name.endsWith(".zip", ignoreCase = true)
+    }
+    val own = if (wantsSilicon) siliconTags else intelTags
+    val other = if (wantsSilicon) intelTags else siliconTags
+    val matching = installers.filter { it.tagged(own) }.ifEmpty { installers.filter { !it.tagged(other) && !it.tagged(own) } }
+    return matching.firstOrNull { it.name.endsWith(".dmg", ignoreCase = true) } ?: matching.firstOrNull()
 }

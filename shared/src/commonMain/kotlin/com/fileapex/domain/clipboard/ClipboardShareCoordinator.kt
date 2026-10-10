@@ -602,7 +602,7 @@ object ClipboardShareCoordinator {
         return Pair(fcmSent, if (fcmSent) null else lastError)
     }
 
-    private suspend fun resolvePeerPublicKey(device: PairedDeviceEntity): String {
+    internal suspend fun resolvePeerPublicKey(device: PairedDeviceEntity): String {
         val stored = device.publicKey.trim()
         if (stored.isNotEmpty()) return stored
         val cloud = GoogleLinkCoordinator.cloudRecordFor(device.deviceId)

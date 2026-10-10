@@ -78,8 +78,18 @@ actual fun moveLocalEntryInto(absolutePath: String, destinationDirectory: String
     if (dest.exists()) error("already exists")
     if (!source.renameTo(dest)) {
         source.copyRecursively(dest, overwrite = false)
+        if (treeSize(source) != treeSize(dest)) {
+            dest.deleteRecursively()
+            error("move failed")
+        }
         if (!source.deleteRecursively()) error("move failed")
     }
+}
+
+/** File count and total bytes under [root], for checking a copy before its source is removed. */
+private fun treeSize(root: File): Pair<Int, Long> {
+    val files = root.walkTopDown().filter { it.isFile }.toList()
+    return files.size to files.sumOf { it.length() }
 }
 
 actual fun copyLocalEntryInto(absolutePath: String, destinationDirectory: String) {

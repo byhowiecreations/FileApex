@@ -3,10 +3,6 @@ package com.fileapex.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.VerticalSplit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -19,7 +15,8 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.ui.adaptive.JadedRaisedTile
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.fileApexHeaderActionTint
-import com.fileapex.ui.theme.isFileApexJadedSteel
+import com.fileapex.ui.theme.fileApexTileTint
+import com.fileapex.ui.theme.isFileApexTiledChrome
 
 @Composable
 fun ExplorerViewModeToggle(
@@ -31,16 +28,16 @@ fun ExplorerViewModeToggle(
 ) {
     val next = if (includeSplit) viewMode.cycled() else viewMode.toggled()
     val icon = when (next) {
-        ExplorerViewMode.Grid -> Icons.Filled.GridView
-        ExplorerViewMode.Split -> Icons.Filled.VerticalSplit
-        ExplorerViewMode.List -> Icons.AutoMirrored.Filled.ViewList
+        ExplorerViewMode.Grid -> explorerIcon(ExplorerIcon.GridView)
+        ExplorerViewMode.Split -> explorerIcon(ExplorerIcon.SplitView)
+        ExplorerViewMode.List -> explorerIcon(ExplorerIcon.ListView)
     }
     val desc = when (next) {
         ExplorerViewMode.Grid -> stringRes("switch_to_grid")
         ExplorerViewMode.Split -> stringRes("split_view")
         ExplorerViewMode.List -> stringRes("switch_to_list")
     }
-    val jaded = isFileApexJadedSteel()
+    val jaded = isFileApexTiledChrome()
     if (jaded) {
         Box(
             modifier = modifier
@@ -52,7 +49,7 @@ fun ExplorerViewModeToggle(
                 Icon(
                     imageVector = icon,
                     contentDescription = desc,
-                    tint = KineticStyleLook.steel,
+                    tint = fileApexTileTint(),
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -77,7 +74,7 @@ fun ExplorerSplitToggle(
 ) {
     val desc = stringRes("split_view")
     val tint = if (enabled) iconTint else iconTint.copy(alpha = 0.45f)
-    val jaded = isFileApexJadedSteel()
+    val jaded = isFileApexTiledChrome()
     if (jaded) {
         Box(
             modifier = modifier
@@ -87,9 +84,9 @@ fun ExplorerSplitToggle(
         ) {
             JadedRaisedTile(tileSize = 28.dp) {
                 Icon(
-                    imageVector = Icons.Filled.VerticalSplit,
+                    imageVector = explorerIcon(ExplorerIcon.SplitView),
                     contentDescription = desc,
-                    tint = if (enabled) KineticStyleLook.steel else KineticStyleLook.steel.copy(alpha = 0.45f),
+                    tint = if (enabled) fileApexTileTint() else fileApexTileTint().copy(alpha = 0.45f),
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -97,7 +94,7 @@ fun ExplorerSplitToggle(
     } else {
         IconButton(onClick = onToggle, modifier = modifier) {
             Icon(
-                imageVector = Icons.Filled.VerticalSplit,
+                imageVector = explorerIcon(ExplorerIcon.SplitView),
                 contentDescription = desc,
                 tint = tint
             )

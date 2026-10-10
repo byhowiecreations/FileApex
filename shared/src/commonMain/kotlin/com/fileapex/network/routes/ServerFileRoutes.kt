@@ -40,6 +40,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
+private const val MAX_LIST_PAGE = 5_000
+
 internal fun Route.registerFileRoutes(server: FileApexServer) {
     get("/api/v1/files/list") {
         runCatching {
@@ -69,7 +71,26 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 }
                 return@runCatching
             }
-            val items = listing.directories + listing.files
+            // Paged listing: encode one slice instead of the whole directory so a huge folder never
+            // becomes a single multi-MB response. Clients without `limit` (older builds) get everything.
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, MAX_LIST_PAGE)
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+            val dirCount = listing.directories.size
+            val total = dirCount + listing.files.size
+            val items = if (limit == null) {
+                listing.directories + listing.files
+            } else {
+                val end = minOf(total.toLong(), offset.toLong() + limit).toInt()
+                if (offset >= total) {
+                    emptyList()
+                } else {
+                    buildList(end - offset) {
+                        for (i in offset until end) {
+                            add(if (i < dirCount) listing.directories[i] else listing.files[i - dirCount])
+                        }
+                    }
+                }
+            }
             call.respondText(
                 text = server.json.encodeToString(items),
                 contentType = ContentType.Application.Json
@@ -203,8 +224,11 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
                 return@runCatching
             }
-            // Never overwrite an existing file — collide like Finder/Files: name (1).ext
-            val targetPathStr = UniqueFileNames.resolve(preferredPathStr)
+            // Folder backup (backup=1) replaces the earlier copy of a changed file in place and, arriving
+            // in bulk, skips the per-file "received" alert. Every other upload never overwrites an
+            // existing file: it collides like Finder/Files, name (1).ext.
+            val backup = call.request.queryParameters["backup"] == "1"
+            val targetPathStr = if (backup) preferredPathStr else UniqueFileNames.resolve(preferredPathStr)
             if (!server.isPathAllowed(targetPathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                 return@runCatching
@@ -280,7 +304,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.BadRequest, reason)
                 return@runCatching
             }
-            val finalPath = SocketFileStreamer.finalizePart(partPath, targetPathStr)
+            val finalPath = SocketFileStreamer.finalizePart(partPath, targetPathStr, overwrite = backup)
             if (txId.isNotBlank()) {
                 TransferTransactionJournal.recordCompleted(
                     transactionId = txId,
@@ -297,10 +321,27 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 null
             )
             call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
-            announceReceivedFile(server, finalPath, txId, txTimestamp, senderId)
+            if (!backup) announceReceivedFile(server, finalPath, txId, txTimestamp, senderId)
         }.onFailure { error ->
             server.onLog("POST /api/v1/files/upload failed", error)
             call.respond(HttpStatusCode.InternalServerError, "upload_failed")
+        }
+    }
+
+    post("/api/v1/files/delete") {
+        runCatching {
+            val path = call.request.queryParameters["targetPath"]
+                ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+            if (!server.isDeletablePath(path)) {
+                call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
+                return@runCatching
+            }
+            com.fileapex.platform.trashLocalEntriesQuietly(listOf(path))
+            server.onLog("Remote delete: $path", null)
+            call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.OK)
+        }.onFailure { error ->
+            server.onLog("POST /api/v1/files/delete failed", error)
+            call.respond(HttpStatusCode.InternalServerError, "delete_failed")
         }
     }
 
@@ -308,7 +349,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
         call.respondText(
             text = server.json.encodeToString(
                 TransferCapabilities.serializer(),
-                TransferCapabilities(rangedStream = true, segmentedUpload = true)
+                TransferCapabilities(rangedStream = true, segmentedUpload = true, backupSync = true)
             ),
             contentType = ContentType.Application.Json
         )

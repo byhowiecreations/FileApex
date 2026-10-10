@@ -13,13 +13,14 @@ import com.fileapex.ui.theme.KineticPalette
  * Global UI theme selection for FileApex (Android and macOS Desktop).
  */
 enum class AppTheme(val displayName: String, val description: String) {
-    CLEAN("Clean (default)", "Clean light surfaces with solid container cards and full-width navigation."),
+    SIMPLE("Simple (default)", "Single paired device layout with a left navigation rail and a device overview home."),
+    CLEAN("Clean", "Clean light surfaces with solid container cards and full-width navigation."),
     FLUX_GLASS("Flux Glass", "Translucent frosted glass cards, deep dark teal-charcoal gradient background, glowing status accents, and floating pill navigation."),
     KINETIC_SPHERE("Kinetic Sphere", "Spatial node-based orbital network layout with interactive central hub and cosmic glass styling."),
     FREESTYLE("Freestyle", "Modular draggable canvas layout with customizable floating cards and orbital tile rings.");
 
     companion object {
-        val DEFAULT = CLEAN
+        val DEFAULT = SIMPLE
 
         fun fromStorage(name: String?): AppTheme {
             if (name.isNullOrEmpty()) return DEFAULT
@@ -28,7 +29,7 @@ enum class AppTheme(val displayName: String, val description: String) {
     }
 }
 
-val LocalAppTheme = staticCompositionLocalOf { AppTheme.CLEAN }
+val LocalAppTheme = staticCompositionLocalOf { AppTheme.DEFAULT }
 
 /**
  * Background brush for root application scaffold.
@@ -38,7 +39,7 @@ val LocalAppTheme = staticCompositionLocalOf { AppTheme.CLEAN }
  */
 fun AppTheme.backgroundBrush(): Brush? {
     return when (this) {
-        AppTheme.CLEAN -> null
+        AppTheme.SIMPLE, AppTheme.CLEAN -> null
         AppTheme.FLUX_GLASS -> Brush.verticalGradient(
             colors = listOf(
                 FluxGlassPalette.backgroundTop,
@@ -68,7 +69,7 @@ fun AppTheme.backgroundBrush(): Brush? {
  */
 fun AppTheme.cardContainerColor(defaultColor: Color = Color.White): Color {
     return when (this) {
-        AppTheme.CLEAN -> defaultColor
+        AppTheme.SIMPLE, AppTheme.CLEAN -> defaultColor
         AppTheme.FLUX_GLASS -> FluxGlassPalette.cardContainer
         AppTheme.KINETIC_SPHERE -> KineticPalette.cardContainer
         AppTheme.FREESTYLE -> FreestylePalette.cardContainer
@@ -80,7 +81,7 @@ fun AppTheme.cardContainerColor(defaultColor: Color = Color.White): Color {
  */
 fun AppTheme.cardBorder(defaultBorder: BorderStroke): BorderStroke {
     return when (this) {
-        AppTheme.CLEAN -> defaultBorder
+        AppTheme.SIMPLE, AppTheme.CLEAN -> defaultBorder
         AppTheme.FLUX_GLASS -> BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
         AppTheme.KINETIC_SPHERE -> BorderStroke(1.dp, FluxGlassPalette.cyan.copy(alpha = 0.35f))
         AppTheme.FREESTYLE -> BorderStroke(1.dp, FreestylePalette.cardBorder.copy(alpha = 0.32f))
@@ -108,14 +109,14 @@ enum class ThemeIconStyle(val displayName: String) {
 val LocalThemeIconStyle = staticCompositionLocalOf { ThemeIconStyle.STANDARD }
 
 fun AppTheme.supportedIconStyles(): List<ThemeIconStyle> = when (this) {
-    AppTheme.CLEAN -> listOf(ThemeIconStyle.STANDARD)
+    AppTheme.SIMPLE, AppTheme.CLEAN -> listOf(ThemeIconStyle.STANDARD)
     AppTheme.FLUX_GLASS -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX)
     AppTheme.KINETIC_SPHERE -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX, ThemeIconStyle.FREESTYLE)
     AppTheme.FREESTYLE -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX, ThemeIconStyle.FREESTYLE)
 }
 
 fun AppTheme.defaultIconStyle(): ThemeIconStyle = when (this) {
-    AppTheme.CLEAN -> ThemeIconStyle.STANDARD
+    AppTheme.SIMPLE, AppTheme.CLEAN -> ThemeIconStyle.STANDARD
     AppTheme.FLUX_GLASS -> ThemeIconStyle.FLUX
     AppTheme.KINETIC_SPHERE -> ThemeIconStyle.STANDARD
     AppTheme.FREESTYLE -> ThemeIconStyle.FREESTYLE

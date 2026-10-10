@@ -1,5 +1,8 @@
 package com.fileapex.ui.adaptive
 
+import androidx.compose.foundation.layout.width
+import com.fileapex.ui.explorerIcon
+import com.fileapex.ui.ExplorerIcon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +55,10 @@ import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexChromeContentColor
+import com.fileapex.ui.theme.fileApexFloatingChrome
+import com.fileapex.ui.theme.isFileApexCleanCurved
+import com.fileapex.ui.theme.isFileApexTiledChrome
+import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.isFileApexJadedSteel
@@ -109,7 +116,10 @@ fun CompactPrimaryShell(
                     selected = selectedTab,
                     onMainHomeScreen = onMainHomeScreen,
                     onDevices = onDevices,
-                    onFiles = onFiles,
+                    onFiles = {
+                        com.fileapex.platform.StorageToolsEvents.closeRequests.tryEmit(Unit)
+                        onFiles()
+                    },
                     onSettings = onSettings
                 )
             }
@@ -158,8 +168,9 @@ fun FluxGlassHeader(
 ) {
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme.traits.glassChrome
-    val titleColor = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
-    val subtitleColor = if (isCustomGlass) Color.White.copy(alpha = 0.72f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val cleanBar = isFileApexCleanCurved()
+    val titleColor = if (isCustomGlass || cleanBar) Color.White else MaterialTheme.colorScheme.onSurface
+    val subtitleColor = if (isCustomGlass || cleanBar) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
     val accentTint = if (isCustomGlass) FluxGlassPalette.accent else FileApexTeal
     val resolvedSecondary = secondaryTitle ?: stringRes("paired_devices_title")
 
@@ -169,40 +180,66 @@ fun FluxGlassHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else Modifier.background(headerBg))
-            .padding(horizontal = if (jadedHeader) 14.dp else 16.dp, vertical = if (jadedHeader) 4.dp else 12.dp),
+            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else (if (isFileApexCleanCurved()) Modifier.fileApexFloatingChrome(FileApexTeal) else Modifier.background(headerBg)))
+            .defaultMinSize(minHeight = if (cleanBar) 52.dp else Dp.Unspecified)
+            .padding(horizontal = if (jadedHeader) 14.dp else if (cleanBar) 12.dp else 16.dp, vertical = if (jadedHeader) 4.dp else if (cleanBar) 6.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.weight(1f, fill = true)) {
-            Text(
-                text = primaryTitle,
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (jadedHeader) 22.sp else 30.sp,
-                    letterSpacing = (-0.5).sp
-                ),
-                color = titleColor,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip
-            )
-            if (!jadedHeader && resolvedSecondary.isNotBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
+        if (cleanBar) {
+            Row(
+                modifier = Modifier.weight(1f, fill = true),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = resolvedSecondary,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 16.sp
-                    ),
-                    color = subtitleColor,
-                    maxLines = 2,
-                    softWrap = true,
-                    overflow = TextOverflow.Ellipsis
+                    text = primaryTitle,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = titleColor,
+                    maxLines = 1,
+                    softWrap = false
                 )
+                if (resolvedSecondary.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = resolvedSecondary,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = subtitleColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        } else {
+        Column(modifier = Modifier.weight(1f, fill = true)) {
+                Text(
+                    text = primaryTitle,
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (jadedHeader) 22.sp else 30.sp,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = titleColor,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
+                )
+                if (!jadedHeader && resolvedSecondary.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = resolvedSecondary,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 16.sp
+                        ),
+                        color = subtitleColor,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
-
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -225,12 +262,12 @@ fun FluxGlassHeader(
                 val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
                 val icon = if (currentTheme.traits.canvasHome) {
                     when (freestyleMode) {
-                        FreestyleLayoutMode.CARDS_VERTICAL -> Icons.Filled.TableRows
-                        FreestyleLayoutMode.CARDS_HORIZONTAL -> Icons.Filled.ViewColumn
+                        FreestyleLayoutMode.CARDS_VERTICAL -> explorerIcon(ExplorerIcon.CardsVertical)
+                        FreestyleLayoutMode.CARDS_HORIZONTAL -> explorerIcon(ExplorerIcon.CardsHorizontal)
                         FreestyleLayoutMode.TILES -> FileApexIcons.Atr
                     }
                 } else {
-                    Icons.Filled.GridView
+                    explorerIcon(ExplorerIcon.GridView)
                 }
                 val desc = if (currentTheme.traits.canvasHome) {
                     when (freestyleMode) {
@@ -242,7 +279,7 @@ fun FluxGlassHeader(
                     stringRes("layout_view")
                 }
                 val layoutIconTint = fileApexHeaderActionTint()
-                if (jadedHeader) {
+                if (isFileApexTiledChrome()) {
                     Box(
                         modifier = Modifier
                             .size(40.dp)
@@ -253,7 +290,7 @@ fun FluxGlassHeader(
                             Icon(
                                 imageVector = icon,
                                 contentDescription = desc,
-                                tint = KineticStyleLook.steel,
+                                tint = fileApexTileTint(),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -329,6 +366,7 @@ fun CompactHomeTitleBand(
     val currentTheme = LocalAppTheme.current
     val isCustomGlass = currentTheme.traits.glassChrome
     val jadedHeader = isFileApexJadedSteel()
+    val lightText = isCustomGlass || isFileApexCleanCurved()
     if (isCustomGlass && style == CompactHomeTitleStyle.Prominent) {
         FluxGlassHeader(
             primaryTitle = "FileApex",
@@ -358,7 +396,7 @@ fun CompactHomeTitleBand(
                     Text(
                         text = "FileApex",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface
+                        color = if (lightText) Color.White else MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(CompactHomeChrome.eyebrowHeadlineGap))
                     Text(
@@ -369,7 +407,7 @@ fun CompactHomeTitleBand(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                        color = if (isCustomGlass) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (lightText) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
                         softWrap = true,
                         maxLines = 2
                     )
@@ -378,7 +416,9 @@ fun CompactHomeTitleBand(
                 CompactHomeTitleStyle.Detail -> {
                     Text(
                         text = primaryLine,
-                        style = if (jadedHeader) {
+                        style = if (isFileApexCleanCurved()) {
+                            MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        } else if (jadedHeader) {
                             MaterialTheme.typography.headlineLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -387,7 +427,7 @@ fun CompactHomeTitleBand(
                         } else {
                             MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                         },
-                        color = if (isCustomGlass) Color.White else MaterialTheme.colorScheme.onSurface,
+                        color = if (lightText) Color.White else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -396,7 +436,7 @@ fun CompactHomeTitleBand(
                         Text(
                             text = secondaryLine,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = if (isCustomGlass) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (lightText) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -422,11 +462,11 @@ private fun CompactHomeTitleBandRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else Modifier.background(headerBg))
-            .defaultMinSize(minHeight = if (jadedHeader) Dp.Unspecified else CompactHomeChrome.titleBandMinHeight)
+            .then(if (jadedHeader) Modifier.jadedCompactHeaderPanel() else (if (isFileApexCleanCurved()) Modifier.fileApexFloatingChrome(FileApexTeal) else Modifier.background(headerBg)))
+            .defaultMinSize(minHeight = if (jadedHeader) Dp.Unspecified else if (isFileApexCleanCurved()) 52.dp else CompactHomeChrome.titleBandMinHeight)
             .padding(
-                horizontal = if (jadedHeader) 14.dp else CompactHomeChrome.titleBandHorizontalPadding,
-                vertical = if (jadedHeader) 4.dp else CompactHomeChrome.titleBandVerticalPadding
+                horizontal = if (jadedHeader) 14.dp else if (isFileApexCleanCurved()) 12.dp else CompactHomeChrome.titleBandHorizontalPadding,
+                vertical = if (jadedHeader) 4.dp else if (isFileApexCleanCurved()) 6.dp else CompactHomeChrome.titleBandVerticalPadding
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -459,6 +499,19 @@ internal fun JadedRaisedTile(
     content: @Composable () -> Unit
 ) {
     val tile = RoundedCornerShape(8.dp)
+    if (isFileApexCleanCurved()) {
+        Box(
+            modifier = modifier
+                .size(tileSize)
+                .clip(tile)
+                .background(Color.White.copy(alpha = 0.18f))
+                .border(1.dp, Color.White.copy(alpha = 0.35f), tile),
+            contentAlignment = Alignment.Center
+        ) {
+            content()
+        }
+        return
+    }
     Box(modifier, contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
@@ -526,7 +579,7 @@ fun FileApexPowerButton(
         ) {
             JadedRaisedTile(tileSize = 28.dp) {
                 Icon(
-                    imageVector = Icons.Filled.PowerSettingsNew,
+                    imageVector = explorerIcon(ExplorerIcon.Power),
                     contentDescription = stringRes("exit_fileapex"),
                     tint = KineticStyleLook.steel,
                     modifier = Modifier.size(16.dp)
@@ -546,7 +599,7 @@ fun FileApexPowerButton(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Filled.PowerSettingsNew,
+                        imageVector = explorerIcon(ExplorerIcon.Power),
                         contentDescription = stringRes("exit_fileapex"),
                         tint = accent,
                         modifier = Modifier.size(16.dp)

@@ -1,3 +1,3 @@
 package com.fileapex.platform
 
-actual fun shouldDeferUpdateInstallToUser(): Boolean = false
+actual fun shouldDeferUpdateInstallToUser(): Boolean = true

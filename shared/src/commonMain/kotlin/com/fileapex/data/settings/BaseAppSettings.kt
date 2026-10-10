@@ -29,7 +29,9 @@ interface SettingsKvStore {
  * Shared AppSettings logic — Android/Desktop only supply a [SettingsKvStore].
  */
 class BaseAppSettings(
-    private val store: SettingsKvStore
+    private val store: SettingsKvStore,
+    /** True when this install ran an earlier version (platform checks for its database file). */
+    existingInstall: Boolean = false
 ) : AppSettings {
     private val google = MutableStateFlow(store.getBoolean(KEY_GOOGLE, false))
     private val googleEmail = MutableStateFlow(store.getString(KEY_GOOGLE_EMAIL, ""))
@@ -89,6 +91,8 @@ class BaseAppSettings(
         PinIdleTimeout.fromStorage(store.getString(KEY_PIN_IDLE_TIMEOUT, PinIdleTimeout.DEFAULT.name))
     )
     private val checkForUpdates = MutableStateFlow(store.getBoolean(KEY_CHECK_FOR_UPDATES, false))
+    private val updateCheckPromptShownFlow = MutableStateFlow(store.getBoolean(KEY_UPDATE_CHECK_PROMPT_SHOWN, false))
+    override val updateCheckPromptShown: StateFlow<Boolean> = updateCheckPromptShownFlow.asStateFlow()
     private val updateUnit = MutableStateFlow(
         UpdateCheckUnit.fromStorage(store.getString(KEY_UPDATE_UNIT, UpdateCheckUnit.Days.name))
     )
@@ -118,6 +122,14 @@ class BaseAppSettings(
         (store.getString(KEY_EXPLORER_SPLIT_FRACTION, "").toFloatOrNull() ?: 0.38f).coerceIn(0.20f, 0.70f)
     )
     override val explorerSplitFraction: StateFlow<Float> = explorerSplitFractionFlow.asStateFlow()
+    private val explorerFavoritesFlow = MutableStateFlow(
+        store.getString(KEY_EXPLORER_FAVORITES, "").split('\n').filter { it.isNotBlank() }
+    )
+    override val explorerFavorites: StateFlow<List<String>> = explorerFavoritesFlow.asStateFlow()
+    private val backupConfigFlow = MutableStateFlow(
+        com.fileapex.domain.backup.BackupConfig.decode(store.getString(KEY_BACKUP_CONFIG, ""))
+    )
+    override val backupConfig: StateFlow<com.fileapex.domain.backup.BackupConfig> = backupConfigFlow.asStateFlow()
     private val explorerSplitEnabledFlow = MutableStateFlow(
         store.getString(KEY_EXPLORER_SPLIT_ENABLED, "true") != "false"
     )
@@ -166,6 +178,38 @@ class BaseAppSettings(
     private val driveRelayOptInPromptShownFlow = MutableStateFlow(
         store.getBoolean(KEY_DRIVE_RELAY_OPT_IN_PROMPT_SHOWN, false)
     )
+    init {
+        // Decided before any theme flow reads the store, so the first frame already has the right theme.
+        if (!store.getBoolean(KEY_THEME_DEFAULT_MIGRATED, false)) {
+            store.putBoolean(KEY_THEME_DEFAULT_MIGRATED, true)
+            val hasStoredTheme = store.contains(KEY_APP_THEME)
+            if (existingInstall && !hasStoredTheme) store.putString(KEY_APP_THEME, AppTheme.CLEAN.name)
+            if (existingInstall || hasStoredTheme) store.putBoolean(KEY_OTHER_THEMES_HINT_SHOWN, true)
+        }
+    }
+
+    private val otherThemesHintShownFlow = MutableStateFlow(store.getBoolean(KEY_OTHER_THEMES_HINT_SHOWN, false))
+    override val otherThemesHintShown: StateFlow<Boolean> = otherThemesHintShownFlow.asStateFlow()
+    private val notificationBroadcastEnabledFlow =
+        MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_ENABLED, false))
+    override val notificationBroadcastEnabled: StateFlow<Boolean> = notificationBroadcastEnabledFlow.asStateFlow()
+    private val notificationBroadcastTargetFlow =
+        MutableStateFlow(store.getString(KEY_NOTIFICATION_BROADCAST_TARGET, ""))
+    override val notificationBroadcastTargetDeviceId: StateFlow<String> = notificationBroadcastTargetFlow.asStateFlow()
+    private val notificationBroadcastCodesFlow =
+        MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_CODES, false))
+    override val notificationBroadcastVerificationCodes: StateFlow<Boolean> = notificationBroadcastCodesFlow.asStateFlow()
+    private val notificationBroadcastDismissalFlow =
+        MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_DISMISSAL, false))
+    override val notificationBroadcastSyncDismissal: StateFlow<Boolean> = notificationBroadcastDismissalFlow.asStateFlow()
+    private val devicePopupsFlow = MutableStateFlow(store.getBoolean(KEY_DEVICE_NOTIFICATION_POPUPS, false))
+    override val deviceNotificationPopups: StateFlow<Boolean> = devicePopupsFlow.asStateFlow()
+    private val notificationBroadcastAppsFlow = MutableStateFlow(
+        ClipboardSharePolicy.parseDeviceIdSet(store.getString(KEY_NOTIFICATION_BROADCAST_APPS, ""))
+    )
+    override val notificationBroadcastApps: StateFlow<Set<String>> = notificationBroadcastAppsFlow.asStateFlow()
+    private val simpleActiveDeviceIdFlow = MutableStateFlow(store.getString(KEY_SIMPLE_ACTIVE_DEVICE_ID, ""))
+    override val simpleActiveDeviceId: StateFlow<String> = simpleActiveDeviceIdFlow.asStateFlow()
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
@@ -189,7 +233,7 @@ class BaseAppSettings(
     override val kineticStyle: StateFlow<KineticStyle> = kineticStyleFlow.asStateFlow()
 
     private fun computeActiveThemeIconStyle(theme: AppTheme): ThemeIconStyle = when (theme) {
-        AppTheme.CLEAN -> ThemeIconStyle.STANDARD
+        AppTheme.SIMPLE, AppTheme.CLEAN -> ThemeIconStyle.STANDARD
         AppTheme.FLUX_GLASS -> fluxIconStyleFlow.value
         AppTheme.KINETIC_SPHERE -> kineticIconStyleFlow.value
         AppTheme.FREESTYLE -> freestyleIconStyleFlow.value
@@ -200,7 +244,7 @@ class BaseAppSettings(
     override fun setThemeIconStyle(theme: AppTheme, style: ThemeIconStyle) {
         val validStyle = if (style in theme.supportedIconStyles()) style else theme.defaultIconStyle()
         when (theme) {
-            AppTheme.CLEAN -> { /* Clean always uses standard icons */ }
+            AppTheme.SIMPLE, AppTheme.CLEAN -> { /* Simple and Clean always use standard icons */ }
             AppTheme.FLUX_GLASS -> {
                 store.putString(KEY_THEME_ICON_STYLE_FLUX, validStyle.name)
                 fluxIconStyleFlow.value = validStyle
@@ -784,6 +828,72 @@ class BaseAppSettings(
         if (persist) store.putString(KEY_EXPLORER_SPLIT_FRACTION, clamped.toString())
     }
 
+    override fun updateBackupConfig(
+        transform: (com.fileapex.domain.backup.BackupConfig) -> com.fileapex.domain.backup.BackupConfig
+    ) {
+        val next = transform(backupConfigFlow.value)
+        backupConfigFlow.value = next
+        store.putString(KEY_BACKUP_CONFIG, next.encode())
+        com.fileapex.platform.BackupScheduler.apply(next)
+    }
+
+    override fun setNotificationBroadcastEnabled(enabled: Boolean) {
+        notificationBroadcastEnabledFlow.value = enabled
+        store.putBoolean(KEY_NOTIFICATION_BROADCAST_ENABLED, enabled)
+    }
+
+    override fun setNotificationBroadcastTargetDeviceId(deviceId: String) {
+        notificationBroadcastTargetFlow.value = deviceId
+        store.putString(KEY_NOTIFICATION_BROADCAST_TARGET, deviceId)
+    }
+
+    override fun setNotificationBroadcastSyncDismissal(enabled: Boolean) {
+        notificationBroadcastDismissalFlow.value = enabled
+        store.putBoolean(KEY_NOTIFICATION_BROADCAST_DISMISSAL, enabled)
+    }
+
+    override fun setDeviceNotificationPopups(enabled: Boolean) {
+        devicePopupsFlow.value = enabled
+        store.putBoolean(KEY_DEVICE_NOTIFICATION_POPUPS, enabled)
+    }
+
+    override fun setNotificationBroadcastVerificationCodes(enabled: Boolean) {
+        notificationBroadcastCodesFlow.value = enabled
+        store.putBoolean(KEY_NOTIFICATION_BROADCAST_CODES, enabled)
+    }
+
+    override fun setNotificationBroadcastApps(packages: Set<String>) {
+        val cleaned = packages.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        notificationBroadcastAppsFlow.value = cleaned
+        store.putString(KEY_NOTIFICATION_BROADCAST_APPS, ClipboardSharePolicy.encodeDeviceIdSet(cleaned))
+    }
+
+    override fun markThemeDefaultDecided() {
+        store.putBoolean(KEY_THEME_DEFAULT_MIGRATED, true)
+    }
+
+    override fun setSimpleActiveDeviceId(deviceId: String) {
+        simpleActiveDeviceIdFlow.value = deviceId
+        store.putString(KEY_SIMPLE_ACTIVE_DEVICE_ID, deviceId)
+    }
+
+    override fun setOtherThemesHintShown(shown: Boolean) {
+        otherThemesHintShownFlow.value = shown
+        store.putBoolean(KEY_OTHER_THEMES_HINT_SHOWN, shown)
+    }
+
+    override fun setUpdateCheckPromptShown(shown: Boolean) {
+        updateCheckPromptShownFlow.value = shown
+        store.putBoolean(KEY_UPDATE_CHECK_PROMPT_SHOWN, shown)
+    }
+
+    override fun toggleExplorerFavorite(absolutePath: String) {
+        val current = explorerFavoritesFlow.value
+        val next = if (absolutePath in current) current - absolutePath else current + absolutePath
+        explorerFavoritesFlow.value = next
+        store.putString(KEY_EXPLORER_FAVORITES, next.joinToString("\n"))
+    }
+
     override fun setDesktopUiStyle(style: DesktopUiStyle) {
         store.putString(KEY_DESKTOP_UI_STYLE, style.name)
         desktopUiStyleFlow.value = style
@@ -1094,6 +1204,18 @@ class BaseAppSettings(
         desktopLayout.value = DesktopLayoutMode.DEFAULT
         desktopSplitFractionFlow.value = 0.35f
         explorerSplitFractionFlow.value = 0.38f
+        explorerFavoritesFlow.value = emptyList()
+        updateCheckPromptShownFlow.value = false
+        otherThemesHintShownFlow.value = false
+        simpleActiveDeviceIdFlow.value = ""
+        notificationBroadcastEnabledFlow.value = false
+        notificationBroadcastTargetFlow.value = ""
+        notificationBroadcastCodesFlow.value = false
+        notificationBroadcastDismissalFlow.value = false
+        devicePopupsFlow.value = false
+        notificationBroadcastAppsFlow.value = emptySet()
+        backupConfigFlow.value = com.fileapex.domain.backup.BackupConfig()
+        com.fileapex.platform.BackupScheduler.apply(backupConfigFlow.value)
         explorerSplitEnabledFlow.value = true
         desktopUiStyleFlow.value = DesktopUiStyle.DEFAULT
         explorerViewModeFlow.value = ExplorerViewMode.List
@@ -1179,6 +1301,15 @@ class BaseAppSettings(
         const val KEY_LIVE_TRANSFER_CAPSULE = "live_transfer_capsule_enabled"
         const val KEY_LIVE_TRANSFER_SHOW_QUEUE = "live_transfer_show_queue_enabled"
         const val KEY_APP_THEME = "app_theme"
+        const val KEY_NOTIFICATION_BROADCAST_ENABLED = "notification_broadcast_enabled"
+        const val KEY_NOTIFICATION_BROADCAST_TARGET = "notification_broadcast_target"
+        const val KEY_NOTIFICATION_BROADCAST_CODES = "notification_broadcast_codes"
+        const val KEY_NOTIFICATION_BROADCAST_DISMISSAL = "notification_broadcast_dismissal"
+        const val KEY_DEVICE_NOTIFICATION_POPUPS = "device_notification_popups"
+        const val KEY_NOTIFICATION_BROADCAST_APPS = "notification_broadcast_apps"
+        const val KEY_SIMPLE_ACTIVE_DEVICE_ID = "simple_active_device_id"
+        const val KEY_OTHER_THEMES_HINT_SHOWN = "other_themes_hint_shown"
+        const val KEY_THEME_DEFAULT_MIGRATED = "theme_default_migrated"
         const val KEY_THEME_ICON_STYLE_FLUX = "theme_icon_style_flux"
         const val KEY_THEME_ICON_STYLE_KINETIC = "theme_icon_style_kinetic"
         const val KEY_KINETIC_STYLE = "kinetic_style"
@@ -1225,6 +1356,9 @@ class BaseAppSettings(
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
         const val KEY_DESKTOP_SPLIT_FRACTION = "desktop_split_fraction"
         const val KEY_EXPLORER_SPLIT_FRACTION = "explorer_split_fraction"
+        const val KEY_EXPLORER_FAVORITES = "explorer_favorites"
+        const val KEY_UPDATE_CHECK_PROMPT_SHOWN = "update_check_prompt_shown"
+        const val KEY_BACKUP_CONFIG = "backup_config"
         const val KEY_EXPLORER_SPLIT_ENABLED = "explorer_split_enabled"
         const val KEY_DESKTOP_UI_STYLE = "desktop_ui_style"
         const val KEY_EXPLORER_VIEW_MODE = "explorer_view_mode"

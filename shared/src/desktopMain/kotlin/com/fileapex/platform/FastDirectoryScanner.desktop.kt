@@ -41,7 +41,6 @@ actual fun fastScanDirectory(absolutePath: String): Pair<List<RemoteFileItem>, L
             val fullPath = entry.toAbsolutePath().toString()
 
             val item = RemoteFileItem(
-                id = fullPath,
                 name = fileName,
                 absolutePath = fullPath,
                 sizeBytes = size,

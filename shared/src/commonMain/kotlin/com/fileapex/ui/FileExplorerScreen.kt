@@ -1,5 +1,8 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.theme.isFileApexCleanCurved
+import com.fileapex.ui.theme.fileApexTileTint
+import com.fileapex.ui.theme.isFileApexTiledChrome
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 
@@ -24,6 +27,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import com.fileapex.ui.adaptive.JadedRaisedTile
@@ -48,10 +53,12 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.ui.theme.isFileApexFluentUi
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CopyAll
@@ -106,6 +113,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.platform.DownloadsPaths
+import com.fileapex.platform.storageToolsSupported
+import com.fileapex.ui.dnd.EXPLORER_DROP_BOX_DEST
 import com.fileapex.ui.dnd.ExplorerDropHighlight
 import com.fileapex.ui.dnd.LocalExplorerDropHighlight
 import com.fileapex.ui.dnd.localFolderDropTarget
@@ -125,7 +134,8 @@ import com.fileapex.ui.theme.FileApexTeal
 
 class ExplorerHeaderCommands(
     val onSelect: () -> Unit,
-    val onPaste: (() -> Unit)?
+    val onPaste: (() -> Unit)?,
+    val onOpenTools: (() -> Unit)? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,20 +163,29 @@ fun FileExplorerScreen(
     onSelectSecondaryDevice: (String) -> Unit = {},
     viewModelKey: String = target.deviceId,
     showTopBar: Boolean = true,
+    filterBarLeading: (@Composable (modifier: Modifier, compact: Boolean) -> Unit)? = null,
+    onDropBoxFiles: ((List<String>) -> Unit)? = null,
     viewModel: ExplorerViewModel = viewModel(key = viewModelKey) { ExplorerViewModel(target) }
 ) {
     val state by viewModel.uiState.collectAsState()
+    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
+    var toolsOpen by remember { mutableStateOf(false) }
+    val toolsAvailable = target is BrowseTarget.Local && storageToolsSupported()
+    LaunchedEffect(Unit) {
+        com.fileapex.platform.StorageToolsEvents.closeRequests.collect { toolsOpen = false }
+    }
     LaunchedEffect(state.isRefreshing, viewModel) {
         onRegisterRefresh?.invoke(state.isRefreshing, viewModel::refresh)
     }
-    LaunchedEffect(state.isSelectionMode, state.canPaste, viewModel) {
+    LaunchedEffect(state.isSelectionMode, state.canPaste, viewModel, toolsAvailable) {
         onRegisterHeaderCommands?.invoke(
             if (state.isSelectionMode) {
                 null
             } else {
                 ExplorerHeaderCommands(
                     onSelect = viewModel::enterSelectionMode,
-                    onPaste = if (state.canPaste) viewModel::pasteHere else null
+                    onPaste = if (state.canPaste) viewModel::pasteHere else null,
+                    onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
                 )
             }
         )
@@ -241,6 +260,7 @@ fun FileExplorerScreen(
             compress = viewModel::compressItem,
             uncompress = viewModel::uncompressItem,
             delete = viewModel::deleteItem,
+            move = viewModel::moveItem,
             importDropped = viewModel::importDropped,
         )
     ) {
@@ -289,7 +309,8 @@ fun FileExplorerScreen(
                             embeddedInCompactShell = false,
                             onBack = onBack,
                             viewModel = viewModel,
-                            hasExternalRefresh = false
+                            hasExternalRefresh = false,
+                            onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
                         )
                     },
                     colors = if (jadedOrbital) {
@@ -345,9 +366,24 @@ fun FileExplorerScreen(
         val acceptDrop: (List<String>) -> Unit = { files ->
             val destination = dropHighlight.destinationOr(openFolder)
             dropHighlight.clearHover()
-            viewModel.importDropped(files, destination)
+            if (destination == EXPLORER_DROP_BOX_DEST && onDropBoxFiles != null) {
+                onDropBoxFiles(files)
+            } else {
+                viewModel.importDropped(files, destination)
+            }
         }
         val explorerBody: @Composable () -> Unit = {
+            if (toolsOpen && toolsAvailable) {
+                StorageToolsScreen(
+                    onCopyItem = viewModel::copyItem,
+                    onSendItem = viewModel::sendItemToDevices,
+                    onClose = { toolsOpen = false },
+                    onOpenFolder = { path ->
+                        toolsOpen = false
+                        viewModel.openPath(path)
+                    }
+                )
+            } else {
             CompositionLocalProvider(LocalExplorerDropHighlight provides dropHighlight) {
             BoxWithConstraints(
                 modifier = Modifier
@@ -404,7 +440,8 @@ fun FileExplorerScreen(
                                             state = state,
                                             embeddedInCompactShell = true,
                                             onBack = onBack,
-                                            viewModel = viewModel
+                                            viewModel = viewModel,
+                                            onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
                                         )
                                     }
                                 )
@@ -629,7 +666,8 @@ fun FileExplorerScreen(
                                 query = filterQuery,
                                 onQueryChange = { filterQuery = it },
                                 sortMode = sortMode,
-                                onSortModeChange = { sortMode = it }
+                                onSortModeChange = { sortMode = it },
+                                leading = filterBarLeading
                             )
                             AdaptiveExplorerView(
                                 isWideDisplay = folderPane,
@@ -716,6 +754,7 @@ fun FileExplorerScreen(
                         }
                     }
                 }
+            }
             }
             }
         }
@@ -978,7 +1017,7 @@ private fun ExplorerNavigationAction(
         TextButton(onClick = onNavigate) {
             Text(
                 label,
-                color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified
             )
         }
     }
@@ -990,7 +1029,8 @@ private fun ExplorerTopBarActions(
     embeddedInCompactShell: Boolean,
     onBack: () -> Unit,
     viewModel: ExplorerViewModel,
-    hasExternalRefresh: Boolean = false
+    hasExternalRefresh: Boolean = false,
+    onOpenTools: (() -> Unit)? = null
 ) {
     val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
@@ -1003,7 +1043,7 @@ private fun ExplorerTopBarActions(
                 ) {
                     Text(
                         if (state.isDownloading) "…" else stringRes("download"),
-                        color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                        color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified
                     )
                 }
             }
@@ -1016,17 +1056,23 @@ private fun ExplorerTopBarActions(
                 TextButton(onClick = { viewModel.enterSelectionMode() }) {
                     Text(
                         text = stringRes("select"),
-                        color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                        color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified
                     )
                 }
                 if (state.canPaste) {
                     TextButton(onClick = viewModel::pasteHere) {
                         Text(
                             text = stringRes("paste"),
-                            color = if (jadedOrbital) KineticStyleLook.steel else Color.Unspecified
+                            color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified
                         )
                     }
                 }
+            }
+            if (onOpenTools != null) {
+                ToolsHeaderButton(
+                    onClick = onOpenTools,
+                    tint = if (jadedOrbital) KineticStyleLook.steel else MaterialTheme.colorScheme.primary
+                )
             }
             if (embeddedInCompactShell) {
                 ExplorerViewModeToggle(
@@ -1039,7 +1085,7 @@ private fun ExplorerTopBarActions(
                 }
             }
             if (!hasExternalRefresh) {
-                if (jadedOrbital) {
+                if (isFileApexTiledChrome()) {
                     Box(
                         modifier = Modifier
                             .size(40.dp)
@@ -1051,13 +1097,13 @@ private fun ExplorerTopBarActions(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp,
-                                    color = KineticStyleLook.steel
+                                    color = fileApexTileTint()
                                 )
                             } else {
                                 Icon(
-                                    imageVector = Icons.Filled.Refresh,
+                                    imageVector = explorerIcon(ExplorerIcon.Refresh),
                                     contentDescription = stringRes("refresh"),
-                                    tint = KineticStyleLook.steel,
+                                    tint = fileApexTileTint(),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -1075,7 +1121,7 @@ private fun ExplorerTopBarActions(
                             )
                         } else {
                             Icon(
-                                imageVector = Icons.Filled.Refresh,
+                                imageVector = explorerIcon(ExplorerIcon.Refresh),
                                 contentDescription = stringRes("refresh"),
                                 tint = MaterialTheme.colorScheme.primary
                             )
@@ -1088,12 +1134,123 @@ private fun ExplorerTopBarActions(
     }
 }
 
+private val FilterRowHeight = 44.dp
+
+/**
+ * The leading slot (a drop area) and the filter share one row. The filter is a search icon until
+ * tapped, then the two slide past each other; tapping the shrunken slot closes the filter again.
+ */
+@Composable
+private fun SlidingFilterWithLeading(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    leading: @Composable (modifier: Modifier, compact: Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var open by remember { mutableStateOf(false) }
+    var wasFocused by remember { mutableStateOf(false) }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val showField = open || query.isNotEmpty()
+    val fraction by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (showField) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 260)
+    )
+    LaunchedEffect(open) {
+        if (open) {
+            androidx.compose.runtime.withFrameNanos { }
+            focus.requestFocus()
+        }
+    }
+    val pill = RoundedCornerShape(50)
+    BoxWithConstraints(modifier = modifier.height(FilterRowHeight)) {
+        val gap = 8.dp
+        val filterWidth = androidx.compose.ui.unit.lerp(FilterRowHeight, maxWidth - FilterRowHeight - gap, fraction)
+        val leadingWidth = maxWidth - gap - filterWidth
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .width(leadingWidth)
+                    .height(FilterRowHeight)
+                    .clip(pill)
+                    .clickable(enabled = showField) {
+                        onQueryChange("")
+                        wasFocused = false
+                        open = false
+                    }
+            ) {
+                leading(Modifier.fillMaxSize(), leadingWidth < 170.dp)
+            }
+            Spacer(modifier = Modifier.width(gap))
+            Row(
+                modifier = Modifier
+                    .width(filterWidth)
+                    .height(FilterRowHeight)
+                    .clip(pill)
+                    .border(
+                        width = if (showField) 2.dp else 1.dp,
+                        color = if (showField) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        shape = pill
+                    )
+                    .clickable(enabled = !showField) { open = true }
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Search,
+                    contentDescription = stringRes("filter_this_folder"),
+                    modifier = Modifier.size(22.dp)
+                )
+                if (showField) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    BasicTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focus)
+                            .onFocusChanged { state ->
+                                if (state.isFocused) {
+                                    wasFocused = true
+                                } else if (wasFocused && query.isEmpty()) {
+                                    wasFocused = false
+                                    open = false
+                                }
+                            },
+                        decorationBox = { inner ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if (query.isEmpty()) {
+                                    Text(
+                                        stringRes("filter_this_folder"),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
+                                inner()
+                            }
+                        }
+                    )
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Filled.Close, contentDescription = stringRes("clear"), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ExplorerFilterBar(
     query: String,
     onQueryChange: (String) -> Unit,
     sortMode: ExplorerSortMode,
-    onSortModeChange: (ExplorerSortMode) -> Unit
+    onSortModeChange: (ExplorerSortMode) -> Unit,
+    leading: (@Composable (modifier: Modifier, compact: Boolean) -> Unit)? = null
 ) {
     var sortMenuOpen by remember { mutableStateOf(false) }
     Row(
@@ -1104,7 +1261,15 @@ private fun ExplorerFilterBar(
     ) {
         val jadedField = LocalAppTheme.current.traits.orbitalHome &&
             LocalKineticStyle.current == KineticStyle.JADED_STEEL
-        if (jadedField) {
+        val curvedField = LocalAppTheme.current.let { it == AppTheme.SIMPLE || it == AppTheme.CLEAN || it == AppTheme.FLUX_GLASS } && !isFileApexFluentUi()
+        if (leading != null) {
+            SlidingFilterWithLeading(
+                query = query,
+                onQueryChange = onQueryChange,
+                leading = leading,
+                modifier = Modifier.weight(1f)
+            )
+        } else if (jadedField) {
             val pill = RoundedCornerShape(50)
             val ink = Color(0xFFE4EEEF)
             val hint = Color(0xFFB7C4C6)
@@ -1184,7 +1349,8 @@ private fun ExplorerFilterBar(
                         }
                     }
                 },
-                textStyle = MaterialTheme.typography.bodyMedium
+                textStyle = MaterialTheme.typography.bodyMedium,
+                shape = if (curvedField) RoundedCornerShape(50) else OutlinedTextFieldDefaults.shape
             )
         }
         Box {

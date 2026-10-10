@@ -346,7 +346,6 @@ object CliClusterEngine {
 
         val name = remotePath.substringAfterLast('/').substringAfterLast('\\').ifBlank { "file" }
         val item = RemoteFileItem(
-            id = remotePath,
             name = name,
             absolutePath = remotePath,
             sizeBytes = 0L,

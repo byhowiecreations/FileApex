@@ -41,6 +41,12 @@ object AppUpdater {
             println("AppUpdater: checking for updates (local=$localVersion)")
             val release = fetchLatestRelease()
             val remoteTag = release.tagName.trim()
+            if (isInstalledVersionStrictlyNewer(localVersion, release.tagName)) {
+                return UpdateCheckOutcome.NewerThanRelease(
+                    localVersion = localVersion,
+                    latestTag = remoteTag
+                )
+            }
             if (!isRemoteVersionNewer(localVersion, release.tagName)) {
                 println(
                     "AppUpdater: already current " +
@@ -75,6 +81,7 @@ object AppUpdater {
     ): UpdateCheckOutcome {
         return when (val outcome = probeForUpdates()) {
             is UpdateCheckOutcome.AlreadyCurrent -> outcome
+            is UpdateCheckOutcome.NewerThanRelease -> outcome
             is UpdateCheckOutcome.Available -> {
                 onNewerRelease(
                     UpdateCheckOutcome.Installing(

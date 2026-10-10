@@ -1306,11 +1306,7 @@ private fun Project.shipToCurrent(
     }
     if (includeReleaseApk) {
         moveApksFrom("release")
-        val bundleDir = layout.buildDirectory.dir("outputs/bundle/playRelease").get().asFile
-        val aab = bundleDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension == "aab" }
-        if (aab != null) {
-            moveToCurrent(dest, aab, destName = "FileApex-v$appVersionName-release.aab", logger = logger)
-        }
+        movePlayReleaseAabToCurrent(requirePresent = false)
         val apkRoot = layout.buildDirectory.dir("outputs/apk").get().asFile
         if (apkRoot.exists()) {
             apkRoot.walkTopDown()
@@ -1408,35 +1404,104 @@ tasks.register("copyReleaseBuilds") {
     }
 }
 
+private val playAabMoveLock = Any()
+
 /**
- * Move Play Store release bundle (.aab) into current/ upon completion.
+ * Move the Play release AAB out of build outputs into current/.
+ * Safe to call more than once in one build: a second call finds it already in current/.
  */
-tasks.matching { it.name == "bundlePlayRelease" }.configureEach {
-    doLast {
+private fun Project.movePlayReleaseAabToCurrent(requirePresent: Boolean) {
+    synchronized(playAabMoveLock) {
         val bundleDir = layout.buildDirectory.dir("outputs/bundle/playRelease").get().asFile
-        val aab = bundleDir.listFiles().orEmpty().firstOrNull { it.isFile && it.extension == "aab" }
-        check(aab != null) { "No playRelease AAB found in ${bundleDir.absolutePath}" }
-        val dest = currentBuildsDest()
-        moveToCurrent(dest, aab, destName = "FileApex-v$fileapexVersionName-release.aab", logger = logger)
+        val aab = bundleDir.listFiles().orEmpty().firstOrNull {
+            it.isFile && it.extension.equals("aab", ignoreCase = true)
+        }
+        val destDir = currentBuildsDest()
+        val destName = "FileApex-v$fileapexVersionName-release.aab"
+        val shipped = destDir.resolve(destName)
+        if (aab != null && aab.isFile) {
+            destDir.mkdirs()
+            moveToCurrent(destDir, aab, destName = destName, logger = logger)
+            return
+        }
+        if (shipped.isFile) {
+            logger.lifecycle("Play AAB already in current/$destName")
+            return
+        }
+        if (requirePresent) {
+            error("No playRelease AAB in ${bundleDir.absolutePath} or current/$destName")
+        }
+    }
+}
+
+private fun Project.moveFlavorReleaseApkToCurrent(flavor: String) {
+    val apkDir = layout.buildDirectory.dir("outputs/apk/$flavor/release").get().asFile
+    val apks = apkDir.listFiles().orEmpty().filter {
+        it.isFile && it.extension.equals("apk", ignoreCase = true)
+    }
+    check(apks.isNotEmpty()) { "No $flavor release APK in ${apkDir.absolutePath}" }
+    val destDir = currentBuildsDest()
+    destDir.mkdirs()
+    val destName = if (flavor.equals("play", ignoreCase = true)) {
+        "FileApex-v$fileapexVersionName-play.apk"
+    } else {
+        "FileApex-v$fileapexVersionName.apk"
+    }
+    apks.forEach { apk ->
+        if (apk.name.contains("unsigned", ignoreCase = true)) {
+            error(
+                "Release APK is unsigned (${apk.name}) — not shipped. " +
+                    "Configure ~/AndroidStudioProjects/signed_files/FileApex/*.jks and " +
+                    "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then rebuild."
+            )
+        }
+        moveToCurrent(destDir, apk, destName = destName, logger = logger)
     }
 }
 
 /**
- * Ship release APKs and Play Store bundle (.aab) into current/ (without building desktop DMG).
+ * Runs after bundlePlayRelease even when that task is UP-TO-DATE, so a finished AAB
+ * cannot sit in build/outputs/bundle.
  */
+tasks.register("movePlayReleaseAab") {
+    description = "Move Play release AAB from build outputs into current/"
+    outputs.upToDateWhen { false }
+    doLast {
+        movePlayReleaseAabToCurrent(requirePresent = true)
+    }
+}
+
+tasks.matching { it.name == "bundlePlayRelease" }.configureEach {
+    finalizedBy("movePlayReleaseAab")
+}
+
+tasks.register("shipGithubRelease") {
+    group = "distribution"
+    description = "GitHub release APK into current/"
+    dependsOn("assembleGithubRelease")
+    mustRunAfter("verifyReleaseApkSigned")
+    outputs.upToDateWhen { false }
+    doLast {
+        moveFlavorReleaseApkToCurrent("github")
+    }
+}
+
+tasks.register("shipPlayRelease") {
+    group = "distribution"
+    description = "Play release APK and Play AAB into current/"
+    dependsOn("assemblePlayRelease", "bundlePlayRelease")
+    mustRunAfter("movePlayReleaseAab", "verifyReleaseApkSigned")
+    outputs.upToDateWhen { false }
+    doLast {
+        moveFlavorReleaseApkToCurrent("play")
+        movePlayReleaseAabToCurrent(requirePresent = true)
+    }
+}
+
 tasks.register("shipAndroidBuilds") {
     group = "distribution"
-    description = "Build signed release APKs and Play bundle, moving them to current/"
-    dependsOn("verifyReleaseApkSigned", "bundlePlayRelease")
-    doLast {
-        shipToCurrent(
-            includeReleaseApk = true,
-            includeDmg = false,
-            includeMacApp = false,
-            mountDmg = false,
-            preserveExistingDmgOnWipe = true
-        )
-    }
+    description = "All three Android release files into current/: GitHub APK, Play APK, Play AAB"
+    dependsOn("shipGithubRelease", "shipPlayRelease")
 }
 
 /**
@@ -1770,13 +1835,13 @@ tasks.register("packageSiliconApp") {
 }
 
 /**
- * Silicon (arm64) DMG — spawns a fresh Gradle subprocess with JAVA_HOME explicitly set to the
- * arm64 JDK so the Compose plugin always bundles the correct JRE regardless of what the parent
- * daemon has cached.
+ * Silicon (arm64) DMG and FileApex.app only. Does not build the Intel DMG or Android artifacts.
+ * Spawns a fresh Gradle subprocess with JAVA_HOME set to the arm64 JDK so the Compose plugin
+ * bundles the correct JRE regardless of what the parent daemon has cached.
  */
 tasks.register("packageSiliconDmg") {
     group = "distribution"
-    description = "Package Silicon arm64 Mac DMG — explicitly sets JAVA_HOME to arm64 JDK"
+    description = "Package Silicon arm64 FileApex.app and DMG into current/ (no Intel, no Android)"
     onlyIf { isMacHost() }
     dependsOn("buildMacTrayBridge")
     doLast {
@@ -1863,12 +1928,13 @@ tasks.register("packageSiliconDmg") {
 }
 
 /**
- * Intel (x86_64) DMG — spawns a fresh Gradle subprocess under Rosetta with JAVA_HOME set to the
- * x64 JDK.  Runs after packageSiliconDmg so the two builds never share a runtime staging dir.
+ * Intel (x86_64) DMG only. Spawns a fresh Gradle subprocess under Rosetta with JAVA_HOME set to
+ * the x64 JDK. When a Silicon package is in the same build, this runs after it so the two
+ * builds never share a runtime staging dir.
  */
 tasks.register("packageIntelDmg") {
     group = "distribution"
-    description = "Package Intel x86_64 Mac DMG — explicitly sets JAVA_HOME to x64 JDK under Rosetta"
+    description = "Package Intel x86_64 DMG into current/ (no Silicon app, no Android)"
     onlyIf { isMacHost() }
     doLast {
         val x64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
@@ -1905,6 +1971,14 @@ tasks.register("packageIntelDmg") {
     }
 }
 
+tasks.register("packageBothDmg") {
+    group = "distribution"
+    description = "Silicon FileApex.app + DMG, then the Intel DMG, into current/"
+    onlyIf { isMacHost() }
+    dependsOn("packageSiliconDmg")
+    finalizedBy("packageIntelDmg")
+}
+
 /**
  * Package browser-extension/ as FileApex-v{version}.xpi and move to current/.
  * Invoked only by [copyCompleteBuilds] / [copyAllBuildsFinalize], or when run directly:
@@ -1929,25 +2003,14 @@ tasks.register("shipFirefoxExtension") {
 
 tasks.register("copyAllBuilds") {
     group = "distribution"
-    description = "Ship into current/ (Mac: APK + DMGs; Windows: EXE). Does not build the Firefox XPI."
+    description =
+        "Mac: GitHub APK, Play APK, Play AAB, Silicon app+DMG, Intel DMG. Windows: installer EXE. No Firefox XPI."
     if (isMacHost()) {
-        // Only build the APK and Play AAB in-process; desktop DMGs are spawned as explicit subprocesses.
-        dependsOn("assembleRelease", "bundlePlayRelease", "verifyReleaseApkSigned", ":verifyGitExecutableScripts")
-        finalizedBy("packageSiliconDmg")
+        dependsOn("shipAndroidBuilds", "packageBothDmg", ":verifyGitExecutableScripts")
     } else if (isWindowsHost()) {
-        dependsOn("createReleaseDistributable", "packageInnoExe")
+        dependsOn("copyWindowsBuilds", ":verifyGitExecutableScripts")
     } else {
-        dependsOn("assembleRelease", "verifyReleaseApkSigned")
-    }
-
-    doLast {
-        shipToCurrent(
-            includeReleaseApk = isMacHost(),
-            includeDmg = false,
-            includeMacApp = false,
-            mountDmg = false,
-            preserveExistingDmgOnWipe = true
-        )
+        dependsOn("shipAndroidBuilds")
     }
 }
 
@@ -1957,7 +2020,7 @@ tasks.register("copyAllBuilds") {
  */
 tasks.register("copyCompleteBuilds") {
     group = "distribution"
-    description = "Full ship into current/ (platform builds + Firefox XPI)"
+    description = "copyAllBuilds plus the Firefox XPI"
     dependsOn("copyAllBuilds")
     finalizedBy("copyAllBuildsFinalize")
 }
@@ -1976,10 +2039,7 @@ tasks.register("copyAllBuildsFinalize") {
     }
 }
 
-// Silicon → Intel chaining: Intel always runs after Silicon, sequentially, so staging dirs don't clash.
-tasks.matching { it.name == "packageSiliconDmg" }.configureEach {
-    if (isMacHost()) finalizedBy("packageIntelDmg")
-}
+// Order only. packageSiliconDmg does not build the Intel DMG.
 tasks.matching { it.name == "packageIntelDmg" }.configureEach {
     mustRunAfter("packageSiliconDmg")
 }

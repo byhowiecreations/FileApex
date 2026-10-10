@@ -804,6 +804,11 @@ class DevicesViewModel : ViewModel() {
     fun sendDroppedLocalFiles(deviceId: String, absolutePaths: List<String>) {
         viewModelScope.launch {
             if (deviceId == LocalIdentity.LOCAL_DEVICE_ID || deviceId == identity.deviceId) {
+                // Entries dragged out of a remote device may land on this device; plain local paths may not.
+                if (absolutePaths.any { it.startsWith("fileapex-transfer://") }) {
+                    handleDroppedRemoteTransfer(LocalIdentity.LOCAL_DEVICE_ID, absolutePaths)
+                    return@launch
+                }
                 _uiState.update {
                     it.copy(
                         statusMessage = null,
@@ -1040,7 +1045,7 @@ class DevicesViewModel : ViewModel() {
         _uiState.update { it.copy(errorMessage = message) }
     }
 
-    fun requestDeviceDetails(deviceId: String) {
+    fun requestDeviceDetails(deviceId: String, summaryOnly: Boolean = false) {
         if (com.fileapex.domain.demo.DemoModeState.isDemoModeActive.value &&
             com.fileapex.domain.demo.DemoModeState.isDemoDeviceId(deviceId)
         ) {
@@ -1061,11 +1066,11 @@ class DevicesViewModel : ViewModel() {
         }
         viewModelScope.launch {
             val device = repository.getDevice(deviceId) ?: return@launch
-            requestDeviceDetails(device)
+            requestDeviceDetails(device, summaryOnly)
         }
     }
 
-    fun requestDeviceDetails(device: PairedDeviceEntity) {
+    fun requestDeviceDetails(device: PairedDeviceEntity, summaryOnly: Boolean = false) {
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -1079,7 +1084,7 @@ class DevicesViewModel : ViewModel() {
             }
             runCatching {
                 withContext(Dispatchers.IO) {
-                    fetchDeviceDetailsSnapshot(device)
+                    fetchDeviceDetailsSnapshot(device, summaryOnly)
                 }
             }.fold(
                 onSuccess = { snapshot ->
@@ -1110,10 +1115,10 @@ class DevicesViewModel : ViewModel() {
         }
     }
 
-    private suspend fun fetchDeviceDetailsSnapshot(device: PairedDeviceEntity): PeerDeviceDiagnostics {
+    private suspend fun fetchDeviceDetailsSnapshot(device: PairedDeviceEntity, summaryOnly: Boolean): PeerDeviceDiagnostics {
         presence.resolveOutboundEndpoint(device)?.let { direct ->
             runCatching {
-                FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port)
+                FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port, summaryOnly)
             }.onSuccess { return it }
         }
         return DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId)
@@ -1230,14 +1235,17 @@ class DevicesViewModel : ViewModel() {
                             } else null
 
                             val level = battery?.levelPercent
-                            val charging = battery?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
+                            // A device that answered without a battery level has no battery: it runs on mains.
+                            // No answer at all stays a timeout.
+                            val noBattery = battery != null && level == null
+                            val charging = when {
+                                noBattery -> "AC"
+                                else -> battery?.chargingState?.takeIf { it.isNotBlank() } ?: "BATTERY"
+                            }
                             val lowPower = battery?.lowPowerMode == true
-                            val isDesktop = deviceEntity?.platform?.lowercase() in setOf("macos", "windows", "linux") ||
-                                deviceEntity?.platform?.lowercase()?.contains("desktop") == true
                             val percentText = if (level != null) "$level%" else "---"
                             val stateTag = when {
-                                level != null -> "[${charging.uppercase()}]"
-                                isDesktop -> "[AC]"
+                                level != null || noBattery -> "[${charging.uppercase()}]"
                                 else -> "[TIMEOUT]"
                             }
                             val lowPowerTag = if (lowPower) " [LOW POWER]" else ""

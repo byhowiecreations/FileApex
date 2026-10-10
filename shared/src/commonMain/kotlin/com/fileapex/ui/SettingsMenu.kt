@@ -23,7 +23,8 @@ object SettingsMenuIds {
     const val AUTO_LAUNCH = "auto_launch"
     const val TAILSCALE = "tailscale"
     const val THEMES = "themes"
-    const val BULLETIN_BOARD_STYLES = "bulletin_board_styles"
+    const val BULLETIN_BOARD = "bulletin_board"
+    const val BACKUP_SYNC = "backup_sync"
     const val NOTIFICATIONS = "notifications"
     const val CLIPBOARD = "clipboard"
     const val DEVICE_DETAILS = "device_details"
@@ -31,7 +32,6 @@ object SettingsMenuIds {
     const val WINDOWS_DESIGN = "windows_design"
     const val PIN_REQUIRED = "pin_required"
     const val GOOGLE_ACCOUNT = "google_account"
-    const val REMOTE_FILE_DELETION = "remote_file_deletion"
     const val LEAVE_CLUSTER = "leave_cluster"
 }
 
@@ -44,7 +44,8 @@ fun settingsMenuEntries(
     playStoreBuild: Boolean,
     desktopFileSelection: Boolean,
     deviceNamePage: Boolean,
-    windowsFluent: Boolean
+    windowsFluent: Boolean,
+    backupSync: Boolean = false
 ): List<SettingsMenuEntry> {
     val entries = mutableListOf<SettingsMenuEntry>()
     fun add(section: SettingsMenuSection, id: String) {
@@ -54,6 +55,7 @@ fun settingsMenuEntries(
     if (deviceNamePage) add(SettingsMenuSection.General, SettingsMenuIds.DEVICE_NAME)
     add(SettingsMenuSection.General, SettingsMenuIds.LANGUAGE)
     if (!playStoreBuild) add(SettingsMenuSection.General, SettingsMenuIds.CHECK_FOR_UPDATES)
+    if (backupSync) add(SettingsMenuSection.General, SettingsMenuIds.BACKUP_SYNC)
     add(SettingsMenuSection.General, SettingsMenuIds.REPORT_ISSUE)
 
     add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.BACKGROUND_PERSISTENCE)
@@ -61,7 +63,7 @@ fun settingsMenuEntries(
     add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.TAILSCALE)
 
     add(SettingsMenuSection.Appearance, SettingsMenuIds.THEMES)
-    add(SettingsMenuSection.Appearance, SettingsMenuIds.BULLETIN_BOARD_STYLES)
+    add(SettingsMenuSection.Appearance, SettingsMenuIds.BULLETIN_BOARD)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.NOTIFICATIONS)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.CLIPBOARD)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.DEVICE_DETAILS)
@@ -70,7 +72,6 @@ fun settingsMenuEntries(
 
     add(SettingsMenuSection.Security, SettingsMenuIds.PIN_REQUIRED)
     add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
-    add(SettingsMenuSection.Security, SettingsMenuIds.REMOTE_FILE_DELETION)
     add(SettingsMenuSection.Security, SettingsMenuIds.LEAVE_CLUSTER)
     return entries
 }

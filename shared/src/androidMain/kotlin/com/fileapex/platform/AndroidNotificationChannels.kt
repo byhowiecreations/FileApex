@@ -28,6 +28,7 @@ object AndroidNotificationChannels {
     const val BATTERY_ALERTS = "fileapex_battery_alerts_v1"
     const val BULLETIN_CRITICAL = BATTERY_ALERTS
     const val DRIVE_RELAY = "fileapex_drive_relay"
+    const val FOLDER_BACKUP = "fileapex_folder_backup_progress"
     /** Persistent share-server FGS alert — static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
     private const val LEGACY_BULLETIN_CRITICAL_CHANNEL = "fileapex_bulletin_critical_v2"
@@ -107,6 +108,19 @@ object AndroidNotificationChannels {
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = com.fileapex.i18n.AppI18n.t("channel_transfers_desc")
+        }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureBackupChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            FOLDER_BACKUP,
+            com.fileapex.i18n.AppI18n.t("backup_channel_name"),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = com.fileapex.i18n.AppI18n.t("backup_channel_desc")
         }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)

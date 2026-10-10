@@ -62,7 +62,10 @@ fun initAndroidAppSettings(context: Context) {
     val settingsPrefs = androidAppContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val googleBackup = androidAppContext.getSharedPreferences(GOOGLE_BACKUP_PREFS, Context.MODE_PRIVATE)
     hydrateGoogleBackup(settingsPrefs, googleBackup)
-    androidSettings = BaseAppSettings(AndroidSettingsKvStore(settingsPrefs, googleBackup))
+    androidSettings = BaseAppSettings(
+        AndroidSettingsKvStore(settingsPrefs, googleBackup),
+        existingInstall = androidAppContext.getDatabasePath("fileapex.db").exists()
+    )
 }
 
 actual fun createAppSettings(): AppSettings {
@@ -74,7 +77,10 @@ actual fun createAppSettings(): AppSettings {
     val settingsPrefs = androidAppContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val googleBackup = androidAppContext.getSharedPreferences(GOOGLE_BACKUP_PREFS, Context.MODE_PRIVATE)
     hydrateGoogleBackup(settingsPrefs, googleBackup)
-    return BaseAppSettings(AndroidSettingsKvStore(settingsPrefs, googleBackup))
+    return BaseAppSettings(
+        AndroidSettingsKvStore(settingsPrefs, googleBackup),
+        existingInstall = androidAppContext.getDatabasePath("fileapex.db").exists()
+    )
         .also { androidSettings = it }
 }
 

@@ -1,6 +1,8 @@
 package com.fileapex.ui.theme
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.paint
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,6 +35,17 @@ object KineticStyleLook {
     val ink = Color(0xFFF4F7F6)
     val muted = Color(0xFFB7C4BE)
 }
+
+/** The Jaded Steel texture, faded very slightly. */
+@Composable
+fun Modifier.simpleSteelBackground(): Modifier {
+    val painter = painterResource(Res.drawable.jaded_bg)
+    return this
+        .paint(painter, contentScale = ContentScale.Crop)
+        .background(Color.White.copy(alpha = SIMPLE_STEEL_VEIL_ALPHA))
+}
+
+private const val SIMPLE_STEEL_VEIL_ALPHA = 0.10f
 
 @Composable
 fun JadedSteelWash(

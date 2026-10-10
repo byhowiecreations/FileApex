@@ -12,6 +12,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 
+const val EXPLORER_DROP_BOX_KEY = "simple-drop-box"
+const val EXPLORER_DROP_BOX_DEST = "fileapex-drop-box://target"
+
 object ActiveDrag {
     var sourcePath: String? = null
 }

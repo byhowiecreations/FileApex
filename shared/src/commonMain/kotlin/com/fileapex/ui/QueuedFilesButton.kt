@@ -1,5 +1,6 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.theme.isFileApexJadedSteel
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -31,7 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import com.fileapex.ui.adaptive.JadedRaisedTile
 import com.fileapex.ui.theme.KineticStyleLook
-import com.fileapex.ui.theme.isFileApexJadedSteel
+import com.fileapex.ui.theme.fileApexTileTint
+import com.fileapex.ui.theme.isFileApexTiledChrome
 
 object QueueBadgeAnchor {
     var windowRect by mutableStateOf<Rect?>(null)
@@ -67,12 +69,12 @@ fun QueuedFilesButton(
         return
     }
 
-    val jaded = isFileApexJadedSteel()
+    val jaded = isFileApexTiledChrome()
     BadgedBox(
         modifier = positionMod,
         badge = {
             Badge(
-                containerColor = if (jaded) Color(0xFF6366F1) else MaterialTheme.colorScheme.error,
+                containerColor = if (isFileApexJadedSteel()) Color(0xFF6366F1) else MaterialTheme.colorScheme.error,
                 contentColor = Color.White
             ) {
                 Text(text = if (count > 99) "99+" else count.toString())
@@ -90,7 +92,7 @@ fun QueuedFilesButton(
                     Icon(
                         imageVector = Icons.Filled.Schedule,
                         contentDescription = stringRes("queued_files"),
-                        tint = KineticStyleLook.steel,
+                        tint = fileApexTileTint(),
                         modifier = Modifier.size(16.dp)
                     )
                 }

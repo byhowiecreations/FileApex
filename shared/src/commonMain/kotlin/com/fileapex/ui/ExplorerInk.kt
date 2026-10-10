@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
@@ -59,13 +60,15 @@ internal fun explorerInk(): ExplorerInk {
     }
     val flux = theme.traits.fluxSurfaces
     val scheme = MaterialTheme.colorScheme
+    // Simple sits on the dark steel background, where the standard dark teal would not show.
+    val teal = if (theme == AppTheme.SIMPLE) scheme.primary else FileApexTeal
     return ExplorerInk(
         title = if (flux) Color.White else scheme.onSurface,
         muted = if (flux) FluxGlassPalette.explorerMuted else scheme.onSurfaceVariant,
         accent = if (flux) FluxGlassPalette.accent else scheme.primary,
-        folderTint = if (flux) FluxGlassPalette.accent else FileApexTeal,
-        paneSelected = if (flux) FluxGlassPalette.accentFill else FileApexTeal.copy(alpha = 0.14f),
-        listSelected = if (flux) FluxGlassPalette.accentFill else FileApexTeal.copy(alpha = 0.10f),
+        folderTint = if (flux) FluxGlassPalette.accent else teal,
+        paneSelected = if (flux) FluxGlassPalette.accentFill else teal.copy(alpha = 0.14f),
+        listSelected = if (flux) FluxGlassPalette.accentFill else teal.copy(alpha = 0.10f),
         listIdle = if (flux) Color.Transparent else scheme.surface,
         divider = if (flux) Color.White.copy(alpha = 0.12f) else scheme.outlineVariant,
         paneBackground = scheme.surfaceVariant.copy(alpha = 0.35f),
@@ -73,7 +76,7 @@ internal fun explorerInk(): ExplorerInk {
             if (flux) {
                 if (selected) FluxGlassPalette.accentFill else FluxGlassPalette.unselectedFill
             } else {
-                if (selected) FileApexTeal.copy(alpha = 0.12f) else scheme.surfaceVariant.copy(alpha = 0.45f)
+                if (selected) teal.copy(alpha = 0.12f) else scheme.surfaceVariant.copy(alpha = 0.45f)
             }
         },
         gridBorder = if (flux) {

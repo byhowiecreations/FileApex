@@ -1049,9 +1049,11 @@ private enum HttpResponseParser {
             let hex = String(data: sizeLine, encoding: .isoLatin1)?
                 .split(separator: ";").first?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard let size = Int(hex, radix: 16) else { return nil }
+            // Int(_, radix:) accepts "-5"/"+5" and values near Int.max; reject before size + 2 overflows
+            // or a negative offset traps.
+            guard let size = Int(hex, radix: 16), size >= 0 else { return nil }
             if size == 0 { return out }
-            guard remaining.count >= size + 2 else { return nil }
+            guard size <= remaining.count - 2 else { return nil }
             let chunkEnd = remaining.index(remaining.startIndex, offsetBy: size)
             out.append(remaining.subdata(in: remaining.startIndex..<chunkEnd))
             var rest = remaining.subdata(in: chunkEnd..<remaining.endIndex)

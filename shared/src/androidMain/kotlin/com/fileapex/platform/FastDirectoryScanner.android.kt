@@ -4,6 +4,9 @@ import com.fileapex.data.files.guessMimeType
 import com.fileapex.data.files.isHiddenDotName
 import com.fileapex.domain.model.RemoteFileItem
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
 
 actual suspend fun prepareLocalDirectoryAccess(absolutePath: String) = Unit
 
@@ -20,13 +23,18 @@ actual fun fastScanDirectory(absolutePath: String): Pair<List<RemoteFileItem>, L
         val fileName = entry.name
         if (isHiddenDotName(fileName)) continue
 
-        val isDir = entry.isDirectory
-        val size = if (isDir) 0L else entry.length().coerceAtLeast(0L)
-        val lastModified = entry.lastModified()
+        // One stat per entry; File.isDirectory/length/lastModified is three, which is slow on FUSE storage.
+        val attrs = try {
+            Files.readAttributes(entry.toPath(), BasicFileAttributes::class.java)
+        } catch (_: IOException) {
+            null
+        }
+        val isDir = attrs?.isDirectory ?: false
+        val size = if (isDir || attrs == null) 0L else attrs.size().coerceAtLeast(0L)
+        val lastModified = attrs?.lastModifiedTime()?.toMillis() ?: 0L
         val fullPath = entry.absolutePath
 
         val item = RemoteFileItem(
-            id = fullPath,
             name = fileName,
             absolutePath = fullPath,
             sizeBytes = size,

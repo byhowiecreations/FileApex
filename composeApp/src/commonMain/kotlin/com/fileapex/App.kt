@@ -38,6 +38,7 @@ import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.ui.theme.JadedSteelWash
+import com.fileapex.ui.theme.simpleSteelBackground
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.ProvideJadedHaze
 import com.fileapex.ui.theme.rememberJadedHazeState
@@ -68,7 +69,9 @@ import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.HomeTab
 import com.fileapex.ui.KineticDropFxLayer
 import com.fileapex.ui.KineticSphereWallpaperBackground
+import com.fileapex.ui.SettingsDeepLink
 import com.fileapex.ui.SettingsScreen
+import com.fileapex.domain.notifications.PhoneSettingsPage
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.ShareSendScreen
@@ -79,6 +82,9 @@ import com.fileapex.ui.OnboardingScreen
 import com.fileapex.ui.UpdateAvailableSheet
 import com.fileapex.ui.adaptive.AdaptiveWideHome
 import com.fileapex.ui.adaptive.CompactPrimaryShell
+import com.fileapex.data.settings.AppTheme
+import com.fileapex.ui.adaptive.SimpleDestination
+import com.fileapex.ui.adaptive.SimpleHome
 import com.fileapex.ui.adaptive.widthSizeClassFor
 import com.fileapex.ui.adaptive.isWide
 import com.fileapex.ui.theme.FileApexTheme
@@ -143,7 +149,9 @@ fun App(
     pendingOpenDeviceId: String? = null,
     onOpenDeviceRequestConsumed: () -> Unit = {},
     pendingClipboardOptInSender: String? = null,
-    onClipboardOptInConsumed: () -> Unit = {}
+    onClipboardOptInConsumed: () -> Unit = {},
+    pendingOpenSettingsPage: String? = null,
+    onOpenSettingsPageConsumed: () -> Unit = {}
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
@@ -155,6 +163,21 @@ fun App(
     var wideHomeTab by remember { mutableStateOf(HomeTab.Devices) }
     var tabWhileWide by remember { mutableStateOf(HomeTab.Devices) }
     var previouslyWide by remember { mutableStateOf(false) }
+    var simpleDestination by remember { mutableStateOf(SimpleDestination.Home) }
+    var settingsDeepLink by remember { mutableStateOf<SettingsDeepLink?>(null) }
+
+    LaunchedEffect(pendingOpenSettingsPage, setupComplete) {
+        val page = pendingOpenSettingsPage ?: return@LaunchedEffect
+        if (!setupComplete) return@LaunchedEffect
+        settingsDeepLink = when (page) {
+            PhoneSettingsPage.CLIPBOARD -> SettingsDeepLink.Clipboard
+            PhoneSettingsPage.BROADCAST_NOTIFICATIONS -> SettingsDeepLink.BroadcastNotifications
+            else -> null
+        }
+        simpleDestination = SimpleDestination.Settings
+        route = AppRoute.Settings
+        onOpenSettingsPageConsumed()
+    }
 
     LaunchedEffect(scannedPayload) {
         val payload = scannedPayload ?: return@LaunchedEffect
@@ -224,6 +247,7 @@ fun App(
         wideHomeTab = HomeTab.Devices
         wideSelectedTarget = null
         tabWhileWide = HomeTab.Devices
+        simpleDestination = SimpleDestination.Home
     }
 
     // Platform exit hooks own teardown (Android stops FGS; desktop uses shutdownForQuit).
@@ -330,6 +354,9 @@ fun App(
                             Modifier
                         } else if (isKineticSphere) {
                             Modifier.background(Color(0xFF02050B))
+                        } else if (appTheme == AppTheme.SIMPLE && !windowsFluent) {
+                            // Behind the status and gesture bars too, not just inside the insets.
+                            Modifier.simpleSteelBackground()
                         } else {
                             Modifier.background(
                                 if (windowsFluent) MaterialTheme.colorScheme.background
@@ -353,7 +380,7 @@ fun App(
                     modifier = Modifier
                         .fillMaxSize()
                         .safeDrawingPadding(),
-                    color = if (isCustomGlass || bgBrush != null) {
+                    color = if (isCustomGlass || bgBrush != null || (appTheme == AppTheme.SIMPLE && !windowsFluent)) {
                         Color.Transparent
                     } else if (windowsFluent) {
                         MaterialTheme.colorScheme.background
@@ -422,6 +449,7 @@ fun App(
                             onStartShareServer()
                         }
                     }
+                    com.fileapex.ui.UpdateCheckPromptHost()
 
                     // Overlay routes stay full-screen on every size class.
                     when (val overlay = route) {
@@ -453,6 +481,73 @@ fun App(
                                 null -> widthClass.isWide
                             }
 
+                            if (appTheme == AppTheme.SIMPLE) {
+                                // Overlay routes return to Devices; anything that asked for a browser or Settings maps onto Simple's own screens.
+                                LaunchedEffect(route) {
+                                    when (val requested = route) {
+                                        is AppRoute.Explorer -> {
+                                            val target = requested.target
+                                            if (target is BrowseTarget.Local) {
+                                                simpleDestination = SimpleDestination.LocalFiles
+                                            } else {
+                                                FileApexServices.settings.setSimpleActiveDeviceId(target.deviceId)
+                                                simpleDestination = SimpleDestination.Browse
+                                            }
+                                            route = AppRoute.Devices
+                                        }
+                                        AppRoute.Settings -> {
+                                            simpleDestination = SimpleDestination.Settings
+                                            route = AppRoute.Devices
+                                        }
+                                        else -> Unit
+                                    }
+                                }
+                                SimpleHome(
+                                    destination = simpleDestination,
+                                    onDestinationChange = { simpleDestination = it },
+                                    isWide = isWide,
+                                    devicesViewModel = devicesViewModel,
+                                    hasStoragePermission = hasStoragePermission,
+                                    onRequestStoragePermission = onRequestStoragePermission,
+                                    onGenerateQr = {
+                                        onStartShareServer()
+                                        route = AppRoute.GenerateQr
+                                    },
+                                    onJoinDevice = {
+                                        onStartShareServer()
+                                        route = AppRoute.Join
+                                    },
+                                    onExitApp = exitFileApex,
+                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                    onOpenNotes = { route = AppRoute.Notes },
+                                    settingsDeepLink = settingsDeepLink,
+                                    onSettingsDeepLinkChange = { settingsDeepLink = it },
+                                    settingsContent = { deepLink, onDeepLinkConsumed ->
+                                        SettingsScreen(
+                                            appVersionName = appVersionName,
+                                            onBack = { simpleDestination = SimpleDestination.Home },
+                                            showRootBackNavigation = false,
+                                            layoutMode = SettingsScreenLayoutMode.ListPane,
+                                            backgroundPersistence = backgroundPersistence,
+                                            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                            onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
+                                            onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
+                                            onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
+                                            exactAlarmWarningActive = exactAlarmWarningActive,
+                                            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                                            onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                            onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
+                                            onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                            onboardingSteps = onboardingSteps,
+                                            deniedOnboardingStepIds = deniedOnboardingStepIds,
+                                            onGrantOnboardingStep = onGrantOnboardingStep,
+                                            onExitApp = exitFileApex,
+                                            deepLink = deepLink,
+                                            onDeepLinkConsumed = onDeepLinkConsumed
+                                        )
+                                    }
+                                )
+                            } else {
                             SideEffect {
                                 if (isWide) tabWhileWide = wideHomeTab
                             }
@@ -586,7 +681,9 @@ fun App(
                                     onOpenNotes = { route = AppRoute.Notes },
                                     onboardingSteps = onboardingSteps,
                                     deniedOnboardingStepIds = deniedOnboardingStepIds,
-                                    onGrantOnboardingStep = onGrantOnboardingStep
+                                    onGrantOnboardingStep = onGrantOnboardingStep,
+                                    settingsDeepLink = settingsDeepLink,
+                                    onSettingsDeepLinkConsumed = { settingsDeepLink = null }
                                 )
                             } else {
                                 CompactHomeContent(
@@ -626,8 +723,11 @@ fun App(
                                     onOpenNotes = { route = AppRoute.Notes },
                                     onboardingSteps = onboardingSteps,
                                     deniedOnboardingStepIds = deniedOnboardingStepIds,
-                                    onGrantOnboardingStep = onGrantOnboardingStep
+                                    onGrantOnboardingStep = onGrantOnboardingStep,
+                                    settingsDeepLink = settingsDeepLink,
+                                    onSettingsDeepLinkConsumed = { settingsDeepLink = null }
                                 )
+                            }
                             }
                             KineticDropFxLayer()
                         }
@@ -845,7 +945,9 @@ private fun CompactHomeContent(
     onOpenNotes: () -> Unit = {},
     onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
     deniedOnboardingStepIds: Set<String> = emptySet(),
-    onGrantOnboardingStep: (String) -> Unit = {}
+    onGrantOnboardingStep: (String) -> Unit = {},
+    settingsDeepLink: SettingsDeepLink? = null,
+    onSettingsDeepLinkConsumed: () -> Unit = {}
 ) {
     var confirmExit by remember { mutableStateOf(false) }
     val selectedTab = compactHomeTab(route)
@@ -916,7 +1018,9 @@ private fun CompactHomeContent(
                 onboardingSteps = onboardingSteps,
                 deniedOnboardingStepIds = deniedOnboardingStepIds,
                 onGrantOnboardingStep = onGrantOnboardingStep,
-                onExitApp = onExitApp
+                onExitApp = onExitApp,
+                deepLink = settingsDeepLink,
+                onDeepLinkConsumed = onSettingsDeepLinkConsumed
             )
             is AppRoute.Explorer -> {
                 val secondaryTarget by splitSession.secondaryTarget.collectAsState()

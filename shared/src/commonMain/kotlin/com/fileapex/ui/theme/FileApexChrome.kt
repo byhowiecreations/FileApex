@@ -10,16 +10,23 @@ import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.traits
-import com.fileapex.platform.isDesktopHost
 
 @Composable
 fun isFileApexFluentUi(): Boolean =
@@ -62,12 +69,16 @@ fun fileApexChromeContentColor(): Color = when {
 fun isFileApexJadedSteel(): Boolean =
     isFileApexKineticSphere() && LocalKineticStyle.current == KineticStyle.JADED_STEEL
 
-/** Action icons in header/chrome (toggle view mode, queued transfers, panel toggle). */
+/**
+ * Action icons in header/chrome (toggle view mode, queued transfers, panel toggle).
+ * [onChromeBar] is for the wide-layout header, which sits on the teal chrome container; the compact title band sits on the surface.
+ */
 @Composable
-fun fileApexHeaderActionTint(): Color = when {
+fun fileApexHeaderActionTint(onChromeBar: Boolean = false): Color = when {
     isFileApexJadedSteel() -> KineticStyleLook.steel
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
-    isDesktopHost() -> fileApexChromeContentColor()
+    isFileApexCleanCurved() -> Color.White
+    onChromeBar -> fileApexChromeContentColor()
     else -> MaterialTheme.colorScheme.onSurface
 }
 
@@ -166,3 +177,21 @@ fun fileApexTopAppBarColors(): TopAppBarColors =
         navigationIconContentColor = fileApexChromeContentColor(),
         actionIconContentColor = fileApexChromeContentColor()
     )
+
+@Composable
+fun isFileApexCleanCurved(): Boolean = (LocalAppTheme.current == AppTheme.CLEAN || LocalAppTheme.current == AppTheme.SIMPLE) && !isFileApexFluentUi()
+
+/** Jaded Steel and the curved Clean theme draw header icons on small raised tiles. */
+@Composable
+fun isFileApexTiledChrome(): Boolean = isFileApexJadedSteel() || isFileApexCleanCurved()
+
+@Composable
+fun fileApexTileTint(): Color = if (isFileApexJadedSteel()) KineticStyleLook.steel else Color.White
+
+/** Clean theme bars are teal and float inset from the window edge as fully rounded panels, like Jaded Steel; other themes keep their chrome. */
+@Composable
+fun Modifier.fileApexFloatingChrome(color: Color, radius: Dp = 22.dp, outer: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 4.dp)): Modifier {
+    if (!isFileApexCleanCurved()) return this
+    val shape = RoundedCornerShape(radius)
+    return padding(outer).shadow(3.dp, shape, clip = false).clip(shape).background(color)
+}

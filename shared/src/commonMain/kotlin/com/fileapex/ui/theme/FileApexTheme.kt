@@ -62,6 +62,33 @@ private val StandardColorScheme = lightColorScheme(
     onError = Color.White
 )
 
+/** Light text on the Jaded Steel background; panes are see-through, dialogs and menus keep opaque containers. */
+private val SimpleColorScheme = darkColorScheme(
+    primary = Color(0xFF5BB5AE),
+    onPrimary = Color(0xFF05100E),
+    primaryContainer = Color(0x335BB5AE),
+    onPrimaryContainer = Color(0xFF9FDDD6),
+    secondary = Color(0xFF7ECFF2),
+    onSecondary = Color(0xFF05121A),
+    secondaryContainer = Color(0x337ECFF2),
+    onSecondaryContainer = Color(0xFFBFE8F8),
+    background = Color.Transparent,
+    onBackground = Color(0xFFF4F7F6),
+    surface = Color(0x4D0F1A21),
+    onSurface = Color(0xFFF4F7F6),
+    surfaceVariant = Color(0x3328383F),
+    onSurfaceVariant = Color(0xFFCBD5E1),
+    outline = Color(0x55FFFFFF),
+    outlineVariant = Color(0x1FFFFFFF),
+    error = Color(0xFFFF6B6B),
+    onError = Color(0xFF2B0000),
+    surfaceContainerLowest = Color(0xFF0D151A),
+    surfaceContainerLow = Color(0xFF121C22),
+    surfaceContainer = Color(0xFF16222A),
+    surfaceContainerHigh = Color(0xFF1B2931),
+    surfaceContainerHighest = Color(0xFF21313A)
+)
+
 private val FluentColorScheme = lightColorScheme(
     primary = FileApexTeal,
     onPrimary = Color.White,
@@ -104,6 +131,14 @@ private val FluxGlassColorScheme = darkColorScheme(
 
 private val StandardShapes = Shapes()
 
+private val CurvedShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
 private val FluentShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
@@ -138,7 +173,7 @@ private fun fluentTypography(fontFamily: FontFamily): Typography {
 @Composable
 fun FileApexTheme(
     uiStyle: DesktopUiStyle = DesktopUiStyle.Standard,
-    appTheme: AppTheme = AppTheme.CLEAN,
+    appTheme: AppTheme = AppTheme.DEFAULT,
     themeIconStyle: com.fileapex.data.settings.ThemeIconStyle = com.fileapex.data.settings.ThemeIconStyle.STANDARD,
     kineticStyle: KineticStyle = KineticStyle.SPACE,
     content: @Composable () -> Unit
@@ -148,10 +183,15 @@ fun FileApexTheme(
     val colorScheme = when {
         appTheme.traits.glassChrome -> FluxGlassColorScheme
         fluent -> FluentColorScheme
+        appTheme == AppTheme.SIMPLE -> SimpleColorScheme
         else -> StandardColorScheme
     }
 
-    val shapes = if (fluent) FluentShapes else StandardShapes
+    val shapes = when {
+        fluent -> FluentShapes
+        appTheme == AppTheme.SIMPLE || appTheme == AppTheme.CLEAN || appTheme == AppTheme.FLUX_GLASS -> CurvedShapes
+        else -> StandardShapes
+    }
     val typography = if (fluent) fluentTypography(fontFamily) else Typography()
     val fluentRipple = RippleConfiguration(
         color = Color(0xFF000000),
@@ -176,6 +216,13 @@ fun FileApexTheme(
         ) {
             if (fluent) {
                 CompositionLocalProvider(LocalRippleConfiguration provides fluentRipple) {
+                    content()
+                }
+            } else if (colorScheme === SimpleColorScheme) {
+                // Text with no color of its own must be light on the steel background.
+                CompositionLocalProvider(
+                    androidx.compose.material3.LocalContentColor provides colorScheme.onBackground
+                ) {
                     content()
                 }
             } else {

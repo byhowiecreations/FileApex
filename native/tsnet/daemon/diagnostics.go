@@ -28,6 +28,7 @@ type diagProcessor struct {
 
 type diagBattery struct {
 	ChargingState string `json:"chargingState"`
+	LevelPercent  *int   `json:"levelPercent,omitempty"`
 }
 
 type diagStorage struct {
@@ -112,7 +113,7 @@ func collectDiagnostics(storagePath string) diagSnapshot {
 			TotalCoreCount:   cores,
 			FrequencyScaling: cpuLoadLabel(readFileString("/proc/loadavg"), cores),
 		},
-		Battery: diagBattery{ChargingState: "Not available"},
+		Battery: readPowerSupply("/sys/class/power_supply"),
 		Network: diagNetwork{InterfaceType: "Ethernet"},
 		Thermal: diagThermal{State: "Not available"},
 	}
@@ -212,4 +213,34 @@ func readMemory() (total, available int64, ok bool) {
 		}
 	}
 	return total, available, true
+}
+
+// readPowerSupply reports the host's power state from sysfs, which containers share with the host.
+// A machine with no battery (a NAS, a server, a VM) is on mains, so it reports AC with no level.
+func readPowerSupply(dir string) diagBattery {
+	out := diagBattery{ChargingState: "AC"}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, entry := range entries {
+		base := dir + "/" + entry.Name()
+		if strings.TrimSpace(readFileString(base+"/type")) != "Battery" {
+			continue
+		}
+		if capacity, err := strconv.Atoi(strings.TrimSpace(readFileString(base + "/capacity"))); err == nil {
+			out.LevelPercent = &capacity
+		}
+		switch strings.ToLower(strings.TrimSpace(readFileString(base + "/status"))) {
+		case "discharging":
+			out.ChargingState = "Discharging"
+		case "full":
+			out.ChargingState = "Full"
+		default:
+			// Charging, or plugged in and not charging.
+			out.ChargingState = "AC"
+		}
+		return out
+	}
+	return out
 }

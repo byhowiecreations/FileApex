@@ -1,6 +1,6 @@
 # FileApex Privacy Policy
 
-**Effective Date:** September 5, 2026
+**Effective Date:** Oct 9, 2026
 **Developer:** ByHowieCreations
 **Application:** FileApex (Android, macOS, Windows)
 **Contact:** byhowiecreations@gmail.com
@@ -19,9 +19,17 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 
 **Device pairing metadata:** Device name, hardware model/OS, local IP and port, battery/storage/RAM (shown in Device Details), and cryptographic pairing tokens, public keys, and optional PIN hashes. Stored locally in an on-device SQLite database, protected by OS-level sandboxing and file-based encryption. Deleted immediately when you unpair a device.
 
+**Bulletin Board (messages/notes):** Stored locally by default. If Google Account is linked, message text, attachment names/sizes, and Drive file references are sent via Firebase Cloud Messaging so your other devices get pushed notifications. Deleting a message removes it locally, or you can send a retraction broadcast to remove it from all paired devices and, if it had an attachment, from Google Drive.
+
+**Broadcast Notifications (opt-in, Android):** If you turn this on, FileApex reads notifications from the apps you choose and sends them end-to-end encrypted to one paired device you select. Nothing is shared until you enable it, grant notification access in Android settings, and switch on individual apps. Notifications containing verification codes are not sent unless you allow them. Ongoing and silent notifications are never sent. Notification content is held in memory on the receiving device only, is never written to disk or logs, and is gone when the app closes.
+
 **Clipboard sharing (opt-in):** Local sharing is point-to-point and end-to-end encrypted. If you enable Cellular Clipboard Sharing, the encrypted ciphertext (not plaintext) is relayed through Firebase Cloud Messaging so it reaches your device off Wi-Fi. Google cannot read the content. Clipboard content is not continuously monitored or logged unless you actively enable the designated background clipboard mode; clipboard history is never stored externally.
 
-**Bulletin Board (messages/notes):** Stored locally by default. If Google Account is linked, message text, attachment names/sizes, and Drive file references are sent via Firebase Cloud Messaging so your other devices get pushed notifications. Deleting a message removes it locally, or you can send a retraction broadcast to remove it from all paired devices and, if it had an attachment, from Google Drive.
+**Clipboard Accessibility Service (Android, non-Play builds only, opt-in):** Android does not let apps read the clipboard while they are in the background. The optional Accessibility Service works around this by noticing copy actions (taps on Copy or Cut, text selection and focus changes) in other apps so FileApex can read what you copied. To do that it can see the text you select or edit in the app you are copying from, and that app's name. This text is kept in memory only, is used only to work out what you copied, and is shared with your paired devices (end-to-end encrypted) only when Clipboard Sharing is on and a copy is detected. It is not stored, uploaded, logged, or used for anything else, and the service does not perform actions on your behalf. It runs only after you turn it on in Android Accessibility settings and in FileApex, and you can turn it off at any time. **This feature is not included in Google Play builds.**
+
+**Shizuku (Android, non-Play builds only, opt-in):** If you already use the separate Shizuku app and authorize FileApex inside it, FileApex can read the clipboard while it is in the background through Shizuku. It is off by default, used only to read the clipboard for Clipboard Sharing, and handled exactly like other clipboard content. FileApex does not install or start Shizuku. **This feature is not included in Google Play builds.**
+
+**App updates (Android and desktop, non-Play builds):** When update checks are on, FileApex asks the GitHub Releases API for the latest public version, downloads the update file from GitHub, and on Android hands it to the system installer, which asks you to confirm. FileApex checks that the file is a valid Android package, and Android only installs an update that carries the same package name and signing key as the installed app. No device or personal identifiers are sent. An update shared by one of your paired devices through the Bulletin Board is offered the same way. Google Play builds update only through Google Play and do not include this.
 
 **Camera:** Optional, used only to scan a pairing QR code as a backup to the default 6-digit pairing method. Frames are processed in memory; nothing is saved or uploaded.
 
@@ -47,6 +55,10 @@ If you never sign in with Google or enable cloud relay, none of these are contac
 | Foreground Service & Boot (Android, optional) | Keeps local server reachable in the background |
 | Battery & Power Status | Device Details screen, low-battery alerts |
 | Nearby Wi-Fi / Phone State (Android, optional) | Network name / carrier type in Device Details |
+| Notification access (Android, optional) | Read notifications from apps you select so they can be shown on a paired device |
+| Install unknown apps (Android, non-Play builds) | Hands a downloaded FileApex update to the Android installer; you confirm each install |
+| Accessibility Service (Android, non-Play builds, optional) | Detects copy actions so Clipboard Sharing works in the background |
+| Shizuku access (Android, non-Play builds, optional) | Reads the clipboard in the background if you authorize FileApex in Shizuku |
 
 **No location tracking:** FileApex does not request or collect GPS or precise location data.
 

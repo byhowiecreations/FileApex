@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestParseOSReleasePrettyName(t *testing.T) {
 	text := "NAME=\"Alpine Linux\"\nPRETTY_NAME=\"Alpine Linux v3.20\"\nID=alpine\n"
@@ -43,5 +47,32 @@ func TestCollectDiagnosticsFillsIdentity(t *testing.T) {
 	snap := collectDiagnostics(t.TempDir())
 	if snap.Platform == "" || snap.Processor.Architecture == "" || snap.CollectedAtEpochMs == 0 {
 		t.Fatalf("incomplete snapshot: %+v", snap)
+	}
+}
+
+func TestReadPowerSupplyWithoutBatteryIsAC(t *testing.T) {
+	got := readPowerSupply(t.TempDir())
+	if got.ChargingState != "AC" || got.LevelPercent != nil {
+		t.Fatalf("got %+v", got)
+	}
+	if missing := readPowerSupply(filepath.Join(t.TempDir(), "absent")); missing.ChargingState != "AC" {
+		t.Fatalf("got %+v", missing)
+	}
+}
+
+func TestReadPowerSupplyReadsBattery(t *testing.T) {
+	dir := t.TempDir()
+	bat := filepath.Join(dir, "BAT0")
+	if err := os.MkdirAll(bat, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"type": "Battery\n", "capacity": "64\n", "status": "Discharging\n"} {
+		if err := os.WriteFile(filepath.Join(bat, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := readPowerSupply(dir)
+	if got.ChargingState != "Discharging" || got.LevelPercent == nil || *got.LevelPercent != 64 {
+		t.Fatalf("got %+v", got)
 	}
 }

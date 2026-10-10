@@ -26,7 +26,7 @@ class ThemeTraitsTest {
                 t.traits.spatialHome,
             )
             assertEquals(
-                t == AppTheme.CLEAN || t == AppTheme.FLUX_GLASS,
+                t == AppTheme.SIMPLE || t == AppTheme.CLEAN || t == AppTheme.FLUX_GLASS,
                 t.traits.desktopHoverPopOver,
             )
             assertEquals(t == AppTheme.FLUX_GLASS, t.traits.fluxSurfaces)

@@ -9,6 +9,12 @@ sealed class UpdateCheckOutcome {
         val latestTag: String
     ) : UpdateCheckOutcome()
 
+    /** The running build is newer than the latest GitHub release (a test build ahead of the release page). */
+    data class NewerThanRelease(
+        val localVersion: String,
+        val latestTag: String
+    ) : UpdateCheckOutcome()
+
     data class Available(
         val offer: PendingUpdateOffer
     ) : UpdateCheckOutcome()

@@ -1,5 +1,9 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.ui.theme.fileApexTileTint
+import com.fileapex.ui.theme.isFileApexTiledChrome
+import com.fileapex.ui.explorerIcon
+import com.fileapex.ui.ExplorerIcon
 import com.fileapex.i18n.stringRes
 
 import androidx.compose.foundation.background
@@ -82,9 +86,11 @@ import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.ExplorerViewModeToggle
 import com.fileapex.ui.LiveTransferBanner
+import com.fileapex.ui.LocalShowsTransferBanner
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.HomeTab
+import com.fileapex.ui.SettingsDeepLink
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.platform.BackgroundPersistenceUiState
@@ -95,6 +101,8 @@ import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
+import com.fileapex.ui.theme.fileApexFloatingChrome
+import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.fileApexNavSelectedBackgroundColor
@@ -154,7 +162,9 @@ fun AdaptiveWideHome(
     onOpenNotes: (() -> Unit)? = null,
     onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
     deniedOnboardingStepIds: Set<String> = emptySet(),
-    onGrantOnboardingStep: (String) -> Unit = {}
+    onGrantOnboardingStep: (String) -> Unit = {},
+    settingsDeepLink: SettingsDeepLink? = null,
+    onSettingsDeepLinkConsumed: () -> Unit = {}
 ) {
     val state by devicesViewModel.uiState.collectAsState()
     val deviceRows by devicesViewModel.deviceRows.collectAsState()
@@ -204,7 +214,7 @@ fun AdaptiveWideHome(
             }
         } else if (deviceRows.isNotEmpty()) {
             val isJaded = LocalAppTheme.current.traits.orbitalHome && LocalKineticStyle.current == KineticStyle.JADED_STEEL
-            if (isJaded) {
+            if (isFileApexTiledChrome()) {
                 Box(
                     modifier = Modifier.size(40.dp).clickable(onClick = devicesViewModel::enterDeviceOrderEditMode),
                     contentAlignment = Alignment.Center
@@ -213,7 +223,7 @@ fun AdaptiveWideHome(
                         Icon(
                             imageVector = Icons.Filled.Edit,
                             contentDescription = stringRes("reorder_devices"),
-                            tint = KineticStyleLook.steel,
+                            tint = fileApexTileTint(),
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -230,6 +240,7 @@ fun AdaptiveWideHome(
         }
     }
 
+    CompositionLocalProvider(LocalShowsTransferBanner provides true) {
     Column(modifier = Modifier.fillMaxSize()) {
         WideTopBar(
             onExitClick = onExitApp,
@@ -262,6 +273,7 @@ fun AdaptiveWideHome(
                         }
                     },
                     onFiles = {
+                        com.fileapex.platform.StorageToolsEvents.closeRequests.tryEmit(Unit)
                         onSelectTab(HomeTab.Files)
                         onOpenLocalFiles()
                     },
@@ -296,7 +308,9 @@ fun AdaptiveWideHome(
                             onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
                             onboardingSteps = onboardingSteps,
                             deniedOnboardingStepIds = deniedOnboardingStepIds,
-                            onGrantOnboardingStep = onGrantOnboardingStep
+                            onGrantOnboardingStep = onGrantOnboardingStep,
+                            deepLink = settingsDeepLink,
+                            onDeepLinkConsumed = onSettingsDeepLinkConsumed
                         )
                     }
                 }
@@ -457,6 +471,7 @@ fun AdaptiveWideHome(
         }
         LiveTransferBanner(onOpenTransferQueue = onOpenTransferQueue)
     }
+    }
 }
 
 @Composable
@@ -516,7 +531,13 @@ private fun WideTopBar(
                 } else {
                     Modifier
                         .fileApexChromeBottomEdge()
-                        .background(fileApexChromeContainerColor())
+                        .then(
+                            if (isFileApexCleanCurved()) {
+                                Modifier.fileApexFloatingChrome(fileApexChromeContainerColor(), outer = PaddingValues(horizontal = 10.dp, vertical = 8.dp))
+                            } else {
+                                Modifier.background(fileApexChromeContainerColor())
+                            }
+                        )
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 }
             ),
@@ -581,7 +602,7 @@ private fun WideTopBar(
             Spacer(modifier = Modifier.width(6.dp))
         }
         val currentTheme = LocalAppTheme.current
-        val headerIconTint = fileApexHeaderActionTint()
+        val headerIconTint = fileApexHeaderActionTint(onChromeBar = true)
         QueuedFilesButton(
             onClick = onOpenTransferQueue,
             iconTint = headerIconTint
@@ -597,8 +618,8 @@ private fun WideTopBar(
                 if (isFreestyle) {
                     val freestyleMode by FileApexServices.settings.freestyleLayoutMode.collectAsState()
                     val icon = when (freestyleMode) {
-                        FreestyleLayoutMode.CARDS_VERTICAL -> Icons.Filled.TableRows
-                        FreestyleLayoutMode.CARDS_HORIZONTAL -> Icons.Filled.ViewColumn
+                        FreestyleLayoutMode.CARDS_VERTICAL -> explorerIcon(ExplorerIcon.CardsVertical)
+                        FreestyleLayoutMode.CARDS_HORIZONTAL -> explorerIcon(ExplorerIcon.CardsHorizontal)
                         FreestyleLayoutMode.TILES -> FileApexIcons.Atr
                     }
                     val desc = when (freestyleMode) {
@@ -649,6 +670,13 @@ private fun WideTopBar(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                    commands.onOpenTools?.let { onOpenTools ->
+                        com.fileapex.ui.ToolsHeaderButton(
+                            onClick = onOpenTools,
+                            tint = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
                     commands.onPaste?.let { onPaste ->
                         TextButton(
                             onClick = onPaste,
@@ -675,7 +703,7 @@ private fun WideTopBar(
                 DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
             }
             if (onRefreshExplorer != null) {
-                if (jadedHeader) {
+                if (isFileApexTiledChrome()) {
                     Box(
                         modifier = Modifier
                             .size(40.dp)
@@ -687,13 +715,13 @@ private fun WideTopBar(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp,
-                                    color = KineticStyleLook.steel
+                                    color = fileApexTileTint()
                                 )
                             } else {
                                 Icon(
-                                    imageVector = Icons.Filled.Refresh,
+                                    imageVector = explorerIcon(ExplorerIcon.Refresh),
                                     contentDescription = stringRes("refresh"),
-                                    tint = KineticStyleLook.steel,
+                                    tint = fileApexTileTint(),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -712,7 +740,7 @@ private fun WideTopBar(
                             )
                         } else {
                             Icon(
-                                imageVector = Icons.Filled.Refresh,
+                                imageVector = explorerIcon(ExplorerIcon.Refresh),
                                 contentDescription = stringRes("refresh"),
                                 tint = headerIconTint,
                                 modifier = Modifier.size(22.dp)
@@ -751,6 +779,10 @@ fun FileApexNavigationRail(
                             .padding(top = 6.dp, bottom = 10.dp)
                             .clip(jadedRailShape)
                             .border(1.dp, Color.White.copy(alpha = 0.10f), jadedRailShape)
+                    } else if (isFileApexCleanCurved()) {
+                        Modifier
+                            .padding(top = 8.dp, bottom = 10.dp)
+                            .clip(RoundedCornerShape(28.dp))
                     } else {
                         Modifier
                     }
@@ -789,11 +821,13 @@ fun FileApexNavigationRail(
 }
 
 @Composable
-private fun RailItem(
+internal fun RailItem(
     selected: Boolean,
     onClick: () -> Unit,
     icon: ImageVector,
-    label: String
+    label: String,
+    caption: String? = null,
+    labelMaxWidth: Dp? = null
 ) {
     val jadedSelected = selected &&
         LocalAppTheme.current.traits.orbitalHome &&
@@ -845,17 +879,32 @@ private fun RailItem(
             }
         },
         label = {
-            Text(
-                label,
-                fontWeight = if (jadedSelected) FontWeight.Bold else FontWeight.Normal,
-                color = if (selected) {
-                    fileApexNavSelectedTextColor()
-                } else {
-                    fileApexNavUnselectedTextColor()
-                },
-                softWrap = true,
-                maxLines = 2
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = if (labelMaxWidth != null) Modifier.widthIn(max = labelMaxWidth) else Modifier
+            ) {
+                Text(
+                    label,
+                    textAlign = if (labelMaxWidth != null) androidx.compose.ui.text.style.TextAlign.Center else null,
+                    fontWeight = if (jadedSelected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (selected) {
+                        fileApexNavSelectedTextColor()
+                    } else {
+                        fileApexNavUnselectedTextColor()
+                    },
+                    softWrap = true,
+                    maxLines = 2
+                )
+                if (!caption.isNullOrBlank()) {
+                    Text(
+                        caption,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = fileApexNavUnselectedTextColor(),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+            }
         },
         colors = fileApexNavigationRailItemColors()
     )

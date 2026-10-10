@@ -1,5 +1,8 @@
 package com.fileapex.ui
 
+import androidx.compose.foundation.layout.heightIn
+import com.fileapex.ui.theme.fileApexHeaderActionTint
+import com.fileapex.ui.theme.fileApexTileTint
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -152,6 +155,7 @@ import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.LocalFileApexUiStyle
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.ui.theme.fileApexChromeContainerColor
+import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.fileApexChromeTopEdge
 import com.fileapex.ui.theme.fileApexNavigationBarItemColors
 import com.fileapex.ui.theme.fileApexNavSelectedBackgroundColor
@@ -294,7 +298,7 @@ fun DevicesScreen(
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
         val currentTheme = LocalAppTheme.current
         val isGlass = currentTheme.traits.reorderAccent
-        val editTint = if (isGlass) FluxGlassPalette.accent else MaterialTheme.colorScheme.onSurface
+        val editTint = if (isGlass) FluxGlassPalette.accent else fileApexHeaderActionTint()
         if (!currentTheme.traits.orbitalHome) {
             if (editMode) {
                 TextButton(onClick = viewModel::revertDeviceOrderInEditMode) {
@@ -302,6 +306,20 @@ fun DevicesScreen(
                 }
                 TextButton(onClick = viewModel::saveDeviceOrderAndExitEditMode) {
                     Text(stringRes("done"), color = Color(0xFF00E676))
+                }
+            } else if (deviceRows.isNotEmpty() && isFileApexCleanCurved()) {
+                Box(
+                    modifier = Modifier.size(40.dp).clickable(onClick = viewModel::enterDeviceOrderEditMode),
+                    contentAlignment = Alignment.Center
+                ) {
+                    JadedRaisedTile(tileSize = 28.dp) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = stringRes("reorder_devices"),
+                            tint = fileApexTileTint(),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             } else if (deviceRows.isNotEmpty()) {
                 IconButton(onClick = viewModel::enterDeviceOrderEditMode) {
@@ -330,9 +348,10 @@ fun DevicesScreen(
             }
     }
 
+    val transferBannerShown = LocalShowsTransferBanner.current
     LaunchedEffect(state.statusMessage, state.errorMessage) {
         state.statusMessage?.let {
-            snackbarHostState.showSnackbar(it)
+            if (shouldShowStatusSnackbar(transferBannerShown)) snackbarHostState.showSnackbar(it)
             viewModel.dismissMessages()
         }
         state.errorMessage?.let {
@@ -499,7 +518,14 @@ fun DevicesScreen(
             // Always pinned above bottom navigation — not overlapping the list.
             if (!editMode && !isKineticSphere && !isFreestyle) {
                 val isFlux = LocalAppTheme.current.traits.fluxSurfaces
-                if (isFlux) {
+                val isCleanPills = isFileApexCleanCurved()
+                if (isFlux || isCleanPills) {
+                    val pillColor = if (isFlux) FluxGlassPalette.actionPill else MaterialTheme.colorScheme.surface
+                    val clipTint = if (isFlux) FluxGlassPalette.cyan else FileApexTeal
+                    val clipText = if (isFlux) Color.White else MaterialTheme.colorScheme.onSurface
+                    val addColor = if (isFlux) FluxGlassPalette.actionPill else FileApexTeal
+                    val addTint = if (isFlux) FluxGlassPalette.accent else Color.White
+                    val addText = Color.White
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -510,6 +536,7 @@ fun DevicesScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = if (isCleanPills) 44.dp else 0.dp)
                                 .height(IntrinsicSize.Max),
                             horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                             verticalAlignment = Alignment.CenterVertically
@@ -521,10 +548,10 @@ fun DevicesScreen(
                                     .weight(1f)
                                     .fillMaxHeight(),
                                 shape = RoundedCornerShape(percent = 50),
-                                color = FluxGlassPalette.actionPill,
+                                color = pillColor,
                                 border = BorderStroke(
                                     1.dp,
-                                    FluxGlassPalette.cyan.copy(alpha = if (state.isSendingClipboard) 0.25f else 0.55f)
+                                    clipTint.copy(alpha = if (state.isSendingClipboard) 0.25f else if (isFlux) 0.55f else 0.35f)
                                 ),
                                 shadowElevation = if (state.isSendingClipboard) 2.dp else 8.dp
                             ) {
@@ -539,13 +566,13 @@ fun DevicesScreen(
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(16.dp),
                                             strokeWidth = 2.dp,
-                                            color = FluxGlassPalette.cyan
+                                            color = clipTint
                                         )
                                     } else {
                                         Icon(
                                             imageVector = Icons.Filled.ContentPaste,
                                             contentDescription = null,
-                                            tint = FluxGlassPalette.cyan,
+                                            tint = clipTint,
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
@@ -556,7 +583,7 @@ fun DevicesScreen(
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp
                                         ),
-                                        color = if (state.isSendingClipboard) Color.White.copy(alpha = 0.6f) else Color.White,
+                                        color = if (state.isSendingClipboard) clipText.copy(alpha = 0.6f) else clipText,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -572,8 +599,8 @@ fun DevicesScreen(
                                     onClick = { addMenuOpen = true },
                                     modifier = Modifier.fillMaxSize(),
                                     shape = RoundedCornerShape(percent = 50),
-                                    color = FluxGlassPalette.actionPill,
-                                    border = BorderStroke(1.dp, FluxGlassPalette.accent.copy(alpha = 0.65f)),
+                                    color = addColor,
+                                    border = if (isFlux) BorderStroke(1.dp, FluxGlassPalette.accent.copy(alpha = 0.65f)) else null,
                                     shadowElevation = 8.dp
                                 ) {
                                     Row(
@@ -586,7 +613,7 @@ fun DevicesScreen(
                                         Icon(
                                             imageVector = Icons.Filled.Add,
                                             contentDescription = null,
-                                            tint = FluxGlassPalette.accent,
+                                            tint = addTint,
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -596,7 +623,7 @@ fun DevicesScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 12.sp
                                             ),
-                                            color = Color.White,
+                                            color = addText,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -1428,7 +1455,7 @@ private fun DeviceGridCell(
             color = when {
                 highlighted -> FileApexTeal
                 fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-                else -> FileApexTeal.copy(alpha = 0.35f)
+                else -> FileApexTeal.copy(alpha = 0.10f)
             }
         )
     ) {
@@ -1721,8 +1748,14 @@ fun FileApexBottomBar(
     } else {
         NavigationBar(
             modifier = Modifier
-                .fileApexChromeTopEdge()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .then(
+                    if (isFileApexCleanCurved()) {
+                        Modifier.padding(start = 10.dp, end = 10.dp, bottom = 8.dp).height(64.dp).clip(RoundedCornerShape(28.dp))
+                    } else {
+                        Modifier.fileApexChromeTopEdge()
+                    }
+                ),
             containerColor = fileApexChromeContainerColor(),
             contentColor = fileApexNavSelectedTextColor(),
             tonalElevation = 0.dp
@@ -1894,8 +1927,8 @@ private fun NavIcon(
     contentDescription: String
 ) {
     val isGlass = isFileApexCustomGlassTheme()
-    val pillShape = if (isGlass) RoundedCornerShape(14.dp) else RoundedCornerShape(12.dp)
-    val pillSizeModifier = if (isGlass) Modifier.size(width = 48.dp, height = 26.dp) else Modifier.size(40.dp)
+    val pillShape = if (isGlass) RoundedCornerShape(14.dp) else if (isFileApexCleanCurved()) RoundedCornerShape(15.dp) else RoundedCornerShape(12.dp)
+    val pillSizeModifier = if (isGlass) Modifier.size(width = 48.dp, height = 26.dp) else if (isFileApexCleanCurved()) Modifier.size(width = 52.dp, height = 30.dp) else Modifier.size(40.dp)
 
     Box(
         modifier = pillSizeModifier
@@ -2211,7 +2244,7 @@ private fun DeviceCard(
             color = when {
                 highlighted -> FileApexTeal
                 fluent -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-                else -> FileApexTeal.copy(alpha = 0.55f)
+                else -> FileApexTeal.copy(alpha = 0.10f)
             }
         )
     ) {

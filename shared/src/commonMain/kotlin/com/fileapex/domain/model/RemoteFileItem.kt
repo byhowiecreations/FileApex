@@ -4,14 +4,16 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class RemoteFileItem(
-    val id: String,
     val name: String,
     val absolutePath: String,
     val sizeBytes: Long,
     val lastModified: Long,
     val isDirectory: Boolean,
     val mimeType: String
-)
+) {
+    /** Not on the wire; older peers still send `id`, which decoding ignores. */
+    val id: String get() = absolutePath
+}
 
 /**
  * Cross-device transfer clipboard payload.

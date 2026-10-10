@@ -70,6 +70,11 @@ object GoogleLinkCoordinator {
 
     private var registryHandle: CloudRegistryHandle? = null
 
+    /** Bounded re-attach of the device-registry listener after a terminal auth error. */
+    @Volatile
+    private var listenerRetryCount = 0
+    private var listenerRetryJob: Job? = null
+
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
 
@@ -454,6 +459,7 @@ object GoogleLinkCoordinator {
             uid = uid,
             onDevices = { records ->
                 if (!isSessionLive(epoch)) return@observeUserDevices
+                listenerRetryCount = 0
                 scope.launch {
                     if (!isSessionLive(epoch)) return@launch
                     applyRemoteDevices(records, selfId, epoch)
@@ -463,6 +469,7 @@ object GoogleLinkCoordinator {
                 if (isSessionLive(epoch)) {
                     _status.value = error.message ?: "Cloud registry error"
                     println("GoogleLinkCoordinator: observe error - ${error.message}")
+                    scheduleListenerRetryIfAuthError(error, epoch)
                 }
             }
         )
@@ -470,6 +477,27 @@ object GoogleLinkCoordinator {
         scope.launch {
             if (!isSessionLive(epoch)) return@launch
             refreshDiagnosticsCloudRelay(uid, selfId)
+        }
+    }
+
+    /**
+     * Firestore ends a snapshot listener on UNAUTHENTICATED / PERMISSION_DENIED (e.g. expired token
+     * mid-stream) and never restarts it. Re-attach at most [LISTENER_RETRY_MAX] times with backoff;
+     * the counter resets on the next successful snapshot.
+     */
+    private fun scheduleListenerRetryIfAuthError(error: Throwable, epoch: Long) {
+        val text = error.message.orEmpty()
+        if (!text.contains("UNAUTHENTICATED", ignoreCase = true) &&
+            !text.contains("PERMISSION_DENIED", ignoreCase = true)
+        ) return
+        if (listenerRetryCount >= LISTENER_RETRY_MAX) return
+        val attempt = ++listenerRetryCount
+        listenerRetryJob?.cancel()
+        listenerRetryJob = bootstrapScope.launch {
+            delay(LISTENER_RETRY_BASE_MS * (1L shl (attempt - 1)))
+            if (!isSessionLive(epoch)) return@launch
+            runCatching { restoreSessionAndListen() }
+                .onFailure { println("GoogleLinkCoordinator: listener retry $attempt failed - ${it.message}") }
         }
     }
 
@@ -782,6 +810,8 @@ object GoogleLinkCoordinator {
             membershipVersion == other.membershipVersion
 
     private const val SESSION_SETTLE_MS = 50L
+    private const val LISTENER_RETRY_MAX = 3
+    private const val LISTENER_RETRY_BASE_MS = 30_000L
 }
 
 expect fun currentPlatformLabel(): String

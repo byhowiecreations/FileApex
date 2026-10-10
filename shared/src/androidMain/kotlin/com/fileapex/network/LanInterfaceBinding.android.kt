@@ -564,7 +564,7 @@ private suspend fun executeBoundUploadOnLocalIp(
         if (contentLength == null) {
             socket.shutdownOutput()
         }
-        val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)
+        val raw = socket.getInputStream().readBoundedBytes().toString(Charsets.UTF_8)
         parseHttpResponse(raw)
     }
 }
@@ -615,7 +615,7 @@ private fun executeBoundHttpOnLocalIp(
         }
         output.write(request.toByteArray(Charsets.UTF_8))
         output.flush()
-        val raw = socket.getInputStream().readBytes().toString(Charsets.UTF_8)
+        val raw = socket.getInputStream().readBoundedBytes().toString(Charsets.UTF_8)
         return parseHttpResponse(raw)
     }
 }
@@ -635,6 +635,23 @@ private fun readHttpStatusLine(input: java.io.BufferedInputStream): Int {
     return Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
 }
 
+private const val MAX_PEER_RESPONSE_BYTES = 32 * 1024 * 1024
+private const val MAX_HEADER_LINE_CHARS = 16 * 1024
+private const val MAX_HEADER_LINES = 256
+
+/** Peer control responses are small JSON; cap so a misbehaving peer cannot exhaust the heap. */
+private fun java.io.InputStream.readBoundedBytes(limit: Int = MAX_PEER_RESPONSE_BYTES): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8 * 1024)
+    while (true) {
+        val n = read(buffer)
+        if (n < 0) break
+        if (out.size() + n > limit) throw java.io.IOException("Peer response exceeds $limit bytes")
+        out.write(buffer, 0, n)
+    }
+    return out.toByteArray()
+}
+
 private fun readHttpHeaderLines(input: java.io.BufferedInputStream): List<String> {
     val lines = ArrayList<String>()
     while (true) {
@@ -642,6 +659,7 @@ private fun readHttpHeaderLines(input: java.io.BufferedInputStream): List<String
         if (line.isEmpty()) {
             return lines
         }
+        if (lines.size >= MAX_HEADER_LINES) throw java.io.IOException("Too many HTTP header lines")
         lines += line
     }
 }
@@ -668,6 +686,7 @@ private fun java.io.InputStream.readAsciiLine(): String {
             break
         }
         if (byte != '\r'.code) {
+            if (builder.length >= MAX_HEADER_LINE_CHARS) throw java.io.IOException("HTTP header line too long")
             builder.append(byte.toChar())
         }
     }

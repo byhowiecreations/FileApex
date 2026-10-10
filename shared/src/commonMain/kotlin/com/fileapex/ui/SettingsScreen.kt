@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.fileapex.data.settings.BulletinBoardStyle
+import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.supportedIconStyles
 import com.fileapex.data.settings.traits
@@ -59,6 +61,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.platform.Diagnostics
+import com.fileapex.platform.supportsDevicePopups
 import com.fileapex.platform.OnboardingPermissionStep
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -102,6 +105,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
+import com.fileapex.di.FileApexServices
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -167,8 +171,10 @@ private enum class SettingsPage {
     BackgroundPersistence,
     AutoLaunchOnReboot,
     Notifications,
+    BroadcastNotifications,
     FileTransferNotifications,
     Themes,
+    BulletinBoard,
     BulletinBoardStyles,
     Clipboard,
     ClipboardAccessibility,
@@ -177,6 +183,7 @@ private enum class SettingsPage {
     DeviceDetails,
     GoogleAccount,
     RemoteFileDeletion,
+    BackupSync,
     DesktopLayout,
     WindowsDesign,
     Language,
@@ -186,6 +193,16 @@ private enum class SettingsPage {
 }
 
 
+
+/** Settings pages other screens can open directly. */
+enum class SettingsDeepLink { Clipboard, Tailscale, Notifications, BroadcastNotifications }
+
+private fun settingsPageFor(link: SettingsDeepLink): SettingsPage = when (link) {
+    SettingsDeepLink.Clipboard -> SettingsPage.Clipboard
+    SettingsDeepLink.Tailscale -> SettingsPage.Tailscale
+    SettingsDeepLink.Notifications -> SettingsPage.Notifications
+    SettingsDeepLink.BroadcastNotifications -> SettingsPage.BroadcastNotifications
+}
 
 enum class SettingsScreenLayoutMode {
     /** Phone / compact: teal top bar scaffold. */
@@ -225,12 +242,24 @@ fun SettingsScreen(
     deniedOnboardingStepIds: Set<String> = emptySet(),
     onGrantOnboardingStep: (String) -> Unit = {},
     onExitApp: (() -> Unit)? = null,
+    deepLink: SettingsDeepLink? = null,
+    onDeepLinkConsumed: () -> Unit = {},
     viewModel: SettingsViewModel = viewModel { SettingsViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
     val updateStatus by viewModel.updateStatusMessage.collectAsState()
     val googleLinkStatus by viewModel.googleLinkStatus.collectAsState()
-    var page by rememberSaveable(stateSaver = settingsPageSaver) { mutableStateOf(SettingsPage.Root) }
+    var page by rememberSaveable(stateSaver = settingsPageSaver) {
+        mutableStateOf(deepLink?.let(::settingsPageFor) ?: SettingsPage.Root)
+    }
+    LaunchedEffect(deepLink) {
+        val target = deepLink ?: return@LaunchedEffect
+        page = settingsPageFor(target)
+        onDeepLinkConsumed()
+    }
+    LaunchedEffect(page) {
+        if (page == SettingsPage.Themes) FileApexServices.settings.setOtherThemesHintShown(true)
+    }
 
     val currentTheme = LocalAppTheme.current
     val isFreestyleCompact = currentTheme.traits.canvasHome && layoutMode == SettingsScreenLayoutMode.CompactShell
@@ -239,7 +268,10 @@ fun SettingsScreen(
     val leavePage: () -> Unit = {
         when (page) {
             SettingsPage.Root -> if (allowRootBack) onBack()
-            SettingsPage.FileTransferNotifications -> page = SettingsPage.Notifications
+            SettingsPage.FileTransferNotifications,
+            SettingsPage.BroadcastNotifications -> page = SettingsPage.Notifications
+            SettingsPage.BulletinBoardStyles,
+            SettingsPage.RemoteFileDeletion -> page = SettingsPage.BulletinBoard
             SettingsPage.ClipboardDiagnostics,
             SettingsPage.ClipboardShareTargets,
             SettingsPage.ClipboardAccessibility -> page = SettingsPage.Clipboard
@@ -276,12 +308,12 @@ fun SettingsScreen(
             onOpenLanguage = { page = SettingsPage.Language },
             onOpenNotifications = { page = SettingsPage.Notifications },
             onOpenThemes = { page = SettingsPage.Themes },
-            onOpenBulletinBoardStyles = { page = SettingsPage.BulletinBoardStyles },
+            onOpenBulletinBoard = { page = SettingsPage.BulletinBoard },
+            onOpenBackupSync = { page = SettingsPage.BackupSync },
             onOpenClipboard = { page = SettingsPage.Clipboard },
 
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
-            onOpenRemoteFileDeletion = { page = SettingsPage.RemoteFileDeletion },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
             onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
@@ -311,7 +343,13 @@ fun SettingsScreen(
             onToggleFileTransferNotifications = viewModel::setFileTransferNotifications,
             onToggleNotesNotifications = viewModel::setNotesNotifications,
             onToggleDriveRelayNotifications = viewModel::setDriveRelayNotifications,
-            onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule
+            onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule,
+            onOpenBroadcastNotifications = { page = SettingsPage.BroadcastNotifications }
+        )
+        SettingsPage.BroadcastNotifications -> BroadcastNotificationsSettingsPage(
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Notifications },
+            onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
         SettingsPage.CheckForUpdates -> {
             if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
@@ -389,10 +427,23 @@ fun SettingsScreen(
             onTogglePersistentWallpaper = viewModel::setKineticSpherePersistentWallpaperEnabled
         )
 
-        SettingsPage.BulletinBoardStyles -> BulletinBoardStylesSettingsPage(
+        SettingsPage.BulletinBoard -> BulletinBoardHubPage(
             state = state,
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root },
+            onOpenStyles = { page = SettingsPage.BulletinBoardStyles },
+            onOpenRemoteDeletion = { page = SettingsPage.RemoteFileDeletion }
+        )
+
+        SettingsPage.BackupSync -> BackupSyncSettingsPage(
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root }
+        )
+
+        SettingsPage.BulletinBoardStyles -> BulletinBoardStylesSettingsPage(
+            state = state,
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.BulletinBoard },
             onSelectStyle = viewModel::setBulletinBoardStyle
         )
 
@@ -509,7 +560,7 @@ fun SettingsScreen(
         SettingsPage.RemoteFileDeletion -> RemoteFileDeletionSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = { page = SettingsPage.BulletinBoard },
             onAllowRemoteFileDeletionChange = viewModel::setAllowRemoteFileDeletion
         )
         SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
@@ -585,12 +636,12 @@ private fun SettingsRootPage(
     onOpenLanguage: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenThemes: () -> Unit,
-    onOpenBulletinBoardStyles: () -> Unit,
+    onOpenBulletinBoard: () -> Unit,
+    onOpenBackupSync: () -> Unit = {},
     onOpenClipboard: () -> Unit,
 
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
-    onOpenRemoteFileDeletion: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
     onOpenWindowsDesign: () -> Unit,
     onOpenLeaveClusterWipe: () -> Unit = {},
@@ -677,7 +728,8 @@ private fun SettingsRootPage(
                     playStoreBuild = com.fileapex.di.FileApexServices.isPlayStoreBuild,
                     desktopFileSelection = usesDesktopFileSelection(),
                     deviceNamePage = supportsDeviceNameSettingsPage(),
-                    windowsFluent = supportsWindowsFluentDesign()
+                    windowsFluent = supportsWindowsFluentDesign(),
+                    backupSync = com.fileapex.platform.backupSupported()
                 )
                 SettingsMenuSection.entries.forEach { section ->
                     val rows = menuEntries.filter { it.section == section }
@@ -752,10 +804,15 @@ private fun SettingsRootPage(
                                     subtitle = localizedThemeName(state.appTheme),
                                     onClick = onOpenThemes
                                 )
-                                SettingsMenuIds.BULLETIN_BOARD_STYLES -> SettingsNavItem(
-                                    title = stringRes("bulletin_board_styles"),
+                                SettingsMenuIds.BULLETIN_BOARD -> SettingsNavItem(
+                                    title = stringRes("bulletin_board"),
                                     subtitle = localizedBulletinBoardStyleName(state.bulletinBoardStyle),
-                                    onClick = onOpenBulletinBoardStyles
+                                    onClick = onOpenBulletinBoard
+                                )
+                                SettingsMenuIds.BACKUP_SYNC -> SettingsNavItem(
+                                    title = stringRes("backup_sync"),
+                                    subtitle = backupSummary(),
+                                    onClick = onOpenBackupSync
                                 )
                                 SettingsMenuIds.NOTIFICATIONS -> SettingsNavItem(
                                     title = stringRes("notifications"),
@@ -800,11 +857,6 @@ private fun SettingsRootPage(
                                     title = stringRes("google_account"),
                                     subtitle = googleAccountSubtitle(state),
                                     onClick = onOpenGoogleAccount
-                                )
-                                SettingsMenuIds.REMOTE_FILE_DELETION -> SettingsNavItem(
-                                    title = stringRes("allow_remote_file_deletion"),
-                                    subtitle = if (state.allowRemoteFileDeletion) stringRes("on") else stringRes("off"),
-                                    onClick = onOpenRemoteFileDeletion
                                 )
                                 SettingsMenuIds.LEAVE_CLUSTER -> SettingsNavItem(
                                     title = stringRes("leave_cluster_wipe_title"),
@@ -1206,7 +1258,8 @@ private fun NotificationsSettingsPage(
     onToggleFileTransferNotifications: (Boolean) -> Unit,
     onToggleNotesNotifications: (Boolean) -> Unit,
     onToggleDriveRelayNotifications: (Boolean) -> Unit,
-    onToggleLiveTransferCapsule: (Boolean) -> Unit
+    onToggleLiveTransferCapsule: (Boolean) -> Unit,
+    onOpenBroadcastNotifications: () -> Unit
 ) {
     val driveRelayReady = state.googleDriveRelayEnabled
     SettingsPageShell(
@@ -1272,7 +1325,7 @@ private fun NotificationsSettingsPage(
                 }
             )
 
-            if (!usesDesktopFileSelection()) {
+            if (!usesDesktopFileSelection() && state.fileTransferNotificationsEnabled) {
                 ListItem(
                     modifier = Modifier.padding(start = 16.dp),
                     headlineContent = { Text(stringRes("live_activity"), softWrap = true) },
@@ -1287,6 +1340,30 @@ private fun NotificationsSettingsPage(
                             enabled = state.fileTransferNotificationsEnabled
                         )
                     }
+                )
+            }
+
+            if (supportsDevicePopups() && com.fileapex.domain.notifications.NotificationSyncFeature.ENABLED) {
+                val popups by com.fileapex.di.FileApexServices.settings.deviceNotificationPopups.collectAsState()
+                HorizontalDivider()
+                ListItem(
+                    headlineContent = { Text(stringRes("device_popups"), softWrap = true) },
+                    supportingContent = { Text(stringRes("device_popups_desc"), softWrap = true) },
+                    trailingContent = {
+                        Switch(
+                            checked = popups,
+                            onCheckedChange = com.fileapex.di.FileApexServices.settings::setDeviceNotificationPopups
+                        )
+                    }
+                )
+            }
+
+            if (!usesDesktopFileSelection() && com.fileapex.domain.notifications.NotificationSyncFeature.ENABLED) {
+                HorizontalDivider()
+                SettingsNavItem(
+                    title = stringRes("broadcast_notifications"),
+                    subtitle = stringRes("broadcast_notifications_desc"),
+                    onClick = onOpenBroadcastNotifications
                 )
             }
         }
@@ -1541,6 +1618,21 @@ private fun ClipboardSettingsPage(
     onOpenDiagnostics: () -> Unit
 ) {
     val isAndroid = currentPlatformLabel() == "Android"
+    // Simple is built for one paired device, which is assumed as the target; other themes keep the chooser.
+    val pairedDevices by FileApexServices.deviceRepository.observeDevices().collectAsState(emptyList())
+    val assumedSingleTarget = LocalAppTheme.current == AppTheme.SIMPLE && remember(pairedDevices) {
+        val selfId = com.fileapex.data.identity.loadLocalIdentity().deviceId
+        val peers = pairedDevices
+            .filter { !it.isRemoved && it.deviceId != com.fileapex.data.identity.LocalIdentity.LOCAL_DEVICE_ID && it.deviceId != selfId }
+            .distinctBy { it.deviceId }
+            .map {
+                ClipboardSharePolicy.PeerRef(
+                    deviceId = it.deviceId,
+                    isDesktop = com.fileapex.domain.peer.PeerPlatform.isDesktop(it.os, it.platform)
+                )
+            }
+        ClipboardSharePolicy.resolveAutoDefaultTargetId(isAndroid, peers) != null
+    }
     SettingsPageShell(
         title = stringRes("clipboard"),
         layoutMode = layoutMode,
@@ -1615,11 +1707,13 @@ private fun ClipboardSettingsPage(
                         }
                     )
                 }
-                SettingsNavItem(
-                    title = stringRes("share_clipboard_with"),
-                    subtitle = clipboardShareTargetsSubtitle(state),
-                    onClick = onOpenShareTargets
-                )
+                if (!assumedSingleTarget) {
+                    SettingsNavItem(
+                        title = stringRes("share_clipboard_with"),
+                        subtitle = clipboardShareTargetsSubtitle(state),
+                        onClick = onOpenShareTargets
+                    )
+                }
                 if (isAndroid) {
                     ClipboardDiagnosticsEntry(
                         accessibilityEnabled = state.clipboardAccessibilityEnabled,
@@ -1983,7 +2077,7 @@ private fun RemoteFileDeletionSettingsPage(
     onAllowRemoteFileDeletionChange: (Boolean) -> Unit
 ) {
     SettingsPageShell(
-        title = stringRes("allow_remote_file_deletion"),
+        title = stringRes("bulletin_delete_remote_title"),
         layoutMode = layoutMode,
         onBack = onBack
     ) { contentModifier ->
@@ -1993,7 +2087,7 @@ private fun RemoteFileDeletionSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text(stringRes("allow_remote_file_deletion"), softWrap = true) },
+                headlineContent = { Text(stringRes("bulletin_delete_remote_title"), softWrap = true) },
                 supportingContent = {
                     Text(stringRes("remote_delete_desc"), softWrap = true)
                 },

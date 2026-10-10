@@ -57,12 +57,13 @@ object LanPresenceTiming {
     @Deprecated("Use LIGHT_SWEEP_DISCOVERY_BUDGET_MS", ReplaceWith("LIGHT_SWEEP_DISCOVERY_BUDGET_MS"))
     const val LAN_DISCOVERY_BUDGET_MS = LIGHT_SWEEP_DISCOVERY_BUDGET_MS
 
-    const val FOREGROUND_LAN_POLL_MS = 60_000L
+    /** Foreground poll; resume, network change and pull-to-refresh still trigger immediate sweeps. */
+    const val FOREGROUND_LAN_POLL_MS = 5 * 60 * 1000L
 
     /** Share server running with UI in background. */
     const val BACKGROUND_LAN_POLL_MS = 5 * 60 * 1000L
 
-    /** In 60s foreground poll, skip peer if verified reachable within 45s and metadata is complete. */
+    /** On a foreground sweep, skip peer if verified reachable within 45s and metadata is complete. */
     const val FOREGROUND_PEER_FRESH_MS = 45_000L
 
     /** In 5m background poll, skip peer if verified reachable within 4m and metadata is complete. */

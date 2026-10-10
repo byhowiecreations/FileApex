@@ -25,7 +25,8 @@ class SettingsMenuTest {
         assertEquals(SettingsMenuSection.SystemPerformance, sectionOf(SettingsMenuIds.AUTO_LAUNCH))
         assertEquals(SettingsMenuSection.SystemPerformance, sectionOf(SettingsMenuIds.TAILSCALE))
         assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.THEMES))
-        assertEquals(SettingsMenuSection.Security, sectionOf(SettingsMenuIds.REMOTE_FILE_DELETION))
+        assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.BULLETIN_BOARD))
+        assertFalse(entries.any { it.id == SettingsMenuIds.BACKUP_SYNC })
         assertEquals(SettingsMenuSection.Security, sectionOf(SettingsMenuIds.LEAVE_CLUSTER))
         assertEquals(
             listOf(
@@ -53,5 +54,17 @@ class SettingsMenuTest {
         assertTrue(ids.contains(SettingsMenuIds.DESKTOP_LAYOUT))
         assertTrue(ids.contains(SettingsMenuIds.WINDOWS_DESIGN))
         assertTrue(ids.contains(SettingsMenuIds.TAILSCALE))
+    }
+
+    @Test
+    fun backupSyncLivesUnderGeneralWhenSupported() {
+        val entries = settingsMenuEntries(
+            playStoreBuild = false,
+            desktopFileSelection = false,
+            deviceNamePage = true,
+            windowsFluent = false,
+            backupSync = true
+        )
+        assertEquals(SettingsMenuSection.General, entries.first { it.id == SettingsMenuIds.BACKUP_SYNC }.section)
     }
 }

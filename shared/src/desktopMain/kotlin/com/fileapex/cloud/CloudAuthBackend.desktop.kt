@@ -39,6 +39,10 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.net.URLEncoder
+import java.util.Base64
 
 actual object CloudAuthBackend {
     private val prefs = Preferences.userRoot().node("com.fileapex.firebase")
@@ -76,6 +80,7 @@ actual object CloudAuthBackend {
         prefs.put(KEY_UID, uid)
         prefs.put(KEY_EMAIL, body.email.orEmpty())
         prefs.put(KEY_DISPLAY_NAME, body.displayName.orEmpty())
+        runCatching { prefs.flush() }
         return GoogleAuthSession(
             firebaseUid = uid,
             email = body.email.orEmpty(),
@@ -680,19 +685,35 @@ actual object CloudAuthBackend {
         return prefs.get(KEY_ID_TOKEN, "").ifBlank { error("Not signed in to Firebase") }
     }
 
-    private suspend fun refreshIdTokenIfNeeded() {
+    private val refreshMutex = Mutex()
+
+    /**
+     * Firebase ID tokens live ~1 h. Refresh only when the cached token is missing or within
+     * [REFRESH_SKEW_MS] of expiry (previously every request, i.e. every 12 s poll, hit securetoken).
+     * A transient refresh failure keeps using a still-valid cached token instead of dropping it.
+     */
+    private suspend fun refreshIdTokenIfNeeded() = refreshMutex.withLock {
         val refresh = prefs.get(KEY_REFRESH_TOKEN, "")
-        if (refresh.isBlank()) return
+        if (refresh.isBlank()) return@withLock
+        val cached = prefs.get(KEY_ID_TOKEN, "")
+        val expiresAt = jwtExpiryMs(cached)
+        if (cached.isNotBlank() && expiresAt - System.currentTimeMillis() > REFRESH_SKEW_MS) return@withLock
         val apiKey = firebaseApiKey()
-        val response = client.post(
-            "https://securetoken.googleapis.com/v1/token?key=$apiKey"
-        ) {
-            contentType(ContentType.Application.FormUrlEncoded)
-            setBody("grant_type=refresh_token&refresh_token=$refresh")
+        val response = runCatching {
+            client.post("https://securetoken.googleapis.com/v1/token?key=$apiKey") {
+                contentType(ContentType.Application.FormUrlEncoded)
+                setBody("grant_type=refresh_token&refresh_token=${URLEncoder.encode(refresh, Charsets.UTF_8)}")
+            }
+        }.getOrElse { error ->
+            if (cached.isNotBlank() && expiresAt - System.currentTimeMillis() > 30_000L) return@withLock
+            throw error
         }
         if (!response.status.isSuccess()) {
+            val detail = response.bodyAsText().take(200)
+            val transient = response.status.value >= 500 || response.status.value == 429
+            if (transient && cached.isNotBlank() && expiresAt - System.currentTimeMillis() > 30_000L) return@withLock
             prefs.remove(KEY_ID_TOKEN)
-            error("Firebase token refresh failed (${response.status}): ${response.bodyAsText().take(200)}")
+            error("Firebase token refresh failed (${response.status}): $detail")
         }
         val body = response.bodyAsText()
         val obj = desktopJson.parseToJsonElement(body).jsonObject
@@ -704,6 +725,18 @@ actual object CloudAuthBackend {
         obj["refresh_token"]?.jsonPrimitive?.contentOrNull?.let {
             prefs.put(KEY_REFRESH_TOKEN, it)
         }
+        runCatching { prefs.flush() }
+    }
+
+    /** `exp` claim of a JWT in epoch ms; 0 when absent or unparsable (forces a refresh). */
+    private fun jwtExpiryMs(token: String): Long {
+        if (token.isBlank()) return 0L
+        return runCatching {
+            val payload = token.split('.').getOrNull(1) ?: return 0L
+            val json = String(Base64.getUrlDecoder().decode(payload), Charsets.UTF_8)
+            val exp = desktopJson.parseToJsonElement(json).jsonObject["exp"]?.jsonPrimitive?.contentOrNull
+            (exp?.toLongOrNull() ?: 0L) * 1000L
+        }.getOrDefault(0L)
     }
 
     private fun stringField(fields: JsonObject, name: String): String? =
@@ -817,7 +850,8 @@ actual object CloudAuthBackend {
     private const val KEY_UID = "uid"
     private const val KEY_EMAIL = "email"
     private const val KEY_DISPLAY_NAME = "display_name"
-    private const val POLL_MS = 12_000L
+    private const val POLL_MS = 60_000L
+    private const val REFRESH_SKEW_MS = 5 * 60 * 1000L
     private const val RELAY_POLL_MS = 2_000L
 }
 

@@ -6,7 +6,6 @@ import org.junit.Test
 
 class ExplorerListOrderingTest {
     private fun item(name: String, size: Long, modified: Long, dir: Boolean = false) = RemoteFileItem(
-        id = name,
         name = name,
         absolutePath = "/root/$name",
         sizeBytes = size,

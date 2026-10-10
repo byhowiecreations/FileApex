@@ -63,7 +63,7 @@ data class SettingsUiState(
     val notesNotificationsEnabled: Boolean = false,
     val liveTransferCapsuleEnabled: Boolean = false,
     val liveTransferShowQueueEnabled: Boolean = false,
-    val appTheme: AppTheme = AppTheme.CLEAN,
+    val appTheme: AppTheme = AppTheme.DEFAULT,
     val themeIconStyle: ThemeIconStyle = ThemeIconStyle.STANDARD,
     val kineticStyle: KineticStyle = KineticStyle.SPACE,
     val bulletinBoardStyle: BulletinBoardStyle = BulletinBoardStyle.DEFAULT,

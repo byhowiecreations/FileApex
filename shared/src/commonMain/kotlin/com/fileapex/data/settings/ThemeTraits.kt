@@ -32,6 +32,8 @@ private val cleanTraits = ThemeTraits(
     canvasHome = false,
 )
 
+private val simpleTraits = cleanTraits
+
 private val fluxGlassTraits = ThemeTraits(
     glassChrome = true,
     glassNotesSurfaces = true,
@@ -70,6 +72,7 @@ private val freestyleTraits = ThemeTraits(
 
 val AppTheme.traits: ThemeTraits
     get() = when (this) {
+        AppTheme.SIMPLE -> simpleTraits
         AppTheme.CLEAN -> cleanTraits
         AppTheme.FLUX_GLASS -> fluxGlassTraits
         AppTheme.KINETIC_SPHERE -> kineticSphereTraits
