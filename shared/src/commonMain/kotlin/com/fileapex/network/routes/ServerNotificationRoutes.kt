@@ -9,6 +9,9 @@ import com.fileapex.domain.clipboard.ClipboardShareCoordinator
 import com.fileapex.domain.notifications.NotificationAction
 import com.fileapex.domain.notifications.NotificationCommand
 import com.fileapex.domain.notifications.NotificationCommandRequest
+import com.fileapex.domain.notifications.NotificationCompanion
+import com.fileapex.domain.notifications.NotificationDebugLog
+import com.fileapex.domain.notifications.NotificationCompanionGrant
 import com.fileapex.domain.notifications.NotificationEventRequest
 import com.fileapex.domain.notifications.NotificationInbox
 import com.fileapex.domain.notifications.NotificationPayload
@@ -31,7 +34,6 @@ import com.fileapex.platform.supportsDevicePopups
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
@@ -76,7 +78,7 @@ internal fun Route.registerNotificationRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.Forbidden, "pin_required")
             return@post
         }
-        val body = call.receiveText()
+        val body = call.receiveBoundedText()
         if (body.length > MAX_EVENT_BODY_CHARS) {
             call.respond(HttpStatusCode.PayloadTooLarge, "notification_too_large")
             return@post
@@ -91,6 +93,11 @@ internal fun Route.registerNotificationRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "unknown_sender")
                 return@post
             }
+            if (!NotificationCompanion.isCompanion(request.senderDeviceId)) {
+                NotificationDebugLog.log("event dropped, not companion: from=${NotificationDebugLog.short(request.senderDeviceId)} companion=${NotificationDebugLog.short(NotificationCompanion.desiredDeviceId())}")
+                call.respond(HttpStatusCode.Conflict, "not_companion")
+                return@post
+            }
             val plaintext = withContext(Dispatchers.Default) {
                 ClipboardE2ee.decrypt(
                     ciphertextBase64 = request.ciphertext,
@@ -100,7 +107,7 @@ internal fun Route.registerNotificationRoutes(server: FileApexServer) {
                 ).decodeToString()
             }
             val payload = server.json.decodeFromString(NotificationPayload.serializer(), plaintext)
-            NotificationInbox.apply(payload.sanitized())
+            NotificationInbox.apply(payload.sanitized().copy(sourceDeviceId = request.senderDeviceId.trim()))
             if (!payload.remove && supportsDevicePopups() && FileApexServices.settings.deviceNotificationPopups.value) {
                 showDevicePopup(
                     title = payload.conversation.ifBlank { payload.title }.ifBlank { payload.appLabel },
@@ -126,7 +133,7 @@ internal fun Route.registerNotificationRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.Forbidden, "pin_required")
             return@post
         }
-        val body = call.receiveText()
+        val body = call.receiveBoundedText()
         if (body.length > MAX_EVENT_BODY_CHARS) {
             call.respond(HttpStatusCode.PayloadTooLarge, "command_too_large")
             return@post
@@ -194,7 +201,7 @@ internal fun Route.registerNotificationRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.Forbidden, "pin_required")
             return@post
         }
-        val body = call.receiveText()
+        val body = call.receiveBoundedText()
         if (body.length > MAX_EVENT_BODY_CHARS) {
             call.respond(HttpStatusCode.PayloadTooLarge, "snapshot_request_too_large")
             return@post
@@ -212,6 +219,10 @@ internal fun Route.registerNotificationRoutes(server: FileApexServer) {
             val settings = FileApexServices.settings
             if (!settings.notificationBroadcastEnabled.value || !isNotificationAccessGranted()) {
                 call.respond(HttpStatusCode.Conflict, "broadcast_off")
+                return@post
+            }
+            if (!NotificationCompanionGrant.allows(request.senderDeviceId)) {
+                call.respond(HttpStatusCode.Conflict, "not_companion")
                 return@post
             }
             val items = withContext(Dispatchers.Default) {
@@ -244,7 +255,7 @@ internal fun Route.registerNotificationRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.Forbidden, "pin_required")
             return@post
         }
-        val body = call.receiveText()
+        val body = call.receiveBoundedText()
         if (body.length > MAX_EVENT_BODY_CHARS) {
             call.respond(HttpStatusCode.PayloadTooLarge, "prompt_too_large")
             return@post

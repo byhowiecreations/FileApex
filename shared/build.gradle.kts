@@ -193,6 +193,7 @@ kotlin {
 
         jvmCommon.dependencies {
             implementation(libs.bouncycastle.provider)
+            implementation(libs.bouncycastle.pkix)
         }
 
         commonMain.dependencies {

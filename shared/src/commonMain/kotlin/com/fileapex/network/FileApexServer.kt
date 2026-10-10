@@ -16,6 +16,8 @@ import com.fileapex.network.routes.registerDiagnosticRoutes
 import com.fileapex.network.routes.registerFileRoutes
 import com.fileapex.network.routes.registerIdentityRoutes
 import com.fileapex.network.routes.registerNotificationRoutes
+import com.fileapex.network.routes.registerTlsRoutes
+import com.fileapex.security.tls.TlsTransportPolicy
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
@@ -27,6 +29,7 @@ import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
@@ -53,6 +56,8 @@ import kotlinx.serialization.json.put
  */
 class FileApexServer(
     private val port: Int,
+    /** Loopback port fed by the TLS front; 0 when TLS is off. */
+    private val bridgePort: Int = 0,
     internal val identityProvider: () -> LocalIdentity = { loadLocalIdentity() },
     internal val onPairingRespond: suspend (PairedDeviceEntity) -> Unit = {},
     internal val onPairingRespondComplete: suspend (PairedDeviceEntity) -> Unit = {},
@@ -100,7 +105,20 @@ class FileApexServer(
                     (advertiseIp?.let { " (LAN $it)" }.orEmpty()),
                 null
             )
-            serverEngine = embeddedServer(CIO, port = port, host = bindHost) {
+            val httpPort = port
+            val tlsBridgePort = bridgePort
+            serverEngine = embeddedServer(CIO, configure = {
+                connector {
+                    this.port = httpPort
+                    this.host = bindHost
+                }
+                if (tlsBridgePort > 0) {
+                    connector {
+                        this.port = tlsBridgePort
+                        this.host = "127.0.0.1"
+                    }
+                }
+            }) {
                 install(StatusPages) {
                     exception<Throwable> { call, cause ->
                         onLog("Unhandled route exception", cause)
@@ -115,8 +133,35 @@ class FileApexServer(
 
                 intercept(ApplicationCallPipeline.Call) {
                     val path = call.request.local.uri
+                    val bridged = bridgedPeer(call)
+                    if (isBridgeConnection(call)) {
+                        val claimed = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
+                            call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
+                        }
+                        // A request on the bridge port that did not come through the TLS front, or that
+                        // names a different device than its certificate, is never served.
+                        if (bridged == null || (claimed.isNotEmpty() && claimed != bridged.deviceId)) {
+                            onLog("Rejected bridged request: identity mismatch", null)
+                            call.respond(HttpStatusCode.Forbidden, "peer_identity_mismatch")
+                            finish()
+                            return@intercept
+                        }
+                    }
+                    // Tailnet connections are spliced in from loopback inside WireGuard: the tunnel is their transport security.
+                    val viaTailnetSplice = isSplicedLoopbackOrigin(call.request.local.remoteAddress.trim())
+                    if (bridged == null && !isBridgeConnection(call) && !viaTailnetSplice && TlsTransportPolicy.requiresTls(path)) {
+                        val claimed = requesterDeviceId(call)
+                        val claimedDevice = claimed.takeIf { it.isNotEmpty() }
+                            ?.let { FileApexServices.deviceRepository.getDevice(it) }
+                        if (claimedDevice != null && !claimedDevice.isRemoved && claimedDevice.tlsPin.isNotEmpty()) {
+                            onLog("Rejected plain HTTP from pinned peer $claimed", null)
+                            call.respond(HttpStatusCode.Forbidden, "tls_required")
+                            finish()
+                            return@intercept
+                        }
+                    }
                     if (!path.startsWith("/api/v1/pairing") && !path.startsWith("/api/v1/auth") && !path.contains("/cluster/remove")) {
-                        val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
+                        val from = bridged?.deviceId ?: call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
                             call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
                         }
                         val membershipVersion = call.request.queryParameters["mv"]?.toLongOrNull()
@@ -139,6 +184,7 @@ class FileApexServer(
                             }
                         }
                     }
+                    recordCompanionGrant(call)
                     rememberInboundPeer(call)
                 }
 
@@ -149,6 +195,7 @@ class FileApexServer(
                     registerBulletinRoutes(this@FileApexServer)
                     registerDiagnosticRoutes(this@FileApexServer)
                     registerNotificationRoutes(this@FileApexServer)
+                    registerTlsRoutes(this@FileApexServer)
                 }
             }.start(wait = false)
 
@@ -251,12 +298,43 @@ class FileApexServer(
         }
     }
 
+    /**
+     * Any request from a paired computer on mutual TLS may carry `companion`: 1 renews this phone's
+     * notification grant, 0 stands it down. Plain HTTP and unpaired senders are ignored.
+     */
+    private suspend fun recordCompanionGrant(call: ApplicationCall) {
+        val value = call.request.queryParameters["companion"] ?: return
+        if (com.fileapex.cloud.currentPlatformLabel() != "Android") return
+        val computerId = bridgedPeer(call)?.deviceId ?: return
+        val computer = FileApexServices.deviceRepository.getDevice(computerId) ?: return
+        if (computer.isRemoved || !com.fileapex.domain.peer.PeerPlatform.isDesktop(computer.os, computer.platform)) return
+        com.fileapex.domain.notifications.NotificationCompanionGrant.record(computer.deviceId, active = value == "1")
+    }
+
     private data class InboundPeerWrite(val ip: String, val epochMs: Long)
 
     private val inboundPeerWrites = java.util.concurrent.ConcurrentHashMap<String, InboundPeerWrite>()
 
+    /** Certificate-derived id on the TLS front, else the claimed `from` (query or header). */
+    internal fun requesterDeviceId(call: ApplicationCall): String =
+        bridgedPeer(call)?.deviceId
+            ?: call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
+                call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
+            }
+
+    private fun isBridgeConnection(call: ApplicationCall): Boolean =
+        bridgePort > 0 && call.request.local.localPort == bridgePort
+
+    /** The peer authenticated by the TLS front for this connection, or null for plain HTTP. */
+    internal fun bridgedPeer(call: ApplicationCall): com.fileapex.security.tls.BridgedPeer? =
+        if (isBridgeConnection(call)) {
+            com.fileapex.security.tls.TlsBridgeRegistry.lookup(call.request.local.remotePort)
+        } else {
+            null
+        }
+
     internal fun inboundPeerLanIpv4(call: ApplicationCall): String? {
-        val raw = call.request.local.remoteAddress.trim()
+        val raw = (bridgedPeer(call)?.remoteIp ?: call.request.local.remoteAddress).trim()
             .ifBlank { call.request.local.remoteHost.trim() }
         // Tailnet connections are spliced to this server from 127.0.0.1. That address
         // is not a peer and must not be stored or treated as a local shortcut.

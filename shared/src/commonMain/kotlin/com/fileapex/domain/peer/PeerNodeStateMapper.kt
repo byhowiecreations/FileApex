@@ -53,7 +53,9 @@ object PeerNodeStateMapper {
             isRemoved = false,
             removedAt = null,
             membershipVersion = membershipVersion,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL,
+            tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
+            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port
         )
     }
 
@@ -106,7 +108,10 @@ object PeerNodeStateMapper {
             isRemoved = state.isRemoved,
             removedAt = state.removedAt ?: if (state.isRemoved) version else null,
             tailnetHostname = existing?.tailnetHostname.orEmpty(),
-            tailnetIpv4 = existing?.tailnetIpv4.orEmpty()
+            tailnetIpv4 = existing?.tailnetIpv4.orEmpty(),
+            tlsPin = existing?.tlsPin.orEmpty(),
+            tlsPinAlt = existing?.tlsPinAlt.orEmpty(),
+            tlsPort = state.tlsPort.takeIf { it in 1..65535 } ?: existing?.tlsPort ?: 0
         )
     }
 
@@ -131,7 +136,9 @@ object PeerNodeStateMapper {
             isRemoved = entity.isRemoved,
             removedAt = entity.removedAt,
             membershipVersion = entity.clusterVersion,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL,
+            tlsPin = entity.tlsPin,
+            tlsPort = entity.tlsPort
         )
     }
 

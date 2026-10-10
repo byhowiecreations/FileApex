@@ -628,6 +628,19 @@ class DevicesViewModel : ViewModel() {
             rootPath = broadcasterRoot
         )
         repository.adoptFromPairing(broadcasterEntity)
+        if (payload.tlsPinTrusted) {
+            repository.recordTlsPin(broadcasterId, payload.tlsPin, payload.tlsPort)
+        } else if (payload.tlsPin.isNotEmpty() && payload.tlsPort > 0) {
+            // Manual code: the pin came over multicast, so the user checks it against the other screen.
+            com.fileapex.security.tls.PeerTlsStatus.requestConfirmation(
+                com.fileapex.security.tls.TlsPinPrompt(
+                    broadcasterId,
+                    com.fileapex.security.tls.TlsPromptKind.NEW_PEER_KEY,
+                    payload.tlsPin,
+                    payload.tlsPort
+                )
+            )
+        }
         verified?.let { state ->
             repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
         }
@@ -642,7 +655,9 @@ class DevicesViewModel : ViewModel() {
             lastKnownIp = scannerHost,
             port = identity.sharePort,
             publicKeyHash = "",
-            rootPath = identity.rootPath
+            rootPath = identity.rootPath,
+            tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
+            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port
         )
         FileApexServices.pairingCoordinator.awaitShareServerReady()
         FileApexServices.client.postPairingRespond(

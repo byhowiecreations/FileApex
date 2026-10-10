@@ -54,6 +54,10 @@ class PairingCoordinator(
             .filter { it != scanner.deviceId }
             .toSet()
         repository.adoptFromPairing(scanner)
+        // Same trust level as the clipboard key exchanged in this request; gated by the one-time pairing code.
+        if (scanner.tlsPin.isNotBlank()) {
+            repository.recordTlsPin(scanner.deviceId, scanner.tlsPin, scanner.tlsPort)
+        }
         onPassiveReachability(listOf(scanner.deviceId), TimeUtils.now())
     }
 

@@ -35,6 +35,7 @@ class CliDeviceResolverTest {
         override suspend fun touchLastSeen(deviceId: String, ip: String, port: Int, epochMs: Long) {}
         override suspend fun touchLastSeenEpoch(deviceId: String, epochMs: Long) {}
         override suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String) {}
+        override suspend fun updateTls(deviceId: String, pin: String, alt: String, port: Int) {}
         override suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {}
         override suspend fun updateCardLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String) {}
         override suspend fun updateTileLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String) {}

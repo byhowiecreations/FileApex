@@ -6,7 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-actual fun triggerLocalLocatorSound() {
+actual fun stopLocalLocatorSound() = Unit
+
+actual fun triggerLocalLocatorSound(continuous: Boolean) {
     CoroutineScope(Dispatchers.Default).launch {
         runCatching {
             val toolkit = Toolkit.getDefaultToolkit()

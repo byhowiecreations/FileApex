@@ -53,6 +53,7 @@ object FileApexAndroidBootstrap {
             AndroidNotificationChannels.migrateLegacyShareServerChannels(appContext)
             AndroidNotificationChannels.ensureShareServerChannel(appContext)
             initAndroidLocalIdentity(appContext)
+            com.fileapex.security.tls.TlsFrontFactory.install { com.fileapex.security.tls.AndroidTlsIdentity.store() }
             initAndroidLanConnectivity(appContext)
             initAndroidTransferReceiveNotifier(appContext)
             initAndroidNoteReceiveNotifier(appContext)

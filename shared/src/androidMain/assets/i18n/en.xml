@@ -1137,6 +1137,13 @@ Tap Central Hub (+) to Pair</string>
     <string name="simple_notifications_coming_soon">Notification sync is coming soon.</string>
     <string name="simple_device_management">Device Management</string>
     <string name="simple_switch_device">Switch Device</string>
+    <string name="locate_phone">Locate Phone</string>
+    <string name="locate_phone_ringing">FileApex is ringing this phone</string>
+    <string name="locate_phone_stop">Stop</string>
+    <string name="locate_phone_sent">Ringing %1$s until it is stopped on the phone.</string>
+    <string name="locate_phone_failed">Could not reach %1$s.</string>
+    <string name="locate_phone_pinging">Pinging phone to locate</string>
+    <string name="locate_phone_cancel">Cancel</string>
     <string name="simple_no_device_title">No device connected</string>
     <string name="simple_no_device_body">Pair a device to browse its files.</string>
     <string name="simple_other_themes_title">More themes available</string>
@@ -1196,5 +1203,12 @@ Tap Central Hub (+) to Pair</string>
     <string name="simple_more">More</string>
     <string name="simple_memory_free_of">%1$s free of %2$s</string>
     <string name="simple_memory_used">(%1$s used)</string>
+    <string name="tls_fingerprint_label">Security fingerprint</string>
+    <string name="tls_pin_new_title">Confirm security key</string>
+    <string name="tls_pin_new_body">Check that %1$s shows this same fingerprint on its own screen. Only continue if they match:</string>
+    <string name="tls_pin_changed_title">Security key changed</string>
+    <string name="tls_pin_changed_body">%1$s is now using a different security key. This happens after a reinstall or a reset. If you did not do that, someone else may be on your network. Only trust it if this fingerprint matches the one on %1$s:</string>
+    <string name="tls_pin_trust">They match</string>
+    <string name="tls_pin_not_now">Not now</string>
 </resources>
 

@@ -103,6 +103,14 @@ fun PairingQrPanel(
             }
         }
 
+        if (payload.tlsPin.isNotBlank()) {
+            Text(
+                text = "${stringRes("tls_fingerprint_label")}: ${com.fileapex.security.tls.TlsFingerprint.short(payload.tlsPin)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         Text(
             text = stringRes("scan_qr_pairing_hint"),
             style = MaterialTheme.typography.labelMedium,

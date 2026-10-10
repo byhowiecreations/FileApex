@@ -278,6 +278,7 @@ func runLocal(ctx context.Context, node *Node, resumed bool) error {
 		return err
 	}
 	go node.presenceLoop(ctx)
+	go node.tlsAnnounceLoop(ctx)
 	if ip := node.advertiseIP(); ip == "" {
 		log.Printf("No LAN address found. Other devices will not be able to send the roster or files back.")
 	} else {

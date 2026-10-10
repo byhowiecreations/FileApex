@@ -126,7 +126,7 @@ class FileApexNotificationListenerService : NotificationListenerService() {
         val canReply = notification.actions?.any { replyInputOf(it) != null } == true
         if (style != null && style.messages.isNotEmpty()) {
             val group = style.isGroupConversation
-            val lines = style.messages.takeLast(MAX_LINES).mapNotNull { message ->
+            val lines = (style.historicMessages + style.messages).takeLast(MAX_LINES).mapNotNull { message ->
                 val body = message.text?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val sender = message.person?.name?.toString()
                 if (group && !sender.isNullOrBlank()) "$sender: $body" else body
@@ -189,7 +189,11 @@ class FileApexNotificationListenerService : NotificationListenerService() {
         val notification = sbn.notification
         val extras = notification.extras
         val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
-        val text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+        val shortText = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+        val bigText = extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty()
+        val text = if (bigText.length > shortText.length) bigText else shortText
+        val subText = extras?.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.takeIf { it.isNotBlank() }
+            ?: extras?.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString().orEmpty()
         if (!removed) {
             val ranking = Ranking()
             val importance = if (currentRanking.getRanking(sbn.key, ranking)) {
@@ -235,6 +239,7 @@ class FileApexNotificationListenerService : NotificationListenerService() {
             kind = kind,
             conversation = conversation,
             lines = lines,
+            subText = if (removed) "" else subText,
             canReply = canReply && kind == NotificationKind.MESSAGE,
             postedAtEpochMs = sbn.postTime.takeIf { it > 0L } ?: TimeUtils.now(),
             activeKeys = activeAllowedKeys(allowedPackages)

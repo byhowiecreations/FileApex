@@ -86,6 +86,8 @@ type nodeState struct {
 	RemovedAt          *int64   `json:"removedAt"`
 	MembershipVersion  int64    `json:"membershipVersion"`
 	MembershipProtocol int      `json:"membershipProtocol"`
+	TLSPin             string   `json:"tlsPin,omitempty"`
+	TLSPort            int      `json:"tlsPort,omitempty"`
 }
 
 type removedRecord struct {
@@ -192,6 +194,7 @@ type Node struct {
 	configPath      string
 	httpClient      *http.Client
 	httpServer      *http.Server
+	tls             *tlsState
 	uploadMu        sync.Mutex
 }
 
@@ -230,6 +233,11 @@ func newNode(dataDir string) (*Node, error) {
 	}}
 	if err := n.loadIdentity(); err != nil {
 		return nil, err
+	}
+	if state, err := newTLSState(abs, time.Now()); err != nil {
+		log.Printf("TLS disabled: %v", err)
+	} else {
+		n.tls = state
 	}
 	if err := n.loadCluster(); err != nil {
 		log.Printf("Ignoring unreadable cluster state: %v", err)
@@ -474,6 +482,9 @@ func (n *Node) resetCluster() {
 	n.peers = map[string]deviceRecord{}
 	n.tombstones = map[string]diskTomb{}
 	n.pins = map[string]string{}
+	if n.tls != nil {
+		n.tls.forgetAll()
+	}
 	n.completed = nil
 	previous := n.sessionCh
 	n.sessionCh = make(chan struct{})
@@ -637,6 +648,10 @@ func (n *Node) handshake(ctx context.Context, beacon pairingBeacon, pin string) 
 		return fmt.Errorf("pairing handshake returned HTTP %d (%s)", status, strings.TrimSpace(string(respBody)))
 	}
 	log.Printf("Pairing handshake accepted by %s.", host.DeviceName)
+	// Exchange TLS pins before the host starts pushing the roster, so both sides can switch to TLS.
+	if err := n.announceTLSTo(ctx, host, time.Now()); err != nil && !errors.Is(err, errTLSUnsupported) {
+		log.Printf("TLS pin exchange with %s did not complete (%v); it will retry.", host.DeviceName, err)
+	}
 	n.rememberPin(hostID, pin)
 	n.markJoined()
 	if err := n.finishRoster(ctx, host); err != nil && ctx.Err() != nil {
@@ -934,10 +949,21 @@ func (n *Node) get(ctx context.Context, rawURL string, timeout time.Duration) ([
 	return n.do(req, timeout)
 }
 
+// do reaches a pinned peer over TLS and everyone else over HTTP.
 func (n *Node) do(req *http.Request, timeout time.Duration) ([]byte, int, error) {
+	client, out := n.clientFor(req)
+	return n.send(client, out, timeout)
+}
+
+// doPlain is for the pin exchange, which a peer that does not know our pin yet must be able to receive.
+func (n *Node) doPlain(req *http.Request, timeout time.Duration) ([]byte, int, error) {
+	return n.send(n.httpClient, req, timeout)
+}
+
+func (n *Node) send(client *http.Client, req *http.Request, timeout time.Duration) ([]byte, int, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
-	resp, err := n.httpClient.Do(req.WithContext(ctx))
+	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1014,6 +1040,9 @@ func (n *Node) removePeer(id string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	delete(n.peers, id)
+	if n.tls != nil {
+		n.tls.forget(id)
+	}
 	n.persistLocked()
 }
 
@@ -1090,6 +1119,9 @@ func (n *Node) applyRemovalLocked(record removedRecord, now int64) bool {
 		return false
 	}
 	delete(n.peers, id)
+	if n.tls != nil {
+		n.tls.forget(id)
+	}
 	n.tombstones[id] = diskTomb{
 		DeviceID:      id,
 		PublicKeyHash: strings.TrimSpace(record.PublicKeyHash),
@@ -1427,11 +1459,14 @@ func (n *Node) selfState() nodeState {
 		SupportedProtocols: supportedProtocols,
 		RootPath:           n.inbox,
 		PublicKeyHash:      fingerprint(n.identity.DeviceID),
+		PublicKey:          n.pairPublicKey(),
 		PinRequired:        false,
 		DownloadsPath:      n.inbox,
 		ClusterVersion:     cluster,
 		MembershipVersion:  membership,
 		MembershipProtocol: membershipProtocol,
+		TLSPin:             n.tlsPinValue(),
+		TLSPort:            n.tlsPort(),
 	}
 }
 
@@ -1450,6 +1485,7 @@ func (n *Node) selfRecord(ip string) deviceRecord {
 		LastKnownIP:            ip,
 		Port:                   n.port,
 		PublicKeyHash:          fingerprint(n.identity.DeviceID),
+		PublicKey:              n.pairPublicKey(),
 		RootPath:               n.inbox,
 		ClientVersion:          "docker",
 		Platform:               "linux",
@@ -1601,4 +1637,18 @@ func peerURL(host string, port int, path string, query url.Values) string {
 		Path:     path,
 		RawQuery: query.Encode(),
 	}).String()
+}
+
+func (n *Node) pairPublicKey() string {
+	if n.tls == nil {
+		return ""
+	}
+	return n.tls.publicKeyB64()
+}
+
+func (n *Node) tlsPinValue() string {
+	if n.tls == nil {
+		return ""
+	}
+	return n.tls.identity.pin
 }

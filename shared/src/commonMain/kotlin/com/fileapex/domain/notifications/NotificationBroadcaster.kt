@@ -1,5 +1,6 @@
 package com.fileapex.domain.notifications
 
+import com.fileapex.data.db.isDockerNode
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
@@ -20,7 +21,7 @@ object NotificationBroadcaster {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     suspend fun targetDevice(): PairedDeviceEntity? {
-        val devices = FileApexServices.deviceRepository.listDevices().filterNot { it.isRemoved }
+        val devices = FileApexServices.deviceRepository.listDevices().filterNot { it.isRemoved || it.isDockerNode() }
         val chosen = FileApexServices.settings.notificationBroadcastTargetDeviceId.value
         return devices.firstOrNull { it.deviceId == chosen } ?: devices.singleOrNull()
     }
@@ -31,7 +32,11 @@ object NotificationBroadcaster {
             println("NotificationBroadcaster: not sent, no target device chosen or more than one paired device")
             return false
         }
-        val endpoint = resolvePeerEndpoint(device, isTailscaleEnabled())
+        if (!NotificationCompanionGrant.allows(device.deviceId)) {
+            println("NotificationBroadcaster: not sent, this phone is not ${device.deviceId}'s companion")
+            return false
+        }
+        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device)
         if (endpoint == null) {
             println("NotificationBroadcaster: not sent, no endpoint for ${device.deviceId}")
             return false
@@ -62,7 +67,7 @@ object NotificationBroadcaster {
 
     /** Clears these notifications here at once, then tells the phone to dismiss them. */
     fun dismissOnDevice(deviceId: String, keys: List<String>) {
-        NotificationInbox.removeKeys(keys)
+        NotificationInbox.removeKeys(keys, deviceId)
         scope.launch {
             val device = FileApexServices.deviceRepository.getDevice(deviceId) ?: return@launch
             sendCommand(device, NotificationCommand(NotificationAction.DISMISS, keys))
@@ -76,7 +81,7 @@ object NotificationBroadcaster {
 
     /** Asks [device] to dismiss or reply to its own notifications. False when it could not be reached. */
     suspend fun sendCommand(device: PairedDeviceEntity, command: NotificationCommand): Boolean {
-        val endpoint = resolvePeerEndpoint(device, isTailscaleEnabled()) ?: return false
+        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return false
         val peerKey = ClipboardShareCoordinator.resolvePeerPublicKey(device)
         if (peerKey.isBlank()) return false
         val identity = loadLocalIdentity()
@@ -98,7 +103,7 @@ object NotificationBroadcaster {
     }
 
     suspend fun requestPhonePrompt(device: PairedDeviceEntity, page: String): Boolean {
-        val endpoint = resolvePeerEndpoint(device, isTailscaleEnabled()) ?: return false
+        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return false
         val identity = loadLocalIdentity()
         val request = PhoneSettingsPromptRequest(
             senderDeviceId = identity.deviceId,
@@ -120,7 +125,7 @@ object NotificationBroadcaster {
      * [PhoneNotificationState.NeedsUpdate] is not.
      */
     suspend fun checkPhone(device: PairedDeviceEntity): PhoneNotificationState {
-        val endpoint = resolvePeerEndpoint(device, isTailscaleEnabled()) ?: return PhoneNotificationState.Unreachable
+        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return PhoneNotificationState.Unreachable
         val status = try {
             FileApexServices.client.getNotificationSyncStatus(endpoint.host, endpoint.port)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -152,7 +157,7 @@ object NotificationBroadcaster {
                 peerPublicKeyBase64 = peerKey
             ).decodeToString()
             val snapshot = json.decodeFromString(NotificationSnapshot.serializer(), plaintext)
-            NotificationInbox.replaceAll(snapshot.items.map { it.sanitized() })
+            NotificationInbox.replaceAll(snapshot.items.map { it.sanitized() }, device.deviceId)
         }.onFailure { println("NotificationBroadcaster: snapshot failed - ${it::class.simpleName}") }
     }
 }

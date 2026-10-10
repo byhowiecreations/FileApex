@@ -28,6 +28,7 @@ SWIFT_SOURCES=(
   "$TRAY/TrayDeviceBridge.swift"
   "$TRAY/LocalNetworkProbe.swift"
   "$TRAY/LanHttpClient.swift"
+  "$TRAY/LanTls.swift"
   "$ROOT/macos/Shared/FileApexPaths.swift"
   "$ROOT/macos/Shared/AppCopy.swift"
 )

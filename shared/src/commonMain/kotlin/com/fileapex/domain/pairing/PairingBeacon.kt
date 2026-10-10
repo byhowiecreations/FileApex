@@ -15,7 +15,10 @@ data class PairingBeacon(
     val pairingCode: String,
     val timestamp: Long,
     val deviceId: String = "",
-    val pinRequired: Boolean = false
+    val pinRequired: Boolean = false,
+    /** Unauthenticated claim; the user compares the short fingerprint on both screens. */
+    val tlsPin: String = "",
+    val tlsPort: Int = 0
 ) {
     fun toPairingPayload(): PairingPayload = PairingPayloadFactory.create(
         deviceId = deviceId,
@@ -24,7 +27,9 @@ data class PairingBeacon(
         port = port,
         rootPath = "",
         pinRequired = pinRequired,
-        pairingCode = pairingCode
+        pairingCode = pairingCode,
+        tlsPin = tlsPin,
+        tlsPort = tlsPort
     )
 
     fun matchesCode(input: String): Boolean {

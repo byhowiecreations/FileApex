@@ -1,5 +1,8 @@
 package com.fileapex.domain.presence
 
+import com.fileapex.data.db.isDockerNode
+import com.fileapex.domain.notifications.NotificationCompanion
+import com.fileapex.domain.notifications.NotificationDebugLog
 import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.PairedDeviceEntity
@@ -184,7 +187,9 @@ class PeerPresenceMonitor(
                 delay(interval)
                 if (TransferActivityGuard.isTransferActive()) continue
                 val mode = if (appInForeground) SweepMode.FULL else SweepMode.LIGHT
+                // The connected phone's grant rides on this poll, so it is never skipped as fresh.
                 if (mode == SweepMode.LIGHT &&
+                    NotificationCompanion.desiredDeviceId().isEmpty() &&
                     allPeersRecentlyReachable(LanPresenceTiming.PEER_FRESH_SKIP_SWEEP_MS)
                 ) {
                     refreshOnlineSnapshot()
@@ -417,7 +422,10 @@ class PeerPresenceMonitor(
                     val isMetadataComplete = hasUsableEndpoint(peer) &&
                         peer.rootPath.isNotBlank() &&
                         peer.rootPath != "/"
-                    if (isMetadataComplete && wasRecentlyReachable(peer.deviceId, freshnessThresholdMs)) {
+                    if (isMetadataComplete &&
+                        !NotificationCompanion.isCompanion(peer.deviceId) &&
+                        wasRecentlyReachable(peer.deviceId, freshnessThresholdMs)
+                    ) {
                         return@async
                     }
                     primePeer(
@@ -785,7 +793,12 @@ class PeerPresenceMonitor(
     ): Boolean {
         val endpoint = resolvePeerEndpoint(peer, tailnetNodeUp()) ?: return false
         repeat(attempts) { attempt ->
-            if (client.pingHealth(endpoint.host, endpoint.port, timeoutMs)) {
+            val companion = NotificationCompanion.pollValueFor(
+                peer.deviceId, peer.isDockerNode(), peer.os, peer.platform, peer.tlsPin
+            )
+            val reached = client.pingHealth(endpoint.host, endpoint.port, timeoutMs, companion)
+            if (companion != null) NotificationDebugLog.log("sweep grant poll to ${NotificationDebugLog.short(peer.deviceId)} value=$companion reached=$reached")
+            if (reached) {
                 markReachable(peer.deviceId)
                 mutex.withLock {
                     if (endpoint.tailnet) {

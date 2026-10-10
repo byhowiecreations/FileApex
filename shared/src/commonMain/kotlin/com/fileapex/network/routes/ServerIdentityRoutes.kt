@@ -13,7 +13,6 @@ import com.fileapex.network.TransferTransactionJournal
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
@@ -49,7 +48,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
 
     post("/api/v1/identity/rename") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val request = server.json.decodeFromString(RenameDeviceRequest.serializer(), body)
             val trimmed = request.deviceName.trim()
             if (trimmed.isEmpty()) {
@@ -94,7 +93,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
                 return@runCatching
             }
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             if (body.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "Empty pairing payload")
                 return@runCatching
@@ -171,7 +170,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
                 return@runCatching
             }
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             if (body.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "Empty cluster sync payload")
                 return@runCatching
@@ -207,7 +206,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
 
     val handleClusterRemove: suspend io.ktor.server.application.ApplicationCall.() -> Unit = {
         runCatching {
-            val body = receiveText()
+            val body = receiveBoundedText()
             if (body.isBlank()) {
                 respond(HttpStatusCode.BadRequest, "Empty removal payload")
                 return@runCatching

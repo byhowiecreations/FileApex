@@ -4,6 +4,9 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.BackgroundPresenceServices
 import com.fileapex.platform.syncDirectShareTargetsFromPeers
+import com.fileapex.security.tls.LocalTlsInfo
+import com.fileapex.security.tls.TlsFront
+import com.fileapex.security.tls.TlsFrontProvider
 
 /**
  * Process-wide FileApex share-server lifecycle.
@@ -13,6 +16,7 @@ import com.fileapex.platform.syncDirectShareTargetsFromPeers
 object ServerLifecycleManager {
     private val lock = Any()
     private var serverInstance: FileApexServer? = null
+    private var tlsFront: TlsFront? = null
 
     val isRunning: Boolean
         get() = synchronized(lock) { serverInstance?.isRunning == true }
@@ -44,9 +48,14 @@ object ServerLifecycleManager {
             return
         }
         runCatching { current?.stop() }
+        stopTlsFrontLocked(onLog)
         val identity = loadLocalIdentity()
+        val front = runCatching { TlsFrontProvider.factory?.invoke(LanInterfaceBinding.shareServerListenHost()) }
+            .onFailure { error -> onLog("TLS front unavailable, serving HTTP only", error) }
+            .getOrNull()
         val server = FileApexServer(
             port = identity.sharePort,
+            bridgePort = front?.bridgePort ?: 0,
             identityProvider = { loadLocalIdentity() },
             onPairingRespond = { scanningDevice ->
                 FileApexServices.pairingCoordinator.handleInboundScanner(scanningDevice)
@@ -74,6 +83,17 @@ object ServerLifecycleManager {
                 return
             }
         serverInstance = server
+        if (front != null) {
+            runCatching { front.start() }
+                .onSuccess { tlsPort ->
+                    tlsFront = front
+                    LocalTlsInfo.port = tlsPort
+                }
+                .onFailure { error ->
+                    onLog("TLS front failed to start, serving HTTP only", error)
+                    runCatching { front.stop() }
+                }
+        }
         BackgroundPresenceServices.onShareServerStarted(identity.sharePort, identity.deviceId)
         BackgroundPresenceServices.start()
         syncDirectShareTargetsFromPeers()
@@ -85,8 +105,17 @@ object ServerLifecycleManager {
         )
     }
 
+    private fun stopTlsFrontLocked(onLog: (String, Throwable?) -> Unit) {
+        val front = tlsFront ?: return
+        tlsFront = null
+        LocalTlsInfo.port = 0
+        runCatching { front.stop() }.onFailure { error -> onLog("Error while stopping TLS front", error) }
+        com.fileapex.security.tls.TlsBridgeRegistry.clear()
+    }
+
     private fun stopLocked(onLog: (String, Throwable?) -> Unit, fast: Boolean) {
         BackgroundPresenceServices.stop(fast = fast)
+        stopTlsFrontLocked(onLog)
         val current = serverInstance
         serverInstance = null
         if (current != null) {

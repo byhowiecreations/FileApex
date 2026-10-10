@@ -41,6 +41,7 @@ import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.MacLaunchSplash
 import com.fileapex.platform.DesktopScreenGeometry
 import com.fileapex.platform.DesktopTraySupport
+import com.fileapex.data.settings.AppTheme
 import com.fileapex.platform.DesktopWindowBoundsStore
 import com.fileapex.platform.MacOsExtensionRegistrar
 import com.fileapex.platform.DesktopSendHandoff
@@ -73,6 +74,8 @@ private val DesktopWindowMaxHeight = 900.dp
 
 fun main(args: Array<String>) {
     DesktopCrashHandler.install()
+    // The CLI dials pinned peers too, so the client identity must exist before either path starts.
+    com.fileapex.security.tls.PeerTlsConnector.configure { com.fileapex.security.tls.DesktopTlsIdentity.store() }
     try {
         if (isCliInvocation(args)) {
             if (com.fileapex.platform.DesktopPlatformPaths.isWindows()) {
@@ -82,6 +85,7 @@ fun main(args: Array<String>) {
             return
         }
         DesktopJvmStartup.onMainEntry()
+        com.fileapex.security.tls.TlsFrontFactory.install { com.fileapex.security.tls.DesktopTlsIdentity.store() }
         FileApexServices.beginBootstrap(
             createDatabase = { createFileApexDatabase() },
             createBulletinBoard = { createBulletinBoardDatabase() }
@@ -202,6 +206,19 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             position = initialPosition
         )
 
+        val themeFlow = remember(servicesReady) {
+            if (servicesReady) FileApexServices.settings.appTheme else flowOf(null)
+        }
+        val appTheme by themeFlow.collectAsState(initial = null)
+        var sizedTheme by remember { mutableStateOf<AppTheme?>(null) }
+        // Each theme keeps its own window size; switching themes restores the size last used with that theme.
+        LaunchedEffect(appTheme) {
+            val theme = appTheme ?: return@LaunchedEffect
+            sizedTheme?.let { DesktopWindowBoundsStore.persistSize(it.name, windowState.size) }
+            DesktopWindowBoundsStore.loadSize(theme.name)?.let { windowState.size = it }
+            sizedTheme = theme
+        }
+
         LaunchedEffect(servicesReady, deviceCount, desktopLayoutMode) {
             if (!servicesReady) return@LaunchedEffect
             if (!DesktopWindowBoundsStore.hasValidSaved()) {
@@ -222,6 +239,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 .collect { (size, position, minimized) ->
                     if (!minimized) {
                         DesktopWindowBoundsStore.persist(size, position)
+                        sizedTheme?.let { DesktopWindowBoundsStore.persistSize(it.name, size) }
                     }
                 }
         }
@@ -230,6 +248,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             DesktopLifecycleLog.log("shutdownDesktop")
             if (!windowState.isMinimized) {
                 DesktopWindowBoundsStore.persist(windowState.size, windowState.position)
+                sizedTheme?.let { DesktopWindowBoundsStore.persistSize(it.name, windowState.size) }
             }
             com.fileapex.cloud.DesktopAuthCoordinator.cancelPending()
             DesktopShareServerController.shutdownForQuit()

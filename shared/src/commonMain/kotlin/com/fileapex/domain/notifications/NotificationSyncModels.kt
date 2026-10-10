@@ -22,23 +22,30 @@ data class NotificationPayload(
     val conversation: String = "",
     /** Recent message lines, oldest first, for threads that carry several messages. */
     val lines: List<String> = emptyList(),
+    /** The app's sub text or summary, such as the account an email arrived on. */
+    val subText: String = "",
     /** True when the phone can fill in this notification's reply box. */
-    val canReply: Boolean = false
+    val canReply: Boolean = false,
+    /** Set by the receiver from the authenticated sender; whatever a peer puts here is overwritten. */
+    val sourceDeviceId: String = ""
 )
 
 private const val MAX_FIELD_CHARS = 1_000
+private const val MAX_BODY_CHARS = 8_000
 private const val MAX_LINES = 10
 private const val MAX_ACTIVE_KEYS = 200
 
 /** Everything from the other device is hostile input: cap each field before it is stored or shown. */
 fun NotificationPayload.sanitized(): NotificationPayload = copy(
     key = key.take(MAX_FIELD_CHARS),
+    sourceDeviceId = "",
     packageName = packageName.take(MAX_FIELD_CHARS),
     appLabel = appLabel.take(MAX_FIELD_CHARS),
     title = title.take(MAX_FIELD_CHARS),
-    text = text.take(MAX_FIELD_CHARS),
+    text = text.take(MAX_BODY_CHARS),
+    subText = subText.take(MAX_FIELD_CHARS),
     conversation = conversation.take(MAX_FIELD_CHARS),
-    lines = lines.takeLast(MAX_LINES).map { it.take(MAX_FIELD_CHARS) },
+    lines = lines.takeLast(MAX_LINES).map { it.take(MAX_BODY_CHARS) },
     activeKeys = activeKeys?.take(MAX_ACTIVE_KEYS)?.map { it.take(MAX_FIELD_CHARS) }
 )
 

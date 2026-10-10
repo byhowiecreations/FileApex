@@ -115,3 +115,21 @@ To clean up, pull the latest image updates, and redeploy:
 docker rm -f fileapex-daemon
 docker rmi fileapex/fileapex-daemon:latest
 docker pull fileapex/fileapex-daemon:latest
+
+---
+
+## Encrypted connections (TLS)
+
+The daemon listens for pinned mutual TLS on the file port + 1 (8081 by default; set `FILEAPEX_TLS_PORT` to change it).
+Publish it when you do not use host or macvlan networking: `-p 8080:8080 -p 8081:8081`.
+
+- Its key and certificate live in the data volume (`tls_key.pem`, `tls_cert.pem`), with the pairing key
+  (`pair_key`) and the pins it has accepted (`tls_peers.json`). Keep the volume to keep the identity.
+- The log prints a key fingerprint at start (`TLS listening ... key fingerprint abcd-1234-...`).
+- After a device is paired, apps and the daemon exchange their keys on their own, using the pairing key.
+  No re-pair and no prompt are needed. From then on that device talks to the daemon over TLS only, and the
+  daemon refuses plain HTTP that names it, apart from pairing, presence and the key exchange.
+- Devices on older builds, and any device that has not exchanged keys yet, keep using plain HTTP.
+- If a paired device later shows a different key, the daemon keeps the one it has and logs the change.
+  Re-pair that device (or run `--reset`) after checking it is really yours.
+- `--reset` also clears the accepted pins. The daemon's own key stays.

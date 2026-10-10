@@ -144,7 +144,7 @@ class DeviceRepository(
         clearTombstonesLocked(deviceId, publicKeyHash)
         val row = deviceDao.getDevice(deviceId)
         if (row?.isRemoved == true) {
-            deviceDao.upsertDevice(row.copy(isRemoved = false, removedAt = null, clusterVersion = version))
+            writeDeviceKeepingTlsTrust(row.copy(isRemoved = false, removedAt = null, clusterVersion = version))
         }
         ClusterClock.observe(version)
     }
@@ -211,7 +211,7 @@ class DeviceRepository(
             val existing = deviceDao.getDevice(normalized.deviceId)
             val merged = normalized.withVersionNotBelow(existing)
             if (existing == merged) return
-            deviceDao.upsertDevice(merged)
+            writeDeviceKeepingTlsTrust(merged)
         }
     }
 
@@ -272,7 +272,7 @@ class DeviceRepository(
             val changed = if (hasUsableEndpoint(merged)) {
                 upsertReplacingAliasesLocked(merged)
             } else if (existing != merged) {
-                deviceDao.upsertDevice(merged)
+                writeDeviceKeepingTlsTrust(merged)
                 true
             } else {
                 false
@@ -458,6 +458,50 @@ class DeviceRepository(
         true
     }
 
+    /**
+     * Stores the TLS pin for [deviceId]. Only callers that received the pin over a trusted channel
+     * (pairing QR, authenticated migration message, confirmed fingerprint) may use this. No merge path
+     * ever copies a pin from incoming data.
+     */
+    suspend fun recordTlsPin(deviceId: String, pin: String, port: Int, alt: String = ""): Boolean =
+        mutateMutex.withLock {
+            val trimmedId = deviceId.trim()
+            val normalizedPin = pin.trim().lowercase()
+            val normalizedAlt = alt.trim().lowercase()
+            if (trimmedId.isEmpty() || !TLS_PIN_FORMAT.matches(normalizedPin)) return false
+            if (normalizedAlt.isNotEmpty() && !TLS_PIN_FORMAT.matches(normalizedAlt)) return false
+            val existing = deviceDao.getDevice(trimmedId) ?: return false
+            if (existing.isRemoved) return false
+            val resolvedPort = if (port in 1..65535) port else existing.tlsPort
+            if (existing.tlsPin == normalizedPin && existing.tlsPinAlt == normalizedAlt &&
+                existing.tlsPort == resolvedPort
+            ) {
+                return false
+            }
+            deviceDao.updateTls(trimmedId, normalizedPin, normalizedAlt, resolvedPort)
+            true
+        }
+
+    suspend fun clearTlsPin(deviceId: String): Boolean = mutateMutex.withLock {
+        val trimmedId = deviceId.trim()
+        val existing = deviceDao.getDevice(trimmedId) ?: return false
+        if (existing.tlsPin.isEmpty() && existing.tlsPinAlt.isEmpty()) return false
+        deviceDao.updateTls(trimmedId, "", "", existing.tlsPort)
+        true
+    }
+
+    /** Every write passes here so an incoming row can never replace a stored pin. */
+    private suspend fun writeDeviceKeepingTlsTrust(device: PairedDeviceEntity, clearTls: Boolean = false) {
+        val stored = deviceDao.getDevice(device.deviceId)
+        deviceDao.upsertDevice(
+            device.copy(
+                tlsPin = if (clearTls) "" else stored?.tlsPin.orEmpty(),
+                tlsPinAlt = if (clearTls) "" else stored?.tlsPinAlt.orEmpty(),
+                tlsPort = device.tlsPort.takeIf { it in 1..65535 } ?: stored?.tlsPort ?: 0
+            )
+        )
+    }
+
     suspend fun clearTailnet(deviceId: String): Boolean = mutateMutex.withLock {
         val trimmedId = deviceId.trim()
         if (trimmedId.isEmpty()) return false
@@ -507,7 +551,7 @@ class DeviceRepository(
                     publicKeyHash = "",
                     e2eeEnabled = false
                 )
-                deviceDao.upsertDevice(tombstone)
+                writeDeviceKeepingTlsTrust(tombstone, clearTls = true)
                 deviceDao.insertRemovedDevice(
                     RemovedDeviceEntity(
                         deviceId = victim.deviceId,
@@ -553,7 +597,7 @@ class DeviceRepository(
             ClusterClock.observe(version)
 
             if (existing != null) {
-                deviceDao.upsertDevice(existing.asTombstone(version, hash))
+                writeDeviceKeepingTlsTrust(existing.asTombstone(version, hash), clearTls = true)
             }
             deviceDao.insertRemovedDevice(
                 RemovedDeviceEntity(
@@ -575,7 +619,7 @@ class DeviceRepository(
             }
             aliases.filter { it.membershipVersion() < version }.forEach { row ->
                 val aliasHash = row.publicKeyHash.trim().ifBlank { hash }
-                deviceDao.upsertDevice(row.asTombstone(version, aliasHash))
+                writeDeviceKeepingTlsTrust(row.asTombstone(version, aliasHash), clearTls = true)
                 deviceDao.insertRemovedDevice(
                     RemovedDeviceEntity(
                         deviceId = row.deviceId,
@@ -662,7 +706,7 @@ class DeviceRepository(
         if (existing == merged && !purgedSelf) {
             return false
         }
-        deviceDao.upsertDevice(merged)
+        writeDeviceKeepingTlsTrust(merged)
         return true
     }
 
@@ -705,7 +749,7 @@ class DeviceRepository(
             deviceDao.deleteDevice(id)
         }
         if (currentWinner != merged) {
-            deviceDao.upsertDevice(merged)
+            writeDeviceKeepingTlsTrust(merged)
         }
         return true
     }
@@ -721,7 +765,7 @@ class DeviceRepository(
         }
         for (keeper in collapsed) {
             if (byId[keeper.deviceId] != keeper) {
-                deviceDao.upsertDevice(keeper)
+                writeDeviceKeepingTlsTrust(keeper)
             }
         }
     }
@@ -948,6 +992,9 @@ class DeviceRepository(
                 device.lastSeenEpochMs.coerceAtLeast(0L),
                 preserveFrom?.lastSeenEpochMs?.coerceAtLeast(0L) ?: 0L
             ),
+            tlsPin = preserveFrom?.tlsPin.orEmpty(),
+            tlsPinAlt = preserveFrom?.tlsPinAlt.orEmpty(),
+            tlsPort = device.tlsPort.takeIf { it in 1..65535 } ?: preserveFrom?.tlsPort ?: 0,
             tailnetHostname = device.tailnetHostname.trim().ifBlank { preserveFrom?.tailnetHostname.orEmpty() },
             tailnetIpv4 = device.tailnetIpv4.trim().let { incoming ->
                 if (com.fileapex.tailscale.isTailscaleIPv4(incoming)) {
@@ -1174,6 +1221,7 @@ class DeviceRepository(
         }
 
     private companion object {
+        val TLS_PIN_FORMAT = Regex("[0-9a-f]{64}")
         const val TOMBSTONE_GOSSIP_MAX_AGE_MS = 30L * 24L * 60L * 60L * 1000L
     }
 }
@@ -1182,9 +1230,12 @@ private fun PairedDeviceEntity.membershipVersion(): Long = maxOf(clusterVersion,
 
 private fun PairedDeviceEntity.withVersionNotBelow(existing: PairedDeviceEntity?): PairedDeviceEntity {
     val kept = if (existing == null) {
-        this
+        copy(tlsPin = "", tlsPinAlt = "")
     } else {
         copy(
+            tlsPin = existing.tlsPin,
+            tlsPinAlt = existing.tlsPinAlt,
+            tlsPort = tlsPort.takeIf { it in 1..65535 } ?: existing.tlsPort,
             tailnetHostname = tailnetHostname.ifBlank { existing.tailnetHostname },
             tailnetIpv4 = tailnetIpv4.takeIf { com.fileapex.tailscale.isTailscaleIPv4(it) }
                 ?: existing.tailnetIpv4.takeIf { com.fileapex.tailscale.isTailscaleIPv4(it) }

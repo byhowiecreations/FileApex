@@ -1137,6 +1137,13 @@ Toca el hub central (+) para emparejar</string>
     <string name="simple_notifications_coming_soon">La sincronización de notificaciones llegará pronto.</string>
     <string name="simple_device_management">Gestión de dispositivos</string>
     <string name="simple_switch_device">Cambiar de dispositivo</string>
+    <string name="locate_phone">Localizar teléfono</string>
+    <string name="locate_phone_ringing">FileApex está haciendo sonar este teléfono</string>
+    <string name="locate_phone_stop">Detener</string>
+    <string name="locate_phone_sent">Sonando en %1$s hasta que se detenga en el teléfono.</string>
+    <string name="locate_phone_failed">No se pudo contactar con %1$s.</string>
+    <string name="locate_phone_pinging">Haciendo sonar el teléfono</string>
+    <string name="locate_phone_cancel">Cancelar</string>
     <string name="simple_no_device_title">Ningún dispositivo conectado</string>
     <string name="simple_no_device_body">Empareja un dispositivo para explorar sus archivos.</string>
     <string name="simple_other_themes_title">Más temas disponibles</string>
@@ -1196,5 +1203,12 @@ Toca el hub central (+) para emparejar</string>
     <string name="simple_more">Más</string>
     <string name="simple_memory_free_of">%1$s libres de %2$s</string>
     <string name="simple_memory_used">(%1$s en uso)</string>
+    <string name="tls_fingerprint_label">Huella de seguridad</string>
+    <string name="tls_pin_new_title">Confirmar clave de seguridad</string>
+    <string name="tls_pin_new_body">Comprueba que %1$s muestra esta misma huella en su pantalla. Continúa solo si coinciden:</string>
+    <string name="tls_pin_changed_title">La clave de seguridad cambió</string>
+    <string name="tls_pin_changed_body">%1$s ahora usa otra clave de seguridad. Esto ocurre tras reinstalar o restablecer. Si no lo hiciste tú, otra persona podría estar en tu red. Confía solo si esta huella coincide con la de %1$s:</string>
+    <string name="tls_pin_trust">Coinciden</string>
+    <string name="tls_pin_not_now">Ahora no</string>
 </resources>
 

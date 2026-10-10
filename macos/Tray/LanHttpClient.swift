@@ -122,6 +122,10 @@ enum LanHttpClient {
         let host: String
         let port: UInt16
         let path: String
+        /// Set when the peer is pinned: all traffic goes to its TLS port and never over HTTP.
+        let route: LanTlsRoute?
+
+        var connectPort: UInt16 { route?.tlsPort ?? port }
 
         init?(urlString: String) {
             guard let components = URLComponents(string: urlString),
@@ -137,6 +141,8 @@ enum LanHttpClient {
                 path += "?" + query
             }
             self.path = path
+            self.route = LanTls.route(host: host, port: UInt16(resolvedPort))
+            LanHttpClient.logTls("route \(LanHttpClient.lastOctet(host)):\(resolvedPort) -> \(self.route == nil ? "none (plain HTTP)" : "TLS port \(self.route!.tlsPort)")")
         }
     }
 
@@ -186,6 +192,13 @@ enum LanHttpClient {
         return nil
     }
 
+    static func dropPooled(keys: Set<String>) {
+        poolLock.lock()
+        let dropped = keys.compactMap { heldSockets.removeValue(forKey: $0) }
+        poolLock.unlock()
+        dropped.forEach { $0.connection.cancel() }
+    }
+
     private static func sweepSockets() {
         let cutoff = Date().addingTimeInterval(-120)
         poolLock.lock()
@@ -225,9 +238,10 @@ enum LanHttpClient {
     }
 
     private static func openSocket(target: Target, key: String, timeoutMs: Int) -> HeldSocket? {
-        guard let port = NWEndpoint.Port(rawValue: target.port) else { return nil }
+        guard let port = NWEndpoint.Port(rawValue: target.connectPort),
+              let params = connectionParams(for: target) else { return nil }
         let host: NWEndpoint.Host = IPv4Address(target.host).map { .ipv4($0) } ?? NWEndpoint.Host(target.host)
-        let connection = NWConnection(to: .hostPort(host: host, port: port), using: unicastTcpParams())
+        let connection = NWConnection(to: .hostPort(host: host, port: port), using: params)
         let lock = DispatchSemaphore(value: 0)
         let stateLock = NSLock()
         var finished = false
@@ -247,10 +261,16 @@ enum LanHttpClient {
             switch state {
             case .ready:
                 finish(true)
-            case .failed, .cancelled:
+            case .failed(let error):
+                log("open failed \(lastOctet(target.host)):\(target.port) \(error)")
                 finish(false)
-            case .waiting:
-                if fast {
+            case .cancelled:
+                finish(false)
+            case .waiting(let error):
+                log("open waiting \(lastOctet(target.host)):\(target.port) \(error)")
+                if isFinalWait(error, pinned: target.route != nil) {
+                    finish(false)
+                } else if fast {
                     queue.asyncAfter(deadline: .now() + 1.5) { finish(false) }
                 }
             default:
@@ -348,14 +368,15 @@ enum LanHttpClient {
         isTransfer: Bool = false,
         extraSender: ((NWConnection, @escaping (Bool) -> Void) -> Void)? = nil
     ) -> (status: Int, body: Data)? {
-        guard let port = NWEndpoint.Port(rawValue: target.port) else { return nil }
+        guard let port = NWEndpoint.Port(rawValue: target.connectPort),
+              let params = connectionParams(for: target) else { return nil }
         let sem = isTransfer ? transferSlots : generalSlots
         sem.wait()
         defer { sem.signal() }
         let host: NWEndpoint.Host = IPv4Address(target.host).map { .ipv4($0) } ?? NWEndpoint.Host(target.host)
         let connection = NWConnection(
             to: .hostPort(host: host, port: port),
-            using: unicastTcpParams()
+            using: params
         )
         let lock = DispatchSemaphore(value: 0)
         let stateLock = NSLock()
@@ -410,7 +431,8 @@ enum LanHttpClient {
             case .waiting(let error):
                 let reason = unsatisfiedText(connection.currentPath)
                 log("waiting \(target.host):\(target.port) \(error.localizedDescription) \(reason)")
-                // Stay waiting so Allow on the system dialog can complete the path.
+                // A rejected pin is final; every other wait stays so Allow on the system dialog can complete the path.
+                if isFinalWait(error, pinned: target.route != nil) { finish(nil) }
             case .failed(let error):
                 log("connect failed \(target.host):\(target.port) \(error.localizedDescription)")
                 finish(nil)
@@ -469,10 +491,19 @@ enum LanHttpClient {
         open.forEach { $0.cancel() }
     }
 
-    private static func unicastTcpParams() -> NWParameters {
+    private static func connectionParams(for target: Target) -> NWParameters? {
+        guard let route = target.route else { return unicastTcpParams(tls: nil) }
+        guard let tls = LanTls.tlsOptions(for: route, key: "\(target.host):\(target.port)") else {
+            log("TLS identity unavailable, refusing plain HTTP to \(lastOctet(target.host))")
+            return nil
+        }
+        return unicastTcpParams(tls: tls)
+    }
+
+    private static func unicastTcpParams(tls: NWProtocolTLS.Options?) -> NWParameters {
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
-        let params = NWParameters(tls: nil, tcp: tcp)
+        let params = NWParameters(tls: tls, tcp: tcp)
         params.includePeerToPeer = false
         params.allowLocalEndpointReuse = true
         params.preferNoProxies = true
@@ -617,13 +648,14 @@ enum LanHttpClient {
         destinationPath: String,
         timeoutMs: Int
     ) -> Int? {
-        guard let port = NWEndpoint.Port(rawValue: target.port) else { return nil }
+        guard let port = NWEndpoint.Port(rawValue: target.connectPort),
+              let params = connectionParams(for: target) else { return nil }
         transferSlots.wait()
         defer { transferSlots.signal() }
         let host: NWEndpoint.Host = IPv4Address(target.host).map { .ipv4($0) } ?? NWEndpoint.Host(target.host)
         let connection = NWConnection(
             to: .hostPort(host: host, port: port),
-            using: unicastTcpParams()
+            using: params
         )
         let lock = DispatchSemaphore(value: 0)
         let stateLock = NSLock()
@@ -676,6 +708,7 @@ enum LanHttpClient {
             case .waiting(let error):
                 let reason = unsatisfiedText(connection.currentPath)
                 log("waiting \(target.host):\(target.port) \(error.localizedDescription) \(reason)")
+                if isFinalWait(error, pinned: target.route != nil) { finish(nil) }
             case .failed(let error):
                 log("connect failed \(target.host):\(target.port) \(error.localizedDescription)")
                 finish(nil)
@@ -924,6 +957,24 @@ enum LanHttpClient {
                 return
             }
             receiveHttp(on: connection, buffer: next, finish: finish)
+        }
+    }
+
+    static func logTls(_ message: String) { log(message) }
+
+    /// Logs never carry a full LAN address.
+    static func lastOctet(_ host: String) -> String {
+        guard let dot = host.lastIndex(of: ".") else { return "peer" }
+        return String(host[dot...])
+    }
+
+    /// Waits that will never resolve: a pinned peer failing its TLS check, or nothing listening on the port.
+    /// Local Network permission stalls look different and keep waiting.
+    private static func isFinalWait(_ error: NWError, pinned: Bool) -> Bool {
+        switch error {
+        case .tls: return pinned
+        case .posix(let code): return code == .ECONNREFUSED
+        default: return false
         }
     }
 

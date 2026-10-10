@@ -18,6 +18,14 @@ import (
 )
 
 func (n *Node) serve() error {
+	if err := n.serveHTTP(); err != nil {
+		return err
+	}
+	n.serveTLS()
+	return nil
+}
+
+func (n *Node) serveHTTP() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.httpServer != nil {
@@ -34,7 +42,7 @@ func (n *Node) serve() error {
 	}
 	n.port = tcp.Port
 	srv := &http.Server{
-		Handler:           n.routes(),
+		Handler:           n.guard(n.routes(), false),
 		ReadHeaderTimeout: 30 * time.Second,
 	}
 	n.httpServer = srv
@@ -61,6 +69,7 @@ func (n *Node) shutdown(timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
+	n.shutdownTLS(timeout)
 }
 
 func (n *Node) routes() http.Handler {
@@ -81,6 +90,9 @@ func (n *Node) routes() http.Handler {
 	mux.HandleFunc("/api/v1/files/mkdir", n.handleMkdir)
 	mux.HandleFunc("/api/v1/files/delete", n.handleDelete)
 	mux.HandleFunc("/api/v1/diagnostics", n.handleDiagnostics)
+	mux.HandleFunc("/api/v1/tls/pin", n.handleTLSPin)
+	mux.HandleFunc("/api/v1/clipboard/status", n.handleClipboardStatus)
+	mux.HandleFunc("/api/v1/clipboard/send", n.handleClipboardSend)
 	return mux
 }
 

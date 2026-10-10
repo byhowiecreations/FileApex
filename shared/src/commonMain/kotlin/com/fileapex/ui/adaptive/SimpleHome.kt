@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -108,6 +109,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fileapex.cloud.currentPlatformLabel
+import com.fileapex.domain.notifications.NotificationCompanion
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.diagnostics.DeviceDiagnosticsFormatter
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
@@ -126,6 +128,9 @@ import com.fileapex.domain.presence.isTailscaleEnabled
 import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.util.cancellableCatching
 import com.fileapex.i18n.formatLocalizedDateTime
+import com.fileapex.domain.device.PhoneLocator
+import com.fileapex.i18n.AppI18n
+import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.i18n.stringRes
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.platform.usesDesktopFileSelection
@@ -193,6 +198,15 @@ fun SimpleHome(
     val storedActiveId by settings.simpleActiveDeviceId.collectAsState()
     val hintShown by settings.otherThemesHintShown.collectAsState()
     val active = pickActiveDevice(rows, storedActiveId, selfIsPhone = currentPlatformLabel() == "Android")
+
+    // The computer listens to notifications from the phone shown here, and only while this screen is up.
+    val activeCompanionId = active?.takeIf {
+        currentPlatformLabel() != "Android" && PeerPlatform.isAndroid(it.os, it.platform)
+    }?.deviceId.orEmpty()
+    LaunchedEffect(activeCompanionId) { NotificationCompanion.setDesired(activeCompanionId) }
+    DisposableEffect(Unit) {
+        onDispose { NotificationCompanion.setDesired("") }
+    }
 
     var showSwitchDialog by remember { mutableStateOf(false) }
     var popover by remember { mutableStateOf<SimplePopover?>(null) }
@@ -278,6 +292,8 @@ fun SimpleHome(
             }
         }
     }
+    // Registered before SettingsScreen's own handler, so sub-pages still step back first.
+    FileApexBackHandler(enabled = destination == SimpleDestination.Settings) { goTo(SimpleDestination.Home) }
     val sendClipboard: () -> Unit = devicesViewModel::sendClipboardNow
     val make = active?.let { makeLabel(it) }
 
@@ -297,7 +313,8 @@ fun SimpleHome(
 
     val content: @Composable () -> Unit = {
         when (destination) {
-            SimpleDestination.Home -> SimpleOverview(
+            SimpleDestination.Home -> Box(modifier = Modifier.fillMaxSize()) {
+            SimpleOverview(
                 devicesViewModel = devicesViewModel,
                 rows = rows,
                 active = active,
@@ -314,6 +331,8 @@ fun SimpleHome(
                     }
                 }
             )
+            SimpleLocateCard(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp))
+            }
             SimpleDestination.LocalFiles -> FileExplorerScreen(
                 target = devicesViewModel.thisDeviceTarget(),
                 onBack = { goTo(SimpleDestination.Home) },
@@ -456,6 +475,15 @@ fun SimpleHome(
                 when (popover ?: lastPopover) {
                     SimplePopover.DeviceManagement -> {
                         if (active != null) SimpleManagementItem(Icons.Filled.Info, stringRes("info")) { popover = null; goTo(SimpleDestination.Info) }
+                        if (active != null && active.online && PeerPlatform.isAndroid(active.os, active.platform)) {
+                            SimpleManagementItem(Icons.Filled.LocationOn, stringRes("locate_phone")) {
+                                popover = null
+                                scope.launch {
+                                    val ok = PhoneLocator.start(active.deviceId, active.deviceName)
+                                    snackbarHostState.showSnackbar(AppI18n.t(if (ok) "locate_phone_sent" else "locate_phone_failed", active.deviceName))
+                                }
+                            }
+                        }
                         if (rows.size >= 2) SimpleManagementItem(Icons.Filled.SwapHoriz, stringRes("simple_switch_device")) { popover = null; showSwitchDialog = true }
                         SimpleManagementItem(Icons.Filled.Add, stringRes("add_new_device")) { popover = null; onGenerateQr() }
                         SimpleManagementItem(Icons.Filled.Link, stringRes("join_device")) { popover = null; onJoinDevice() }
@@ -813,8 +841,7 @@ private fun SimpleRail(
                         selected = destination == SimpleDestination.Browse,
                         onClick = { onSelect(SimpleDestination.Browse) },
                         icon = Icons.Filled.Devices,
-                        label = browseLabel,
-                        caption = make
+                        label = browseLabel
                     )
                 },
                 RailSlot(SimpleRailEntry.Clipboard) {
@@ -917,8 +944,7 @@ private fun SimpleCompactBottom(
                 selected = destination == SimpleDestination.Browse,
                 onClick = { onSelect(SimpleDestination.Browse) },
                 icon = Icons.Filled.Devices,
-                label = stringRes("browse"),
-                caption = make
+                label = stringRes("browse")
             )
             SimpleBarItem(
                 selected = destination == SimpleDestination.Settings,
@@ -1145,7 +1171,7 @@ private fun SimpleClipboardRow(device: DeviceListRow) {
     LaunchedEffect(device.deviceId, device.online, promptSent) {
         if (!device.online) return@LaunchedEffect
         val entity = FileApexServices.deviceRepository.getDevice(device.deviceId) ?: return@LaunchedEffect
-        val endpoint = resolvePeerEndpoint(entity, isTailscaleEnabled()) ?: return@LaunchedEffect
+        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(entity) ?: return@LaunchedEffect
         do {
             sharingEnabled = cancellableCatching {
                 FileApexServices.client.getClipboardStatus(endpoint.host, endpoint.port).sharingEnabled
@@ -1194,7 +1220,7 @@ private val NOTIFICATION_CHECK_RETRY_MS = longArrayOf(1_000L, 2_000L, 4_000L, 8_
 private fun SimpleNotificationSection(device: DeviceListRow) {
     val scope = rememberCoroutineScope()
     val items by NotificationInbox.items.collectAsState()
-    val counts = remember(items) { NotificationInbox.counts(items) }
+    val counts = remember(items, device.deviceId) { NotificationInbox.counts(items, device.deviceId) }
     var status by remember(device.deviceId) { mutableStateOf<NotificationSyncStatus?>(null) }
     var checked by remember(device.deviceId) { mutableStateOf(false) }
     var promptSent by remember(device.deviceId) { mutableStateOf(false) }
@@ -1239,12 +1265,15 @@ private fun SimpleNotificationSection(device: DeviceListRow) {
                 }
                 PhoneNotificationState.Unreachable -> {
                     // The first calls after a wake often fail before the network is back: retry, never report "update".
+                    com.fileapex.security.tls.TlsPinAnnouncer.nudge(device.deviceId)
                     if (failures >= NOTIFICATION_CHECK_RETRY_MS.size) {
+                        // Keep trying: the phone may still be updating or waking, and a pin exchange may be pending.
                         unreachable = true
                         checked = true
-                        break
+                        delay(NOTIFICATION_CHECK_RETRY_MS.last())
+                    } else {
+                        delay(NOTIFICATION_CHECK_RETRY_MS[failures++])
                     }
-                    delay(NOTIFICATION_CHECK_RETRY_MS[failures++])
                 }
                 is PhoneNotificationState.Known -> {
                     status = result.status
@@ -1281,7 +1310,7 @@ private fun SimpleNotificationSection(device: DeviceListRow) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         ready -> SimpleNotificationCounts(counts) { kind ->
-            snapshot = NotificationThreads.threads(items, kind)
+            snapshot = NotificationThreads.threads(NotificationInbox.from(items, device.deviceId), kind)
             listKind = kind
         }
         else -> {
@@ -1487,3 +1516,4 @@ private fun SimpleInfo(devicesViewModel: DevicesViewModel, active: DeviceListRow
         }
     }
 }
+

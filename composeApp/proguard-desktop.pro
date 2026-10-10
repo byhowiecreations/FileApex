@@ -44,3 +44,5 @@
 -keepclassmembers class * implements io.ktor.serialization.kotlinx.KotlinxSerializationExtensionProvider {
     public <init>(...);
 }
+
+-keep class org.bouncycastle.** { *; }

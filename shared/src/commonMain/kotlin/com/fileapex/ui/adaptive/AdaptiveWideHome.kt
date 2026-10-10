@@ -90,6 +90,7 @@ import com.fileapex.ui.LocalShowsTransferBanner
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.HomeTab
+import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.ui.SettingsDeepLink
 import com.fileapex.ui.SettingsScreen
 import com.fileapex.ui.SettingsScreenLayoutMode
@@ -280,6 +281,8 @@ fun AdaptiveWideHome(
                     onSettings = { onSelectTab(HomeTab.Settings) }
                 )
             }
+            // Registered before SettingsScreen's own handler, so sub-pages still step back first.
+            FileApexBackHandler(enabled = selectedTab == HomeTab.Settings) { onSelectTab(HomeTab.Devices) }
             val isSpatialTheme = LocalAppTheme.current.traits.spatialHome
             when (selectedTab) {
                 HomeTab.Settings -> {

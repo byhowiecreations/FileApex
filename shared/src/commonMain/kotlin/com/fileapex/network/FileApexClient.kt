@@ -130,6 +130,28 @@ class FileApexClient(
         return json.decodeFromString(PeerNodeState.serializer(), response.body)
     }
 
+    /**
+     * Sends this device's TLS pin to a peer that has none for us yet and returns the peer's own announcement.
+     * Null when the peer answers 204 (no TLS of its own). Throws on any other failure.
+     */
+    suspend fun announceTlsPin(
+        host: String,
+        port: Int,
+        announcement: com.fileapex.security.tls.TlsPinAnnouncement
+    ): com.fileapex.security.tls.TlsPinAnnouncement? {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/tls/pin",
+            body = json.encodeToString(com.fileapex.security.tls.TlsPinAnnouncement.serializer(), announcement),
+            contentType = "application/json",
+            timeoutMs = PEER_STATE_TIMEOUT_MS
+        )
+        if (response.statusCode == 204) return null
+        requireSuccess(response, "TLS pin announcement failed (${response.statusCode})")
+        return json.decodeFromString(com.fileapex.security.tls.TlsPinAnnouncement.serializer(), response.body)
+    }
+
     /** [summaryOnly] asks for the quick subset; peers that predate it ignore it and send everything. */
     suspend fun fetchDeviceDiagnostics(host: String, port: Int, summaryOnly: Boolean = false): PeerDeviceDiagnostics {
         val response = boundGet(
@@ -343,15 +365,44 @@ class FileApexClient(
         requireSuccess(response, "Clipboard opt-in request failed (${response.statusCode})")
     }
 
-    suspend fun triggerDeviceBeep(host: String, port: Int): Boolean {
+    suspend fun triggerDeviceBeep(host: String, port: Int, continuous: Boolean = false): Boolean =
+        triggerDeviceBeepStatus(host, port, continuous) in 200..299
+
+    /** HTTP status of the beep request; throws when the peer cannot be reached. */
+    suspend fun triggerDeviceBeepStatus(host: String, port: Int, continuous: Boolean = false): Int {
         val response = boundPost(
             host = host,
             port = port,
             pathWithQuery = queryPath(
                 basePath = "/api/v1/device/beep",
                 host = host,
-                port = port
+                port = port,
+                params = if (continuous) mapOf("continuous" to "1") else emptyMap()
             ),
+            body = "{}",
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        return response.statusCode
+    }
+
+    suspend fun reportLocateFound(host: String, port: Int): Boolean {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(basePath = "/api/v1/device/beep/found", host = host, port = port),
+            body = "{}",
+            contentType = "application/json",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        return response.statusCode in 200..299
+    }
+
+    suspend fun stopDeviceBeep(host: String, port: Int): Boolean {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = queryPath(basePath = "/api/v1/device/beep/stop", host = host, port = port),
             body = "{}",
             contentType = "application/json",
             timeoutMs = PEER_REQUEST_TIMEOUT_MS
@@ -395,9 +446,23 @@ class FileApexClient(
             }
         }
         requireSuccess(response, "Clipboard pull failed (${response.statusCode})")
-        val root = runCatching { json.parseToJsonElement(response.body) }.getOrNull()
-        return (root as? kotlinx.serialization.json.JsonObject)?.get("content")
-            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        val root = runCatching { json.parseToJsonElement(response.body) }.getOrNull() as? kotlinx.serialization.json.JsonObject
+            ?: return null
+        val sealed = runCatching {
+            json.decodeFromString(com.fileapex.domain.clipboard.ClipboardSendRequest.serializer(), response.body)
+        }.getOrNull()
+        if (sealed != null && sealed.ciphertext.isNotBlank()) {
+            val key = com.fileapex.domain.clipboard.ClipboardShareCoordinator
+                .verifiedSenderKey(sealed.senderDeviceId, sealed.senderPublicKey)
+            return com.fileapex.domain.clipboard.ClipboardE2ee.decrypt(
+                ciphertextBase64 = sealed.ciphertext,
+                localDeviceId = localDeviceId().trim(),
+                peerDeviceId = sealed.senderDeviceId.trim(),
+                peerPublicKeyBase64 = key
+            ).decodeToString()
+        }
+        // Peers older than this change answer with plain text; shown only, never applied to a clipboard.
+        return (root["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content
     }
 
     suspend fun verifyPin(host: String, port: Int, pin: String) {
@@ -426,10 +491,13 @@ class FileApexClient(
     suspend fun pingHealth(
         host: String,
         port: Int,
-        timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS
+        timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS,
+        companion: Boolean? = null
     ): Boolean {
         if (!PeerLanHttpPolicy.canRoute(host)) return false
-        val health = peerHttpGet(host, port, withSenderQuery("/api/v1/health"), timeoutMs) ?: return false
+        // The phone applies this only when the poll reached it over TLS from a paired computer.
+        val healthPath = if (companion == null) "/api/v1/health" else "/api/v1/health?companion=${if (companion) 1 else 0}"
+        val health = peerHttpGet(host, port, withSenderQuery(healthPath), timeoutMs) ?: return false
         checkRevocation(host, health)
         if (health.statusCode in 200..299) return true
         if (health.statusCode != 404) return false
@@ -1663,7 +1731,7 @@ class FileApexClient(
         timeoutMs: Long
     ): PeerBoundHttpResponse {
         PeerLanHttpPolicy.ensureRoute(host)
-        val response = peerHttpGet(host, port, withSenderQuery(pathWithQuery), timeoutMs)
+        val response = peerHttpGet(host, port, withSenderQuery(withCompanion(pathWithQuery, host, port)), timeoutMs)
             ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
         checkRevocation(host, response)
         return response
@@ -1681,13 +1749,20 @@ class FileApexClient(
         val response = peerHttpPost(
             host = host,
             port = port,
-            path = withSenderQuery(pathWithQuery),
+            path = withSenderQuery(withCompanion(pathWithQuery, host, port)),
             body = body,
             contentType = contentType,
             timeoutMs = timeoutMs
         ) ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
         checkRevocation(host, response)
         return response
+    }
+
+    /** Every request to the connected phone renews its notification grant. */
+    private fun withCompanion(pathWithQuery: String, host: String, port: Int): String {
+        val id = com.fileapex.security.tls.PeerTlsRoutes.lookup(host, port)?.deviceId ?: return pathWithQuery
+        if (!com.fileapex.domain.notifications.NotificationCompanion.isCompanion(id)) return pathWithQuery
+        return pathWithQuery + (if (pathWithQuery.contains('?')) "&" else "?") + "companion=1"
     }
 
     private fun withSenderQuery(pathWithQuery: String): String {

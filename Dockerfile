@@ -6,7 +6,7 @@
 # Received files land in /app/data/inbox on the mounted data volume. Other
 # devices must be able to reach the address this container advertises.
 # FILEAPEX_NAME, FILEAPEX_PORT, FILEAPEX_INBOX, FILEAPEX_ADVERTISE_IP, and
-# FILEAPEX_PIN override defaults.
+# FILEAPEX_PIN, and FILEAPEX_TLS_PORT (default: the file port + 1) override defaults.
 # On Unraid the container listens automatically. A real terminal shows the menu
 # on other hosts. --join listens immediately. --setup reopens the menu
 # (choice 4 resets), including on Unraid.
@@ -38,6 +38,7 @@ RUN mkdir -p /app/data/inbox
 VOLUME [ "/app/data" ]
 ENV FILEAPEX_DATA=/app/data
 EXPOSE 8080/tcp
+EXPOSE 8081/tcp
 EXPOSE 8891/udp
 
 # Configure entrypoint so flags can be passed natively

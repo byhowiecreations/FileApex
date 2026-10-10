@@ -184,7 +184,9 @@ object LanPairingDiscovery {
             pairingCode = code,
             timestamp = TimeUtils.now(),
             deviceId = payload.deviceId,
-            pinRequired = payload.pinRequired
+            pinRequired = payload.pinRequired,
+            tlsPin = payload.tlsPin,
+            tlsPort = payload.tlsPort
         )
     }
 

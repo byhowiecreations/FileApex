@@ -58,9 +58,10 @@ internal fun NotificationListDialog(
     onReply: suspend (key: String, text: String) -> Boolean,
     onDismiss: () -> Unit
 ) {
-    var open by remember { mutableStateOf<NotificationThread?>(null) }
+    val only = threads.singleOrNull()
+    var open by remember { mutableStateOf(only) }
     var expanded by remember { mutableStateOf(emptySet<String>()) }
-    val viewed = remember { mutableStateListOf<String>() }
+    val viewed = remember { mutableStateListOf<String>().also { list -> only?.let { list.addAll(it.keys) } } }
     val clear by rememberUpdatedState(onClear)
     val flush = {
         if (viewed.isNotEmpty()) {
@@ -75,7 +76,7 @@ internal fun NotificationListDialog(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val thread = open
-                if (thread != null) {
+                if (thread != null && only == null) {
                     IconButton(onClick = { flush(); open = null }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringRes("back"))
                     }
@@ -192,6 +193,13 @@ private fun NotificationThreadView(
             modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (thread.subText.isNotBlank()) {
+                Text(
+                    thread.subText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             (thread.lines + sent.map { "$you: $it" }).forEach { line ->
                 Text(line, style = MaterialTheme.typography.bodyMedium)
             }

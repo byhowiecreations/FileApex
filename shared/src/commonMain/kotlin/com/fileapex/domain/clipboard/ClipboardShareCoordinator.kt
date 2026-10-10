@@ -1,5 +1,6 @@
 package com.fileapex.domain.clipboard
 
+import com.fileapex.data.db.isDockerNode
 import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.cloud.currentPlatformLabel
@@ -84,7 +85,8 @@ object ClipboardShareCoordinator {
         val settings = FileApexServices.settings
         if (settings.clipboardTargetConfigured.value) return
         scope.launch {
-            val paired = FileApexServices.deviceRepository.listDevices()
+            // Docker backup nodes hold a pairing key for pin exchange only; they have no clipboard.
+            val paired = FileApexServices.deviceRepository.listDevices().filterNot { it.isDockerNode() }
             val peers = paired.map {
                 ClipboardSharePolicy.PeerRef(
                     deviceId = it.deviceId,
@@ -281,11 +283,14 @@ object ClipboardShareCoordinator {
             error("clipboard_expired")
         }
         val localId = loadLocalIdentity().deviceId
+        // The key in the request is only a claim. The sender must be a paired device and the key must be
+        // the one on record for it, otherwise anyone on the LAN could push text into the clipboard.
+        val verifiedKey = verifiedSenderKey(senderDeviceId, senderPublicKey)
         val plaintext = ClipboardE2ee.decrypt(
             ciphertextBase64 = ciphertext,
             localDeviceId = localId,
-            peerDeviceId = senderDeviceId,
-            peerPublicKeyBase64 = senderPublicKey
+            peerDeviceId = senderDeviceId.trim(),
+            peerPublicKeyBase64 = verifiedKey
         ).decodeToString()
         val prepared = ClipboardCopySignals.prepare(plaintext)
         if (prepared !is ClipboardCopySignals.Prepared.Ok) {
@@ -328,7 +333,8 @@ object ClipboardShareCoordinator {
     private suspend fun captureAndBroadcast(text: String, desktopPeersOnly: Boolean): Pair<Boolean, String?> {
         val hasTargets = mutex.withLock {
             val settings = FileApexServices.settings
-            val paired = FileApexServices.deviceRepository.listDevices()
+            // Docker backup nodes hold a pairing key for pin exchange only; they have no clipboard.
+            val paired = FileApexServices.deviceRepository.listDevices().filterNot { it.isDockerNode() }
             val targets = ClipboardSharePolicy.resolveBroadcastTargets(
                 mode = settings.clipboardShareMode.value,
                 peers = paired.map {
@@ -466,7 +472,8 @@ object ClipboardShareCoordinator {
         )
         var lastError: Throwable? = null
         if (isTailscaleEnabled()) {
-            val viaTailnet = resolvePeerEndpoint(device, tailnetUp = true)?.takeIf { it.tailnet }
+            val viaTailnet = if (FileApexServices.presenceMonitor.verifiedLanEndpoint(device) != null) null
+                else resolvePeerEndpoint(device, tailnetUp = true)?.takeIf { it.tailnet }
             if (viaTailnet != null) {
                 val tailnetResult = cancellableCatching {
                     FileApexServices.client.sendClipboard(
@@ -602,13 +609,31 @@ object ClipboardShareCoordinator {
         return Pair(fcmSent, if (fcmSent) null else lastError)
     }
 
+    /** Stored key, else the one in the peer's own cloud record. Never a key fetched from the live peer. */
+    internal suspend fun recordedPeerPublicKey(device: PairedDeviceEntity): String {
+        val stored = device.publicKey.trim()
+        if (stored.isNotEmpty()) return stored
+        return GoogleLinkCoordinator.cloudRecordFor(device.deviceId)?.clipboardPublicKey.orEmpty().trim()
+    }
+
+    /** Returns the recorded key when [claimedKey] matches it for a paired, non-removed sender; else throws. */
+    internal suspend fun verifiedSenderKey(senderDeviceId: String, claimedKey: String): String {
+        val device = FileApexServices.deviceRepository.getDevice(senderDeviceId.trim())
+        val cloudKey = if (device != null && device.publicKey.isBlank()) {
+            GoogleLinkCoordinator.cloudRecordFor(device.deviceId)?.clipboardPublicKey.orEmpty()
+        } else {
+            ""
+        }
+        return ClipboardSenderCheck.verify(device, cloudKey, claimedKey)
+    }
+
     internal suspend fun resolvePeerPublicKey(device: PairedDeviceEntity): String {
         val stored = device.publicKey.trim()
         if (stored.isNotEmpty()) return stored
         val cloud = GoogleLinkCoordinator.cloudRecordFor(device.deviceId)
             ?.clipboardPublicKey.orEmpty().trim()
         if (cloud.isNotEmpty()) return cloud
-        val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+        val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
         val live = cancellableCatching {
             FileApexServices.client.fetchPeerNodeState(
                 dial?.host ?: device.lastKnownIp,

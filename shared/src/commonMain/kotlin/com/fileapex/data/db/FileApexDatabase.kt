@@ -60,7 +60,13 @@ data class PairedDeviceEntity(
     /** MagicDNS label confirmed against /api/v1/identity. Empty until that check passes. */
     val tailnetHostname: String = "",
     /** Tailnet IPv4 confirmed against /api/v1/identity. Never copied into lastKnownIp. */
-    val tailnetIpv4: String = ""
+    val tailnetIpv4: String = "",
+    /** SPKI SHA-256 (hex) of this peer's TLS key. Empty until learned over an authenticated channel. */
+    val tlsPin: String = "",
+    /** Second accepted pin while a key change is being confirmed. */
+    val tlsPinAlt: String = "",
+    /** Peer's TLS listener port; 0 when unknown. */
+    val tlsPort: Int = 0
 )
 
 @Entity(tableName = "note_records")
@@ -151,6 +157,11 @@ interface DeviceDao {
     suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String)
 
     @Query(
+        "UPDATE paired_devices SET tlsPin = :pin, tlsPinAlt = :alt, tlsPort = :port WHERE deviceId = :deviceId"
+    )
+    suspend fun updateTls(deviceId: String, pin: String, alt: String, port: Int)
+
+    @Query(
         "UPDATE paired_devices SET cardPosX = :x, cardPosY = :y, cardSortOrder = :order, cardMenuOrder = :menuOrder " +
             "WHERE deviceId = :deviceId"
     )
@@ -234,7 +245,7 @@ interface NoteDao {
         PendingTransferEntity::class,
         NoteEntity::class
     ],
-    version = 13
+    version = 14
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {

@@ -208,3 +208,17 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
+
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "ALTER TABLE `paired_devices` ADD COLUMN `tlsPin` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `paired_devices` ADD COLUMN `tlsPinAlt` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `paired_devices` ADD COLUMN `tlsPort` INTEGER NOT NULL DEFAULT 0"
+        ).forEach { sql ->
+            connection.prepare(sql).use { statement ->
+                statement.step()
+            }
+        }
+    }
+}

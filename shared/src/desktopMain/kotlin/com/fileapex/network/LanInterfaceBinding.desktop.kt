@@ -3,6 +3,7 @@ package com.fileapex.network
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.platform.DesktopMacTrayBridge
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.security.tls.PeerTlsConnector
 import com.fileapex.tailscale.tailscaleLoopbackOrNull
 import com.fileapex.tailscale.writeTailscaleDialToken
 import com.fileapex.util.NetworkUtils
@@ -527,14 +528,14 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
         if (localIp.isNotBlank()) {
             socket.bind(InetSocketAddress(localIp, 0))
         }
-        runCatching {
-            socket.connect(InetSocketAddress(host, port), connectTimeout)
-        }.onFailure {
+        val io = try {
+            PeerTlsConnector.connect(socket, host, port, connectTimeout)
+        } catch (error: Exception) {
             socket.close()
             throw BoundConnectFailed()
         }
-        socket.soTimeout = idleTimeout
-        val output = socket.getOutputStream()
+        io.soTimeout = idleTimeout
+        val output = io.getOutputStream()
         writeTailscaleDialToken(output, dialToken)
         val request = buildString {
             append("GET ")
@@ -559,7 +560,7 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
         }
         output.write(request.toByteArray(Charsets.UTF_8))
         output.flush()
-        val input = socket.getInputStream().buffered()
+        val input = io.getInputStream().buffered()
         val statusCode = readHttpStatusLine(input)
         onStatus?.invoke(statusCode)
         val headerLines = readHttpHeaderLines(input)
@@ -673,17 +674,17 @@ private suspend fun executeBoundUploadOnLocalIp(
         if (localIp.isNotBlank()) {
             socket.bind(InetSocketAddress(localIp, 0))
         }
-        runCatching {
-            socket.connect(InetSocketAddress(host, port), connectTimeout)
-        }.onFailure {
+        val io = try {
+            PeerTlsConnector.connect(socket, host, port, connectTimeout)
+        } catch (error: Exception) {
             socket.close()
             if (TransferActivityGuard.transferCancelRequested()) {
                 throw CancellationException("transfer cancelled")
             }
             throw BoundConnectFailed()
         }
-        socket.soTimeout = idleTimeout
-        val output = socket.getOutputStream()
+        io.soTimeout = idleTimeout
+        val output = io.getOutputStream()
         writeTailscaleDialToken(output, dialToken)
         val header = buildString {
             append("POST ")
@@ -709,9 +710,9 @@ private suspend fun executeBoundUploadOnLocalIp(
         writeBody(output)
         output.flush()
         if (contentLength == null) {
-            socket.shutdownOutput()
+            PeerTlsConnector.shutdownOutput(io)
         }
-        val raw = readHttpResponse(socket.getInputStream())
+        val raw = readHttpResponse(io.getInputStream())
         parseHttpResponse(raw)
     }
 }
@@ -740,8 +741,8 @@ private fun executeBoundHttpOnLocalIp(
         if (localIp.isNotBlank()) {
             socket.bind(InetSocketAddress(localIp, 0))
         }
-        socket.connect(InetSocketAddress(host, port), connectTimeout)
-        socket.soTimeout = readTimeout
+        val io = PeerTlsConnector.connect(socket, host, port, connectTimeout)
+        io.soTimeout = readTimeout
         val payload = body.orEmpty()
         val request = buildString {
             append(method)
@@ -768,11 +769,11 @@ private fun executeBoundHttpOnLocalIp(
                 append(payload)
             }
         }
-        val output = socket.getOutputStream()
+        val output = io.getOutputStream()
         writeTailscaleDialToken(output, dialToken)
         output.write(request.toByteArray(Charsets.UTF_8))
         output.flush()
-        val raw = readHttpResponse(socket.getInputStream())
+        val raw = readHttpResponse(io.getInputStream())
         return parseHttpResponse(raw)
     }
 }

@@ -99,6 +99,7 @@ jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jline = { module = "org.jline:jline", version.ref = "jline" }
 jline-terminal-jna = { module = "org.jline:jline-terminal-jna", version.ref = "jline" }
 bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+bouncycastle-pkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

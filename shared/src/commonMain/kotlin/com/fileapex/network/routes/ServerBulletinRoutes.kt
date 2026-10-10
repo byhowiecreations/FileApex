@@ -10,7 +10,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.request.receiveChannel
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
@@ -25,7 +24,7 @@ import kotlinx.io.files.SystemFileSystem
 internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     post("/api/v1/notes/send") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val record = server.json.decodeFromString(com.fileapex.data.note.NoteRecord.serializer(), body)
             FileApexServices.noteRepository.addNote(
                 record.copy(isMine = false, attachmentLocalPath = null)
@@ -78,7 +77,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
 
     post("/api/v1/notes/delete") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val noteId = jsonObj?.get("noteId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
             val driveFileId = jsonObj?.get("driveFileId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
@@ -101,7 +100,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
 
     post("/api/v1/bulletin/sync/batch") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val batch = server.json.decodeFromString(
                 com.fileapex.data.bulletin.BulletinSyncBatch.serializer(),
                 body
@@ -175,7 +174,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
 
     post("/api/v1/web/post-bulletin") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val url = jsonObj?.get("url")?.let {
                 (it as? kotlinx.serialization.json.JsonPrimitive)?.content

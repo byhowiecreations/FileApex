@@ -93,6 +93,12 @@ class ClusterVersioningAndTombstoneTest {
             }
         }
 
+        override suspend fun updateTls(deviceId: String, pin: String, alt: String, port: Int) {
+            devices[deviceId]?.let {
+                devices[deviceId] = it.copy(tlsPin = pin, tlsPinAlt = alt, tlsPort = port)
+            }
+        }
+
         override suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {
             devices[deviceId]?.let {
                 devices[deviceId] = it.copy(lastKnownIp = ip, port = port)
@@ -108,6 +114,69 @@ class ClusterVersioningAndTombstoneTest {
                 devices[deviceId] = it.copy(deviceName = deviceName)
             }
         }
+    }
+
+    private val pinA = "a".repeat(64)
+    private val pinB = "b".repeat(64)
+
+    private fun tlsPeer(pin: String = "", port: Int = 0) = PairedDeviceEntity(
+        deviceId = "dev-tls",
+        deviceName = "Desk",
+        lastKnownIp = "192.168.1.60",
+        port = 49428,
+        publicKeyHash = "hash-tls",
+        rootPath = "/",
+        clusterVersion = 1000L,
+        tlsPin = pin,
+        tlsPort = port
+    )
+
+    @Test
+    fun pairingDoesNotTrustAnIncomingPinUntilItIsRecorded() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(tlsPeer(pin = pinA, port = 8443))
+        val stored = repo.getDevice("dev-tls")!!
+        assertEquals("", stored.tlsPin)
+        assertEquals(8443, stored.tlsPort)
+        assertTrue(repo.recordTlsPin("dev-tls", pinA.uppercase(), 8443))
+        assertEquals(pinA, repo.getDevice("dev-tls")!!.tlsPin)
+    }
+
+    @Test
+    fun rosterAndIdentityPathsCannotReplaceAStoredPin() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(tlsPeer())
+        repo.recordTlsPin("dev-tls", pinA, 8443)
+
+        repo.upsert(tlsPeer(pin = pinB, port = 9443))
+        repo.upsertReplacingAliases(tlsPeer(pin = pinB, port = 9443).copy(deviceName = "Desk 2"))
+        repo.adoptFromRosterIntro(tlsPeer(pin = pinB, port = 9443).copy(clusterVersion = 5000L))
+        repo.applyPeerNodeState(
+            PeerNodeState(
+                deviceId = "dev-tls", deviceName = "Desk", ipAddress = "192.168.1.60", port = 49428,
+                tlsPin = pinB, tlsPort = 9443
+            ),
+            rosterDeviceId = "dev-tls",
+            observedDirectly = true
+        )
+        val stored = repo.getDevice("dev-tls")!!
+        assertEquals(pinA, stored.tlsPin)
+        assertEquals("", stored.tlsPinAlt)
+    }
+
+    @Test
+    fun recordTlsPinRejectsMalformedPinsAndUnknownDevices() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(tlsPeer())
+        assertFalse(repo.recordTlsPin("dev-tls", "xyz", 8443))
+        assertFalse(repo.recordTlsPin("dev-tls", pinA.dropLast(1), 8443))
+        assertFalse(repo.recordTlsPin("dev-tls", pinA, 8443, alt = "nothex"))
+        assertFalse(repo.recordTlsPin("missing", pinA, 8443))
+        assertEquals("", repo.getDevice("dev-tls")!!.tlsPin)
+        assertTrue(repo.recordTlsPin("dev-tls", pinA, 8443, alt = pinB))
+        assertEquals(pinB, repo.getDevice("dev-tls")!!.tlsPinAlt)
+        assertTrue(repo.clearTlsPin("dev-tls"))
+        assertEquals("", repo.getDevice("dev-tls")!!.tlsPin)
     }
 
     @Test

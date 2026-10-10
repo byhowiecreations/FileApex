@@ -278,7 +278,7 @@ class BulletinBoardSyncEngine(
         val origin = FileApexServices.deviceRepositoryOrNull()?.getDevice(originId)
             ?: FileApexServices.deviceRepositoryOrNull()?.getDevice(message.originDeviceId)
             ?: return null
-        val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(origin, tailnetUp = true) else null
+        val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(origin) == null) resolvePeerEndpoint(origin, tailnetUp = true) else null
         val host = dial?.host ?: origin.lastKnownIp
         val port = dial?.port ?: origin.port
         if (host.isBlank() || port <= 0) return null
@@ -329,7 +329,7 @@ class BulletinBoardSyncEngine(
             val pending = mutableListOf<PeerDrainJob>()
             for (device in devices) {
                 if (device.deviceId == selfId) continue
-                val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+                val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
                 val host = dial?.host ?: device.lastKnownIp
                 val port = dial?.port ?: device.port
                 if (!BulletinOutboxDrainPolicy.shouldAttemptPeer(

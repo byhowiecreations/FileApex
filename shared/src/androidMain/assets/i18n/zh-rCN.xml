@@ -1122,6 +1122,13 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="simple_notifications_coming_soon">通知同步即将推出。</string>
     <string name="simple_device_management">设备管理</string>
     <string name="simple_switch_device">切换设备</string>
+    <string name="locate_phone">查找手机</string>
+    <string name="locate_phone_ringing">FileApex 正在让这部手机响铃</string>
+    <string name="locate_phone_stop">停止</string>
+    <string name="locate_phone_sent">正在让 %1$s 响铃，直到在手机上停止。</string>
+    <string name="locate_phone_failed">无法连接到 %1$s。</string>
+    <string name="locate_phone_pinging">正在响铃查找手机</string>
+    <string name="locate_phone_cancel">取消</string>
     <string name="simple_no_device_title">没有已连接的设备</string>
     <string name="simple_no_device_body">配对设备后即可浏览其文件。</string>
     <string name="simple_other_themes_title">更多主题</string>
@@ -1181,5 +1188,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="simple_more">更多</string>
     <string name="simple_memory_free_of">可用 %1$s，共 %2$s</string>
     <string name="simple_memory_used">（已用 %1$s）</string>
+    <string name="tls_fingerprint_label">安全指纹</string>
+    <string name="tls_pin_new_title">确认安全密钥</string>
+    <string name="tls_pin_new_body">请确认 %1$s 的屏幕上显示相同的指纹。仅在两者一致时继续：</string>
+    <string name="tls_pin_changed_title">安全密钥已更改</string>
+    <string name="tls_pin_changed_body">%1$s 现在使用了不同的安全密钥。重新安装或重置后会出现这种情况。如果不是您操作的，可能有其他人在您的网络中。仅当此指纹与 %1$s 上的一致时才信任：</string>
+    <string name="tls_pin_trust">一致</string>
+    <string name="tls_pin_not_now">暂不</string>
 </resources>
 

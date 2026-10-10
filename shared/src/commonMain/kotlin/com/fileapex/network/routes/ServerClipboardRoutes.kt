@@ -8,7 +8,6 @@ import com.fileapex.network.FileApexServer
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
@@ -42,8 +41,13 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
 
     post("/api/v1/clipboard/opt-in-request") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val request = server.json.decodeFromString(com.fileapex.domain.clipboard.ClipboardOptInRequest.serializer(), body)
+            val requester = FileApexServices.deviceRepository.getDevice(request.senderDeviceId.trim())
+            if (requester == null || requester.isRemoved) {
+                call.respond(HttpStatusCode.Forbidden, "clipboard_sender_unknown")
+                return@runCatching
+            }
             val settings = FileApexServices.settings
             if (!settings.clipboardSharingEnabled.value && !settings.clipboardOptInPromptShown.value) {
                 request.pendingPayload?.let {
@@ -71,11 +75,37 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
                 return@runCatching
             }
+            // Never sent in the clear: sealed to the requesting paired device's recorded key.
+            val requesterId = server.requesterDeviceId(call)
+            val requester = requesterId.takeIf { it.isNotEmpty() }
+                ?.let { FileApexServices.deviceRepository.getDevice(it) }
+                ?.takeIf { !it.isRemoved }
+            val requesterKey = requester?.let {
+                com.fileapex.domain.clipboard.ClipboardShareCoordinator.recordedPeerPublicKey(it)
+            }.orEmpty()
+            if (requester == null || requesterKey.isEmpty()) {
+                call.respond(HttpStatusCode.Forbidden, "clipboard_peer_unverified")
+                return@runCatching
+            }
             val text = withContext(Dispatchers.Main) {
                 com.fileapex.platform.PlatformClipboard.getSystemClipboardText().orEmpty()
             }
+            val localId = server.identityProvider().deviceId
+            val sealed = com.fileapex.domain.clipboard.ClipboardE2ee.encrypt(
+                plaintext = text.encodeToByteArray(),
+                localDeviceId = localId,
+                peerDeviceId = requester.deviceId,
+                peerPublicKeyBase64 = requesterKey
+            )
+            val reply = com.fileapex.domain.clipboard.ClipboardSendRequest(
+                senderDeviceId = localId,
+                senderDeviceName = server.identityProvider().deviceName,
+                senderPublicKey = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64(),
+                ciphertext = sealed,
+                capturedAtEpochMs = com.fileapex.util.TimeUtils.now()
+            )
             call.respondText(
-                text = """{"status":"ok","content":${server.json.encodeToString(text)}}""",
+                text = server.json.encodeToString(com.fileapex.domain.clipboard.ClipboardSendRequest.serializer(), reply),
                 contentType = ContentType.Application.Json
             )
         }.onFailure { error ->
@@ -98,7 +128,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
                 return@runCatching
             }
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val request = server.json.decodeFromString(ClipboardSendRequest.serializer(), body)
             if (request.ciphertext.isBlank() || request.senderPublicKey.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "clipboard_ciphertext_required")
@@ -124,8 +154,13 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
         }.onFailure { error ->
             val message = error.message.orEmpty()
             when {
+                error is RequestBodyTooLargeException ->
+                    call.respond(HttpStatusCode.PayloadTooLarge, "clipboard_too_large")
                 message.contains("clipboard_disabled") ->
                     call.respondText("clipboard_disabled", status = HttpStatusCode.Forbidden)
+                message.contains("clipboard_sender_unknown") ||
+                    message.contains("clipboard_sender_unverified") ->
+                    call.respond(HttpStatusCode.Forbidden, "clipboard_sender_unverified")
                 message.contains("clipboard_expired") ->
                     call.respond(HttpStatusCode.BadRequest, "clipboard_expired")
                 message.contains("clipboard_ciphertext_required") ||
@@ -149,7 +184,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
 
     post("/api/v1/web/send-clipboard") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val targetDeviceId = jsonObj?.get("targetDeviceId")?.let {
                 (it as? kotlinx.serialization.json.JsonPrimitive)?.content

@@ -2,6 +2,10 @@ package com.fileapex.network.routes
 
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
+import com.fileapex.di.FileApexServices
+import com.fileapex.domain.notifications.NotificationCompanionGrant
+import com.fileapex.domain.device.PhoneLocator
+import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.network.FileApexServer
 import com.fileapex.platform.collectDeviceDiagnostics
 import com.fileapex.platform.collectDeviceSummary
@@ -10,7 +14,6 @@ import com.fileapex.platform.collectFastBatteryDiagnostics
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
@@ -71,8 +74,17 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/device/beep") {
+        val continuous = call.request.queryParameters["continuous"] == "1"
+        if (continuous) {
+            // The long alarm needs a paired computer on mutual TLS that this phone has granted companion status.
+            val computer = pairedComputerId(server, call)
+            if (computer == null || !NotificationCompanionGrant.isActive(computer)) {
+                call.respond(HttpStatusCode.Forbidden, "not_companion")
+                return@post
+            }
+        }
         runCatching {
-            com.fileapex.platform.triggerLocalLocatorSound()
+            com.fileapex.platform.triggerLocalLocatorSound(continuous)
             call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
         }.onFailure { error ->
             server.onLog("POST /api/v1/device/beep failed", error)
@@ -80,9 +92,29 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
         }
     }
 
+    post("/api/v1/device/beep/stop") {
+        if (pairedComputerId(server, call) == null) {
+            call.respond(HttpStatusCode.Forbidden, "not_paired_computer")
+            return@post
+        }
+        com.fileapex.platform.stopLocalLocatorSound()
+        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+    }
+
+    // The phone reports that the user stopped the alarm there.
+    post("/api/v1/device/beep/found") {
+        val phone = server.bridgedPeer(call)?.deviceId
+        if (phone == null) {
+            call.respond(HttpStatusCode.Forbidden, "tls_required")
+            return@post
+        }
+        PhoneLocator.markFound(phone)
+        call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+    }
+
     post("/api/v1/device/alert") {
         runCatching {
-            val body = call.receiveText()
+            val body = call.receiveBoundedText()
             val title = runCatching {
                 server.json.parseToJsonElement(body)
             }.getOrNull()?.let { elem ->
@@ -106,4 +138,11 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.InternalServerError, "alert_failed")
         }
     }
+}
+
+/** The certificate-authenticated sender when it is a paired, non-removed computer; null otherwise. */
+private suspend fun pairedComputerId(server: FileApexServer, call: io.ktor.server.application.ApplicationCall): String? {
+    val id = server.bridgedPeer(call)?.deviceId ?: return null
+    val device = FileApexServices.deviceRepository.getDevice(id) ?: return null
+    return id.takeIf { !device.isRemoved && PeerPlatform.isDesktop(device.os, device.platform) }
 }

@@ -25,6 +25,7 @@ object AndroidNotificationChannels {
     private const val LEGACY_APP_UPDATES = "fileapex_app_updates"
     const val TRANSFER_RECEIVE = "fileapex_transfer_receive"
     const val NOTE_MESSAGES = "fileapex_note_messages"
+    const val LOCATE_PHONE = "fileapex_locate_phone"
     const val BATTERY_ALERTS = "fileapex_battery_alerts_v1"
     const val BULLETIN_CRITICAL = BATTERY_ALERTS
     const val DRIVE_RELAY = "fileapex_drive_relay"
@@ -69,6 +70,17 @@ object AndroidNotificationChannels {
             description = com.fileapex.i18n.AppI18n.t("channel_notes_desc")
             enableVibration(true)
         }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureLocatePhoneChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            LOCATE_PHONE,
+            com.fileapex.i18n.AppI18n.t("locate_phone"),
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply { setSound(null, null) }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)
     }

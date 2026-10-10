@@ -859,6 +859,25 @@ fun App(
     val optInPromptShown by FileApexServices.settings.clipboardOptInPromptShown.collectAsState()
     val clipboardSharingEnabled by FileApexServices.settings.clipboardSharingEnabled.collectAsState()
 
+    val tlsPrompts by com.fileapex.security.tls.PeerTlsStatus.prompts.collectAsState()
+    tlsPrompts.firstOrNull()?.let { tlsPrompt ->
+        val tlsScope = rememberCoroutineScope()
+        var tlsDeviceName by remember(tlsPrompt.deviceId) { mutableStateOf("") }
+        LaunchedEffect(tlsPrompt.deviceId) {
+            tlsDeviceName = FileApexServices.deviceRepository.getDevice(tlsPrompt.deviceId)?.deviceName.orEmpty()
+        }
+        com.fileapex.ui.dialogs.TlsPinPromptDialog(
+            prompt = tlsPrompt,
+            deviceName = tlsDeviceName,
+            onTrust = {
+                tlsScope.launch {
+                    com.fileapex.security.tls.TlsPinAnnouncements.confirm(FileApexServices.deviceRepository, tlsPrompt)
+                }
+            },
+            onNotNow = { com.fileapex.security.tls.TlsPinAnnouncements.decline(tlsPrompt) }
+        )
+    }
+
     LaunchedEffect(pendingClipboardOptInSender, optInPromptShown) {
         if (pendingClipboardOptInSender != null && optInPromptShown) {
             onClipboardOptInConsumed()

@@ -283,6 +283,10 @@
         </receiver>
 
         <receiver
+            android:name="com.fileapex.platform.LocatorStopReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name="com.fileapex.platform.ClipboardActionReceiver"
             android:exported="false">
             <intent-filter>

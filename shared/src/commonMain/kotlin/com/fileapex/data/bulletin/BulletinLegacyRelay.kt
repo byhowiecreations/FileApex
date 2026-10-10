@@ -45,7 +45,7 @@ object BulletinLegacyRelay {
         )
         scope.launch {
             for (device in peers) {
-                val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+                val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
                 val host = dial?.host ?: device.lastKnownIp
                 val port = dial?.port ?: device.port
                 if (host.isBlank() || port <= 0) continue
@@ -71,7 +71,7 @@ object BulletinLegacyRelay {
             record.attachmentSizeBytes <= DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
         ServerLifecycleManager.ensureRunning()
         for (device in peers) {
-            val dial = if (isTailscaleEnabled()) resolvePeerEndpoint(device, tailnetUp = true) else null
+            val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
             val host = dial?.host ?: device.lastKnownIp
             val port = dial?.port ?: device.port
             if (host.isBlank() || port <= 0) continue

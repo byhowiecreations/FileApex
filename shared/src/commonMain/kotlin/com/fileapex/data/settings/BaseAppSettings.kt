@@ -210,6 +210,8 @@ class BaseAppSettings(
     override val notificationBroadcastApps: StateFlow<Set<String>> = notificationBroadcastAppsFlow.asStateFlow()
     private val simpleActiveDeviceIdFlow = MutableStateFlow(store.getString(KEY_SIMPLE_ACTIVE_DEVICE_ID, ""))
     override val simpleActiveDeviceId: StateFlow<String> = simpleActiveDeviceIdFlow.asStateFlow()
+    private val notificationCompanionGrantFlow = MutableStateFlow(store.getString(KEY_NOTIFICATION_COMPANION_GRANT, ""))
+    override val notificationCompanionGrant: StateFlow<String> = notificationCompanionGrantFlow.asStateFlow()
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
@@ -877,6 +879,11 @@ class BaseAppSettings(
         store.putString(KEY_SIMPLE_ACTIVE_DEVICE_ID, deviceId)
     }
 
+    override fun setNotificationCompanionGrant(json: String) {
+        notificationCompanionGrantFlow.value = json
+        store.putString(KEY_NOTIFICATION_COMPANION_GRANT, json)
+    }
+
     override fun setOtherThemesHintShown(shown: Boolean) {
         otherThemesHintShownFlow.value = shown
         store.putBoolean(KEY_OTHER_THEMES_HINT_SHOWN, shown)
@@ -1208,6 +1215,7 @@ class BaseAppSettings(
         updateCheckPromptShownFlow.value = false
         otherThemesHintShownFlow.value = false
         simpleActiveDeviceIdFlow.value = ""
+        notificationCompanionGrantFlow.value = ""
         notificationBroadcastEnabledFlow.value = false
         notificationBroadcastTargetFlow.value = ""
         notificationBroadcastCodesFlow.value = false
@@ -1307,6 +1315,7 @@ class BaseAppSettings(
         const val KEY_NOTIFICATION_BROADCAST_DISMISSAL = "notification_broadcast_dismissal"
         const val KEY_DEVICE_NOTIFICATION_POPUPS = "device_notification_popups"
         const val KEY_NOTIFICATION_BROADCAST_APPS = "notification_broadcast_apps"
+        const val KEY_NOTIFICATION_COMPANION_GRANT = "notification_companion_grant"
         const val KEY_SIMPLE_ACTIVE_DEVICE_ID = "simple_active_device_id"
         const val KEY_OTHER_THEMES_HINT_SHOWN = "other_themes_hint_shown"
         const val KEY_THEME_DEFAULT_MIGRATED = "theme_default_migrated"

@@ -41,7 +41,10 @@ data class PeerNodeState(
     val removedAt: Long? = null,
     /** [ClusterClock] stamp of this device's latest pairing. */
     val membershipVersion: Long = 0L,
-    val membershipProtocol: Int = 0
+    val membershipProtocol: Int = 0,
+    /** Claimed SPKI SHA-256 hex of this device's TLS key. Never trusted unless it matches a stored pin. */
+    val tlsPin: String = "",
+    val tlsPort: Int = 0
 ) {
     val hasMembershipProtocol: Boolean
         get() = membershipProtocol >= ClusterClock.MEMBERSHIP_PROTOCOL

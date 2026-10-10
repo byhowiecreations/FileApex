@@ -72,13 +72,69 @@ object DesktopMacTrayBridge {
         // uses DispatchQueue.main.sync; invoking that from a background preload/IO thread
         // stalls behind Compose's first frames (~6s+) and made Mac cold start feel broken.
         return runCatching {
-            native = Native.load(dylib.absolutePath, FileApexTrayNative::class.java)
+            val lib = Native.load(dylib.absolutePath, FileApexTrayNative::class.java)
+            // Published only after the TLS identity and route table are in the native client; a request
+            // that got there first would be sent as plain HTTP to a pinned peer.
+            installLanTls(lib)
+            native = lib
             println("DesktopMacTrayBridge: loaded ${dylib.absolutePath}")
             true
         }.getOrElse { error ->
             println("DesktopMacTrayBridge: load failed :: ${error.message}")
             false
         }
+    }
+
+    /**
+     * The native client dials pinned peers over TLS itself. It gets this device's identity once and the
+     * peer table on every roster change. Without the identity it refuses to talk to a pinned peer.
+     */
+    private fun installLanTls(lib: FileApexTrayNative) {
+        runCatching {
+            val identity = com.fileapex.security.tls.DesktopTlsIdentity.store().getOrCreate()
+            val password = java.util.UUID.randomUUID().toString()
+            val p12 = com.fileapex.security.tls.TlsPkcs12.export(identity, password.toCharArray())
+            val memory = Memory(p12.size.toLong()).also { it.write(0, p12, 0, p12.size) }
+            val rc = lib.fileapex_lan_tls_set_identity(memory, p12.size, password)
+            if (rc != 0) println("DesktopMacTrayBridge: native TLS identity rejected")
+        }.onFailure { error ->
+            println("DesktopMacTrayBridge: native TLS identity unavailable :: ${error.message}")
+        }
+        com.fileapex.security.tls.PeerTlsRoutes.onChange = { pushLanTlsRoutes(lib, it) }
+        pushLanTlsRoutes(lib, com.fileapex.security.tls.PeerTlsRoutes.snapshot())
+    }
+
+    /** The native client refused a pinned peer; if it saw a different key, ask the user about it. */
+    internal fun reportNativeTlsMismatch(url: String) {
+        val lib = native ?: return
+        runCatching {
+            val uri = java.net.URI(url)
+            val host = uri.host ?: return
+            val port = uri.port
+            val route = com.fileapex.security.tls.PeerTlsRoutes.lookup(host, port) ?: return
+            val buffer = Memory(128)
+            if (lib.fileapex_lan_tls_take_mismatch(host, port, buffer, 128) != 0) return
+            val pin = buffer.getString(0).lowercase()
+            if (pin.length != 64) return
+            com.fileapex.security.tls.PeerTlsStatus.reportPinMismatch(route.deviceId)
+            com.fileapex.security.tls.PeerTlsStatus.requestConfirmation(
+                com.fileapex.security.tls.TlsPinPrompt(
+                    route.deviceId,
+                    com.fileapex.security.tls.TlsPromptKind.KEY_CHANGED,
+                    pin,
+                    route.tlsPort
+                )
+            )
+        }
+    }
+
+    private fun pushLanTlsRoutes(lib: FileApexTrayNative, entries: List<com.fileapex.security.tls.PeerTlsEndpoint>) {
+        val json = entries.joinToString(prefix = "[", postfix = "]", separator = ",") { entry ->
+            val pins = entry.route.pins.joinToString(prefix = "[", postfix = "]", separator = ",") { "\"$it\"" }
+            "{\"host\":\"${entry.host}\",\"port\":${entry.httpPort},\"tlsPort\":${entry.route.tlsPort},\"pins\":$pins}"
+        }
+        runCatching { lib.fileapex_lan_tls_set_routes(json) }
+            .onFailure { println("DesktopMacTrayBridge: native TLS routes failed :: ${it.message}") }
     }
 
     fun startLocalNetworkProbe() {
@@ -149,7 +205,10 @@ object DesktopMacTrayBridge {
             println("DesktopMacLanHttp: $method $url failed - ${error.message}")
             return null
         }
-        if (rc != 0) return null
+        if (rc != 0) {
+            reportNativeTlsMismatch(url)
+            return null
+        }
         return readNativeHttp(lib, status, bodyPtr, bodyLen)
     }
 
@@ -203,7 +262,10 @@ object DesktopMacTrayBridge {
             println("DesktopMacLanHttp: upload $url failed - ${error.message}")
             return null
         }
-        if (rc != 0) return null
+        if (rc != 0) {
+            reportNativeTlsMismatch(url)
+            return null
+        }
         return readNativeHttp(lib, status, bodyPtr, bodyLen)
     }
 
@@ -225,7 +287,10 @@ object DesktopMacTrayBridge {
             println("DesktopMacLanHttp: download $url failed - ${error.message}")
             return null
         }
-        if (rc != 0) return null
+        if (rc != 0) {
+            reportNativeTlsMismatch(url)
+            return null
+        }
         val code = status.value
         return code.takeIf { it > 0 }
     }
@@ -526,6 +591,9 @@ object DesktopMacTrayBridge {
         fun fileapex_tray_setup()
         fun fileapex_tray_start_local_network_probe()
         fun fileapex_lan_set_peer_callback(callback: LanPeerCallback?)
+        fun fileapex_lan_tls_set_routes(json: String): Int
+        fun fileapex_lan_tls_take_mismatch(host: String, port: Int, out: Pointer, outLen: Int): Int
+        fun fileapex_lan_tls_set_identity(p12: Pointer, p12Len: Int, password: String): Int
         fun fileapex_lan_http_execute(
             method: String,
             url: String,

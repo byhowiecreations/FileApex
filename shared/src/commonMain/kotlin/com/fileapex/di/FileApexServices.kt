@@ -153,6 +153,19 @@ object FileApexServices {
             RevokedByPeerNotice.onRevoked(host, deviceRepository.listDevices())
         }
         client.membershipVersionProvider = { deviceRepository.selfMembershipVersion() }
+        // Routes must exist before the first request, or a pinned peer could be reached over HTTP.
+        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            com.fileapex.security.tls.PeerTlsRoutes.update(deviceRepository.listDevices())
+        }
+        bootstrapScope.launch {
+            deviceRepository.observeDevices().collect { com.fileapex.security.tls.PeerTlsRoutes.update(it) }
+        }
+        com.fileapex.security.tls.TlsPinAnnouncer(
+            repository = deviceRepository,
+            client = client,
+            onlineDeviceIds = { presenceMonitor.onlineDeviceIds.value },
+            scope = bootstrapScope
+        ).ensureStarted()
         LocalDeviceNameStore.ensureLoaded()
         DeviceNamePeerLabelsStore.ensureLoaded()
         noteRepository.attachLegacyDao(database.noteDao(), bootstrapScope)

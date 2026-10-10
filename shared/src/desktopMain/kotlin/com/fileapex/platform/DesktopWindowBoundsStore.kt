@@ -58,6 +58,25 @@ object DesktopWindowBoundsStore {
 
     fun hasValidSaved(): Boolean = loadValidated() != null
 
+    /** Size last used with this theme, or null when the theme has never been resized. */
+    fun loadSize(themeKey: String): DpSize? {
+        val width = prefs.getInt("$KEY_WIDTH.$themeKey", 0)
+        val height = prefs.getInt("$KEY_HEIGHT.$themeKey", 0)
+        if (width <= 0 || height <= 0) return null
+        val screen = DesktopScreenGeometry.primaryTopLeft()
+        if (width < DesktopWindowBoundsValidator.MIN_WIDTH_PX || height < DesktopWindowBoundsValidator.MIN_HEIGHT_PX) return null
+        if (width > screen.width || height > screen.height) return null
+        return DpSize(DesktopUiMetrics.pixelsToDp(width), DesktopUiMetrics.pixelsToDp(height))
+    }
+
+    fun persistSize(themeKey: String, size: DpSize) {
+        val width = DesktopUiMetrics.dpToPixels(size.width)
+        val height = DesktopUiMetrics.dpToPixels(size.height)
+        if (width < DesktopWindowBoundsValidator.MIN_WIDTH_PX || height < DesktopWindowBoundsValidator.MIN_HEIGHT_PX) return
+        prefs.putInt("$KEY_WIDTH.$themeKey", width)
+        prefs.putInt("$KEY_HEIGHT.$themeKey", height)
+    }
+
     fun persist(size: DpSize, position: WindowPosition) {
         if (position.x == Dp.Unspecified || position.y == Dp.Unspecified) return
         val widthPx = DesktopUiMetrics.dpToPixels(size.width)
@@ -100,8 +119,8 @@ object DesktopUiMetrics {
 }
 
 object DesktopWindowBoundsValidator {
-    private const val MIN_WIDTH_PX = 320
-    private const val MIN_HEIGHT_PX = 400
+    const val MIN_WIDTH_PX = 320
+    const val MIN_HEIGHT_PX = 400
     private const val MIN_VISIBLE_WIDTH_PX = 120
     private const val MIN_VISIBLE_HEIGHT_PX = 48
 

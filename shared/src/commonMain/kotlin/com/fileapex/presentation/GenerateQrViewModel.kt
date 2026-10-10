@@ -99,7 +99,9 @@ class GenerateQrViewModel : ViewModel() {
                     port = live.sharePort,
                     rootPath = live.rootPath,
                     pinRequired = FileApexServices.settings.pinRequiredEnabled.value,
-                    pairingCode = freshRandomCode
+                    pairingCode = freshRandomCode,
+                    tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
+                    tlsPort = com.fileapex.security.tls.LocalTlsInfo.port
                 )
             }
 

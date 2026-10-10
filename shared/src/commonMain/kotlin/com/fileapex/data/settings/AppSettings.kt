@@ -197,6 +197,9 @@ interface AppSettings {
     /** Device the Simple theme browses, shows on Home and sends the clipboard to; empty means first available. */
     val simpleActiveDeviceId: StateFlow<String>
     fun setSimpleActiveDeviceId(deviceId: String)
+    /** Phone only, hidden: JSON of the last notification companion grant a paired computer sent; empty when none. */
+    val notificationCompanionGrant: StateFlow<String>
+    fun setNotificationCompanionGrant(json: String)
     fun setOtherThemesHintShown(shown: Boolean)
     fun setCheckForUpdatesInterval(unit: UpdateCheckUnit, amount: Int)
     fun setLastUpdateCheckEpochMs(epochMs: Long)
