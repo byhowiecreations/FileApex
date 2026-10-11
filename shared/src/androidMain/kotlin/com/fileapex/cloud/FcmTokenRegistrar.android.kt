@@ -1,6 +1,7 @@
 package com.fileapex.cloud
 
 import android.util.Log
+import com.fileapex.util.cancellableCatching
 import com.google.firebase.messaging.FirebaseMessaging
 import com.fileapex.di.FileApexServices
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +27,7 @@ actual object FcmTokenRegistrar {
     }
 
     private suspend fun publishCurrentToken() {
-        runCatching {
+        cancellableCatching {
             val token = FirebaseMessaging.getInstance().token.await()
             if (token.isNotBlank()) publishToken(token)
         }.onFailure { error ->

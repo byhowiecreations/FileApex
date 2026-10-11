@@ -1,5 +1,6 @@
 package com.fileapex.data.settings
 
+import com.fileapex.util.cancellableCatching
 import java.util.concurrent.atomic.AtomicReference
 import java.util.prefs.Preferences
 
@@ -28,7 +29,7 @@ private class DesktopSettingsKvStore(
     }
 
     override fun clear() {
-        runCatching { prefs.clear() }
+        cancellableCatching { prefs.clear() }
     }
 }
 

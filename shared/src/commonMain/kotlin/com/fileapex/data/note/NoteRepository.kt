@@ -19,6 +19,7 @@ import com.fileapex.platform.textContainsWebUrl
 import com.fileapex.update.BulletinApkUpdateCoordinator
 import com.fileapex.update.BulletinApkUpdatePolicy
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -608,7 +609,7 @@ class NoteRepository {
             val latest = mutex.withLock { _notes.value.firstOrNull { it.noteId == note.noteId } } ?: note
             val local = latest.attachmentLocalPath
             if (!local.isNullOrBlank() && SystemFileSystem.exists(Path(local))) return
-            val path = runCatching {
+            val path = cancellableCatching {
                 com.fileapex.cloud.drive.DriveRelayCoordinator.materializeNoteAttachment(latest)
             }.getOrElse { error ->
                 println("NoteRepository: attachment download attempt ${attempt + 1} failed - ${error.message}")
@@ -628,7 +629,7 @@ class NoteRepository {
         if (note.noteId in retractedKeys) return false
         val currentDao = legacyDao
         if (currentDao != null) {
-            runCatching { currentDao.insertNote(note.toLegacyEntity()) }
+            cancellableCatching { currentDao.insertNote(note.toLegacyEntity()) }
         }
         val added = mutex.withLock {
             val current = _notes.value

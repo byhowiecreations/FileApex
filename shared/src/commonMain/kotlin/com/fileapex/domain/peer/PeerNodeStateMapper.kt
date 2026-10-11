@@ -9,7 +9,6 @@ import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.update.currentAppVersionCode
 import com.fileapex.update.currentAppVersionName
-import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import kotlinx.serialization.encodeToString
@@ -31,6 +30,7 @@ object PeerNodeStateMapper {
         val advertiseIp = NetworkUtils.lanBindCandidates().firstOrNull()
             ?: NetworkUtils.preferredLanIpv4()
         val hardware = localDeviceHardwareProfile()
+        val localPublicKey = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64()
         return PeerNodeState(
             deviceId = identity.deviceId,
             deviceName = deviceName.trim(),
@@ -45,8 +45,8 @@ object PeerNodeStateMapper {
             supportedProtocols = PeerNodeProtocols.DEFAULT,
             lastSeenTimestamp = lastSeenTimestamp,
             rootPath = identity.rootPath,
-            publicKeyHash = DeviceIdentityMarkers.fingerprint(identity.deviceId),
-            publicKey = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64(),
+            publicKeyHash = com.fileapex.security.IdentityBinding.hashFor(identity.deviceId, localPublicKey),
+            publicKey = localPublicKey,
             pinRequired = pinRequired,
             downloadsPath = defaultDownloadsDir(),
             clusterVersion = lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now(),

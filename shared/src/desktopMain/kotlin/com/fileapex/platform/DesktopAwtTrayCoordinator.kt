@@ -3,6 +3,7 @@ package com.fileapex.platform
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 import java.awt.MenuItem
 import java.awt.Point
 import java.awt.PopupMenu
@@ -14,6 +15,7 @@ import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,7 +76,7 @@ object DesktopAwtTrayCoordinator {
             return
         }
 
-        runCatching {
+        cancellableCatching {
             installTrayIcon()
             startDeviceSync()
             installed = true
@@ -138,7 +140,7 @@ object DesktopAwtTrayCoordinator {
         trayPopover?.dispose()
         trayPopover = null
         DesktopWindowsDropBox.dispose()
-        runCatching {
+        cancellableCatching {
             val tray = SystemTray.getSystemTray()
             trayIcon?.let { tray.remove(it) }
         }.onFailure { error ->
@@ -276,7 +278,10 @@ object DesktopAwtTrayCoordinator {
                         else -> AppI18n.plural("n_files_sent_short", paths.size, paths.size.toString())
                     }
                     showBalloon(message)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (error: Exception) {
+                    println("DesktopAwtTrayCoordinator: send failed - ${error::class.simpleName}")
                     showBalloon(error.message ?: AppI18n.t("send_failed"))
                 } finally {
                     DesktopWindowsDropBox.onSendFinished()

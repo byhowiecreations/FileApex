@@ -28,6 +28,7 @@ import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
 import com.fileapex.platform.BootLaunchPreference
 import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.update.AppUpdateCoordinator
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -750,7 +751,7 @@ class SettingsViewModel : ViewModel() {
             return
         }
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, emailHint)
             }.onSuccess { session ->
                 _uiState.update {
@@ -770,7 +771,7 @@ class SettingsViewModel : ViewModel() {
 
     fun disableGoogleAccountLink() {
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 GoogleLinkCoordinator.unlinkAndSignOut()
             }.onSuccess {
                 _uiState.update {
@@ -840,7 +841,7 @@ class SettingsViewModel : ViewModel() {
             }
             val uid = settings.googleAccountUid.value
             val deviceId = loadLocalIdentity().deviceId
-            runCatching {
+            cancellableCatching {
                 DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled)
             }.onFailure { error ->
                 println("SettingsViewModel: diagnostics cloud sync failed - ${error.message}")
@@ -902,7 +903,7 @@ class SettingsViewModel : ViewModel() {
         if (_uiState.value.drivePurgeNowBusy) return
         viewModelScope.launch {
             _uiState.update { it.copy(drivePurgeNowBusy = true, drivePurgeNowMessage = null) }
-            runCatching { com.fileapex.cloud.drive.DriveRelayCoordinator.purgeRelayNow() }
+            cancellableCatching { com.fileapex.cloud.drive.DriveRelayCoordinator.purgeRelayNow() }
                 .onSuccess { deleted ->
                     _uiState.update {
                         it.copy(
@@ -956,7 +957,7 @@ class SettingsViewModel : ViewModel() {
             it.copy(deviceNameSaveBusy = true, deviceNameError = null, deviceNameStatus = null)
         }
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 DeviceNameCoordinator.saveLocalBroadcastName(draft)
             }.onSuccess {
                 _uiState.update {

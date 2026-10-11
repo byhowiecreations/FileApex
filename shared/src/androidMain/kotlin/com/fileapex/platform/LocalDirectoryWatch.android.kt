@@ -20,6 +20,7 @@ actual fun watchLocalDirectory(absolutePath: String, onChange: () -> Unit): Dire
     return DirectoryWatch { observer.stopWatching() }
 }
 
+// String ctor is the only one before API 29
 @Suppress("DEPRECATION")
 private fun legacyObserver(absolutePath: String, mask: Int, onChange: () -> Unit): FileObserver {
     return object : FileObserver(absolutePath, mask) {

@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import kotlin.text.Charsets
 
 import com.fileapex.data.db.createFileApexDatabase
@@ -93,7 +94,7 @@ object DesktopNetworkingSmokeProbe {
     }
 
     private fun checkDatabaseBootstrap(): SmokeCheck = runBlocking {
-        runCatching {
+        cancellableCatching {
             val db = createFileApexDatabase()
             db.deviceDao().getAllDevicesOnce()
             db.close()
@@ -156,7 +157,7 @@ object DesktopNetworkingSmokeProbe {
             )
         }
 
-        runCatching {
+        cancellableCatching {
             val jmdns = JmDNS.create(bindAddress)
             try {
                 val listener = object : ServiceListener {
@@ -203,7 +204,7 @@ object DesktopNetworkingSmokeProbe {
             )
         }
 
-        val stackProbe = runCatching {
+        val stackProbe = cancellableCatching {
             FileApexMdnsBrowser.start { _, _, _ -> }
             FileApexMdnsAdvertiser.start(SMOKE_MDNS_PORT, "stack-probe")
             FileApexMdnsAdvertiser.stop()
@@ -236,7 +237,7 @@ object DesktopNetworkingSmokeProbe {
 
     private fun checkShareServerHealth(): SmokeCheck {
         val server = FileApexServer(port = SMOKE_HTTP_PORT)
-        return runCatching {
+        return cancellableCatching {
             server.start()
             check(server.isRunning) { "engine not running" }
             val status = httpGetStatus("127.0.0.1", SMOKE_HTTP_PORT, "/api/v1/health")
@@ -253,7 +254,7 @@ object DesktopNetworkingSmokeProbe {
                 detail = error.message ?: error.toString()
             )
         }.also {
-            runCatching { server.stop() }
+            cancellableCatching { server.stop() }
         }
     }
 

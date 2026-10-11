@@ -11,6 +11,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.fileapex.data.settings.androidAppContextOrNull
+import com.fileapex.util.cancellableCatching
 import java.util.concurrent.TimeUnit
 
 actual object DriveSyncScheduler {
@@ -63,7 +64,7 @@ class DriveSyncWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        return runCatching {
+        return cancellableCatching {
             DriveRelayCoordinator.sweep()
             Result.success()
         }.getOrElse { error ->

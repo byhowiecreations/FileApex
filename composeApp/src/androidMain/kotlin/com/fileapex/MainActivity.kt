@@ -53,6 +53,7 @@ import android.util.Log
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.withAppLocale
+import com.fileapex.util.cancellableCatching
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -288,7 +289,7 @@ class MainActivity : ComponentActivity() {
             startShareServer()
         }
         lifecycleScope.launch {
-            runCatching {
+            cancellableCatching {
                 com.fileapex.di.FileApexServices.deviceRepository.observeDevices().collect { devices ->
                     if (devices.isNotEmpty() && onboardingComplete) {
                         startShareServer(force = true)
@@ -415,7 +416,7 @@ class MainActivity : ComponentActivity() {
             isPreparingShare = false
             sharePrepareError = null
             lifecycleScope.launch {
-                runCatching {
+                cancellableCatching {
                     com.fileapex.platform.AndroidShareBulletin.ingestShareIntent(this@MainActivity, shareIntent)
                     com.fileapex.platform.BriefToast.show(com.fileapex.i18n.AppI18n.t("posted_to_bulletin"))
                 }.onFailure { error ->
@@ -482,7 +483,7 @@ class MainActivity : ComponentActivity() {
                 }
             )
             isPreparingShare = false
-            runCatching {
+            cancellableCatching {
                 AndroidShareIntake.stageShareUris(this@MainActivity, uris, sessionId)
             }.fold(
                 onSuccess = { payload ->

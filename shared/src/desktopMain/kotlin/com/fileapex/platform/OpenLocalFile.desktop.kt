@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import java.awt.Desktop
 import java.io.File
 
@@ -21,7 +22,7 @@ actual fun revealInFolder(absolutePath: String) {
         else -> null
     }
     if (command != null) {
-        runCatching { ProcessBuilder(command).redirectErrorStream(true).start() }
+        cancellableCatching { ProcessBuilder(command).redirectErrorStream(true).start() }
             .onFailure { error -> println("revealInFolder: ${error.message}") }
         return
     }

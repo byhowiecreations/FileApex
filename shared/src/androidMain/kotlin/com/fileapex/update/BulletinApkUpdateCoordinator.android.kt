@@ -12,6 +12,7 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.network.TransferTransactionJournal
 import com.fileapex.platform.AndroidNotificationChannels
 import com.fileapex.platform.notifyAppUpdateAvailable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -140,6 +141,9 @@ actual object BulletinApkUpdateCoordinator {
                 PendingUpdateStore.setLastAttemptedNoteId(note.noteId)
                 PendingUpdateStore.setLastAttemptedInstallTimestamp(0L)
 
+                if (AppUpdateCoordinator.promptForInstallPermissionIfMissing(toast = isAppInForeground())) {
+                    return@launch
+                }
                 AppUpdateCoordinator.dismissUpdateSheet()
                 if (isAppInForeground()) {
                     runCatching {
@@ -151,6 +155,8 @@ actual object BulletinApkUpdateCoordinator {
                         println("BulletinApkUpdateCoordinator: install launch failed - ${error.message}")
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
                 println("BulletinApkUpdateCoordinator: failed processing $fileName - ${error.message}")
                 error.printStackTrace()
@@ -206,6 +212,9 @@ actual object BulletinApkUpdateCoordinator {
             )
             AppUpdateCoordinator.setPendingOffer(offer)
             notifyAppUpdateAvailable(offer)
+            if (AppUpdateCoordinator.promptForInstallPermissionIfMissing(toast = isAppInForeground())) {
+                return@launch
+            }
             if (isAppInForeground()) {
                 runCatching {
                     PlatformUpdateInstaller.installAndRelaunch(

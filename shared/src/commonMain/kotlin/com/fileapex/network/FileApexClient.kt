@@ -10,6 +10,7 @@ import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.generateDeviceId
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.encodeURLParameter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -493,20 +494,52 @@ class FileApexClient(
         port: Int,
         timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS,
         companion: Boolean? = null
-    ): Boolean {
-        if (!PeerLanHttpPolicy.canRoute(host)) return false
+    ): Boolean = probeHealth(host, port, timeoutMs, companion).reached
+
+    /** [respondedAs] is the device id the answering node reported; null from builds that do not report one. */
+    data class HealthProbe(val reached: Boolean, val respondedAs: String? = null)
+
+    suspend fun probeHealth(
+        host: String,
+        port: Int,
+        timeoutMs: Long = HEALTH_PROBE_TIMEOUT_MS,
+        companion: Boolean? = null
+    ): HealthProbe {
+        if (!PeerLanHttpPolicy.canRoute(host)) return HealthProbe(false)
         // The phone applies this only when the poll reached it over TLS from a paired computer.
         val healthPath = if (companion == null) "/api/v1/health" else "/api/v1/health?companion=${if (companion) 1 else 0}"
-        val health = peerHttpGet(host, port, withSenderQuery(healthPath), timeoutMs) ?: return false
+        val health = peerHttpGet(host, port, withSenderQuery(healthPath), timeoutMs) ?: return HealthProbe(false)
         checkRevocation(host, health)
-        if (health.statusCode in 200..299) return true
-        if (health.statusCode != 404) return false
+        if (health.statusCode in 200..299) return HealthProbe(true, health.body.respondedAsId())
+        if (health.statusCode != 404) return HealthProbe(false)
         val heartbeat = peerHttpGet(host, port, withSenderQuery("/api/v1/heartbeat"), timeoutMs)
         if (heartbeat != null) {
             checkRevocation(host, heartbeat)
-            if (heartbeat.statusCode in 200..299) return true
+            if (heartbeat.statusCode in 200..299) return HealthProbe(true)
         }
-        return false
+        return HealthProbe(false)
+    }
+
+    private fun String.respondedAsId(): String? =
+        trim().takeIf { it.startsWith("ok:") }?.removePrefix("ok:")?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** Introductions sealed for [selfDeviceId] by the peer at [host]. Only that peer's pair key opens them. */
+    suspend fun fetchIntroductions(
+        host: String,
+        port: Int,
+        selfDeviceId: String
+    ): List<com.fileapex.security.SealedIntroduction> {
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/cluster/introductions?for=${java.net.URLEncoder.encode(selfDeviceId, "UTF-8")}",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Introductions fetch failed (${response.statusCode})")
+        return json.decodeFromString(
+            ListSerializer(com.fileapex.security.SealedIntroduction.serializer()),
+            response.body
+        )
     }
 
     suspend fun postPairingRespond(
@@ -764,7 +797,7 @@ class FileApexClient(
         record: com.fileapex.domain.pairing.RemovedDeviceRecord
     ): Boolean {
         val payload = json.encodeToString(com.fileapex.domain.pairing.RemovedDeviceRecord.serializer(), record)
-        val response = runCatching {
+        val response = cancellableCatching {
             boundPost(
                 host = host,
                 port = port,
@@ -775,7 +808,7 @@ class FileApexClient(
             )
         }.getOrNull()
         if (response != null && response.statusCode in 200..299) return true
-        val fallback = runCatching {
+        val fallback = cancellableCatching {
             boundPost(
                 host = host,
                 port = port,
@@ -1100,7 +1133,7 @@ class FileApexClient(
         expectedSizeBytes: Long = 0L,
         transactionId: String = ""
     ): Long {
-        return runCatching {
+        return cancellableCatching {
             PeerLanHttpPolicy.ensureRoute(host)
             val response = boundGet(
                 host = host,

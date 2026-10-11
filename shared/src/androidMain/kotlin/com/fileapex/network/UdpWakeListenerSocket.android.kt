@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.util.cancellableCatching
 import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -9,7 +10,7 @@ import java.net.NetworkInterface
 
 internal actual fun openWakeListenerSocket(onLog: (String) -> Unit): DatagramSocket? {
     openWakeListenerOnPrimaryInterface(onLog)?.let { return it }
-    return runCatching {
+    return cancellableCatching {
         MulticastSocket(null).apply {
             reuseAddress = true
             broadcast = true

@@ -146,7 +146,7 @@ object MacOsExtensionRegistrar {
         runCatching {
             DesktopPlatformPaths.applicationSupportDirectory()
             DesktopPlatformPaths.extensionRegistrarStampFile().writeText(stamp, Charsets.UTF_8)
-        }
+        }.onFailure { log("stamp write failed: ${it::class.simpleName}") }
     }
 
     private fun isMacOs(): Boolean = DesktopPlatformPaths.isMacOs()
@@ -154,7 +154,8 @@ object MacOsExtensionRegistrar {
     private fun isApplicationsBundle(bundle: File): Boolean {
         return try {
             bundle.canonicalFile == File(ApplicationsAppPath).canonicalFile
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            log("could not resolve bundle path: ${error::class.simpleName}")
             bundle.absolutePath == ApplicationsAppPath
         }
     }
@@ -181,7 +182,7 @@ object MacOsExtensionRegistrar {
         val listing = runCapture(Pluginkit, "-mAvvv")
         val paths = pathsForBundle(listing, bundleId)
         for (path in paths) {
-            log("removing $bundleId plugin $path")
+            log("removing $bundleId plugin ${File(path).name}")
             runCapture(Pluginkit, "-r", path)
         }
     }
@@ -191,7 +192,7 @@ object MacOsExtensionRegistrar {
         val paths = pathsForBundle(listing, bundleId)
         for (path in paths) {
             if (path.startsWith("/Applications/")) continue
-            log("removing non-Applications plugin $path")
+            log("removing non-Applications plugin ${File(path).name}")
             runCapture(Pluginkit, "-r", path)
         }
     }
@@ -241,8 +242,8 @@ object MacOsExtensionRegistrar {
             DesktopPlatformPaths.applicationSupportDirectory()
             DesktopPlatformPaths.extensionRegistrarLogFile()
                 .appendText("${Instant.ofEpochMilli(TimeUtils.now())} $line\n")
-        } catch (_: Exception) {
-            // Best-effort diagnostics only.
+        } catch (error: Exception) {
+            println("MacOsExtensionRegistrar: log file write failed - ${error::class.simpleName}")
         }
     }
 }

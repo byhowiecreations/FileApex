@@ -15,8 +15,10 @@ import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.presence.LanPresenceTiming
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.platform.PlatformClipboard
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -119,7 +121,7 @@ object CliClusterEngine {
                     batteryProbeEpochMs[dev.deviceId] = now
                     probeScope.launch {
                         val bat = withTimeoutOrNull(LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS) {
-                            runCatching {
+                            cancellableCatching {
                                 FileApexServices.client.fetchFastBattery(direct, dev.port)
                             }.getOrNull()
                         }
@@ -297,6 +299,8 @@ object CliClusterEngine {
             } else {
                 CliIpcPacket.DashActionResult(false, result.message.ifBlank { "Failed to send." })
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Throwable) {
             transferQueue.enqueueLocalPaths(validPaths, deviceIds)
             CliIpcPacket.DashActionResult(true, "Transfer staged to queue: ${e.message}")
@@ -314,7 +318,7 @@ object CliClusterEngine {
             return@withContext CliIpcPacket.DashRemoteList(path, emptyList())
         }
 
-        val items = runCatching {
+        val items = cancellableCatching {
             FileApexServices.client.listFiles(host, port, path)
         }.getOrDefault(emptyList())
 
@@ -354,7 +358,7 @@ object CliClusterEngine {
             mimeType = ""
         )
 
-        return@withContext runCatching {
+        return@withContext cancellableCatching {
             val downloaded = FileApexServices.transferManager.downloadRemoteToDownloads(host, port, listOf(item))
             if (downloaded.isNotEmpty()) {
                 CliIpcPacket.DashActionResult(true, "Downloaded ${downloaded.size} item(s) to Downloads/FileApex")
@@ -371,7 +375,7 @@ object CliClusterEngine {
         if (!settings.clipboardSharingEnabled.value) {
             settings.setClipboardSharingEnabled(true)
         }
-        return@withContext runCatching {
+        return@withContext cancellableCatching {
             ClipboardShareCoordinator.sendToDevice(deviceId)
             CliIpcPacket.DashActionResult(true, "Clipboard content dispatched to device.")
         }.getOrElse { e ->
@@ -390,7 +394,7 @@ object CliClusterEngine {
             return@withContext CliIpcPacket.DashClipPullResult(null, "Device is offline or missing IP.")
         }
 
-        return@withContext runCatching {
+        return@withContext cancellableCatching {
             val text = FileApexServices.client.pullRemoteClipboard(host, port)
             if (text != null) {
                 PlatformClipboard.setSystemClipboardText(text)

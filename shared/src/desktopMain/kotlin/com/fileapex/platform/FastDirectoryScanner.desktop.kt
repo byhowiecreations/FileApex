@@ -3,6 +3,7 @@ package com.fileapex.platform
 import com.fileapex.data.files.guessMimeType
 import com.fileapex.data.files.isHiddenDotName
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.util.cancellableCatching
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Paths
@@ -12,7 +13,7 @@ import kotlinx.coroutines.withContext
 
 actual suspend fun prepareLocalDirectoryAccess(absolutePath: String) {
     withContext(Dispatchers.Main) {
-        runCatching {
+        cancellableCatching {
             Files.newDirectoryStream(Paths.get(absolutePath)).close()
         }
     }

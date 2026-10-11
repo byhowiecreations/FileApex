@@ -3,6 +3,7 @@ package com.fileapex.data.device
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.util.cancellableCatching
 import java.io.File
 
 /**
@@ -15,9 +16,9 @@ internal object DesktopRosterRecovery {
 
         for (candidate in DesktopPlatformPaths.legacyRosterRecoveryCandidates()) {
             if (!candidate.isFile) continue
-            val imported = runCatching { importPairedDevices(candidate, repository) }
+            val imported = cancellableCatching { importPairedDevices(candidate, repository) }
                 .getOrElse { error ->
-                    println("DesktopRosterRecovery: skip ${candidate.path} - ${error.message}")
+                    println("DesktopRosterRecovery: skip ${candidate.name} - ${error::class.simpleName}")
                     0
                 }
             if (imported > 0) {

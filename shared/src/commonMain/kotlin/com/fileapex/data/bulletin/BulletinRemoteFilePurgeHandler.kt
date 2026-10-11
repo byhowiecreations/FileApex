@@ -63,9 +63,9 @@ object BulletinRemoteFilePurgeHandler {
         if (isAutoUpdateApk) {
             if (!localPath.isNullOrBlank()) {
                 if (scrubLocalFile(localPath, downloadsDir)) {
-                    println("BulletinRemoteFilePurge: auto-purged staged APK $localPath for $messageId")
+                    println("BulletinRemoteFilePurge: auto-purged staged APK for $messageId")
                 } else {
-                    println("BulletinRemoteFilePurge: delete failed $localPath for $messageId")
+                    println("BulletinRemoteFilePurge: delete failed for $messageId")
                 }
             }
             pruneMatchingAutoUpdateApks(meta.fileName, downloadsDir)
@@ -88,9 +88,9 @@ object BulletinRemoteFilePurgeHandler {
         when (FileApexServices.settings.bulletinRemoteFilePurgePreference.value) {
             BulletinRemoteFilePurgePreference.ENABLED -> {
                 if (scrubLocalFile(localPath, downloadsDir)) {
-                    println("BulletinRemoteFilePurge: deleted $localPath for $messageId")
+                    println("BulletinRemoteFilePurge: deleted file for $messageId")
                 } else {
-                    println("BulletinRemoteFilePurge: delete failed $localPath for $messageId")
+                    println("BulletinRemoteFilePurge: delete failed for $messageId")
                 }
             }
             BulletinRemoteFilePurgePreference.DISABLED -> {
@@ -123,7 +123,7 @@ object BulletinRemoteFilePurgeHandler {
 
     fun scrubLocalFile(localPath: String, downloadsDir: String = defaultDownloadsDir()): Boolean {
         if (!BulletinRemoteFilePurgeResolver.isSafeDeletePath(localPath, downloadsDir)) {
-            println("BulletinRemoteFilePurge: refused path outside downloads $localPath")
+            println("BulletinRemoteFilePurge: refused path outside downloads")
             return false
         }
         return runCatching {

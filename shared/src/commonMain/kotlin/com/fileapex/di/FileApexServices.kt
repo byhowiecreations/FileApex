@@ -23,6 +23,7 @@ import com.fileapex.domain.transfer.TransferQueueCoordinator
 import com.fileapex.network.FileApexHttpClientFactory
 import com.fileapex.network.FileApexClient
 import com.fileapex.util.NetworkUtils
+import com.fileapex.util.cancellableCatching
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -109,11 +110,24 @@ object FileApexServices {
     val localIdentity: LocalIdentity
         get() = loadLocalIdentity()
 
+    val peerAdmission: com.fileapex.domain.pairing.PeerAdmission by lazy {
+        com.fileapex.domain.pairing.PeerAdmission(
+            repository = deviceRepository,
+            client = client,
+            identityProvider = { loadLocalIdentity() },
+            onSuperseded = { removed -> pairingCoordinator.broadcastDeviceRemoval(removed) },
+            onPromoted = { device ->
+                presenceMonitor.notifyPassiveReachability(device.deviceId, epochMs = com.fileapex.util.TimeUtils.now())
+            }
+        )
+    }
+
     val pairingCoordinator: PairingCoordinator by lazy {
         PairingCoordinator(
             repository = deviceRepository,
             client = client,
             identityProvider = { loadLocalIdentity() },
+            admission = { peerAdmission },
             onPassiveReachability = { deviceIds, epochMs ->
                 presenceMonitor.notifyPassiveReachability(*deviceIds.toTypedArray(), epochMs = epochMs)
             }
@@ -145,7 +159,8 @@ object FileApexServices {
                     endpoints = NetworkUtils.shareEndpoints(identity)
                 )
             },
-            membershipStore = SettingsMembershipStore { settings }
+            membershipStore = SettingsMembershipStore { settings },
+            candidates = com.fileapex.data.db.RoomPeerCandidateStore(database.peerCandidateDao())
         )
         client.onRevocationDetected = { host ->
             com.fileapex.session.DeviceSessionManager.clearAllSessions()
@@ -178,11 +193,15 @@ object FileApexServices {
             runCatching { com.fileapex.tailscale.TailscaleNodeRuntime.attach() }
         }
         bootstrapScope.launch {
-            runCatching {
+            cancellableCatching { deviceRepository.demoteUnverifiedRows() }
+                .onFailure { error -> println("FileApexServices: unverified roster check skipped - ${error.message}") }
+            cancellableCatching {
                 recoverEmptyRosterIfNeeded(deviceRepository)
             }.onFailure { error ->
                 println("FileApexServices: roster recovery skipped - ${error.message}")
             }
+            cancellableCatching { peerAdmission.verifyPending() }
+                .onFailure { error -> println("FileApexServices: candidate check skipped - ${error.message}") }
         }
         markBootstrapComplete()
     }
@@ -203,7 +222,7 @@ object FileApexServices {
         syncEngine.ensureStarted()
         noteRepository.attachBulletinBoard(repository, syncEngine, bootstrapScope)
         bootstrapScope.launch {
-            runCatching {
+            cancellableCatching {
                 val coreDb = this@FileApexServices.database
                 if (coreDb != null) {
                     repository.migrateFromLegacyNotes(coreDb.noteDao())
@@ -258,18 +277,18 @@ object FileApexServices {
 
     suspend fun purgeDatabases() {
         database?.let { db ->
-            runCatching { db.deviceDao().deleteAllDevices() }
-            runCatching { db.deviceDao().deleteAllRemovedDevices() }
-            runCatching { db.controlDeliveryDao().deleteAll() }
-            runCatching { db.pendingTransferDao().deleteAll() }
-            runCatching { db.noteDao().deleteAllNotes() }
+            cancellableCatching { db.deviceDao().deleteAllDevices() }
+            cancellableCatching { db.deviceDao().deleteAllRemovedDevices() }
+            cancellableCatching { db.controlDeliveryDao().deleteAll() }
+            cancellableCatching { db.pendingTransferDao().deleteAll() }
+            cancellableCatching { db.noteDao().deleteAllNotes() }
             runCatching { db.clearAllTables() }
         }
         bulletinDatabase?.let { bDb ->
-            runCatching { bDb.messageDao().deleteAllMessages() }
-            runCatching { bDb.tombstoneDao().deleteAllTombstones() }
-            runCatching { bDb.outboxDao().deleteAllOutbox() }
-            runCatching { bDb.processedPacketDao().deleteAllPackets() }
+            cancellableCatching { bDb.messageDao().deleteAllMessages() }
+            cancellableCatching { bDb.tombstoneDao().deleteAllTombstones() }
+            cancellableCatching { bDb.outboxDao().deleteAllOutbox() }
+            cancellableCatching { bDb.processedPacketDao().deleteAllPackets() }
             runCatching { bDb.clearAllTables() }
         }
     }

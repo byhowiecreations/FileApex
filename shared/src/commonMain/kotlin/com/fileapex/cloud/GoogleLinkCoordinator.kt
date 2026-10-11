@@ -11,7 +11,6 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.localDeviceHardwareProfile
-import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.TimestampDiagnostics
@@ -80,7 +79,7 @@ object GoogleLinkCoordinator {
 
     fun onAppLaunch() {
         bootstrapScope.launch {
-            runCatching { restoreSessionZeroTap() }
+            cancellableCatching { restoreSessionZeroTap() }
                 .onFailure { error ->
                     _status.value = error.message ?: "Cloud link restore failed"
                     println("GoogleLinkCoordinator: restore failed - ${error.message}")
@@ -93,7 +92,7 @@ object GoogleLinkCoordinator {
         if (!cloudOpsActive) return
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
-        runCatching { patchSelfPresence(uid) }
+        cancellableCatching { patchSelfPresence(uid) }
             .onFailure { error ->
                 println("GoogleLinkCoordinator: presence publish failed - ${error.message}")
             }
@@ -108,7 +107,7 @@ object GoogleLinkCoordinator {
         if (!cloudOpsActive) return
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
-        runCatching {
+        cancellableCatching {
             val next = buildSelfPresence()
             CloudAuthBackend.patchDevicePresence(uid, next)
             lastPublishedPresence = next
@@ -125,7 +124,7 @@ object GoogleLinkCoordinator {
     fun refreshCloudRegistry() {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
         bootstrapScope.launch {
-            runCatching { refreshCloudRegistryLocked() }
+            cancellableCatching { refreshCloudRegistryLocked() }
                 .onFailure { error ->
                     println("GoogleLinkCoordinator: cloud registry refresh failed - ${error.message}")
                 }
@@ -155,7 +154,7 @@ object GoogleLinkCoordinator {
         if (uid.isBlank()) return
         val trimmed = publicKeyBase64.trim()
         if (trimmed.isEmpty()) return
-        runCatching {
+        cancellableCatching {
             CloudAuthBackend.patchDeviceClipboardPublicKey(uid, loadLocalIdentity().deviceId, trimmed)
         }.onFailure { error ->
             println("GoogleLinkCoordinator: clipboard public key patch failed - ${error.message}")
@@ -182,7 +181,7 @@ object GoogleLinkCoordinator {
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return cached.ifEmpty { linkedPeerFcmTargets(selfDeviceId) }
         val fetched = missing.mapNotNull { deviceId ->
-            runCatching { CloudAuthBackend.fetchCloudDeviceRecord(uid, deviceId) }.getOrNull()
+            cancellableCatching { CloudAuthBackend.fetchCloudDeviceRecord(uid, deviceId) }.getOrNull()
                 ?.toFcmTargetOrNull(selfDeviceId)
         }
         val found = (cached + fetched).distinctBy { it.deviceId }
@@ -195,7 +194,7 @@ object GoogleLinkCoordinator {
     private suspend fun fetchAllFcmTargets(selfDeviceId: String): List<FcmWakeTarget> {
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return emptyList()
-        val records = runCatching { CloudAuthBackend.fetchAllUserDevices(uid) }.getOrDefault(emptyList())
+        val records = cancellableCatching { CloudAuthBackend.fetchAllUserDevices(uid) }.getOrDefault(emptyList())
         if (records.isNotEmpty()) cachedCloudRecords = records
         return records.mapNotNull { it.toFcmTargetOrNull(selfDeviceId) }
     }
@@ -217,7 +216,7 @@ object GoogleLinkCoordinator {
         if (!cloudOpsActive) return false
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return false
-        return runCatching {
+        return cancellableCatching {
             CloudAuthBackend.patchDeviceFcmToken(uid, loadLocalIdentity().deviceId, trimmed)
             true
         }.getOrElse { error ->
@@ -261,13 +260,13 @@ object GoogleLinkCoordinator {
             // Drain listeners/workers before any Auth/Firestore mutation or sign-out.
             shutdownCloudSessionLocked()
             if (uid.isNotBlank()) {
-                runCatching {
+                cancellableCatching {
                     DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled = false)
                 }
-                runCatching { CloudAuthBackend.deleteDevice(uid, deviceId) }
+                cancellableCatching { CloudAuthBackend.deleteDevice(uid, deviceId) }
             }
-            runCatching { CloudAuthBackend.signOut() }
-            runCatching { RestoreCredentials.clear() }
+            cancellableCatching { CloudAuthBackend.signOut() }
+            cancellableCatching { RestoreCredentials.clear() }
             FileApexServices.settings.setGoogleAccountEmail("")
             FileApexServices.settings.setGoogleAccountUid("")
             FileApexServices.settings.setGoogleAccountLinkEnabled(false)
@@ -282,7 +281,7 @@ object GoogleLinkCoordinator {
         val settings = FileApexServices.settings
         settings.setGoogleRestorePending(false)
         settings.setGoogleBackupEmailHint("")
-        runCatching { RestoreCredentials.clear() }
+        cancellableCatching { RestoreCredentials.clear() }
     }
 
     suspend fun publishRemovedPeer(deviceId: String) {
@@ -291,7 +290,7 @@ object GoogleLinkCoordinator {
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
         val cloudId = resolveCloudDeviceId(deviceId)
-        runCatching { CloudAuthBackend.deleteDevice(uid, cloudId) }
+        cancellableCatching { CloudAuthBackend.deleteDevice(uid, cloudId) }
             .onFailure { error ->
                 println("GoogleLinkCoordinator: cloud remove failed - ${error.message}")
             }
@@ -326,7 +325,7 @@ object GoogleLinkCoordinator {
             // Clean install or unlinked. Do not auto-link or probe.
             val existing = CloudAuthBackend.currentSession()
             if (existing != null) {
-                runCatching { CloudAuthBackend.signOut() }
+                cancellableCatching { CloudAuthBackend.signOut() }
             }
             RestoreCredentials.markProbedThisInstall()
             return
@@ -347,7 +346,7 @@ object GoogleLinkCoordinator {
                 return
             } else {
                 println("GoogleLinkCoordinator: cached Firebase session does not match linked settings - signing out")
-                runCatching { CloudAuthBackend.signOut() }
+                cancellableCatching { CloudAuthBackend.signOut() }
             }
         }
 
@@ -394,7 +393,7 @@ object GoogleLinkCoordinator {
             settings.setGoogleAccountUid(session.firebaseUid)
             shutdownCloudSessionLocked()
             // Presence only on restore — never overwrite remote deviceName with stale local memory.
-            runCatching { patchSelfPresence(session.firebaseUid) }
+            cancellableCatching { patchSelfPresence(session.firebaseUid) }
             startCloudSessionLocked(session.firebaseUid)
             _status.value = "Cloud registry active"
         }
@@ -435,7 +434,7 @@ object GoogleLinkCoordinator {
 
         scope.launch {
             if (!isSessionLive(epoch)) return@launch
-            runCatching {
+            cancellableCatching {
                 val key = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64()
                 CloudAuthBackend.patchDeviceClipboardPublicKey(uid, selfId, key)
             }.onFailure { error ->
@@ -445,7 +444,7 @@ object GoogleLinkCoordinator {
 
         scope.launch {
             if (!isSessionLive(epoch)) return@launch
-            runCatching {
+            cancellableCatching {
                 reconcileAndSyncDevices(uid)
                 FileApexServices.deviceRepositoryOrNull()?.reconcileDuplicateEndpoints()
                 val records = CloudAuthBackend.fetchAllUserDevices(uid)
@@ -496,7 +495,7 @@ object GoogleLinkCoordinator {
         listenerRetryJob = bootstrapScope.launch {
             delay(LISTENER_RETRY_BASE_MS * (1L shl (attempt - 1)))
             if (!isSessionLive(epoch)) return@launch
-            runCatching { restoreSessionAndListen() }
+            cancellableCatching { restoreSessionAndListen() }
                 .onFailure { println("GoogleLinkCoordinator: listener retry $attempt failed - ${it.message}") }
         }
     }
@@ -515,7 +514,7 @@ object GoogleLinkCoordinator {
         val fourteenDaysMs = 14L * 24 * 3600 * 1000L
         val staleCutoffMs = now - fourteenDaysMs
 
-        runCatching {
+        cancellableCatching {
             val allRecords = CloudAuthBackend.fetchAllUserDevices(uid)
             if (allRecords.isEmpty()) {
                 registerSelf(uid)
@@ -603,7 +602,7 @@ object GoogleLinkCoordinator {
         if (uid.isBlank()) return
         val deviceId = selfDeviceId ?: loadLocalIdentity().deviceId
         val enabled = FileApexServices.settings.deviceDetailsAllowOverCellular.value
-        runCatching {
+        cancellableCatching {
             DiagnosticsCloudRelay.syncCloudOptIn(uid, deviceId, enabled)
         }.onFailure { error ->
             println("GoogleLinkCoordinator: diagnostics cloud sync failed - ${error.message}")
@@ -666,7 +665,7 @@ object GoogleLinkCoordinator {
             deviceId = identity.deviceId,
             lastKnownIp = host,
             port = identity.sharePort,
-            publicKeyHash = DeviceIdentityMarkers.fingerprint(identity.deviceId),
+            publicKeyHash = com.fileapex.security.IdentityBinding.localHash(identity.deviceId),
             rootPath = identity.rootPath,
             platform = currentPlatformLabel(),
             clientVersion = currentAppVersionName(),
@@ -770,7 +769,7 @@ object GoogleLinkCoordinator {
                         )
                     }
                 }
-            runCatching { repo.reconcileDuplicateEndpoints() }
+            cancellableCatching { repo.reconcileDuplicateEndpoints() }
             stale
         }
         for (deviceId in superseded) {
@@ -788,7 +787,7 @@ object GoogleLinkCoordinator {
         if (!DeviceDisplayNames.isFactory(current, hardware.deviceMake, hardware.deviceModel)) return
         if (DeviceDisplayNames.isFactory(trimmed, hardware.deviceMake, hardware.deviceModel)) return
         LocalDeviceNameStore.apply(trimmed)
-        runCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity() }
+        cancellableCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity() }
     }
 
     private fun resolveCloudDeviceId(deviceId: String): String {

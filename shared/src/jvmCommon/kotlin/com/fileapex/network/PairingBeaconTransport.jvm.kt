@@ -2,6 +2,7 @@ package com.fileapex.network
 
 import com.fileapex.domain.pairing.PairingBeacon
 import com.fileapex.util.NetworkUtils
+import com.fileapex.util.cancellableCatching
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
@@ -176,7 +177,7 @@ actual object PairingBeaconTransport {
      * 255.255.255.255 / subnet-broadcast packets on several Android OEMs (Honor Magic V5).
      */
     private fun openListenerSocket(): DatagramSocket? {
-        val wildcard = runCatching {
+        val wildcard = cancellableCatching {
             MulticastSocket(null).apply {
                 reuseAddress = true
                 broadcast = true
@@ -204,7 +205,7 @@ actual object PairingBeaconTransport {
             log("listener primary bind skipped — no LAN interface")
             return null
         }
-        return runCatching {
+        return cancellableCatching {
             MulticastSocket(null).apply {
                 reuseAddress = true
                 broadcast = true
@@ -216,7 +217,7 @@ actual object PairingBeaconTransport {
                 )
             }
         }.onFailure { error ->
-            log("listener primary bind failed on $localIp: ${error.message}")
+            log("listener primary bind failed on ${NetworkUtils.lastOctetLabel(localIp)}: ${error.message}")
         }.getOrNull().also { listenSocket = it }
     }
 
@@ -278,7 +279,7 @@ actual object PairingBeaconTransport {
             )
             directedBroadcastOrNull(localIp, networkInterface)?.let { targets.add(it) }
             for (target in targets) {
-                runCatching {
+                cancellableCatching {
                     val address = InetAddress.getByName(target)
                     val packet = DatagramPacket(
                         payload,
@@ -292,14 +293,14 @@ actual object PairingBeaconTransport {
             }
         }
         if (sent > 0) {
-            log("beacon sent from $localIp ($sent targets)")
+            log("beacon sent from ${NetworkUtils.lastOctetLabel(localIp)} ($sent targets)")
         }
         return sent
     }
 
     private fun sendViaUnboundBroadcast(payload: ByteArray): Int {
         var sent = 0
-        runCatching {
+        cancellableCatching {
             DatagramSocket().use { socket ->
                 socket.broadcast = true
                 val targets = linkedSetOf(
@@ -311,7 +312,7 @@ actual object PairingBeaconTransport {
                     directedBroadcastOrNull(localIp, networkInterface)?.let { targets.add(it) }
                 }
                 for (target in targets) {
-                    runCatching {
+                    cancellableCatching {
                         val address = InetAddress.getByName(target)
                         val packet = DatagramPacket(
                             payload,

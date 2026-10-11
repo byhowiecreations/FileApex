@@ -1,6 +1,7 @@
 package com.fileapex.cloud.drive
 
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -398,7 +399,7 @@ actual object GoogleDriveClient {
         if (extras.isNotEmpty()) {
             driveLog("collapsing ${extras.size} extra log.md onto $canonicalId")
             for (extra in extras) {
-                runCatching { deleteFileById(token, extra.id) }
+                cancellableCatching { deleteFileById(token, extra.id) }
                     .onFailure { error -> driveLogError("failed to remove extra log.md", error) }
             }
         }

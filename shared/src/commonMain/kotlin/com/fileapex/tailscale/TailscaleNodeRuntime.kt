@@ -235,7 +235,8 @@ object TailscaleNodeRuntime {
                 engine.start("")
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                println("Tailscale start for sign-out failed: ${error::class.simpleName}")
                 return false
             }
             if (snapshot.phase == TailscalePhase.Failed || snapshot.phase == TailscalePhase.Down) {

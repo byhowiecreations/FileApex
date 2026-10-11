@@ -6,6 +6,7 @@ import com.fileapex.network.FileApexServer
 import com.fileapex.network.SocketFileStreamer
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -23,7 +24,7 @@ import kotlinx.io.files.SystemFileSystem
 
 internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     post("/api/v1/notes/send") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val record = server.json.decodeFromString(com.fileapex.data.note.NoteRecord.serializer(), body)
             FileApexServices.noteRepository.addNote(
@@ -37,19 +38,19 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/notes/attachment") {
-        runCatching {
+        cancellableCatching {
             val noteId = call.request.queryParameters["noteId"].orEmpty().trim()
             val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
             if (noteId.isBlank() || fileName.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "note_attachment_missing")
-                return@runCatching
+                return@cancellableCatching
             }
             val expectedLength = call.request.headers["Content-Length"]?.toLongOrNull()
             if (expectedLength != null &&
                 expectedLength > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
             ) {
                 call.respond(HttpStatusCode.PayloadTooLarge, "note_attachment_too_large")
-                return@runCatching
+                return@cancellableCatching
             }
             val dest = UniqueFileNames.resolveInDirectory(defaultDownloadsDir(), fileName)
             val channel = call.receiveChannel()
@@ -65,7 +66,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
                     HttpStatusCode.BadRequest
                 }
                 call.respond(status, "note_attachment_rejected")
-                return@runCatching
+                return@cancellableCatching
             }
             FileApexServices.noteRepository.setAttachmentLocalPath(noteId, dest)
             call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
@@ -76,7 +77,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/notes/delete") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val noteId = jsonObj?.get("noteId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
@@ -99,7 +100,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/bulletin/sync/batch") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val batch = server.json.decodeFromString(
                 com.fileapex.data.bulletin.BulletinSyncBatch.serializer(),
@@ -108,7 +109,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
             val isPaired = FileApexServices.deviceRepositoryOrNull()?.getDevice(batch.originDeviceId) != null
             if (!isPaired) {
                 call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
-                return@runCatching
+                return@cancellableCatching
             }
             val ack = FileApexServices.bulletinSyncEngine.processIncomingBatch(batch)
             call.respondText(
@@ -122,39 +123,39 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     }
 
     get("/api/v1/bulletin/file") {
-        runCatching {
+        cancellableCatching {
             val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
                 call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
             }
             if (from.isNotBlank() && FileApexServices.deviceRepositoryOrNull()?.getDevice(from) == null) {
                 call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
-                return@runCatching
+                return@cancellableCatching
             }
             val messageId = call.request.queryParameters["messageId"].orEmpty().trim()
             val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
             if (messageId.isBlank() || fileName.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "bulletin_file_missing")
-                return@runCatching
+                return@cancellableCatching
             }
             val message = FileApexServices.bulletinBoardRepository.getMessage(messageId)
                 ?: run {
                     call.respond(HttpStatusCode.NotFound, "bulletin_message_missing")
-                    return@runCatching
+                    return@cancellableCatching
                 }
             val meta = FileApexServices.bulletinBoardRepository.decodeFileMetadata(message)
                 ?: run {
                     call.respond(HttpStatusCode.NotFound, "bulletin_file_metadata_missing")
-                    return@runCatching
+                    return@cancellableCatching
                 }
             val localPath = meta.localPath?.takeIf { it.isNotBlank() }
                 ?: run {
                     call.respond(HttpStatusCode.NotFound, "bulletin_file_unavailable")
-                    return@runCatching
+                    return@cancellableCatching
                 }
             val source = Path(localPath)
             if (!SystemFileSystem.exists(source)) {
                 call.respond(HttpStatusCode.NotFound, "bulletin_file_missing_on_disk")
-                return@runCatching
+                return@cancellableCatching
             }
             val size = SystemFileSystem.metadataOrNull(source)?.size ?: 0L
             call.respondOutputStream(
@@ -173,7 +174,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/web/post-bulletin") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val url = jsonObj?.get("url")?.let {
@@ -198,7 +199,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
                     HttpStatusCode.BadRequest,
                     """{"status":"error","message":"url_or_text_required"}"""
                 )
-                return@runCatching
+                return@cancellableCatching
             }
 
             withContext(Dispatchers.IO) {

@@ -169,6 +169,7 @@ actual object Diagnostics {
             customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             customTabsIntent.launchUrl(context, uri)
         } catch (e: Exception) {
+            Log.w(TAG, "Custom tab unavailable, opening browser instead", e)
             val fallback = Intent(Intent.ACTION_VIEW, uri).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }

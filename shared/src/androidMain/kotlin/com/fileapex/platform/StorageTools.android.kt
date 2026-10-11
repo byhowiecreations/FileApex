@@ -10,6 +10,7 @@ import android.os.Environment
 import android.os.StatFs
 import android.provider.MediaStore
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 import java.io.File
 
 private const val TRASH_INDEX_NAME = ".fileapex-trash-index"
@@ -110,7 +111,7 @@ actual fun listTrashed(): List<TrashedEntry> {
     val context = trashContext ?: return emptyList()
     val entries = ArrayList<TrashedEntry>()
     if (Build.VERSION.SDK_INT >= 30) {
-        runCatching {
+        cancellableCatching {
             val args = Bundle().apply {
                 putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
                 putString(ContentResolver.QUERY_ARG_SQL_SELECTION, MediaStore.MediaColumns.SIZE + ">=0")

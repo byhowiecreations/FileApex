@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 
@@ -14,7 +15,7 @@ object DesktopLifecycleLog {
     }
 
     fun log(message: String) {
-        runCatching {
+        cancellableCatching {
             val file = DesktopPlatformPaths.applicationSupportDirectory().resolve(LOG_NAME)
             if (file.isFile && file.length() > MAX_BYTES) {
                 val tail = file.readLines().takeLast(200).joinToString("\n")

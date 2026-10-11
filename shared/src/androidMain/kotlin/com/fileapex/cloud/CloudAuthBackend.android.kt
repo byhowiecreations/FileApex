@@ -1,5 +1,6 @@
 package com.fileapex.cloud
 
+import com.fileapex.util.cancellableCatching
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
@@ -76,7 +77,7 @@ actual object CloudAuthBackend {
             "membershipProtocol" to presence.membershipProtocol
         )
         val ref = deviceDoc(uid, presence.deviceId)
-        runCatching {
+        cancellableCatching {
             ref.update(fields).await()
         }.onFailure {
             // Document missing (first heartbeat before register completed) — create without clobbering name
@@ -96,7 +97,7 @@ actual object CloudAuthBackend {
             "updatedAtEpochMs" to updatedAtEpochMs
         )
         val ref = deviceDoc(uid, deviceId)
-        runCatching {
+        cancellableCatching {
             ref.update(fields).await()
         }.onFailure {
             ref.set(fields, SetOptions.merge()).await()
@@ -110,7 +111,7 @@ actual object CloudAuthBackend {
     actual suspend fun patchDeviceFcmToken(uid: String, deviceId: String, fcmToken: String) {
         val fields = mapOf("fcmToken" to fcmToken.trim())
         val ref = deviceDoc(uid, deviceId)
-        runCatching {
+        cancellableCatching {
             ref.update(fields).await()
         }.onFailure {
             ref.set(fields, SetOptions.merge()).await()
@@ -120,7 +121,7 @@ actual object CloudAuthBackend {
     actual suspend fun patchDeviceClipboardPublicKey(uid: String, deviceId: String, clipboardPublicKey: String) {
         val fields = mapOf("clipboardPublicKey" to clipboardPublicKey.trim())
         val ref = deviceDoc(uid, deviceId)
-        runCatching {
+        cancellableCatching {
             ref.update(fields).await()
         }.onFailure {
             ref.set(fields, SetOptions.merge()).await()
@@ -138,7 +139,7 @@ actual object CloudAuthBackend {
             "deviceDetailsCloudEnabled" to deviceDetailsCloudEnabled
         )
         val ref = deviceDoc(uid, deviceId)
-        runCatching {
+        cancellableCatching {
             ref.update(fields).await()
         }.onFailure {
             ref.set(fields, SetOptions.merge()).await()
@@ -246,7 +247,7 @@ actual object CloudAuthBackend {
         override fun stop() {
             if (state.stopped) return
             state.stopped = true
-            runCatching { registration.remove() }
+            cancellableCatching { registration.remove() }
             if (!idle.isCompleted) idle.complete(Unit)
         }
 

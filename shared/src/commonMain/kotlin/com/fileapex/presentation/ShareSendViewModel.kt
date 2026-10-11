@@ -12,6 +12,7 @@ import com.fileapex.domain.transfer.MultiCopySource
 import com.fileapex.domain.transfer.verifiedFromDisk
 import com.fileapex.domain.transfer.ShareStagingCleanup
 import com.fileapex.platform.recordDirectShareTargetUsed
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -119,7 +120,7 @@ class ShareSendViewModel(
             _uiState.update {
                 it.copy(isPreparing = true, errorMessage = null, statusMessage = AppI18n.t("preparing"))
             }
-            runCatching {
+            cancellableCatching {
                 transferManager.awaitReady()
                 val onlineIds = FileApexServices.presenceMonitor.onlineDeviceIds.value
                 val options = transferManager.buildShareSheetDeviceOptions()
@@ -158,7 +159,7 @@ class ShareSendViewModel(
                     statusMessage = AppI18n.t("sending")
                 )
             }
-            runCatching {
+            cancellableCatching {
                 transferManager.awaitReady()
                 transferManager.resolveRemoteDeviceOptionsForImmediateSend(listOf(deviceId))
             }.fold(
@@ -190,7 +191,7 @@ class ShareSendViewModel(
         _uiState.update {
             it.copy(isSending = true, errorMessage = null, statusMessage = AppI18n.t("sending"))
         }
-        runCatching {
+        cancellableCatching {
             check(payload.isStaged) { AppI18n.t("preparing_shared_files") }
             transferManager.awaitReady()
             val sources = payload.files.map { it.toSource().verifiedFromDisk() }

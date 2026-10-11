@@ -12,6 +12,7 @@ import com.fileapex.network.FileApexClient
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ class PairingCoordinator(
     private val repository: DeviceRepository,
     private val client: FileApexClient,
     private val identityProvider: () -> LocalIdentity,
+    private val admission: () -> PeerAdmission,
     private val onPassiveReachability: suspend (deviceIds: List<String>, epochMs: Long) -> Unit = { _, _ -> }
 ) {
     private val forwardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -67,7 +69,7 @@ class PairingCoordinator(
     suspend fun propagatePairingComplete(newlyPaired: PairedDeviceEntity) {
         broadcastPairingCompleteOnce(newlyPaired, preexistingByScanner.remove(newlyPaired.deviceId))
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
-        runCatching {
+        cancellableCatching {
             FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(newlyPaired)
         }
     }
@@ -78,7 +80,7 @@ class PairingCoordinator(
     suspend fun afterOutboundPair(peer: PairedDeviceEntity, preexistingDeviceIds: Set<String>? = null) {
         broadcastPairingCompleteOnce(peer, preexistingDeviceIds)
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
-        runCatching {
+        cancellableCatching {
             FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer)
         }
     }
@@ -86,8 +88,9 @@ class PairingCoordinator(
     /**
      * Passive merge from a direct peer packet — ingest metadata/removals only (no roster gossip).
      */
-    suspend fun mergeIncoming(request: ClusterSyncRequest) {
+    suspend fun mergeIncoming(request: ClusterSyncRequest, authenticatedSenderId: String? = null) {
         val localId = identityProvider().deviceId
+        val unknown = mutableListOf<com.fileapex.domain.peer.PeerNodeState>()
         for (record in request.removedDevices) {
             if (record.deviceId.isBlank()) {
                 continue
@@ -108,6 +111,10 @@ class PairingCoordinator(
                 }
                 continue
             }
+            if (repository.gatesThirdPartyRows && !repository.hasActiveDevice(state.deviceId)) {
+                unknown += state
+                continue
+            }
             val applied = try {
                 repository.applyPeerNodeState(state)
             } catch (cancelled: CancellationException) {
@@ -121,6 +128,19 @@ class PairingCoordinator(
                     FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(entity)
                 }
             }
+        }
+        try {
+            // Staging is quick; the direct checks run after this request has been answered.
+            val staged = (if (request.introductions.isNotEmpty()) {
+                admission().acceptIntroductions(request.introductions, verifyNow = false)
+            } else 0) + (if (unknown.isNotEmpty()) {
+                admission().acceptTransportStates(unknown, authenticatedSenderId, verifyNow = false)
+            } else 0)
+            if (staged > 0) forwardScope.launch { cancellableCatching { admission().verifyPending() } }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            println("PairingCoordinator: admission failed - ${error.message}")
         }
     }
 
@@ -202,7 +222,7 @@ class PairingCoordinator(
                     if (!NetworkUtils.isUsableLanIpv4(host)) {
                         return@async
                     }
-                    runCatching {
+                    cancellableCatching {
                         val returnedRoster = client.postClusterSync(
                             host = peer.lastKnownIp,
                             port = peer.port,
@@ -249,7 +269,7 @@ class PairingCoordinator(
 
         val targetHost = removed.lastKnownIp.trim()
         if (NetworkUtils.isUsableLanIpv4(targetHost)) {
-            runCatching {
+            cancellableCatching {
                 client.postClusterRemove(targetHost, removed.port, removal)
             }.onFailure { error ->
                 println(
@@ -265,7 +285,7 @@ class PairingCoordinator(
                 async(Dispatchers.IO) {
                     val peerHost = peer.lastKnownIp.trim()
                     if (!NetworkUtils.isUsableLanIpv4(peerHost)) return@async
-                    runCatching {
+                    cancellableCatching {
                         val returnedRoster = client.postClusterSync(
                             host = peerHost,
                             port = peer.port,
@@ -298,7 +318,7 @@ class PairingCoordinator(
                 async(Dispatchers.IO) {
                     val peerHost = peer.lastKnownIp.trim()
                     if (!NetworkUtils.isUsableLanIpv4(peerHost)) return@async
-                    runCatching {
+                    cancellableCatching {
                         client.postClusterSync(
                             host = peerHost,
                             port = peer.port,
@@ -336,7 +356,7 @@ class PairingCoordinator(
                 async(Dispatchers.IO) {
                     val host = peer.lastKnownIp.trim()
                     if (!NetworkUtils.isUsableLanIpv4(host)) return@async
-                    runCatching {
+                    cancellableCatching {
                         client.postClusterSync(
                             host = host,
                             port = peer.port,
@@ -372,93 +392,39 @@ class PairingCoordinator(
     }
 
     /**
-     * Scanner path: after pairing with [host]:[port], import that peer's local roster.
+     * Scanner path: after pairing with [host]:[port], ask that peer for the devices it vouches for.
+     * They arrive as introductions sealed by that peer; each is verified directly before it is added.
      *
-     * @return count of newly adopted peers (excluding self and [excludeDeviceIds])
+     * @return count of introductions accepted for verification (excluding self and [excludeDeviceIds])
      */
     suspend fun importDirectPeerRoster(
         host: String,
         port: Int,
-        excludeDeviceIds: Set<String> = emptySet(),
-        sourceClientVersion: String = ""
+        excludeDeviceIds: Set<String> = emptySet()
     ): Int {
-        var imported = 0
+        var staged = 0
         repeat(ROSTER_IMPORT_ATTEMPTS) { attempt ->
             if (attempt > 0) {
                 delay(ROSTER_IMPORT_RETRY_MS)
             }
-            val remoteDevices = runCatching {
-                client.listPairedDevices(host, port)
+            val sealed = cancellableCatching {
+                client.fetchIntroductions(host, port, identityProvider().deviceId)
             }.getOrElse { error ->
                 println(
-                    "PairingCoordinator: roster import attempt ${attempt + 1} failed - ${error.message}"
+                    "PairingCoordinator: introductions fetch attempt ${attempt + 1} failed - ${error.message}"
                 )
                 return@repeat
             }
-            val eligible = eligibleRosterDevices(remoteDevices, excludeDeviceIds)
-            if (eligible.isEmpty()) {
-                println("PairingCoordinator: roster import - broadcaster returned no importable peers")
+            if (sealed.isEmpty()) {
+                println("PairingCoordinator: broadcaster vouched for no other peers")
                 return 0
             }
-            imported = ingestRosterDevices(remoteDevices, excludeDeviceIds, sourceClientVersion)
-            if (imported > 0) {
-                return imported
+            staged = admission().acceptIntroductions(sealed, excludeSubjectIds = excludeDeviceIds)
+            if (staged > 0) {
+                return staged
             }
         }
-        return imported
-    }
-
-    private fun eligibleRosterDevices(
-        remoteDevices: List<PairedDeviceEntity>,
-        excludeDeviceIds: Set<String>
-    ): List<PairedDeviceEntity> {
-        val localId = identityProvider().deviceId
-        return remoteDevices.filter { device ->
-            val deviceId = device.deviceId.trim()
-            deviceId.isNotEmpty() && deviceId != localId && deviceId !in excludeDeviceIds
-        }
-    }
-
-    private suspend fun ingestRosterDevices(
-        remoteDevices: List<PairedDeviceEntity>,
-        excludeDeviceIds: Set<String>,
-        sourceClientVersion: String = ""
-    ): Int {
-        val localId = identityProvider().deviceId
-        var imported = 0
-        for (device in remoteDevices) {
-            val deviceId = device.deviceId.trim()
-            if (deviceId.isEmpty() || deviceId == localId || deviceId in excludeDeviceIds) continue
-            val adopted = runCatching {
-                repository.adoptFromRosterIntro(
-                    rosterWithoutRelayedPresence(sourceClientVersion, listOf(device)).first()
-                )
-            }
-                .onFailure { error ->
-                    println(
-                        "PairingCoordinator: roster adopt failed for ${device.deviceName} - ${error.message}"
-                    )
-                }
-                .getOrDefault(false)
-            if (adopted) {
-                imported++
-            }
-            val peerHost = device.lastKnownIp.trim()
-            if (!NetworkUtils.isUsableLanIpv4(peerHost)) continue
-            runCatching { client.fetchPeerNodeState(peerHost, device.port) }
-                .getOrNull()
-                ?.let { state ->
-                    repository.applyPeerNodeState(
-                        state,
-                        rosterDeviceId = device.deviceId,
-                        observedDirectly = true
-                    )
-                    if (state.publishesPresence()) {
-                        onPassiveReachability(listOf(state.deviceId.trim()), TimeUtils.now())
-                    }
-                }
-        }
-        return imported
+        return staged
     }
 
     /**
@@ -476,6 +442,14 @@ class PairingCoordinator(
         repository.recordSelfMembership(pairingVersion)
         val updatedNewcomer = repository.getDevice(newlyPaired.deviceId)
             ?: newlyPaired.copy(clusterVersion = pairingVersion, isRemoved = false, removedAt = null)
+
+        // The newcomer was just reached through the pairing handshake. Another row for the same model on
+        // its address is an earlier install of this device and no longer answers for it.
+        for (twin in repository.listDevices().filter { PeerTrustRules.sharesAddressAndModel(updatedNewcomer, it) }) {
+            if (repository.removePermanently(twin.deviceId)) {
+                repository.getDeviceEntry(twin.deviceId)?.let { broadcastDeviceRemoval(it) }
+            }
+        }
 
         val selfState = selfNodeState().copy(clusterVersion = pairingVersion)
         val newPeerState = PeerNodeStateMapper.fromEntity(updatedNewcomer).copy(
@@ -495,7 +469,7 @@ class PairingCoordinator(
             coroutineScope {
                 existing.map { peer ->
                     async(Dispatchers.IO) {
-                        runCatching {
+                        cancellableCatching {
                             withTimeoutOrNull(3000L) {
                                 val returnedRoster = client.postClusterSync(
                                     host = peer.lastKnownIp,
@@ -503,7 +477,11 @@ class PairingCoordinator(
                                     request = ClusterSyncRequest(
                                         eventKind = PeerSyncEventKind.PAIRING_INTRO,
                                         nodeStates = listOf(newPeerState),
-                                        clusterVersion = pairingVersion
+                                        clusterVersion = pairingVersion,
+                                        introductions = admission().sealedIntroductionsFor(
+                                            recipient = peer,
+                                            subjects = listOf(updatedNewcomer)
+                                        )
                                     )
                                 )
                                 reconcileReturnedRoster(returnedRoster, source = peer)
@@ -527,7 +505,7 @@ class PairingCoordinator(
             existing.forEach { peer -> add(PeerNodeStateMapper.fromEntity(peer)) }
         }
         val tombstones = repository.getTombstoneRecords().filter { it.deviceId != newlyPaired.deviceId }
-        runCatching {
+        cancellableCatching {
             val returnedRoster = client.postClusterSync(
                 host = newlyPaired.lastKnownIp,
                 port = newlyPaired.port,
@@ -535,7 +513,8 @@ class PairingCoordinator(
                     eventKind = PeerSyncEventKind.PAIRING_INTRO,
                     nodeStates = rosterForNewcomer,
                     removedDevices = tombstones,
-                    clusterVersion = pairingVersion
+                    clusterVersion = pairingVersion,
+                    introductions = admission().sealedIntroductionsFor(updatedNewcomer, existing)
                 )
             )
             reconcileReturnedRoster(returnedRoster, source = updatedNewcomer)

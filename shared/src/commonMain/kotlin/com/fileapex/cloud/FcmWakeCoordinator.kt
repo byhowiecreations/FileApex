@@ -3,6 +3,7 @@ package com.fileapex.cloud
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
@@ -55,9 +56,9 @@ object FcmWakeCoordinator {
         if (!allowWakeToDevice(deviceId)) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 val target = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(deviceId))
-                    .firstOrNull() ?: return@runCatching
+                    .firstOrNull() ?: return@cancellableCatching
                 FcmWakeBackend.sendPresenceWake(
                     targetFcmToken = target.fcmToken,
                     sourceDeviceId = selfId
@@ -72,7 +73,7 @@ object FcmWakeCoordinator {
         if (!allowWakeToAll()) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 val targets = GoogleLinkCoordinator.linkedPeerFcmTargets(selfId)
                 for (target in targets) {
                     FcmWakeBackend.sendPresenceWake(
@@ -98,7 +99,7 @@ object FcmWakeCoordinator {
         if (!FcmWakeBackend.isConfigured()) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 val targets = GoogleLinkCoordinator.linkedPeerFcmTargets(selfId)
                 for (target in targets) {
                     FcmWakeBackend.sendNoteWake(
@@ -147,7 +148,7 @@ object FcmWakeCoordinator {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
         if (!FcmWakeBackend.isConfigured()) return false
         val selfId = loadLocalIdentity().deviceId
-        return runCatching {
+        return cancellableCatching {
             val targets = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(targetDeviceId))
             val target = targets.firstOrNull() ?: return false
             FcmWakeBackend.sendClipboardShare(
@@ -172,7 +173,7 @@ object FcmWakeCoordinator {
         if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
         if (!FcmWakeBackend.isConfigured()) return false
         val selfId = loadLocalIdentity().deviceId
-        return runCatching {
+        return cancellableCatching {
             val targets = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(targetDeviceId))
             val target = targets.firstOrNull() ?: return false
             FcmWakeBackend.sendClipboardOptIn(
@@ -197,7 +198,7 @@ object FcmWakeCoordinator {
             return
         }
         val selfId = loadLocalIdentity().deviceId
-        runCatching {
+        cancellableCatching {
             val targets = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, targetDeviceIds)
             if (targets.isEmpty()) {
                 println(
@@ -232,7 +233,7 @@ object FcmWakeCoordinator {
         if (!FcmWakeBackend.isConfigured()) return
         val selfId = loadLocalIdentity().deviceId
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 val targets = GoogleLinkCoordinator.linkedPeerFcmTargets(selfId)
                 for (target in targets) {
                     FcmWakeBackend.sendNoteDeleteWake(

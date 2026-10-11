@@ -222,3 +222,25 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         }
     }
 }
+
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            """
+            CREATE TABLE IF NOT EXISTS `peer_candidates` (
+                `deviceId` TEXT NOT NULL,
+                `introducedBy` TEXT NOT NULL,
+                `origin` TEXT NOT NULL,
+                `introducedAtEpochMs` INTEGER NOT NULL,
+                `expiresAtEpochMs` INTEGER NOT NULL,
+                `attempts` INTEGER NOT NULL,
+                `lastAttemptEpochMs` INTEGER NOT NULL,
+                `deviceJson` TEXT NOT NULL,
+                PRIMARY KEY(`deviceId`)
+            )
+            """.trimIndent()
+        ).use { statement ->
+            statement.step()
+        }
+    }
+}

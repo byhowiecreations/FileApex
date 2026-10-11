@@ -2,6 +2,7 @@ package com.fileapex.cloud
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexHttpClientFactory
+import com.fileapex.util.cancellableCatching
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -162,7 +163,7 @@ object DesktopAuthCoordinator {
             refreshToken = refresh,
             expiresAtEpochMs = System.currentTimeMillis() + expiresIn * 1000L
         )
-        runCatching {
+        cancellableCatching {
             com.fileapex.cloud.drive.GoogleDriveClient.verifyRelayAccess()
         }.getOrElse { error ->
             com.fileapex.cloud.drive.GoogleDriveAuth.clearGrant()

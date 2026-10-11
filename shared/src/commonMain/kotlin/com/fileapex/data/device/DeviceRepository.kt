@@ -5,6 +5,7 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.RemovedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.i18n.AppI18n
+import com.fileapex.domain.pairing.PeerTrustRules
 import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.domain.peer.PeerNodeState
@@ -62,7 +63,12 @@ enum class CloudSeedOutcome {
 class DeviceRepository(
     private val deviceDao: DeviceDao,
     private val localDeviceProvider: () -> LocalDeviceRef = { LocalDeviceRef.None },
-    private val membershipStore: MembershipStore = MembershipStore.InMemory()
+    private val membershipStore: MembershipStore = MembershipStore.InMemory(),
+    /**
+     * When set, a peer learned from anyone but the user's own pairing is held here until this device
+     * verifies it directly. Null keeps the older behavior of adding such peers straight to the roster.
+     */
+    private val candidates: PeerCandidateStore? = null
 ) {
     private val mutateMutex = Mutex()
     private var clockSeeded = false
@@ -264,6 +270,10 @@ class DeviceRepository(
                 val versioned = membershipProtocol >= ClusterClock.MEMBERSHIP_PROTOCOL &&
                     ClusterClock.isAcceptable(membershipVersion)
                 if (!versioned || !hasUsableEndpoint(normalized)) return CloudSeedOutcome.Skipped
+                if (candidates != null) {
+                    stageCandidateLocked(normalized.copy(clusterVersion = membershipVersion), "cloud", CandidateOrigin.CLOUD)
+                    return CloudSeedOutcome.Skipped
+                }
                 ClusterClock.observe(membershipVersion)
                 upsertReplacingAliasesLocked(normalized.copy(clusterVersion = membershipVersion))
                 return CloudSeedOutcome.Applied
@@ -307,7 +317,11 @@ class DeviceRepository(
      * Peer learned from another node's roster (import or legacy recovery). Last-writer-wins and
      * never lifts a tombstone — only a [ClusterClock]-stamped intro or a local pairing can.
      */
-    suspend fun adoptFromRosterIntro(device: PairedDeviceEntity): Boolean =
+    suspend fun adoptFromRosterIntro(
+        device: PairedDeviceEntity,
+        introducedBy: String = "",
+        origin: CandidateOrigin = CandidateOrigin.LOCAL
+    ): Boolean =
         mutateMutex.withLock {
             seedClockLocked()
             val normalized = normalize(device)
@@ -315,8 +329,12 @@ class DeviceRepository(
                 return purgeLocalRowsLocked()
             }
             if (normalized.isRemoved) return false
-            if (tombstoneBlocksLocked(normalized, canReinstate = false)) return false
             val existing = deviceDao.getDevice(normalized.deviceId)
+            if (candidates != null && (existing == null || existing.isRemoved)) {
+                stageCandidateLocked(normalized, introducedBy, origin)
+                return false
+            }
+            if (tombstoneBlocksLocked(normalized, canReinstate = false)) return false
             val incoming = normalized.clusterVersion.takeIf { ClusterClock.isAcceptable(it) } ?: 0L
             if (existing != null && incoming < existing.clusterVersion) return false
             ClusterClock.observe(incoming)
@@ -360,6 +378,9 @@ class DeviceRepository(
             val existingByRoster = if (rosterId.isNotEmpty()) deviceDao.getDevice(rosterId) else null
             val existing = existingById ?: existingByRoster
             val activeExisting = existing?.takeUnless { it.isRemoved }
+            // Only a peer this device already trusts is updated from a node state. A different id
+            // answering at a stored address is judged by the health check, not swapped in here.
+            if (candidates != null && (existingById == null || existingById.isRemoved)) return false
 
             val versioned = state.hasMembershipProtocol
             val incomingVersion = (if (versioned) state.membershipVersion else state.clusterVersion)
@@ -511,12 +532,174 @@ class DeviceRepository(
         true
     }
 
+    // ---- Unverified peers -------------------------------------------------------------------------
+
+    private val recentlyDropped = HashMap<String, Long>()
+
+    val gatesThirdPartyRows: Boolean get() = candidates != null
+
+    suspend fun hasActiveDevice(deviceId: String): Boolean =
+        deviceDao.getDevice(deviceId.trim())?.let { !it.isRemoved } == true
+
+    suspend fun listCandidates(): List<PeerCandidate> = candidates?.all().orEmpty()
+
+    suspend fun getCandidate(deviceId: String): PeerCandidate? = candidates?.get(deviceId.trim())
+
+    /** Holds [device] as unverified. It does not enter the roster and is never shared with anyone. */
+    suspend fun stageCandidate(
+        device: PairedDeviceEntity,
+        introducedBy: String,
+        origin: CandidateOrigin
+    ): Boolean = mutateMutex.withLock {
+        seedClockLocked()
+        stageCandidateLocked(normalize(device), introducedBy, origin)
+    }
+
+    private suspend fun stageCandidateLocked(
+        normalized: PairedDeviceEntity,
+        introducedBy: String,
+        origin: CandidateOrigin
+    ): Boolean {
+        val store = candidates ?: return false
+        val id = normalized.deviceId
+        if (id.isEmpty() || id == LocalIdentity.LOCAL_DEVICE_ID || isLocalDevice(normalized) || normalized.isRemoved) {
+            return false
+        }
+        val existing = deviceDao.getDevice(id)
+        if (existing != null && !existing.isRemoved) return false
+        val now = TimeUtils.now()
+        recentlyDropped[id]?.let { droppedAt ->
+            if (now - droppedAt < DROPPED_RETRY_BLOCK_MS) return false
+            recentlyDropped.remove(id)
+        }
+        val version = normalized.clusterVersion
+        val vouched = origin == CandidateOrigin.INTRODUCED || origin == CandidateOrigin.TRANSPORT
+        if (vouched && !ClusterClock.isAcceptable(version)) return false
+        val hash = normalized.publicKeyHash.trim()
+        val tombstone = tombstoneIndexLocked().versionFor(id, hash)
+        if (tombstone > 0L && !(version > tombstone && ClusterClock.isAcceptable(version))) return false
+        val previous = store.get(id)
+        val staged = normalized.copy(
+            lastSeenEpochMs = 0L,
+            isRemoved = false,
+            removedAt = null,
+            tlsPin = "",
+            tlsPinAlt = ""
+        )
+        store.put(
+            PeerCandidate(
+                device = staged,
+                introducedBy = introducedBy,
+                origin = origin,
+                introducedAtEpochMs = previous?.introducedAtEpochMs ?: now,
+                expiresAtEpochMs = previous?.expiresAtEpochMs ?: (now + CANDIDATE_TTL_MS),
+                attempts = previous?.attempts ?: 0,
+                lastAttemptEpochMs = previous?.lastAttemptEpochMs ?: 0L
+            )
+        )
+        return previous == null
+    }
+
+    suspend fun recordCandidateAttempt(deviceId: String) {
+        val store = candidates ?: return
+        mutateMutex.withLock {
+            val current = store.get(deviceId.trim()) ?: return
+            store.put(current.copy(attempts = current.attempts + 1, lastAttemptEpochMs = TimeUtils.now()))
+        }
+    }
+
+    suspend fun dropCandidate(deviceId: String, remember: Boolean = false) {
+        val store = candidates ?: return
+        mutateMutex.withLock {
+            store.remove(deviceId.trim())
+            if (remember) recentlyDropped[deviceId.trim()] = TimeUtils.now()
+        }
+    }
+
+    /** Removes candidates past their deadline and refuses the same introduction again for a while. */
+    suspend fun expireCandidates(): Int {
+        val store = candidates ?: return 0
+        return mutateMutex.withLock {
+            val now = TimeUtils.now()
+            val expired = store.all().filter { it.expiresAtEpochMs <= now }
+            expired.forEach { recentlyDropped[it.deviceId] = now }
+            store.removeExpired(now)
+            expired.size
+        }
+    }
+
     /**
-     * LAN identity probe replaces a stale Room row when ids diverge
-     * (common after roster restore from an older database file).
+     * Adds a verified candidate to the roster. [live] is what the peer itself returned when this device
+     * contacted it, so presence and version come from that contact and not from whoever introduced it.
      */
-    suspend fun adoptLiveIdentity(staleDeviceId: String, live: PairedDeviceEntity): Boolean =
-        applyPeerNodeState(PeerNodeStateMapper.fromEntity(live), staleDeviceId)
+    suspend fun promoteCandidate(candidate: PeerCandidate, live: PeerNodeState): Boolean =
+        mutateMutex.withLock {
+            val store = candidates ?: return false
+            seedClockLocked()
+            val liveVersion = live.membershipVersion.takeIf { live.hasMembershipProtocol && ClusterClock.isAcceptable(it) }
+            val version = liveVersion ?: candidate.device.clusterVersion
+            val entity = normalize(
+                PeerNodeStateMapper.toEntity(live, candidate.device).copy(
+                    clusterVersion = version,
+                    lastSeenEpochMs = TimeUtils.now(),
+                    isRemoved = false,
+                    removedAt = null
+                ),
+                candidate.device
+            )
+            store.remove(candidate.deviceId)
+            if (isLocalDevice(entity)) return false
+            if (tombstoneBlocksLocked(entity, canReinstate = true)) return false
+            ClusterClock.observe(version)
+            writeDeviceKeepingTlsTrust(entity)
+            true
+        }
+
+    /**
+     * A stored address answered as another device. A row that was never reached directly is an outdated
+     * copy and goes back to unverified; one that was reached before only loses its stale address.
+     */
+    suspend fun recordEndpointMismatch(deviceId: String, host: String, answeredAs: String): Boolean =
+        mutateMutex.withLock {
+            val id = deviceId.trim()
+            val row = deviceDao.getDevice(id) ?: return false
+            if (row.isRemoved || id == answeredAs.trim()) return false
+            val store = candidates
+            if (row.lastSeenEpochMs == 0L && store != null) {
+                deviceDao.deleteDevice(id)
+                stageCandidateLocked(row, "health-check", CandidateOrigin.LOCAL)
+                return true
+            }
+            if (row.lastKnownIp.trim() == host.trim()) {
+                deviceDao.updateEndpoint(id, "", row.port)
+                return true
+            }
+            false
+        }
+
+    /**
+     * Startup migration: rows this device never reached directly were added on someone's word. They are
+     * held as unverified until a direct contact confirms them.
+     */
+    suspend fun demoteUnverifiedRows(): Int = mutateMutex.withLock {
+        val store = candidates ?: return 0
+        seedClockLocked()
+        val now = TimeUtils.now()
+        var moved = 0
+        for (row in deviceDao.getAllDevicesOnce()) {
+            if (isLocalDevice(row) || row.lastSeenEpochMs > 0L) continue
+            if (row.clusterVersion > 0L && now - row.clusterVersion < NEW_ROW_GRACE_MS) continue
+            deviceDao.deleteDevice(row.deviceId)
+            if (stageCandidateLocked(row, "migration", CandidateOrigin.LOCAL)) moved++
+        }
+        moved
+    }
+
+    /** The rows this device may vouch for: reached directly, current on the cluster clock, no twin on their address. */
+    suspend fun introducibleDevices(): List<PairedDeviceEntity> {
+        val roster = listDevices()
+        return roster.filter { PeerTrustRules.mayIntroduce(it, roster) }
+    }
 
     /**
      * Permanently removes a peer from the roster and blocklists it against
@@ -1149,6 +1332,8 @@ class DeviceRepository(
             val incomingVersion = remote.clusterVersion.takeIf { ClusterClock.isAcceptable(it) }
                 ?: return@withLock false
             val existing = deviceDao.getDevice(trimmedId)
+            // A returned roster is unauthenticated: it may refresh a peer already trusted, never add one.
+            if (candidates != null && (existing == null || existing.isRemoved)) return@withLock false
             if (existing != null && !existing.isRemoved && incomingVersion < existing.clusterVersion) {
                 return@withLock false
             }
@@ -1223,6 +1408,8 @@ class DeviceRepository(
     private companion object {
         val TLS_PIN_FORMAT = Regex("[0-9a-f]{64}")
         const val TOMBSTONE_GOSSIP_MAX_AGE_MS = 30L * 24L * 60L * 60L * 1000L
+        private const val DROPPED_RETRY_BLOCK_MS = 24L * 60L * 60L * 1000L
+        private const val NEW_ROW_GRACE_MS = 10L * 60L * 1000L
     }
 }
 

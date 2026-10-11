@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import com.fileapex.platform.androidApplicationContextOrNull
 import com.fileapex.util.NetworkUtils
+import com.fileapex.util.cancellableCatching
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -92,14 +93,14 @@ actual object FileApexMdnsBrowser {
         pendingLockReleaseRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingLockReleaseRunnable = null
         if (multicastLock == null) {
-            runCatching {
+            cancellableCatching {
                 val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
                 multicastLock = wifi?.createMulticastLock("fileapex:mdns_browser")?.apply {
                     setReferenceCounted(false)
                 }
             }
         }
-        runCatching {
+        cancellableCatching {
             multicastLock?.let { lock ->
                 if (!lock.isHeld) {
                     lock.acquire()

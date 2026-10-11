@@ -21,6 +21,7 @@ import com.fileapex.security.tls.TlsTransportPolicy
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -61,10 +62,12 @@ class FileApexServer(
     internal val identityProvider: () -> LocalIdentity = { loadLocalIdentity() },
     internal val onPairingRespond: suspend (PairedDeviceEntity) -> Unit = {},
     internal val onPairingRespondComplete: suspend (PairedDeviceEntity) -> Unit = {},
-    internal val onClusterMerge: suspend (ClusterSyncRequest) -> Unit = {},
+    /** The second argument is the sender's device id when mutual TLS authenticated it, else null. */
+    internal val onClusterMerge: suspend (ClusterSyncRequest, String?) -> Unit = { _, _ -> },
     internal val onClusterPeerRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Unit = {},
     internal val onClusterSelfRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Boolean = { false },
     internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
+    internal val onListIntroductions: suspend (recipientId: String) -> List<com.fileapex.security.SealedIntroduction> = { emptyList() },
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
         if (error != null) {
             println("FileApexServer: $message :: ${error.message}")
@@ -208,7 +211,7 @@ class FileApexServer(
     fun stop(gracePeriodMillis: Long = 1_000, timeoutMillis: Long = 2_000) {
         synchronized(engineLock) {
             onLog("Stopping CIO engine", null)
-            runCatching {
+            cancellableCatching {
                 serverEngine?.stop(
                     gracePeriodMillis = gracePeriodMillis,
                     timeoutMillis = timeoutMillis

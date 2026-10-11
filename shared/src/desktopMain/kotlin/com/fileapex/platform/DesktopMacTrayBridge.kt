@@ -77,7 +77,7 @@ object DesktopMacTrayBridge {
             // that got there first would be sent as plain HTTP to a pinned peer.
             installLanTls(lib)
             native = lib
-            println("DesktopMacTrayBridge: loaded ${dylib.absolutePath}")
+            println("DesktopMacTrayBridge: loaded ${dylib.name}")
             true
         }.getOrElse { error ->
             println("DesktopMacTrayBridge: load failed :: ${error.message}")

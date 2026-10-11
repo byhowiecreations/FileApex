@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Process
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.platform.ServiceWatchdog
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -23,7 +24,7 @@ actual object ClusterResetPlatform {
             }
         }
         val context = androidAppContextOrNull() ?: return
-        runCatching {
+        cancellableCatching {
             context.getSharedPreferences("fileapex_identity", Context.MODE_PRIVATE)
                 .edit()
                 .clear()
@@ -35,7 +36,7 @@ actual object ClusterResetPlatform {
         val context = androidAppContextOrNull() ?: return
 
         ServiceWatchdog.markCleanStop()
-        runCatching {
+        cancellableCatching {
             val serviceIntent = Intent().apply {
                 setClassName(context.packageName, "com.fileapex.network.FileShareServerService")
             }
@@ -56,11 +57,11 @@ actual object ClusterResetPlatform {
             "pending_updates"
         )
         for (pref in knownPrefs) {
-            runCatching {
+            cancellableCatching {
                 context.getSharedPreferences(pref, Context.MODE_PRIVATE).edit().clear().commit()
             }
         }
-        runCatching {
+        cancellableCatching {
             val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
             if (sharedPrefsDir.isDirectory) {
                 sharedPrefsDir.listFiles()?.forEach { file ->

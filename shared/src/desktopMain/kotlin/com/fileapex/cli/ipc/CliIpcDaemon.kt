@@ -4,6 +4,7 @@ import com.fileapex.cli.dash.CliClusterEngine
 import com.fileapex.cli.commands.CliCommandHandler
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
+import com.fileapex.util.cancellableCatching
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -31,7 +32,7 @@ object CliIpcDaemon {
 
     fun start() {
         if (serverSocket != null) return
-        runCatching {
+        cancellableCatching {
             serverSocket = ServerSocket(CLI_IPC_PORT, 50, InetAddress.getLoopbackAddress())
             scope.launch {
                 while (true) {

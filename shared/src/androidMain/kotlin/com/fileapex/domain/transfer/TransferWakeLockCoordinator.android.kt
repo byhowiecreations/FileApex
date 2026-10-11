@@ -8,6 +8,7 @@ import android.os.PowerManager
 import android.util.Log
 import com.fileapex.platform.androidApplicationContextOrNull
 import com.fileapex.tailscale.holdTailscaleProcess
+import com.fileapex.util.cancellableCatching
 
 internal actual object TransferWakeLockCoordinator {
     private const val TAG = "TransferWakeLock"
@@ -38,7 +39,7 @@ internal actual object TransferWakeLockCoordinator {
             if (refs == 0) {
                 val context = androidApplicationContextOrNull()
                 if (context != null) {
-                    runCatching {
+                    cancellableCatching {
                         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
                         wakeLock = powerManager?.newWakeLock(
                             PowerManager.PARTIAL_WAKE_LOCK,
@@ -49,12 +50,13 @@ internal actual object TransferWakeLockCoordinator {
                         }
                     }.onFailure { Log.w(TAG, "Failed to acquire PARTIAL_WAKE_LOCK: ${it.message}") }
 
-                    runCatching {
+                    cancellableCatching {
                         val wifiManager = context.applicationContext
                             .getSystemService(Context.WIFI_SERVICE) as? WifiManager
                         val wifiMode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                             WifiManager.WIFI_MODE_FULL_LOW_LATENCY
                         } else {
+                            // no low latency mode before API 29
                             @Suppress("DEPRECATION")
                             WifiManager.WIFI_MODE_FULL_HIGH_PERF
                         }
@@ -69,7 +71,7 @@ internal actual object TransferWakeLockCoordinator {
                     Log.i(TAG, "Acquired transfer WakeLock and WifiLock")
                 }
             } else {
-                runCatching { wakeLock?.acquire(SAFETY_TIMEOUT_MS) }
+                cancellableCatching { wakeLock?.acquire(SAFETY_TIMEOUT_MS) }
             }
             safetyHandler.removeCallbacks(safetyRelease)
             safetyHandler.postDelayed(safetyRelease, SAFETY_TIMEOUT_MS)

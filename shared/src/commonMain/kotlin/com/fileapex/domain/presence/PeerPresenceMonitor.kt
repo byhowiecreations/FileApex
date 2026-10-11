@@ -384,6 +384,9 @@ class PeerPresenceMonitor(
             cancellableCatching { tailnetRoster.refresh() }
         }
         awaitShareServerReady()
+        if (repository.listCandidates().isNotEmpty()) {
+            cancellableCatching { FileApexServices.peerAdmission.verifyPending() }
+        }
         val peers = mutex.withLock { repository.listDevices() }
         if (peers.isEmpty()) {
             refreshOnlineSnapshot()
@@ -768,7 +771,7 @@ class PeerPresenceMonitor(
                 client = client,
                 budgetMs = discoveryBudget
             )
-            if (discovered != null) {
+            if (discovered != null && discovered.deviceId.trim() == peer.deviceId) {
                 mutex.withLock {
                     repository.applyPeerNodeState(discovered, rosterDeviceId = peer.deviceId, observedDirectly = true)
                 }
@@ -796,8 +799,17 @@ class PeerPresenceMonitor(
             val companion = NotificationCompanion.pollValueFor(
                 peer.deviceId, peer.isDockerNode(), peer.os, peer.platform, peer.tlsPin
             )
-            val reached = client.pingHealth(endpoint.host, endpoint.port, timeoutMs, companion)
+            val probe = client.probeHealth(endpoint.host, endpoint.port, timeoutMs, companion)
+            val reached = probe.reached
             if (companion != null) NotificationDebugLog.log("sweep grant poll to ${NotificationDebugLog.short(peer.deviceId)} value=$companion reached=$reached")
+            val answeredAs = probe.respondedAs
+            if (reached && answeredAs != null && answeredAs != peer.deviceId) {
+                // Someone answers at this address, but not the device stored for it.
+                if (!endpoint.tailnet) {
+                    mutex.withLock { repository.recordEndpointMismatch(peer.deviceId, endpoint.host, answeredAs) }
+                }
+                return false
+            }
             if (reached) {
                 markReachable(peer.deviceId)
                 mutex.withLock {
@@ -812,6 +824,14 @@ class PeerPresenceMonitor(
                         client.fetchPeerNodeState(endpoint.host, endpoint.port, timeoutMs)
                     }.getOrNull()
                     if (state != null) {
+                        if (state.deviceId.trim() != peer.deviceId) {
+                            if (!endpoint.tailnet) {
+                                mutex.withLock {
+                                    repository.recordEndpointMismatch(peer.deviceId, endpoint.host, state.deviceId.trim())
+                                }
+                            }
+                            return false
+                        }
                         mutex.withLock {
                             repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId, observedDirectly = true)
                         }

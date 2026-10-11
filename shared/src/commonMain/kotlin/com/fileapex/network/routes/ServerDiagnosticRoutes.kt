@@ -11,6 +11,7 @@ import com.fileapex.platform.collectDeviceDiagnostics
 import com.fileapex.platform.collectDeviceSummary
 import com.fileapex.platform.collectDeviceDiagnosticsFallback
 import com.fileapex.platform.collectFastBatteryDiagnostics
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -24,7 +25,8 @@ import kotlinx.coroutines.withContext
 
 internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
     get("/api/v1/health") {
-        call.respondText("ok", ContentType.Text.Plain)
+        // Older clients only read the status; the id lets a prober confirm who answered at this address.
+        call.respondText("ok:${server.identityProvider().deviceId}", ContentType.Text.Plain)
     }
 
     get("/api/v1/diagnostics") {
@@ -113,7 +115,7 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/device/alert") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val title = runCatching {
                 server.json.parseToJsonElement(body)

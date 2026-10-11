@@ -7,6 +7,7 @@ import com.fileapex.platform.fastScanDirectory
 import com.fileapex.platform.generateDeviceId
 import com.fileapex.util.PathUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,12 +66,12 @@ object BackupEngine {
         if (!config.isRunnable) return BackupRunResult()
         val device = FileApexServices.deviceRepository.getDevice(config.destinationDeviceId)
             ?: return BackupRunResult(unavailable = true)
-        val direct = runCatching { FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) }.getOrNull()
+        val direct = cancellableCatching { FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) }.getOrNull()
         val host = direct?.host ?: device.lastKnownIp
         val port = direct?.port ?: device.port
         val client = FileApexServices.client
         // Doubles as the reachability check: an unreachable destination ends the run before any work starts.
-        val capabilities = runCatching { client.transferCapabilities(host, port) }.getOrNull()
+        val capabilities = cancellableCatching { client.transferCapabilities(host, port) }.getOrNull()
             ?: return BackupRunResult(unavailable = true)
 
         val effectiveRoot = if (device.platform.trim().equals("android", ignoreCase = true) &&

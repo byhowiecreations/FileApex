@@ -1,6 +1,7 @@
 package com.fileapex.cloud
 
 import com.fileapex.platform.OAuthCodeResult
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -38,7 +39,7 @@ internal object DesktopOAuthLoopbackServer {
                 }
             }
         }
-        runCatching {
+        cancellableCatching {
             server.start(wait = false)
         }.getOrElse { error ->
             throw IllegalStateException(

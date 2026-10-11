@@ -134,7 +134,7 @@ private object DesktopTsnetLibrary {
                 null
             } ?: return null
             native = loaded
-            println("FileApex tsnet: loaded ${library.absolutePath}")
+            println("FileApex tsnet: loaded ${library.name}")
             return loaded
         }
     }

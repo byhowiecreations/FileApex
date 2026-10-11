@@ -10,6 +10,7 @@ import com.fileapex.domain.diagnostics.ProcessorDiagnostics
 import com.fileapex.domain.diagnostics.StorageDiagnostics
 import com.fileapex.domain.diagnostics.ThermalDiagnostics
 import com.fileapex.domain.diagnostics.UptimeDiagnostics
+import com.fileapex.util.cancellableCatching
 import com.sun.management.OperatingSystemMXBean
 import java.awt.GraphicsEnvironment
 import java.awt.Toolkit
@@ -158,7 +159,7 @@ private fun readMacProcessor(): ProcessorDiagnostics {
 }
 
 private fun readWindowsProcessor(): ProcessorDiagnostics {
-    return runCatching {
+    return cancellableCatching {
         val name = readCommandOutput("wmic", "cpu", "get", "Name")
             ?.lineSequence()
             ?.map { it.trim() }
@@ -331,7 +332,7 @@ private fun readNetwork(): NetworkDiagnostics {
 }
 
 private fun findActiveNetworkInterface(): NetworkInterface? {
-    return runCatching {
+    return cancellableCatching {
         NetworkInterface.getNetworkInterfaces()
             .toList()
             .asSequence()
@@ -680,7 +681,7 @@ private fun readMemory(): MemoryDiagnostics {
 }
 
 private fun readMacMemory(): MemoryDiagnostics {
-    return runCatching {
+    return cancellableCatching {
         val total = readSysctlLong("hw.memsize")
         val pageSize = readSysctlLong("hw.pagesize") ?: 4096L
         val vmStat = readCommandOutput("vm_stat").orEmpty()
@@ -720,7 +721,7 @@ private fun readSysctl(name: String): String? {
 }
 
 private fun readCommandOutput(vararg command: String): String? {
-    return runCatching {
+    return cancellableCatching {
         ProcessBuilder(*command)
             .redirectErrorStream(true)
             .start()

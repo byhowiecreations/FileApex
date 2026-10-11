@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.MediaStore
 import com.fileapex.i18n.AppI18n
 import java.io.File
+import java.io.IOException
 import java.net.URLConnection
 
 internal var trashContext: Context? = null
@@ -100,9 +101,24 @@ internal fun uniqueTrashDest(root: File, name: String): File {
     return dest
 }
 
+/** Copies, checks file count and byte size match, and only then removes the source. A failed copy leaves the source untouched. */
 internal fun copyThenDelete(source: File, dest: File): Boolean {
-    if (source.isDirectory) source.copyRecursively(dest, overwrite = false) else source.copyTo(dest, overwrite = false)
+    val copied = try {
+        if (source.isDirectory) source.copyRecursively(dest, overwrite = false) else { source.copyTo(dest, overwrite = false); true }
+    } catch (error: IOException) {
+        println("copyThenDelete: copy failed - ${error::class.simpleName}")
+        false
+    }
+    if (!copied || treeSize(source) != treeSize(dest)) {
+        dest.deleteRecursively()
+        return false
+    }
     return source.deleteRecursively()
+}
+
+private fun treeSize(root: File): Pair<Int, Long> {
+    val files = root.walkTopDown().filter { it.isFile }.toList()
+    return files.size to files.sumOf { it.length() }
 }
 
 actual fun trashLocalEntriesQuietly(absolutePaths: List<String>) {

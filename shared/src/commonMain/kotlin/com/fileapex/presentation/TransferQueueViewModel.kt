@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +45,7 @@ class TransferQueueViewModel : ViewModel() {
 
     fun remove(id: String) {
         viewModelScope.launch {
-            runCatching { queue.remove(id) }.onFailure { error ->
+            cancellableCatching { queue.remove(id) }.onFailure { error ->
                 _uiState.update {
                 it.copy(errorMessage = UserFacingErrors.message(error, "no_queued_remove"))
                 }
@@ -58,7 +59,7 @@ class TransferQueueViewModel : ViewModel() {
 
     fun retryNow(id: String) {
         viewModelScope.launch {
-            runCatching { queue.retryNow(id) }.onFailure { error ->
+            cancellableCatching { queue.retryNow(id) }.onFailure { error ->
                 _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "queue_retry_failed")) }
             }
         }

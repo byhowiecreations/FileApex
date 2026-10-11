@@ -4,6 +4,7 @@ import android.content.Context
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices
 import com.fileapex.shared.BuildConfig
+import com.fileapex.util.cancellableCatching
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
@@ -120,7 +121,7 @@ actual object GoogleDriveAuth {
         val context = androidAppContextOrNull() ?: return false
         val clientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
         if (clientId.isBlank()) return false
-        return runCatching {
+        return cancellableCatching {
             val request = AuthorizationRequest.builder()
                 .setRequestedScopes(listOf(Scope(DRIVE_FILE_SCOPE)))
                 .setOptOutIncludingGrantedScopes(true)
@@ -131,12 +132,12 @@ actual object GoogleDriveAuth {
                 .await()
             if (result.hasResolution()) {
                 driveLog("silent Drive reauth needs user consent")
-                return@runCatching false
+                return@cancellableCatching false
             }
             val access = result.accessToken.orEmpty()
             if (access.isBlank()) {
                 driveLog("silent Drive reauth returned no access token")
-                return@runCatching false
+                return@cancellableCatching false
             }
             val existingRefresh = prefs()?.getString(KEY_REFRESH, "").orEmpty()
             persistGrant(

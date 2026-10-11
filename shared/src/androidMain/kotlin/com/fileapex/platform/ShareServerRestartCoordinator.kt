@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.fileapex.util.cancellableCatching
 
 /**
  * Share-server FGS restart and deferred recovery.
@@ -75,7 +76,7 @@ object ShareServerRestartCoordinator {
             Log.d(TAG, "Share server already running - $source needs no restart")
             return
         }
-        runCatching {
+        cancellableCatching {
             val start = Intent().setClassName(appContext.packageName, FILE_SHARE_SERVER_SERVICE).apply {
                 action = "com.fileapex.action.START_SHARE_SERVER"
                 putExtra("extra_from_foreground", true)

@@ -8,6 +8,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.isTailscaleEnabled
 import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.ServerLifecycleManager
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -49,7 +50,7 @@ object BulletinLegacyRelay {
                 val host = dial?.host ?: device.lastKnownIp
                 val port = dial?.port ?: device.port
                 if (host.isBlank() || port <= 0) continue
-                runCatching {
+                cancellableCatching {
                     FileApexServices.client.postNoteDelete(
                         host = host,
                         port = port,
@@ -75,7 +76,7 @@ object BulletinLegacyRelay {
             val host = dial?.host ?: device.lastKnownIp
             val port = dial?.port ?: device.port
             if (host.isBlank() || port <= 0) continue
-            runCatching {
+            cancellableCatching {
                 FileApexServices.client.postNote(host, port, record)
                 if (lanAttach) {
                     FileApexServices.client.uploadNoteAttachment(

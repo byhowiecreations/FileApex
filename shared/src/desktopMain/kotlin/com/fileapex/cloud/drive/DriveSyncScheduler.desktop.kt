@@ -1,6 +1,7 @@
 package com.fileapex.cloud.drive
 
 import com.fileapex.platform.collectFastBatteryDiagnostics
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,7 +19,7 @@ actual object DriveSyncScheduler {
         loopJob = scope.launch {
             while (isActive) {
                 delay(pollIntervalMs())
-                runCatching { DriveRelayCoordinator.sweep() }
+                cancellableCatching { DriveRelayCoordinator.sweep() }
                     .onFailure { error ->
                         println("DriveSyncScheduler: sweep failed - ${error.message}")
                     }
@@ -43,7 +44,7 @@ actual object DriveSyncScheduler {
 
     actual fun enqueueImmediateSweep() {
         scope.launch {
-            runCatching { DriveRelayCoordinator.sweep() }
+            cancellableCatching { DriveRelayCoordinator.sweep() }
                 .onFailure { error ->
                     println("DriveSyncScheduler: immediate sweep failed - ${error.message}")
                 }

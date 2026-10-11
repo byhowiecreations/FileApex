@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.fileapex.util.cancellableCatching
 
 actual fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap? {
     val edge = maxEdge.coerceAtLeast(16)
@@ -16,7 +17,7 @@ actual fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap
         }
     }.getOrDefault(ByteArray(0))
     val orientation = jpegOrientation(head)
-    return runCatching {
+    return cancellableCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -30,7 +31,7 @@ actual fun decodeLocalImageFile(absolutePath: String, maxEdge: Int): ImageBitmap
 actual fun decodeImageBytes(bytes: ByteArray, maxEdge: Int): ImageBitmap? {
     if (bytes.isEmpty()) return null
     val edge = maxEdge.coerceAtLeast(16)
-    return runCatching {
+    return cancellableCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null

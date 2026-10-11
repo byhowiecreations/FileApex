@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.domain.device.PhoneLocator
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,7 +27,7 @@ actual fun triggerLocalLocatorSound(continuous: Boolean) {
         return
     }
     CoroutineScope(Dispatchers.Default).launch {
-        runCatching {
+        cancellableCatching {
             val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, 100)
             repeat(4) {
                 toneGen.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 250)
@@ -105,7 +106,7 @@ internal object LocatorAlarm {
         timeout?.cancel()
         timeout = null
         player?.let {
-            runCatching { it.stop() }
+            cancellableCatching { it.stop() }
             it.release()
         }
         player = null

@@ -77,8 +77,13 @@ actual fun moveLocalEntryInto(absolutePath: String, destinationDirectory: String
     }
     if (dest.exists()) error("already exists")
     if (!source.renameTo(dest)) {
-        source.copyRecursively(dest, overwrite = false)
-        if (treeSize(source) != treeSize(dest)) {
+        val copied = try {
+            source.copyRecursively(dest, overwrite = false)
+        } catch (error: java.io.IOException) {
+            dest.deleteRecursively()
+            throw error
+        }
+        if (!copied || treeSize(source) != treeSize(dest)) {
             dest.deleteRecursively()
             error("move failed")
         }

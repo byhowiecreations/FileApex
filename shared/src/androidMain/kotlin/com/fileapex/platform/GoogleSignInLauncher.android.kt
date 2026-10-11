@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.fileapex.cloud.interactiveGoogleIdToken
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.launch
 
 @Composable
@@ -21,7 +22,7 @@ actual fun rememberGoogleSignInLauncher(
                 onResult(null, null, "Google sign-in requires an Activity context")
             } else {
                 scope.launch {
-                    runCatching {
+                    cancellableCatching {
                         interactiveGoogleIdToken(activity)
                     }.onSuccess { (idToken, email) ->
                         onResult(idToken, email, null)

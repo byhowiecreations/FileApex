@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.update.PendingUpdateOffer
+import com.fileapex.update.PlatformInstallPermission
 import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
 
 @Composable
@@ -62,8 +63,11 @@ fun UpdateAvailableSheet(
         confirmButton = {
             TextButton(
                 onClick = {
-                    requestInstallPermission()
-                    AppUpdateCoordinator.downloadPendingUpdate()
+                    if (PlatformInstallPermission.canRequestPackageInstalls()) {
+                        AppUpdateCoordinator.downloadPendingUpdate()
+                    } else {
+                        requestInstallPermission()
+                    }
                 }
             ) {
                 Text(stringRes("download_install"))

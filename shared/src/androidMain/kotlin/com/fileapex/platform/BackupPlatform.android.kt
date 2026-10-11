@@ -7,6 +7,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.ForegroundInfo
 import com.fileapex.domain.backup.BackupStatus
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.work.Constraints
@@ -70,7 +71,7 @@ actual object BackupScheduler {
 class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(null)
 
-    override suspend fun doWork(): Result = runCatching {
+    override suspend fun doWork(): Result = cancellableCatching {
         // Running as a foreground service lifts the roughly ten-minute worker limit, so a first backup
         // finishes in one go. Android may refuse that for a run started in the background; that run
         // stops a little early instead, saves its progress, and the rest follows.

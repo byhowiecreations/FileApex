@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import kotlin.text.Charsets
 
 import com.fileapex.cloud.currentPlatformLabel
@@ -28,7 +29,7 @@ actual fun localDeviceHardwareProfile(): DeviceHardwareProfile {
 }
 
 private fun readDesktopHardwareModel(): String {
-    return runCatching {
+    return cancellableCatching {
         ProcessBuilder("/usr/sbin/sysctl", "-n", "hw.model")
             .redirectErrorStream(true)
             .start()

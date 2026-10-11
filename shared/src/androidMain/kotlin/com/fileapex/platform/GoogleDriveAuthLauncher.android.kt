@@ -15,6 +15,7 @@ import com.fileapex.cloud.drive.GoogleDriveAuth
 import com.fileapex.cloud.drive.GoogleDriveClient
 import com.fileapex.cloud.exchangeGoogleServerAuthCode
 import com.fileapex.cloud.googleWebClientId
+import com.fileapex.util.cancellableCatching
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
@@ -39,7 +40,7 @@ actual fun rememberGoogleDriveAuthLauncher(
             return@rememberLauncherForActivityResult
         }
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 val result = Identity.getAuthorizationClient(activity)
                     .getAuthorizationResultFromIntent(activityResult.data)
                 completeDriveGrant(result)
@@ -60,7 +61,7 @@ actual fun rememberGoogleDriveAuthLauncher(
                 onResult(false, "Google Drive authorization requires an Activity")
             } else {
                 scope.launch {
-                    runCatching {
+                    cancellableCatching {
                         val clientId = googleWebClientId()
                         val request = AuthorizationRequest.builder()
                             .setRequestedScopes(listOf(Scope(DRIVE_FILE_SCOPE)))
@@ -103,7 +104,7 @@ private fun logAuthorizationResult(result: AuthorizationResult) {
 
 private suspend fun completeDriveGrant(result: AuthorizationResult) {
     persistAuthorizationResult(result)
-    runCatching {
+    cancellableCatching {
         GoogleDriveClient.verifyRelayAccess()
     }.getOrElse { error ->
         GoogleDriveAuth.clearGrant()
@@ -130,7 +131,7 @@ private suspend fun persistAuthorizationResult(result: AuthorizationResult) {
 }
 
 private suspend fun exchangeServerAuthCode(serverAuthCode: String, fallbackAccess: String) {
-    val tokens = runCatching { exchangeGoogleServerAuthCode(serverAuthCode) }.getOrElse { error ->
+    val tokens = cancellableCatching { exchangeGoogleServerAuthCode(serverAuthCode) }.getOrElse { error ->
         if (fallbackAccess.isNotBlank()) {
             GoogleDriveAuth.persistGrant(fallbackAccess, "", System.currentTimeMillis() + 3_500_000L)
             return

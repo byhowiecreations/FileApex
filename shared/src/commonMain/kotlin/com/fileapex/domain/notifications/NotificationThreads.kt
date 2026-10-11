@@ -17,11 +17,13 @@ data class NotificationThread(
 object NotificationThreads {
     private const val MAX_LINES = 12
 
-    /** Newest thread first. Messages and email group by sender, everything else by app. */
+    /** Newest thread first. Messages group by sender, everything else by app; each email stands alone. */
     fun threads(items: List<NotificationPayload>, kind: NotificationKind): List<NotificationThread> {
         val ofKind = items.filter { it.kind == kind }
         val grouped = if (kind == NotificationKind.OTHER) {
             ofKind.groupBy { it.packageName }
+        } else if (kind == NotificationKind.EMAIL) {
+            ofKind.groupBy { it.packageName + "\u0000" + it.key }
         } else {
             ofKind.groupBy { it.packageName + "\u0000" + conversationOf(it).lowercase() }
         }

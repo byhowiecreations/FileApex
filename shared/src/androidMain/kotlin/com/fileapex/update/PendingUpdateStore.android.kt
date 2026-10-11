@@ -374,9 +374,9 @@ actual object PendingUpdateStore {
             val file = java.io.File(candidatePath)
             if (file.isFile) {
                 val deleted = runCatching { file.delete() }.getOrDefault(false)
-                println("PendingUpdateStore: deleted update APK for txId=$transactionId at $candidatePath (deleted=$deleted)")
+                println("PendingUpdateStore: deleted update APK for txId=$transactionId (deleted=$deleted)")
             } else {
-                println("PendingUpdateStore: candidate update file missing or not a file: $candidatePath")
+                println("PendingUpdateStore: candidate update file missing or not a file")
             }
         } else {
             println("PendingUpdateStore: no candidate APK file found for txId=$transactionId")

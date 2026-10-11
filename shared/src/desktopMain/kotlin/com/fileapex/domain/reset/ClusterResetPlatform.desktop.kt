@@ -1,6 +1,7 @@
 package com.fileapex.domain.reset
 
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.util.cancellableCatching
 import java.util.prefs.Preferences
 import kotlin.system.exitProcess
 
@@ -13,7 +14,7 @@ actual object ClusterResetPlatform {
     }
 
     actual fun stateResetAndRestart() {
-        runCatching {
+        cancellableCatching {
             Preferences.userRoot().node("com.fileapex.settings").clear()
         }
         runCatching {

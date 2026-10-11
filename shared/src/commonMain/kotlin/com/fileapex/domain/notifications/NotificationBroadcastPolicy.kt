@@ -20,17 +20,36 @@ object NotificationBroadcastPolicy {
         "com.android.email", "me.bluemail.mail", "com.my.mail", "com.fastmail.android", "de.tutao.tutanota"
     )
 
-    private val codeKeywords = listOf(
-        "code", "verification", "verify", "otp", "one-time", "one time", "passcode", "security code",
-        "2fa", "two-factor", "sign in", "sign-in", "login", "log in", "password",
-        "código", "codigo", "verificación", "验证码", "校验码", "动态码", "驗證碼"
+    private val strongTriggers = Regex(
+        """\b(otp|2fa|pin|passcode|code|codes|one[- ]time|verification|verify|authentication|authenticate|security code)\b|""" +
+            "código|codigo|verificación|验证码|校验码|动态码|驗證碼"
+    )
+
+    /** Wording that only hints at a code ("to sign in"), so it counts only for a 6 digit or 3-3 split number. */
+    private val weakTriggers = Regex("""\b(sign[- ]?in|log[- ]?in|password|two[- ]factor|confirm)\b""")
+
+    private val notACode = Regex(
+        """\b(zip|postal|post|area|country|promo|promotional|discount|coupon|referral|source|dress|qr|bar|product|tracking|gift)\s+code\b""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Stripped before matching so dates, times, years, phone numbers, money and IPs are not read as codes. */
+    private val notCodeNumbers = listOf(
+        Regex("""\$?\s?\d[\d,]*\.\d+"""),
+        Regex("""\d+(\.\d+){2,}"""),
+        Regex("""[$€£¥]\s?\d[\d,]*"""),
+        Regex("""\+?\d{1,3}[-. ]?\(?\d{3}\)?[-. ]\d{3}[-. ]\d{4}"""),
+        Regex("""\d{1,2}[:/-]\d{1,2}([:/-]\d{1,4})?"""),
+        Regex("""(?<!\d)(19|20)\d{2}(?!\d)""")
     )
 
     private val codeShapes = listOf(
-        Regex("""(?<!\d)\d{4,8}(?!\d)"""),
-        Regex("""(?<!\d)\d{3}[ -]\d{3}(?!\d)"""),
-        Regex("""\b[A-Za-z]-\d{4,8}\b""")
+        Regex("""(?<![\d.,-])\d{4,8}(?![\d.,-]?\d)"""),
+        Regex("""(?<![\d.,-])\d{3}[ -]\d{3}(?![\d.,-]?\d)"""),
+        Regex("""\b[A-Za-z]-\d{4,8}(?!\d)""")
     )
+
+    private const val TRIGGER_DISTANCE = 40
 
     /** Values of `ApplicationInfo.category` the app list uses; -1 means the developer did not declare one. */
     const val APP_CATEGORY_SOCIAL = 4
@@ -114,11 +133,21 @@ object NotificationBroadcastPolicy {
         else -> NotificationKind.OTHER
     }
 
+    /** A code-shaped number must sit within [TRIGGER_DISTANCE] characters of wording that names it a code. */
     fun containsVerificationCode(title: String, text: String): Boolean {
-        val combined = "$title $text"
-        val lower = combined.lowercase()
-        if (codeKeywords.none { lower.contains(it) }) return false
-        return codeShapes.any { it.containsMatchIn(combined) }
+        val cleaned = notCodeNumbers.fold(notACode.replace("$title $text", " ")) { acc, regex -> regex.replace(acc, " ") }
+        val lower = cleaned.lowercase()
+        for (shape in codeShapes) {
+            for (match in shape.findAll(cleaned)) {
+                val digits = match.value.count { it.isDigit() }
+                val start = (match.range.first - TRIGGER_DISTANCE).coerceAtLeast(0)
+                val end = (match.range.last + 1 + TRIGGER_DISTANCE).coerceAtMost(lower.length)
+                val near = lower.substring(start, end)
+                if (strongTriggers.containsMatchIn(near)) return true
+                if (digits == 6 && weakTriggers.containsMatchIn(near)) return true
+            }
+        }
+        return false
     }
 
     data class Candidate(
@@ -137,12 +166,16 @@ object NotificationBroadcastPolicy {
         val ownPackage: String
     )
 
-    fun shouldBroadcast(candidate: Candidate, config: Config): Boolean {
-        if (!config.enabled) return false
-        if (candidate.packageName == config.ownPackage) return false
-        if (candidate.packageName !in config.allowedPackages) return false
-        if (candidate.ongoing || candidate.silent || candidate.groupSummary) return false
-        if (!config.allowVerificationCodes && containsVerificationCode(candidate.title, candidate.text)) return false
-        return true
+    fun shouldBroadcast(candidate: Candidate, config: Config): Boolean = blockedReason(candidate, config) == null
+
+    fun blockedReason(candidate: Candidate, config: Config): String? = when {
+        !config.enabled -> "disabled"
+        candidate.packageName == config.ownPackage -> "own app"
+        candidate.packageName !in config.allowedPackages -> "app not allowed"
+        candidate.ongoing -> "ongoing"
+        candidate.silent -> "silent"
+        candidate.groupSummary -> "group summary"
+        !config.allowVerificationCodes && containsVerificationCode(candidate.title, candidate.text) -> "verification code"
+        else -> null
     }
 }

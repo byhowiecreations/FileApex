@@ -115,7 +115,7 @@ object DesktopCrashHandler {
                 JOptionPane.ERROR_MESSAGE
             )
         }.onFailure {
-            System.err.println("FileApex Error Log generated at: ${logFile.absolutePath}")
+            System.err.println("FileApex Error Log generated: ${logFile.name}")
             System.err.println(dialogMessage)
         }
     }

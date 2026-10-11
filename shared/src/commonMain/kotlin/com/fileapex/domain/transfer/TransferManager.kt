@@ -14,6 +14,7 @@ import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.domain.transfer.verifiedFromDisk
 import com.fileapex.network.TransferCancelledException
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -407,7 +408,7 @@ class TransferManager(
         } else {
             rootPath
         }
-        val downloadsRoot = runCatching {
+        val downloadsRoot = cancellableCatching {
             val remote = client.fetchPeerNodeState(host, port)
             presenceMonitor().notifyPassiveReachability(deviceId)
             DownloadsPaths.resolveReceiveRoot(

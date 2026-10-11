@@ -35,6 +35,8 @@ import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.session.DeviceSessionManager
 import com.fileapex.domain.transfer.MultiCopySource
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
+import com.fileapex.util.cancellableCatching
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -212,7 +214,7 @@ class DevicesViewModel : ViewModel() {
     init {
         LocalDeviceNameStore.ensureLoaded()
         viewModelScope.launch {
-            runCatching { repository.reconcileDuplicateEndpoints() }
+            cancellableCatching { repository.reconcileDuplicateEndpoints() }
         }
         viewModelScope.launch {
             LocalDeviceNameStore.deviceName.collect { name ->
@@ -306,7 +308,10 @@ class DevicesViewModel : ViewModel() {
                 if (message != sending) {
                     _uiState.update { it.copy(statusMessage = null, errorMessage = message) }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (t: Throwable) {
+                println("DevicesViewModel: clipboard push failed - ${t::class.simpleName}")
                 _uiState.update { it.copy(statusMessage = null, errorMessage = t.message) }
             } finally {
                 _uiState.update { it.copy(isSendingClipboard = false) }
@@ -340,7 +345,10 @@ class DevicesViewModel : ViewModel() {
                         statusMessage = AppI18n.t("clipboard_send_success", targetName)
                     )
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
+                println("DevicesViewModel: clipboard send failed - ${error::class.simpleName}")
                 _uiState.update {
                     it.copy(
                         errorMessage = error.message ?: AppI18n.t("clipboard_send_failed", device.deviceName)
@@ -381,7 +389,7 @@ class DevicesViewModel : ViewModel() {
             )
         }
         val startedAt = TimeUtils.now()
-        val outcome = runCatching {
+        val outcome = cancellableCatching {
             withContext(Dispatchers.IO) {
                 performDeviceConnectHandshake(device)
             }
@@ -439,7 +447,7 @@ class DevicesViewModel : ViewModel() {
         }
         runCatching { com.fileapex.cloud.FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers() }
         runCatching { com.fileapex.network.sendWakeBroadcastOnPrimaryInterface() }
-        var remote = runCatching {
+        var remote = cancellableCatching {
             FileApexServices.client.fetchPeerNodeState(
                 endpoint.host,
                 endpoint.port,
@@ -460,7 +468,7 @@ class DevicesViewModel : ViewModel() {
                 ?: return DeviceConnectOutcome.Unreachable(
                     detail = PeerReachabilityMessages.peerOffline()
                 )
-            remote = runCatching {
+            remote = cancellableCatching {
                 FileApexServices.client.fetchPeerNodeState(
                     endpoint.host,
                     endpoint.port,
@@ -490,11 +498,11 @@ class DevicesViewModel : ViewModel() {
 
     fun pairFromQrPayload(payload: PairingPayload) {
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 if (payload.deviceId == identity.deviceId) {
                     error(AppI18n.t("pairing_scan_own_qr"))
                 }
-                val verified = runCatching {
+                val verified = cancellableCatching {
                     FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
                 }.getOrNull()
                 val pinRequired = verified?.pinRequired == true || payload.pinRequired
@@ -565,7 +573,7 @@ class DevicesViewModel : ViewModel() {
     fun confirmPinPairing(pin: String) {
         val payload = _uiState.value.pendingPinPairing ?: return
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 completePairing(payload, pin = pin.trim())
                 _uiState.update { it.copy(pendingPinPairing = null) }
@@ -585,7 +593,7 @@ class DevicesViewModel : ViewModel() {
     fun confirmPinUnlock(pin: String) {
         val pending = _uiState.value.pendingPinUnlock ?: return
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 val endpoint = presence.resolveOutboundEndpoint(pending.device)
                 val host = endpoint?.host ?: pending.device.lastKnownIp
@@ -611,7 +619,7 @@ class DevicesViewModel : ViewModel() {
     private suspend fun completePairing(payload: PairingPayload, pin: String?) {
         // Snapshot before anything is adopted: only this pre-pairing cluster is ours to announce.
         val preexistingIds = repository.listDevices().map { it.deviceId }.toSet()
-        val verified = runCatching {
+        val verified = cancellableCatching {
             FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
         }.getOrNull()
 
@@ -681,12 +689,11 @@ class DevicesViewModel : ViewModel() {
         }
 
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 val importedCount = FileApexServices.pairingCoordinator.importDirectPeerRoster(
                     host = payload.host,
                     port = payload.port,
                     excludeDeviceIds = setOf(broadcasterId),
-                    sourceClientVersion = verified?.clientVersion.orEmpty()
                 )
                 // Introduce ourselves only to peers just imported from the broadcaster; our own
                 // cluster already knows us and is told about the broadcaster by afterOutboundPair.
@@ -745,7 +752,7 @@ class DevicesViewModel : ViewModel() {
             return
         }
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 if (deviceId == LocalIdentity.LOCAL_DEVICE_ID) {
                     com.fileapex.domain.device.DeviceNameCoordinator.saveLocalBroadcastName(trimmed)
                     _uiState.update {
@@ -786,7 +793,7 @@ class DevicesViewModel : ViewModel() {
                 }
                 return@launch
             }
-            runCatching {
+            cancellableCatching {
                 val removed = repository.removePermanently(deviceId)
                 check(removed) { "Could not remove device" }
                 DeviceSessionManager.clearSession(deviceId)
@@ -865,7 +872,7 @@ class DevicesViewModel : ViewModel() {
             _uiState.update {
                 it.copy(errorMessage = null)
             }
-            runCatching {
+            cancellableCatching {
                 withContext(Dispatchers.IO) {
                     FileApexServices.transferQueue.sendLocalPathsOrQueue(roots, listOf(deviceId))
                 }
@@ -992,7 +999,7 @@ class DevicesViewModel : ViewModel() {
             )
 
             withContext(Dispatchers.IO) {
-                runCatching {
+                cancellableCatching {
                     FileApexServices.transferManager.sendToDevices(listOf(source), listOf(destination))
                 }.fold(
                     onSuccess = { res ->
@@ -1097,7 +1104,7 @@ class DevicesViewModel : ViewModel() {
                     errorMessage = null
                 )
             }
-            runCatching {
+            cancellableCatching {
                 withContext(Dispatchers.IO) {
                     fetchDeviceDetailsSnapshot(device, summaryOnly)
                 }
@@ -1132,7 +1139,7 @@ class DevicesViewModel : ViewModel() {
 
     private suspend fun fetchDeviceDetailsSnapshot(device: PairedDeviceEntity, summaryOnly: Boolean): PeerDeviceDiagnostics {
         presence.resolveOutboundEndpoint(device)?.let { direct ->
-            runCatching {
+            cancellableCatching {
                 FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port, summaryOnly)
             }.onSuccess { return it }
         }
@@ -1144,7 +1151,7 @@ class DevicesViewModel : ViewModel() {
     /** A second tap a few seconds later reuses the first answer instead of polling every device again. */
     private fun cachedBattery(deviceId: String): BatteryDiagnostics? {
         val entry = batteryCache[deviceId] ?: return null
-        return entry.second.takeIf { TimeUtils.now() - entry.first < BATTERY_CACHE_MS }
+        return entry.second.takeIf { TimeUtils.isWithinWindow(entry.first, BATTERY_CACHE_MS) }
     }
 
     private fun rememberBattery(deviceId: String, battery: BatteryDiagnostics) {
@@ -1153,12 +1160,12 @@ class DevicesViewModel : ViewModel() {
 
     private suspend fun fetchDeviceBattery(device: PairedDeviceEntity): BatteryDiagnostics? {
         presence.resolveOutboundEndpoint(device)?.let { direct ->
-            val directResult = runCatching {
+            val directResult = cancellableCatching {
                 FileApexServices.client.fetchFastBattery(direct.host, direct.port)
             }.getOrNull()
             if (directResult != null) return directResult
         }
-        return runCatching {
+        return cancellableCatching {
             DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId).battery
         }.getOrNull()
     }

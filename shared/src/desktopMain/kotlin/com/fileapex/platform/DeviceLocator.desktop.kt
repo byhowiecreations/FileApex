@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import java.awt.Toolkit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -10,7 +11,7 @@ actual fun stopLocalLocatorSound() = Unit
 
 actual fun triggerLocalLocatorSound(continuous: Boolean) {
     CoroutineScope(Dispatchers.Default).launch {
-        runCatching {
+        cancellableCatching {
             val toolkit = Toolkit.getDefaultToolkit()
             repeat(4) {
                 toolkit.beep()

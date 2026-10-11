@@ -6,6 +6,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.platform.DesktopDriveOAuthCallbacks
 import com.fileapex.platform.DriveRelayNotifier
 import com.fileapex.platform.OAuthCodeResult
+import com.fileapex.util.cancellableCatching
 import java.awt.Desktop
 import java.net.URI
 import kotlinx.coroutines.CoroutineScope
@@ -70,7 +71,7 @@ object DesktopDriveGrantRuntime {
             _results.emit(false to "OAuth callback missing code")
             return
         }
-        runCatching {
+        cancellableCatching {
             DesktopAuthCoordinator.exchangeCodeForDriveTokens(code, result.state)
         }.onSuccess {
             val settings = FileApexServices.settings

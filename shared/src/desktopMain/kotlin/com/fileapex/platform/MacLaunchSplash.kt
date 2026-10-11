@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Font
@@ -20,7 +21,7 @@ object MacLaunchSplash {
 
     fun show() {
         if (!DesktopPlatformPaths.isMacOs()) return
-        runCatching {
+        cancellableCatching {
             SwingUtilities.invokeAndWait {
                 if (window != null) return@invokeAndWait
                 val icon = DesktopAppIcon.loadTrayImage()?.getScaledInstance(96, 96, Image.SCALE_SMOOTH)

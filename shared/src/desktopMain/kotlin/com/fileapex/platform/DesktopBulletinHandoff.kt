@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import kotlin.text.Charsets
 import java.net.URI
@@ -113,7 +114,7 @@ object DesktopBulletinHandoff {
             return
         }
 
-        runCatching {
+        cancellableCatching {
             val engine = FileApexServices.bulletinSyncEngine
             when {
                 paths.isNotEmpty() -> {

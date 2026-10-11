@@ -5,6 +5,7 @@ import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.DriveRelayNotifier
+import com.fileapex.util.cancellableCatching
 import kotlin.random.Random
 
 object DriveRelayPolicy {
@@ -113,7 +114,7 @@ object DriveRelayPolicy {
             return false
         }
         if (GoogleDriveAuth.hasStoredAccess() && !GoogleDriveAuth.hasGrant()) {
-            runCatching {
+            cancellableCatching {
                 GoogleDriveClient.verifyRelayAccess()
                 GoogleDriveAuth.markAccessVerified()
                 if (!settings.googleDriveRelayEnabled.value) {

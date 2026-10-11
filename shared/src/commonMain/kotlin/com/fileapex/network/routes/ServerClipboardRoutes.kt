@@ -5,6 +5,7 @@ import com.fileapex.domain.clipboard.ClipboardSendRequest
 import com.fileapex.domain.clipboard.ClipboardSendResponse
 import com.fileapex.i18n.AppI18n
 import com.fileapex.network.FileApexServer
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -40,13 +41,13 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/clipboard/opt-in-request") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val request = server.json.decodeFromString(com.fileapex.domain.clipboard.ClipboardOptInRequest.serializer(), body)
             val requester = FileApexServices.deviceRepository.getDevice(request.senderDeviceId.trim())
             if (requester == null || requester.isRemoved) {
                 call.respond(HttpStatusCode.Forbidden, "clipboard_sender_unknown")
-                return@runCatching
+                return@cancellableCatching
             }
             val settings = FileApexServices.settings
             if (!settings.clipboardSharingEnabled.value && !settings.clipboardOptInPromptShown.value) {
@@ -65,15 +66,15 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
     }
 
     get("/api/v1/clipboard/current") {
-        runCatching {
+        cancellableCatching {
             val settings = FileApexServices.settings
             if (!settings.clipboardSharingEnabled.value) {
                 call.respondText("clipboard_disabled", status = HttpStatusCode.Forbidden)
-                return@runCatching
+                return@cancellableCatching
             }
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             // Never sent in the clear: sealed to the requesting paired device's recorded key.
             val requesterId = server.requesterDeviceId(call)
@@ -85,7 +86,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
             }.orEmpty()
             if (requester == null || requesterKey.isEmpty()) {
                 call.respond(HttpStatusCode.Forbidden, "clipboard_peer_unverified")
-                return@runCatching
+                return@cancellableCatching
             }
             val text = withContext(Dispatchers.Main) {
                 com.fileapex.platform.PlatformClipboard.getSystemClipboardText().orEmpty()
@@ -115,24 +116,24 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/clipboard/send") {
-        runCatching {
+        cancellableCatching {
             val settings = FileApexServices.settings
             if (!settings.clipboardSharingEnabled.value) {
                 call.respondText(
                     text = "clipboard_disabled",
                     status = HttpStatusCode.Forbidden
                 )
-                return@runCatching
+                return@cancellableCatching
             }
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             val body = call.receiveBoundedText()
             val request = server.json.decodeFromString(ClipboardSendRequest.serializer(), body)
             if (request.ciphertext.isBlank() || request.senderPublicKey.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "clipboard_ciphertext_required")
-                return@runCatching
+                return@cancellableCatching
             }
             withContext(Dispatchers.Main) {
                 com.fileapex.domain.clipboard.ClipboardShareCoordinator.applyInbound(
@@ -183,7 +184,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/web/send-clipboard") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
             val targetDeviceId = jsonObj?.get("targetDeviceId")?.let {
@@ -198,7 +199,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
                     HttpStatusCode.BadRequest,
                     """{"status":"error","message":"Target device and text are required"}"""
                 )
-                return@runCatching
+                return@cancellableCatching
             }
 
             val devices = withContext(Dispatchers.IO) { server.onListDevices() }
@@ -210,7 +211,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
                     ContentType.Application.Json,
                     HttpStatusCode.NotFound
                 )
-                return@runCatching
+                return@cancellableCatching
             }
 
             val result = com.fileapex.domain.clipboard.ClipboardShareCoordinator.sendPlaintextToDevice(

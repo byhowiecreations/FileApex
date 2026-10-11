@@ -3,6 +3,7 @@ package com.fileapex.network
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.SocketException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,6 +68,8 @@ class UdpWakeReceiver(
                     if (!processMutex.tryLock()) continue
                     try {
                         onWakeAccepted()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (error: Throwable) {
                         onLog("Wake processing failed: ${error.message}")
                     } finally {

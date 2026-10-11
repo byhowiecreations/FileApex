@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
+import com.fileapex.util.cancellableCatching
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -49,7 +50,7 @@ object DesktopSingleInstance {
     }
 
     private fun startIpcListener() {
-        runCatching {
+        cancellableCatching {
             serverSocket = ServerSocket(IPC_PORT, 50, InetAddress.getLoopbackAddress())
             scope.launch {
                 while (true) {

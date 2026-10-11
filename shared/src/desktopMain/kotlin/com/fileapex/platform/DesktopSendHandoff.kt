@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 import java.awt.Desktop
 import java.io.File
 import kotlin.text.Charsets
@@ -91,7 +92,7 @@ object DesktopSendHandoff {
         processorStarted = true
         processorScope.launch {
             val transferManager = FileApexServices.transferManager
-            runCatching { transferManager.awaitReady() }
+            cancellableCatching { transferManager.awaitReady() }
                 .onFailure { error ->
                     println("DesktopSendHandoff: TransferManager not ready :: ${error.message}")
                     return@launch
@@ -162,7 +163,7 @@ object DesktopSendHandoff {
         }
 
         val transferManager = FileApexServices.transferManager
-        runCatching { transferManager.awaitReady() }
+        cancellableCatching { transferManager.awaitReady() }
             .onFailure { error ->
                 val message = AppI18n.t(
                     "fileapex_not_ready",
@@ -175,7 +176,7 @@ object DesktopSendHandoff {
             }
 
         writeJob(job.copy(status = STATUS_RUNNING, message = AppI18n.t("sending")))
-        runCatching {
+        cancellableCatching {
             val outcome = FileApexServices.transferQueue.sendLocalPathsOrQueue(
                 absolutePaths = job.filePaths,
                 deviceIds = job.deviceIds
@@ -216,7 +217,7 @@ object DesktopSendHandoff {
     }
 
     fun pruneStaleJobsAndStaging() {
-        runCatching {
+        cancellableCatching {
             val cutoff = com.fileapex.util.TimeUtils.now() - 60_000L
             jobsDir.listFiles()?.forEach { file ->
                 if (file.isFile && file.name.endsWith(".json")) {

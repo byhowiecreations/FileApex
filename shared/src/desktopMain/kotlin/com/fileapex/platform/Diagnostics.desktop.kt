@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.update.FileApexAppVersion
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import java.net.URLEncoder
 import java.time.Instant
 
@@ -80,7 +81,7 @@ actual object Diagnostics {
     }
 
     private fun revealInFileManager(file: java.io.File) {
-        runCatching {
+        cancellableCatching {
             val os = System.getProperty("os.name").orEmpty().lowercase()
             when {
                 os.contains("mac") -> {

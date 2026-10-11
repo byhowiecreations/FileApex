@@ -40,6 +40,7 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
         )
         com.fileapex.update.AppUpdateCoordinator.setPendingOffer(offer)
         notifyAppUpdateAvailable(offer)
+        if (com.fileapex.update.AppUpdateCoordinator.promptForInstallPermissionIfMissing()) return
         com.fileapex.update.AppUpdateCoordinator.dismissUpdateSheet()
         runCatching {
             com.fileapex.update.PlatformUpdateInstaller.installAndRelaunch(

@@ -71,6 +71,12 @@ class NotificationBroadcastPolicyTest {
     fun ordinaryNumbersAreNotMistakenForCodes() {
         assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Sam", "Meet at 1234 Main Street"))
         assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Mail", "You have 12 new messages"))
+        assertFalse(NotificationBroadcastPolicy.containsVerificationCode("SpaceXAI", "New login to your account on October 11, 2026 at 12:36 PM"))
+        assertFalse(NotificationBroadcastPolicy.containsVerificationCode("SpaceXAI", "New login from 192.168.1.10 at 12:36, order 20260711"))
+        assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Mail", "Sign in alert: call 555-123-4567"))
+        assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Shop", "Your zip code 90210 and total $1,234.56"))
+        assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Bank", "Password changed. Statement 1234 ready"))
+        assertTrue(NotificationBroadcastPolicy.containsVerificationCode("Bank", "Your code: 4821"))
         assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Delivery", "Your code word is banana"))
     }
 

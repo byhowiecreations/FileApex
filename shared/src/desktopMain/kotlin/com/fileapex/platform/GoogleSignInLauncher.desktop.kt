@@ -7,6 +7,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.fileapex.cloud.DesktopAuthCoordinator
 import com.fileapex.cloud.desktopOAuthClientId
 import com.fileapex.cloud.googleWebClientId
+import com.fileapex.util.cancellableCatching
 import java.awt.Desktop
 import java.net.URI
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -46,7 +47,7 @@ actual fun rememberGoogleSignInLauncher(
                 onResult(null, null, "OAuth callback missing code")
                 return@collect
             }
-            runCatching {
+            cancellableCatching {
                 DesktopAuthCoordinator.exchangeCodeForIdToken(code, result.state)
             }.onSuccess { idToken ->
                 onResult(idToken, null, null)

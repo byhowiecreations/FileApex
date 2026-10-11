@@ -59,4 +59,14 @@ class NotificationThreadsTest {
         val items = listOf(note("1", NotificationKind.EMAIL, title = "Boss", text = "Report"))
         assertEquals("Boss", NotificationThreads.threads(items, NotificationKind.EMAIL).single().title)
     }
+
+    @Test
+    fun everyEmailIsItsOwnRowEvenFromTheSameSender() {
+        val items = listOf(
+            note("1", NotificationKind.EMAIL, title = "Google", text = "a", at = 1),
+            note("2", NotificationKind.EMAIL, title = "Google", text = "b", at = 2),
+            note("3", NotificationKind.EMAIL, title = "SpaceXAI", text = "c", at = 3)
+        )
+        assertEquals(3, NotificationThreads.threads(items, NotificationKind.EMAIL).size)
+    }
 }

@@ -10,6 +10,7 @@ import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.network.FileApexServer
 import com.fileapex.network.RenameDeviceRequest
 import com.fileapex.network.TransferTransactionJournal
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -25,7 +26,7 @@ import kotlinx.serialization.builtins.ListSerializer
 
 internal fun Route.registerIdentityRoutes(server: FileApexServer) {
     get("/api/v1/identity") {
-        runCatching {
+        cancellableCatching {
             server.respondSelfPeerState(call)
         }.onFailure { error ->
             server.onLog("GET /api/v1/identity failed", error)
@@ -34,7 +35,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
     }
 
     get("/api/v1/heartbeat") {
-        runCatching {
+        cancellableCatching {
             val senderId = call.request.queryParameters["from"].orEmpty()
             if (senderId.isNotBlank()) {
                 TransferTransactionJournal.purgeInstalledForSender(senderId)
@@ -47,13 +48,13 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/identity/rename") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText()
             val request = server.json.decodeFromString(RenameDeviceRequest.serializer(), body)
             val trimmed = request.deviceName.trim()
             if (trimmed.isEmpty()) {
                 call.respond(HttpStatusCode.BadRequest, "empty_name")
-                return@runCatching
+                return@cancellableCatching
             }
             withContext(Dispatchers.IO) {
                 com.fileapex.domain.device.DeviceNameCoordinator.applyRemoteRename(
@@ -84,19 +85,19 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/pairing/respond") {
-        runCatching {
+        cancellableCatching {
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             if (!LanPairingDiscovery.matchesActiveCode(server.providedPairingCode(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
-                return@runCatching
+                return@cancellableCatching
             }
             val body = call.receiveBoundedText()
             if (body.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "Empty pairing payload")
-                return@runCatching
+                return@cancellableCatching
             }
             val inboundIp = server.inboundPeerLanIpv4(call)
             val scanningDevice = runCatching {
@@ -104,16 +105,16 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
             }.getOrElse { decodeError ->
                 server.onLog("Invalid pairing JSON payload", decodeError)
                 call.respond(HttpStatusCode.BadRequest, "Invalid pairing payload")
-                return@runCatching
+                return@cancellableCatching
             }
             if (scanningDevice.deviceId.isBlank() || scanningDevice.deviceName.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "Missing required device fields")
-                return@runCatching
+                return@cancellableCatching
             }
             val localId = server.identityProvider().deviceId
             if (scanningDevice.deviceId == localId) {
                 call.respond(HttpStatusCode.BadRequest, "Cannot pair with self")
-                return@runCatching
+                return@cancellableCatching
             }
             val inboundDevice = if (inboundIp != null) {
                 scanningDevice.copy(lastKnownIp = inboundIp)
@@ -132,7 +133,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
             call.respond(HttpStatusCode.Created)
             LanPairingDiscovery.onHostPairingAccepted()
             server.serverScope.launch {
-                runCatching {
+                cancellableCatching {
                     withContext(Dispatchers.IO) {
                         server.onPairingRespondComplete(inboundDevice)
                     }
@@ -147,7 +148,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
     }
 
     get("/api/v1/devices") {
-        runCatching {
+        cancellableCatching {
             val devices = withContext(Dispatchers.IO) {
                 server.onListDevices()
             }
@@ -164,27 +165,48 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
         }
     }
 
+    get("/api/v1/cluster/introductions") {
+        cancellableCatching {
+            val recipient = call.request.queryParameters["for"]?.trim().orEmpty()
+            if (recipient.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, "recipient_required")
+                return@cancellableCatching
+            }
+            val sealed = withContext(Dispatchers.IO) { server.onListIntroductions(recipient) }
+            call.respondText(
+                text = server.json.encodeToString(
+                    ListSerializer(com.fileapex.security.SealedIntroduction.serializer()),
+                    sealed
+                ),
+                contentType = ContentType.Application.Json
+            )
+        }.onFailure { error ->
+            server.onLog("GET /api/v1/cluster/introductions failed", error)
+            call.respond(HttpStatusCode.InternalServerError, "introductions_failed")
+        }
+    }
+
     post("/api/v1/devices/merge") {
-        runCatching {
+        cancellableCatching {
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             val body = call.receiveBoundedText()
             if (body.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "Empty cluster sync payload")
-                return@runCatching
+                return@cancellableCatching
             }
             val request = runCatching {
                 server.json.decodeFromString(ClusterSyncRequest.serializer(), body)
             }.getOrElse { decodeError ->
                 server.onLog("Invalid cluster sync JSON payload", decodeError)
                 call.respond(HttpStatusCode.BadRequest, "Invalid sync payload")
-                return@runCatching
+                return@cancellableCatching
             }
 
             withContext(Dispatchers.IO) {
-                server.onClusterMerge(request)
+                server.onClusterMerge(request, server.bridgedPeer(call)?.deviceId)
             }
 
             val currentRoster = withContext(Dispatchers.IO) {
@@ -205,18 +227,18 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
     }
 
     val handleClusterRemove: suspend io.ktor.server.application.ApplicationCall.() -> Unit = {
-        runCatching {
+        cancellableCatching {
             val body = receiveBoundedText()
             if (body.isBlank()) {
                 respond(HttpStatusCode.BadRequest, "Empty removal payload")
-                return@runCatching
+                return@cancellableCatching
             }
             val record = runCatching {
                 server.json.decodeFromString(com.fileapex.domain.pairing.RemovedDeviceRecord.serializer(), body)
             }.getOrElse { decodeError ->
                 server.onLog("Invalid removal JSON payload", decodeError)
                 respond(HttpStatusCode.BadRequest, "Invalid removal payload")
-                return@runCatching
+                return@cancellableCatching
             }
             val localId = server.identityProvider().deviceId
             if (record.deviceId == localId) {
@@ -228,7 +250,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
                     null
                 )
                 respond(HttpStatusCode.OK, if (applied) "revoked_acknowledged" else "revocation_ignored")
-                return@runCatching
+                return@cancellableCatching
             }
 
             withContext(Dispatchers.IO) {

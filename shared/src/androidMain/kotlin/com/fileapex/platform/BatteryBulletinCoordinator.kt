@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 import com.fileapex.data.bulletin.BulletinContentType
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -94,7 +95,7 @@ object BatteryBulletinCoordinator {
     fun onCharging(context: Context, onComplete: (() -> Unit)? = null) {
         val appContext = context.applicationContext
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 retractIfNeeded(appContext, reason = "device charging")
                 val snapshot = currentSnapshot(appContext)
                 if (BatteryBulletinPolicy.shouldClearAlertedCycle(snapshot.charging, snapshot.levelPercent)) {
@@ -135,10 +136,10 @@ object BatteryBulletinCoordinator {
 
     private fun reconcile(context: Context, onComplete: (() -> Unit)?) {
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 if (!FileApexAndroidBootstrap.ensureInitialized(context)) {
                     Log.w(TAG, "Skip battery bulletin reconcile - process not initialized")
-                    return@runCatching
+                    return@cancellableCatching
                 }
                 val snapshot = currentSnapshot(context)
                 if (snapshot.charging) {
@@ -146,7 +147,7 @@ object BatteryBulletinCoordinator {
                     if (BatteryBulletinPolicy.shouldClearAlertedCycle(true, snapshot.levelPercent)) {
                         clearAlertedCycle(context)
                     }
-                    return@runCatching
+                    return@cancellableCatching
                 }
                 if (!BatteryBulletinPolicy.shouldPostAlert(
                         levelPercent = snapshot.levelPercent,
@@ -154,7 +155,7 @@ object BatteryBulletinCoordinator {
                         alreadyAlertedThisCycle = isAlertedThisCycle(context)
                     )
                 ) {
-                    return@runCatching
+                    return@cancellableCatching
                 }
                 postLowBatteryBulletin(context, snapshot.levelPercent)
             }.onFailure { error ->
@@ -226,7 +227,7 @@ object BatteryBulletinCoordinator {
     private fun registerDynamicReceiver(context: Context) {
         if (receiverRegistered) return
         val receiver = BatteryBulletinReceiver()
-        runCatching {
+        cancellableCatching {
             ContextCompat.registerReceiver(
                 context,
                 receiver,

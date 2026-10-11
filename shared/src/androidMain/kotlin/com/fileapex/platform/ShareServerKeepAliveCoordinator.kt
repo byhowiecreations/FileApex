@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.fileapex.util.cancellableCatching
 
 /**
  * OEM-resistant share-server keep-alive: freeze-guard receivers,
@@ -256,7 +257,7 @@ object ShareServerKeepAliveCoordinator {
     }
 
     private fun reassertForegroundService(context: Context, reason: String) {
-        runCatching {
+        cancellableCatching {
             val intent = Intent().setClassName(context.packageName, FILE_SHARE_SERVER_SERVICE).apply {
                 action = ACTION_REASSERT
             }

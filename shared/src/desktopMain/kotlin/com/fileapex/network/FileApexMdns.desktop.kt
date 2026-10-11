@@ -75,7 +75,7 @@ actual object FileApexMdnsAdvertiser {
             registeredPort = port
             registeredDeviceId = deviceId
             registeredBindHost = bindHost
-            println("FileApexMdnsAdvertiser: registered $name on ${bindAddress.hostAddress}:$port")
+            println("FileApexMdnsAdvertiser: registered $name on ${com.fileapex.util.NetworkUtils.lastOctetLabel(bindAddress.hostAddress.orEmpty())}:$port")
         }.onFailure { error ->
             println("FileApexMdnsAdvertiser: register failed - ${error.message}")
         }

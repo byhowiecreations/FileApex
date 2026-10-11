@@ -243,9 +243,10 @@ interface NoteDao {
         RemovedDeviceEntity::class,
         PendingControlDeliveryEntity::class,
         PendingTransferEntity::class,
-        NoteEntity::class
+        NoteEntity::class,
+        PeerCandidateEntity::class
     ],
-    version = 14
+    version = 15
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {
@@ -253,6 +254,7 @@ abstract class FileApexDatabase : RoomDatabase() {
     abstract fun controlDeliveryDao(): ControlDeliveryDao
     abstract fun pendingTransferDao(): PendingTransferDao
     abstract fun noteDao(): NoteDao
+    abstract fun peerCandidateDao(): PeerCandidateDao
 }
 
 @Suppress("NO_ACTUAL_FOR_EXPECT")

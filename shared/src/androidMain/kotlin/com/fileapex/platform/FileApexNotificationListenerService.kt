@@ -215,7 +215,11 @@ class FileApexNotificationListenerService : NotificationListenerService() {
                 allowVerificationCodes = allowVerificationCodes,
                 ownPackage = packageName
             )
-            if (!NotificationBroadcastPolicy.shouldBroadcast(candidate, config)) return null
+            val blocked = NotificationBroadcastPolicy.blockedReason(candidate, config)
+            if (blocked != null) {
+                println("NotificationListener: skipped ${sbn.packageName} ($blocked)")
+                return null
+            }
         }
 
         val label = try {

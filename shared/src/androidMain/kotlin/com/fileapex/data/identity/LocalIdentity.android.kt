@@ -17,9 +17,10 @@ actual fun loadLocalIdentity(): LocalIdentity {
         "Call initAndroidLocalIdentity(context) before loadLocalIdentity()"
     }
     val prefs = identityContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    val deviceId = prefs.getString(KEY_ID, null) ?: generateDeviceId().also { id ->
-        prefs.edit().putString(KEY_ID, id).apply()
-    }
+    val deviceId = com.fileapex.security.LocalIdentityBinding.resolve(
+        storedId = prefs.getString(KEY_ID, null),
+        fallbackId = ::generateDeviceId
+    ) { id -> prefs.edit().putString(KEY_ID, id).apply() }
     val storedName = prefs.getString(KEY_NAME, null)?.trim().orEmpty()
     return LocalIdentity(
         deviceId = deviceId,

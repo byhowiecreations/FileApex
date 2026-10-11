@@ -13,6 +13,7 @@ import androidx.credentials.exceptions.NoCredentialException
 import androidx.credentials.exceptions.restorecredential.E2eeUnavailableException
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 import java.security.SecureRandom
 
 internal actual object RestoreCredentials {
@@ -48,7 +49,7 @@ internal actual object RestoreCredentials {
             email = email,
             challengeB64 = randomChallenge()
         )
-        val cloud = runCatching {
+        val cloud = cancellableCatching {
             createKey(manager, context, requestJson, cloudBackup = true)
             true
         }.recoverCatching { error ->

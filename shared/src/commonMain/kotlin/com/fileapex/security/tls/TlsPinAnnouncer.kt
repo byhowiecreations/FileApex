@@ -6,6 +6,7 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.network.FileApexClient
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -36,7 +37,7 @@ class TlsPinAnnouncer(
     fun nudge(deviceId: String) {
         scope.launch {
             lock.withLock { nextAttempt.remove(deviceId) }
-            runCatching { tick() }.onFailure { if (it is CancellationException) throw it }
+            cancellableCatching { tick() }.onFailure { if (it is CancellationException) throw it }
         }
     }
 
@@ -45,7 +46,7 @@ class TlsPinAnnouncer(
         if (job?.isActive == true) return
         job = scope.launch {
             while (isActive) {
-                runCatching { tick() }
+                cancellableCatching { tick() }
                     .onFailure { error -> if (error is CancellationException) throw error }
                 delay(TICK_MS)
             }
@@ -87,7 +88,7 @@ class TlsPinAnnouncer(
 
     /** No shared key to authenticate with: surface the peer's claimed pin for the user to verify. */
     private suspend fun offerFingerprint(device: PairedDeviceEntity): Long {
-        val state = runCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
+        val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
             ?: return RETRY_MS
         val pin = state.tlsPin.lowercase()
         if (!PIN_FORMAT.matches(pin) || state.tlsPort !in 1..65535) return OLD_PEER_MS

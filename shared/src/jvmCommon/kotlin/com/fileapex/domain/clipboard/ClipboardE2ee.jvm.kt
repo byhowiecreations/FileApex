@@ -38,14 +38,18 @@ actual object ClipboardE2ee {
 }
 
 internal object ClipboardIdentityStore {
+    @Volatile
+    private var cached: Pair<String, ClipboardCrypto.KeyPairMaterial>? = null
+
     fun ensureKeyPair(): ClipboardCrypto.KeyPairMaterial {
         val stored = FileApexServices.settings.clipboardPrivateKeyBase64().trim()
         if (stored.isNotEmpty()) {
+            cached?.takeIf { it.first == stored }?.let { return it.second }
             val privateKey = ClipboardCrypto.decodeKey(stored, "private key")
             return ClipboardCrypto.KeyPairMaterial(
                 privateKey = privateKey,
                 publicKey = ClipboardCrypto.publicKeyFromPrivate(privateKey)
-            )
+            ).also { cached = stored to it }
         }
         val generated = ClipboardCrypto.generateKeyPair()
         FileApexServices.settings.setClipboardPrivateKeyBase64(

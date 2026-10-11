@@ -17,6 +17,7 @@ import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
 import android.net.wifi.WifiManager
 import android.view.Display
+import com.fileapex.util.cancellableCatching
 import kotlin.text.Charsets
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
@@ -361,7 +362,7 @@ private fun readCellularBandInfo(
     ) {
         return null to ""
     }
-    return runCatching {
+    return cancellableCatching {
         val cellInfoList = runCatching {
             val method = telephony.javaClass.getMethod("getAllCellInfo")
             (method.invoke(telephony) as? List<*>)?.filterIsInstance<android.telephony.CellInfo>()

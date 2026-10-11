@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import java.util.concurrent.TimeUnit
 
 internal object MacPasteboard {
@@ -18,7 +19,7 @@ internal object MacPasteboard {
     }
 
     private fun runProcess(command: List<String>, timeoutMs: Long): String? {
-        return runCatching {
+        return cancellableCatching {
             val builder = ProcessBuilder(command)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
             builder.environment()["LANG"] = "en_US.UTF-8"
@@ -26,9 +27,9 @@ internal object MacPasteboard {
             val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
             if (!finished) {
                 process.destroyForcibly()
-                return@runCatching null
+                return@cancellableCatching null
             }
-            if (process.exitValue() != 0) return@runCatching null
+            if (process.exitValue() != 0) return@cancellableCatching null
             process.inputStream.bufferedReader(Charsets.UTF_8).readText().trim()
                 .takeIf { it.isNotEmpty() }
         }.getOrNull()

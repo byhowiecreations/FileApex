@@ -7,6 +7,7 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexMdnsBrowser
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.isActiveLanConnectivity
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,7 +24,7 @@ object PresenceNetworkRevalidator {
     fun onLanNetworkTransition() {
         if (!FileApexServices.isDatabaseReady()) return
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 revalidateAfterNetworkTransition()
             }.onFailure { error ->
                 println("PresenceNetworkRevalidator: transition revalidation failed - ${error.message}")
@@ -47,10 +48,10 @@ object PresenceNetworkRevalidator {
             if (!isActiveLanConnectivity()) {
                 continue
             }
-            runCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
+            cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
             GoogleLinkCoordinator.refreshCloudRegistry()
             FileApexServices.presenceMonitor.runSingleShotRevalidation()
-            runCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
+            cancellableCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
                 println("PresenceNetworkRevalidator: queue drain failed - ${error.message}")
             }
             return
@@ -58,7 +59,7 @@ object PresenceNetworkRevalidator {
 
         DriveRelayCoordinator.onLeftLocalNetwork()
         FileApexServices.presenceMonitor.runSingleShotRevalidation()
-        runCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
+        cancellableCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->
             println("PresenceNetworkRevalidator: queue drain failed - ${error.message}")
         }
     }

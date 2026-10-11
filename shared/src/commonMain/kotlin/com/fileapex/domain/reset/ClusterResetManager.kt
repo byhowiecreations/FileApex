@@ -6,8 +6,8 @@ import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.session.DeviceSessionManager
-import com.fileapex.util.DeviceIdentityMarkers
 import com.fileapex.util.NetworkUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -18,13 +18,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 object ClusterResetManager {
     suspend fun executeLeaveClusterAndReset(): Boolean = withContext(Dispatchers.IO) {
         // Step A: Cluster Broadcast to online peers
-        runCatching { broadcastClusterRemoval() }
+        cancellableCatching { broadcastClusterRemoval() }
 
         // Step B: Cryptographic Erasure
         runCatching { eraseCryptographicKeys() }
 
         // Step C: Database Purge
-        runCatching { purgeDatabases() }
+        cancellableCatching { purgeDatabases() }
 
         // Step D: State Reset & Restart
         runCatching { resetStateAndRestart() }
@@ -36,7 +36,7 @@ object ClusterResetManager {
         val identity = runCatching { loadLocalIdentity() }.getOrNull() ?: return
         val localId = identity.deviceId
         val version = FileApexServices.deviceRepository.nextMembershipVersion()
-        val hash = DeviceIdentityMarkers.fingerprint(localId)
+        val hash = com.fileapex.security.IdentityBinding.localHash(localId)
         val removal = RemovedDeviceRecord(
             deviceId = localId,
             publicKeyHash = hash,
@@ -46,7 +46,7 @@ object ClusterResetManager {
             removedAt = version,
             membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
         )
-        val peers = runCatching {
+        val peers = cancellableCatching {
             FileApexServices.deviceRepository.listDevices().filter {
                 it.deviceId.isNotBlank() && it.deviceId != localId && !it.isRemoved
             }
@@ -59,7 +59,7 @@ object ClusterResetManager {
                         val host = peer.lastKnownIp.trim()
                         if (!NetworkUtils.isUsableLanIpv4(host)) return@async
                         withTimeoutOrNull(2000L) {
-                            runCatching {
+                            cancellableCatching {
                                 FileApexServices.client.postClusterRemove(
                                     host = host,
                                     port = peer.port,
@@ -88,7 +88,7 @@ object ClusterResetManager {
     private fun resetStateAndRestart() {
         runCatching { FileApexServices.settings.resetToDefaults() }
         runCatching { FileApexServices.settings.markThemeDefaultDecided() }
-        runCatching { ServerLifecycleManager.stop() }
+        cancellableCatching { ServerLifecycleManager.stop() }
         ClusterResetPlatform.stateResetAndRestart()
     }
 }

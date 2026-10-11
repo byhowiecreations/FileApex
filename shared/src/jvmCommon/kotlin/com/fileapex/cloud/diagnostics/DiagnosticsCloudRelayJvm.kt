@@ -11,8 +11,10 @@ import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.network.FileApexHttpClientFactory
 import com.fileapex.platform.collectDeviceDiagnostics
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -98,21 +100,21 @@ internal object DiagnosticsCloudRelayJvm {
                         peerPublicKey = DiagnosticsCrypto.decodePublicKey(peerPublicKey),
                         googleUid = uid
                     )
-                    runCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
+                    cancellableCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
                     return json.decodeFromString(plain.decodeToString())
                 }
                 current?.status == DiagnosticsRelayStatus.FAILED -> {
-                    runCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
+                    cancellableCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
                     error(DiagnosticsRelayErrors.peerRespondedFailed())
                 }
                 current?.isExpired(TimeUtils.now()) == true -> {
-                    runCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
+                    cancellableCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
                     error(DiagnosticsRelayErrors.timedOut())
                 }
             }
             delay(DIAGNOSTICS_RELAY_POLL_MS)
         }
-        runCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
+        cancellableCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
         error(DiagnosticsRelayErrors.timedOut())
     }
 
@@ -206,7 +208,7 @@ internal object DiagnosticsCloudRelayJvm {
     }
 
     private suspend fun resolveCloudDeviceRecord(uid: String, deviceId: String): CloudDeviceRecord? {
-        return runCatching { CloudAuthBackend.fetchCloudDeviceRecord(uid, deviceId) }
+        return cancellableCatching { CloudAuthBackend.fetchCloudDeviceRecord(uid, deviceId) }
             .getOrNull()
             ?: GoogleLinkCoordinator.cloudRecordFor(deviceId)
     }
@@ -214,7 +216,7 @@ internal object DiagnosticsCloudRelayJvm {
     private suspend fun respondToSession(uid: String, session: DiagnosticsRelaySession) {
         if (session.status != DiagnosticsRelayStatus.PENDING) return
         if (session.isExpired(TimeUtils.now())) {
-            runCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, session.sessionId) }
+            cancellableCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, session.sessionId) }
             return
         }
         if (!FileApexServices.settings.deviceDetailsAllowOverCellular.value) return
@@ -268,9 +270,11 @@ internal object DiagnosticsCloudRelayJvm {
                     sessionId = session.sessionId,
                     responseEncPayload = responseEnc
                 )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
                 println("DiagnosticsCloudRelay: respond failed - ${error.message}")
-                runCatching { CloudAuthBackend.failDiagnosticsRelaySession(uid, session.sessionId) }
+                cancellableCatching { CloudAuthBackend.failDiagnosticsRelaySession(uid, session.sessionId) }
             } finally {
                 inFlightSessionIds.remove(session.sessionId)
             }

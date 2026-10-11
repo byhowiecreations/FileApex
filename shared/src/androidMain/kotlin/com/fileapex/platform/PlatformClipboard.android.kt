@@ -16,6 +16,7 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.fileapex.i18n.AppI18n
+import com.fileapex.util.cancellableCatching
 
 actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
@@ -173,7 +174,7 @@ actual object PlatformClipboard {
 
     actual fun sharePlainText(text: String, title: String) {
         val context = androidAppContextOrNull() ?: return
-        runCatching {
+        cancellableCatching {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)

@@ -58,7 +58,7 @@ internal fun NotificationListDialog(
     onReply: suspend (key: String, text: String) -> Boolean,
     onDismiss: () -> Unit
 ) {
-    val only = threads.singleOrNull()
+    val only = threads.singleOrNull()?.takeIf { it.keys.size == 1 || kind == NotificationKind.MESSAGE }
     var open by remember { mutableStateOf(only) }
     var expanded by remember { mutableStateOf(emptySet<String>()) }
     val viewed = remember { mutableStateListOf<String>().also { list -> only?.let { list.addAll(it.keys) } } }

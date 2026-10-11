@@ -3,6 +3,7 @@ package com.fileapex.ui
 import androidx.compose.ui.graphics.ImageBitmap
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.platform.decodeImageBytes
+import com.fileapex.util.cancellableCatching
 import fileapex.shared.generated.resources.Res
 import fileapex.shared.generated.resources.dev_flux_flip
 import fileapex.shared.generated.resources.dev_flux_folding
@@ -75,7 +76,7 @@ object ThemeDeviceIconPreloader {
         val deferred = CompletableDeferred<Unit>()
         ready = deferred
         scope.launch {
-            runCatching { preload(style) }
+            cancellableCatching { preload(style) }
             deferred.complete(Unit)
         }
     }

@@ -4,6 +4,7 @@ import com.fileapex.cloud.diagnostics.DiagnosticsRelaySession
 import com.fileapex.cloud.diagnostics.DiagnosticsRelayStatus
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexHttpClientFactory
+import com.fileapex.util.cancellableCatching
 import io.ktor.client.call.body
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -92,7 +93,7 @@ actual object CloudAuthBackend {
         val uid = prefs.get(KEY_UID, "")
         val refresh = prefs.get(KEY_REFRESH_TOKEN, "")
         if (uid.isBlank() || refresh.isBlank()) return null
-        runCatching { refreshIdTokenIfNeeded() }
+        cancellableCatching { refreshIdTokenIfNeeded() }
         return GoogleAuthSession(
             firebaseUid = uid,
             email = prefs.get(KEY_EMAIL, ""),
@@ -517,7 +518,7 @@ actual object CloudAuthBackend {
         val job = pollScope.launch {
             try {
                 while (isActive && !state.stopped) {
-                    runCatching {
+                    cancellableCatching {
                         val token = requireIdToken()
                         val project = firebaseProjectId()
                         val url =
@@ -571,7 +572,7 @@ actual object CloudAuthBackend {
         val job = pollScope.launch {
             try {
                 while (isActive && !state.stopped) {
-                    runCatching {
+                    cancellableCatching {
                         val list = listAllUserDevices(uid)
                         if (!state.stopped) {
                             onDevices(list)

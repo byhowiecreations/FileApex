@@ -6,6 +6,7 @@ import com.fileapex.security.tls.TlsAnnouncementOutcome
 import com.fileapex.security.tls.TlsPinAnnouncement
 import com.fileapex.security.tls.TlsPinAnnouncements
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -16,7 +17,7 @@ import io.ktor.server.routing.post
 
 internal fun Route.registerTlsRoutes(server: FileApexServer) {
     post("/api/v1/tls/pin") {
-        runCatching {
+        cancellableCatching {
             val body = call.receiveBoundedText(limit = 16L * 1024)
             val announcement = server.json.decodeFromString(TlsPinAnnouncement.serializer(), body)
             val repository = FileApexServices.deviceRepository

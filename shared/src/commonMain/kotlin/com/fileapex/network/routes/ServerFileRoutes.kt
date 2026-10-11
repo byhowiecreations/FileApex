@@ -15,6 +15,7 @@ import com.fileapex.network.TransferRuntime
 import com.fileapex.network.TransferTransactionJournal
 import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.notifyFilesReceived
+import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -44,10 +45,10 @@ private const val MAX_LIST_PAGE = 5_000
 
 internal fun Route.registerFileRoutes(server: FileApexServer) {
     get("/api/v1/files/list") {
-        runCatching {
+        cancellableCatching {
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             val rawPath = call.request.queryParameters["path"].orEmpty().trim()
             val sharedRoot = server.identityProvider().rootPath
@@ -58,7 +59,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             }
             if (!server.isPathAllowed(pathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
+                return@cancellableCatching
             }
             val listing = withContext(Dispatchers.IO) {
                 server.localFiles.listDirectory(pathStr)
@@ -69,7 +70,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 } else {
                     call.respond(HttpStatusCode.BadRequest, error.message ?: "list_failed")
                 }
-                return@runCatching
+                return@cancellableCatching
             }
             // Paged listing: encode one slice instead of the whole directory so a huge folder never
             // becomes a single multi-MB response. Clients without `limit` (older builds) get everything.
@@ -102,14 +103,14 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     }
 
     get("/api/v1/files/stream") {
-        runCatching {
+        cancellableCatching {
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@runCatching
+                return@cancellableCatching
             }
             val rawPath = call.request.queryParameters["path"].orEmpty().trim()
             if (rawPath.isBlank()) {
-                return@runCatching call.respond(HttpStatusCode.BadRequest)
+                return@cancellableCatching call.respond(HttpStatusCode.BadRequest)
             }
             val pathStr = if (rawPath == "/" || rawPath == "\\") {
                 server.identityProvider().rootPath
@@ -118,7 +119,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             }
             if (!server.isPathAllowed(pathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
+                return@cancellableCatching
             }
             val filePath = Path(pathStr)
 
@@ -132,7 +133,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 if (offset > fileSize) {
                     call.response.header(HttpHeaders.ContentRange, "bytes */$fileSize")
                     call.respond(HttpStatusCode.RequestedRangeNotSatisfiable)
-                    return@runCatching
+                    return@cancellableCatching
                 }
                 val requestedLength = call.request.queryParameters[TransferResumeProtocol.LENGTH_QUERY]
                     ?.toLongOrNull()
@@ -150,7 +151,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 }
                 if (remaining == 0L) {
                     call.respond(if (partial) HttpStatusCode.PartialContent else HttpStatusCode.OK)
-                    return@runCatching
+                    return@cancellableCatching
                 }
                 call.respondOutputStream(
                     contentType = ContentType.Application.OctetStream,
@@ -204,14 +205,14 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/files/upload") {
-        runCatching {
+        cancellableCatching {
             // Browse/list/stream stay PIN-gated. Direct send (upload) is allowed
             // regardless of peer browse-lock state so Multi Copy / Send File work.
             val preferredPathStr = call.request.queryParameters["targetPath"]
-                ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
+                ?: return@cancellableCatching call.respond(HttpStatusCode.BadRequest)
             if (!server.isPathAllowed(preferredPathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
+                return@cancellableCatching
             }
             val txId = call.request.queryParameters[TransferResumeProtocol.TRANSACTION_ID_QUERY].orEmpty()
             val txTimestamp = call.request.queryParameters[TransferResumeProtocol.TIMESTAMP_QUERY]?.toLongOrNull()
@@ -222,7 +223,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             if (txId.isNotBlank() && TransferTransactionJournal.findCompleted(txId, senderId, 0L) != null) {
                 server.onLog("TransferLog: upload skipped (already completed) txId=$txId sender=$senderId path=$preferredPathStr", null)
                 call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
-                return@runCatching
+                return@cancellableCatching
             }
             // Folder backup (backup=1) replaces the earlier copy of a changed file in place and, arriving
             // in bulk, skips the per-file "received" alert. Every other upload never overwrites an
@@ -231,13 +232,13 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             val targetPathStr = if (backup) preferredPathStr else UniqueFileNames.resolve(preferredPathStr)
             if (!server.isPathAllowed(targetPathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
+                return@cancellableCatching
             }
             val partPath = SocketFileStreamer.partPathFor(targetPathStr)
             val cancelKey = txId.ifBlank { partPath }
             if (ReceiverCancelRegistry.isCancelled(cancelKey)) {
                 call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
-                return@runCatching
+                return@cancellableCatching
             }
             val sessionLength = call.request.headers["Content-Length"]?.toLongOrNull()
             val offset = TransferResumeProtocol.parseByteOffset(
@@ -265,7 +266,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                     null
                 )
                 call.respond(HttpStatusCode.BadRequest, "resume_offset_invalid")
-                return@runCatching
+                return@cancellableCatching
             }
             val channel = call.receiveChannel()
             val uploadFileName = targetPathStr.substringAfterLast('/').substringAfterLast('\\')
@@ -280,7 +281,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             if (receivedOrCancelled == null) {
                 discardCancelledPart(partPath)
                 call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
-                return@runCatching
+                return@cancellableCatching
             }
             val received: Long = receivedOrCancelled
             val totalReceived = offset + received
@@ -302,7 +303,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                     SocketFileStreamer.deleteQuietly(partPath)
                 }
                 call.respond(HttpStatusCode.BadRequest, reason)
-                return@runCatching
+                return@cancellableCatching
             }
             val finalPath = SocketFileStreamer.finalizePart(partPath, targetPathStr, overwrite = backup)
             if (txId.isNotBlank()) {
@@ -337,7 +338,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 return@runCatching
             }
             com.fileapex.platform.trashLocalEntriesQuietly(listOf(path))
-            server.onLog("Remote delete: $path", null)
+            server.onLog("Remote delete: 1 item", null)
             call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.OK)
         }.onFailure { error ->
             server.onLog("POST /api/v1/files/delete failed", error)
@@ -356,11 +357,11 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     }
 
     get("/api/v1/files/segments") {
-        runCatching {
-            val target = resolveSegmentTarget(server, call) ?: return@runCatching
+        cancellableCatching {
+            val target = resolveSegmentTarget(server, call) ?: return@cancellableCatching
             if (ReceiverCancelRegistry.isCancelled(target.txId.ifBlank { target.partPath })) {
                 call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
-                return@runCatching
+                return@cancellableCatching
             }
             val prepare = call.request.queryParameters[TransferResumeProtocol.PREPARE_QUERY] == "1"
             if (target.txId.isNotBlank() &&
@@ -373,7 +374,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                     ),
                     contentType = ContentType.Application.Json
                 )
-                return@runCatching
+                return@cancellableCatching
             }
             val ranges = withContext(TransferRuntime.inbound) {
                 if (prepare && !ActiveSegmentWriters.isActive(target.partPath)) {
@@ -400,12 +401,12 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/files/upload-segment") {
-        runCatching {
-            val target = resolveSegmentTarget(server, call) ?: return@runCatching
+        cancellableCatching {
+            val target = resolveSegmentTarget(server, call) ?: return@cancellableCatching
             val cancelKey = target.txId.ifBlank { target.partPath }
             if (ReceiverCancelRegistry.isCancelled(cancelKey)) {
                 call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
-                return@runCatching
+                return@cancellableCatching
             }
             val offset = call.request.queryParameters[TransferResumeProtocol.OFFSET_QUERY]?.toLongOrNull() ?: -1L
             val length = call.request.queryParameters[TransferResumeProtocol.LENGTH_QUERY]?.toLongOrNull() ?: -1L
@@ -414,7 +415,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 (sessionLength != null && sessionLength != length)
             ) {
                 call.respond(HttpStatusCode.BadRequest, "segment_range_invalid")
-                return@runCatching
+                return@cancellableCatching
             }
             val channel = call.receiveChannel()
             ActiveSegmentWriters.enter(target.partPath)
@@ -430,7 +431,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             if (receivedOrCancelled == null) {
                 discardCancelledPart(target.partPath)
                 call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
-                return@runCatching
+                return@cancellableCatching
             }
             val received: Long = receivedOrCancelled
             if (received != length) {
@@ -439,7 +440,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                     null
                 )
                 call.respond(HttpStatusCode.BadRequest, "segment_incomplete")
-                return@runCatching
+                return@cancellableCatching
             }
             call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.OK)
         }.onFailure { error ->
@@ -449,8 +450,8 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/files/upload-complete") {
-        runCatching {
-            val target = resolveSegmentTarget(server, call) ?: return@runCatching
+        cancellableCatching {
+            val target = resolveSegmentTarget(server, call) ?: return@cancellableCatching
             val txTimestamp = call.request.queryParameters[TransferResumeProtocol.TIMESTAMP_QUERY]?.toLongOrNull()
                 ?: com.fileapex.util.TimeUtils.now()
             val finalPath = segmentFinalizeMutex.withLock {

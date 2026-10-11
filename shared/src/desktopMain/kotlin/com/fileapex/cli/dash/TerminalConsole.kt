@@ -1,6 +1,7 @@
 package com.fileapex.cli.dash
 
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.util.cancellableCatching
 import com.sun.jna.Library
 import com.sun.jna.Memory
 import com.sun.jna.Native
@@ -172,7 +173,7 @@ object TerminalConsole {
     }
 
     private fun enableRawModeUnix(): Boolean {
-        return runCatching {
+        return cancellableCatching {
             val pb = ProcessBuilder("/bin/sh", "-c", "stty raw -echo opost < /dev/tty").inheritIO()
             val p = pb.start()
             p.waitFor() == 0
@@ -180,7 +181,7 @@ object TerminalConsole {
     }
 
     private fun restoreUnix() {
-        runCatching {
+        cancellableCatching {
             val pb = ProcessBuilder("/bin/sh", "-c", "stty sane < /dev/tty").inheritIO()
             val p = pb.start()
             p.waitFor()
@@ -247,7 +248,7 @@ object TerminalConsole {
     }
 
     private fun queryUnixTerminalSize(): Pair<Int, Int> {
-        val sttyOutput = runCatching {
+        val sttyOutput = cancellableCatching {
             val p = ProcessBuilder("/bin/sh", "-c", "stty size < /dev/tty").start()
             val text = p.inputStream.bufferedReader().readText().trim()
             p.waitFor()

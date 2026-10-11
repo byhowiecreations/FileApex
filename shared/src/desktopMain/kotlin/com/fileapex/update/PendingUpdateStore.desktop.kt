@@ -265,9 +265,9 @@ actual object PendingUpdateStore {
             val file = java.io.File(candidatePath)
             if (file.isFile) {
                 val deleted = runCatching { file.delete() }.getOrDefault(false)
-                println("PendingUpdateStore: deleted update package for txId=$transactionId at $candidatePath (deleted=$deleted)")
+                println("PendingUpdateStore: deleted update package for txId=$transactionId (deleted=$deleted)")
             } else {
-                println("PendingUpdateStore: candidate update file missing or not a file: $candidatePath")
+                println("PendingUpdateStore: candidate update file missing or not a file")
             }
         }
 

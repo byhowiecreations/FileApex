@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import java.io.File
 
 object DesktopWindowsRegistration {
@@ -7,7 +8,7 @@ object DesktopWindowsRegistration {
         if (!DesktopPlatformPaths.isWindows()) return
         val currentExe = findExecutablePath() ?: return
 
-        runCatching {
+        cancellableCatching {
             val psScript = """
                 ${'$'}sendToPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::SendTo)
                 if (Test-Path ${'$'}sendToPath) {

@@ -5,6 +5,7 @@ import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.network.FileApexClient
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -120,7 +121,7 @@ internal object PeerLanDiscovery {
         if (!client.pingHealth(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)) {
             return null
         }
-        val state = runCatching {
+        val state = cancellableCatching {
             client.fetchPeerNodeState(host, port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
         }.getOrNull() ?: return null
         return state.takeIf { matchesPeer(peer, it) }?.let { matched ->

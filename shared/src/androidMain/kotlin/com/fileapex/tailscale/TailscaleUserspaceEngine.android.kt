@@ -336,7 +336,8 @@ private fun Class<*>.loopback(host: String, port: Int): Int {
     val portArg: Any = if (method.parameterTypes[1] == java.lang.Long.TYPE) port.toLong() else port
     return try {
         (method.invoke(null, host, portArg) as? Number)?.toInt() ?: 0
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet number call failed: ${error::class.simpleName}")
         0
     }
 }
@@ -345,7 +346,8 @@ private fun Class<*>.sessionToken(): String {
     val method = methods.firstOrNull { it.name == "sessionToken" && it.parameterTypes.isEmpty() } ?: return ""
     return try {
         method.invoke(null) as? String ?: ""
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet status call failed: ${error::class.simpleName}")
         ""
     }
 }
@@ -360,7 +362,8 @@ private fun Class<*>.invokeString(name: String): String {
         (method.invoke(null) as? String).orEmpty().trim()
     } catch (error: CancellationException) {
         throw error
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet status call failed: ${error::class.simpleName}")
         ""
     }
 }
@@ -369,7 +372,8 @@ private fun Class<*>.backendState(): String {
     val method = methods.firstOrNull { it.name == "backendState" && it.parameterTypes.isEmpty() } ?: return ""
     return try {
         (method.invoke(null) as? String).orEmpty()
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet status call failed: ${error::class.simpleName}")
         ""
     }
 }
@@ -378,7 +382,8 @@ private fun Class<*>.keyExpired(): Boolean {
     val method = methods.firstOrNull { it.name == "keyExpired" && it.parameterTypes.isEmpty() } ?: return false
     return try {
         method.invoke(null) as? Boolean ?: false
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet keyExpired call failed: ${error::class.simpleName}")
         false
     }
 }
@@ -394,7 +399,8 @@ private fun Class<*>.logout(): String? {
         if (detail.contains("node is down")) "node_down" else "sign_out_failed"
     } catch (error: CancellationException) {
         throw error
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet logout failed: ${error::class.simpleName}")
         "sign_out_failed"
     }
 }
@@ -404,7 +410,8 @@ private fun Class<*>.clearState(dir: String): Boolean {
     return try {
         method.invoke(null, dir)
         true
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet keyExpired call failed: ${error::class.simpleName}")
         false
     }
 }
@@ -415,7 +422,8 @@ private fun Class<*>.activeConnections(): Int {
         (method.invoke(null) as? Number)?.toInt() ?: 0
     } catch (error: CancellationException) {
         throw error
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet number call failed: ${error::class.simpleName}")
         0
     }
 }
@@ -426,7 +434,8 @@ private fun Class<*>.peers(): String? {
         (method.invoke(null) as? String).orEmpty().ifBlank { "[]" }
     } catch (error: CancellationException) {
         throw error
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet peers call failed: ${error::class.simpleName}")
         null
     }
 }

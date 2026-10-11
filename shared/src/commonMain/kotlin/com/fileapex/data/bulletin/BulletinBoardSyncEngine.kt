@@ -283,7 +283,7 @@ class BulletinBoardSyncEngine(
         val port = dial?.port ?: origin.port
         if (host.isBlank() || port <= 0) return null
         ServerLifecycleManager.ensureRunning()
-        return runCatching {
+        return cancellableCatching {
             FileApexServices.client.downloadBulletinFile(
                 host = host,
                 port = port,
@@ -476,7 +476,7 @@ class BulletinBoardSyncEngine(
     }
 
     private suspend fun runMaintenance() {
-        runCatching {
+        cancellableCatching {
             repository.pruneStaleOutbox()
             repository.pruneOldMessages()
         }

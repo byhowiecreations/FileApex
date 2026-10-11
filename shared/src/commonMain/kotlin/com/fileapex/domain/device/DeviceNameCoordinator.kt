@@ -8,6 +8,7 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 
 object DeviceNameCoordinator {
     private val namePattern = Regex("^[A-Za-z0-9]+(?:[ \\-][A-Za-z0-9]+)*$")
@@ -23,7 +24,7 @@ object DeviceNameCoordinator {
         val trimmed = name.trim()
         validate(trimmed)?.let { error(it) }
         LocalDeviceNameStore.apply(trimmed)
-        runCatching {
+        cancellableCatching {
             GoogleLinkCoordinator.publishUserRenamedDevice(LocalIdentity.LOCAL_DEVICE_ID, trimmed)
         }
         FileApexServices.pairingCoordinator.broadcastSelfIdentity()
@@ -46,7 +47,7 @@ object DeviceNameCoordinator {
                 updatedAtEpochMs = TimeUtils.now()
             )
         }
-        runCatching {
+        cancellableCatching {
             GoogleLinkCoordinator.publishUserRenamedDevice(LocalIdentity.LOCAL_DEVICE_ID, trimmed)
         }
         FileApexServices.pairingCoordinator.broadcastSelfIdentity()
@@ -59,7 +60,7 @@ object DeviceNameCoordinator {
             ?: error(AppI18n.t("device_not_found"))
         val self = loadLocalIdentity()
         val selfLabel = LocalDeviceNameStore.current().ifBlank { self.deviceName }
-        runCatching {
+        cancellableCatching {
             FileApexServices.client.postRemoteRename(
                 host = peer.lastKnownIp,
                 port = peer.port,
@@ -69,7 +70,7 @@ object DeviceNameCoordinator {
             )
         }
         FileApexServices.deviceRepository.rename(deviceId, trimmed)
-        runCatching {
+        cancellableCatching {
             GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
         }
         FileApexServices.presenceMonitor.refreshOnlineSnapshot()

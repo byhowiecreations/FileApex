@@ -7,6 +7,7 @@ import com.fileapex.platform.AndroidShareBulletin
 import com.fileapex.platform.AndroidShareIntake
 import com.fileapex.platform.BriefToast
 import com.fileapex.platform.FileApexAndroidBootstrap
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,7 +39,7 @@ class BulletinShareActivity : ComponentActivity() {
             return
         }
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 val text = AndroidShareIntake.extractSharedText(textIntent)
                 if (text.isNullOrBlank()) error(com.fileapex.i18n.AppI18n.t("nothing_to_post"))
                 AndroidShareBulletin.ingestShareIntent(this@BulletinShareActivity, textIntent)

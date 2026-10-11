@@ -14,6 +14,7 @@ import com.fileapex.platform.UniqueFileNames
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.platform.generateDeviceId
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +63,7 @@ object DriveRelayCoordinator {
             applySchedulerFromSettings()
             if (DriveRelayPolicy.isRelayEnabled()) {
                 DriveRelayNotifier.onDriveEnabledAndGranted()
-                runCatching { sweep(forceReload = true) }
+                cancellableCatching { sweep(forceReload = true) }
                     .onFailure { error ->
                         if (error is CancellationException) throw error
                         driveLogError("launch Drive sweep failed", error)
@@ -74,7 +75,7 @@ object DriveRelayCoordinator {
 
     private suspend fun reconcileStoredGrant() {
         if (GoogleDriveAuth.hasGrant() || !GoogleDriveAuth.hasStoredAccess()) return
-        runCatching {
+        cancellableCatching {
             GoogleDriveClient.verifyRelayAccess()
             GoogleDriveAuth.markAccessVerified()
             if (!FileApexServices.settings.googleDriveRelayEnabled.value) {
@@ -140,7 +141,7 @@ object DriveRelayCoordinator {
         pendingSendDeviceIds = emptyList()
         if (sources.isNotEmpty() && deviceIds.isNotEmpty()) {
             scope.launch {
-                runCatching { uploadDirectTransfers(sources, deviceIds) }
+                cancellableCatching { uploadDirectTransfers(sources, deviceIds) }
                     .onSuccess { entries ->
                         DriveRelayNotifier.notifyPosted(
                             fileNames = entries.map { it.fileName }.distinct(),
@@ -149,7 +150,7 @@ object DriveRelayCoordinator {
                     }
                     .onFailure { error ->
                         driveLogError("confirmed send failed", error)
-                        runCatching {
+                        cancellableCatching {
                             FileApexServices.transferQueue.enqueueSources(sources, deviceIds)
                         }.onFailure { queueError ->
                             driveLogError("queue after Drive failure also failed", queueError)
@@ -336,9 +337,9 @@ object DriveRelayCoordinator {
         if (entries.isEmpty()) return
         val entryIds = entries.map { it.entryId }.toSet()
         entries.map { it.driveFileId }.distinct().forEach { driveFileId ->
-            runCatching { GoogleDriveClient.deleteFile(driveFileId) }
+            cancellableCatching { GoogleDriveClient.deleteFile(driveFileId) }
         }
-        runCatching {
+        cancellableCatching {
             mutex.withLock {
                 mutateLedger { ledger ->
                     ledger.copy(entries = ledger.entries.filterNot { it.entryId in entryIds })
@@ -370,7 +371,7 @@ object DriveRelayCoordinator {
         if (driveFileId.isBlank()) return
         if (!GoogleDriveAuth.hasGrant()) return
         withContext(Dispatchers.IO) {
-            runCatching { GoogleDriveClient.deleteFile(driveFileId) }
+            cancellableCatching { GoogleDriveClient.deleteFile(driveFileId) }
             mutex.withLock {
                 mutateLedger { ledger ->
                     ledger.copy(
@@ -407,7 +408,7 @@ object DriveRelayCoordinator {
         val retries = if (forceReload) DriveRelayPolicy.RECEIVE_RETRIES else 0
         var attempt = 0
         while (true) {
-            val error = runCatching { sweepOnce(forceReload) }.exceptionOrNull() ?: return
+            val error = cancellableCatching { sweepOnce(forceReload) }.exceptionOrNull() ?: return
             if (error is CancellationException) throw error
             driveLogError("ledger sweep attempt ${attempt + 1} failed", error)
             if (attempt >= retries) return
@@ -504,7 +505,7 @@ object DriveRelayCoordinator {
                     !entry.pinned &&
                     now - entry.uploadedAtEpochMs >= DriveRelayPolicy.PURGE_AFTER_MS
                 if (expired || entry.isDirectTransferComplete()) {
-                    runCatching { GoogleDriveClient.deleteFile(entry.driveFileId) }
+                    cancellableCatching { GoogleDriveClient.deleteFile(entry.driveFileId) }
                     dirty = true
                 } else {
                     retain += entry
@@ -515,7 +516,7 @@ object DriveRelayCoordinator {
                 dirty = true
             }
             if (dirty) {
-                val saved = runCatching {
+                val saved = cancellableCatching {
                     GoogleDriveClient.saveLedger(ledger, snapshot.etag ?: cachedEtag)
                 }.getOrElse { error ->
                     if (error is DriveHttpException && error.status == 412) {
@@ -541,7 +542,7 @@ object DriveRelayCoordinator {
     private suspend fun retrieveWithRetries(entry: DriveLedgerEntry): RetrieveResult {
         var attempt = 0
         while (true) {
-            val result = runCatching { retrieveEntry(entry) }.getOrElse { error ->
+            val result = cancellableCatching { retrieveEntry(entry) }.getOrElse { error ->
                 if (error is CancellationException) throw error
                 if (error is DriveHttpException && error.status == 404) {
                     driveLog("retrieve gone ${entry.fileName}")
@@ -690,7 +691,7 @@ object DriveRelayCoordinator {
             DownloadOutcome.CANCELLED_REMOVE -> {
                 runCatching { SystemFileSystem.delete(Path(partPath)) }
                 withContext(NonCancellable) {
-                    runCatching { GoogleDriveClient.deleteFile(entry.driveFileId) }
+                    cancellableCatching { GoogleDriveClient.deleteFile(entry.driveFileId) }
                 }
                 driveLog("retrieve cancelled by user ${entry.fileName}; removed from Drive")
                 return RetrieveResult.GONE
@@ -792,7 +793,7 @@ object DriveRelayCoordinator {
         while (attempt < 4) {
             val snapshot = GoogleDriveClient.loadLedger()
             val next = transform(snapshot.ledger)
-            val result = runCatching { GoogleDriveClient.saveLedger(next, snapshot.etag) }
+            val result = cancellableCatching { GoogleDriveClient.saveLedger(next, snapshot.etag) }
             if (result.isSuccess) {
                 val saved = result.getOrThrow()
                 cachedLedger = saved.ledger

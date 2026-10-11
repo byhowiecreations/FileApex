@@ -54,6 +54,7 @@ internal object ServerWifiLockCoordinator {
             val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 WifiManager.WIFI_MODE_FULL_LOW_LATENCY
             } else {
+                // no low latency mode before API 29
                 @Suppress("DEPRECATION")
                 WifiManager.WIFI_MODE_FULL_HIGH_PERF
             }

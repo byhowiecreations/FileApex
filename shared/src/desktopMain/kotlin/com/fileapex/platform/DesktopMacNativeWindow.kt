@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.cancellableCatching
 import java.awt.Component
 import java.awt.Window
 
@@ -66,7 +67,7 @@ object DesktopMacNativeWindow {
             ?.let { method ->
                 runCatching { method.invoke(component) }.getOrNull()?.let { return it }
             }
-        return runCatching {
+        return cancellableCatching {
             val peerField = Component::class.java.getDeclaredField("peer")
             peerField.isAccessible = true
             peerField.get(component)

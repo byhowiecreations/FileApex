@@ -95,6 +95,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fileapex.util.cancellableCatching
 import kotlin.math.roundToInt
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.cloud.drive.DriveRelayPolicy
@@ -239,7 +240,7 @@ fun NotesScreen(
             return@rememberGoogleSignInLauncher
         }
         scope.launch {
-            runCatching {
+            cancellableCatching {
                 GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, email)
             }.onSuccess {
                 FileApexServices.settings.setCellularEnabled(true)
@@ -479,7 +480,7 @@ fun NotesScreen(
         }
         transport = session
         scope.launch(Dispatchers.IO) {
-            runCatching {
+            cancellableCatching {
                 FileApexServices.noteRepository.sendNote(
                     content = pending.text,
                     attachmentPath = pending.path,

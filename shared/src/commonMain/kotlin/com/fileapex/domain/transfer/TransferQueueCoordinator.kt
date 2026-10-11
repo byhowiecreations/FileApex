@@ -24,6 +24,7 @@ import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.NetworkUtils
 import com.fileapex.network.TransferCancelledException
 import com.fileapex.util.TimeUtils
+import com.fileapex.util.cancellableCatching
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -290,7 +291,7 @@ class TransferQueueCoordinator(
             val peer = deviceRepository.getDevice(deviceId) ?: continue
             val endpoint = resolveTransferEndpoint(peer) ?: continue
             deviceRepository.touchPeerLastSeen(deviceId, endpoint.first, endpoint.second)
-            val option = runCatching {
+            val option = cancellableCatching {
                 transferManager.resolveRemoteDeviceOptionsAtEndpoint(
                     deviceIds = listOf(deviceId),
                     host = endpoint.first,
@@ -581,7 +582,7 @@ class TransferQueueCoordinator(
         if (localSources.isEmpty()) {
             return OffLanRelayOutcome(emptyList(), emptyList(), deviceIds, emptyList())
         }
-        return runCatching {
+        return cancellableCatching {
             val entries = DriveRelayCoordinator.uploadDirectTransfers(localSources, deviceIds)
             val names = deviceNames(deviceIds)
             DriveRelayNotifier.notifyPosted(

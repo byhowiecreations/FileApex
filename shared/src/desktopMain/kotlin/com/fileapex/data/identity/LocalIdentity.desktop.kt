@@ -9,7 +9,10 @@ import java.util.Properties
 
 actual fun loadLocalIdentity(): LocalIdentity {
     val props = loadProps()
-    val deviceId = props.getProperty("deviceId") ?: generateDeviceId().also { id ->
+    val deviceId = com.fileapex.security.LocalIdentityBinding.resolve(
+        storedId = props.getProperty("deviceId"),
+        fallbackId = ::generateDeviceId
+    ) { id ->
         props.setProperty("deviceId", id)
         persistProps(props)
     }

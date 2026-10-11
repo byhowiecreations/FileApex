@@ -7,6 +7,7 @@ import com.fileapex.platform.syncDirectShareTargetsFromPeers
 import com.fileapex.security.tls.LocalTlsInfo
 import com.fileapex.security.tls.TlsFront
 import com.fileapex.security.tls.TlsFrontProvider
+import com.fileapex.util.cancellableCatching
 
 /**
  * Process-wide FileApex share-server lifecycle.
@@ -47,7 +48,7 @@ object ServerLifecycleManager {
             BackgroundPresenceServices.start()
             return
         }
-        runCatching { current?.stop() }
+        cancellableCatching { current?.stop() }
         stopTlsFrontLocked(onLog)
         val identity = loadLocalIdentity()
         val front = runCatching { TlsFrontProvider.factory?.invoke(LanInterfaceBinding.shareServerListenHost()) }
@@ -63,8 +64,8 @@ object ServerLifecycleManager {
             onPairingRespondComplete = { scanningDevice ->
                 FileApexServices.pairingCoordinator.propagatePairingComplete(scanningDevice)
             },
-            onClusterMerge = { request ->
-                FileApexServices.pairingCoordinator.mergeIncoming(request)
+            onClusterMerge = { request, authenticatedSender ->
+                FileApexServices.pairingCoordinator.mergeIncoming(request, authenticatedSender)
             },
             onClusterPeerRemoved = { record ->
                 FileApexServices.pairingCoordinator.handlePeerRemoval(record, forward = true)
@@ -72,26 +73,36 @@ object ServerLifecycleManager {
             onClusterSelfRemoved = { record ->
                 FileApexServices.pairingCoordinator.handleSelfRemoval(record)
             },
+            // Only peers this device reached itself are handed out: a roster is never a way to pass on hearsay.
             onListDevices = {
                 FileApexServices.deviceRepository.listDevices()
+                    .filter { com.fileapex.domain.pairing.PeerTrustRules.reachedDirectly(it) }
+            },
+            onListIntroductions = { recipientId ->
+                val recipient = FileApexServices.deviceRepository.getDevice(recipientId)
+                if (recipient == null || recipient.isRemoved) {
+                    emptyList()
+                } else {
+                    FileApexServices.peerAdmission.sealedIntroductionsFor(recipient)
+                }
             },
             onLog = onLog
         )
-        runCatching { server.start() }
+        cancellableCatching { server.start() }
             .onFailure { error ->
                 onLog("Share server failed to start on port ${identity.sharePort}", error)
                 return
             }
         serverInstance = server
         if (front != null) {
-            runCatching { front.start() }
+            cancellableCatching { front.start() }
                 .onSuccess { tlsPort ->
                     tlsFront = front
                     LocalTlsInfo.port = tlsPort
                 }
                 .onFailure { error ->
                     onLog("TLS front failed to start, serving HTTP only", error)
-                    runCatching { front.stop() }
+                    cancellableCatching { front.stop() }
                 }
         }
         BackgroundPresenceServices.onShareServerStarted(identity.sharePort, identity.deviceId)
@@ -109,7 +120,7 @@ object ServerLifecycleManager {
         val front = tlsFront ?: return
         tlsFront = null
         LocalTlsInfo.port = 0
-        runCatching { front.stop() }.onFailure { error -> onLog("Error while stopping TLS front", error) }
+        cancellableCatching { front.stop() }.onFailure { error -> onLog("Error while stopping TLS front", error) }
         com.fileapex.security.tls.TlsBridgeRegistry.clear()
     }
 
@@ -119,7 +130,7 @@ object ServerLifecycleManager {
         val current = serverInstance
         serverInstance = null
         if (current != null) {
-            runCatching {
+            cancellableCatching {
                 if (fast) {
                     current.stop(gracePeriodMillis = 0, timeoutMillis = 250)
                 } else {

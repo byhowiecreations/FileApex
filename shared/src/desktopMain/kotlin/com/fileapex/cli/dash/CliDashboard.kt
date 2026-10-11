@@ -8,6 +8,7 @@ import com.fileapex.cli.ipc.CliQueueItem
 import com.fileapex.cli.ipc.CliRemoteFile
 import com.fileapex.update.FileApexAppVersion
 import com.fileapex.util.PathUtils
+import com.fileapex.util.cancellableCatching
 import java.io.File
 import java.text.DecimalFormat
 import kotlinx.coroutines.CoroutineScope
@@ -117,7 +118,7 @@ class CliDashboard(
         if (force || now - lastStateFetchEpochMs >= minInterval) {
             lastStateFetchEpochMs = now
             val previousTransfersCount = clusterState.activeTransfersCount
-            val newState = runCatching {
+            val newState = cancellableCatching {
                 backend.fetchClusterState(highlightBattery = (currentView == DashboardView.BATTERY), force = force)
             }.getOrDefault(clusterState)
 

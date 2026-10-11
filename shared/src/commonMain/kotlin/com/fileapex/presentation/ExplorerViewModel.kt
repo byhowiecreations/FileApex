@@ -26,6 +26,7 @@ import com.fileapex.platform.watchLocalDirectory
 import com.fileapex.platform.zipLocalEntry
 import com.fileapex.platform.previewMaxEdgePx
 import com.fileapex.session.DeviceSessionManager
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -329,7 +330,7 @@ class ExplorerViewModel(
     fun confirmPinUnlock(pin: String) {
         val remote = target as? BrowseTarget.Remote ?: return
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
                 FileApexServices.client.verifyPin(
                     host = remote.host,
@@ -575,7 +576,7 @@ class ExplorerViewModel(
                     errorMessage = null
                 )
             }
-            runCatching {
+            cancellableCatching {
                 val bytes = withContext(Dispatchers.IO) {
                     preview.loadPreviewBytes(item, FilePreviewManager.MAX_PREVIEW_BYTES)
                 }
@@ -626,7 +627,7 @@ class ExplorerViewModel(
                     errorMessage = null
                 )
             }
-            runCatching {
+            cancellableCatching {
                 withContext(Dispatchers.IO) {
                     preview.loadPreviewBytes(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
                         .decodeToString()
@@ -797,7 +798,7 @@ class ExplorerViewModel(
         }
         viewModelScope.launch {
             val outcome = withContext(Dispatchers.IO) {
-                runCatching {
+                cancellableCatching {
                     browser.ensureBrowseAccess()
                     items.forEach { FileApexServices.client.deleteRemote(remote.host, remote.port, it.absolutePath) }
                 }
@@ -859,12 +860,12 @@ class ExplorerViewModel(
             val failed = withContext(Dispatchers.IO) {
                 when (val browseTarget = target) {
                     is BrowseTarget.Local -> paths.mapNotNull { payload ->
-                        runCatching { dropOntoLocal(payload, destination) }.exceptionOrNull()
+                        cancellableCatching { dropOntoLocal(payload, destination) }.exceptionOrNull()
                     }
                     is BrowseTarget.Remote -> {
                         val localPaths = paths.mapNotNull { localPathOfDrop(it) }
                         if (localPaths.isEmpty()) emptyList()
-                        else runCatching {
+                        else cancellableCatching {
                             val sources = com.fileapex.domain.transfer.LocalTransferTree.expandAbsolutePaths(localPaths)
                             FileApexServices.transferService.multiCopyToDevices(
                                 sources,
@@ -1143,7 +1144,7 @@ class ExplorerViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isMultiCopying = true, errorMessage = null) }
-            runCatching {
+            cancellableCatching {
                 val sources = transfers.sourcesFrom(items)
                 transfers.sendOrQueue(sources, selectedDevices)
             }.fold(
@@ -1225,7 +1226,7 @@ class ExplorerViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            runCatching {
+            cancellableCatching {
                 transfers.downloadRemote(items)
             }.fold(
                 onSuccess = { paths ->
@@ -1261,7 +1262,7 @@ class ExplorerViewModel(
         val items = selectedItems()
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            runCatching {
+            cancellableCatching {
                 transfers.downloadRemote(items)
             }.fold(
                 onSuccess = { paths ->
@@ -1297,7 +1298,7 @@ class ExplorerViewModel(
         val item = _uiState.value.previewItem ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            runCatching {
+            cancellableCatching {
                 transfers.downloadRemote(listOf(item))
             }.fold(
                 onSuccess = { paths ->
@@ -1323,7 +1324,7 @@ class ExplorerViewModel(
 
     fun pasteHere() {
         viewModelScope.launch {
-            runCatching {
+            cancellableCatching {
                 val paths = transfers.pasteInto(_uiState.value.currentPath)
                 _uiState.update {
                     it.copy(
@@ -1397,7 +1398,7 @@ class ExplorerViewModel(
         if (!isContent && !isPane) return
         val generation = browseGeneration
         viewModelScope.launch {
-            val listing = runCatching { browser.listAt(normalizedPath) }.getOrNull() ?: return@launch
+            val listing = cancellableCatching { browser.listAt(normalizedPath) }.getOrNull() ?: return@launch
             if (generation != browseGeneration) return@launch
             _uiState.update {
                 it.copy(

@@ -39,6 +39,8 @@ data class ClusterSyncRequest(
     val nodeStates: List<PeerNodeState> = emptyList(),
     val removedDevices: List<RemovedDeviceRecord> = emptyList(),
     val clusterVersion: Long = 0L,
+    /** Sealed per recipient by the sending device. A new peer is only considered through these. */
+    val introductions: List<com.fileapex.security.SealedIntroduction> = emptyList(),
     @Deprecated("Legacy gossip — ignored on ingest")
     val introducer: PairedDeviceEntity? = null,
     @Deprecated("Legacy gossip — ignored on ingest")

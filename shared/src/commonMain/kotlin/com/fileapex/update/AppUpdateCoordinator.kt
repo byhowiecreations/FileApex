@@ -9,6 +9,7 @@ import com.fileapex.platform.dismissAppUpdateNotification
 import com.fileapex.platform.notifyAppUpdateAvailable
 import com.fileapex.platform.shouldDeferUpdateInstallToUser
 import com.fileapex.util.TimeUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -174,7 +175,9 @@ object AppUpdateCoordinator {
                 PendingUpdateStore.setLastAttemptedTransactionId(txId)
                 PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
                 PendingUpdateStore.setLastAttemptedInstallTimestamp(TimeUtils.now())
-                PlatformUpdateInstaller.installAndRelaunch(local, offer.remoteVersion)
+                if (promptForInstallPermissionIfMissing()) return
+                runCatching { PlatformUpdateInstaller.installAndRelaunch(local, offer.remoteVersion) }
+                    .onFailure { BriefToast.show(it.message ?: AppI18n.t("update_details_missing")) }
                 return
             }
             _showUpdateSheet.value = true
@@ -209,6 +212,8 @@ object AppUpdateCoordinator {
     }
 
     fun downloadPendingUpdate() {
+        // Every install path needs "Install unknown apps"; ask the user instead of failing later.
+        if (promptForInstallPermissionIfMissing()) return
         restorePendingOffer()
         var offer = _pendingUpdate.value ?: PendingUpdateStore.load()
         val localPath = offer?.localFilePath?.takeIf { it.isNotBlank() }
@@ -232,7 +237,8 @@ object AppUpdateCoordinator {
             )
             PendingUpdateStore.setTransactionInstallStatus(txId, "INSTALLING")
             PendingUpdateStore.setLastAttemptedInstallTimestamp(TimeUtils.now())
-            PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion)
+            runCatching { PlatformUpdateInstaller.installAndRelaunch(localPath, offer.remoteVersion) }
+                .onFailure { BriefToast.show(it.message ?: AppI18n.t("update_details_missing")) }
             _showUpdateSheet.value = false
             return
         }
@@ -290,6 +296,8 @@ object AppUpdateCoordinator {
                 FileApexServices.settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                 _showUpdateSheet.value = false
                 _statusMessage.value = AppI18n.t("installing_update", offer.remoteVersion)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
                 val message = UserFacingErrors.message(error, "update_download_failed")
                 _statusMessage.value = message
@@ -405,6 +413,8 @@ object AppUpdateCoordinator {
                     }
                     is UpdateCheckOutcome.Installing -> Unit
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
                 settings.setLastUpdateCheckEpochMs(TimeUtils.now())
                 val message = UserFacingErrors.message(error, "update_check_failed")
@@ -434,10 +444,30 @@ object AppUpdateCoordinator {
             }
             return
         }
+        if (!PlatformInstallPermission.canRequestPackageInstalls()) {
+            setPendingOffer(offer)
+            notifyAppUpdateAvailable(offer)
+            _statusMessage.value = AppI18n.t("update_available_title", offer.remoteVersion)
+            promptForInstallPermissionIfMissing(toast = toastFeedback)
+            return
+        }
         _statusMessage.value = AppI18n.t("update_available_installing", offer.remoteVersion)
         notifyAppUpdateAvailable(offer)
         AppUpdater.downloadAndInstall(offer)
         setPendingOffer(null)
+    }
+
+    /**
+     * Gate for every install path. When "Install unknown apps" is not granted, surfaces the update
+     * sheet (its button opens the system permission screen from a real tap) instead of letting the
+     * installer fail. Never launches Settings itself. Returns true when the caller must stop.
+     */
+    fun promptForInstallPermissionIfMissing(toast: Boolean = true): Boolean {
+        if (PlatformInstallPermission.canRequestPackageInstalls()) return false
+        restorePendingOffer()
+        _showUpdateSheet.value = true
+        if (toast) BriefToast.show(AppI18n.t("update_allow_unknown_apps"))
+        return true
     }
 
     fun setPendingOffer(offer: PendingUpdateOffer?) {

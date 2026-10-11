@@ -7,6 +7,7 @@ import com.fileapex.security.tls.PeerTlsConnector
 import com.fileapex.tailscale.tailscaleLoopbackOrNull
 import com.fileapex.tailscale.writeTailscaleDialToken
 import com.fileapex.util.NetworkUtils
+import com.fileapex.util.cancellableCatching
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -60,7 +61,7 @@ actual fun sendWakeBroadcastOnPrimaryInterface() {
             )
             directedBroadcastOrNull(localIp, networkInterface)?.let { targets.add(it) }
             for (target in targets) {
-                runCatching {
+                cancellableCatching {
                     val address = InetAddress.getByName(target)
                     val packet = DatagramPacket(payload, payload.size, address, WakeProtocol.PORT)
                     socket.send(packet)
@@ -86,17 +87,17 @@ internal fun openWakeListenerOnPrimaryInterface(onLog: (String) -> Unit): Datagr
         onLog("UDP wake bind skipped - no primary LAN interface")
         return null
     }
-    return runCatching {
+    return cancellableCatching {
         MulticastSocket(null).apply {
             reuseAddress = true
             broadcast = true
             bind(InetSocketAddress(localIp, WakeProtocol.PORT))
             val groupAddress = InetAddress.getByName(WakeProtocol.MULTICAST_ADDRESS)
             joinGroup(InetSocketAddress(groupAddress, WakeProtocol.PORT), networkInterface)
-            onLog("UDP wake bound to $localIp:${WakeProtocol.PORT}")
+            onLog("UDP wake bound to ${NetworkUtils.lastOctetLabel(localIp)}:${WakeProtocol.PORT}")
         }
     }.onFailure { error ->
-        onLog("UDP wake bind failed on $localIp: ${error.message}")
+        onLog("UDP wake bind failed on ${NetworkUtils.lastOctetLabel(localIp)}: ${error.message}")
     }.getOrNull()
 }
 
@@ -202,7 +203,7 @@ actual suspend fun peerHttpUploadFromChannel(
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
     val loop = tailscaleLoopbackOrNull(host, port)
     if (loop != null) {
-        return@withContext runCatching {
+        return@withContext cancellableCatching {
             executeBoundUploadOnLocalIp(
                 localIp = "127.0.0.1",
                 host = loop.host,
@@ -276,7 +277,7 @@ actual suspend fun peerHttpUploadFromFile(
     if (loop != null) {
         val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
         var currentSent = offset
-        return@withContext runCatching {
+        return@withContext cancellableCatching {
             executeBoundUploadOnLocalIp(
                 localIp = "127.0.0.1",
                 host = loop.host,
@@ -351,7 +352,7 @@ actual suspend fun peerHttpGetStreaming(
 ): PeerBoundStreamResult? = withContext(TransferRuntime.outbound) {
     val loop = tailscaleLoopbackOrNull(host, port)
     if (loop != null) {
-        return@withContext runCatching {
+        return@withContext cancellableCatching {
             executeBoundGetStreamingOnLocalIp(
                 localIp = "127.0.0.1",
                 host = loop.host,
@@ -485,7 +486,7 @@ private suspend fun executeBoundGetStreaming(
     onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? {
     for (localIp in peerBindAttemptIps(host)) {
-        val response = runCatching {
+        val response = cancellableCatching {
             executeBoundGetStreamingOnLocalIp(
                 localIp = localIp,
                 host = host,
@@ -532,7 +533,7 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
             PeerTlsConnector.connect(socket, host, port, connectTimeout)
         } catch (error: Exception) {
             socket.close()
-            throw BoundConnectFailed()
+            throw BoundConnectFailed(error)
         }
         io.soTimeout = idleTimeout
         val output = io.getOutputStream()
@@ -589,7 +590,7 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
     }
 }
 
-private class BoundConnectFailed : Exception()
+private class BoundConnectFailed(cause: Throwable) : Exception(cause)
 
 /** Same-/24 as the peer first, then other LAN IPs, then OS-default routing.
  * On macOS try unbound first so Finder/Dock launches are not pinned to a bound Java socket
@@ -629,7 +630,7 @@ private suspend fun executeBoundUpload(
     writeBody: suspend (java.io.OutputStream) -> Unit
 ): PeerBoundHttpResponse? {
     for (localIp in peerBindAttemptIps(host)) {
-        val response = runCatching {
+        val response = cancellableCatching {
             executeBoundUploadOnLocalIp(
                 localIp = localIp,
                 host = host,
@@ -681,7 +682,7 @@ private suspend fun executeBoundUploadOnLocalIp(
             if (TransferActivityGuard.transferCancelRequested()) {
                 throw CancellationException("transfer cancelled")
             }
-            throw BoundConnectFailed()
+            throw BoundConnectFailed(error)
         }
         io.soTimeout = idleTimeout
         val output = io.getOutputStream()
