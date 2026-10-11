@@ -1184,6 +1184,11 @@ Tap Central Hub (+) to Pair</string>
     <string name="simple_drop_page_short">Drop files here to send</string>
     <string name="broadcast_dismissal">Sync dismissal</string>
     <string name="broadcast_dismissal_desc">Reading a notification on the other device also clears it on this phone. Clearing one here always clears it on the other device.</string>
+    <string name="notif_disclosure_title">Before you turn this on</string>
+    <string name="notif_disclosure_body_one">FileApex will read notifications from the apps you choose, including message and email text, and send them end-to-end encrypted to %1$s. They aren\'t stored or sent to any server, and nothing is shared until you turn it on. You can turn it off anytime.</string>
+    <string name="notif_disclosure_body_many">FileApex will read notifications from the apps you choose, including message and email text, and send them end-to-end encrypted to the device you pick. They aren\'t stored or sent to any server, and nothing is shared until you turn it on. You can turn it off anytime.</string>
+    <string name="notif_disclosure_accept">Agree and continue</string>
+    <string name="notif_disclosure_decline">No thanks</string>
     <string name="notif_reply_hint">Reply</string>
     <string name="notif_reply_failed">Could not send. The notification may have been cleared on the phone.</string>
     <string name="notif_you">You</string>

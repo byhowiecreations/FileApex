@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.fileapex.data.db.isDockerNode
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
@@ -53,6 +54,7 @@ internal fun BroadcastNotificationsSettingsPage(
     onOpenAppDetailsSettings: () -> Unit
 ) {
     val settings = FileApexServices.settings
+    val accepted by settings.notificationDisclosureAccepted.collectAsState()
     val enabled by settings.notificationBroadcastEnabled.collectAsState()
     val targetId by settings.notificationBroadcastTargetDeviceId.collectAsState()
     val codes by settings.notificationBroadcastVerificationCodes.collectAsState()
@@ -80,6 +82,22 @@ internal fun BroadcastNotificationsSettingsPage(
         if (appsExpanded && apps.isEmpty()) {
             apps = withContext(Dispatchers.IO) { listNotificationApps() }
         }
+    }
+
+    if (!accepted) {
+        SettingsPageShell(
+            title = stringRes("broadcast_notifications"),
+            layoutMode = layoutMode,
+            onBack = onBack
+        ) { contentModifier ->
+            NotificationDisclosure(
+                modifier = contentModifier,
+                deviceName = pairedDevices.filterNot { it.isDockerNode() }.singleOrNull()?.deviceName,
+                onAccept = { settings.setNotificationDisclosureAccepted(true) },
+                onDecline = onBack
+            )
+        }
+        return
     }
 
     SettingsPageShell(
@@ -265,4 +283,27 @@ private fun CollapsibleHeader(
             )
         }
     )
+}
+
+@Composable
+internal fun NotificationDisclosure(modifier: Modifier, deviceName: String?, onAccept: () -> Unit, onDecline: () -> Unit) {
+    Column(modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            stringRes("notif_disclosure_title"),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            if (deviceName != null) stringRes("notif_disclosure_body_one", deviceName) else stringRes("notif_disclosure_body_many"),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(onClick = onAccept, modifier = Modifier.fillMaxWidth()) { Text(stringRes("notif_disclosure_accept")) }
+        OutlinedButton(onClick = onDecline, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            Text(stringRes("notif_disclosure_decline"))
+        }
+    }
 }

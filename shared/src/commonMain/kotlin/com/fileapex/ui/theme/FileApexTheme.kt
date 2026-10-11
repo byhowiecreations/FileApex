@@ -2,6 +2,7 @@ package com.fileapex.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ripple.RippleAlpha
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
@@ -169,6 +170,21 @@ private fun fluentTypography(fontFamily: FontFamily): Typography {
     )
 }
 
+/**
+ * Color for text that sets none of its own, per theme and style. These themes draw on transparent or
+ * translucent containers, so without it such text falls back to near-black. Null where a solid surface supplies it.
+ */
+internal fun defaultTextColor(appTheme: AppTheme, kineticStyle: KineticStyle, colorScheme: ColorScheme): Color? = when (appTheme) {
+    AppTheme.SIMPLE -> colorScheme.onBackground
+    AppTheme.FLUX_GLASS -> FluxGlassPalette.onBackground
+    AppTheme.KINETIC_SPHERE -> when (kineticStyle) {
+        KineticStyle.SPACE -> colorScheme.onSurface
+        KineticStyle.JADED_STEEL -> KineticStyleLook.ink
+    }
+    AppTheme.FREESTYLE -> colorScheme.onSurface
+    AppTheme.CLEAN -> null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileApexTheme(
@@ -218,15 +234,15 @@ fun FileApexTheme(
                 CompositionLocalProvider(LocalRippleConfiguration provides fluentRipple) {
                     content()
                 }
-            } else if (colorScheme === SimpleColorScheme) {
-                // Text with no color of its own must be light on the steel background.
-                CompositionLocalProvider(
-                    androidx.compose.material3.LocalContentColor provides colorScheme.onBackground
-                ) {
+            } else {
+                val textColor = defaultTextColor(appTheme, kineticStyle, colorScheme)
+                if (textColor != null) {
+                    CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides textColor) {
+                        content()
+                    }
+                } else {
                     content()
                 }
-            } else {
-                content()
             }
         }
     }

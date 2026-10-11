@@ -1169,6 +1169,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="simple_drop_page_short">将文件拖放到此处即可发送</string>
     <string name="broadcast_dismissal">同步清除</string>
     <string name="broadcast_dismissal_desc">在另一台设备上阅读通知后，也会在这部手机上清除。在这里清除通知时，另一台设备上的通知始终会一并清除。</string>
+    <string name="notif_disclosure_title">开启之前</string>
+    <string name="notif_disclosure_body_one">FileApex 会读取您所选应用的通知（包括消息和电子邮件的文字），并以端到端加密方式发送到 %1$s。这些内容不会被保存，也不会发送到任何服务器，在您开启之前不会共享任何内容。您可以随时关闭。</string>
+    <string name="notif_disclosure_body_many">FileApex 会读取您所选应用的通知（包括消息和电子邮件的文字），并以端到端加密方式发送到您选择的设备。这些内容不会被保存，也不会发送到任何服务器，在您开启之前不会共享任何内容。您可以随时关闭。</string>
+    <string name="notif_disclosure_accept">同意并继续</string>
+    <string name="notif_disclosure_decline">不用了</string>
     <string name="notif_reply_hint">回复</string>
     <string name="notif_reply_failed">发送失败。该通知可能已在手机上被清除。</string>
     <string name="notif_you">我</string>

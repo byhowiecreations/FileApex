@@ -199,6 +199,15 @@ class BaseAppSettings(
     private val notificationBroadcastCodesFlow =
         MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_CODES, false))
     override val notificationBroadcastVerificationCodes: StateFlow<Boolean> = notificationBroadcastCodesFlow.asStateFlow()
+    private val notificationDisclosureAcceptedFlow =
+        // Anyone who turned sharing on before the disclosure existed already opted in, so they are not asked again.
+        MutableStateFlow(
+            store.getBoolean(KEY_NOTIFICATION_DISCLOSURE_ACCEPTED, false) ||
+                store.getBoolean(KEY_NOTIFICATION_BROADCAST_ENABLED, false).also { wasOn ->
+                    if (wasOn) store.putBoolean(KEY_NOTIFICATION_DISCLOSURE_ACCEPTED, true)
+                }
+        )
+    override val notificationDisclosureAccepted: StateFlow<Boolean> = notificationDisclosureAcceptedFlow.asStateFlow()
     private val notificationBroadcastDismissalFlow =
         MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_DISMISSAL, false))
     override val notificationBroadcastSyncDismissal: StateFlow<Boolean> = notificationBroadcastDismissalFlow.asStateFlow()
@@ -849,6 +858,11 @@ class BaseAppSettings(
         store.putString(KEY_NOTIFICATION_BROADCAST_TARGET, deviceId)
     }
 
+    override fun setNotificationDisclosureAccepted(accepted: Boolean) {
+        notificationDisclosureAcceptedFlow.value = accepted
+        store.putBoolean(KEY_NOTIFICATION_DISCLOSURE_ACCEPTED, accepted)
+    }
+
     override fun setNotificationBroadcastSyncDismissal(enabled: Boolean) {
         notificationBroadcastDismissalFlow.value = enabled
         store.putBoolean(KEY_NOTIFICATION_BROADCAST_DISMISSAL, enabled)
@@ -1220,6 +1234,7 @@ class BaseAppSettings(
         notificationBroadcastTargetFlow.value = ""
         notificationBroadcastCodesFlow.value = false
         notificationBroadcastDismissalFlow.value = false
+        notificationDisclosureAcceptedFlow.value = false
         devicePopupsFlow.value = false
         notificationBroadcastAppsFlow.value = emptySet()
         backupConfigFlow.value = com.fileapex.domain.backup.BackupConfig()
@@ -1313,6 +1328,7 @@ class BaseAppSettings(
         const val KEY_NOTIFICATION_BROADCAST_TARGET = "notification_broadcast_target"
         const val KEY_NOTIFICATION_BROADCAST_CODES = "notification_broadcast_codes"
         const val KEY_NOTIFICATION_BROADCAST_DISMISSAL = "notification_broadcast_dismissal"
+        const val KEY_NOTIFICATION_DISCLOSURE_ACCEPTED = "notification_disclosure_accepted"
         const val KEY_DEVICE_NOTIFICATION_POPUPS = "device_notification_popups"
         const val KEY_NOTIFICATION_BROADCAST_APPS = "notification_broadcast_apps"
         const val KEY_NOTIFICATION_COMPANION_GRANT = "notification_companion_grant"

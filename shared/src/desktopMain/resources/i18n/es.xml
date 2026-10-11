@@ -1184,6 +1184,11 @@ Toca el hub central (+) para emparejar</string>
     <string name="simple_drop_page_short">Suelta archivos aquí para enviarlos</string>
     <string name="broadcast_dismissal">Sincronizar descartes</string>
     <string name="broadcast_dismissal_desc">Leer una notificación en el otro dispositivo también la borra en este teléfono. Borrar una aquí siempre la borra en el otro dispositivo.</string>
+    <string name="notif_disclosure_title">Antes de activarlo</string>
+    <string name="notif_disclosure_body_one">FileApex leerá las notificaciones de las apps que elijas, incluido el texto de mensajes y correos, y las enviará cifradas de extremo a extremo a %1$s. No se guardan ni se envían a ningún servidor, y no se comparte nada hasta que lo actives. Puedes desactivarlo en cualquier momento.</string>
+    <string name="notif_disclosure_body_many">FileApex leerá las notificaciones de las apps que elijas, incluido el texto de mensajes y correos, y las enviará cifradas de extremo a extremo al dispositivo que elijas. No se guardan ni se envían a ningún servidor, y no se comparte nada hasta que lo actives. Puedes desactivarlo en cualquier momento.</string>
+    <string name="notif_disclosure_accept">Aceptar y continuar</string>
+    <string name="notif_disclosure_decline">No, gracias</string>
     <string name="notif_reply_hint">Responder</string>
     <string name="notif_reply_failed">No se pudo enviar. Es posible que la notificación se haya borrado en el teléfono.</string>
     <string name="notif_you">Tú</string>

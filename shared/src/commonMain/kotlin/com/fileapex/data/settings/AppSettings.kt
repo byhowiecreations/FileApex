@@ -182,6 +182,9 @@ interface AppSettings {
     val notificationBroadcastTargetDeviceId: StateFlow<String>
     fun setNotificationBroadcastTargetDeviceId(deviceId: String)
     /** When on, reading a notification on the other device clears it on this one. Clearing the other way is always on. */
+    /** The user agreed to the notification access disclosure; the Broadcast Notifications page stays behind it until then. */
+    val notificationDisclosureAccepted: StateFlow<Boolean>
+    fun setNotificationDisclosureAccepted(accepted: Boolean)
     val notificationBroadcastSyncDismissal: StateFlow<Boolean>
     fun setNotificationBroadcastSyncDismissal(enabled: Boolean)
     /** Windows only: pop up notifications received from the paired phone. */
