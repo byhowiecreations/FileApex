@@ -6,9 +6,8 @@
 Browse, send and sync between your own devices without a cloud in the middle.**
 
 [![Latest release](https://img.shields.io/github/v/release/byhowiecreations/FileApex?label=Download&color=brightgreen)](https://github.com/byhowiecreations/FileApex/releases/latest)
-[![Platform](https://img.shields.io/badge/Platform-Android_%7C_macOS_%7C_Windows-blue.svg)](#download)
-[![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%7C_Intel-lightgrey.svg)](#download)
-[![License](https://img.shields.io/badge/License-Non--commercial-orange.svg)](#license)
+[![Platform](https://img.shields.io/badge/Platform-Android_|_macOS_(Silicon_&_Intel)_|_Windows-blue.svg)](#download)
+[![License](https://img.shields.io/badge/License-Non_commercial-orange.svg)](#license)
 [![Status: new and moving fast](https://img.shields.io/badge/status-new_%26_moving_fast-f2a516.svg)](#download)
 
 [**Download**](#download) • [**Features**](#features) • [**Pairing**](#pairing) • [**Notifications & Bulletin Board**](#notifications--bulletin-board) • [**Networking**](#networking) • [**Privacy**](#privacy) • [**License**](#license)
