@@ -27,5 +27,7 @@ GOTOOLCHAIN=go1.27.1 "$GO" install golang.org/x/mobile/cmd/gomobile@latest
 GOTOOLCHAIN=go1.27.1 "$GO" install golang.org/x/mobile/cmd/gobind@latest
 "$GOBIN/gomobile" init
 LDFLAGS="$("$ROOT/native/tsnet/prepare_tsnet.py" "$GO")"
+# Play requires 16 KB page alignment for native libraries; gomobile links at 4 KB by default.
+LDFLAGS="$LDFLAGS -extldflags=-Wl,-z,max-page-size=16384"
 "$GOBIN/gomobile" bind -target android/arm64 -androidapi 26 -ldflags "$LDFLAGS" -o "$OUT" .
 echo "Built $OUT"

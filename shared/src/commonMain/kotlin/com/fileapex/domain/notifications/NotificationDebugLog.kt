@@ -12,7 +12,7 @@ import java.util.Date
  * REMEMBER: set [ENABLED] to false (or delete this file and its call sites) once testing is done.
  */
 internal object NotificationDebugLog {
-    const val ENABLED = true
+    const val ENABLED = false
 
     private val file: File? by lazy {
         if (!ENABLED) return@lazy null

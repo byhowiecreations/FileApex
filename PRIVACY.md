@@ -31,6 +31,14 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 
 **App updates (Android and desktop, non-Play builds):** When update checks are on, FileApex asks the GitHub Releases API for the latest public version, downloads the update file from GitHub, and on Android hands it to the system installer, which asks you to confirm. FileApex checks that the file is a valid Android package, and Android only installs an update that carries the same package name and signing key as the installed app. No device or personal identifiers are sent. An update shared by one of your paired devices through the Bulletin Board is offered the same way. Google Play builds update only through Google Play and do not include this.
 
+**Notifications you choose to share.** If you turn on Broadcast Notifications, FileApex on your phone reads the notifications of the apps you selected and sends the sender or chat name, the title, the recent message text and whether the notification can be replied to, to the one paired device you chose. Everything travels end to end encrypted between your two devices and never through a FileApex server. The receiving device keeps this only in memory while the app runs; it is not written to disk, not logged and not backed up, and it is gone when the app exits. Nothing is read from apps you did not select, and verification codes are skipped unless you turn them on.
+
+**Clearing and replying.** When you open a notification on the receiving device, FileApex tells your phone which notification you saw so it can dismiss it. If you reply, the text you type is sent encrypted to your phone, which passes it to the app that sent the notification, exactly as if you had typed it in the notification's reply box. The reply text is not stored by FileApex.
+
+**Windows popups.** If you turn on "Notifications from connected phone" on Windows, the sender and message text are shown in a Windows notification on that computer. Windows may keep notification text in its own notification history, which FileApex does not control.
+
+**Permission and app list.** Reading notifications uses Android's Notification Access setting, which you grant yourself and can revoke at any time. To show the list of apps you can pick from, FileApex asks Android which installed apps have a launcher icon, using a narrow package-visibility declaration. It does not request the broader permission to see every installed app. The list stays on your phone and is used only to show you the choices; only the apps you turn on are ever read.
+
 **Camera:** Optional, used only to scan a pairing QR code as a backup to the default 6-digit pairing method. Frames are processed in memory; nothing is saved or uploaded.
 
 ## Third-Party Services (opt-in only)
