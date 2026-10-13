@@ -10,10 +10,22 @@ object DesktopJvmStartup {
         DesktopCrashHandler.install()
         sanitizeTempDirectories()
         configureWindowsSkikoRendering()
+        configureLinuxWindowClass()
         if (DesktopPlatformPaths.isMacOs()) {
             DesktopMacTrayBridge.preload()
         }
         DesktopSendHandoff.installOpenUriHandler()
+    }
+
+    /** X11 names the window after the main class, so the launcher's StartupWMClass never matches. Needs --add-opens for sun.awt.X11. */
+    private fun configureLinuxWindowClass() {
+        if (!DesktopPlatformPaths.isLinux()) return
+        runCatching {
+            val toolkit = java.awt.Toolkit.getDefaultToolkit()
+            val field = toolkit.javaClass.getDeclaredField("awtAppClassName")
+            field.isAccessible = true
+            field.set(null, "FileApex")
+        }.onFailure { println("DesktopJvmStartup: window class not set - ${it.message}") }
     }
 
     private fun sanitizeTempDirectories() {

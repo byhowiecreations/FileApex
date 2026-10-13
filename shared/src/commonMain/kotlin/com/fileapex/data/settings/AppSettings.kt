@@ -236,6 +236,7 @@ interface AppSettings {
 
     fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float, persist: Boolean = true)
 
+    fun setKineticNodeOffsets(offsets: Map<String, Pair<Float, Float>>, persist: Boolean = true)
     fun resetKineticNodeOffsets()
 
     fun setFreestyleOptionsPosition(mode: FreestyleLayoutMode, x: Float?, y: Float?)

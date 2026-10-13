@@ -29,5 +29,17 @@ GOTOOLCHAIN=go1.27.1 "$GO" install golang.org/x/mobile/cmd/gobind@latest
 LDFLAGS="$("$ROOT/native/tsnet/prepare_tsnet.py" "$GO")"
 # Play requires 16 KB page alignment for native libraries; gomobile links at 4 KB by default.
 LDFLAGS="$LDFLAGS -extldflags=-Wl,-z,max-page-size=16384"
-"$GOBIN/gomobile" bind -target android/arm64 -androidapi 26 -ldflags "$LDFLAGS" -o "$OUT" .
+# Drop the symbol table and DWARF: about half of the library.
+LDFLAGS="$LDFLAGS -s -w"
+# Features this app never uses (CLI, SSH, file sharing, exit nodes, cloud and OS integrations, debug and
+# telemetry support). Login, status, logout, the userspace network stack and DNS stay.
+OMIT="aws bird kube synology cloud drive ssh taildrop webclient relayserver appconnectors conn25 \
+advertiseexitnode advertiseroutes useexitnode completion completion_scripts cli colorable qrcodes doctor \
+flashappliance cliconndiag debug debugeventbus debugportmapper capture tap tpm posture clientupdate systray \
+desktop_sessions dbus networkmanager resolved iptables linuxdnsfight linkspeed tundevstats listenrawdisco \
+sdnotify syslog syspolicy wakeonlan webbrowser unixsocketidentity identityfederation oauthkey hujsonconf \
+remoteconfig runtimemetrics clientmetrics netlog logtail portlist"
+TAGS=""
+for feature in $OMIT; do TAGS="$TAGS,ts_omit_$feature"; done
+"$GOBIN/gomobile" bind -target android/arm64 -androidapi 26 -tags "${TAGS#,}" -ldflags "$LDFLAGS" -o "$OUT" .
 echo "Built $OUT"

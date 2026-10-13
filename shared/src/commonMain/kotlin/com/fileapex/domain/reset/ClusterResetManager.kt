@@ -9,6 +9,10 @@ import com.fileapex.session.DeviceSessionManager
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -16,18 +20,45 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 object ClusterResetManager {
-    suspend fun executeLeaveClusterAndReset(): Boolean = withContext(Dispatchers.IO) {
+    private val outcomeFlow = MutableStateFlow<Boolean?>(null)
+
+    /** Result of a wipe that finished inside the running app: true wiped, false incomplete; null when none is pending. */
+    val outcome: StateFlow<Boolean?> = outcomeFlow.asStateFlow()
+
+    fun acknowledgeOutcome() {
+        outcomeFlow.value = null
+    }
+
+    /** NonCancellable: leaving the settings page while the wipe runs must not stop it half done. */
+    suspend fun executeLeaveClusterAndReset(): Boolean = withContext(Dispatchers.IO + NonCancellable) {
         // Step A: Cluster Broadcast to online peers
         cancellableCatching { broadcastClusterRemoval() }
+
+        // The Tailscale login belongs to the cluster identity being wiped.
+        cancellableCatching { com.fileapex.tailscale.TailscaleNodeRuntime.clearForWipe() }
+            .onFailure { println("ClusterResetManager: Tailscale was not cleared (${it::class.simpleName})") }
 
         // Step B: Cryptographic Erasure
         runCatching { eraseCryptographicKeys() }
 
         // Step C: Database Purge
         cancellableCatching { purgeDatabases() }
+        cancellableCatching { FileApexServices.deviceRepository.forgetDroppedCandidates() }
+        if (ClusterResetPlatform.keepsAppRunning && !rosterIsEmpty()) {
+            cancellableCatching { purgeDatabases() }
+            if (!rosterIsEmpty()) {
+                outcomeFlow.value = false
+                return@withContext false
+            }
+        }
 
         // Step D: State Reset & Restart
         runCatching { resetStateAndRestart() }
+        if (ClusterResetPlatform.keepsAppRunning) {
+            // A first launch has the share server up; the next pairing code reads its TLS key and port.
+            cancellableCatching { ServerLifecycleManager.ensureRunning() }
+            outcomeFlow.value = true
+        }
 
         true
     }
@@ -72,6 +103,9 @@ object ClusterResetManager {
             }
         }
     }
+
+    private suspend fun rosterIsEmpty(): Boolean =
+        cancellableCatching { FileApexServices.deviceRepository.listDevices().isEmpty() }.getOrDefault(false)
 
     private fun eraseCryptographicKeys() {
         runCatching { FileApexServices.settings.setClipboardPrivateKeyBase64("") }

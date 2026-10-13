@@ -503,6 +503,23 @@ class DeviceRepository(
             true
         }
 
+    /** Only a key the id is derived from is accepted, and a stored key is never replaced. */
+    suspend fun recordBoundPublicKey(deviceId: String, publicKey: String): Boolean =
+        mutateMutex.withLock {
+            val trimmedId = deviceId.trim()
+            val key = publicKey.trim()
+            if (trimmedId.isEmpty() || !com.fileapex.security.IdentityBinding.matches(trimmedId, key)) return false
+            val existing = deviceDao.getDevice(trimmedId) ?: return false
+            if (existing.isRemoved || existing.publicKey.isNotBlank()) return false
+            deviceDao.upsertDevice(
+                existing.copy(
+                    publicKey = key,
+                    publicKeyHash = existing.publicKeyHash.ifBlank { com.fileapex.security.IdentityBinding.keyHash(key) }
+                )
+            )
+            true
+        }
+
     suspend fun clearTlsPin(deviceId: String): Boolean = mutateMutex.withLock {
         val trimmedId = deviceId.trim()
         val existing = deviceDao.getDevice(trimmedId) ?: return false
@@ -614,6 +631,10 @@ class DeviceRepository(
             store.remove(deviceId.trim())
             if (remember) recentlyDropped[deviceId.trim()] = TimeUtils.now()
         }
+    }
+
+    suspend fun forgetDroppedCandidates() {
+        mutateMutex.withLock { recentlyDropped.clear() }
     }
 
     /** Removes candidates past their deadline and refuses the same introduction again for a while. */

@@ -6,7 +6,9 @@ import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.peer.ClusterClock
+import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
+import com.fileapex.security.tls.PeerTlsRoutes
 import com.fileapex.domain.peer.rosterWithoutRelayedPresence
 import com.fileapex.network.FileApexClient
 import com.fileapex.network.ServerLifecycleManager
@@ -35,7 +37,10 @@ class PairingCoordinator(
     private val client: FileApexClient,
     private val identityProvider: () -> LocalIdentity,
     private val admission: () -> PeerAdmission,
-    private val onPassiveReachability: suspend (deviceIds: List<String>, epochMs: Long) -> Unit = { _, _ -> }
+    private val onPassiveReachability: suspend (deviceIds: List<String>, epochMs: Long) -> Unit = { _, _ -> },
+    private val fetchNodeState: suspend (host: String, port: Int) -> PeerNodeState? = { host, port ->
+        cancellableCatching { withTimeoutOrNull(HANDSHAKE_FETCH_MS) { client.fetchPeerNodeState(host, port) } }.getOrNull()
+    }
 ) {
     private val forwardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -60,7 +65,48 @@ class PairingCoordinator(
         if (scanner.tlsPin.isNotBlank()) {
             repository.recordTlsPin(scanner.deviceId, scanner.tlsPin, scanner.tlsPort)
         }
+        // Introductions can only be sealed for a key we hold, and the scanner asks the moment it gets the 201.
+        repeat(HANDSHAKE_KEY_ATTEMPTS) {
+            if (repository.getDevice(scanner.deviceId)?.publicKey?.isNotBlank() == true) return@repeat
+            fetchPeerKey(scanner.deviceId, scanner.lastKnownIp, scanner.port)
+        }
         onPassiveReachability(listOf(scanner.deviceId), TimeUtils.now())
+    }
+
+    /** Ready means the peer's key is stored and, when it runs TLS, its pin is stored and a TLS contact worked. */
+    suspend fun awaitPairingReady(peerId: String, timeoutMs: Long = PAIRING_READY_TIMEOUT_MS): Boolean {
+        val deadline = TimeUtils.now() + timeoutMs
+        var waitMs = 1_000L
+        while (TimeUtils.now() < deadline) {
+            val peer = repository.getDevice(peerId)?.takeUnless { it.isRemoved } ?: return false
+            if (isPairingReady(peer)) return true
+            delay(waitMs)
+            waitMs = minOf(waitMs + 1_000L, 5_000L)
+        }
+        return false
+    }
+
+    private suspend fun isPairingReady(peer: PairedDeviceEntity): Boolean {
+        val state = fetchNodeState(peer.lastKnownIp, peer.port)?.takeIf { it.deviceId.trim() == peer.deviceId }
+            ?: return false
+        if (repository.getDevice(peer.deviceId)?.publicKey.isNullOrBlank()) {
+            storePeerKey(peer.deviceId, state)
+        }
+        val current = repository.getDevice(peer.deviceId) ?: return false
+        if (current.publicKey.isBlank()) return false
+        val runsTls = state.tlsPort in 1..65535 && state.tlsPin.isNotEmpty()
+        return !runsTls || (current.tlsPin.isNotEmpty() && PeerTlsRoutes.isPinned(current.lastKnownIp, current.port))
+    }
+
+    private suspend fun fetchPeerKey(peerId: String, host: String, port: Int) {
+        fetchNodeState(host, port)?.takeIf { it.deviceId.trim() == peerId }?.let { storePeerKey(peerId, it) }
+    }
+
+    private suspend fun storePeerKey(peerId: String, state: PeerNodeState) {
+        repository.applyPeerNodeState(state, rosterDeviceId = peerId, observedDirectly = true)
+        if (repository.getDevice(peerId)?.publicKey.isNullOrBlank()) {
+            repository.recordBoundPublicKey(peerId, state.publicKey)
+        }
     }
 
     /**
@@ -171,19 +217,16 @@ class PairingCoordinator(
         return true
     }
 
-    /** Wipes the local cluster only for a removal stamped after this node's latest pairing. */
+    /**
+     * A peer removing this device never erases local data: the roster is only wiped by this device's own
+     * Leave Cluster & Wipe. Always returns false so the sender sees the removal as not applied.
+     */
     suspend fun handleSelfRemoval(record: RemovedDeviceRecord): Boolean {
-        if (!repository.acceptsSelfRemoval(record)) {
-            println(
-                "PairingCoordinator: ignored self removal v=${record.membershipVersion()} " +
-                    "protocol=${record.membershipProtocol} (membership v=${repository.selfMembershipVersion()})"
-            )
-            return false
-        }
-        repository.handleRevocationByCluster()
-        com.fileapex.session.DeviceSessionManager.clearAllSessions()
-        FileApexServices.presenceMonitor.refreshOnlineSnapshot()
-        return true
+        println(
+            "PairingCoordinator: removal of this device by a peer ignored " +
+                "(v=${record.membershipVersion()}); local data is kept"
+        )
+        return false
     }
 
     /** Rows a peer returned from cluster sync; may only add or refresh active peers. */
@@ -415,14 +458,30 @@ class PairingCoordinator(
                 )
                 return@repeat
             }
-            if (sealed.isEmpty()) {
-                println("PairingCoordinator: broadcaster vouched for no other peers")
-                return 0
-            }
-            staged = admission().acceptIntroductions(sealed, excludeSubjectIds = excludeDeviceIds)
+            if (sealed.isEmpty()) return@repeat
+            staged = admission().acceptIntroductions(sealed.take(MAX_INTRODUCTIONS), excludeSubjectIds = excludeDeviceIds)
             if (staged > 0) {
                 return staged
             }
+        }
+        return staged
+    }
+
+    /** Asks two random online peers who they vouch for; each introduction is still verified directly. */
+    suspend fun catchUpFromPeers(onlineDeviceIds: Set<String>): Int {
+        val me = identityProvider().deviceId
+        val askable = repository.listDevices().filter { peer ->
+            !peer.isRemoved && peer.deviceId != me && peer.deviceId in onlineDeviceIds &&
+                NetworkUtils.isUsableLanIpv4(peer.lastKnownIp) && peer.port > 0
+        }
+        var staged = 0
+        for (peer in askable.shuffled().take(CATCH_UP_PEERS_PER_RUN)) {
+            val sealed = cancellableCatching { client.fetchIntroductions(peer.lastKnownIp, peer.port, me) }
+                .onFailure { println("PairingCoordinator: catch-up from ${NetworkUtils.lastOctetLabel(peer.lastKnownIp)} failed (${it::class.simpleName})") }
+                .getOrNull()
+                .orEmpty()
+            if (sealed.isEmpty()) continue
+            staged += admission().acceptIntroductions(sealed.take(MAX_INTRODUCTIONS))
         }
         return staged
     }
@@ -437,6 +496,7 @@ class PairingCoordinator(
         preexistingDeviceIds: Set<String>?
     ) {
         val me = identityProvider()
+        repository.forgetDroppedCandidates()
         val pairingVersion = repository.nextMembershipVersion()
         repository.adoptFromPairing(newlyPaired, version = pairingVersion)
         repository.recordSelfMembership(pairingVersion)
@@ -462,6 +522,11 @@ class PairingCoordinator(
         val existing = repository.listDevices()
             .filter { it.deviceId != newlyPaired.deviceId && it.deviceId != me.deviceId }
             .filter { preexistingDeviceIds == null || it.deviceId in preexistingDeviceIds }
+
+        if (!awaitPairingReady(newlyPaired.deviceId)) {
+            println("PairingCoordinator: ${newlyPaired.deviceName} not ready; the cluster sync is left to the periodic catch-up")
+            return
+        }
 
         // 1. Announce the newcomer to all existing cluster peers FIRST with the new clusterVersion
         // so their tombstones are cleared before the newcomer starts communicating with them.
@@ -505,23 +570,30 @@ class PairingCoordinator(
             existing.forEach { peer -> add(PeerNodeStateMapper.fromEntity(peer)) }
         }
         val tombstones = repository.getTombstoneRecords().filter { it.deviceId != newlyPaired.deviceId }
-        cancellableCatching {
+        val seed = ClusterSyncRequest(
+            eventKind = PeerSyncEventKind.PAIRING_INTRO,
+            nodeStates = rosterForNewcomer,
+            removedDevices = tombstones,
+            clusterVersion = pairingVersion,
+            introductions = admission().sealedIntroductionsFor(updatedNewcomer, existing)
+        )
+        suspend fun sendSeed(): Boolean = cancellableCatching {
             val returnedRoster = client.postClusterSync(
                 host = newlyPaired.lastKnownIp,
                 port = newlyPaired.port,
-                request = ClusterSyncRequest(
-                    eventKind = PeerSyncEventKind.PAIRING_INTRO,
-                    nodeStates = rosterForNewcomer,
-                    removedDevices = tombstones,
-                    clusterVersion = pairingVersion,
-                    introductions = admission().sealedIntroductionsFor(updatedNewcomer, existing)
-                )
+                request = seed
             )
             reconcileReturnedRoster(returnedRoster, source = updatedNewcomer)
         }.onFailure { error ->
-            println(
-                "PairingCoordinator: failed roster seed to ${newlyPaired.deviceName}: ${error.message}"
-            )
+            println("PairingCoordinator: failed roster seed to ${newlyPaired.deviceName}: ${error.message}")
+        }.isSuccess
+        if (!sendSeed()) {
+            forwardScope.launch {
+                for (waitMs in SEED_RETRY_DELAYS_MS) {
+                    delay(waitMs)
+                    if (sendSeed()) return@launch
+                }
+            }
         }
     }
 
@@ -534,7 +606,13 @@ class PairingCoordinator(
     private companion object {
         const val SHARE_SERVER_READY_ATTEMPTS = 20
         const val SHARE_SERVER_POLL_MS = 100L
-        const val ROSTER_IMPORT_ATTEMPTS = 3
-        const val ROSTER_IMPORT_RETRY_MS = 500L
+        const val ROSTER_IMPORT_ATTEMPTS = 4
+        const val MAX_INTRODUCTIONS = 64
+        const val PAIRING_READY_TIMEOUT_MS = 10L * 60_000L
+        const val HANDSHAKE_FETCH_MS = 3_000L
+        const val HANDSHAKE_KEY_ATTEMPTS = 3
+        const val CATCH_UP_PEERS_PER_RUN = 2
+        val SEED_RETRY_DELAYS_MS = listOf(20_000L, 120_000L)
+        const val ROSTER_IMPORT_RETRY_MS = 1_500L
     }
 }

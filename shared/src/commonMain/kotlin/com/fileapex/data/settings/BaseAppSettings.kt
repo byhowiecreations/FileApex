@@ -23,6 +23,8 @@ interface SettingsKvStore {
     fun getLong(key: String, default: Long): Long
     fun putLong(key: String, value: Long)
     fun clear()
+    fun keys(prefix: String): List<String>
+    fun remove(key: String)
 }
 
 /**
@@ -143,8 +145,8 @@ class BaseAppSettings(
     private val devicesViewModeFlow = MutableStateFlow(
         ExplorerViewMode.fromStorage(store.getString(KEY_DEVICES_VIEW_MODE, ExplorerViewMode.List.name))
     )
-    private val kineticNodeOffsetsFlow = MutableStateFlow(
-        decodeKineticOffsets(store.getString(KEY_KINETIC_NODE_OFFSETS, ""))
+    private val kineticPositions = DevicePositionTable(
+        store, "kno:", listOf(KEY_KINETIC_NODE_OFFSETS), listOf(KEY_KINETIC_NODE_OFFSETS)
     )
     private val deviceDetailsDisplayPreferencesFlow = MutableStateFlow(
         DeviceDetailsDisplayPreferences.decode(
@@ -318,17 +320,21 @@ class BaseAppSettings(
     private val freestyleEditTutorialShownFlow = MutableStateFlow(
         store.getBoolean(KEY_FREESTYLE_EDIT_TUTORIAL_SHOWN, false)
     )
-    private val freestyleCardNodeOffsetsFlow = MutableStateFlow(
-        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_NODE_OFFSETS, ""))
+    private val freestyleCardPositions = DevicePositionTable(
+        store, "fcn:", listOf(KEY_FREESTYLE_CARD_NODE_OFFSETS), emptyList()
     )
-    private val freestyleCardVerticalNodeOffsetsFlow = MutableStateFlow(
-        decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS, "")).ifEmpty {
-            decodeKineticOffsets(store.getString(KEY_FREESTYLE_CARD_NODE_OFFSETS, ""))
-        }
+    private val freestyleCardVerticalPositions = DevicePositionTable(
+        store, "fvn:",
+        listOf(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS, KEY_FREESTYLE_CARD_NODE_OFFSETS),
+        listOf(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS)
     )
-    private val freestyleTileNodeOffsetsFlow = MutableStateFlow(
-        decodeKineticOffsets(store.getString(KEY_FREESTYLE_TILE_NODE_OFFSETS, ""))
+    private val freestyleTilePositions = DevicePositionTable(
+        store, "ftn:", listOf(KEY_FREESTYLE_TILE_NODE_OFFSETS), listOf(KEY_FREESTYLE_TILE_NODE_OFFSETS)
     )
+    init {
+        // The vertical layout inherits the horizontal card positions, so that legacy string is dropped last.
+        store.remove(KEY_FREESTYLE_CARD_NODE_OFFSETS)
+    }
     private val freestyleCardMenuOrdersFlow = MutableStateFlow(
         decodeStringMap(store.getString(KEY_FREESTYLE_CARD_MENU_ORDERS, ""))
     )
@@ -434,9 +440,9 @@ class BaseAppSettings(
     override val freestyleTileOptionsPosY: StateFlow<Float?> = freestyleTileOptionsPosYFlow.asStateFlow()
     override val freestyleLayoutMode: StateFlow<FreestyleLayoutMode> = freestyleLayoutModeFlow.asStateFlow()
     override val freestyleEditTutorialShown: StateFlow<Boolean> = freestyleEditTutorialShownFlow.asStateFlow()
-    override val freestyleCardNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardNodeOffsetsFlow.asStateFlow()
-    override val freestyleCardVerticalNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardVerticalNodeOffsetsFlow.asStateFlow()
-    override val freestyleTileNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleTileNodeOffsetsFlow.asStateFlow()
+    override val freestyleCardNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardPositions.flow
+    override val freestyleCardVerticalNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleCardVerticalPositions.flow
+    override val freestyleTileNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> = freestyleTilePositions.flow
     override val freestyleCardMenuOrders: StateFlow<Map<String, String>> = freestyleCardMenuOrdersFlow.asStateFlow()
     override val freestyleCardVerticalMenuOrders: StateFlow<Map<String, String>> = freestyleCardVerticalMenuOrdersFlow.asStateFlow()
     override val freestyleTileMenuOrders: StateFlow<Map<String, String>> = freestyleTileMenuOrdersFlow.asStateFlow()
@@ -476,7 +482,7 @@ class BaseAppSettings(
     override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
     override val devicesViewMode: StateFlow<ExplorerViewMode> = devicesViewModeFlow.asStateFlow()
     override val kineticNodeOffsets: StateFlow<Map<String, Pair<Float, Float>>> =
-        kineticNodeOffsetsFlow.asStateFlow()
+        kineticPositions.flow
     override val deviceDetailsDisplayPreferences: StateFlow<DeviceDetailsDisplayPreferences> =
         deviceDetailsDisplayPreferencesFlow.asStateFlow()
     override val deviceDetailsAllowOverCellular: StateFlow<Boolean> =
@@ -936,14 +942,15 @@ class BaseAppSettings(
     }
 
     override fun setKineticNodeOffset(deviceId: String, dx: Float, dy: Float, persist: Boolean) {
-        val updated = kineticNodeOffsetsFlow.value + (deviceId to Pair(dx, dy))
-        kineticNodeOffsetsFlow.value = updated
-        if (persist) store.putString(KEY_KINETIC_NODE_OFFSETS, encodeKineticOffsets(updated))
+        kineticPositions.put(mapOf(deviceId to Pair(dx, dy)), persist)
+    }
+
+    override fun setKineticNodeOffsets(offsets: Map<String, Pair<Float, Float>>, persist: Boolean) {
+        kineticPositions.put(offsets, persist)
     }
 
     override fun resetKineticNodeOffsets() {
-        kineticNodeOffsetsFlow.value = emptyMap()
-        store.putString(KEY_KINETIC_NODE_OFFSETS, "")
+        kineticPositions.reset()
     }
 
     override fun setFreestyleOptionsPosition(mode: FreestyleLayoutMode, x: Float?, y: Float?) {
@@ -993,21 +1000,15 @@ class BaseAppSettings(
     }
 
     override fun setFreestyleCardNodeOffset(deviceId: String, x: Float, y: Float) {
-        val updated = freestyleCardNodeOffsetsFlow.value + (deviceId to Pair(x, y))
-        freestyleCardNodeOffsetsFlow.value = updated
-        store.putString(KEY_FREESTYLE_CARD_NODE_OFFSETS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+        freestyleCardPositions.put(mapOf(deviceId to Pair(x, y)), persist = true)
     }
 
     override fun setFreestyleCardVerticalNodeOffset(deviceId: String, x: Float, y: Float) {
-        val updated = freestyleCardVerticalNodeOffsetsFlow.value + (deviceId to Pair(x, y))
-        freestyleCardVerticalNodeOffsetsFlow.value = updated
-        store.putString(KEY_FREESTYLE_CARD_VERTICAL_NODE_OFFSETS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+        freestyleCardVerticalPositions.put(mapOf(deviceId to Pair(x, y)), persist = true)
     }
 
     override fun setFreestyleTileNodeOffset(deviceId: String, x: Float, y: Float) {
-        val updated = freestyleTileNodeOffsetsFlow.value + (deviceId to Pair(x, y))
-        freestyleTileNodeOffsetsFlow.value = updated
-        store.putString(KEY_FREESTYLE_TILE_NODE_OFFSETS, updated.entries.joinToString(";") { "${it.key}|${it.value.first}|${it.value.second}" })
+        freestyleTilePositions.put(mapOf(deviceId to Pair(x, y)), persist = true)
     }
 
     override fun setFreestyleMenuOrder(mode: FreestyleLayoutMode, deviceId: String, order: String) {
@@ -1243,7 +1244,7 @@ class BaseAppSettings(
         desktopUiStyleFlow.value = DesktopUiStyle.DEFAULT
         explorerViewModeFlow.value = ExplorerViewMode.List
         devicesViewModeFlow.value = ExplorerViewMode.List
-        kineticNodeOffsetsFlow.value = emptyMap()
+        kineticPositions.forgetInMemory()
         deviceDetailsDisplayPreferencesFlow.value = DeviceDetailsDisplayPreferences.defaults()
         deviceDetailsAllowOverCellularFlow.value = false
         cellularEnabledFlow.value = false
@@ -1273,9 +1274,9 @@ class BaseAppSettings(
         freestyleTileOptionsPosYFlow.value = null
         freestyleLayoutModeFlow.value = FreestyleLayoutMode.DEFAULT
         freestyleEditTutorialShownFlow.value = false
-        freestyleCardNodeOffsetsFlow.value = emptyMap()
-        freestyleCardVerticalNodeOffsetsFlow.value = emptyMap()
-        freestyleTileNodeOffsetsFlow.value = emptyMap()
+        freestyleCardPositions.forgetInMemory()
+        freestyleCardVerticalPositions.forgetInMemory()
+        freestyleTilePositions.forgetInMemory()
         freestyleCardMenuOrdersFlow.value = emptyMap()
         freestyleCardVerticalMenuOrdersFlow.value = emptyMap()
         freestyleTileMenuOrdersFlow.value = emptyMap()
@@ -1411,14 +1412,7 @@ class BaseAppSettings(
     }
 }
 
-private fun encodeKineticOffsets(offsets: Map<String, Pair<Float, Float>>): String {
-    return offsets.entries.joinToString(";") { (id, pair) ->
-        val cleanId = id.replace(";", "_").replace("|", "_")
-        "$cleanId|${pair.first}|${pair.second}"
-    }
-}
-
-private fun decodeKineticOffsets(encoded: String): Map<String, Pair<Float, Float>> {
+internal fun decodeKineticOffsets(encoded: String): Map<String, Pair<Float, Float>> {
     if (encoded.isBlank()) return emptyMap()
     val map = mutableMapOf<String, Pair<Float, Float>>()
     encoded.split(";").forEach { token ->

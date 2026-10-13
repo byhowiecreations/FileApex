@@ -1,3 +1,4 @@
 package com.fileapex.platform
 
-actual fun supportsDeviceNameSettingsPage(): Boolean = DesktopPlatformPaths.isMacOs()
+actual fun supportsDeviceNameSettingsPage(): Boolean =
+    DesktopPlatformPaths.isMacOs() || DesktopPlatformPaths.isWindows() || DesktopPlatformPaths.isLinux()

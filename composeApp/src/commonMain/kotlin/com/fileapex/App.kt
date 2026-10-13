@@ -866,6 +866,14 @@ fun App(
         LaunchedEffect(tlsPrompt.deviceId) {
             tlsDeviceName = FileApexServices.deviceRepository.getDevice(tlsPrompt.deviceId)?.deviceName.orEmpty()
         }
+        LaunchedEffect(tlsPrompt) {
+            FileApexServices.deviceRepository.observeDevices().collect { devices ->
+                val row = devices.firstOrNull { it.deviceId == tlsPrompt.deviceId }
+                if (row == null || row.isRemoved || row.tlsPin.equals(tlsPrompt.pin, ignoreCase = true)) {
+                    com.fileapex.security.tls.PeerTlsStatus.dismiss(tlsPrompt.deviceId)
+                }
+            }
+        }
         com.fileapex.ui.dialogs.TlsPinPromptDialog(
             prompt = tlsPrompt,
             deviceName = tlsDeviceName,
@@ -1076,6 +1084,23 @@ private fun CompactHomeContent(
                 embeddedInCompactShell = true
             )
         }
+    }
+
+    val resetOutcome by com.fileapex.domain.reset.ClusterResetManager.outcome.collectAsState()
+    resetOutcome?.let { wiped ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringRes(if (wiped) "leave_cluster_done_title" else "leave_cluster_failed_title")) },
+            text = { Text(stringRes(if (wiped) "leave_cluster_done_message" else "leave_cluster_failed_message")) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        com.fileapex.domain.reset.ClusterResetManager.acknowledgeOutcome()
+                        if (wiped) onNavigateHome()
+                    }
+                ) { Text(stringRes("ok")) }
+            }
+        )
     }
 
     if (confirmExit) {

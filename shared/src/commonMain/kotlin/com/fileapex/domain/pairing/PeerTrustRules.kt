@@ -11,6 +11,10 @@ object PeerTrustRules {
     fun onClusterVersion(protocol: Int, version: Long): Boolean =
         protocol >= ClusterClock.MEMBERSHIP_PROTOCOL && ClusterClock.isAcceptable(version)
 
+    /** A peer that never stamped itself (0) is covered by its introducer's stamp; a stamp that is set must be sane. */
+    fun answersOnClusterClock(protocol: Int, version: Long): Boolean =
+        protocol >= ClusterClock.MEMBERSHIP_PROTOCOL && (version == 0L || ClusterClock.isAcceptable(version))
+
     /** Same hardware model on the same address under another id: one of the two is an outdated copy. */
     fun sharesAddressAndModel(a: PairedDeviceEntity, b: PairedDeviceEntity): Boolean {
         if (a.deviceId == b.deviceId) return false

@@ -38,6 +38,9 @@ data class GenerateQrUiState(
 class GenerateQrViewModel : ViewModel() {
     private val deviceRepository = FileApexServices.deviceRepository
     private val baselineDeviceIds = mutableSetOf<String>()
+
+    @Volatile
+    private var baselineLoaded = false
     private var hostTicker: Job? = null
     private var serverWarmupJob: Job? = null
 
@@ -53,12 +56,14 @@ class GenerateQrViewModel : ViewModel() {
         viewModelScope.launch {
             baselineDeviceIds.clear()
             baselineDeviceIds.addAll(deviceRepository.listDevices().map { it.deviceId })
+            baselineLoaded = true
             _uiState.update { it.copy(pairedDeviceName = null) }
             refresh(restartBroadcast = true)
         }
     }
 
     fun onScreenLeft() {
+        baselineLoaded = false
         hostTicker?.cancel()
         hostTicker = null
         serverWarmupJob?.cancel()
@@ -84,6 +89,8 @@ class GenerateQrViewModel : ViewModel() {
         serverWarmupJob?.cancel()
         serverWarmupJob = viewModelScope.launch {
             val built = withContext(Dispatchers.IO) {
+                // The payload carries the TLS key and port, which exist only once the share server is up.
+                ServerLifecycleManager.ensureRunning()
                 val host = NetworkUtils.preferredLanIpv4()
                 if (!NetworkUtils.isUsableLanIpv4(host)) {
                     return@withContext null
@@ -164,7 +171,7 @@ class GenerateQrViewModel : ViewModel() {
                 .map { devices -> devices.map { it.deviceId to it.deviceName } }
                 .distinctUntilChanged()
                 .collect { devices ->
-                    if (baselineDeviceIds.isEmpty()) return@collect
+                    if (!baselineLoaded) return@collect
                     val newlyPaired = devices.firstOrNull { (id, _) -> id !in baselineDeviceIds }
                     if (newlyPaired != null) {
                         baselineDeviceIds.add(newlyPaired.first)

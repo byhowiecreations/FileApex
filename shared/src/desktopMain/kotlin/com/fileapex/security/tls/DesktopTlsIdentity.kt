@@ -117,6 +117,7 @@ object DesktopTlsIdentity {
         val vaults = when (DesktopPlatformPaths.desktopOs) {
             DesktopPlatformPaths.DesktopOs.MacOs -> listOf(MacKeychainTlsVault())
             DesktopPlatformPaths.DesktopOs.Windows -> listOf(WindowsDpapiTlsVault())
+            DesktopPlatformPaths.DesktopOs.Linux,
             DesktopPlatformPaths.DesktopOs.Other -> emptyList()
         }
         return TlsIdentityStore(File(DesktopPlatformPaths.applicationSupportDirectory(), "tls"), vaults)

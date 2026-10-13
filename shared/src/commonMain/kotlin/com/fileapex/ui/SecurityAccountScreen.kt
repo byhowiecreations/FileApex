@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.fileapex.domain.reset.ClusterResetManager
+import com.fileapex.domain.reset.ClusterResetPlatform
 import com.fileapex.i18n.stringRes
 import kotlinx.coroutines.launch
 
@@ -169,6 +170,10 @@ fun LeaveClusterWipeSettingsPage(
                             isWiping = true
                             coroutineScope.launch {
                                 ClusterResetManager.executeLeaveClusterAndReset()
+                                if (ClusterResetPlatform.keepsAppRunning) {
+                                    isWiping = false
+                                    showConfirmDialog = false
+                                }
                             }
                         }
                     },

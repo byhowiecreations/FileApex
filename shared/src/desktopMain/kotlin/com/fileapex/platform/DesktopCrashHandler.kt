@@ -16,6 +16,7 @@ import kotlin.system.exitProcess
  * a clear, human-readable diagnostic crash log directly to the user's Desktop.
  */
 object DesktopCrashHandler {
+    private const val DIALOG_DETAIL_MAX = 160
     private var isInstalled = false
 
     fun install() {
@@ -72,7 +73,7 @@ object DesktopCrashHandler {
             appendLine("EXCEPTION DETAILS")
             appendLine("--------------------------------------------------------------------------------")
             appendLine("Exception Class: ${throwable::class.qualifiedName ?: throwable::class.java.name}")
-            appendLine("Message:         ${throwable.message ?: "(No exception message)"}")
+            appendLine("Message:         ${throwable.message?.let { shortened(it) } ?: "(No exception message)"}")
             appendLine("--------------------------------------------------------------------------------")
             appendLine("STACK TRACE")
             appendLine("--------------------------------------------------------------------------------")
@@ -95,8 +96,13 @@ object DesktopCrashHandler {
         return targetLogFile
     }
 
+    private fun shortened(text: String): String {
+        val oneLine = text.replace('\n', ' ')
+        return if (oneLine.length <= DIALOG_DETAIL_MAX) oneLine else oneLine.take(DIALOG_DETAIL_MAX) + "... (full text in the log)"
+    }
+
     private fun showCrashDialog(logFile: File, throwable: Throwable) {
-        val detailMessage = throwable.message?.takeIf { it.isNotBlank() }
+        val detailMessage = throwable.message?.takeIf { it.isNotBlank() }?.let(::shortened)
             ?: throwable::class.simpleName
             ?: crashCopy("crash_unknown_error", "Unknown error")
         val dialogMessage = crashCopy(

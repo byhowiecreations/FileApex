@@ -205,8 +205,18 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
                 return@cancellableCatching
             }
 
+            val localId = server.identityProvider().deviceId
+            val safeRequest = if (request.removedDevices.any { it.deviceId == localId } &&
+                !server.isRosterMember(server.requesterDeviceId(call))
+            ) {
+                server.onLog("Ignored removal of this device from a sender outside the roster", null)
+                request.copy(removedDevices = request.removedDevices.filter { it.deviceId != localId })
+            } else {
+                request
+            }
+
             withContext(Dispatchers.IO) {
-                server.onClusterMerge(request, server.bridgedPeer(call)?.deviceId)
+                server.onClusterMerge(safeRequest, server.bridgedPeer(call)?.deviceId)
             }
 
             val currentRoster = withContext(Dispatchers.IO) {
@@ -242,6 +252,12 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
             }
             val localId = server.identityProvider().deviceId
             if (record.deviceId == localId) {
+                // Only a current roster member may tell this device it was removed: the revocation gate skips this route.
+                if (!server.isRosterMember(server.requesterDeviceId(this))) {
+                    server.onLog("Cluster revocation for local device ignored (sender is not in the roster)", null)
+                    respond(HttpStatusCode.OK, "revocation_ignored")
+                    return@cancellableCatching
+                }
                 val applied = withContext(Dispatchers.IO) {
                     server.onClusterSelfRemoved(record)
                 }

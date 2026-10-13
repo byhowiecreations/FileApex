@@ -275,6 +275,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="on_current_version">已是最新版本</string>
     <string name="checking">正在检查…</string>
     <string name="download_install">下载并安装</string>
+    <string name="update_open_release_page">打开发布页面</string>
     <string name="update_details_missing">缺少更新详情 — 正在重新检查…</string>
     <string name="update_download_progress">更新已在下载中…</string>
     <string name="exit_fileapex">退出 FileApex</string>
@@ -994,12 +995,16 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="compress">压缩</string>
     <string name="leave_cluster_wipe_desc">断开与集群的连接，擦除加密密钥，并清除所有本地数据库和设置。</string>
     <string name="uncompress">解压</string>
-    <string name="leave_cluster_dialog2_message">你确定吗？此设备上的所有本地状态和数据将被立即且不可逆地擦除。应用将重新启动并恢复到全新的初始状态。</string>
+    <string name="leave_cluster_dialog2_message">你确定吗？此设备上的所有本地状态和数据将被立即且不可逆地擦除。应用将恢复到首次启动时的初始状态。</string>
     <string name="reconnect_folder">重新连接</string>
     <string name="leave_cluster_confirm_button">擦除所有数据并重置</string>
     <string name="clear_pending_copy">清除待粘贴的复制</string>
     <string name="unable_to_open_file">无法打开文件</string>
     <string name="leave_cluster_wiping">正在擦除数据并重置…</string>
+    <string name="leave_cluster_done_title">所有数据已删除</string>
+    <string name="leave_cluster_done_message">此设备上的所有 FileApex 数据均已删除，此设备已退出你的集群。你可以从主屏幕重新开始。</string>
+    <string name="leave_cluster_failed_title">擦除未完成</string>
+    <string name="leave_cluster_failed_message">部分数据无法删除，设备列表可能仍保留在此设备上。请关闭并重新打开 FileApex，然后重试。</string>
     <string name="moved_to_trash">已移到废纸篓</string>
     <string name="pane_local">本地</string>
     <string name="leave_cluster_dialog2_title">确认永久擦除</string>

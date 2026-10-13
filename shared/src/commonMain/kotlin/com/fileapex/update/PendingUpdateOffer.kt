@@ -16,7 +16,8 @@ data class PendingUpdateOffer(
     val localFilePath: String? = null,
     val originNoteId: String? = null,
     val transactionId: String? = null,
-    val transactionTimestampEpochMs: Long? = null
+    val transactionTimestampEpochMs: Long? = null,
+    val releasePageUrl: String? = null
 ) {
     fun notificationDetail(maxNoteLines: Int = 6): String {
         val title = releaseTitle?.trim()?.takeIf { it.isNotEmpty() }

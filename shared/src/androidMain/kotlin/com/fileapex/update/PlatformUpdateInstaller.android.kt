@@ -11,6 +11,8 @@ import java.io.File
 import java.io.RandomAccessFile
 
 actual object PlatformUpdateInstaller {
+    actual val opensReleasePage: Boolean = false
+
     actual fun updateCacheDirectory(): String {
         val context = requireContext()
         val dir = File(context.cacheDir, "updates")

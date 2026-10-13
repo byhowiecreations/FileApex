@@ -281,6 +281,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="on_current_version">On Current Version</string>
     <string name="checking">Checking…</string>
     <string name="download_install">Download &amp; install</string>
+    <string name="update_open_release_page">Open release page</string>
     <string name="update_details_missing">Update details missing — checking again…</string>
     <string name="update_download_progress">Update download already in progress…</string>
     <string name="exit_fileapex">Exit FileApex</string>
@@ -995,9 +996,13 @@ Tap Central Hub (+) to Pair</string>
     <string name="leave_cluster_dialog1_message">This device will be permanently disconnected and tombstoned from your cluster. All cryptographic keypairs will be destroyed, local databases purged, and preferences reset. Online peers will be notified to immediately revoke and tombstone this device.</string>
     <string name="leave_cluster_dialog1_proceed">Continue to Wipe</string>
     <string name="leave_cluster_dialog2_title">Confirm Permanent Wipe</string>
-    <string name="leave_cluster_dialog2_message">Are you absolutely sure? All local state and data on this device will be immediately and irreversibly erased. The application will restart into a pristine initial state.</string>
+    <string name="leave_cluster_dialog2_message">Are you absolutely sure? All local state and data on this device will be immediately and irreversibly erased. The application will return to its initial first-launch state.</string>
     <string name="leave_cluster_confirm_button">Wipe All Data &amp; Reset</string>
     <string name="leave_cluster_wiping">Wiping data and resetting…</string>
+    <string name="leave_cluster_done_title">All data removed</string>
+    <string name="leave_cluster_done_message">All FileApex data on this device was removed and this device left your cluster. You can start over from the home screen.</string>
+    <string name="leave_cluster_failed_title">Wipe incomplete</string>
+    <string name="leave_cluster_failed_message">Some data could not be removed. Your device list may still be on this device. Close and reopen FileApex, then try again.</string>
     <string name="peer_revoked_this_device">%1$s no longer recognizes this device — pair again to rejoin</string>
     <string name="transfer_cancelled">Transfer cancelled</string>
     <string name="queue_retry_failed">Could not retry this transfer</string>

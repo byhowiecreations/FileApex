@@ -118,7 +118,7 @@ private object DesktopTsnetLibrary {
     fun loaded(): Boolean = native != null
 
     fun loadOrNull(): FileApexTsnetNative? {
-        if (!DesktopPlatformPaths.isMacOs() && !DesktopPlatformPaths.isWindows()) return null
+        if (!DesktopPlatformPaths.isMacOs() && !DesktopPlatformPaths.isWindows() && !DesktopPlatformPaths.isLinux()) return null
         native?.let { return it }
         synchronized(lock) {
             native?.let { return it }
@@ -226,8 +226,40 @@ private object DesktopTsnetLibrary {
         return buf.getString(0, "UTF-8").orEmpty().ifBlank { "[]" }
     }
 
-    private fun resolveLibrary(): File? =
-        if (DesktopPlatformPaths.isWindows()) resolveWindowsDll() else resolveMacDylib()
+    private fun resolveLibrary(): File? = when {
+        DesktopPlatformPaths.isWindows() -> resolveWindowsDll()
+        DesktopPlatformPaths.isLinux() -> resolveLinuxSo()
+        else -> resolveMacDylib()
+    }
+
+    private fun resolveLinuxSo(): File? {
+        val resources = System.getProperty("compose.application.resources.dir")
+        if (!resources.isNullOrBlank()) {
+            val bundled = File(resources, "libFileApexTsnet.so")
+            if (bundled.isFile) return bundled
+        }
+        val command = ProcessHandle.current().info().command().orElse(null)
+        if (!command.isNullOrBlank()) {
+            var cursor: File? = File(command).canonicalFile.parentFile
+            repeat(4) {
+                val current = cursor ?: return@repeat
+                listOf(
+                    File(current, "lib/app/libFileApexTsnet.so"),
+                    File(current, "lib/libFileApexTsnet.so"),
+                    File(current, "libFileApexTsnet.so")
+                ).forEach { candidate -> if (candidate.isFile) return candidate }
+                cursor = current.parentFile
+            }
+        }
+        val userDir = File(System.getProperty("user.dir") ?: ".")
+        listOf(
+            File(userDir, "linux/build/Tsnet/libFileApexTsnet.so"),
+            userDir.parentFile?.resolve("linux/build/Tsnet/libFileApexTsnet.so")
+        ).forEach { candidate ->
+            if (candidate != null && candidate.isFile) return candidate
+        }
+        return null
+    }
 
     private fun resolveWindowsDll(): File? {
         val command = ProcessHandle.current().info().command().orElse(null)

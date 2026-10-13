@@ -24,6 +24,8 @@ import kotlinx.io.write
  * and hands off to [PlatformUpdateInstaller].
  */
 object AppUpdater {
+    const val RELEASES_PAGE_URL = "https://github.com/byhowiecreations/FileApex/releases"
+
     const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/byhowiecreations/FileApex/releases/latest"
 
@@ -66,7 +68,8 @@ object AppUpdater {
                     releaseNotes = release.body?.trim()?.takeIf { it.isNotEmpty() },
                     assetName = asset.name,
                     assetDownloadUrl = asset.browserDownloadUrl,
-                    assetSizeBytes = asset.size
+                    assetSizeBytes = asset.size,
+                    releasePageUrl = release.htmlUrl
                 )
             )
         }

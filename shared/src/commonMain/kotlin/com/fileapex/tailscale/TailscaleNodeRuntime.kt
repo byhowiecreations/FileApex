@@ -15,8 +15,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 object TailscaleNodeRuntime {
+    private const val WIPE_SIGN_OUT_MS = 6_000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val applyLock = Mutex()
@@ -212,6 +214,11 @@ object TailscaleNodeRuntime {
             _state.value = _state.value.copy(phase = TailscalePhase.Failed, detail = "sign_out_failed")
             return
         }
+        clearLocalNode()
+    }
+
+    private suspend fun clearLocalNode() {
+        val settings = FileApexServices.settings
         settings.setTailscaleEnabled(false)
         engine.stop()
         engine.clearState()
@@ -219,6 +226,27 @@ object TailscaleNodeRuntime {
         settings.setTailscaleAuthKeyFingerprint("")
         forceReset = false
         _state.value = TailscaleUiState()
+    }
+
+    /** Wipe: tries to expire the node on Tailscale, but always removes the local node store and saved key. */
+    suspend fun clearForWipe() {
+        signingOut = true
+        loginWatch?.cancel()
+        loginWatch = null
+        try {
+            applyLock.withLock {
+                val phase = _state.value.phase
+                val registered = tailscaleStateIsSignedIn(readTailscaleNodeState(tailscaleNodeStateFile()).orEmpty()) ||
+                    phase == TailscalePhase.Up || phase == TailscalePhase.NeedsLogin || phase == TailscalePhase.KeyExpired
+                if (registered) {
+                    val expired = withTimeoutOrNull(WIPE_SIGN_OUT_MS) { expireNodeOnControl() }
+                    if (expired != true) println("Tailscale: node was not expired on the control server during the wipe")
+                }
+                clearLocalNode()
+            }
+        } finally {
+            signingOut = false
+        }
     }
 
     private suspend fun expireNodeOnControl(): Boolean {

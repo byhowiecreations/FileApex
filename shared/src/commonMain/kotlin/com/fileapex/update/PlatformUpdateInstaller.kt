@@ -15,6 +15,9 @@ expect object PlatformUpdateInstaller {
      */
     fun selectAsset(assets: List<GitHubReleaseAsset>): GitHubReleaseAsset?
 
+    /** True when the app cannot install the update itself, so its button opens the release page instead. */
+    val opensReleasePage: Boolean
+
     /**
      * Invoke the native installer for [localFilePath] (APK / DMG / ZIP).
      * May terminate the current process (desktop) after spawning a replace script.

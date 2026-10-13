@@ -378,6 +378,7 @@ fun KineticSphereDevicesView(
             val current = FileApexServices.settings.kineticNodeOffsets.value
             val marginPx = with(density) { 70.dp.toPx() }
             val topMarginPx = with(density) { 55.dp.toPx() }
+            val fractional = mutableMapOf<String, Pair<Float, Float>>()
             deviceRows.forEachIndexed { index, row ->
                 val key = kineticFractionKey(layoutBucket, row.deviceId)
                 if (current.containsKey(key)) return@forEachIndexed
@@ -397,12 +398,9 @@ fun KineticSphereDevicesView(
                 if (kotlin.math.abs(pos.x - savedX) > 1.5f || kotlin.math.abs(pos.y - savedY) > 1.5f) {
                     return@forEachIndexed
                 }
-                FileApexServices.settings.setKineticNodeOffset(
-                    key,
-                    (pos.x / canvasW).coerceIn(0f, 1f),
-                    (pos.y / canvasH).coerceIn(0f, 1f)
-                )
+                fractional[key] = Pair((pos.x / canvasW).coerceIn(0f, 1f), (pos.y / canvasH).coerceIn(0f, 1f))
             }
+            FileApexServices.settings.setKineticNodeOffsets(fractional)
         }
 
         val showConnectedLines by FileApexServices.settings.kineticSphereConnectedLinesEnabled.collectAsState()
@@ -742,19 +740,20 @@ fun KineticSphereDevicesView(
                                 val maxY = (heightPx - edge).coerceAtLeast(top)
                                 val px = dragX.coerceIn(edge, maxX).roundToInt().toFloat().coerceIn(edge, maxX)
                                 val py = dragY.coerceIn(top, maxY).roundToInt().toFloat().coerceIn(top, maxY)
-                                FileApexServices.settings.setKineticNodeOffset(
-                                    kineticFractionKey(layoutBucket, row.deviceId),
-                                    (px / widthPx).coerceIn(0f, 1f),
-                                    (py / heightPx).coerceIn(0f, 1f),
-                                    persist = persist
-                                )
                                 val pixelKey = if (layoutBucket.endsWith("-cmp")) {
                                     "pos:cmp:${row.deviceId}"
                                 } else {
                                     "pos:exp:${row.deviceId}"
                                 }
-                                FileApexServices.settings.setKineticNodeOffset(pixelKey, px, py, persist = persist)
-                                FileApexServices.settings.setKineticNodeOffset("pos:${row.deviceId}", px, py, persist = persist)
+                                FileApexServices.settings.setKineticNodeOffsets(
+                                    mapOf(
+                                        kineticFractionKey(layoutBucket, row.deviceId) to
+                                            Pair((px / widthPx).coerceIn(0f, 1f), (py / heightPx).coerceIn(0f, 1f)),
+                                        pixelKey to Pair(px, py),
+                                        "pos:${row.deviceId}" to Pair(px, py)
+                                    ),
+                                    persist = persist
+                                )
                             }
                             detectDragGestures(
                                 onDragStart = {

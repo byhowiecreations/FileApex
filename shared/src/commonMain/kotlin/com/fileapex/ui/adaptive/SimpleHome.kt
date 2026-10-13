@@ -245,8 +245,9 @@ fun SimpleHome(
     val scope = rememberCoroutineScope()
     val noDeviceMessage = stringRes("simple_no_device_title")
 
-    LaunchedEffect(rows.size, hintShown) {
-        if (rows.size > SIMPLE_COMFORTABLE_DEVICE_COUNT && !hintShown) {
+    val updateOffered by com.fileapex.update.AppUpdateCoordinator.pendingUpdate.collectAsState()
+    LaunchedEffect(rows.size, hintShown, updateOffered) {
+        if (rows.size > SIMPLE_COMFORTABLE_DEVICE_COUNT && !hintShown && updateOffered == null) {
             showOtherThemesHint = true
             settings.setOtherThemesHintShown(true)
         }

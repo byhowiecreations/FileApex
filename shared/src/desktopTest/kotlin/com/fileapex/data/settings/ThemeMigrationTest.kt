@@ -18,6 +18,8 @@ class ThemeMigrationTest {
         override fun putInt(key: String, value: Int) { map[key] = value }
         override fun getLong(key: String, default: Long) = (map[key] as? Long) ?: default
         override fun putLong(key: String, value: Long) { map[key] = value }
+        override fun keys(prefix: String) = map.keys.filter { it.startsWith(prefix) }
+        override fun remove(key: String) { map.remove(key) }
         override fun clear() { map.clear() }
     }
 

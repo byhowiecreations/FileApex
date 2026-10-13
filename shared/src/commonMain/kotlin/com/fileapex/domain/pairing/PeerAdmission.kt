@@ -201,7 +201,7 @@ class PeerAdmission(
             return "id is not derived from its key"
         }
         val vouched = candidate.origin == CandidateOrigin.INTRODUCED || candidate.origin == CandidateOrigin.TRANSPORT
-        if (vouched && !PeerTrustRules.onClusterVersion(state.membershipProtocol, state.membershipVersion)) {
+        if (vouched && !PeerTrustRules.answersOnClusterClock(state.membershipProtocol, state.membershipVersion)) {
             return "not on the cluster clock"
         }
         val claimed = device.publicKeyHash.trim()

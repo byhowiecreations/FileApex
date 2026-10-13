@@ -44,3 +44,12 @@ fileapex.java.home.windows=C:/Program Files/Java/jdk-21
 # Android SDK — copy to local.properties (gitignored), one path per platform:
 #   sdk.dir.macos=/Users/<you>/Library/Android/sdk
 #   sdk.dir.windows=C:/Users/<you>/AppData/Local/Android/Sdk
+
+# Optional: also copy each shipped Windows .exe here (UNC paths need doubled backslashes).
+# fileapex.backup.dir=\\\\TOWER\\unraid\\App Development\\AndroidStudioProjects\\FileApex backups
+
+# Optional: Inno Setup compression threads. ISCC is 32-bit; set 1 if packageInnoExe fails with "Out of memory".
+# fileapex.inno.threads=1
+
+# Android: R8 optimized resource shrinking (Play Console recommendation, available in AGP 8.11).
+android.r8.optimizedShrinking=true

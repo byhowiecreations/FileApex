@@ -36,6 +36,8 @@ class LeaveClusterWipeTest {
         override fun putInt(key: String, value: Int) { map[key] = value }
         override fun getLong(key: String, default: Long): Long = (map[key] as? Long) ?: default
         override fun putLong(key: String, value: Long) { map[key] = value }
+        override fun keys(prefix: String): List<String> = map.keys.filter { it.startsWith(prefix) }
+        override fun remove(key: String) { map.remove(key) }
         override fun clear() {
             clearCalled = true
             map.clear()

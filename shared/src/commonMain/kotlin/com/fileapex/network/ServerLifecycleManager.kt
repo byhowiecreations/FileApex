@@ -73,6 +73,9 @@ object ServerLifecycleManager {
             onClusterSelfRemoved = { record ->
                 FileApexServices.pairingCoordinator.handleSelfRemoval(record)
             },
+            isRosterMember = { deviceId ->
+                FileApexServices.deviceRepository.hasActiveDevice(deviceId)
+            },
             // Only peers this device reached itself are handed out: a roster is never a way to pass on hearsay.
             onListDevices = {
                 FileApexServices.deviceRepository.listDevices()

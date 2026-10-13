@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.update.PendingUpdateOffer
 import com.fileapex.update.PlatformInstallPermission
+import com.fileapex.update.PlatformUpdateInstaller
 import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
 
 @Composable
@@ -70,7 +71,7 @@ fun UpdateAvailableSheet(
                     }
                 }
             ) {
-                Text(stringRes("download_install"))
+                Text(stringRes(if (PlatformUpdateInstaller.opensReleasePage) "update_open_release_page" else "download_install"))
             }
         },
         dismissButton = {

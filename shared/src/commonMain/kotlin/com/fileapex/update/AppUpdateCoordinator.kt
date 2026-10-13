@@ -212,6 +212,12 @@ object AppUpdateCoordinator {
     }
 
     fun downloadPendingUpdate() {
+        if (PlatformUpdateInstaller.opensReleasePage) {
+            val offer = _pendingUpdate.value ?: PendingUpdateStore.load()
+            com.fileapex.platform.PlatformClipboard.openUrlInDefaultBrowser(offer?.releasePageUrl ?: AppUpdater.RELEASES_PAGE_URL)
+            _showUpdateSheet.value = false
+            return
+        }
         // Every install path needs "Install unknown apps"; ask the user instead of failing later.
         if (promptForInstallPermissionIfMissing()) return
         restorePendingOffer()

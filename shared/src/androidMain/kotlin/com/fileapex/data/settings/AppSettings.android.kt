@@ -33,6 +33,11 @@ private class AndroidSettingsKvStore(
         prefs.edit().putLong(key, value).apply()
     }
 
+    override fun keys(prefix: String): List<String> = prefs.all.keys.filter { it.startsWith(prefix) }
+    override fun remove(key: String) {
+        prefs.edit().remove(key).apply()
+    }
+
     override fun clear() {
         prefs.edit().clear().commit()
         googleBackup.edit().clear().commit()

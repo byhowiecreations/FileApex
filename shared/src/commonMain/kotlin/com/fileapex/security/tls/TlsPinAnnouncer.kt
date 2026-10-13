@@ -56,6 +56,7 @@ class TlsPinAnnouncer(
     internal suspend fun tick() = lock.withLock { tickLocked() }
 
     private suspend fun tickLocked() {
+        fillMissingKeys()
         if (LocalTlsInfo.pin.isEmpty() || LocalTlsInfo.port <= 0) return
         val online = onlineDeviceIds()
         for (device in repository.listDevices()) {
@@ -64,6 +65,23 @@ class TlsPinAnnouncer(
             if (now() < (nextAttempt[device.deviceId] ?: 0L)) continue
             val delayMs = if (device.publicKey.isBlank()) offerFingerprint(device) else announce(device)
             nextAttempt[device.deviceId] = now() + delayMs
+        }
+    }
+
+    /** Without a peer's key none of its introductions can be opened; stored only when the id is derived from it. */
+    private suspend fun fillMissingKeys() {
+        val online = onlineDeviceIds()
+        for (device in repository.listDevices()) {
+            if (device.publicKey.isNotBlank() || device.deviceId !in online) continue
+            if (!NetworkUtils.isUsableLanIpv4(device.lastKnownIp) || device.port <= 0) continue
+            val slot = "key:${device.deviceId}"
+            if (now() < (nextAttempt[slot] ?: 0L)) continue
+            val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }
+                .onFailure { println("TlsPinAnnouncer: key fetch from ${NetworkUtils.lastOctetLabel(device.lastKnownIp)} failed (${it::class.simpleName})") }
+                .getOrNull()
+            val stored = state != null && state.deviceId.trim() == device.deviceId &&
+                repository.recordBoundPublicKey(device.deviceId, state.publicKey)
+            nextAttempt[slot] = now() + if (stored) DONE_MS else RETRY_MS
         }
     }
 
@@ -90,6 +108,11 @@ class TlsPinAnnouncer(
     private suspend fun offerFingerprint(device: PairedDeviceEntity): Long {
         val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
             ?: return RETRY_MS
+        if (state.deviceId.trim() == device.deviceId &&
+            repository.recordBoundPublicKey(device.deviceId, state.publicKey)
+        ) {
+            return BOUND_KEY_RETRY_MS
+        }
         val pin = state.tlsPin.lowercase()
         if (!PIN_FORMAT.matches(pin) || state.tlsPort !in 1..65535) return OLD_PEER_MS
         if (offeredPins[device.deviceId] != pin) {
@@ -106,6 +129,7 @@ class TlsPinAnnouncer(
         fun nudge(deviceId: String) { current?.nudge(deviceId) }
 
         private const val TICK_MS = 20_000L
+        private const val BOUND_KEY_RETRY_MS = 1_000L
         private const val RETRY_MS = 60_000L
         private const val DONE_MS = 10 * 60_000L
         private const val OLD_PEER_MS = 30 * 60_000L

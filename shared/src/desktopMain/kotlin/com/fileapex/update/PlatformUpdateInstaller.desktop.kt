@@ -1,11 +1,15 @@
 package com.fileapex.update
 
 import com.fileapex.i18n.AppI18n
+import com.fileapex.platform.DesktopPlatformPaths
 import java.io.File
 import kotlin.text.Charsets
 import kotlin.system.exitProcess
 
 actual object PlatformUpdateInstaller {
+    actual val opensReleasePage: Boolean
+        get() = DesktopPlatformPaths.isLinux() && LinuxInstall.kind == LinuxInstallKind.Other
+
     actual fun updateCacheDirectory(): String {
         val dir = File(System.getProperty("java.io.tmpdir"), "FileApexUpdates")
         if (!dir.exists()) {
@@ -20,6 +24,10 @@ actual object PlatformUpdateInstaller {
         if (isWindows()) {
             return assets.firstOrNull { it.name.endsWith(".exe", ignoreCase = true) }
         }
+        if (DesktopPlatformPaths.isLinux()) {
+            return linuxAssetFor(assets, LinuxInstall.kind, System.getProperty("os.arch").orEmpty().lowercase())
+        }
+        if (!DesktopPlatformPaths.isMacOs()) return null
         val arch = System.getProperty("os.arch").orEmpty().lowercase()
         val wantsSilicon = arch == "aarch64" || arch == "arm64"
         return macAssetFor(assets, wantsSilicon)
@@ -32,6 +40,10 @@ actual object PlatformUpdateInstaller {
             check(installer.isFile) { AppI18n.t("update_file_missing") }
             ProcessBuilder("cmd", "/c", "start", "", installer.absolutePath).start()
             exitProcess(0)
+        }
+        if (osName.contains("linux")) {
+            installOnLinux(File(localFilePath), remoteVersion)
+            return
         }
         check(osName.contains("mac")) {
             AppI18n.t("update_mac_only")
@@ -61,6 +73,30 @@ actual object PlatformUpdateInstaller {
 
         // Clear the path so the replacement bundle can overwrite / relaunch.
         exitProcess(0)
+    }
+
+    private fun installOnLinux(downloaded: File, remoteVersion: String) {
+        check(downloaded.isFile) { AppI18n.t("update_file_missing") }
+        val safeVersion = remoteVersion.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val fileName = downloaded.name.removePrefix("$safeVersion-")
+        if (LinuxInstall.replacesItself()) {
+            val updated = replaceAppImage(checkNotNull(LinuxInstall.appImageFile()), downloaded, fileName)
+            ProcessBuilder("/bin/sh", "-c", "sleep 3; exec \"\$0\"", updated.absolutePath)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+            downloaded.delete()
+            exitProcess(0)
+        }
+        val downloads = DesktopPlatformPaths.xdgUserDirectory("DOWNLOAD")?.takeIf { it.isDirectory }
+            ?: File(System.getProperty("user.home") ?: ".", "Downloads")
+        val saved = saveUpdateToFolder(downloaded, downloads, fileName)
+        // A package opens in the system installer, which asks for the password itself; an AppImage is only shown.
+        val toOpen = if (LinuxInstall.kind == LinuxInstallKind.AppImage) downloads else saved
+        ProcessBuilder("xdg-open", toOpen.absolutePath)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
     }
 
     private fun resolveInstallTargetApp(): File {

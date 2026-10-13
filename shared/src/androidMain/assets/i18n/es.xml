@@ -275,6 +275,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="on_current_version">Versión actual</string>
     <string name="checking">Comprobando…</string>
     <string name="download_install">Descargar e instalar</string>
+    <string name="update_open_release_page">Abrir la página de la versión</string>
     <string name="update_details_missing">Faltan datos de la actualización — comprobando de nuevo…</string>
     <string name="update_download_progress">La descarga de la actualización ya está en curso…</string>
     <string name="exit_fileapex">Salir de FileApex</string>
@@ -1009,12 +1010,16 @@ Toca el hub central (+) para emparejar</string>
     <string name="compress">Comprimir</string>
     <string name="leave_cluster_wipe_desc">Desconectar del clúster, borrar las claves criptográficas y eliminar todas las bases de datos y ajustes locales.</string>
     <string name="uncompress">Descomprimir</string>
-    <string name="leave_cluster_dialog2_message">¿Estás completamente seguro? Todo el estado y los datos locales de este dispositivo se borrarán de inmediato y de forma irreversible. La aplicación se reiniciará en un estado inicial limpio.</string>
+    <string name="leave_cluster_dialog2_message">¿Estás completamente seguro? Todo el estado y los datos locales de este dispositivo se borrarán de inmediato y de forma irreversible. La aplicación volverá a su estado inicial de primer arranque.</string>
     <string name="reconnect_folder">Reconectar</string>
     <string name="leave_cluster_confirm_button">Borrar todos los datos y restablecer</string>
     <string name="clear_pending_copy">Borrar copia pendiente</string>
     <string name="unable_to_open_file">No se puede abrir el archivo</string>
     <string name="leave_cluster_wiping">Borrando datos y restableciendo…</string>
+    <string name="leave_cluster_done_title">Datos eliminados</string>
+    <string name="leave_cluster_done_message">Todos los datos de FileApex de este dispositivo se eliminaron y el dispositivo salió de tu clúster. Puedes empezar de nuevo desde la pantalla de inicio.</string>
+    <string name="leave_cluster_failed_title">Borrado incompleto</string>
+    <string name="leave_cluster_failed_message">No se pudieron eliminar algunos datos. Es posible que la lista de dispositivos siga en este dispositivo. Cierra y vuelve a abrir FileApex e inténtalo de nuevo.</string>
     <string name="moved_to_trash">Movido a la Papelera</string>
     <string name="pane_local">Local</string>
     <string name="leave_cluster_dialog2_title">Confirmar borrado permanente</string>

@@ -34,6 +34,10 @@ import kotlinx.coroutines.launch
 object FileApexServices {
     private val bootstrapScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val bootstrapDeferred = CompletableDeferred<Unit>()
+    private const val ROSTER_CATCH_UP_FIRST_MS = 60_000L
+    private const val ROSTER_CATCH_UP_EVERY_MS = 10L * 60_000L
+    private const val ROSTER_CATCH_UP_SMALL_MS = 60_000L
+    private const val ROSTER_SMALL_COUNT = 3
 
     @Volatile
     private var bootstrapStarted = false
@@ -181,6 +185,15 @@ object FileApexServices {
             onlineDeviceIds = { presenceMonitor.onlineDeviceIds.value },
             scope = bootstrapScope
         ).ensureStarted()
+        bootstrapScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(ROSTER_CATCH_UP_FIRST_MS)
+            while (true) {
+                cancellableCatching { pairingCoordinator.catchUpFromPeers(presenceMonitor.onlineDeviceIds.value) }
+                    .onFailure { error -> if (error is kotlinx.coroutines.CancellationException) throw error }
+                val small = runCatching { deviceRepository.listDevices().size < ROSTER_SMALL_COUNT }.getOrDefault(false)
+                kotlinx.coroutines.delay(if (small) ROSTER_CATCH_UP_SMALL_MS else ROSTER_CATCH_UP_EVERY_MS)
+            }
+        }
         LocalDeviceNameStore.ensureLoaded()
         DeviceNamePeerLabelsStore.ensureLoaded()
         noteRepository.attachLegacyDao(database.noteDao(), bootstrapScope)

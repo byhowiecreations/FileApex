@@ -124,6 +124,7 @@ private sealed interface DeviceConnectOutcome {
 }
 
 private const val BATTERY_FETCH_CONCURRENCY = 4
+private const val TLS_CONFIRM_WAIT_MS = 10L * 60L * 1000L
 private const val BATTERY_CACHE_MS = 15_000L
 
 class DevicesViewModel : ViewModel() {
@@ -680,6 +681,16 @@ class DevicesViewModel : ViewModel() {
             DeviceSessionManager.markDeviceAccessed(broadcasterId)
         }
 
+        // The first identity request carries our id, which a peer holding an old removal for us refuses (401).
+        // Accepting the pairing clears that removal, and introductions can only be sealed for a peer whose key we hold.
+        if (verified == null) {
+            cancellableCatching { FileApexServices.client.fetchPeerNodeState(payload.host, payload.port) }
+                .getOrNull()
+                ?.let { state ->
+                    repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
+                }
+        }
+
         // Navigate back immediately — roster import / cluster announce can take seconds on cold LAN.
         _uiState.update {
             it.copy(
@@ -690,6 +701,10 @@ class DevicesViewModel : ViewModel() {
 
         viewModelScope.launch {
             cancellableCatching {
+                if (!FileApexServices.pairingCoordinator.awaitPairingReady(broadcasterId, TLS_CONFIRM_WAIT_MS)) {
+                    println("DevicesViewModel: pairing with ${broadcasterName} not ready; cluster sync left to catch-up")
+                    return@cancellableCatching
+                }
                 val importedCount = FileApexServices.pairingCoordinator.importDirectPeerRoster(
                     host = payload.host,
                     port = payload.port,

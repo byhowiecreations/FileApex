@@ -8,6 +8,7 @@ data class GitHubRelease(
     @SerialName("tag_name") val tagName: String,
     val name: String? = null,
     val body: String? = null,
+    @SerialName("html_url") val htmlUrl: String? = null,
     val assets: List<GitHubReleaseAsset> = emptyList()
 )
 

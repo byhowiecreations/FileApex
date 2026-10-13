@@ -340,6 +340,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                     PresenceForegroundRefresh.onAppForegrounded()
                 }
                 MacOsExtensionRegistrar.registerOnLaunchDeferred()
+                withContext(Dispatchers.IO) { com.fileapex.platform.LinuxDesktopIntegration.ensureInstalled() }
             }
 
             LaunchedEffect(window, desktopUiStyle) {

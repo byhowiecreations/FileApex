@@ -28,6 +28,11 @@ private class DesktopSettingsKvStore(
         prefs.putLong(key, value)
     }
 
+    override fun keys(prefix: String): List<String> = prefs.keys().filter { it.startsWith(prefix) }
+    override fun remove(key: String) {
+        prefs.remove(key)
+    }
+
     override fun clear() {
         cancellableCatching { prefs.clear() }
     }

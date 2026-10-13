@@ -16,6 +16,15 @@ private fun isMacHost(): Boolean =
 private fun isWindowsHost(): Boolean =
     System.getProperty("os.name").orEmpty().contains("windows", ignoreCase = true)
 
+private fun isLinuxHost(): Boolean =
+    System.getProperty("os.name").orEmpty().contains("linux", ignoreCase = true)
+
+private fun linuxDebArch(): String =
+    if (System.getProperty("os.arch").orEmpty().let { it == "aarch64" || it == "arm64" }) "arm64" else "amd64"
+
+private fun linuxRpmArch(): String =
+    if (linuxDebArch() == "arm64") "aarch64" else "x86_64"
+
 /** Inno LZMA2 thread budget — scale with CPU, cap at 6 (Inno compresses faster above that with diminishing returns). */
 private val innoThreadCap = 6
 
@@ -67,6 +76,7 @@ private fun pruneJlinkRuntime(runtimeHome: java.io.File) {
 private fun desktopInstallerFormats(): Array<TargetFormat> = when {
     isMacHost() -> arrayOf(TargetFormat.Dmg)
     isWindowsHost() -> arrayOf(TargetFormat.Exe)
+    isLinuxHost() -> arrayOf(TargetFormat.Deb, TargetFormat.Rpm)
     else -> emptyArray()
 }
 
@@ -453,13 +463,16 @@ compose.desktop {
                 "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
             )
         }
+        if (isLinuxHost()) {
+            jvmArgs += listOf("--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")
+        }
         if (isWindowsHost()) {
             // Belt-and-suspenders for packaged/run launches; [DesktopJvmStartup] also sets this in main().
             jvmArgs += listOf("-Dskiko.renderApi=OPENGL")
         }
 
         buildTypes.release.proguard {
-            if (isWindowsHost()) {
+            if (isWindowsHost() || isLinuxHost()) {
                 isEnabled.set(false)
             } else {
                 obfuscate.set(false)
@@ -472,7 +485,11 @@ compose.desktop {
             packageName = "FileApex"
             vendor = "ByHowieCreations"
             description = "FileApex"
-            appResourcesRootDir.set(project.file("windows/jpackage-resources"))
+            if (isLinuxHost()) {
+                appResourcesRootDir.set(layout.buildDirectory.dir("linux-jpackage-resources"))
+            } else {
+                appResourcesRootDir.set(project.file("windows/jpackage-resources"))
+            }
             // jpackage macOS requires MAJOR > 0 and digits-only (no 0.0.6a).
             // Marketing version stays version.md name=; installers are renamed on copy.
             packageVersion = "1.0.$fileapexVersionCode"
@@ -538,6 +555,16 @@ compose.desktop {
                         </array>
                     """.trimIndent()
                 }
+            }
+
+            linux {
+                iconFile.set(project.file("icons/FileApex-1024.png"))
+                packageName = "fileapex"
+                debMaintainer = "ByHowieCreations"
+                menuGroup = "Utility"
+                appCategory = "Utility"
+                shortcut = true
+                rpmLicenseType = "Proprietary"
             }
 
             windows {
@@ -621,6 +648,49 @@ tasks.register("buildWindowsTsnet") {
         check(code == 0) { "build_tsnet.bat exited $code" }
         val dll = rootProject.layout.projectDirectory.file("windows/build/Tsnet/libFileApexTsnet.dll").asFile
         check(dll.isFile) { "libFileApexTsnet.dll was not produced" }
+    }
+}
+
+tasks.register("buildLinuxTsnet") {
+    group = "distribution"
+    description = "Compile libFileApexTsnet.so (in-process userspace Tailscale)"
+    onlyIf { isLinuxHost() }
+    inputs.files(tsnetLibraryInputs)
+    inputs.file(rootProject.layout.projectDirectory.file("linux/scripts/build_tsnet.sh"))
+    outputs.file(rootProject.layout.projectDirectory.file("linux/build/Tsnet/libFileApexTsnet.so"))
+    doLast {
+        val script = rootProject.layout.projectDirectory.file("linux/scripts/build_tsnet.sh").asFile
+        check(script.isFile) { "Missing ${script.absolutePath}" }
+        val process = ProcessBuilder("bash", script.absolutePath)
+            .directory(rootProject.projectDir)
+            .inheritIO()
+            .start()
+        val code = process.waitFor()
+        check(code == 0) { "linux/scripts/build_tsnet.sh exited $code" }
+        val so = rootProject.layout.projectDirectory.file("linux/build/Tsnet/libFileApexTsnet.so").asFile
+        check(so.isFile) { "libFileApexTsnet.so was not produced" }
+    }
+}
+
+tasks.register<Copy>("stageLinuxJpackageResources") {
+    group = "distribution"
+    description = "Place libFileApexTsnet.so where jpackage copies app resources from"
+    onlyIf { isLinuxHost() }
+    dependsOn("buildLinuxTsnet")
+    from(rootProject.layout.projectDirectory.file("linux/build/Tsnet/libFileApexTsnet.so"))
+    from(project.file("icons/FileApex-1024.png")) { rename { "FileApex.png" } }
+    into(layout.buildDirectory.dir("linux-jpackage-resources/common"))
+}
+
+if (isLinuxHost()) {
+    tasks.matching {
+        it.name in setOf(
+            "prepareAppResources", "prepareReleaseAppResources",
+            "createDistributable", "createReleaseDistributable",
+            "packageDeb", "packageReleaseDeb", "packageRpm", "packageReleaseRpm"
+        )
+    }.configureEach {
+        dependsOn("stageLinuxJpackageResources")
     }
 }
 
@@ -969,7 +1039,25 @@ private fun Project.shipExeToCurrent(
         return
     }
     val preferred = exes.maxByOrNull { it.lastModified() } ?: exes.first()
-    moveToCurrent(dest, preferred, destName = "FileApex-v$appVersionName.exe", logger = logger)
+    val destName = "FileApex-v$appVersionName.exe"
+    moveToCurrent(dest, preferred, destName = destName, logger = logger)
+    copyToBackupDir(dest.resolve(destName), logger)
+}
+
+/** Copies a shipped file to `fileapex.backup.dir` (set per machine in gradle.properties); unset means no copy. */
+private fun Project.copyToBackupDir(shipped: File, logger: org.gradle.api.logging.Logger) {
+    val backupPath = providers.gradleProperty("fileapex.backup.dir").orNull?.trim().orEmpty()
+    if (backupPath.isEmpty()) return
+    val backupDir = File(backupPath)
+    check(backupDir.isDirectory) {
+        "fileapex.backup.dir is not reachable: $backupPath. ${shipped.name} is already in current/."
+    }
+    val target = backupDir.resolve(shipped.name)
+    Files.copy(shipped.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    check(target.length() == shipped.length()) {
+        "Backup copy of ${shipped.name} is ${target.length()} bytes, expected ${shipped.length()}."
+    }
+    logger.lifecycle("Copied ${shipped.name} to $backupPath")
 }
 
 /**
@@ -1524,6 +1612,92 @@ tasks.register("copyWindowsBuilds") {
     }
 }
 
+/** Compose's `AppImage` target only makes the app-image folder, so the .AppImage file is packed here with appimagetool. */
+tasks.register("packageLinuxAppImage") {
+    group = "distribution"
+    description = "Build FileApex-<version>-<arch>.AppImage with appimagetool (Linux host only)"
+    dependsOn("createReleaseDistributable")
+    onlyIf { isLinuxHost() }
+
+    doLast {
+        val appImageDir = layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile
+            .listFiles().orEmpty().firstOrNull { it.isDirectory && it.resolve("bin").isDirectory }
+        check(appImageDir != null) { "No release app image under build/compose/binaries/main-release/app" }
+        val launcher = appImageDir.resolve("bin").listFiles().orEmpty().firstOrNull { it.isFile && it.canExecute() }
+        check(launcher != null) { "No launcher in ${appImageDir.resolve("bin")}" }
+
+        val work = layout.buildDirectory.dir("linux-appimage").get().asFile
+        work.deleteRecursively()
+        val appDir = work.resolve("FileApex.AppDir")
+        val payload = appDir.resolve("usr/lib/fileapex")
+        payload.mkdirs()
+        // copyRecursively drops the executable bits on the launcher and runtime.
+        val copy = ProcessBuilder("cp", "-a", "${appImageDir.absolutePath}/.", payload.absolutePath)
+            .redirectErrorStream(true)
+            .start()
+        val copyOutput = copy.inputStream.bufferedReader().readText()
+        check(copy.waitFor() == 0) { "Copying the app image failed: $copyOutput" }
+
+        val icon = project.file("icons/FileApex-1024.png")
+        icon.copyTo(appDir.resolve("fileapex.png"), overwrite = true)
+        icon.copyTo(appDir.resolve(".DirIcon"), overwrite = true)
+        appDir.resolve("fileapex.desktop").writeText(
+            """
+            [Desktop Entry]
+            Type=Application
+            Name=FileApex
+            Comment=Local-first file explorer for your own devices
+            Exec=fileapex %U
+            Icon=fileapex
+            Terminal=false
+            Categories=Utility;FileTools;Network;
+            StartupWMClass=FileApex
+            """.trimIndent() + "\n"
+        )
+        val run = appDir.resolve("AppRun")
+        run.writeText(
+            """
+            #!/bin/sh
+            HERE="${'$'}(dirname "${'$'}(readlink -f "${'$'}0")")"
+            exec "${'$'}HERE/usr/lib/fileapex/bin/${launcher.name}" "${'$'}@"
+            """.trimIndent() + "\n"
+        )
+        run.setExecutable(true)
+
+        val out = work.resolve("FileApex-v$fileapexVersionName-${linuxRpmArch()}.AppImage")
+        val process = ProcessBuilder("appimagetool", appDir.absolutePath, out.absolutePath)
+            .directory(work)
+            .redirectErrorStream(true)
+            .also { it.environment()["ARCH"] = linuxRpmArch() }
+            .start()
+        process.inputStream.bufferedReader().forEachLine { logger.lifecycle(it) }
+        val code = process.waitFor()
+        check(code == 0 && out.isFile) { "appimagetool exited $code" }
+        logger.lifecycle("Built ${out.absolutePath} (${out.length()} bytes)")
+    }
+}
+
+tasks.register("shipLinuxPackages") {
+    group = "distribution"
+    description = "Build release .deb, .rpm and AppImage and move them to current/ (Linux host only)"
+    dependsOn("packageReleaseDeb", "packageReleaseRpm", "packageLinuxAppImage")
+    onlyIf { isLinuxHost() }
+
+    doLast {
+        val dest = currentBuildsDest().also { it.mkdirs() }
+        val packages = layout.buildDirectory.dir("compose/binaries/main-release").get().asFile
+        fun newest(ext: String): File = packages.resolve(ext).listFiles().orEmpty()
+            .filter { it.isFile && it.extension == ext }
+            .maxByOrNull { it.lastModified() }
+            ?: error("No .$ext found in ${packages.resolve(ext)}")
+        moveToCurrent(dest, newest("deb"), "FileApex-v$fileapexVersionName-${linuxDebArch()}.deb", logger)
+        moveToCurrent(dest, newest("rpm"), "FileApex-v$fileapexVersionName-${linuxRpmArch()}.rpm", logger)
+        val appImage = layout.buildDirectory.dir("linux-appimage").get().asFile
+            .resolve("FileApex-v$fileapexVersionName-${linuxRpmArch()}.AppImage")
+        moveToCurrent(dest, appImage, appImage.name, logger)
+    }
+}
+
 tasks.register("prepareWindowsCliLauncher") {
     group = "distribution"
     description =
@@ -1623,7 +1797,9 @@ tasks.register("packageInnoExe") {
         )
         logger.lifecycle("Embedded userspace tsnet beside FileApex.exe")
 
-        val threadCount = innoSetupThreadCount()
+        // ISCC is a 32-bit process: on a many-core PC the default thread count exhausts its address space.
+        val threadCount = providers.gradleProperty("fileapex.inno.threads").orNull?.toIntOrNull()?.coerceAtLeast(1)
+            ?: innoSetupThreadCount()
         logger.lifecycle(
             "Inno Setup: ${Runtime.getRuntime().availableProcessors()} logical CPUs → " +
                 "LZMANumBlockThreads=$threadCount, CompressionThreads=$threadCount (cap $innoThreadCap)"

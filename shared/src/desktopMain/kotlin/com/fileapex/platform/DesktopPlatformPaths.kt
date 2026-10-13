@@ -3,11 +3,12 @@ package com.fileapex.platform
 import java.io.File
 
 /**
- * Desktop on-disk app data paths (macOS + Windows).
+ * Desktop on-disk app data paths (macOS, Windows, Linux).
  * Android uses its own storage layer in `androidMain`.
  *
  * macOS: `~/Library/Application Support/com.fileapex/`
  * Windows: `%LOCALAPPDATA%\FileApex\`
+ * Linux: `$XDG_DATA_HOME/FileApex/` (default `~/.local/share/FileApex/`)
  */
 object DesktopPlatformPaths {
     const val BUNDLE_ID = "com.fileapex"
@@ -23,6 +24,7 @@ object DesktopPlatformPaths {
     enum class DesktopOs {
         MacOs,
         Windows,
+        Linux,
         Other
     }
 
@@ -32,6 +34,8 @@ object DesktopPlatformPaths {
     fun isMacOs(): Boolean = desktopOs == DesktopOs.MacOs
 
     fun isWindows(): Boolean = desktopOs == DesktopOs.Windows
+
+    fun isLinux(): Boolean = desktopOs == DesktopOs.Linux
 
     /**
      * Local Desktop folder for crash logs and similar user-visible files.
@@ -83,6 +87,7 @@ object DesktopPlatformPaths {
                 File(home, "Library/Group Containers/group.$BUNDLE_ID/Database/$DATABASE_FILE_NAME")
             )
             DesktopOs.Windows,
+            DesktopOs.Linux,
             DesktopOs.Other -> emptyList()
         }
     }
@@ -96,6 +101,7 @@ object DesktopPlatformPaths {
             DesktopOs.MacOs -> legacyDatabaseMigrationCandidates() +
                 listOf(databasePreV3BackupFile())
             DesktopOs.Windows,
+            DesktopOs.Linux,
             DesktopOs.Other -> listOfNotNull(
                 databasePreV3BackupFile().takeIf { it.isFile }
             )
@@ -108,6 +114,7 @@ object DesktopPlatformPaths {
         return when (desktopOs) {
             DesktopOs.MacOs -> listOf(File(home, ".fileapex/$IDENTITY_FILE_NAME"))
             DesktopOs.Windows,
+            DesktopOs.Linux,
             DesktopOs.Other -> emptyList()
         }
     }
@@ -115,6 +122,7 @@ object DesktopPlatformPaths {
     private fun primaryAppDataDirectory(): File {
         return when (desktopOs) {
             DesktopOs.Windows -> windowsLocalAppDataDirectory()
+            DesktopOs.Linux -> linuxDataDirectory()
             DesktopOs.MacOs -> macApplicationSupportDirectory()
             DesktopOs.Other -> macApplicationSupportDirectory()
         }
@@ -130,6 +138,21 @@ object DesktopPlatformPaths {
             return File(programData, "FileApex")
         }
         return File("C:\\ProgramData\\FileApex")
+    }
+
+    /** `DESKTOP` or `DOWNLOAD` from `~/.config/user-dirs.dirs`; Linux lets users rename them. */
+    fun xdgUserDirectory(name: String): File? {
+        val home = userHomeDirectory()
+        val line = runCatching { File(home, ".config/user-dirs.dirs").readLines() }.getOrDefault(emptyList())
+            .firstOrNull { it.trim().startsWith("XDG_${name}_DIR=") } ?: return null
+        val value = line.substringAfter('=').trim().trim('"').replace("\$HOME", home.absolutePath)
+        return value.takeIf { it.startsWith("/") }?.let(::File)
+    }
+
+    private fun linuxDataDirectory(): File {
+        val xdg = System.getenv("XDG_DATA_HOME")?.trim().orEmpty()
+        val base = if (xdg.startsWith("/")) File(xdg) else File(userHomeDirectory(), ".local/share")
+        return File(base, "FileApex")
     }
 
     private fun isUnsafePath(path: String): Boolean =
@@ -154,6 +177,7 @@ object DesktopPlatformPaths {
         return when {
             name.contains("windows") -> DesktopOs.Windows
             name.contains("mac") || name.contains("darwin") -> DesktopOs.MacOs
+            name.contains("linux") -> DesktopOs.Linux
             else -> DesktopOs.Other
         }
     }

@@ -14,6 +14,8 @@ import java.io.File
 import java.security.KeyStore
 
 actual object ClusterResetPlatform {
+    actual val keepsAppRunning: Boolean = false
+
     actual fun eraseKeystoreAndSecureStorage() {
         runCatching {
             val ks = KeyStore.getInstance("AndroidKeyStore")
@@ -24,6 +26,8 @@ actual object ClusterResetPlatform {
             }
         }
         val context = androidAppContextOrNull() ?: return
+        // The identity file in here is encrypted with a Keystore key that was just deleted.
+        cancellableCatching { File(context.filesDir, "tls").deleteRecursively() }
         cancellableCatching {
             context.getSharedPreferences("fileapex_identity", Context.MODE_PRIVATE)
                 .edit()
@@ -70,6 +74,15 @@ actual object ClusterResetPlatform {
                     file.delete()
                 }
             }
+        }
+
+        // The loop above deleted the settings file that held the "default theme decided" marker; the database
+        // file still exists, so without it the next launch counts as an old install and switches to Clean.
+        cancellableCatching {
+            context.getSharedPreferences("fileapex_settings", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_THEME_DEFAULT_MIGRATED, true)
+                .commit()
         }
 
         val restartIntent = Intent().apply {

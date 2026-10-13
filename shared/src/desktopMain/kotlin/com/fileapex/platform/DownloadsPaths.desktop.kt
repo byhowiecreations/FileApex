@@ -6,7 +6,9 @@ actual fun downloadsFolderDisplayLabel(): String = "~/Downloads/FileApex"
 
 actual fun defaultDownloadsDir(): String {
     val home = System.getProperty("user.home") ?: "."
-    val dir = File(home, "Downloads/${DownloadsPaths.FOLDER_NAME}")
+    val root = DesktopPlatformPaths.xdgUserDirectory("DOWNLOAD")?.takeIf { DesktopPlatformPaths.isLinux() && it.isDirectory }
+        ?: File(home, "Downloads")
+    val dir = File(root, DownloadsPaths.FOLDER_NAME)
     if (!dir.exists()) {
         dir.mkdirs()
     }

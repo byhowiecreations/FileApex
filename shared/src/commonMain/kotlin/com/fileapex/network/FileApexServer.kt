@@ -66,6 +66,8 @@ class FileApexServer(
     internal val onClusterMerge: suspend (ClusterSyncRequest, String?) -> Unit = { _, _ -> },
     internal val onClusterPeerRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Unit = {},
     internal val onClusterSelfRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Boolean = { false },
+    /** True when the device id is an active member of this node's roster. Gates removals aimed at this node. */
+    internal val isRosterMember: suspend (String) -> Boolean = { false },
     internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
     internal val onListIntroductions: suspend (recipientId: String) -> List<com.fileapex.security.SealedIntroduction> = { emptyList() },
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
