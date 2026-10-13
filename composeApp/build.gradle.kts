@@ -1677,6 +1677,34 @@ tasks.register("packageLinuxAppImage") {
     }
 }
 
+/** Library names a distro JDK links to the system; a package that needs any of them will not install on other distros. */
+private val linuxDistroOnlyLibs = listOf("libjpeg", "libgif", "liblcms", "libharfbuzz")
+
+/** Stops the Linux build before jlink if Gradle is running on a JDK that links the system image libraries. */
+tasks.register("verifyLinuxBuildJdk") {
+    group = "verification"
+    description = "Fail if the JDK used for the Linux packages links system libjpeg (use scripts/build_linux.sh)"
+    onlyIf { isLinuxHost() }
+    doLast {
+        val jpeg = File(System.getProperty("java.home"), "lib/libjavajpeg.so")
+        if (jpeg.isFile) {
+            val p = ProcessBuilder("ldd", jpeg.absolutePath).redirectErrorStream(true).start()
+            val out = p.inputStream.bufferedReader().readText()
+            p.waitFor()
+            check(!out.contains("libjpeg.so")) {
+                "This JDK (${System.getProperty("java.home")}) links system image libraries, so the .deb/.rpm would " +
+                    "depend on packages that only exist on this distro. Build with scripts/build_linux.sh " +
+                    "(Temurin 21) or set FILEAPEX_JDK to a self-contained JDK 21."
+            }
+        }
+    }
+}
+
+if (isLinuxHost()) {
+    tasks.matching { it.name == "createReleaseDistributable" || it.name == "createDistributable" }
+        .configureEach { dependsOn("verifyLinuxBuildJdk") }
+}
+
 tasks.register("shipLinuxPackages") {
     group = "distribution"
     description = "Build release .deb, .rpm and AppImage and move them to current/ (Linux host only)"
@@ -1684,6 +1712,14 @@ tasks.register("shipLinuxPackages") {
     onlyIf { isLinuxHost() }
 
     doLast {
+        val debDir = layout.buildDirectory.dir("compose/binaries/main-release/deb").get().asFile
+        debDir.listFiles().orEmpty().filter { it.extension == "deb" }.maxByOrNull { it.lastModified() }?.let { deb ->
+            val p = ProcessBuilder("dpkg-deb", "-f", deb.absolutePath, "Depends").redirectErrorStream(true).start()
+            val depends = p.inputStream.bufferedReader().readText()
+            p.waitFor()
+            val bad = linuxDistroOnlyLibs.filter { depends.contains(it) }
+            check(bad.isEmpty()) { "${deb.name} depends on ${bad.joinToString()}; it will not install on every distro. Depends: $depends" }
+        }
         val dest = currentBuildsDest().also { it.mkdirs() }
         val packages = layout.buildDirectory.dir("compose/binaries/main-release").get().asFile
         fun newest(ext: String): File = packages.resolve(ext).listFiles().orEmpty()

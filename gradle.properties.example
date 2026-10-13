@@ -40,6 +40,9 @@ org.jetbrains.compose.experimental.jscanvas.enabled=false
 # Do not set org.gradle.java.home — it is a single global value and breaks cross-platform builds.
 fileapex.java.home.macos=.build-jdk/jdk-21.0.11+10/Contents/Home
 fileapex.java.home.windows=C:/Program Files/Java/jdk-21
+# Linux: scripts/build_linux.sh downloads Temurin 21 here. Build the Linux packages with that script,
+# not a distro JDK, or the .deb/.rpm depend on libraries Debian and Fedora do not have.
+fileapex.java.home.linux=.build-jdk/temurin-21-linux-x64
 #
 # Android SDK — copy to local.properties (gitignored), one path per platform:
 #   sdk.dir.macos=/Users/<you>/Library/Android/sdk
