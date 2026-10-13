@@ -23,6 +23,13 @@
     </queries>
 
     <application>
+        <service
+            android:name="com.fileapex.cloud.FileApexFcmMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             tools:node="remove" />

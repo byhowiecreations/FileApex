@@ -285,6 +285,10 @@ fun NotesScreen(
                     "Google Drive Relay limit. Choose a smaller file or raise the Relay size " +
                     "limit in Settings → Cellular."
             }
+            is NotesAttachmentDecision.TooLargeForLan -> {
+                attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
+                    "Notes attachment limit. Choose a smaller file."
+            }
         }
     }
 
@@ -517,6 +521,11 @@ fun NotesScreen(
                         "Google Drive Relay limit."
                     return
                 }
+                is NotesAttachmentDecision.TooLargeForLan -> {
+                    attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
+                        "Notes attachment limit."
+                    return
+                }
             }
         }
         if (!FileApexServices.settings.notesNotificationPromptShown.value) {
@@ -572,6 +581,11 @@ fun NotesScreen(
                 attachError = "${decision.fileLabel} is over the ${decision.relayLimitLabel} " +
                     "Google Drive Relay limit. Choose a smaller file or raise the Relay size " +
                     "limit in Settings → Cellular."
+                return
+            }
+            is NotesAttachmentDecision.TooLargeForLan -> {
+                attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
+                    "Notes attachment limit. Choose a smaller file."
                 return
             }
         }

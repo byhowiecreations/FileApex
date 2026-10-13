@@ -1,0 +1,1 @@
+First F-Droid release. Local-network only: no Google account, cloud presence, Drive relay or Tailscale, and no Firebase or Google Play Services code. Updates come through F-Droid.

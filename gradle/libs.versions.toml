@@ -22,8 +22,8 @@ zxing-embedded = "4.3.0"
 android-compileSdk = "36"
 android-minSdk = "26"
 android-targetSdk = "36"
-firebase-bom = "33.12.0"
-google-services = "4.4.2"
+firebase-bom = "33.12.0" # fdroid:remove
+google-services = "4.4.2" # fdroid:remove
 jna = "5.16.0"
 jline = "3.30.11"
 jmdns = "3.6.1"
@@ -32,9 +32,9 @@ junit = "4.13.2"
 robolectric = "4.14.1"
 androidx-test-core = "1.6.1"
 work = "2.10.2"
-play-services-auth = "21.3.0"
-androidx-credentials = "1.5.0"
-google-id = "1.1.1"
+play-services-auth = "21.3.0" # fdroid:remove
+androidx-credentials = "1.5.0" # fdroid:remove
+google-id = "1.1.1" # fdroid:remove
 shizuku = "13.1.5"
 
 [libraries]
@@ -78,20 +78,20 @@ compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.r
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
-kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "kotlinx-coroutines" } # fdroid:remove
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 kotlinx-io-bytestring = { module = "org.jetbrains.kotlinx:kotlinx-io-bytestring", version.ref = "kotlinx-io" }
 
-firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
-firebase-auth = { module = "com.google.firebase:firebase-auth" }
-firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
-firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" } # fdroid:remove
+firebase-auth = { module = "com.google.firebase:firebase-auth" } # fdroid:remove
+firebase-firestore = { module = "com.google.firebase:firebase-firestore" } # fdroid:remove
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" } # fdroid:remove
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
-play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "play-services-auth" }
-androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "androidx-credentials" }
-androidx-credentials-play-services = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "androidx-credentials" }
-google-id = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "google-id" }
+play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "play-services-auth" } # fdroid:remove
+androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "androidx-credentials" } # fdroid:remove
+androidx-credentials-play-services = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "androidx-credentials" } # fdroid:remove
+google-id = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "google-id" } # fdroid:remove
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
 shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
@@ -111,4 +111,4 @@ kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", versio
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room3 = { id = "androidx.room3", version.ref = "room3" }
-googleServices = { id = "com.google.gms.google-services", version.ref = "google-services" }
+googleServices = { id = "com.google.gms.google-services", version.ref = "google-services" } # fdroid:remove

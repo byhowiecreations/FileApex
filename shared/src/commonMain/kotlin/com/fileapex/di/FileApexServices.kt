@@ -60,6 +60,14 @@ object FileApexServices {
     @Volatile
     var isPlayStoreBuild: Boolean = false
 
+    /** F-Droid flavor: no Firebase, FCM, Google sign-in or Drive, and F-Droid delivers updates. */
+    @Volatile
+    var isFdroidBuild: Boolean = false
+
+    /** The Play build is updated by Play and the F-Droid build by F-Droid. */
+    val managedByStore: Boolean
+        get() = isPlayStoreBuild || isFdroidBuild
+
     @Volatile
     var buildChannel: String = "GitHub"
 

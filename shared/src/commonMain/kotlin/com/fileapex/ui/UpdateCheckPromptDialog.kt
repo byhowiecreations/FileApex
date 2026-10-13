@@ -20,7 +20,7 @@ import com.fileapex.update.AppUpdateCoordinator
  */
 @Composable
 fun UpdateCheckPromptHost() {
-    if (FileApexServices.isPlayStoreBuild) return
+    if (FileApexServices.managedByStore) return
     val settings = FileApexServices.settings
     val answered by settings.updateCheckPromptShown.collectAsState()
     val enabled by settings.checkForUpdatesEnabled.collectAsState()

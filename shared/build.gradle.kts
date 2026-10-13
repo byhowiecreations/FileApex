@@ -163,6 +163,7 @@ plugins {
 // Loaded from committed version.md via settings.gradle.kts (beforeProject).
 val fileapexVersionName = extra["fileapex.version.name"] as String
 val fileapexVersionCode = extra["fileapex.version.code"] as String
+val fileapexFdroid = extra["fileapex.fdroid"] as Boolean
 
 kotlin {
     compilerOptions {
@@ -189,6 +190,8 @@ kotlin {
 
         val androidMain by getting {
             dependsOn(jvmCommon)
+            // Firebase, Credential Manager and Play Services actuals, or no-op stubs for F-Droid.
+            kotlin.srcDir(if (fileapexFdroid) "src/androidFdroid/kotlin" else "src/androidGoogle/kotlin")
         }
 
         jvmCommon.dependencies {
@@ -235,16 +238,18 @@ kotlin {
             implementation(libs.androidx.sharetarget)
             implementation(libs.androidx.activity.compose)
             implementation(libs.zxing.android.embedded)
-            implementation(project.dependencies.platform(libs.firebase.bom))
-            implementation(libs.firebase.auth)
-            implementation(libs.firebase.firestore)
-            implementation(libs.firebase.messaging)
-            implementation(libs.kotlinx.coroutines.play.services)
             implementation(libs.androidx.work.runtime)
-            implementation(libs.play.services.auth)
-            implementation(libs.androidx.credentials)
-            implementation(libs.androidx.credentials.play.services)
-            implementation(libs.google.id)
+            if (!fileapexFdroid) {
+                implementation(project.dependencies.platform(libs.firebase.bom)) // fdroid:remove
+                implementation(libs.firebase.auth) // fdroid:remove
+                implementation(libs.firebase.firestore) // fdroid:remove
+                implementation(libs.firebase.messaging) // fdroid:remove
+                implementation(libs.kotlinx.coroutines.play.services) // fdroid:remove
+                implementation(libs.play.services.auth) // fdroid:remove
+                implementation(libs.androidx.credentials) // fdroid:remove
+                implementation(libs.androidx.credentials.play.services) // fdroid:remove
+                implementation(libs.google.id) // fdroid:remove
+            }
         }
 
         val androidUnitTest by getting {
@@ -283,8 +288,8 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
-        val webClientId = resolvedWebClientId()
-        val webClientSecret = resolvedWebClientSecret()
+        val webClientId = if (fileapexFdroid) "" else resolvedWebClientId()
+        val webClientSecret = if (fileapexFdroid) "" else resolvedWebClientSecret()
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${escapeKotlinString(webClientId)}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_SECRET", "\"${escapeKotlinString(webClientSecret)}\"")
     }
@@ -373,7 +378,11 @@ val generateFcmCredentials = tasks.register("generateFcmCredentials") {
     doLast {
         val dir = outDir.get().asFile.resolve("com/fileapex/cloud")
         dir.mkdirs()
-        val jsonFile = resolveFirebaseServiceAccountJson(rootProject.projectDir, jsonPath.get())
+        val jsonFile = if (fileapexFdroid) {
+            null
+        } else {
+            resolveFirebaseServiceAccountJson(rootProject.projectDir, jsonPath.get())
+        }
         if (jsonFile == null) {
             dir.resolve("GeneratedFcmCredentials.kt").writeText(
                 """
@@ -634,8 +643,10 @@ tasks.register("verifyFirebaseAndroidOAuthSetup") {
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn("verifyGoogleOAuthProjectAlignment", "verifyFirebaseAndroidOAuthSetup", "verifyMacOAuthRedirect")
+if (!fileapexFdroid) {
+    tasks.matching { it.name == "preBuild" }.configureEach {
+        dependsOn("verifyGoogleOAuthProjectAlignment", "verifyFirebaseAndroidOAuthSetup", "verifyMacOAuthRedirect")
+    }
 }
 
 tasks.register("verifyDesktopSmokeTestConfig") {

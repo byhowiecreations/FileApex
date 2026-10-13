@@ -149,6 +149,7 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         com.fileapex.di.FileApexServices.isPlayStoreBuild = BuildConfig.IS_PLAY_STORE
+        com.fileapex.di.FileApexServices.isFdroidBuild = BuildConfig.IS_FDROID
         com.fileapex.di.FileApexServices.buildChannel = BuildConfig.BUILD_CHANNEL
         // Complete init if this process deferred Application.onCreate during Direct Boot.
         FileApexAndroidBootstrap.ensureInitialized(this)

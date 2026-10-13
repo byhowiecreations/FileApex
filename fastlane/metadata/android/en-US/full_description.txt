@@ -1,0 +1,17 @@
+FileApex is a local-first file explorer and sender for your own devices. Pair a phone, tablet or computer once, then browse and move files between them over Wi-Fi or Ethernet. There are no accounts, no cloud service, no ads, no trackers and no analytics.
+
+Features:
+• Browse and move files between paired devices on the same network
+• Send files and folders to several devices at once
+• Pair with a QR code, a 6-digit code or automatic detection, with an optional PIN lock
+• Bulletin Board: send a text message or file to all paired devices
+• Opt-in clipboard sharing in any direction
+• Opt-in phone notifications shown on your computer
+• Device details: battery, storage, memory and network for each paired device
+• Locate phone: make a paired phone ring
+• Android share-sheet targets for paired devices
+• Background persistence with battery guidance and an optional restart after reboot
+
+This build is local-network only. It does not include Google account sign-in, cloud presence, Google Drive relay or Tailscale support, and it has no Firebase or Google Play Services code. Updates come through F-Droid.
+
+Desktop versions for Windows, macOS and Linux are available from the project page. Because F-Droid signs its builds with its own key, an install from GitHub cannot be updated by this one: uninstall the GitHub build first, which removes its pairings.

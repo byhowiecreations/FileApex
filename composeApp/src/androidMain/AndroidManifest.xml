@@ -236,14 +236,6 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <service
-            android:name="com.fileapex.cloud.FileApexFcmMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
         <!-- exported=true is required for system ACTION_BOOT_COMPLETED / USER_UNLOCKED. Guarded by RECEIVE_BOOT_COMPLETED. -->
         <receiver
             android:name="com.fileapex.platform.FileApexWatchdogReceiver"

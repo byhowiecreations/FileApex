@@ -1,0 +1,1 @@
+Primera versión en F-Droid. Solo red local: sin cuenta de Google, presencia en la nube, relé de Drive ni Tailscale, y sin código de Firebase ni de Google Play Services. Las actualizaciones llegan a través de F-Droid.

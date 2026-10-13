@@ -1,0 +1,17 @@
+FileApex es un explorador y emisor de archivos local para tus propios dispositivos. Empareja un teléfono, una tableta o un ordenador una sola vez y explora y mueve archivos entre ellos por Wi-Fi o Ethernet. No hay cuentas, ni servicio en la nube, ni anuncios, ni rastreadores, ni analíticas.
+
+Características:
+• Explora y mueve archivos entre dispositivos emparejados de la misma red
+• Envía archivos y carpetas a varios dispositivos a la vez
+• Empareja con un código QR, un código de 6 dígitos o detección automática, con bloqueo por PIN opcional
+• Tablón: envía un mensaje de texto o un archivo a todos los dispositivos emparejados
+• Portapapeles compartido opcional, en cualquier dirección
+• Notificaciones del teléfono en tu ordenador, opcional
+• Detalles del dispositivo: batería, almacenamiento, memoria y red de cada dispositivo emparejado
+• Localizar teléfono: haz sonar un teléfono emparejado
+• Destinos en el menú Compartir de Android para los dispositivos emparejados
+• Persistencia en segundo plano con consejos de batería y reinicio opcional tras reiniciar el dispositivo
+
+Esta versión funciona solo en la red local. No incluye inicio de sesión con cuenta de Google, presencia en la nube, relé de Google Drive ni compatibilidad con Tailscale, y no contiene código de Firebase ni de Google Play Services. Las actualizaciones llegan a través de F-Droid.
+
+Hay versiones de escritorio para Windows, macOS y Linux en la página del proyecto. Como F-Droid firma sus compilaciones con su propia clave, una instalación de GitHub no se puede actualizar con esta: desinstala primero la versión de GitHub, lo que elimina sus emparejamientos.

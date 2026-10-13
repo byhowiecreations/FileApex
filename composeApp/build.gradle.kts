@@ -86,13 +86,18 @@ plugins {
     alias(libs.plugins.kotlinCompose)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.kotlinSerialization)
-    alias(libs.plugins.googleServices)
 }
 
 // Loaded from committed version.md via settings.gradle.kts (beforeProject).
 val fileapexVersionName = extra["fileapex.version.name"] as String
 val fileapexVersionCode = extra["fileapex.version.code"] as String
 val fileapexExtensionVersion = extra["fileapex.extension.version"] as String
+val fileapexFdroid = extra["fileapex.fdroid"] as Boolean
+
+// The F-Droid build carries no Firebase, so the Google Services plugin stays off for it.
+if (!fileapexFdroid) {
+    apply(plugin = "com.google.gms.google-services") // fdroid:remove
+}
 
 kotlin {
     androidTarget {
@@ -119,7 +124,8 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
             val tsnetAar = rootProject.file("native/tsnet/build/tsnetbridge.aar")
-            if (tsnetAar.isFile) {
+            // The F-Droid build cannot ship a prebuilt binary, so it runs without Tailscale.
+            if (tsnetAar.isFile && !fileapexFdroid) {
                 implementation(files(tsnetAar))
             }
         }
@@ -175,13 +181,22 @@ android {
             dimension = "distribution"
             versionCode = yearPrefix * 1000 + baseVersionCode
             buildConfigField("boolean", "IS_PLAY_STORE", "false")
+            buildConfigField("boolean", "IS_FDROID", "false")
             buildConfigField("String", "BUILD_CHANNEL", "\"GitHub\"")
         }
         create("play") {
             dimension = "distribution"
             versionCode = baseVersionCode
             buildConfigField("boolean", "IS_PLAY_STORE", "true")
+            buildConfigField("boolean", "IS_FDROID", "false")
             buildConfigField("String", "BUILD_CHANNEL", "\"Play\"")
+        }
+        create("fdroid") {
+            dimension = "distribution"
+            versionCode = baseVersionCode
+            buildConfigField("boolean", "IS_PLAY_STORE", "false")
+            buildConfigField("boolean", "IS_FDROID", "true")
+            buildConfigField("String", "BUILD_CHANNEL", "\"F-Droid\"")
         }
     }
 
@@ -191,6 +206,9 @@ android {
         }
         getByName("github") {
             manifest.srcFile("src/github/AndroidManifest.xml")
+        }
+        getByName("fdroid") {
+            manifest.srcFile("src/fdroid/AndroidManifest.xml")
         }
     }
 
@@ -248,6 +266,8 @@ android {
 dependencies {
     "githubImplementation"(libs.shizuku.api)
     "githubImplementation"(libs.shizuku.provider)
+    "fdroidImplementation"(libs.shizuku.api)
+    "fdroidImplementation"(libs.shizuku.provider)
 }
 
 tasks.register("verifyReleaseSigning") {
@@ -429,13 +449,16 @@ fun org.gradle.api.Project.resolveReleaseKeyAlias(
 }
 
 afterEvaluate {
-    tasks.matching {
-        it.name.startsWith("assemble") && it.name.endsWith("Release") ||
-        it.name.startsWith("package") && it.name.endsWith("Release") ||
-        it.name.startsWith("bundle") && it.name.endsWith("Release") ||
-        it.name in setOf("assembleRelease", "packageRelease", "bundleRelease")
-    }.configureEach {
-        dependsOn("verifyReleaseSigning")
+    // F-Droid builds without our keystore and signs the APK itself.
+    if (!fileapexFdroid) {
+        tasks.matching {
+            it.name.startsWith("assemble") && it.name.endsWith("Release") ||
+            it.name.startsWith("package") && it.name.endsWith("Release") ||
+            it.name.startsWith("bundle") && it.name.endsWith("Release") ||
+            it.name in setOf("assembleRelease", "packageRelease", "bundleRelease")
+        }.configureEach {
+            dependsOn("verifyReleaseSigning")
+        }
     }
     // Android release APK is built on macOS only; Windows ships desktop EXE.
     if (!isWindowsHost()) {
@@ -1532,6 +1555,8 @@ private fun Project.moveFlavorReleaseApkToCurrent(flavor: String) {
     destDir.mkdirs()
     val destName = if (flavor.equals("play", ignoreCase = true)) {
         "FileApex-v$fileapexVersionName-play.apk"
+    } else if (flavor.equals("fdroid", ignoreCase = true)) {
+        "FileApex-v$fileapexVersionName-fdroid.apk"
     } else {
         "FileApex-v$fileapexVersionName.apk"
     }
@@ -1571,6 +1596,20 @@ tasks.register("shipGithubRelease") {
     outputs.upToDateWhen { false }
     doLast {
         moveFlavorReleaseApkToCurrent("github")
+    }
+}
+
+/**
+ * Run on its own: the F-Droid flag swaps :shared source sets, so it cannot share a Gradle
+ * invocation with the GitHub or Play tasks (see settings.gradle.kts).
+ */
+tasks.register("shipFdroidRelease") {
+    group = "distribution"
+    description = "F-Droid flavor release APK into current/ (no Firebase, FCM or Drive)"
+    dependsOn("assembleFdroidRelease")
+    outputs.upToDateWhen { false }
+    doLast {
+        moveFlavorReleaseApkToCurrent("fdroid")
     }
 }
 
@@ -1977,16 +2016,27 @@ val generateGoogleServicesJson = tasks.register("generateGoogleServicesJson") {
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(generateGoogleServicesJson)
-    dependsOn(
-        ":shared:verifyGoogleOAuthProjectAlignment",
-        ":shared:verifyFirebaseAndroidOAuthSetup",
-    )
-}
+if (fileapexFdroid) {
+    tasks.matching { it.name.matches(Regex("pre(Github|Play)(Debug|Release)Build")) }.configureEach {
+        doFirst {
+            throw GradleException(
+                "fileapex.fdroid is set, so :shared was configured without Firebase. " +
+                    "Build GitHub and Play variants in a separate Gradle run."
+            )
+        }
+    }
+} else {
+    tasks.matching { it.name == "preBuild" }.configureEach {
+        dependsOn(generateGoogleServicesJson)
+        dependsOn(
+            ":shared:verifyGoogleOAuthProjectAlignment",
+            ":shared:verifyFirebaseAndroidOAuthSetup",
+        )
+    }
 
-tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServices") }.configureEach {
-    dependsOn(generateGoogleServicesJson)
+    tasks.matching { it.name.startsWith("process") && it.name.endsWith("GoogleServices") }.configureEach {
+        dependsOn(generateGoogleServicesJson)
+    }
 }
 
 /**

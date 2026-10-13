@@ -1,0 +1,1 @@
+首个 F-Droid 版本。仅限本地网络：不含 Google 账号、云端在线状态、Drive 中继或 Tailscale，也没有 Firebase 或 Google Play 服务代码。更新通过 F-Droid 提供。

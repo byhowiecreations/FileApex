@@ -179,7 +179,7 @@ actual object BulletinApkUpdateCoordinator {
         transactionTimestampEpochMs: Long,
         senderDeviceId: String
     ) {
-        if (FileApexServices.isPlayStoreBuild) return
+        if (FileApexServices.managedByStore) return
         scope.launch {
             val apkFile = File(localPath)
             if (!apkFile.isFile || apkFile.length() < 1024L) return@launch

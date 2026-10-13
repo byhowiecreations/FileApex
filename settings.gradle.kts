@@ -61,7 +61,12 @@ syncPlatformSdkDir()
 
 val (fileapexVersionName, fileapexVersionCode, fileapexExtensionVersion) = loadFileApexVersion(settingsDir)
 
+// F-Droid build: no Firebase, FCM, Google sign-in or Drive. Selected by an Fdroid task name or -Pfileapex.fdroid=true.
+val fileapexFdroid = gradle.startParameter.projectProperties["fileapex.fdroid"] == "true" ||
+    gradle.startParameter.taskNames.any { it.contains("fdroid", ignoreCase = true) }
+
 gradle.beforeProject {
+    extensions.extraProperties.set("fileapex.fdroid", fileapexFdroid)
     extensions.extraProperties.set("fileapex.version.name", fileapexVersionName)
     extensions.extraProperties.set("fileapex.version.code", fileapexVersionCode)
     extensions.extraProperties.set("fileapex.extension.version", fileapexExtensionVersion)

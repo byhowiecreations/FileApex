@@ -45,7 +45,9 @@ fun settingsMenuEntries(
     desktopFileSelection: Boolean,
     deviceNamePage: Boolean,
     windowsFluent: Boolean,
-    backupSync: Boolean = false
+    backupSync: Boolean = false,
+    googleCloud: Boolean = true,
+    tailscale: Boolean = true
 ): List<SettingsMenuEntry> {
     val entries = mutableListOf<SettingsMenuEntry>()
     fun add(section: SettingsMenuSection, id: String) {
@@ -60,7 +62,7 @@ fun settingsMenuEntries(
 
     add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.BACKGROUND_PERSISTENCE)
     if (!desktopFileSelection) add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.AUTO_LAUNCH)
-    add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.TAILSCALE)
+    if (tailscale) add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.TAILSCALE)
 
     add(SettingsMenuSection.Appearance, SettingsMenuIds.THEMES)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.BULLETIN_BOARD)
@@ -71,7 +73,7 @@ fun settingsMenuEntries(
     if (windowsFluent) add(SettingsMenuSection.Appearance, SettingsMenuIds.WINDOWS_DESIGN)
 
     add(SettingsMenuSection.Security, SettingsMenuIds.PIN_REQUIRED)
-    add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
+    if (googleCloud) add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
     add(SettingsMenuSection.Security, SettingsMenuIds.LEAVE_CLUSTER)
     return entries
 }

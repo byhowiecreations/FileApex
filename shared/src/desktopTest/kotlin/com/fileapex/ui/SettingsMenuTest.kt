@@ -67,4 +67,32 @@ class SettingsMenuTest {
         )
         assertEquals(SettingsMenuSection.General, entries.first { it.id == SettingsMenuIds.BACKUP_SYNC }.section)
     }
+
+    @Test
+    fun googleAccountRowIsHiddenWithoutGoogleCloud() {
+        fun ids(googleCloud: Boolean) = settingsMenuEntries(
+            playStoreBuild = false,
+            desktopFileSelection = false,
+            deviceNamePage = true,
+            windowsFluent = false,
+            googleCloud = googleCloud
+        ).map { it.id }
+
+        assertTrue(ids(googleCloud = true).contains(SettingsMenuIds.GOOGLE_ACCOUNT))
+        assertFalse(ids(googleCloud = false).contains(SettingsMenuIds.GOOGLE_ACCOUNT))
+    }
+
+    @Test
+    fun tailscaleRowIsHiddenWhenUnavailable() {
+        fun ids(tailscale: Boolean) = settingsMenuEntries(
+            playStoreBuild = false,
+            desktopFileSelection = false,
+            deviceNamePage = true,
+            windowsFluent = false,
+            tailscale = tailscale
+        ).map { it.id }
+
+        assertTrue(ids(tailscale = true).contains(SettingsMenuIds.TAILSCALE))
+        assertFalse(ids(tailscale = false).contains(SettingsMenuIds.TAILSCALE))
+    }
 }

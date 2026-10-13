@@ -352,7 +352,7 @@ fun SettingsScreen(
             onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
         SettingsPage.CheckForUpdates -> {
-            if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
+            if (com.fileapex.di.FileApexServices.managedByStore) {
                 page = SettingsPage.Root
             } else {
                 val isAndroid = currentPlatformLabel() == "Android"
@@ -725,7 +725,9 @@ private fun SettingsRootPage(
                 }
                 val tailscale by TailscaleNodeRuntime.state.collectAsState()
                 val menuEntries = settingsMenuEntries(
-                    playStoreBuild = com.fileapex.di.FileApexServices.isPlayStoreBuild,
+                    playStoreBuild = com.fileapex.di.FileApexServices.managedByStore,
+                    googleCloud = !com.fileapex.di.FileApexServices.isFdroidBuild,
+                    tailscale = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     desktopFileSelection = usesDesktopFileSelection(),
                     deviceNamePage = supportsDeviceNameSettingsPage(),
                     windowsFluent = supportsWindowsFluentDesign(),
@@ -871,9 +873,11 @@ private fun SettingsRootPage(
                 }
             }
             val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
-            val isAndroidGitHub = !usesDesktopFileSelection() && !com.fileapex.di.FileApexServices.isPlayStoreBuild
+            val isAndroidGitHub = !usesDesktopFileSelection() && !com.fileapex.di.FileApexServices.managedByStore
             val versionDisplayText = if (isAndroidGitHub) {
                 "FileApex v$cleanVersion (GitHub)"
+            } else if (com.fileapex.di.FileApexServices.isFdroidBuild) {
+                "FileApex v$cleanVersion (F-Droid)"
             } else {
                 "FileApex v$cleanVersion"
             }
@@ -1287,28 +1291,30 @@ private fun NotificationsSettingsPage(
                 }
             )
 
-            HorizontalDivider()
+            if (!com.fileapex.di.FileApexServices.isFdroidBuild) {
+                HorizontalDivider()
 
-            ListItem(
-                headlineContent = { Text(stringRes("drive_relay"), softWrap = true) },
-                supportingContent = {
-                    Text(
-                        if (driveRelayReady) {
-                            stringRes("drive_relay_notif_desc")
-                        } else {
-                            stringRes("drive_relay_notif_off")
-                        },
-                        softWrap = true
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = driveRelayReady && state.driveRelayNotificationsEnabled,
-                        onCheckedChange = onToggleDriveRelayNotifications,
-                        enabled = driveRelayReady
-                    )
-                }
-            )
+                ListItem(
+                    headlineContent = { Text(stringRes("drive_relay"), softWrap = true) },
+                    supportingContent = {
+                        Text(
+                            if (driveRelayReady) {
+                                stringRes("drive_relay_notif_desc")
+                            } else {
+                                stringRes("drive_relay_notif_off")
+                            },
+                            softWrap = true
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = driveRelayReady && state.driveRelayNotificationsEnabled,
+                            onCheckedChange = onToggleDriveRelayNotifications,
+                            enabled = driveRelayReady
+                        )
+                    }
+                )
+            }
 
             HorizontalDivider()
 

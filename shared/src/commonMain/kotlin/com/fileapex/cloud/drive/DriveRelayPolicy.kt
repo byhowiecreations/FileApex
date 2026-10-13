@@ -62,6 +62,12 @@ object DriveRelayPolicy {
         val overLan = sizeBytes > NOTES_LAN_ATTACHMENT_MAX_BYTES
         val overRelay = sizeBytes > relayMaxBytes()
         if (!overLan) return NotesAttachmentDecision.AllowLan
+        if (FileApexServices.isFdroidBuild) {
+            return NotesAttachmentDecision.TooLargeForLan(
+                fileLabel = formatBytesLabel(sizeBytes),
+                lanLimitLabel = lanAttachmentLimitLabel()
+            )
+        }
         if (relayReady && !overRelay) return NotesAttachmentDecision.AllowRelay
         if (overRelay) {
             return NotesAttachmentDecision.TooLargeForRelay(
@@ -160,5 +166,10 @@ sealed class NotesAttachmentDecision {
     data class TooLargeForRelay(
         val fileLabel: String,
         val relayLimitLabel: String
+    ) : NotesAttachmentDecision()
+    /** F-Droid build: no Drive relay exists, so the LAN limit is final. */
+    data class TooLargeForLan(
+        val fileLabel: String,
+        val lanLimitLabel: String
     ) : NotesAttachmentDecision()
 }

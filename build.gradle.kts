@@ -8,7 +8,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.room3) apply false
-    alias(libs.plugins.googleServices) apply false
+    alias(libs.plugins.googleServices) apply false // fdroid:remove
 }
 
 /** Git index paths that must stay 100755 so macOS/Linux can run ./gradlew and embed scripts. */

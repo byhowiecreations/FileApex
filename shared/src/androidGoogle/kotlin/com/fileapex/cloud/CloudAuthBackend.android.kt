@@ -304,5 +304,3 @@ actual fun firebaseApiKey(): String =
 
 actual fun firebaseProjectId(): String =
     com.google.firebase.FirebaseApp.getInstance().options.projectId.orEmpty()
-
-actual fun currentPlatformLabel(): String = "Android"
