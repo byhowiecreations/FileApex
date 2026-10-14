@@ -41,13 +41,17 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onEach
+import com.fileapex.domain.presence.PresenceForegroundRefresh
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -152,54 +156,62 @@ class DevicesViewModel : ViewModel() {
      * Diffed device rows for LazyColumn.
      * Emits only when item identity/content actually changes (AsyncListDiffer equivalent).
      */
-    val deviceRows: StateFlow<List<DeviceListRow>> = combine(
-        combine(
-            repository.observeDevices(),
-            presence.reachabilityEpochMs,
-            presence.onlineDeviceIds,
-            presence.onlineSnapshotEpochMs
-        ) { devices, _, _, _ ->
-            val selfDeviceId = identity.deviceId
-            devices
-                .distinctBy { it.deviceId }
-                .filter { device ->
-                    device.deviceId != LocalIdentity.LOCAL_DEVICE_ID &&
-                        device.deviceId != selfDeviceId
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val deviceRows: StateFlow<List<DeviceListRow>> = PresenceForegroundRefresh.isForeground
+        .flatMapLatest { isForeground ->
+            if (isForeground) {
+                combine(
+                    combine(
+                        repository.observeDevices(),
+                        presence.reachabilityEpochMs,
+                        presence.onlineDeviceIds,
+                        presence.onlineSnapshotEpochMs
+                    ) { devices, _, _, _ ->
+                        val selfDeviceId = identity.deviceId
+                        devices
+                            .distinctBy { it.deviceId }
+                            .filter { device ->
+                                device.deviceId != LocalIdentity.LOCAL_DEVICE_ID &&
+                                    device.deviceId != selfDeviceId
+                            }
+                            .map { device ->
+                                DeviceListRow(
+                                    deviceId = device.deviceId,
+                                    deviceName = device.deviceName,
+                                    online = presence.isDeviceOnline(device),
+                                    appVersion = device.clientVersion.takeIf { it.isNotEmpty() },
+                                    appVersionCode = device.clientVersionCode,
+                                    lastSeenEpochMs = device.lastSeenEpochMs,
+                                    os = device.os,
+                                    platform = device.platform,
+                                    deviceMake = device.deviceMake,
+                                    deviceModel = device.deviceModel,
+                                    cardPosX = device.cardPosX,
+                                    cardPosY = device.cardPosY,
+                                    cardSortOrder = device.cardSortOrder,
+                                    cardMenuOrder = device.cardMenuOrder,
+                                    tilePosX = device.tilePosX,
+                                    tilePosY = device.tilePosY,
+                                    tileSortOrder = device.tileSortOrder,
+                                    tileMenuOrder = device.tileMenuOrder
+                                )
+                            }
+                    },
+                    FileApexServices.settings.deviceOrderIds,
+                    DeviceOrderCoordinator.revisionEpochMs,
+                    com.fileapex.domain.demo.DemoModeState.isDemoModeActive,
+                    com.fileapex.domain.demo.DemoModeState.demoDeviceRows
+                ) { rows, _, _, isDemoActive, demoRows ->
+                    if (rows.isEmpty() && isDemoActive) {
+                        demoRows
+                    } else {
+                        DeviceOrderCoordinator.applySavedOrder(rows)
+                    }
                 }
-                .map { device ->
-                    DeviceListRow(
-                        deviceId = device.deviceId,
-                        deviceName = device.deviceName,
-                        online = presence.isDeviceOnline(device),
-                        appVersion = device.clientVersion.takeIf { it.isNotEmpty() },
-                        appVersionCode = device.clientVersionCode,
-                        lastSeenEpochMs = device.lastSeenEpochMs,
-                        os = device.os,
-                        platform = device.platform,
-                        deviceMake = device.deviceMake,
-                        deviceModel = device.deviceModel,
-                        cardPosX = device.cardPosX,
-                        cardPosY = device.cardPosY,
-                        cardSortOrder = device.cardSortOrder,
-                        cardMenuOrder = device.cardMenuOrder,
-                        tilePosX = device.tilePosX,
-                        tilePosY = device.tilePosY,
-                        tileSortOrder = device.tileSortOrder,
-                        tileMenuOrder = device.tileMenuOrder
-                    )
-                }
-        },
-        FileApexServices.settings.deviceOrderIds,
-        DeviceOrderCoordinator.revisionEpochMs,
-        com.fileapex.domain.demo.DemoModeState.isDemoModeActive,
-        com.fileapex.domain.demo.DemoModeState.demoDeviceRows
-    ) { rows, _, _, isDemoActive, demoRows ->
-        if (rows.isEmpty() && isDemoActive) {
-            demoRows
-        } else {
-            DeviceOrderCoordinator.applySavedOrder(rows)
+            } else {
+                emptyFlow()
+            }
         }
-    }
         .onEach {
             _isInitialLoadComplete.value = true
         }

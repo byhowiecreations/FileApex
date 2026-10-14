@@ -1,5 +1,6 @@
 package com.fileapex.domain.presence
 
+import com.fileapex.data.bulletin.BulletinPeerBackoff
 import com.fileapex.data.db.isDockerNode
 import com.fileapex.domain.notifications.NotificationCompanion
 import com.fileapex.domain.notifications.NotificationDebugLog
@@ -90,6 +91,9 @@ class PeerPresenceMonitor(
     /** deviceId to (verified on LAN, epoch ms the answer expires). */
     private val lanDirectVerdicts = ConcurrentHashMap<String, Pair<Boolean, Long>>()
     private val lastSweepWakeAtMs = AtomicLong(0L)
+    private val digestSkips = DigestSkipLog()
+    private val digestSupport = BulletinPeerBackoff(DIGEST_UNSUPPORTED_RETRY_MS, DIGEST_UNSUPPORTED_RETRY_MS)
+    private val digestClockSkewMs = ConcurrentHashMap<String, Long>()
     private val discoveredMdnsEndpoints = mutableMapOf<Pair<String, Int>, Long>()
     private val _reachabilityEpochMs = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val _onlineSnapshotEpochMs = MutableStateFlow(0L)
@@ -418,25 +422,44 @@ class PeerPresenceMonitor(
         } else {
             LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
         }
+        fun alreadyFresh(peer: PairedDeviceEntity): Boolean {
+            val isMetadataComplete = hasUsableEndpoint(peer) &&
+                peer.rootPath.isNotBlank() &&
+                peer.rootPath != "/"
+            return isMetadataComplete &&
+                !NotificationCompanion.isCompanion(peer.deviceId) &&
+                wasRecentlyReachable(peer.deviceId, freshnessThresholdMs)
+        }
+
+        suspend fun probe(peer: PairedDeviceEntity) {
+            if (TransferActivityGuard.isTransferActive()) return
+            if (alreadyFresh(peer)) return
+            primePeer(
+                peer,
+                includeDiscovery = includeDiscovery,
+                allowPassiveWait = allowPassiveWait,
+                discoveryBudgetMs = staleDiscoveryBudget
+            )
+        }
+
+        val digestSources = if (mode == SweepMode.LIGHT) pickDigestSources(orderedPeers) else emptyList()
+        if (digestSources.isNotEmpty()) {
+            coroutineScope {
+                digestSources.map { source -> async(Dispatchers.IO) { probe(source) } }.awaitAll()
+            }
+        }
+        val digestHints = if (digestSources.isEmpty()) {
+            emptyMap()
+        } else {
+            collectDigestHints(digestSources, freshnessThresholdMs)
+        }
+        val sourceIds = digestSources.map { it.deviceId }.toSet()
         coroutineScope {
-            orderedPeers.map { peer ->
+            orderedPeers.filter { it.deviceId !in sourceIds }.map { peer ->
                 async(Dispatchers.IO) {
                     if (TransferActivityGuard.isTransferActive()) return@async
-                    val isMetadataComplete = hasUsableEndpoint(peer) &&
-                        peer.rootPath.isNotBlank() &&
-                        peer.rootPath != "/"
-                    if (isMetadataComplete &&
-                        !NotificationCompanion.isCompanion(peer.deviceId) &&
-                        wasRecentlyReachable(peer.deviceId, freshnessThresholdMs)
-                    ) {
-                        return@async
-                    }
-                    primePeer(
-                        peer,
-                        includeDiscovery = includeDiscovery,
-                        allowPassiveWait = allowPassiveWait,
-                        discoveryBudgetMs = staleDiscoveryBudget
-                    )
+                    if (!alreadyFresh(peer) && digestAllowsSkip(peer, digestHints)) return@async
+                    probe(peer)
                 }
             }.awaitAll()
         }
@@ -448,6 +471,68 @@ class PeerPresenceMonitor(
         if (mode == SweepMode.FULL && !skipFcmDispatch) {
             maybeDispatchFcmWake()
         }
+    }
+
+    fun verifiedEpochsSnapshot(): Map<String, Long> = _reachabilityEpochMs.value
+
+    private fun pickDigestSources(orderedPeers: List<PairedDeviceEntity>): List<PairedDeviceEntity> {
+        if (orderedPeers.size < DIGEST_MIN_PEERS) return emptyList()
+        val now = TimeUtils.now()
+        return orderedPeers.asSequence()
+            .filter { it.publicKey.isNotBlank() && !it.isDockerNode() }
+            .filter { hasUsableEndpoint(it) && isDeviceOnline(it) }
+            .filter { !NotificationCompanion.isCompanion(it.deviceId) }
+            .filter { digestSupport.canAttempt(it.deviceId, now) }
+            .take(DIGEST_MAX_SOURCES)
+            .toList()
+    }
+
+    private suspend fun collectDigestHints(
+        sources: List<PairedDeviceEntity>,
+        freshnessThresholdMs: Long
+    ): Map<String, Long> {
+        val localId = com.fileapex.data.identity.loadLocalIdentity().deviceId
+        val hints = HashMap<String, Long>()
+        for (source in sources) {
+            if (!wasRecentlyReachable(source.deviceId, freshnessThresholdMs)) continue
+            val live = mutex.withLock { repository.getDevice(source.deviceId) } ?: source
+            val endpoint = resolveOutboundEndpoint(live) ?: continue
+            val stamp = PresenceDigests.newStamp()
+            val ask = PresenceDigests.buildAsk(localId, live, stamp, TimeUtils.now()) ?: continue
+            val startedAt = TimeUtils.now()
+            val result = cancellableCatching {
+                client.fetchPresenceDigest(
+                    endpoint.host,
+                    endpoint.port,
+                    ask,
+                    LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS
+                )
+            }
+            if (result.isFailure) continue
+            val reply = result.getOrNull()
+            if (reply == null) {
+                digestSupport.onFailure(source.deviceId, TimeUtils.now())
+                continue
+            }
+            val receivedAt = TimeUtils.now()
+            val opened = PresenceDigests.open(reply, live, stamp, localId) ?: continue
+            digestSupport.onSuccess(source.deviceId)
+            val halfTrip = (receivedAt - startedAt) / 2
+            digestClockSkewMs[source.deviceId] = receivedAt - halfTrip - opened.sentAtUtcMs
+            for (seen in opened.seen) {
+                hints.merge(seen.id, receivedAt - halfTrip - seen.ageMs) { a, b -> maxOf(a, b) }
+            }
+        }
+        return hints
+    }
+
+    private fun digestAllowsSkip(peer: PairedDeviceEntity, hints: Map<String, Long>): Boolean {
+        val reachedAt = hints[peer.deviceId] ?: return false
+        if (!TimeUtils.isWithinWindow(reachedAt, PresenceDigests.MAX_ENTRY_AGE_MS)) return false
+        if (!hasUsableEndpoint(peer) || !isDeviceOnline(peer)) return false
+        if (peer.rootPath.isBlank() || peer.rootPath == "/") return false
+        if (NotificationCompanion.isCompanion(peer.deviceId)) return false
+        return digestSkips.trySkip(peer.deviceId)
     }
 
     private suspend fun maybeBroadcastSelfIdentity() {
@@ -875,6 +960,7 @@ class PeerPresenceMonitor(
         for (id in deviceIds) {
             val trimmed = id.trim()
             if (trimmed.isNotEmpty()) {
+                digestSkips.directContact(trimmed)
                 val dev = repository.getDevice(trimmed)
                 if (dev != null && dev.lastKnownIp.isNotBlank() && dev.port > 0) {
                     repository.touchPeerLastSeen(trimmed, dev.lastKnownIp, dev.port, epochMs)
@@ -913,6 +999,9 @@ class PeerPresenceMonitor(
 
     companion object {
         const val OFFLINE_GRACE_MS = LanPresenceTiming.OFFLINE_GRACE_MS
+        private const val DIGEST_MIN_PEERS = 4
+        private const val DIGEST_UNSUPPORTED_RETRY_MS = 6 * 60 * 60_000L
+        private const val DIGEST_MAX_SOURCES = 2
         private const val SERVER_READY_ATTEMPTS = 25
         private const val LAN_DIRECT_HIT_TTL_MS = 30_000L
         private const val LAN_DIRECT_MISS_TTL_MS = 15_000L

@@ -154,8 +154,19 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = fileapexVersionCode.toInt()
         versionName = fileapexVersionName
-        ndk {
-            abiFilters += "arm64-v8a"
+        androidResources {
+            localeFilters += listOf("en", "es", "zh-rCN")
+        }
+    }
+
+    val isBundleBuild = providers.gradleProperty("bundleBuild").orNull == "true" ||
+        gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
+    splits {
+        abi {
+            isEnable = !isBundleBuild
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
 
@@ -216,6 +227,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+        jniLibs {
+            excludes += listOf("lib/x86/**", "lib/x86_64/**", "lib/mips/**", "lib/mips64/**", "lib/riscv64/**")
         }
     }
 
@@ -1408,9 +1422,14 @@ private fun Project.shipToCurrent(
                         "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then run assembleRelease."
                 )
             }
+            val isArm32 = apk.name.contains("armeabi-v7a", ignoreCase = true)
             val destName = when {
-                apk.name.contains("play", ignoreCase = true) -> "FileApex-v$appVersionName-play.apk"
-                else -> "FileApex-v$appVersionName.apk"
+                apk.name.contains("play", ignoreCase = true) ->
+                    if (isArm32) "FileApex-v$appVersionName-play-armeabi-v7a.apk" else "FileApex-v$appVersionName-play.apk"
+                apk.name.contains("fdroid", ignoreCase = true) ->
+                    if (isArm32) "FileApex-v$appVersionName-fdroid-armeabi-v7a.apk" else "FileApex-v$appVersionName-fdroid.apk"
+                else ->
+                    if (isArm32) "FileApex-v$appVersionName-armeabi-v7a.apk" else "FileApex-v$appVersionName.apk"
             }
             moveToCurrent(dest, apk, destName = destName, logger = logger)
         }
@@ -1553,13 +1572,6 @@ private fun Project.moveFlavorReleaseApkToCurrent(flavor: String) {
     check(apks.isNotEmpty()) { "No $flavor release APK in ${apkDir.absolutePath}" }
     val destDir = currentBuildsDest()
     destDir.mkdirs()
-    val destName = if (flavor.equals("play", ignoreCase = true)) {
-        "FileApex-v$fileapexVersionName-play.apk"
-    } else if (flavor.equals("fdroid", ignoreCase = true)) {
-        "FileApex-v$fileapexVersionName-fdroid.apk"
-    } else {
-        "FileApex-v$fileapexVersionName.apk"
-    }
     apks.forEach { apk ->
         if (apk.name.contains("unsigned", ignoreCase = true)) {
             error(
@@ -1567,6 +1579,14 @@ private fun Project.moveFlavorReleaseApkToCurrent(flavor: String) {
                     "Configure ~/AndroidStudioProjects/signed_files/FileApex/*.jks and " +
                     "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then rebuild."
             )
+        }
+        val isArm32 = apk.name.contains("armeabi-v7a", ignoreCase = true)
+        val destName = if (flavor.equals("play", ignoreCase = true)) {
+            if (isArm32) "FileApex-v$fileapexVersionName-play-armeabi-v7a.apk" else "FileApex-v$fileapexVersionName-play.apk"
+        } else if (flavor.equals("fdroid", ignoreCase = true)) {
+            if (isArm32) "FileApex-v$fileapexVersionName-fdroid-armeabi-v7a.apk" else "FileApex-v$fileapexVersionName-fdroid.apk"
+        } else {
+            if (isArm32) "FileApex-v$fileapexVersionName-armeabi-v7a.apk" else "FileApex-v$fileapexVersionName.apk"
         }
         moveToCurrent(destDir, apk, destName = destName, logger = logger)
     }
@@ -1616,12 +1636,18 @@ tasks.register("shipFdroidRelease") {
 tasks.register("shipPlayRelease") {
     group = "distribution"
     description = "Play release APK and Play AAB into current/"
-    dependsOn("assemblePlayRelease", "bundlePlayRelease")
-    mustRunAfter("movePlayReleaseAab", "verifyReleaseApkSigned")
+    dependsOn("assemblePlayRelease")
+    mustRunAfter("verifyReleaseApkSigned")
     outputs.upToDateWhen { false }
     doLast {
         moveFlavorReleaseApkToCurrent("play")
-        movePlayReleaseAabToCurrent(requirePresent = true)
+        exec {
+            commandLine(
+                rootProject.rootDir.resolve("gradlew").absolutePath,
+                ":composeApp:bundlePlayRelease",
+                "-PbundleBuild=true"
+            )
+        }
     }
 }
 

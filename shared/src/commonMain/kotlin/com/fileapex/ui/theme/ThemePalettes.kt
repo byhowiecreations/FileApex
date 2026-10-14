@@ -2,8 +2,6 @@ package com.fileapex.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-object CleanPalette
-
 object FluxGlassPalette {
     val backgroundTop = Color(0xFF0D1D22)
     val backgroundMid = Color(0xFF070B0E)

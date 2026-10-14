@@ -153,6 +153,29 @@ class FileApexClient(
         return json.decodeFromString(com.fileapex.security.tls.TlsPinAnnouncement.serializer(), response.body)
     }
 
+    /**
+     * Asks a paired peer which peers it has recently reached itself. Null when the peer has no such endpoint
+     * (older build). Throws on any other failure.
+     */
+    suspend fun fetchPresenceDigest(
+        host: String,
+        port: Int,
+        message: com.fileapex.domain.presence.PresenceDigestMessage,
+        timeoutMs: Long = PEER_STATE_TIMEOUT_MS
+    ): com.fileapex.domain.presence.PresenceDigestMessage? {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/presence/digest",
+            body = json.encodeToString(com.fileapex.domain.presence.PresenceDigestMessage.serializer(), message),
+            contentType = "application/json",
+            timeoutMs = timeoutMs
+        )
+        if (response.statusCode == 404) return null
+        requireSuccess(response, "Presence digest failed (${response.statusCode})")
+        return json.decodeFromString(com.fileapex.domain.presence.PresenceDigestMessage.serializer(), response.body)
+    }
+
     /** [summaryOnly] asks for the quick subset; peers that predate it ignore it and send everything. */
     suspend fun fetchDeviceDiagnostics(host: String, port: Int, summaryOnly: Boolean = false): PeerDeviceDiagnostics {
         val response = boundGet(
@@ -1181,6 +1204,7 @@ class FileApexClient(
         check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
         val totalSize = SystemFileSystem.metadataOrNull(source)?.size?.coerceAtLeast(0L) ?: 0L
         val txTimestamp = transactionTimestampEpochMs ?: TimeUtils.now()
+        val fileSha256 = com.fileapex.platform.fileDigest(localSourcePath, -1L).orEmpty()
         val segments = TransferRuntime.segmentsFor(totalSize)
         if (!backup && segments > 1 && transferCapabilities(host, port).segmentedUpload) {
             uploadSegmented(
@@ -1191,6 +1215,7 @@ class FileApexClient(
                 segments = segments,
                 transactionId = transactionId?.takeIf { it.isNotBlank() } ?: generateDeviceId(),
                 transactionTimestamp = txTimestamp,
+                sha256 = fileSha256,
                 onProgress = onProgress
             ) { start, end, pathWithQuery, onSent ->
                 peerHttpUploadFromFile(
@@ -1236,7 +1261,8 @@ class FileApexClient(
                                 totalSize = totalSize,
                                 transactionId = txId,
                                 transactionTimestamp = txTimestamp,
-                                backup = backup
+                                backup = backup,
+                                sha256 = fileSha256
                             )
                         ),
                         contentType = "application/octet-stream",
@@ -1451,6 +1477,7 @@ class FileApexClient(
         segments: Int,
         transactionId: String,
         transactionTimestamp: Long,
+        sha256: String = "",
         onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?,
         sendRange: suspend (start: Long, end: Long, pathWithQuery: String, onSent: (Long) -> Unit) -> PeerBoundHttpResponse?
     ) {
@@ -1517,7 +1544,10 @@ class FileApexClient(
                     remoteTargetPath = remoteTargetPath,
                     totalSize = totalSize,
                     transactionId = transactionId,
-                    extra = mapOf(TransferResumeProtocol.TIMESTAMP_QUERY to transactionTimestamp.toString())
+                    extra = buildMap {
+                        put(TransferResumeProtocol.TIMESTAMP_QUERY, transactionTimestamp.toString())
+                        if (sha256.isNotBlank()) put(TransferResumeProtocol.SHA256_QUERY, sha256)
+                    }
                 ),
                 body = "",
                 contentType = "text/plain",
@@ -1841,7 +1871,8 @@ class FileApexClient(
         totalSize: Long? = null,
         transactionId: String = "",
         transactionTimestamp: Long = 0L,
-        backup: Boolean = false
+        backup: Boolean = false,
+        sha256: String = ""
     ): String {
         val params = buildMap {
             put("targetPath", remoteTargetPath)
@@ -1857,6 +1888,9 @@ class FileApexClient(
             }
             if (transactionTimestamp > 0L) {
                 put(TransferResumeProtocol.TIMESTAMP_QUERY, transactionTimestamp.toString())
+            }
+            if (sha256.isNotBlank()) {
+                put(TransferResumeProtocol.SHA256_QUERY, sha256)
             }
         }
         return queryPath(

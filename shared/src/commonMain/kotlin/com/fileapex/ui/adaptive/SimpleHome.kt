@@ -1217,6 +1217,8 @@ private fun SimpleClipboardRow(device: DeviceListRow) {
 
 private val NOTIFICATION_CHECK_RETRY_MS = longArrayOf(1_000L, 2_000L, 4_000L, 8_000L, 15_000L)
 
+private const val NOTIFICATION_PROMPT_POLL_MAX = 40
+
 @Composable
 private fun SimpleNotificationSection(device: DeviceListRow) {
     val scope = rememberCoroutineScope()
@@ -1252,10 +1254,14 @@ private fun SimpleNotificationSection(device: DeviceListRow) {
     var unreachable by remember(device.deviceId) { mutableStateOf(false) }
     var needsUpdate by remember(device.deviceId) { mutableStateOf(false) }
 
-    LaunchedEffect(device.deviceId, device.online, promptSent, reachedAt, foregroundedAt) {
-        if (!NotificationSyncFeature.ENABLED || !device.online) return@LaunchedEffect
+    val appInForeground by com.fileapex.domain.presence.PresenceForegroundRefresh.isForeground.collectAsState()
+
+    LaunchedEffect(device.deviceId, device.online, promptSent, reachedAt, foregroundedAt, appInForeground) {
+        // A stopped Activity keeps its composition alive: without this the check keeps running while hidden.
+        if (!NotificationSyncFeature.ENABLED || !device.online || !appInForeground) return@LaunchedEffect
         val entity = FileApexServices.deviceRepository.getDevice(device.deviceId) ?: return@LaunchedEffect
         var failures = 0
+        var promptPolls = 0
         while (true) {
             when (val result = NotificationBroadcaster.checkPhone(entity)) {
                 PhoneNotificationState.NeedsUpdate -> {
@@ -1268,10 +1274,10 @@ private fun SimpleNotificationSection(device: DeviceListRow) {
                     // The first calls after a wake often fail before the network is back: retry, never report "update".
                     com.fileapex.security.tls.TlsPinAnnouncer.nudge(device.deviceId)
                     if (failures >= NOTIFICATION_CHECK_RETRY_MS.size) {
-                        // Keep trying: the phone may still be updating or waking, and a pin exchange may be pending.
+                        // Restarts when the phone is verified reachable again or the app returns to the front.
                         unreachable = true
                         checked = true
-                        delay(NOTIFICATION_CHECK_RETRY_MS.last())
+                        break
                     } else {
                         delay(NOTIFICATION_CHECK_RETRY_MS[failures++])
                     }
@@ -1282,7 +1288,7 @@ private fun SimpleNotificationSection(device: DeviceListRow) {
                     unreachable = false
                     checked = true
                     val done = result.status.supported && result.status.enabled && result.status.accessGranted
-                    if (done || !promptSent) break
+                    if (done || !promptSent || ++promptPolls > NOTIFICATION_PROMPT_POLL_MAX) break
                     delay(3_000)
                 }
             }

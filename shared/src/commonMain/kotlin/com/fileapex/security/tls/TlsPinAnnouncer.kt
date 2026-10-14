@@ -1,6 +1,7 @@
 package com.fileapex.security.tls
 
 import com.fileapex.data.db.PairedDeviceEntity
+import com.fileapex.data.bulletin.BulletinPeerBackoff
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.network.FileApexClient
@@ -31,13 +32,23 @@ class TlsPinAnnouncer(
     private var job: Job? = null
     private val nextAttempt = HashMap<String, Long>()
     private val offeredPins = HashMap<String, String>()
+    private val nudgeBackoff = BulletinPeerBackoff(initialDelayMs = NUDGE_BASE_GAP_MS, maxDelayMs = NUDGE_MAX_GAP_MS)
     private val lock = kotlinx.coroutines.sync.Mutex()
 
-    /** A caller just failed to reach [deviceId]: drop its back-off and try the pin exchange now. */
+    /** A caller just failed to reach [deviceId]: drop its back-off and retry that one peer, at most once per back-off step. */
     fun nudge(deviceId: String) {
         scope.launch {
-            lock.withLock { nextAttempt.remove(deviceId) }
-            cancellableCatching { tick() }.onFailure { if (it is CancellationException) throw it }
+            val permitted = lock.withLock {
+                val allowed = nudgeBackoff.canAttempt(deviceId, now())
+                if (allowed) {
+                    nudgeBackoff.onFailure(deviceId, now())
+                    nextAttempt.remove(deviceId)
+                }
+                allowed
+            }
+            if (!permitted) return@launch
+            cancellableCatching { lock.withLock { tickLocked(onlyDeviceId = deviceId) } }
+                .onFailure { if (it is CancellationException) throw it }
         }
     }
 
@@ -46,34 +57,60 @@ class TlsPinAnnouncer(
         if (job?.isActive == true) return
         job = scope.launch {
             while (isActive) {
-                cancellableCatching { tick() }
-                    .onFailure { error -> if (error is CancellationException) throw error }
-                delay(TICK_MS)
+                val delayMs = cancellableCatching { tick() }
+                    .getOrElse { error ->
+                        if (error is CancellationException) throw error
+                        TICK_MS
+                    }
+                val inForeground = com.fileapex.domain.presence.PresenceForegroundRefresh.isForeground.value
+                val actualDelay = if (!inForeground) maxOf(delayMs, STANDBY_TICK_MS) else delayMs
+                delay(actualDelay)
             }
         }
     }
 
-    internal suspend fun tick() = lock.withLock { tickLocked() }
+    internal suspend fun tick(): Long = lock.withLock { tickLocked() }
 
-    private suspend fun tickLocked() {
-        fillMissingKeys()
-        if (LocalTlsInfo.pin.isEmpty() || LocalTlsInfo.port <= 0) return
+    private suspend fun tickLocked(onlyDeviceId: String? = null): Long {
+        val keysNeeded = fillMissingKeys(onlyDeviceId)
+        if (LocalTlsInfo.pin.isEmpty() || LocalTlsInfo.port <= 0) return IDLE_TICK_MS
         val online = onlineDeviceIds()
+        var announcementsNeeded = false
+        var shortestDelay = IDLE_TICK_MS
         for (device in repository.listDevices()) {
-            if (device.tlsPin.isNotEmpty() || device.deviceId !in online) continue
+            if (onlyDeviceId != null && device.deviceId != onlyDeviceId) continue
+            if (device.tlsPin.isNotEmpty()) {
+                nudgeBackoff.onSuccess(device.deviceId)
+                continue
+            }
+            if (device.deviceId !in online) continue
             if (!NetworkUtils.isUsableLanIpv4(device.lastKnownIp) || device.port <= 0) continue
-            if (now() < (nextAttempt[device.deviceId] ?: 0L)) continue
+            announcementsNeeded = true
+            val dueIn = (nextAttempt[device.deviceId] ?: 0L) - now()
+            if (dueIn > 0L) {
+                shortestDelay = minOf(shortestDelay, dueIn)
+                continue
+            }
             val delayMs = if (device.publicKey.isBlank()) offerFingerprint(device) else announce(device)
             nextAttempt[device.deviceId] = now() + delayMs
+            shortestDelay = minOf(shortestDelay, delayMs)
+        }
+        return if (keysNeeded || announcementsNeeded) {
+            maxOf(TICK_MS, shortestDelay)
+        } else {
+            IDLE_TICK_MS
         }
     }
 
     /** Without a peer's key none of its introductions can be opened; stored only when the id is derived from it. */
-    private suspend fun fillMissingKeys() {
+    private suspend fun fillMissingKeys(onlyDeviceId: String? = null): Boolean {
         val online = onlineDeviceIds()
+        var needed = false
         for (device in repository.listDevices()) {
+            if (onlyDeviceId != null && device.deviceId != onlyDeviceId) continue
             if (device.publicKey.isNotBlank() || device.deviceId !in online) continue
             if (!NetworkUtils.isUsableLanIpv4(device.lastKnownIp) || device.port <= 0) continue
+            needed = true
             val slot = "key:${device.deviceId}"
             if (now() < (nextAttempt[slot] ?: 0L)) continue
             val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }
@@ -83,6 +120,7 @@ class TlsPinAnnouncer(
                 repository.recordBoundPublicKey(device.deviceId, state.publicKey)
             nextAttempt[slot] = now() + if (stored) DONE_MS else RETRY_MS
         }
+        return needed
     }
 
     private suspend fun announce(device: PairedDeviceEntity): Long {
@@ -129,6 +167,10 @@ class TlsPinAnnouncer(
         fun nudge(deviceId: String) { current?.nudge(deviceId) }
 
         private const val TICK_MS = 20_000L
+        private const val IDLE_TICK_MS = 300_000L
+        private const val STANDBY_TICK_MS = 300_000L
+        private const val NUDGE_BASE_GAP_MS = 60_000L
+        private const val NUDGE_MAX_GAP_MS = 30 * 60_000L
         private const val BOUND_KEY_RETRY_MS = 1_000L
         private const val RETRY_MS = 60_000L
         private const val DONE_MS = 10 * 60_000L
@@ -136,5 +178,3 @@ class TlsPinAnnouncer(
         private val PIN_FORMAT = Regex("[0-9a-f]{64}")
     }
 }
-
-

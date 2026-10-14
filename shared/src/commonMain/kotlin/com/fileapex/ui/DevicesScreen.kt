@@ -1631,45 +1631,6 @@ private fun DeviceGridCell(
 }
 
 @Composable
-private fun HomeTopBar(
-    onExitClick: () -> Unit,
-    headerActions: @Composable RowScope.() -> Unit = {},
-    onToggleLayoutView: (() -> Unit)? = null,
-    onOpenNotes: (() -> Unit)? = null,
-    onOpenTransferQueue: (() -> Unit)? = null
-) {
-    val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme.traits.glassChrome
-    val allowLayoutView = onToggleLayoutView != null && !currentTheme.traits.orbitalHome
-    if (isCustomGlass) {
-        FluxGlassHeader(
-            primaryTitle = "FileApex",
-            secondaryTitle = stringRes("paired_devices_title"),
-            showLayoutView = allowLayoutView,
-            onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
-            showCloseService = true,
-            onCloseService = onExitClick,
-            onOpenNotes = onOpenNotes,
-            onOpenTransferQueue = onOpenTransferQueue,
-            actions = headerActions
-        )
-    } else {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            CompactTealStrip(showExitPower = true, onExitClick = onExitClick)
-            CompactDevicesTitleBand(
-                actions = headerActions,
-                showLayoutView = allowLayoutView,
-                onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
-                showCloseService = true,
-                onCloseService = onExitClick,
-                onOpenNotes = onOpenNotes,
-                onOpenTransferQueue = onOpenTransferQueue
-            )
-        }
-    }
-}
-
-@Composable
 fun FileApexBottomBar(
     selected: HomeTab,
     onMainHomeScreen: Boolean = true,

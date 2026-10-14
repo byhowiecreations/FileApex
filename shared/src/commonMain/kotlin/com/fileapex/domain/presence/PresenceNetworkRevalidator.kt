@@ -57,6 +57,8 @@ object PresenceNetworkRevalidator {
             return
         }
 
+        // No LAN: stop announcing. The next transition onto a LAN registers the service again.
+        com.fileapex.network.FileApexMdnsAdvertiser.stop()
         DriveRelayCoordinator.onLeftLocalNetwork()
         FileApexServices.presenceMonitor.runSingleShotRevalidation()
         cancellableCatching { FileApexServices.transferQueue.drainEligible() }.onFailure { error ->

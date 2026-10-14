@@ -146,18 +146,3 @@ private fun deviceIconDescriptionKey(kind: DeviceIconKind): String = when (kind)
     DeviceIconKind.AndroidPhone -> "icon_android_phone"
     DeviceIconKind.GenericDesktop -> "icon_desktop"
 }
-
-@Composable
-fun DeviceEntryIconLarge(
-    row: DeviceListRow,
-    modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.primary,
-    iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
-) {
-    DeviceEntryIcon(
-        row = row,
-        modifier = modifier,
-        tint = tint,
-        iconStyle = iconStyle
-    )
-}

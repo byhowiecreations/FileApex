@@ -7,11 +7,13 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.platform.androidApplicationContextOrNull
 import com.fileapex.util.NetworkUtils
+import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
 
 actual object FileApexMdnsBrowser {
     private var nsdManager: NsdManager? = null
@@ -21,69 +23,76 @@ actual object FileApexMdnsBrowser {
     private var callback: ((String, Int, String?) -> Unit)? = null
     private val resolveExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val discoveryRestartAttempts = AtomicInteger(0)
-    @Volatile
-    private var lastProbeEpochMs = 0L
+    private var lastWindowStartMs = 0L
+    private var restartBudgetStartMs = 0L
+    private var restartCount = 0
     private var pendingRestartRunnable: Runnable? = null
+    private var pendingWindowEndRunnable: Runnable? = null
+    private val resolvedThisWindow: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    @Synchronized
     actual fun start(onPeerDiscovered: (host: String, port: Int, hintedDeviceId: String?) -> Unit) {
         stop()
         callback = onPeerDiscovered
-        discoveryRestartAttempts.set(0)
-        beginDiscovery()
+        openWindow()
     }
 
+    @Synchronized
     actual fun stop(fast: Boolean) {
         pendingRestartRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingRestartRunnable = null
         releaseMulticastLock()
-        val manager = nsdManager
-        val listener = discoveryListener
-        if (manager != null && listener != null) {
-            runCatching { manager.stopServiceDiscovery(listener) }
-        }
+        closeWindow()
         nsdManager = null
-        discoveryListener = null
         callback = null
     }
 
+    @Synchronized
     actual fun requestProbe() {
-        val manager = nsdManager ?: run {
-            val savedCallback = callback
-            if (savedCallback != null) {
-                start(savedCallback)
-            }
-            return
+        if (callback == null || discoveryListener != null) return
+        val gapMs = if (PresenceForegroundRefresh.isForeground.value) {
+            PROBE_FOREGROUND_GAP_MS
+        } else {
+            PROBE_BACKGROUND_GAP_MS
         }
-        val now = System.currentTimeMillis()
-        if (now - lastProbeEpochMs < PROBE_COALESCE_MS) return
-        lastProbeEpochMs = now
-        androidApplicationContextOrNull()?.let { acquireLegacyMulticastLockIfNeeded(it) }
-        val previous = discoveryListener ?: return
-        // NsdManager rejects a listener that is still registered, so the new browse gets its own.
-        val fresh = createDiscoveryListener()
-        discoveryListener = fresh
-        runCatching { manager.stopServiceDiscovery(previous) }
-        runCatching {
-            manager.discoverServices(FileApexMdns.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, fresh)
-        }.onFailure { error ->
-            println("FileApexMdnsBrowser: requestProbe failed - ${error.message}")
-            scheduleDiscoveryRestart()
-        }
+        if (TimeUtils.now() - lastWindowStartMs < gapMs) return
+        openWindow()
     }
 
-    private fun beginDiscovery() {
+    @Synchronized
+    private fun openWindow() {
+        if (discoveryListener != null) return
         val context = androidApplicationContextOrNull() ?: return
         val manager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
         acquireLegacyMulticastLockIfNeeded(context)
         nsdManager = manager
+        lastWindowStartMs = TimeUtils.now()
+        resolvedThisWindow.clear()
         val listener = createDiscoveryListener()
         discoveryListener = listener
         runCatching {
             manager.discoverServices(FileApexMdns.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
             println("FileApexMdnsBrowser: discoverServices failed - ${error.message}")
+            discoveryListener = null
             scheduleDiscoveryRestart()
+            return
+        }
+        val windowEnd = Runnable { closeWindow() }
+        pendingWindowEndRunnable = windowEnd
+        mainHandler.postDelayed(windowEnd, DISCOVERY_WINDOW_MS)
+    }
+
+    @Synchronized
+    private fun closeWindow() {
+        pendingWindowEndRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingWindowEndRunnable = null
+        val manager = nsdManager
+        val listener = discoveryListener
+        discoveryListener = null
+        if (manager != null && listener != null) {
+            runCatching { manager.stopServiceDiscovery(listener) }
+                .onFailure { println("FileApexMdnsBrowser: stopServiceDiscovery failed - ${it.message}") }
         }
     }
 
@@ -126,13 +135,13 @@ actual object FileApexMdnsBrowser {
     private fun createDiscoveryListener(): NsdManager.DiscoveryListener {
         return object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {
-                discoveryRestartAttempts.set(0)
                 println("FileApexMdnsBrowser: discovery started")
             }
 
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 val manager = nsdManager ?: return
                 if (!serviceInfo.serviceName.startsWith(FileApexMdns.SERVICE_NAME_PREFIX)) return
+                if (!resolvedThisWindow.add(serviceInfo.serviceName)) return
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     resolveWithServiceInfoCallback(manager, serviceInfo)
                 } else {
@@ -144,29 +153,38 @@ actual object FileApexMdnsBrowser {
             override fun onDiscoveryStopped(serviceType: String) = Unit
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
                 println("FileApexMdnsBrowser: startDiscoveryFailed code=$errorCode")
+                synchronized(FileApexMdnsBrowser) { discoveryListener = null }
                 scheduleDiscoveryRestart()
             }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
         }
     }
 
+    @Synchronized
     private fun scheduleDiscoveryRestart() {
-        val attempt = discoveryRestartAttempts.incrementAndGet()
-        if (attempt > MAX_DISCOVERY_RESTART_ATTEMPTS) {
+        val now = TimeUtils.now()
+        if (now - restartBudgetStartMs > RESTART_BUDGET_WINDOW_MS) {
+            restartBudgetStartMs = now
+            restartCount = 0
+        }
+        restartCount++
+        if (restartCount > MAX_DISCOVERY_RESTART_ATTEMPTS) {
             println("FileApexMdnsBrowser: discovery restart budget exhausted")
             return
         }
-        val delayMs = DISCOVERY_RESTART_BASE_MS * attempt
+        val attempt = restartCount
         pendingRestartRunnable?.let { mainHandler.removeCallbacks(it) }
         val runnable = Runnable {
-            pendingRestartRunnable = null
-            val savedCallback = callback ?: return@Runnable
-            println("FileApexMdnsBrowser: restarting discovery (attempt $attempt)")
-            stop()
-            start(savedCallback)
+            synchronized(FileApexMdnsBrowser) {
+                pendingRestartRunnable = null
+                if (callback != null) {
+                    println("FileApexMdnsBrowser: restarting discovery (attempt $attempt)")
+                    openWindow()
+                }
+            }
         }
         pendingRestartRunnable = runnable
-        mainHandler.postDelayed(runnable, delayMs)
+        mainHandler.postDelayed(runnable, DISCOVERY_RESTART_BASE_MS * attempt)
     }
 
     // Pre-API 34 resolve path on devices below Android 14.
@@ -238,8 +256,10 @@ actual object FileApexMdnsBrowser {
     }
 
     private const val MAX_DISCOVERY_RESTART_ATTEMPTS = 5
-    /** Several peers asking for a probe at once need one browse, not one each. */
-    private const val PROBE_COALESCE_MS = 2_000L
+    private const val RESTART_BUDGET_WINDOW_MS = 10 * 60_000L
+    private const val DISCOVERY_WINDOW_MS = 15_000L
+    private const val PROBE_FOREGROUND_GAP_MS = 5_000L
+    private const val PROBE_BACKGROUND_GAP_MS = 60_000L
     private const val DISCOVERY_RESTART_BASE_MS = 2_000L
     private const val LEGACY_MULTICAST_BURST_MS = 10_000L
 }

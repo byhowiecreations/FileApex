@@ -16,6 +16,7 @@ import com.fileapex.network.routes.registerDiagnosticRoutes
 import com.fileapex.network.routes.registerFileRoutes
 import com.fileapex.network.routes.registerIdentityRoutes
 import com.fileapex.network.routes.registerNotificationRoutes
+import com.fileapex.network.routes.registerPresenceRoutes
 import com.fileapex.network.routes.registerTlsRoutes
 import com.fileapex.security.tls.TlsTransportPolicy
 import com.fileapex.util.NetworkUtils
@@ -201,6 +202,7 @@ class FileApexServer(
                     registerDiagnosticRoutes(this@FileApexServer)
                     registerNotificationRoutes(this@FileApexServer)
                     registerTlsRoutes(this@FileApexServer)
+                    registerPresenceRoutes(this@FileApexServer)
                 }
             }.start(wait = false)
 

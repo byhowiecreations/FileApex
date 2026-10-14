@@ -162,6 +162,7 @@ object TransferResumeProtocol {
     const val TRANSACTION_ID_QUERY = "txId"
     const val TIMESTAMP_QUERY = "txTimestamp"
     const val SENDER_DEVICE_ID_QUERY = "senderId"
+    const val SHA256_QUERY = "sha256"
     const val MAX_ATTEMPTS = 4
     const val RETRY_DELAY_MS = 750L
 

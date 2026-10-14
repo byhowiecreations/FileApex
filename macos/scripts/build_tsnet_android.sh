@@ -41,5 +41,5 @@ sdnotify syslog syspolicy wakeonlan webbrowser unixsocketidentity identityfedera
 remoteconfig runtimemetrics clientmetrics netlog logtail portlist"
 TAGS=""
 for feature in $OMIT; do TAGS="$TAGS,ts_omit_$feature"; done
-"$GOBIN/gomobile" bind -target android/arm64 -androidapi 26 -tags "${TAGS#,}" -ldflags "$LDFLAGS" -o "$OUT" .
+"$GOBIN/gomobile" bind -target android/arm,android/arm64 -androidapi 26 -tags "${TAGS#,}" -ldflags "$LDFLAGS" -o "$OUT" .
 echo "Built $OUT"

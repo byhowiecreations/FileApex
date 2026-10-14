@@ -305,6 +305,15 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.BadRequest, reason)
                 return@cancellableCatching
             }
+            val expectedSha256 = call.request.queryParameters[TransferResumeProtocol.SHA256_QUERY]?.trim().orEmpty()
+            if (expectedSha256.isNotBlank()) {
+                val actualSha256 = com.fileapex.platform.fileDigest(partPath, -1L)
+                if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                    server.onLog("upload checksum mismatch expected=$expectedSha256 got=$actualSha256 path=$partPath", null)
+                    call.respond(HttpStatusCode.BadRequest, "checksum_mismatch")
+                    return@cancellableCatching
+                }
+            }
             val finalPath = SocketFileStreamer.finalizePart(partPath, targetPathStr, overwrite = backup)
             if (txId.isNotBlank()) {
                 TransferTransactionJournal.recordCompleted(
@@ -454,6 +463,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             val target = resolveSegmentTarget(server, call) ?: return@cancellableCatching
             val txTimestamp = call.request.queryParameters[TransferResumeProtocol.TIMESTAMP_QUERY]?.toLongOrNull()
                 ?: com.fileapex.util.TimeUtils.now()
+            var checksumFailed = false
             val finalPath = segmentFinalizeMutex.withLock {
                 if (target.txId.isNotBlank() &&
                     TransferTransactionJournal.findCompleted(target.txId, target.senderId, target.totalSize) != null
@@ -464,23 +474,35 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                     val ranges = RangeLedger.read(target.partPath, target.totalSize)
                     val onDisk = SocketFileStreamer.fileLength(target.partPath)
                     if (!TransferRanges.covers(ranges, target.totalSize) || onDisk != target.totalSize) {
-                        null
-                    } else {
-                        val finalized = SocketFileStreamer.finalizePart(target.partPath, target.resolvedPath)
-                        RangeLedger.delete(target.partPath)
-                        if (target.txId.isNotBlank()) {
-                            TransferTransactionJournal.recordCompleted(
-                                transactionId = target.txId,
-                                senderDeviceId = target.senderId,
-                                targetPath = target.resolvedPath,
-                                finalPath = finalized,
-                                byteSize = target.totalSize,
-                                timestampEpochMs = txTimestamp
-                            )
-                        }
-                        finalized
+                        return@withContext null
                     }
+                    val expectedSha256 = call.request.queryParameters[TransferResumeProtocol.SHA256_QUERY]?.trim().orEmpty()
+                    if (expectedSha256.isNotBlank()) {
+                        val actualSha256 = com.fileapex.platform.fileDigest(target.partPath, -1L)
+                        if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                            server.onLog("upload-complete checksum mismatch path=${target.partPath} expected=$expectedSha256 got=$actualSha256", null)
+                            checksumFailed = true
+                            return@withContext null
+                        }
+                    }
+                    val finalized = SocketFileStreamer.finalizePart(target.partPath, target.resolvedPath)
+                    RangeLedger.delete(target.partPath)
+                    if (target.txId.isNotBlank()) {
+                        TransferTransactionJournal.recordCompleted(
+                            transactionId = target.txId,
+                            senderDeviceId = target.senderId,
+                            targetPath = target.resolvedPath,
+                            finalPath = finalized,
+                            byteSize = target.totalSize,
+                            timestampEpochMs = txTimestamp
+                        )
+                    }
+                    finalized
                 }
+            }
+            if (checksumFailed) {
+                call.respond(HttpStatusCode.BadRequest, "checksum_mismatch")
+                return@cancellableCatching
             }
             when {
                 finalPath == null -> {

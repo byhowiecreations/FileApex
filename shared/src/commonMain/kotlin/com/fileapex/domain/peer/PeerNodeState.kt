@@ -1,5 +1,7 @@
 package com.fileapex.domain.peer
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import com.fileapex.data.db.PairedDeviceEntity
 
@@ -9,19 +11,23 @@ import com.fileapex.data.db.PairedDeviceEntity
  * [deviceId] is the immutable primary key. [deviceName] and network fields are mutable;
  * the latest payload for a given [deviceId] wins.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class PeerNodeState(
     val deviceId: String,
     val deviceName: String,
     val ipAddress: String = "",
-    /** Legacy wire field — read only for backward compatibility. */
+    /** Legacy wire field, read only for backward compatibility; an empty value is not sent. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val lastKnownIp: String = "",
     val port: Int,
     val clientVersion: String = "",
-    /** Legacy wire field — read only for backward compatibility. */
+    /** Legacy wire field, read only for backward compatibility; an empty value is not sent. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val appVersion: String = "",
     val clientVersionCode: Int = 0,
-    /** Legacy wire field — read only for backward compatibility. */
+    /** Legacy wire field, read only for backward compatibility; zero is not sent. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val appVersionCode: Int = 0,
     val platform: String = "",
     /** OS slug: android, macos, windows, linux. */
