@@ -1,0 +1,47 @@
+# Copy the keys you need to ~/.gradle/gradle.properties (Windows: C:\Users\<you>\.gradle\gradle.properties).
+# That file is outside the repo and is read by every Gradle build of your user, so:
+#   - put ONLY fileapex.* keys there; never org.gradle.*, android.*, kotlin.* (they would change your other projects),
+#   - never commit it. The repo's gradle.properties is tracked and secret-free.
+# Gradle precedence: -P on the command line, then ~/.gradle/gradle.properties, then the repo file.
+#
+# App version lives in committed version.md (name= / code=).
+
+# Google OAuth: two GCC client types, different roles:
+#
+# WEB client (type "Web application"), required for Android Credential Manager.
+#   The client id is a public identifier. The secret is private and not used on Android.
+#   Mac falls back to this id only when no Desktop client is configured, and then requires the
+#   Web client_secret JSON in json/ (see docs/gcp-mac-oauth-setup.md).
+fileapex.google.web.client.id=
+fileapex.google.web.client.secret=
+#
+# DESKTOP client (recommended for Mac), GCC "Desktop" OAuth client; PKCE loopback.
+# Download JSON from GCP → json/ (build auto-reads installed.client_id), or set manually:
+# fileapex.google.desktop.client.id=
+# fileapex.google.desktop.client.secret=
+
+# Firebase client config (Firebase Console → Project settings → Your apps → Android).
+# These are identifiers that ship inside the app, but keep them out of git anyway.
+fileapex.firebase.project.id=
+fileapex.firebase.api.key=
+# Dedicated Browser/Desktop API key without Android SHA-1 restriction:
+fileapex.firebase.desktop.api.key=
+fileapex.firebase.application.id=
+
+# Firebase Admin SDK service account JSON (gitignored json/ folder at project root). Private.
+fileapex.firebase.service.account.json=
+
+# Optional per-host JDK override for gradlew (the repo file already has defaults for macOS and Windows).
+# Linux: scripts/build_linux.sh downloads Temurin 21; build the Linux packages with that script,
+# not a distro JDK, or the .deb/.rpm depend on libraries Debian and Fedora do not have.
+# fileapex.java.home.linux=
+
+# Android SDK: copy to local.properties (gitignored), one path per platform:
+#   sdk.dir.macos=
+#   sdk.dir.windows=
+
+# Optional: also copy each shipped Windows .exe here (UNC paths need doubled backslashes).
+# fileapex.backup.dir=
+
+# Optional: Inno Setup compression threads. ISCC is 32-bit; set 1 if packageInnoExe fails with "Out of memory".
+# fileapex.inno.threads=1

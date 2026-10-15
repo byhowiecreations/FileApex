@@ -43,6 +43,12 @@ if not defined JAVA_HOME (
       if /I "%%~A"=="fileapex.java.home.windows" set "FILEAPEX_JAVA_HOME=%%~B"
     )
   )
+  @rem User-level file overrides the tracked project file.
+  if exist "%USERPROFILE%\.gradle\gradle.properties" (
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%USERPROFILE%\.gradle\gradle.properties") do (
+      if /I "%%~A"=="fileapex.java.home.windows" set "FILEAPEX_JAVA_HOME=%%~B"
+    )
+  )
   if defined FILEAPEX_JAVA_HOME (
     set "JAVA_HOME=!FILEAPEX_JAVA_HOME!"
   ) else if exist "C:\Program Files\Java\jdk-21\bin\java.exe" (

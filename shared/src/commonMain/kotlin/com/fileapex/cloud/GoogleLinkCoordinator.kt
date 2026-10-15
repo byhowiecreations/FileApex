@@ -232,7 +232,7 @@ object GoogleLinkCoordinator {
     suspend fun linkWithGoogleIdToken(idToken: String, emailHint: String?): GoogleAuthSession {
         gate.withLock {
             require(CloudAuthBackend.isConfigured()) {
-                "Set fileapex.google.web.client.id in gradle.properties (Google Web OAuth client ID)"
+                "Set fileapex.google.web.client.id in ~/.gradle/gradle.properties (Google Web OAuth client ID)"
             }
             require(idToken.isNotBlank()) { "Missing Google ID token" }
             _status.value = "Signing in…"

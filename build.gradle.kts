@@ -64,3 +64,41 @@ tasks.register("verifyGitExecutableScripts") {
         logger.lifecycle("Git index executable bits OK for ${gitExecutableScriptPaths.size} paths")
     }
 }
+
+// The root gradle.properties is tracked, so fail loudly if someone puts a secret in it.
+// Private values belong in ~/.gradle/gradle.properties (see gradle.user.properties.example).
+tasks.register("verifyNoSecretsInTrackedProperties") {
+    group = "verification"
+    description = "Fail if the tracked gradle.properties contains secret-like keys or values"
+    val propsFile = rootProject.file("gradle.properties")
+    doLast {
+        if (!propsFile.isFile) return@doLast
+        val badKeyParts = listOf(
+            "secret", "api.key", "client.id", "password", "token", "private", "service.account",
+        )
+        val badValueParts = listOf("AIza", "GOCSPX-", "BEGIN PRIVATE KEY", "-----BEGIN")
+        val bad = mutableListOf<String>()
+        propsFile.readLines().forEachIndexed { index, raw ->
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith("!")) return@forEachIndexed
+            val key = line.substringBefore('=').trim().lowercase()
+            val value = line.substringAfter('=', "")
+            if (badKeyParts.any { key.contains(it) } || badValueParts.any { value.contains(it) }) {
+                bad += "line ${index + 1}: $key"
+            }
+        }
+        check(bad.isEmpty()) {
+            buildString {
+                appendLine("The tracked gradle.properties must not contain secrets or Google/Firebase identifiers:")
+                bad.forEach { appendLine("  • $it") }
+                appendLine("Move them to ~/.gradle/gradle.properties (see gradle.user.properties.example).")
+            }
+        }
+    }
+}
+
+subprojects {
+    tasks.matching { it.name == "preBuild" || it.name == "compileKotlinDesktop" }.configureEach {
+        dependsOn(":verifyNoSecretsInTrackedProperties")
+    }
+}

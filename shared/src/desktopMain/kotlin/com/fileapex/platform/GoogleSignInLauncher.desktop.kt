@@ -64,7 +64,7 @@ actual fun rememberGoogleSignInLauncher(
                 onResult(
                     null,
                     null,
-                    "Set fileapex.google.web.client.id in gradle.properties (Google Web OAuth client ID)"
+                    "Set fileapex.google.web.client.id in ~/.gradle/gradle.properties (Google Web OAuth client ID)"
                 )
             } else {
                 scope.launch {

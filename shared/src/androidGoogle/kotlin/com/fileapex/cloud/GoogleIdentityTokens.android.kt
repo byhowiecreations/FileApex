@@ -30,7 +30,7 @@ internal fun googleIdTokenFromAuthorization(
 internal suspend fun interactiveGoogleIdToken(activity: Activity): Pair<String, String?> {
     val clientId = googleWebClientId()
     require(clientId.isNotBlank()) {
-        "Set fileapex.google.web.client.id in gradle.properties (Google Web OAuth client ID)"
+        "Set fileapex.google.web.client.id in ~/.gradle/gradle.properties (Google Web OAuth client ID)"
     }
     val option = GetSignInWithGoogleOption.Builder(clientId).build()
     val response = CredentialManager.create(activity).getCredential(

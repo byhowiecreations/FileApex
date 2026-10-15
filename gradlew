@@ -83,10 +83,6 @@ esac
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
 resolve_fileapex_java_home() {
-    gradle_props="$APP_HOME/gradle.properties"
-    if [ ! -f "$gradle_props" ]; then
-        return 1
-    fi
     if [ "$darwin" = "true" ]; then
         key="fileapex.java.home.macos"
     elif [ "$msys" = "true" ] || [ "$cygwin" = "true" ]; then
@@ -94,7 +90,13 @@ resolve_fileapex_java_home() {
     else
         key="fileapex.java.home.linux"
     fi
-    line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$gradle_props" | tail -1 | sed 's/^[^=]*=//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # User-level file wins over the tracked project file, as in Gradle.
+    line=""
+    for gradle_props in "${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties" "$APP_HOME/gradle.properties"; do
+        [ -f "$gradle_props" ] || continue
+        line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$gradle_props" | tail -1 | sed 's/^[^=]*=//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -n "$line" ] && break
+    done
     if [ -z "$line" ]; then
         return 1
     fi

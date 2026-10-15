@@ -1,6 +1,5 @@
 # Built artifacts
 /.gradle/
-/gradle.properties
 **/build/
 /current/
 /local.properties
@@ -57,3 +56,6 @@ docs/
 # Docker build artifacts and local runtime data
 fileapex-daemon
 /app/data/
+
+# gradle.properties is tracked and secret-free (a global gitignore may otherwise hide it).
+!/gradle.properties

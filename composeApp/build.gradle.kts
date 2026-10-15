@@ -1081,7 +1081,7 @@ private fun Project.shipExeToCurrent(
     copyToBackupDir(dest.resolve(destName), logger)
 }
 
-/** Copies a shipped file to `fileapex.backup.dir` (set per machine in gradle.properties); unset means no copy. */
+/** Copies a shipped file to `fileapex.backup.dir` (set per machine in ~/.gradle/gradle.properties); unset means no copy. */
 private fun Project.copyToBackupDir(shipped: File, logger: org.gradle.api.logging.Logger) {
     val backupPath = providers.gradleProperty("fileapex.backup.dir").orNull?.trim().orEmpty()
     if (backupPath.isEmpty()) return
@@ -1971,7 +1971,7 @@ fun escapeJsonString(value: String): String =
 
 /**
  * Writes `composeApp/google-services.json` before the Google Services plugin runs.
- * Prefers `json/google-services.json` when present; otherwise generates from gradle.properties.
+ * Prefers `json/google-services.json` when present; otherwise generates from ~/.gradle/gradle.properties.
  * The output file is gitignored — never commit real credentials.
  */
 val generateGoogleServicesJson = tasks.register("generateGoogleServicesJson") {
@@ -1999,7 +1999,7 @@ val generateGoogleServicesJson = tasks.register("generateGoogleServicesJson") {
         val key = apiKey.get().trim()
         require(pid.isNotEmpty() && key.isNotEmpty() && appId.isNotEmpty()) {
             "Set fileapex.firebase.project.id, fileapex.firebase.api.key, and " +
-                "fileapex.firebase.application.id in gradle.properties, or add json/google-services.json"
+                "fileapex.firebase.application.id in ~/.gradle/gradle.properties, or add json/google-services.json"
         }
         val projectNumber = appId.split(":").getOrNull(1)
             ?: error(
