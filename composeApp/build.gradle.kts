@@ -1536,6 +1536,23 @@ tasks.register("copyReleaseBuilds") {
     }
 }
 
+/**
+ * Stops a bundle that Google Play would flag or refuse from reaching current/: a 64-bit native library that is not
+ * 16 KB aligned, a restricted permission, or a version code that was already uploaded. The AAB stays in build/outputs.
+ * See scripts/check_play_bundle.py. Fails closed: a check that cannot run also stops the build.
+ */
+private fun Project.requirePlayReadyBundle(aab: File) {
+    val script = rootProject.file("scripts/check_play_bundle.py")
+    check(script.isFile) { "scripts/check_play_bundle.py is missing, so the Play bundle cannot be checked" }
+    val process = ProcessBuilder("python3", "-I", script.absolutePath, aab.absolutePath)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().readText().trim()
+    val exit = process.waitFor()
+    output.lines().forEach { logger.lifecycle("play check: $it") }
+    check(exit == 0) { "The Play bundle is not Play ready (check exit $exit). It was not moved to current/. See the play check lines above." }
+}
+
 private val playAabMoveLock = Any()
 
 /**
@@ -1552,6 +1569,7 @@ private fun Project.movePlayReleaseAabToCurrent(requirePresent: Boolean) {
         val destName = "FileApex-v$fileapexVersionName-release.aab"
         val shipped = destDir.resolve(destName)
         if (aab != null && aab.isFile) {
+            requirePlayReadyBundle(aab)
             destDir.mkdirs()
             moveToCurrent(destDir, aab, destName = destName, logger = logger)
             return

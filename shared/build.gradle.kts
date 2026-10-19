@@ -164,6 +164,7 @@ plugins {
 val fileapexVersionName = extra["fileapex.version.name"] as String
 val fileapexVersionCode = extra["fileapex.version.code"] as String
 val fileapexFdroid = extra["fileapex.fdroid"] as Boolean
+val fileapexNoIroh = extra["fileapex.noiroh"] as Boolean
 
 kotlin {
     compilerOptions {
@@ -193,7 +194,8 @@ kotlin {
             // Firebase, Credential Manager and Play Services actuals, or no-op stubs for F-Droid.
             kotlin.srcDir(if (fileapexFdroid) "src/androidFdroid/kotlin" else "src/androidGoogle/kotlin")
             // Iroh ships prebuilt native libraries, which F-Droid does not accept, so that build leaves it out.
-            if (!fileapexFdroid) kotlin.srcDir("src/irohMain/kotlin")
+            // The Play bundle leaves it out too until its arm64 library is 16 KB aligned (see settings.gradle.kts).
+            if (!fileapexFdroid) kotlin.srcDir(if (fileapexNoIroh) "src/irohStub/kotlin" else "src/irohMain/kotlin")
         }
 
         jvmCommon.dependencies {
@@ -239,7 +241,7 @@ kotlin {
             implementation(libs.zxing.android.embedded)
             implementation(libs.androidx.work.runtime)
             if (!fileapexFdroid) {
-                implementation(libs.iroh.android) // fdroid:remove
+                if (!fileapexNoIroh) implementation(libs.iroh.android) // fdroid:remove
                 implementation(project.dependencies.platform(libs.firebase.bom)) // fdroid:remove
                 implementation(libs.firebase.auth) // fdroid:remove
                 implementation(libs.firebase.firestore) // fdroid:remove
