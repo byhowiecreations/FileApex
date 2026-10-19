@@ -2,7 +2,6 @@ package com.fileapex.cloud
 
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -72,40 +71,9 @@ internal object RestoreCredentialJson {
         return if (combined.size <= USER_ID_MAX_BYTES) combined else trimmedUid.encodeToByteArray()
     }
 
-    fun userHandleFromAssertion(authenticationResponseJson: String): String? =
-        handlePayload(authenticationResponseJson)?.substringBefore('\n')?.trim()?.ifBlank { null }
-
-    fun emailFromAssertion(authenticationResponseJson: String): String? {
-        val raw = handlePayload(authenticationResponseJson) ?: return null
-        val sep = raw.indexOf('\n')
-        if (sep < 0) return null
-        return raw.substring(sep + 1).trim().ifBlank { null }
-    }
-
-    private fun handlePayload(authenticationResponseJson: String): String? {
-        val root = runCatching {
-            Json.parseToJsonElement(authenticationResponseJson).jsonObject
-        }.getOrNull() ?: return null
-        val handleB64 = root.string("userHandle")
-            ?: root.obj("response")?.string("userHandle")
-            ?: return null
-        val raw = decodeBase64Url(handleB64) ?: return null
-        return raw.decodeToString().trim().ifBlank { null }
-    }
-
     @OptIn(ExperimentalEncodingApi::class)
     fun base64Url(bytes: ByteArray): String =
         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(bytes)
-
-    @OptIn(ExperimentalEncodingApi::class)
-    fun decodeBase64Url(value: String): ByteArray? {
-        val stripped = value.trim()
-        if (stripped.isEmpty()) return null
-        val noPad = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
-        val padded = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT)
-        return runCatching { noPad.decode(stripped) }.getOrNull()
-            ?: runCatching { padded.decode(stripped) }.getOrNull()
-    }
 
     private fun alg(alg: Int) = buildJsonObject {
         put("type", "public-key")

@@ -35,6 +35,21 @@ actual object ClipboardE2ee {
             salt = ClipboardCrypto.pairSalt(localDeviceId, peerDeviceId)
         )
     }
+
+    actual fun authenticate(
+        data: ByteArray,
+        localDeviceId: String,
+        peerDeviceId: String,
+        peerPublicKeyBase64: String
+    ): ByteArray {
+        val keys = ClipboardIdentityStore.ensureKeyPair()
+        return ClipboardCrypto.authenticate(
+            data = data,
+            localPrivateKey = keys.privateKey,
+            peerPublicKey = ClipboardCrypto.decodeKey(peerPublicKeyBase64, "public key"),
+            salt = ClipboardCrypto.pairSalt(localDeviceId, peerDeviceId)
+        )
+    }
 }
 
 internal object ClipboardIdentityStore {

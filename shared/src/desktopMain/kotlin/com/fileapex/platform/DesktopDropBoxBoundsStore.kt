@@ -14,7 +14,6 @@ object DesktopDropBoxBoundsStore {
     const val DEFAULT_HEIGHT_PX = 281
     const val MIN_WIDTH_PX = 242
     const val MIN_HEIGHT_PX = 188
-    private const val LEGACY_WIDTH_THRESHOLD_PX = 400
 
     private val prefs: Preferences =
         Preferences.userRoot().node(PREFS_NODE)

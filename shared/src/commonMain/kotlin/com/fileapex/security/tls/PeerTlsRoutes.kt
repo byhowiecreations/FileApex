@@ -38,7 +38,9 @@ object PeerTlsRoutes {
         onChange?.invoke(snapshot())
     }
 
-    fun lookup(host: String, httpPort: Int): PeerTlsRoute? = byEndpoint.get()[key(host, httpPort)]
+    /** A bridge port is a local pipe to the peer, never a TLS endpoint, whatever a stored row says. */
+    fun lookup(host: String, httpPort: Int): PeerTlsRoute? =
+        if (com.fileapex.iroh.irohLoopbackOrNull(host, httpPort) != null) null else byEndpoint.get()[key(host, httpPort)]
 
     fun isPinned(host: String, httpPort: Int): Boolean = lookup(host, httpPort) != null
 

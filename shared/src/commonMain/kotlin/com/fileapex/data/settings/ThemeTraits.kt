@@ -18,7 +18,6 @@ data class ThemeTraits(
     val surfaceAlpha: Float = 0.16f,
     val borderWidthDp: Float = 1f,
     val blurRadiusDp: Float = 0f,
-    val headerBarHeightDp: Float = 64f,
 )
 
 private val cleanTraits = ThemeTraits(

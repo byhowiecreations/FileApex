@@ -31,6 +31,9 @@ object LanPresenceTiming {
     /** Node-state (identity/metadata) refresh after a successful probe. */
     const val NODE_STATE_REFRESH_TTL_MS = 15 * 60 * 1000L
 
+    /** Refresh of a peer that reports its membership version: it is fetched when the version changes, else only this rarely. */
+    const val NODE_STATE_VERSIONED_SAFETY_MS = 6 * 60 * 60 * 1000L
+
     /** Retry floor for node-state fetch while metadata is still missing. */
     const val NODE_STATE_MISSING_RETRY_MS = 60_000L
 
@@ -43,8 +46,6 @@ object LanPresenceTiming {
      */
     val NETWORK_TRANSITION_RETRY_DELAYS_MS = longArrayOf(0L, 2_000L, 5_000L, 10_000L, 20_000L)
 
-    const val DEVICE_DETAILS_RECENT_REACHABILITY_MS = 120_000L
-
     const val PASSIVE_ENDPOINT_WAIT_MS = 1_500L
 
     /** mDNS-only follow-up when stored endpoint fails during a light sweep. */
@@ -53,9 +54,21 @@ object LanPresenceTiming {
     /** Full subnet sweep when stored endpoint is stale (foreground / transfer / network change). */
     const val STALE_PEER_LAN_DISCOVERY_BUDGET_MS = 12_000L
 
-    /** @deprecated Use [LIGHT_SWEEP_DISCOVERY_BUDGET_MS] */
-    @Deprecated("Use LIGHT_SWEEP_DISCOVERY_BUDGET_MS", ReplaceWith("LIGHT_SWEEP_DISCOVERY_BUDGET_MS"))
-    const val LAN_DISCOVERY_BUDGET_MS = LIGHT_SWEEP_DISCOVERY_BUDGET_MS
+    /** First wait after a subnet scan found nothing; doubles per failed scan up to the cap. */
+    const val LAN_SCAN_BACKOFF_BASE_MS = 30 * 60 * 1000L
+    const val LAN_SCAN_BACKOFF_MAX_MS = 4 * 60 * 60 * 1000L
+
+    /** A peer that answered over Tailscale or Iroh is not scanned for on the LAN for this long. */
+    const val REMOTE_ROUTE_SCAN_HOLD_MS = 15 * 60 * 1000L
+
+    /** After a network change the hello waits this long for the LAN link to be usable before it is sent. */
+    const val HELLO_LAN_WAIT_MS = 20_000L
+
+    /** The hello is sent once more this long after the first. Longer than the receivers' per-sender gap, or it is dropped. */
+    const val HELLO_RESEND_MS = 12_000L
+
+    /** A pairing candidate tried this recently is not checked again by a sweep. */
+    const val CANDIDATE_RETRY_MS = 2 * 60 * 1000L
 
     /** Foreground poll; resume, network change and pull-to-refresh still trigger immediate sweeps. */
     const val FOREGROUND_LAN_POLL_MS = 5 * 60 * 1000L
@@ -77,19 +90,7 @@ object LanPresenceTiming {
 
     const val SELF_BROADCAST_MIN_INTERVAL_MS = 10 * 60 * 1000L
 
-    @Deprecated("Use FOREGROUND_LAN_POLL_MS", ReplaceWith("FOREGROUND_LAN_POLL_MS"))
-    const val ACTIVE_LAN_POLL_MS = FOREGROUND_LAN_POLL_MS
-
-    @Deprecated("Use FOREGROUND_LAN_POLL_MS", ReplaceWith("FOREGROUND_LAN_POLL_MS"))
-    const val DESKTOP_LAN_POLL_MS = FOREGROUND_LAN_POLL_MS
-
     const val TRANSFER_MDNS_SETTLE_MS = 750L
-
-    /**
-     * Skip full LAN discovery during transfer priming when the peer was health-checked recently
-     * (share-sheet device list already probed fetchPeerNodeState).
-     */
-    const val TRANSFER_RECENT_REACHABILITY_MS = 60_000L
 
     const val ON_DEMAND_PRIME_ATTEMPTS = 2
 

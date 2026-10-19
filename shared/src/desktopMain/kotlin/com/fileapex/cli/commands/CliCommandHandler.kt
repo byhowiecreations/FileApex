@@ -4,7 +4,6 @@ import com.fileapex.cli.CliDeviceAliasManager
 import com.fileapex.cli.CliDeviceResolver
 import com.fileapex.cli.CliTokenizer
 import com.fileapex.data.db.PairedDeviceEntity
-import com.fileapex.data.db.PendingTransferEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.clipboard.ClipboardShareCoordinator
@@ -15,8 +14,6 @@ import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull

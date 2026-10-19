@@ -320,6 +320,10 @@ object TransferActivityGuard {
 
     fun isTransferActive(): Boolean = streams.isNotEmpty() || anonymousActive.get() > 0
 
+    /** True while bytes are moving to or from this device: that traffic is itself the proof it is there. */
+    fun isTransferActiveFor(deviceId: String): Boolean =
+        deviceId.isNotBlank() && streams.values.any { it.deviceId == deviceId }
+
     private fun clearBatch() = synchronized(publishLock) {
         if (isTransferActive()) return@synchronized
         currentFileName = ""

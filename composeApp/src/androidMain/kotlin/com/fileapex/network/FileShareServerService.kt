@@ -5,7 +5,6 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
-import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.presence.PresenceBackgroundWake
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.tailscale.TailscaleNodeRuntime
@@ -206,6 +205,9 @@ class FileShareServerService : Service() {
                 ServerLifecycleManager.ensureRunning(androidLog)
                 PresenceBackgroundWake.onRemoteWakeSignal(sourceDeviceId = null)
             },
+            onSignedWake = { bytes, host ->
+                WakeHelloReceiver.handle(bytes, host) { ServerLifecycleManager.ensureRunning(androidLog) }
+            },
             onLog = { message -> Log.i(TAG, message) }
         )
         wakeReceiver = receiver
@@ -225,7 +227,6 @@ class FileShareServerService : Service() {
         private const val TAG = "FileApexServerService"
         const val ACTION_START = "com.fileapex.action.START_SHARE_SERVER"
         const val EXTRA_FROM_FOREGROUND = "extra_from_foreground"
-        const val SERVER_PORT = LocalIdentity.DEFAULT_SHARE_PORT
 
         private val androidLog: (String, Throwable?) -> Unit = { message, error ->
             if (error != null) {

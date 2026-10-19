@@ -15,7 +15,6 @@ import io.ktor.http.encodeURLParameter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
@@ -61,12 +60,6 @@ class FileApexClient(
             synchronized(sessionPinsLock) {
                 sessionPins[endpointKey(host, port)] = trimmed
             }
-        }
-    }
-
-    fun clearSessionPin(host: String, port: Int) {
-        synchronized(sessionPinsLock) {
-            sessionPins.remove(endpointKey(host, port))
         }
     }
 
@@ -174,6 +167,26 @@ class FileApexClient(
         if (response.statusCode == 404) return null
         requireSuccess(response, "Presence digest failed (${response.statusCode})")
         return json.decodeFromString(com.fileapex.domain.presence.PresenceDigestMessage.serializer(), response.body)
+    }
+
+    /** Swaps Iroh addresses with a paired peer. Null when the peer has Iroh off or predates it. */
+    suspend fun exchangeIrohAddress(
+        host: String,
+        port: Int,
+        message: com.fileapex.iroh.IrohAddressMessage,
+        timeoutMs: Long = PEER_STATE_TIMEOUT_MS
+    ): com.fileapex.iroh.IrohAddressMessage? {
+        val response = boundPost(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/iroh/address",
+            body = json.encodeToString(com.fileapex.iroh.IrohAddressMessage.serializer(), message),
+            contentType = "application/json",
+            timeoutMs = timeoutMs
+        )
+        if (response.statusCode == 404) return null
+        requireSuccess(response, "Iroh address exchange failed (${response.statusCode})")
+        return json.decodeFromString(com.fileapex.iroh.IrohAddressMessage.serializer(), response.body)
     }
 
     /** [summaryOnly] asks for the quick subset; peers that predate it ignore it and send everything. */
@@ -520,7 +533,13 @@ class FileApexClient(
     ): Boolean = probeHealth(host, port, timeoutMs, companion).reached
 
     /** [respondedAs] is the device id the answering node reported; null from builds that do not report one. */
-    data class HealthProbe(val reached: Boolean, val respondedAs: String? = null)
+    data class HealthProbe(
+        val reached: Boolean,
+        val respondedAs: String? = null,
+        val membershipVersion: Long? = null,
+        val bulletinVersion: Long? = null,
+        val removals: String? = null
+    )
 
     suspend fun probeHealth(
         host: String,
@@ -533,18 +552,33 @@ class FileApexClient(
         val healthPath = if (companion == null) "/api/v1/health" else "/api/v1/health?companion=${if (companion) 1 else 0}"
         val health = peerHttpGet(host, port, withSenderQuery(healthPath), timeoutMs) ?: return HealthProbe(false)
         checkRevocation(host, health)
-        if (health.statusCode in 200..299) return HealthProbe(true, health.body.respondedAsId())
-        if (health.statusCode != 404) return HealthProbe(false)
-        val heartbeat = peerHttpGet(host, port, withSenderQuery("/api/v1/heartbeat"), timeoutMs)
-        if (heartbeat != null) {
-            checkRevocation(host, heartbeat)
-            if (heartbeat.statusCode in 200..299) return HealthProbe(true)
-        }
+        if (health.statusCode in 200..299) return HealthProbe(
+            true, health.body.respondedAsId(), PeerHttpHeaders.membershipVersion(health.headers),
+            PeerHttpHeaders.bulletinVersion(health.headers), PeerHttpHeaders.removals(health.headers)
+        )
         return HealthProbe(false)
     }
 
     private fun String.respondedAsId(): String? =
         trim().takeIf { it.startsWith("ok:") }?.removePrefix("ok:")?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** The removal records a peer holds inside the fingerprint window. */
+    suspend fun fetchRemovedDevices(
+        host: String,
+        port: Int
+    ): List<com.fileapex.domain.pairing.RemovedDeviceRecord> {
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/devices/removed",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Removed devices fetch failed (${response.statusCode})")
+        return json.decodeFromString(
+            ListSerializer(com.fileapex.domain.pairing.RemovedDeviceRecord.serializer()),
+            response.body
+        )
+    }
 
     /** Introductions sealed for [selfDeviceId] by the peer at [host]. Only that peer's pair key opens them. */
     suspend fun fetchIntroductions(
@@ -593,15 +627,21 @@ class FileApexClient(
             ),
             body = payload,
             contentType = "application/json",
-            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+            // The host's user has to compare the check code and accept; the host waits up to its confirm timeout.
+            timeoutMs = PAIRING_CONFIRM_TIMEOUT_MS
         )
         if (response.statusCode == 403) {
             val body = response.body.lowercase()
+            if (body.contains("pairing_declined")) {
+                error(AppI18n.t("pairing_declined"))
+            }
             if (body.contains("pairing_code")) {
                 error(AppI18n.t("pairing_code_expired"))
             }
             error(AppI18n.t("incorrect_pin_pairing"))
         }
+        if (response.statusCode == 409) error(AppI18n.t("pairing_busy"))
+        if (response.statusCode == 429) error(AppI18n.t("pairing_slow_down"))
         requireSuccess(response, AppI18n.t("pairing_handshake_failed", response.statusCode.toString()))
     }
 
@@ -712,6 +752,21 @@ class FileApexClient(
             timeoutMs = PEER_REQUEST_TIMEOUT_MS
         )
         requireSuccess(response, "Note delete failed (${response.statusCode})")
+    }
+
+    suspend fun fetchBulletinDelta(
+        host: String,
+        port: Int,
+        since: Long
+    ): com.fileapex.data.bulletin.BulletinDeltaResponse {
+        val response = boundGet(
+            host = host,
+            port = port,
+            pathWithQuery = "/api/v1/bulletin/delta?since=$since",
+            timeoutMs = PEER_REQUEST_TIMEOUT_MS
+        )
+        requireSuccess(response, "Bulletin delta failed (${response.statusCode})")
+        return json.decodeFromString(com.fileapex.data.bulletin.BulletinDeltaResponse.serializer(), response.body)
     }
 
     suspend fun postBulletinSyncBatch(
@@ -844,17 +899,6 @@ class FileApexClient(
         return fallback != null && fallback.statusCode in 200..299
     }
 
-    suspend fun listPairedDevices(host: String, port: Int): List<PairedDeviceEntity> {
-        val response = boundGet(
-            host = host,
-            port = port,
-            pathWithQuery = "/api/v1/devices",
-            timeoutMs = PEER_REQUEST_TIMEOUT_MS
-        )
-        requireSuccess(response, "Device list failed (${response.statusCode})")
-        return json.decodeFromString(ListSerializer(PairedDeviceEntity.serializer()), response.body)
-    }
-
     suspend fun downloadBytes(
         host: String,
         port: Int,
@@ -904,7 +948,7 @@ class FileApexClient(
                 return
             }
             val failure = transferCatching {
-                TransferRuntime.streamBudget.withPermit {
+                TransferRuntime.streamBudget(host).withPermit {
                     downloadSingleStreamAttempt(
                         host, port, remotePath, localTargetPath, partPath, requestedOffset, expected, onProgress
                     )
@@ -1024,7 +1068,7 @@ class FileApexClient(
             val from = TransferRanges.resumePoint(segment, known)
             if (from >= segment.endExclusive) return
             val failure = transferCatching {
-                TransferRuntime.streamBudget.withPermit {
+                TransferRuntime.streamBudget(host).withPermit {
                     streamRangeToPart(host, port, remotePath, partPath, totalSize, from, segment.endExclusive, isLast, onBytes)
                 }
             }.exceptionOrNull() ?: return
@@ -1247,7 +1291,7 @@ class FileApexClient(
             }
             val remaining = (totalSize - offset).coerceAtLeast(0L)
             val failure = transferCatching {
-                TransferRuntime.streamBudget.withPermit {
+                TransferRuntime.streamBudget(host).withPermit {
                     PeerLanHttpPolicy.ensureRoute(host)
                     val response = peerHttpUploadFromFile(
                         host = host,
@@ -1421,7 +1465,7 @@ class FileApexClient(
                 return
             }
             val failure = transferCatching {
-                TransferRuntime.streamBudget.withPermit {
+                TransferRuntime.streamBudget(host).withPermit {
                     coroutineScope {
                         val chunks = Channel<ByteArray>(capacity = RELAY_CHANNEL_CAPACITY)
                         val producer = launch(TransferRuntime.outbound) {
@@ -1490,14 +1534,17 @@ class FileApexClient(
             }
             // Progress is what the receiver confirms, not what the socket accepted: userspace and
             // carrier buffers can hold tens of MB that have not arrived.
-            val confirmed = AtomicLong(TransferRanges.coveredBytes(state.ranges).coerceAtMost(totalSize))
+            val alreadyThere = TransferRanges.coveredBytes(state.ranges).coerceAtMost(totalSize)
+            val confirmed = AtomicLong(alreadyThere)
+            val sentByUs = AtomicLong(0L)
+            val overIroh = com.fileapex.iroh.IrohBridgePorts.contains(port) && host == "127.0.0.1"
             onProgress?.invoke(confirmed.get(), totalSize)
             coroutineScope {
                 val poller = launch(TransferRuntime.outbound) {
                     while (true) {
                         delay(CONFIRM_POLL_INTERVAL_MS)
                         val polled = try {
-                            withTimeoutOrNull(CONFIRM_POLL_TIMEOUT_MS) {
+                            withTimeoutOrNull(com.fileapex.iroh.IrohTransferProgress.pollTimeoutMs(host, port, CONFIRM_POLL_TIMEOUT_MS)) {
                                 querySegmentState(host, port, remoteTargetPath, totalSize, transactionId, prepare = false)
                             }
                         } catch (cancelled: TransferCancelledException) {
@@ -1527,7 +1574,15 @@ class FileApexClient(
                             segment = segment,
                             initial = state.ranges,
                             sendRange = sendRange
-                        ) { _ -> }
+                        ) { delta ->
+                            if (overIroh) {
+                                val sent = sentByUs.addAndGet(delta)
+                                val shown = confirmed.updateAndGet { previous ->
+                                    com.fileapex.iroh.IrohTransferProgress.shown(previous, alreadyThere, sent, totalSize)
+                                }
+                                onProgress?.invoke(shown, totalSize)
+                            }
+                        }
                     }
                 }.awaitAll()
                 } finally {
@@ -1603,7 +1658,7 @@ class FileApexClient(
             )
             val result = transferCatching {
                 PeerLanHttpPolicy.ensureRoute(host)
-                TransferRuntime.streamBudget.withPermit {
+                TransferRuntime.streamBudget(host).withPermit {
                     var reported = 0L
                     sendRange(from, segment.endExclusive, withSenderQuery(pathWithQuery)) { sentInRange ->
                         onDelta(sentInRange - reported)
@@ -1926,6 +1981,7 @@ class FileApexClient(
          */
         private const val TRANSFER_IDLE_TIMEOUT_MS = 2 * 60 * 1000L
         private const val PEER_REQUEST_TIMEOUT_MS = 15_000L
+        private const val PAIRING_CONFIRM_TIMEOUT_MS = 105_000L
         private const val LIST_REQUEST_TIMEOUT_MS = 4_000L
         private const val LIST_PAGE_SIZE = 2_000
         private const val LIST_MAX_ITEMS = 500_000

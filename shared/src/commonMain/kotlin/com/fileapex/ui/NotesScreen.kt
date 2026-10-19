@@ -5,8 +5,13 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.PlatformClipboard
-import com.fileapex.platform.isWebUrl
-import com.fileapex.platform.textContainsWebUrl
+import com.fileapex.platform.usesDesktopFileSelection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Image
@@ -47,15 +52,12 @@ import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -1139,7 +1141,7 @@ fun NotesScreen(
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(NOTES_COMPOSER_HEIGHT),
+                        .heightIn(min = NOTES_COMPOSER_HEIGHT, max = NOTES_COMPOSER_MAX_HEIGHT),
                     shape = RoundedCornerShape(20.dp),
                     color = Color.Transparent,
                     border = BorderStroke(
@@ -1151,9 +1153,27 @@ fun NotesScreen(
                         value = inputContent,
                         onValueChange = { inputContent = it },
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        singleLine = true,
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 14.dp)
+                            .onPreviewKeyEvent { event ->
+                                // Desktop: Enter sends, Shift+Enter inserts a newline.
+                                // Android: the IME Enter key inserts a newline.
+                                val isEnter = event.key == Key.Enter || event.key == Key.NumPadEnter
+                                if (usesDesktopFileSelection() && isEnter && !event.isShiftPressed) {
+                                    if (event.type == KeyEventType.KeyDown) {
+                                        val text = inputContent.trim()
+                                        if (text.isNotEmpty() || !pendingAttachmentPath.isNullOrBlank()) {
+                                            doSendNote(text)
+                                        }
+                                    }
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                        singleLine = false,
+                        minLines = 1,
+                        maxLines = 6,
                         textStyle = composerTextStyle,
                         cursorBrush = SolidColor(composerBorder),
                         interactionSource = composerInteraction,
@@ -1505,16 +1525,6 @@ private fun NoteBubbleItem(
         BulletinBoardStyle.MATERIAL_YOU -> BrandCoolBlue
         BulletinBoardStyle.AERO_GLASS -> Color(0xFF4ADE80)
     }
-    val bubbleShape = if (isMine) {
-        RoundedCornerShape(16.dp, 16.dp, 2.dp, 16.dp)
-    } else {
-        RoundedCornerShape(16.dp, 16.dp, 16.dp, 2.dp)
-    }
-    val bubbleBg = if (isMine) {
-        if (isCustomGlass) Color(0x4400E676) else FileApexTeal.copy(alpha = 0.16f)
-    } else {
-        cardBg
-    }
     val stamp = TimeUtils.noteListStamp(item.epochMs)
     val attachmentName = item.attachmentFileName?.ifBlank { null }
     val hasAttachment = !attachmentName.isNullOrBlank()
@@ -1845,3 +1855,4 @@ private fun pickedFileFromDroppedPath(path: String): PickedLocalFile? {
 }
 
 private val NOTES_COMPOSER_HEIGHT = 47.6.dp
+private val NOTES_COMPOSER_MAX_HEIGHT = 140.dp

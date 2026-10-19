@@ -20,6 +20,11 @@ class TlsTransportPolicyTest {
     }
 
     @Test
+    fun theRemovedHeartbeatRouteNoLongerCountsAsOpen() {
+        assertTrue(TlsTransportPolicy.requiresTls("/api/v1/heartbeat?from=x"))
+    }
+
+    @Test
     fun pairingPresenceAndPinExchangeStayOpenOverHttp() {
         listOf(
             "/api/v1/pairing/respond?code=1",
@@ -27,7 +32,6 @@ class TlsTransportPolicyTest {
             "/api/v1/tls/pin",
             "/api/v1/identity",
             "/api/v1/identity?from=x",
-            "/api/v1/heartbeat?from=x",
             "/api/v1/health"
         ).forEach { assertFalse(it, TlsTransportPolicy.requiresTls(it)) }
     }

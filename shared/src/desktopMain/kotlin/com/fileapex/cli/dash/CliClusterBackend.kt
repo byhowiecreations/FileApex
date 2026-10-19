@@ -4,7 +4,6 @@ import com.fileapex.cli.ipc.CliClusterState
 import com.fileapex.cli.ipc.CliIpcClient
 import com.fileapex.cli.ipc.CliIpcPacket
 import com.fileapex.cli.ipc.CliQueueItem
-import com.fileapex.cli.ipc.CliRemoteFile
 import com.fileapex.cli.ipc.CliRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

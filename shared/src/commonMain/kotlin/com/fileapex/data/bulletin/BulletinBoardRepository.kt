@@ -50,7 +50,7 @@ class BulletinBoardRepository(
             isDeleted = false,
             isPinned = false
         )
-        messageDao.upsert(message)
+        messageDao.upsert(message.copy(updatedAt = BulletinStampClock.next()))
         return message
     }
 
@@ -109,7 +109,7 @@ class BulletinBoardRepository(
             isDeleted = false,
             isPinned = false
         )
-        messageDao.upsert(message)
+        messageDao.upsert(message.copy(updatedAt = BulletinStampClock.next()))
         return message
     }
 
@@ -161,7 +161,7 @@ class BulletinBoardRepository(
             contentType = contentType,
             timestamp = TimeUtils.now()
         )
-        messageDao.upsert(message)
+        messageDao.upsert(message.copy(updatedAt = BulletinStampClock.next()))
         message
     }
 
@@ -169,18 +169,17 @@ class BulletinBoardRepository(
         if (tombstoneDao.countById(payload.id) > 0) return false
         val existing = messageDao.getById(payload.id)
         val pinned = if (existing?.isPinned == true) true else payload.isPinned
-        messageDao.upsert(
-            MessageEntity(
-                id = payload.id,
-                originDeviceId = payload.originDeviceId,
-                senderName = payload.senderName,
-                content = stripMissingLocalPath(payload.content, payload.contentType),
-                contentType = payload.contentType,
-                timestamp = payload.timestamp,
-                isDeleted = false,
-                isPinned = pinned
-            )
+        val incoming = MessageEntity(
+            id = payload.id,
+            originDeviceId = payload.originDeviceId,
+            senderName = payload.senderName,
+            content = stripMissingLocalPath(payload.content, payload.contentType),
+            contentType = payload.contentType,
+            timestamp = payload.timestamp,
+            isDeleted = false,
+            isPinned = pinned
         )
+        BulletinChange.messageToStore(existing, incoming, BulletinStampClock.next())?.let { messageDao.upsert(it) }
         return true
     }
 
@@ -220,18 +219,7 @@ class BulletinBoardRepository(
     }
 
     suspend fun setPinned(id: String, pinned: Boolean) {
-        messageDao.setPinned(id, pinned)
-    }
-
-    suspend fun enqueueOutbox(targetDeviceId: String, payloadType: Int, payloadId: String) {
-        outboxDao.insert(
-            OutboxEntity(
-                targetDeviceId = targetDeviceId,
-                payloadType = payloadType,
-                payloadId = payloadId,
-                createdAt = TimeUtils.now()
-            )
-        )
+        messageDao.setPinned(id, pinned, BulletinStampClock.next())
     }
 
     suspend fun enqueueOutboxForAllPeers(payloadType: Int, payloadId: String, peerIds: List<String>) {
@@ -254,9 +242,6 @@ class BulletinBoardRepository(
         outboxDao.getForDevice(deviceId, limit)
 
     suspend fun removeOutboxEntry(outboxId: Long) = outboxDao.deleteById(outboxId)
-
-    suspend fun removeOutboxByPayload(targetDeviceId: String, payloadId: String) =
-        outboxDao.deleteByPayload(targetDeviceId, payloadId)
 
     suspend fun pruneStaleOutbox(nowMs: Long = TimeUtils.now()): Int {
         val cutoff = nowMs - BulletinBoardPolicy.OUTBOX_TTL_MS

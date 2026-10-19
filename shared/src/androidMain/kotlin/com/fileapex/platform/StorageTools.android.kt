@@ -159,7 +159,7 @@ actual fun listTrashed(): List<TrashedEntry> {
 
 actual fun restoreTrashed(ids: List<String>): Boolean {
     val context = trashContext ?: error(AppI18n.t("trash_failed"))
-    val prompted = promptForMedia(context, ids) { uris ->
+    val prompted = promptForMedia(ids) { uris ->
         MediaStore.createTrashRequest(context.contentResolver, uris, false)
     }
     for (id in ids.filter { it.startsWith(FILE_PREFIX) }) {
@@ -178,7 +178,7 @@ actual fun restoreTrashed(ids: List<String>): Boolean {
 
 actual fun purgeTrashed(ids: List<String>): Boolean {
     val context = trashContext ?: error(AppI18n.t("trash_failed"))
-    val prompted = promptForMedia(context, ids) { uris ->
+    val prompted = promptForMedia(ids) { uris ->
         MediaStore.createDeleteRequest(context.contentResolver, uris)
     }
     for (id in ids.filter { it.startsWith(FILE_PREFIX) }) {
@@ -190,7 +190,6 @@ actual fun purgeTrashed(ids: List<String>): Boolean {
 }
 
 private fun promptForMedia(
-    context: Context,
     ids: List<String>,
     build: (List<Uri>) -> android.app.PendingIntent,
 ): Boolean {

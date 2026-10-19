@@ -9,10 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.WindowInsets
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,7 +39,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.fileapex.data.settings.LocalThemeIconStyle
-import com.fileapex.data.settings.ThemeIconStyle
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -50,7 +46,6 @@ import com.fileapex.domain.transfer.TransferActivityGuard
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.foundation.layout.offset
@@ -58,7 +53,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
@@ -141,11 +135,8 @@ import kotlinx.coroutines.delay
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 
-import com.fileapex.ui.adaptive.FluxGlassHeader
 import com.fileapex.ui.adaptive.CompactDevicesTitleBand
 
-import com.fileapex.ui.adaptive.CompactTealStrip
-import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
 import com.fileapex.ui.adaptive.FileApexWidthSizeClass
 import com.fileapex.ui.adaptive.widthSizeClassFor
 import com.fileapex.ui.dnd.deviceFileDropTarget
@@ -444,8 +435,6 @@ fun DevicesScreen(
             } else if (isKineticSphere && !editMode) {
                 KineticSphereDevicesView(
                     deviceRows = listRows,
-                    connectingDeviceId = state.connectingDeviceId,
-                    selectedDeviceId = selectedDeviceId,
                     onOpenDevice = { deviceId ->
                         viewModel.openDeviceOrExplain(deviceId) { target ->
                             currentOnOpenDevice(target)
@@ -2445,144 +2434,4 @@ private fun DeviceDetailsDialog(
             TextButton(onClick = onDismiss) { Text(stringRes("close")) }
         }
     )
-}
-
-@Composable
-private fun BatteryStatusOverlay(
-    loading: Boolean,
-    items: List<com.fileapex.presentation.BatteryStatusItem>,
-    onDismiss: () -> Unit
-) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0xEE0D1C22),
-            border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.5f)),
-            shadowElevation = 16.dp,
-            modifier = Modifier
-                .widthIn(max = 380.dp)
-                .fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    BatteryIcon(
-                        modifier = Modifier.size(24.dp),
-                        tint = Color(0xFF00E676)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringRes("device_battery_levels"),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp
-                        ),
-                        color = Color.White
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (loading) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 20.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color(0xFF00E5FF),
-                            strokeWidth = 2.5.dp,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = stringRes("polling_batteries"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White.copy(alpha = 0.85f)
-                        )
-                    }
-                } else if (items.isEmpty()) {
-                    Text(
-                        text = stringRes("no_paired_devices_found"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items.forEach { item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0x33FFFFFF))
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = item.deviceName,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = Color.White,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                val batteryText = when {
-                                    !item.online -> stringRes("offline")
-                                    item.levelPercent != null -> {
-                                        val stateLower = item.chargingState.trim().lowercase()
-                                        val isCharging = when {
-                                            stateLower.contains("discharging") || stateLower.contains("not charging") -> false
-                                            stateLower == "ac" || stateLower == "usb" || stateLower == "wireless" -> true
-                                            stateLower.contains("charging") -> true
-                                            else -> false
-                                        }
-                                        if (isCharging) "⚡ ${item.levelPercent}%" else "${item.levelPercent}%"
-                                    }
-                                    else -> stringRes("unknown")
-                                }
-                                val textColor = when {
-                                    !item.online -> Color.White.copy(alpha = 0.5f)
-                                    item.levelPercent != null && item.levelPercent <= 20 -> Color(0xFFFF5252)
-                                    else -> Color(0xFF00E676)
-                                }
-                                Text(
-                                    text = batteryText,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = textColor
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF00E5FF),
-                        contentColor = Color.Black
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth(0.5f)
-                ) {
-                    Text(
-                        text = stringRes("ok"),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
 }

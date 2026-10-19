@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,7 +82,6 @@ type nodeState struct {
 	PublicKeyHash      string   `json:"publicKeyHash"`
 	PublicKey          string   `json:"publicKey"`
 	PinRequired        bool     `json:"pinRequired"`
-	DownloadsPath      string   `json:"downloadsPath"`
 	ClusterVersion     int64    `json:"clusterVersion"`
 	IsRemoved          bool     `json:"isRemoved"`
 	RemovedAt          *int64   `json:"removedAt"`
@@ -140,6 +141,8 @@ type diskState struct {
 	Peers             []deviceRecord `json:"peers"`
 	Tombstones        []diskTomb     `json:"tombstones"`
 	Completed         []diskTx       `json:"completed"`
+	// LastHeard is when each peer last answered or called us (epoch ms); it only ends announces to a long-silent peer.
+	LastHeard map[string]int64 `json:"lastHeard,omitempty"`
 }
 
 type identityFile struct {
@@ -182,6 +185,8 @@ type Node struct {
 	pending         map[string]struct{}
 	pins            map[string]string
 	announceLogged  map[string]time.Time
+	lastHeard       map[string]int64
+	removalsPulled  map[string]string
 	sessionCh       chan struct{}
 	seedNotify      chan struct{}
 	lastDialIP      string
@@ -194,6 +199,7 @@ type Node struct {
 	configPath      string
 	httpClient      *http.Client
 	httpServer      *http.Server
+	helloConn       *net.UDPConn
 	tls             *tlsState
 	uploadMu        sync.Mutex
 }
@@ -219,6 +225,8 @@ func newNode(dataDir string) (*Node, error) {
 		pending:        map[string]struct{}{},
 		pins:           map[string]string{},
 		announceLogged: map[string]time.Time{},
+		lastHeard:      map[string]int64{},
+		removalsPulled: map[string]string{},
 		sessionCh:      make(chan struct{}),
 		seedNotify:     make(chan struct{}, 1),
 		clusterPath:    filepath.Join(abs, "cluster.json"),
@@ -318,6 +326,11 @@ func (n *Node) loadCluster() error {
 		}
 	}
 	n.completed = disk.Completed
+	for id, at := range disk.LastHeard {
+		if at > 0 {
+			n.lastHeard[id] = at
+		}
+	}
 	return nil
 }
 
@@ -343,6 +356,7 @@ func (n *Node) persistLocked() {
 		Peers:             peers,
 		Tombstones:        tombs,
 		Completed:         n.completed,
+		LastHeard:         n.lastHeard,
 	}
 	if err := writeJSONFile(n.clusterPath, disk); err != nil {
 		log.Printf("Could not save cluster state: %v", err)
@@ -627,6 +641,11 @@ func (n *Node) handshake(ctx context.Context, beacon pairingBeacon, pin string) 
 	n.drainSeed()
 	n.chooseAutoName(ctx, beacon)
 
+	// Both people confirm a pairing. This node has no screen, so it prints the check code; the host's user compares
+	// it with the code on the host's screen and accepts there. The request below waits for that answer.
+	checkCode := pairCheckCode(checkKey(remote.TLSPin, hostID), checkKey(n.tlsPinValue(), n.deviceID()), beacon.PairingCode)
+	log.Printf("Pairing check code %s. It must be the same on %s's screen. Accept it there, or decline if it differs.", checkCode, host.DeviceName)
+
 	status, respBody, err := n.postPairing(ctx, beacon, pin, n.selfRecord(ip))
 	if err != nil {
 		n.removePeer(hostID)
@@ -635,6 +654,9 @@ func (n *Node) handshake(ctx context.Context, beacon pairingBeacon, pin string) 
 	if status == http.StatusForbidden {
 		n.removePeer(hostID)
 		text := strings.ToLower(string(respBody))
+		if strings.Contains(text, "pairing_declined") {
+			return fmt.Errorf("the other device declined the pairing, or did not answer in time")
+		}
 		if strings.Contains(text, "pairing_code") {
 			return fmt.Errorf("pairing code expired before the handshake finished")
 		}
@@ -720,7 +742,8 @@ func (n *Node) postPairing(ctx context.Context, beacon pairingBeacon, pin string
 	if strings.TrimSpace(pin) != "" {
 		req.Header.Set("X-FileApex-Pin", strings.TrimSpace(pin))
 	}
-	body, status, err := n.do(req, 20*time.Second)
+	// The host's user compares the check code and accepts, so the answer can take a while.
+	body, status, err := n.do(req, 105*time.Second)
 	return status, body, err
 }
 
@@ -833,7 +856,7 @@ func (n *Node) announceSelf(ctx context.Context, eventKind string) {
 	}
 	var targets []deviceRecord
 	for _, peer := range peers {
-		if n.shouldDial(peer.LastKnownIP) && peer.Port > 0 {
+		if n.shouldDial(peer.LastKnownIP) && peer.Port > 0 && !n.silentTooLong(peer.DeviceID) {
 			targets = append(targets, peer)
 		}
 	}
@@ -864,7 +887,7 @@ func (n *Node) announceRound(ctx context.Context, peers []deviceRecord, state no
 				ClusterVersion: state.MembershipVersion,
 				Devices:        []deviceRecord{},
 			}
-			body, status, err := n.postSync(ctx, peer, req, timeout)
+			body, status, header, err := n.postSyncHeader(ctx, peer, req, timeout)
 			if err != nil || status < 200 || status > 299 {
 				if err == nil {
 					err = fmt.Errorf("HTTP %d", status)
@@ -878,6 +901,8 @@ func (n *Node) announceRound(ctx context.Context, peers []deviceRecord, state no
 				mu.Unlock()
 				return
 			}
+			n.markHeard(peer.DeviceID)
+			n.noteRemovalsDigest(ctx, peer, header.Get(removalsHeader))
 			var roster []deviceRecord
 			if json.Unmarshal(body, &roster) == nil {
 				n.adoptTrusted(roster)
@@ -907,9 +932,15 @@ func (n *Node) logSilentPeers(silent []deviceRecord) {
 }
 
 func (n *Node) postSync(ctx context.Context, peer deviceRecord, req clusterSync, timeout time.Duration) ([]byte, int, error) {
+	body, status, _, err := n.postSyncHeader(ctx, peer, req, timeout)
+	return body, status, err
+}
+
+// postSyncHeader is postSync that also returns the response headers.
+func (n *Node) postSyncHeader(ctx context.Context, peer deviceRecord, req clusterSync, timeout time.Duration) ([]byte, int, http.Header, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	q := url.Values{}
 	n.stampQuery(q)
@@ -918,7 +949,7 @@ func (n *Node) postSync(ctx context.Context, peer deviceRecord, req clusterSync,
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL(peer.LastKnownIP, peer.Port, "/api/v1/devices/merge", q), bytes.NewReader(payload))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	id, mv := n.identityStamp()
@@ -929,8 +960,8 @@ func (n *Node) postSync(ctx context.Context, peer deviceRecord, req clusterSync,
 	if mv > 0 {
 		httpReq.Header.Set("X-FileApex-Membership-Version", fmt.Sprintf("%d", mv))
 	}
-	body, status, err := n.do(httpReq, timeout)
-	return body, status, err
+	client, out := n.clientFor(httpReq)
+	return n.sendHeader(client, out, timeout)
 }
 
 func (n *Node) stampQuery(q url.Values) {
@@ -961,18 +992,23 @@ func (n *Node) doPlain(req *http.Request, timeout time.Duration) ([]byte, int, e
 }
 
 func (n *Node) send(client *http.Client, req *http.Request, timeout time.Duration) ([]byte, int, error) {
+	body, status, _, err := n.sendHeader(client, req, timeout)
+	return body, status, err
+}
+
+func (n *Node) sendHeader(client *http.Client, req *http.Request, timeout time.Duration) ([]byte, int, http.Header, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return nil, resp.StatusCode, err
+		return nil, resp.StatusCode, resp.Header, err
 	}
-	return body, resp.StatusCode, nil
+	return body, resp.StatusCode, resp.Header, nil
 }
 
 func (n *Node) rememberPin(deviceID, pin string) {
@@ -1376,6 +1412,7 @@ func (n *Node) allowUpload(id string, mv int64) bool {
 
 func (n *Node) noteContact(id, remote string) {
 	id = strings.TrimSpace(id)
+	n.markHeard(id)
 	ip := remoteIPv4(remote)
 	if id == "" || !isPrivateLAN(ip) {
 		return
@@ -1461,7 +1498,6 @@ func (n *Node) selfState() nodeState {
 		PublicKeyHash:      fingerprint(n.identity.DeviceID),
 		PublicKey:          n.pairPublicKey(),
 		PinRequired:        false,
-		DownloadsPath:      n.inbox,
 		ClusterVersion:     cluster,
 		MembershipVersion:  membership,
 		MembershipProtocol: membershipProtocol,
@@ -1624,7 +1660,8 @@ func writeJSONFile(path string, value any) error {
 	}
 	body = append(body, '\n')
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+	// The roster, peer pins and removal records are private to this node.
+	if err := os.WriteFile(tmp, body, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
@@ -1651,4 +1688,176 @@ func (n *Node) tlsPinValue() string {
 		return ""
 	}
 	return n.tls.identity.pin
+}
+
+// silentAnnounceCutoff is how long a peer may stay silent before the periodic announce skips it. The peer stays in
+// the roster, and any answer or call from it resets the clock.
+const silentAnnounceCutoff = 30 * 24 * time.Hour
+
+// markHeard records that a peer answered or called us. It saves to disk at most once an hour per peer.
+func (n *Node) markHeard(id string) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return
+	}
+	now := time.Now().UnixMilli()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if _, ok := n.peers[id]; !ok {
+		return
+	}
+	last := n.lastHeard[id]
+	n.lastHeard[id] = now
+	if now-last > int64(time.Hour/time.Millisecond) {
+		n.persistLocked()
+	}
+}
+
+// silentTooLong reports a peer we have not heard from for the cutoff. A peer with no record starts its clock now,
+// so a node upgraded from an older build never skips anyone on its first day.
+func (n *Node) silentTooLong(id string) bool {
+	id = strings.TrimSpace(id)
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	last := n.lastHeard[id]
+	if last == 0 {
+		n.lastHeard[id] = time.Now().UnixMilli()
+		return false
+	}
+	return time.Since(time.UnixMilli(last)) > silentAnnounceCutoff
+}
+
+// removalsHeader carries a short fingerprint of a node's removal records on its health answer and on its merge
+// answer, to a peer that presented its pinned certificate. Equal fingerprints mean the two nodes hold the same
+// removals, which is almost always, so nothing more is sent.
+const removalsHeader = "X-FileApex-Removals"
+
+const removalsWindow = 30 * 24 * time.Hour
+
+// removalsCutoff is the start of the fingerprint window: midnight UTC, 30 days back. Whole days keep two nodes with
+// slightly different clocks from disagreeing about a record at the edge.
+func removalsCutoff(now time.Time) int64 {
+	day := 24 * time.Hour
+	return now.UTC().Truncate(day).Add(-removalsWindow).UnixMilli()
+}
+
+// removalsDigest fingerprints the removal records inside the window: every device id with its stamp, sorted.
+// It returns "0" when there are none. The Kotlin nodes compute the same value from the same records.
+func (n *Node) removalsDigest() string {
+	return digestOfRemovals(n.windowedRemovals())
+}
+
+func digestOfRemovals(records []removedRecord) string {
+	if len(records) == 0 {
+		return "0"
+	}
+	lines := make([]string, 0, len(records))
+	for _, r := range records {
+		lines = append(lines, fmt.Sprintf("%s:%d\n", strings.TrimSpace(r.DeviceID), r.version()))
+	}
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "")))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// windowedRemovals lists the removal records this node holds that fall inside the window.
+func (n *Node) windowedRemovals() []removedRecord {
+	cutoff := removalsCutoff(time.Now())
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make([]removedRecord, 0, len(n.tombstones))
+	for _, tomb := range n.tombstones {
+		if tomb.Version < cutoff {
+			continue
+		}
+		out = append(out, removedRecord{
+			DeviceID:           tomb.DeviceID,
+			PublicKeyHash:      tomb.PublicKeyHash,
+			ClusterVersion:     tomb.Version,
+			MembershipProtocol: membershipProtocol,
+		})
+	}
+	return out
+}
+
+// noteRemovalsDigest compares a peer's fingerprint with ours. A different one means one of us missed a removal, so
+// we ask that peer for its records once per distinct fingerprint: a peer holding a record we will never accept
+// (or one we hold and it will not) cannot make this repeat.
+func (n *Node) noteRemovalsDigest(ctx context.Context, peer deviceRecord, theirs string) {
+	theirs = strings.TrimSpace(theirs)
+	if theirs == "" || theirs == n.removalsDigest() {
+		return
+	}
+	n.mu.Lock()
+	if n.removalsPulled[peer.DeviceID] == theirs {
+		n.mu.Unlock()
+		return
+	}
+	n.removalsPulled[peer.DeviceID] = theirs
+	n.mu.Unlock()
+	if err := n.pullRemovals(ctx, peer); err != nil {
+		log.Printf("Could not read the removal records of %s: %v", n.peerLabel(peer.DeviceID), err)
+		n.mu.Lock()
+		delete(n.removalsPulled, peer.DeviceID)
+		n.mu.Unlock()
+	}
+}
+
+// pullRemovals reads a peer's removal records and applies them under the same rules as a pushed removal: a record
+// is accepted only when its stamp is newer than what we hold for that device. A record naming this node is never
+// taken from a pull.
+func (n *Node) pullRemovals(ctx context.Context, peer deviceRecord) error {
+	q := url.Values{}
+	n.stampQuery(q)
+	if pin := n.pinFor(peer.DeviceID); pin != "" {
+		q.Set("pin", pin)
+	}
+	body, status, err := n.get(ctx, peerURL(peer.LastKnownIP, peer.Port, "/api/v1/devices/removed", q), 5*time.Second)
+	if err != nil {
+		return err
+	}
+	if status < 200 || status > 299 {
+		return fmt.Errorf("HTTP %d", status)
+	}
+	var records []removedRecord
+	if err := json.Unmarshal(body, &records); err != nil {
+		return err
+	}
+	self := n.identity.DeviceID
+	kept := records[:0]
+	for _, record := range records {
+		if strings.TrimSpace(record.DeviceID) != self {
+			kept = append(kept, record)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	before := n.rosterNames()
+	n.applySync(clusterSync{EventKind: "REMOVAL", RemovedDevices: kept, NodeStates: []nodeState{}, Devices: []deviceRecord{}})
+	if dropped := namesMissingFrom(before, n.rosterNames()); len(dropped) > 0 {
+		log.Printf("Read %d removal record(s) from %s and dropped %d device(s) that were removed elsewhere: %s.",
+			len(kept), n.peerLabel(peer.DeviceID), len(dropped), strings.Join(dropped, ", "))
+	}
+	return nil
+}
+
+// rosterNames maps device id to display name for every roster member.
+func (n *Node) rosterNames() map[string]string {
+	out := map[string]string{}
+	for _, peer := range n.roster() {
+		out[peer.DeviceID] = peer.DeviceName
+	}
+	return out
+}
+
+func namesMissingFrom(before, after map[string]string) []string {
+	var gone []string
+	for id, name := range before {
+		if _, ok := after[id]; !ok {
+			gone = append(gone, name)
+		}
+	}
+	sort.Strings(gone)
+	return gone
 }

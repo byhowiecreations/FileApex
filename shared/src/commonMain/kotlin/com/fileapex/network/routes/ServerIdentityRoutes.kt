@@ -1,12 +1,13 @@
 package com.fileapex.network.routes
 
 import com.fileapex.data.db.PairedDeviceEntity
-import com.fileapex.data.identity.loadLocalIdentity
-import com.fileapex.di.FileApexServices
 import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.pairing.LanPairingDiscovery
-import com.fileapex.domain.peer.PeerNodeState
-import com.fileapex.domain.peer.PeerNodeStateMapper
+import com.fileapex.domain.pairing.PairingCheckCode
+import com.fileapex.domain.pairing.PairingHint
+import com.fileapex.domain.pairing.PairingHints
+import com.fileapex.domain.pairing.PairingConfirmations
+import com.fileapex.domain.pairing.PendingJoin
 import com.fileapex.network.FileApexServer
 import com.fileapex.network.RenameDeviceRequest
 import com.fileapex.network.TransferTransactionJournal
@@ -31,19 +32,6 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
         }.onFailure { error ->
             server.onLog("GET /api/v1/identity failed", error)
             call.respond(HttpStatusCode.InternalServerError, "identity_failed")
-        }
-    }
-
-    get("/api/v1/heartbeat") {
-        cancellableCatching {
-            val senderId = call.request.queryParameters["from"].orEmpty()
-            if (senderId.isNotBlank()) {
-                TransferTransactionJournal.purgeInstalledForSender(senderId)
-            }
-            server.respondSelfPeerState(call)
-        }.onFailure { error ->
-            server.onLog("GET /api/v1/heartbeat failed", error)
-            call.respond(HttpStatusCode.InternalServerError, "heartbeat_failed")
         }
     }
 
@@ -73,6 +61,10 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
 
     post("/api/v1/auth/verify-pin") {
         runCatching {
+            if (server.pairingThrottle.hitAndCheck(call.request.local.remoteAddress.trim(), com.fileapex.util.TimeUtils.now())) {
+                call.respond(HttpStatusCode.TooManyRequests, "slow_down")
+                return@runCatching
+            }
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
                 return@runCatching
@@ -86,6 +78,11 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
 
     post("/api/v1/pairing/respond") {
         cancellableCatching {
+            // The PIN and the 6-digit code are short: slow down anyone who keeps guessing.
+            if (server.pairingThrottle.hitAndCheck(call.request.local.remoteAddress.trim(), com.fileapex.util.TimeUtils.now())) {
+                call.respond(HttpStatusCode.TooManyRequests, "slow_down")
+                return@cancellableCatching
+            }
             if (!server.isPeerPinAccepted(server.providedPin(call))) {
                 call.respond(HttpStatusCode.Forbidden, "pin_required")
                 return@cancellableCatching
@@ -120,6 +117,44 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
                 scanningDevice.copy(lastKnownIp = inboundIp)
             } else {
                 scanningDevice
+            }
+
+            // Both users confirm: this device's user compares the check code with the joiner's screen and accepts or
+            // declines. Until then nothing about the joiner is stored, including the key it claims.
+            val hostKey = PairingCheckCode.key(com.fileapex.security.tls.LocalTlsInfo.pin, localId)
+            val joinerKey = PairingCheckCode.key(inboundDevice.tlsPin, inboundDevice.deviceId)
+            val checkCode = PairingCheckCode.derive(hostKey, joinerKey, server.providedPairingCode(call))
+            val repository = com.fileapex.di.FileApexServices.deviceRepositoryOrNull()
+            val hint = if (repository == null) PairingHint.None else PairingHints.evaluate(
+                joinerId = inboundDevice.deviceId,
+                joinerName = inboundDevice.deviceName,
+                joinerHash = inboundDevice.hardwareHash,
+                active = repository.listDevices(),
+                removed = repository.removedDevicesWithHardware(inboundDevice.hardwareHash)
+            )
+            val accepted = PairingConfirmations.board.askHost(
+                PendingJoin(inboundDevice.deviceId, inboundDevice.deviceName, checkCode, hint),
+                PairingConfirmations.HOST_CONFIRM_TIMEOUT_MS
+            )
+            when (accepted) {
+                null -> {
+                    call.respond(HttpStatusCode.Conflict, "pairing_busy")
+                    return@cancellableCatching
+                }
+                false -> {
+                    // The code is single-use: a declined or unanswered attempt ends this pairing window.
+                    LanPairingDiscovery.onHostPairingAccepted()
+                    call.respond(HttpStatusCode.Forbidden, "pairing_declined")
+                    return@cancellableCatching
+                }
+                true -> {
+                    // The user saw "same hardware as <old entry>" and accepted: the old entry of that device goes.
+                    if (hint is PairingHint.SameHardware) {
+                        for (oldId in hint.ids) {
+                            cancellableCatching { com.fileapex.di.FileApexServices.peerAdmission.supersede(oldId) }
+                        }
+                    }
+                }
             }
 
             // Persist off the request-critical path so Room failures never tear down CIO.
@@ -162,6 +197,25 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
         }.onFailure { error ->
             server.onLog("GET /api/v1/devices failed", error)
             call.respond(HttpStatusCode.InternalServerError, "devices_failed")
+        }
+    }
+
+    // The removal records this node holds, for a peer whose fingerprint differs from ours (see RemovalFingerprint).
+    get("/api/v1/devices/removed") {
+        cancellableCatching {
+            val records = withContext(Dispatchers.IO) {
+                server.removalRecords()
+            }
+            call.respondText(
+                text = server.json.encodeToString(
+                    ListSerializer(com.fileapex.domain.pairing.RemovedDeviceRecord.serializer()),
+                    records
+                ),
+                contentType = ContentType.Application.Json
+            )
+        }.onFailure { error ->
+            server.onLog("GET /api/v1/devices/removed failed", error)
+            call.respond(HttpStatusCode.InternalServerError, "removed_failed")
         }
     }
 
@@ -221,6 +275,12 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
 
             val currentRoster = withContext(Dispatchers.IO) {
                 server.onListDevices()
+            }
+            // The sender reads this to learn whether it missed a removal; a peer that proved who it is gets it.
+            if (server.authenticatedPeerId(call) != null) {
+                runCatching { server.removalFingerprint() }.getOrNull()?.let { value ->
+                    call.response.headers.append(com.fileapex.network.PeerHttpHeaders.REMOVALS, value)
+                }
             }
             call.respondText(
                 text = server.json.encodeToString(

@@ -145,16 +145,6 @@ internal fun localizedBulletinBoardStyleName(style: BulletinBoardStyle): String 
     BulletinBoardStyle.STICKY_NOTE -> stringRes("bulletin_style_sticky_note")
 }
 
-@Composable
-internal fun localizedBulletinBoardStyleDescription(style: BulletinBoardStyle): String = when (style) {
-    BulletinBoardStyle.DEFAULT -> stringRes("bulletin_style_default_desc")
-    BulletinBoardStyle.IOS_MODERN -> stringRes("bulletin_style_ios_modern_desc")
-    BulletinBoardStyle.MATERIAL_YOU -> stringRes("bulletin_style_material_you_desc")
-    BulletinBoardStyle.AERO_GLASS -> stringRes("bulletin_style_aero_glass_desc")
-    BulletinBoardStyle.TORN_LEDGER -> stringRes("bulletin_style_torn_ledger_desc")
-    BulletinBoardStyle.STICKY_NOTE -> stringRes("bulletin_style_sticky_note_desc")
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ThemesSettingsPage(

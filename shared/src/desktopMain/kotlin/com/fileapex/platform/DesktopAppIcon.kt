@@ -1,8 +1,5 @@
 package com.fileapex.platform
 
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.painter.Painter
 import java.awt.Image
 import javax.imageio.ImageIO
 
@@ -19,10 +16,4 @@ object DesktopAppIcon {
             stream.use { input -> ImageIO.read(input) }
         }.getOrNull()
 
-    fun loadTrayPainter(): Painter? {
-        val bytes = DesktopAppIcon::class.java.getResourceAsStream(TRAY_RESOURCE)?.use { it.readBytes() }
-            ?: return null
-        val bitmap: ImageBitmap = decodeImageBytes(bytes) ?: return null
-        return BitmapPainter(bitmap)
-    }
 }

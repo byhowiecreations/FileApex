@@ -59,8 +59,6 @@ object DemoModeState {
         _isDemoModeActive.value = false
     }
 
-    fun getDemoDeviceRows(): List<DeviceListRow> = _demoDeviceRows.value
-
     fun isDemoDeviceId(deviceId: String): Boolean = deviceId.startsWith("demo_")
 
     fun renameDemoDevice(deviceId: String, newName: String) {

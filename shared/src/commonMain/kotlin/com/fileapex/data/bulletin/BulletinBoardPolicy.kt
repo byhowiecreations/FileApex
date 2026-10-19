@@ -1,5 +1,7 @@
 package com.fileapex.data.bulletin
 
+import com.fileapex.data.db.isDockerNode
+
 object BulletinContentType {
     const val TEXT = 0
     const val LINK = 1
@@ -11,7 +13,6 @@ object BulletinContentType {
 object BulletinPayloadType {
     const val MESSAGE = 0
     const val TOMBSTONE = 1
-    const val ACK = 2
     const val RETRACT_BY_KIND = 3
 }
 
@@ -20,9 +21,9 @@ object BulletinBoardPolicy {
     const val RETENTION_HORIZON_MS = 90L * 24 * 60 * 60 * 1000
     const val SYNC_BATCH_LIMIT = 20
     const val IMAGE_PREVIEW_MAX_BYTES = 64 * 1024
-    const val LAN_FILE_MAX_BYTES = 8L * 1024 * 1024
+    /** A Docker node is a backup receiver with no Bulletin Board and no routes for it: it is never sent posts or deletes. */
+    fun takesPartInBulletin(peer: com.fileapex.data.db.PairedDeviceEntity): Boolean = !peer.isDockerNode()
+
     /** First build with /api/v1/bulletin/sync/batch (version.md code=126, v0.8.1a). */
     const val BULLETIN_SYNC_MIN_VERSION_CODE = 126
-    /** Remote file purge flag on bulletin tombstones (version.md code=127, v0.8.1b). */
-    const val BULLETIN_REMOTE_PURGE_MIN_VERSION_CODE = 127
 }

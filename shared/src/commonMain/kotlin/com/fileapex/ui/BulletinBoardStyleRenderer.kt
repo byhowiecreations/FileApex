@@ -1,6 +1,5 @@
 package com.fileapex.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -8,7 +7,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -44,16 +42,11 @@ import kotlin.math.sin
 
 // Core Logo Palette
 val BrandCoolBlue = Color(0xFF2A75D3)
-val BrandCoolBlueDark = Color(0xFF1B4E8F)
-val BrandCoolBlueGlow = Color(0xFF56CBDC)
 
 // iOS Modern cool-blue apex gradient derived from the app logo icon
 val IosModernCyanTop = Color(0xFF5CD8F2)
 val IosModernApexBlue = Color(0xFF3FB5D8) // User-specified logo-derived middle cyan/blue swatch
 val IosModernBlueBottom = Color(0xFF208BB0)
-
-// Aero Glass frosted pane styling
-val AeroGlassPaneBg = Color(0x661C2630)
 
 // Torn Ledger & Sticky Note styling
 val TornLedgerGridStroke = Color(0x383B5998)

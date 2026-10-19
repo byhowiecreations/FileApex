@@ -51,13 +51,6 @@ object DesktopSendHandoff {
     private val jobsDir: File
         get() = DesktopPlatformPaths.sendJobsDirectory()
 
-    /**
-     * Canonical deep-link URI for a send job from the Share Extension.
-     * Main app treats this like a single-top “resume send” launch (already-running or cold start).
-     */
-    fun sendJobUri(jobId: String): URI =
-        URI("fileapex", /* authority */ "send", /* path */ null, /* query */ "job=$jobId", /* fragment */ null)
-
     fun installOpenUriHandler() {
         runCatching {
             if (!Desktop.isDesktopSupported()) return

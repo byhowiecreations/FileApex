@@ -3,9 +3,6 @@ package com.fileapex.ui
 import com.fileapex.i18n.stringRes
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
@@ -115,7 +112,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.graphics.ImageBitmap
-import com.fileapex.domain.preview.FilePreviewManager
 import com.fileapex.platform.decodeLocalImageFile
 import com.fileapex.platform.decodeVideoPoster
 

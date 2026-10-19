@@ -14,7 +14,9 @@ data class MessageEntity(
     val contentType: Int,
     val timestamp: Long,
     val isDeleted: Boolean = false,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    /** Local time of the last change to this row (see [BulletinChange]); 0 for rows older than schema 3. */
+    val updatedAt: Long = 0L
 )
 
 @Entity(tableName = "tombstones")
@@ -23,7 +25,9 @@ data class TombstoneEntity(
     @PrimaryKey val id: String,
     val deletedAt: Long,
     val originDeviceId: String,
-    val remotePurge: Boolean = false
+    val remotePurge: Boolean = false,
+    /** Local time this tombstone was stored; a peer pulling a delta asks for rows newer than its cursor. */
+    val updatedAt: Long = 0L
 )
 
 @Entity(tableName = "outbox")

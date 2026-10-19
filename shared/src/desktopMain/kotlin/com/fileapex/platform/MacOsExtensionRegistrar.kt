@@ -178,50 +178,6 @@ object MacOsExtensionRegistrar {
         return null
     }
 
-    private fun removeAllRegistrations(bundleId: String) {
-        val listing = runCapture(Pluginkit, "-mAvvv")
-        val paths = pathsForBundle(listing, bundleId)
-        for (path in paths) {
-            log("removing $bundleId plugin ${File(path).name}")
-            runCapture(Pluginkit, "-r", path)
-        }
-    }
-
-    private fun removeNonApplicationsRegistrations(bundleId: String) {
-        val listing = runCapture(Pluginkit, "-mAvvv")
-        val paths = pathsForBundle(listing, bundleId)
-        for (path in paths) {
-            if (path.startsWith("/Applications/")) continue
-            log("removing non-Applications plugin ${File(path).name}")
-            runCapture(Pluginkit, "-r", path)
-        }
-    }
-
-    private fun pathsForBundle(listing: String, bundleId: String): List<String> {
-        val paths = mutableListOf<String>()
-        var inBundle = false
-        for (line in listing.lines()) {
-            val trimmed = line.trim()
-            if (trimmed.contains(bundleId) && !trimmed.startsWith("Path")) {
-                inBundle = true
-                continue
-            }
-            if (inBundle) {
-                if (trimmed.startsWith("Path = ")) {
-                    paths += trimmed.removePrefix("Path = ").trim()
-                    inBundle = false
-                } else if (
-                    trimmed.contains("com.") &&
-                    (trimmed.startsWith("+") || trimmed.startsWith("-") ||
-                        trimmed.matches(Regex("^com\\..*")))
-                ) {
-                    inBundle = false
-                }
-            }
-        }
-        return paths
-    }
-
     private fun runCapture(vararg args: String): String {
         return try {
             val process = ProcessBuilder(*args)

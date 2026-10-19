@@ -4,6 +4,8 @@ import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
+import com.fileapex.iroh.IrohRelayUrl
+import com.fileapex.iroh.IrohRelayUrlCheck
 import com.fileapex.util.TimestampDiagnostics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,6 +111,7 @@ class BaseAppSettings(
         MutableStateFlow(store.getString(KEY_SKIPPED_UPDATE_VERSION, ""))
     private val serviceWatchdog = MutableStateFlow(store.getBoolean(KEY_SERVICE_WATCHDOG, true))
     private val autoLaunchOnRebootFlow = MutableStateFlow(loadAutoLaunchOnReboot())
+    private val desktopAutostartFlow = MutableStateFlow(store.getBoolean(KEY_DESKTOP_AUTOSTART, false))
     private val deviceOrderIdsFlow = MutableStateFlow(store.getString(KEY_DEVICE_ORDER, ""))
     private val deviceOrderUpdatedAt = MutableStateFlow(store.getLong(KEY_DEVICE_ORDER_UPDATED_AT, 0L))
     private val clusterMembershipVersionFlow = MutableStateFlow(store.getLong(KEY_CLUSTER_MEMBERSHIP_VERSION, 0L))
@@ -372,11 +375,30 @@ class BaseAppSettings(
     private val settingsGroupSecurityAccountFlow = MutableStateFlow(
         store.getBoolean(KEY_SETTINGS_GROUP_SECURITY_ACCOUNT, true)
     )
+    private val settingsGroupRemoteAccessFlow = MutableStateFlow(
+        store.getBoolean(KEY_SETTINGS_GROUP_REMOTE_ACCESS, true)
+    )
     private val tailscaleSetupExpandedFlow = MutableStateFlow(
         store.getBoolean(KEY_TAILSCALE_SETUP_EXPANDED, false)
     )
     private val tailscaleEnabledFlow = MutableStateFlow(
         store.getBoolean(KEY_TAILSCALE_ENABLED, false)
+    )
+    private val irohEnabledFlow = MutableStateFlow(
+        store.getBoolean(KEY_IROH_ENABLED, false)
+    )
+    private val irohRelayEnabledFlow = MutableStateFlow(
+        store.getBoolean(KEY_IROH_RELAY_ENABLED, false) &&
+            IrohRelayUrl.check(store.getString(KEY_IROH_RELAY_URL, "")) is IrohRelayUrlCheck.Valid
+    )
+    private val irohRestWhenIdleFlow = MutableStateFlow(
+        store.getBoolean(KEY_IROH_REST_WHEN_IDLE, true)
+    )
+    private val irohAdvancedDebugFlow = MutableStateFlow(
+        store.getBoolean(KEY_IROH_ADVANCED_DEBUG, false)
+    )
+    private val irohRelayUrlFlow = MutableStateFlow(
+        store.getString(KEY_IROH_RELAY_URL, "")
     )
     private val tailscaleAuthKeyFlow = MutableStateFlow(
         store.getString(KEY_TAILSCALE_AUTH_KEY, "")
@@ -458,8 +480,15 @@ class BaseAppSettings(
         settingsGroupAppearanceBehaviorFlow.asStateFlow()
     override val settingsGroupSecurityAccountExpanded: StateFlow<Boolean> =
         settingsGroupSecurityAccountFlow.asStateFlow()
+    override val settingsGroupRemoteAccessExpanded: StateFlow<Boolean> =
+        settingsGroupRemoteAccessFlow.asStateFlow()
     override val tailscaleSetupExpanded: StateFlow<Boolean> = tailscaleSetupExpandedFlow.asStateFlow()
     override val tailscaleEnabled: StateFlow<Boolean> = tailscaleEnabledFlow.asStateFlow()
+    override val irohEnabled: StateFlow<Boolean> = irohEnabledFlow.asStateFlow()
+    override val irohRelayEnabled: StateFlow<Boolean> = irohRelayEnabledFlow.asStateFlow()
+    override val irohRelayUrl: StateFlow<String> = irohRelayUrlFlow.asStateFlow()
+    override val irohAdvancedDebug: StateFlow<Boolean> = irohAdvancedDebugFlow.asStateFlow()
+    override val irohRestWhenIdle: StateFlow<Boolean> = irohRestWhenIdleFlow.asStateFlow()
     override val tailscaleAuthKey: StateFlow<String> = tailscaleAuthKeyFlow.asStateFlow()
     override val tailscaleAuthKeyFingerprint: StateFlow<String> = tailscaleAuthKeyFingerprintFlow.asStateFlow()
 
@@ -473,6 +502,7 @@ class BaseAppSettings(
     override val skippedUpdateVersion: StateFlow<String> = skippedUpdateVersionFlow.asStateFlow()
     override val enableServiceWatchdog: StateFlow<Boolean> = serviceWatchdog.asStateFlow()
     override val autoLaunchOnReboot: StateFlow<Boolean> = autoLaunchOnRebootFlow.asStateFlow()
+    override val desktopAutostart: StateFlow<Boolean> = desktopAutostartFlow.asStateFlow()
     override val deviceOrderIds: StateFlow<String> = deviceOrderIdsFlow.asStateFlow()
     override val deviceOrderUpdatedAtEpochMs: StateFlow<Long> = deviceOrderUpdatedAt.asStateFlow()
     override val clusterMembershipVersion: StateFlow<Long> = clusterMembershipVersionFlow.asStateFlow()
@@ -568,6 +598,12 @@ class BaseAppSettings(
     override fun setClipboardShareMode(mode: ClipboardShareMode) {
         store.putString(KEY_CLIPBOARD_SHARE_MODE, mode.name)
         clipboardShareModeFlow.value = mode
+    }
+
+    override fun bulletinDeltaCursor(deviceId: String): Long = store.getLong("bulletin_delta_cursor_$deviceId", 0L)
+
+    override fun setBulletinDeltaCursor(deviceId: String, cursor: Long) {
+        store.putLong("bulletin_delta_cursor_$deviceId", cursor)
     }
 
     override fun setClipboardTargetDeviceIds(deviceIds: Set<String>) {
@@ -732,6 +768,11 @@ class BaseAppSettings(
         settingsGroupSecurityAccountFlow.value = expanded
     }
 
+    override fun setSettingsGroupRemoteAccessExpanded(expanded: Boolean) {
+        store.putBoolean(KEY_SETTINGS_GROUP_REMOTE_ACCESS, expanded)
+        settingsGroupRemoteAccessFlow.value = expanded
+    }
+
     override fun setTailscaleSetupExpanded(expanded: Boolean) {
         store.putBoolean(KEY_TAILSCALE_SETUP_EXPANDED, expanded)
         tailscaleSetupExpandedFlow.value = expanded
@@ -740,6 +781,49 @@ class BaseAppSettings(
     override fun setTailscaleEnabled(enabled: Boolean) {
         store.putBoolean(KEY_TAILSCALE_ENABLED, enabled)
         tailscaleEnabledFlow.value = enabled
+    }
+
+    override fun setIrohEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_IROH_ENABLED, enabled)
+        irohEnabledFlow.value = enabled
+    }
+
+    override fun setIrohRestWhenIdle(enabled: Boolean) {
+        store.putBoolean(KEY_IROH_REST_WHEN_IDLE, enabled)
+        irohRestWhenIdleFlow.value = enabled
+    }
+
+    override fun setIrohAdvancedDebug(enabled: Boolean) {
+        store.putBoolean(KEY_IROH_ADVANCED_DEBUG, enabled)
+        irohAdvancedDebugFlow.value = enabled
+    }
+
+    override fun irohRelayToken(): String = store.getString(KEY_IROH_RELAY_TOKEN, "")
+
+    override fun saveIrohRelay(enabled: Boolean, url: String, token: String): Boolean {
+        val checked = IrohRelayUrl.check(url)
+        val cleanToken = token.trim()
+        if (checked is IrohRelayUrlCheck.Valid) {
+            store.putString(KEY_IROH_RELAY_URL, checked.url)
+            irohRelayUrlFlow.value = checked.url
+            store.putString(KEY_IROH_RELAY_TOKEN, cleanToken)
+        }
+        val on = enabled && checked is IrohRelayUrlCheck.Valid
+        store.putBoolean(KEY_IROH_RELAY_ENABLED, on)
+        irohRelayEnabledFlow.value = on
+        return on
+    }
+
+    override fun irohSecretKeyBase64(): String = store.getString(KEY_IROH_SECRET_KEY, "")
+
+    override fun setIrohSecretKeyBase64(value: String) {
+        store.putString(KEY_IROH_SECRET_KEY, value.trim())
+    }
+
+    override fun irohPeersJson(): String = store.getString(KEY_IROH_PEERS, "")
+
+    override fun setIrohPeersJson(value: String) {
+        store.putString(KEY_IROH_PEERS, value)
     }
 
     override fun setTailscaleAuthKey(authKey: String) {
@@ -800,6 +884,11 @@ class BaseAppSettings(
         serviceWatchdog.value = enabled
     }
 
+    override fun setDesktopAutostart(enabled: Boolean) {
+        store.putBoolean(KEY_DESKTOP_AUTOSTART, enabled)
+        desktopAutostartFlow.value = enabled
+    }
+
     override fun setAutoLaunchOnReboot(enabled: Boolean) {
         store.putBoolean(KEY_AUTO_LAUNCH_ON_REBOOT, enabled)
         autoLaunchOnRebootFlow.value = enabled
@@ -821,6 +910,10 @@ class BaseAppSettings(
         store.putLong(KEY_CLUSTER_MEMBERSHIP_VERSION, version)
         clusterMembershipVersionFlow.value = version
     }
+
+    override var lanScanBackoffState: String
+        get() = store.getString(KEY_LAN_SCAN_BACKOFF, "")
+        set(value) = store.putString(KEY_LAN_SCAN_BACKOFF, value)
 
     override fun setMembershipProtocolSinceEpochMs(epochMs: Long) {
         TimestampDiagnostics.logMutation("AppSettings.membershipProtocolSince", epochMs)
@@ -1288,14 +1381,26 @@ class BaseAppSettings(
         settingsGroupSystemPerformanceFlow.value = true
         settingsGroupAppearanceBehaviorFlow.value = true
         settingsGroupSecurityAccountFlow.value = true
+        settingsGroupRemoteAccessFlow.value = true
         tailscaleSetupExpandedFlow.value = false
         tailscaleEnabledFlow.value = false
+        irohEnabledFlow.value = false
+        irohRelayEnabledFlow.value = false
+        irohRelayUrlFlow.value = ""
+        irohAdvancedDebugFlow.value = false
+        irohRestWhenIdleFlow.value = true
         tailscaleAuthKeyFlow.value = ""
         tailscaleAuthKeyFingerprintFlow.value = ""
         diagnosticsPrivateKeyBase64Stored.value = ""
     }
 
     companion object {
+        /** Never kept in clear text: [SealingKvStore] seals these with the platform's secret store. */
+        val SECRET_KEYS: Set<String> = setOf(
+            KEY_CLIPBOARD_PRIVATE_KEY, KEY_DIAGNOSTICS_PRIVATE_KEY, KEY_IROH_SECRET_KEY,
+            KEY_DEVICE_PIN, KEY_TAILSCALE_AUTH_KEY, KEY_IROH_RELAY_TOKEN
+        )
+
         const val KEY_GOOGLE = "google_account_link"
         const val KEY_GOOGLE_EMAIL = "google_account_email"
         const val KEY_GOOGLE_UID = "google_account_uid"
@@ -1375,10 +1480,12 @@ class BaseAppSettings(
         const val KEY_SKIPPED_UPDATE_VERSION = "skipped_update_version"
         const val KEY_SERVICE_WATCHDOG = "enable_service_watchdog"
         const val KEY_AUTO_LAUNCH_ON_REBOOT = "auto_launch_on_reboot"
+        const val KEY_DESKTOP_AUTOSTART = "desktop_autostart"
         const val KEY_DEVICE_ORDER = "device_order_ids"
         const val KEY_DEVICE_ORDER_UPDATED_AT = "device_order_updated_at_epoch_ms"
         const val KEY_CLUSTER_MEMBERSHIP_VERSION = "cluster_membership_version"
         const val KEY_MEMBERSHIP_PROTOCOL_SINCE = "membership_protocol_since_epoch_ms"
+        const val KEY_LAN_SCAN_BACKOFF = "lan_scan_backoff"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
         const val KEY_DESKTOP_SPLIT_FRACTION = "desktop_split_fraction"
         const val KEY_EXPLORER_SPLIT_FRACTION = "explorer_split_fraction"
@@ -1405,10 +1512,19 @@ class BaseAppSettings(
         const val KEY_SETTINGS_GROUP_SYSTEM_PERFORMANCE = "settings_group_system_performance_expanded"
         const val KEY_TAILSCALE_SETUP_EXPANDED = "tailscale_setup_expanded"
         const val KEY_TAILSCALE_ENABLED = "tailscale_enabled"
+        const val KEY_IROH_ENABLED = "iroh_enabled"
+        const val KEY_IROH_ADVANCED_DEBUG = "iroh_advanced_debug"
+        const val KEY_IROH_REST_WHEN_IDLE = "iroh_rest_when_idle"
+        const val KEY_IROH_RELAY_ENABLED = "iroh_relay_enabled"
+        const val KEY_IROH_RELAY_URL = "iroh_relay_url"
+        const val KEY_IROH_RELAY_TOKEN = "iroh_relay_token"
+        const val KEY_IROH_SECRET_KEY = "iroh_secret_key_b64"
+        const val KEY_IROH_PEERS = "iroh_peers_json"
         const val KEY_TAILSCALE_AUTH_KEY = "tailscale_auth_key"
         const val KEY_TAILSCALE_AUTH_KEY_FINGERPRINT = "tailscale_auth_key_fingerprint"
         const val KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR = "settings_group_appearance_behavior_expanded"
         const val KEY_SETTINGS_GROUP_SECURITY_ACCOUNT = "settings_group_security_account_expanded"
+        const val KEY_SETTINGS_GROUP_REMOTE_ACCESS = "settings_group_remote_access_expanded"
     }
 }
 

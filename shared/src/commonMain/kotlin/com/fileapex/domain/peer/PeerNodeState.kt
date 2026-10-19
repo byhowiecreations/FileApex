@@ -40,7 +40,6 @@ data class PeerNodeState(
     val publicKeyHash: String = "",
     val publicKey: String = "",
     val pinRequired: Boolean = false,
-    val downloadsPath: String = "",
     /** Legacy wall-clock version kept for builds before 0.14.3a; ignored when [membershipProtocol] is set. */
     val clusterVersion: Long = 0L,
     val isRemoved: Boolean = false,
@@ -50,7 +49,9 @@ data class PeerNodeState(
     val membershipProtocol: Int = 0,
     /** Claimed SPKI SHA-256 hex of this device's TLS key. Never trusted unless it matches a stored pin. */
     val tlsPin: String = "",
-    val tlsPort: Int = 0
+    val tlsPort: Int = 0,
+    /** Salted hash of this device's OS machine id. Sent to paired devices only; a stranger's reply leaves it blank. */
+    val hardwareHash: String = ""
 ) {
     val hasMembershipProtocol: Boolean
         get() = membershipProtocol >= ClusterClock.MEMBERSHIP_PROTOCOL
@@ -74,11 +75,8 @@ fun publishesPresence(clientVersion: String): Boolean =
 
 /**
  * A roster never supplies presence for anyone: each device learns `lastSeen` only from its own
- * direct contact with that peer. [sourceClientVersion] is kept for callers; it no longer matters.
+ * direct contact with that peer.
  */
-fun rosterWithoutRelayedPresence(
-    @Suppress("UNUSED_PARAMETER") sourceClientVersion: String,
-    roster: List<PairedDeviceEntity>
-): List<PairedDeviceEntity> = roster.map { device ->
+fun rosterWithoutRelayedPresence(roster: List<PairedDeviceEntity>): List<PairedDeviceEntity> = roster.map { device ->
     if (device.lastSeenEpochMs == 0L) device else device.copy(lastSeenEpochMs = 0L)
 }

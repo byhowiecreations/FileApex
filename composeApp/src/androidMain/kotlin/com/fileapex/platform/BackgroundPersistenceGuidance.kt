@@ -58,9 +58,6 @@ object BackgroundPersistenceGuidance {
         return activityManager.isBackgroundRestricted
     }
 
-    fun isUnusedAppRestrictionsActive(context: Context): Boolean =
-        cachedUnusedAppRestrictionsActive
-
     suspend fun refreshUnusedAppRestrictions(context: Context): Boolean = withContext(Dispatchers.IO) {
         val active = runCatching {
             val status = queryUnusedAppRestrictionsStatus(context)

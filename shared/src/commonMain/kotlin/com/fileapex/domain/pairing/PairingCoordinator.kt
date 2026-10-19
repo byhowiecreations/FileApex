@@ -43,6 +43,7 @@ class PairingCoordinator(
     }
 ) {
     private val forwardScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val selfBroadcastLedger = SelfBroadcastLedger()
 
     /**
      * Who this node already knew when a pairing began, keyed by the device that scanned our code.
@@ -230,12 +231,9 @@ class PairingCoordinator(
     }
 
     /** Rows a peer returned from cluster sync; may only add or refresh active peers. */
-    private suspend fun reconcileReturnedRoster(
-        roster: List<PairedDeviceEntity>,
-        source: PairedDeviceEntity? = null
-    ) {
+    private suspend fun reconcileReturnedRoster(roster: List<PairedDeviceEntity>) {
         val me = identityProvider().deviceId
-        val rows = rosterWithoutRelayedPresence(source?.clientVersion.orEmpty(), roster)
+        val rows = rosterWithoutRelayedPresence(roster)
         for (remote in rows) {
             if (remote.deviceId.isBlank() || remote.deviceId == me) continue
             try {
@@ -249,22 +247,23 @@ class PairingCoordinator(
     }
 
     /**
-     * Broadcasts this node's own metadata once to every paired peer (rename / identity refresh).
+     * Broadcasts this node's own metadata once to every paired peer that is online (rename / identity refresh).
      */
-    suspend fun broadcastSelfIdentity() {
+    suspend fun broadcastSelfIdentity(onlineDeviceIds: Set<String>) {
         if (!NetworkUtils.isUsableLanIpv4(NetworkUtils.preferredLanIpv4())) {
             println("PairingCoordinator: skip self broadcast - no usable LAN IPv4")
             return
         }
         val selfState = selfNodeState()
-        val peers = repository.listDevices()
+        // Presence time and the clock stamp derived from it change on every call; the rest is what peers care about.
+        val fingerprint = selfState.copy(lastSeenTimestamp = 0L, clusterVersion = 0L).hashCode()
+        val sentAt = TimeUtils.now()
+        val peers = selfBroadcastLedger.pending(
+            SelfBroadcastPolicy.targets(repository.listDevices(), onlineDeviceIds), fingerprint, sentAt
+        )
         coroutineScope {
             peers.map { peer ->
                 async(Dispatchers.IO) {
-                    val host = peer.lastKnownIp.trim()
-                    if (!NetworkUtils.isUsableLanIpv4(host)) {
-                        return@async
-                    }
                     cancellableCatching {
                         val returnedRoster = client.postClusterSync(
                             host = peer.lastKnownIp,
@@ -275,7 +274,8 @@ class PairingCoordinator(
                                 clusterVersion = selfState.clusterVersion
                             )
                         )
-                        reconcileReturnedRoster(returnedRoster, source = peer)
+                        reconcileReturnedRoster(returnedRoster)
+                        selfBroadcastLedger.markDelivered(peer.deviceId, fingerprint, sentAt)
                     }.onFailure { error ->
                         println(
                             "PairingCoordinator: failed to broadcast self metadata to " +
@@ -338,7 +338,7 @@ class PairingCoordinator(
                                 clusterVersion = clusterVersion
                             )
                         )
-                        reconcileReturnedRoster(returnedRoster, source = peer)
+                        reconcileReturnedRoster(returnedRoster)
                     }.onFailure { error ->
                         println(
                             "PairingCoordinator: failed to broadcast removal of " +
@@ -549,7 +549,7 @@ class PairingCoordinator(
                                         )
                                     )
                                 )
-                                reconcileReturnedRoster(returnedRoster, source = peer)
+                                reconcileReturnedRoster(returnedRoster)
                             }
                         }.onFailure { error ->
                             println(
@@ -583,7 +583,7 @@ class PairingCoordinator(
                 port = newlyPaired.port,
                 request = seed
             )
-            reconcileReturnedRoster(returnedRoster, source = updatedNewcomer)
+            reconcileReturnedRoster(returnedRoster)
         }.onFailure { error ->
             println("PairingCoordinator: failed roster seed to ${newlyPaired.deviceName}: ${error.message}")
         }.isSuccess

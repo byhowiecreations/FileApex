@@ -244,3 +244,11 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         }
     }
 }
+
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare("ALTER TABLE `paired_devices` ADD COLUMN `hardwareHash` TEXT NOT NULL DEFAULT ''").use { statement ->
+            statement.step()
+        }
+    }
+}

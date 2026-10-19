@@ -3,7 +3,9 @@ package com.fileapex.i18n
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -13,12 +15,15 @@ object AppI18n {
     @Volatile
     private var localeValue: AppLocale = AppLocale.EN
     private val catalogs = ConcurrentHashMap<AppLocale, StringCatalog>()
-    private val localeState = mutableStateOf(AppLocale.EN)
+    // A flow, not a Compose state: a global mutableStateOf created the first time this object is touched belongs to
+    // whatever snapshot touched it, and a composition that reads it later can fail with "Reading a state that was
+    // created after the snapshot was taken" (seen at startup on the Mac).
+    private val localeState = MutableStateFlow(AppLocale.EN)
 
     val locale: AppLocale
         get() = localeValue
 
-    val localeFlowState get() = localeState
+    val localeFlow: StateFlow<AppLocale> get() = localeState.asStateFlow()
 
     /** Parses the active locale (and the English fallback); other locales load on first use. */
     fun ensureLoaded() {
@@ -112,12 +117,6 @@ fun ProvideAppLocale(locale: AppLocale, content: @Composable () -> Unit) {
 fun stringRes(key: String, vararg args: Any): String {
     LocalAppLocale.current
     return AppI18n.t(key, *args)
-}
-
-@Composable
-fun pluralRes(key: String, count: Int, vararg args: Any): String {
-    LocalAppLocale.current
-    return AppI18n.plural(key, count, *args)
 }
 
 internal expect fun readI18nXml(locale: AppLocale): String

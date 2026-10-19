@@ -20,6 +20,11 @@ internal class BulletinPeerBackoff(
         states.remove(deviceId)
     }
 
+    /** New news for the device, or the device just came back: whatever failed before says nothing about now. */
+    fun reset(deviceId: String) {
+        states.remove(deviceId)
+    }
+
     /** Returns the delay applied before the next attempt. */
     fun onFailure(deviceId: String, nowMs: Long): Long {
         val updated = states.compute(deviceId) { _, previous ->

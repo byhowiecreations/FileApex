@@ -192,6 +192,8 @@ kotlin {
             dependsOn(jvmCommon)
             // Firebase, Credential Manager and Play Services actuals, or no-op stubs for F-Droid.
             kotlin.srcDir(if (fileapexFdroid) "src/androidFdroid/kotlin" else "src/androidGoogle/kotlin")
+            // Iroh ships prebuilt native libraries, which F-Droid does not accept, so that build leaves it out.
+            if (!fileapexFdroid) kotlin.srcDir("src/irohMain/kotlin")
         }
 
         jvmCommon.dependencies {
@@ -237,6 +239,7 @@ kotlin {
             implementation(libs.zxing.android.embedded)
             implementation(libs.androidx.work.runtime)
             if (!fileapexFdroid) {
+                implementation(libs.iroh.android) // fdroid:remove
                 implementation(project.dependencies.platform(libs.firebase.bom)) // fdroid:remove
                 implementation(libs.firebase.auth) // fdroid:remove
                 implementation(libs.firebase.firestore) // fdroid:remove
@@ -261,7 +264,9 @@ kotlin {
         val desktopMain by getting {
             dependsOn(jvmCommon)
             kotlin.srcDir(layout.buildDirectory.dir("generated/desktopCloud/kotlin"))
+            kotlin.srcDir("src/irohMain/kotlin")
             dependencies {
+                implementation(libs.iroh)
                 implementation(compose.desktop.currentOs)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.jna)

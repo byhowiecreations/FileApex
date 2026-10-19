@@ -45,7 +45,7 @@ object NotificationCompanion {
             NotificationDebugLog.log("grant skipped for ${NotificationDebugLog.short(deviceId)}: docker=${device.isDockerNode()} os=${device.os} pinned=${device.tlsPin.isNotEmpty()}")
             return
         }
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device)
+        val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(device)
         if (endpoint == null) {
             NotificationDebugLog.log("grant skipped for ${NotificationDebugLog.short(deviceId)}: no endpoint")
             return

@@ -6,8 +6,6 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.clipboard.ClipboardE2ee
 import com.fileapex.domain.clipboard.ClipboardShareCoordinator
-import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +34,7 @@ object NotificationBroadcaster {
             println("NotificationBroadcaster: not sent, this phone is not ${device.deviceId}'s companion")
             return false
         }
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device)
+        val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(device)
         if (endpoint == null) {
             println("NotificationBroadcaster: not sent, no endpoint for ${device.deviceId}")
             return false
@@ -81,7 +79,7 @@ object NotificationBroadcaster {
 
     /** Asks [device] to dismiss or reply to its own notifications. False when it could not be reached. */
     suspend fun sendCommand(device: PairedDeviceEntity, command: NotificationCommand): Boolean {
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return false
+        val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return false
         val peerKey = ClipboardShareCoordinator.resolvePeerPublicKey(device)
         if (peerKey.isBlank()) return false
         val identity = loadLocalIdentity()
@@ -103,7 +101,7 @@ object NotificationBroadcaster {
     }
 
     suspend fun requestPhonePrompt(device: PairedDeviceEntity, page: String): Boolean {
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return false
+        val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return false
         val identity = loadLocalIdentity()
         val request = PhoneSettingsPromptRequest(
             senderDeviceId = identity.deviceId,
@@ -115,17 +113,13 @@ object NotificationBroadcaster {
         }.onFailure { println("NotificationBroadcaster: prompt failed - ${it::class.simpleName}") }.isSuccess
     }
 
-    /** Null when the device is unreachable or too old to know about notification sync. */
-    suspend fun fetchStatus(device: PairedDeviceEntity): NotificationSyncStatus? =
-        (checkPhone(device) as? PhoneNotificationState.Known)?.status
-
     /**
      * One look at the phone: whether it is reachable, whether it knows notification sync, and, when
      * sync is on, what it is showing right now. [PhoneNotificationState.Unreachable] is retryable;
      * [PhoneNotificationState.NeedsUpdate] is not.
      */
     suspend fun checkPhone(device: PairedDeviceEntity): PhoneNotificationState {
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return PhoneNotificationState.Unreachable
+        val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return PhoneNotificationState.Unreachable
         val status = try {
             FileApexServices.client.getNotificationSyncStatus(endpoint.host, endpoint.port)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {

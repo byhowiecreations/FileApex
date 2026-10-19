@@ -512,6 +512,22 @@ class ClusterVersioningAndTombstoneTest {
         membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
     )
 
+    @Test
+    fun anAdoptionTheOtherSideNeverAcceptedIsUndoneWithoutLeavingARemoval() = runBlocking {
+        val dao = InMemoryDeviceDao()
+        val repo = DeviceRepository(dao)
+        repo.adoptFromPairing(
+            PairedDeviceEntity(deviceId = "host-9", deviceName = "Host", lastKnownIp = "192.168.1.9", port = 49428, publicKeyHash = "hash-host-9", rootPath = "/")
+        )
+        assertNotNull(repo.getDevice("host-9"))
+
+        repo.discardUnconfirmedPairing("host-9")
+
+        assertNull(repo.getDevice("host-9"))
+        assertTrue(dao.removed.isEmpty())
+        assertFalse(repo.isDeviceIdRevoked("host-9"))
+    }
+
     private fun nodeState(id: String, ip: String) = PeerNodeState(
         deviceId = id,
         deviceName = "Peer $id",
@@ -882,11 +898,9 @@ class ClusterVersioningAndTombstoneTest {
     @Test
     fun testRosterNeverSuppliesLastSeen() {
         val phone = peer("honor", "192.168.1.9").copy(lastSeenEpochMs = 1_700_000_000_000L)
-        val fromDocker = rosterWithoutRelayedPresence("docker", listOf(phone))
-        val fromPhone = rosterWithoutRelayedPresence("0.16.1c", listOf(phone))
+        val rows = rosterWithoutRelayedPresence(listOf(phone))
 
-        assertEquals(0L, fromDocker.single().lastSeenEpochMs)
-        assertEquals(0L, fromPhone.single().lastSeenEpochMs)
+        assertEquals(0L, rows.single().lastSeenEpochMs)
     }
 
     @Test
@@ -911,6 +925,53 @@ class ClusterVersioningAndTombstoneTest {
             repo.getDevice("magic")!!.copy(lastSeenEpochMs = TimeUtils.now())
         )
         assertEquals(0L, repo.getDevice("magic")!!.lastSeenEpochMs)
+    }
+
+    @Test
+    fun testRelayedNodeStateDoesNotReplaceUsableEndpointFromAnotherSubnet() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(peer("magic", "172.16.16.218"))
+        val stored = repo.getDevice("magic")!!
+        val relayed = nodeState("magic", "10.120.21.250").copy(
+            membershipVersion = stored.clusterVersion + 1,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+        )
+
+        repo.applyPeerNodeState(relayed)
+
+        assertEquals("172.16.16.218", repo.getDevice("magic")!!.lastKnownIp)
+        assertEquals(49428, repo.getDevice("magic")!!.port)
+    }
+
+    @Test
+    fun testRelayedNodeStateFillsABlankEndpoint() = runBlocking {
+        val dao = InMemoryDeviceDao()
+        val repo = DeviceRepository(dao)
+        dao.devices["magic"] = peer("magic", "")
+        val stored = repo.getDevice("magic")!!
+        val relayed = nodeState("magic", "172.16.16.218").copy(
+            membershipVersion = stored.clusterVersion + 1,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+        )
+
+        repo.applyPeerNodeState(relayed)
+
+        assertEquals("172.16.16.218", repo.getDevice("magic")!!.lastKnownIp)
+    }
+
+    @Test
+    fun testDirectlyObservedNodeStateCanReplaceEndpoint() = runBlocking {
+        val repo = DeviceRepository(InMemoryDeviceDao())
+        repo.adoptFromPairing(peer("magic", "172.16.16.218"))
+        val stored = repo.getDevice("magic")!!
+        val fetched = nodeState("magic", "172.16.16.99").copy(
+            membershipVersion = stored.clusterVersion + 1,
+            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+        )
+
+        repo.applyPeerNodeState(fetched, observedDirectly = true)
+
+        assertEquals("172.16.16.99", repo.getDevice("magic")!!.lastKnownIp)
     }
 
     @Test

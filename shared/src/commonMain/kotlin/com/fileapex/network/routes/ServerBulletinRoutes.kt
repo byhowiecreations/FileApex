@@ -99,6 +99,25 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
         }
     }
 
+    get("/api/v1/bulletin/delta") {
+        cancellableCatching {
+            val from = server.requesterDeviceId(call)
+            if (from.isEmpty() || FileApexServices.deviceRepositoryOrNull()?.getDevice(from) == null) {
+                call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
+                return@cancellableCatching
+            }
+            val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
+            val delta = FileApexServices.bulletinSyncEngine.buildDelta(since)
+            call.respondText(
+                server.json.encodeToString(com.fileapex.data.bulletin.BulletinDeltaResponse.serializer(), delta),
+                ContentType.Application.Json
+            )
+        }.onFailure { error ->
+            server.onLog("GET /api/v1/bulletin/delta failed", error)
+            call.respond(HttpStatusCode.InternalServerError, "bulletin_delta_failed")
+        }
+    }
+
     post("/api/v1/bulletin/sync/batch") {
         cancellableCatching {
             val body = call.receiveBoundedText()

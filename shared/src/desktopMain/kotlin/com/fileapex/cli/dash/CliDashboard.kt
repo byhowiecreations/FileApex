@@ -4,10 +4,7 @@ import com.fileapex.cli.dash.views.*
 import com.fileapex.cli.ipc.CliActiveTransfer
 import com.fileapex.cli.ipc.CliClusterState
 import com.fileapex.cli.ipc.CliDeviceStatus
-import com.fileapex.cli.ipc.CliQueueItem
 import com.fileapex.cli.ipc.CliRemoteFile
-import com.fileapex.update.FileApexAppVersion
-import com.fileapex.util.PathUtils
 import com.fileapex.util.cancellableCatching
 import java.io.File
 import java.text.DecimalFormat
@@ -157,7 +154,7 @@ class CliDashboard(
             DashboardView.MAIN -> handleMainKey(key)
             DashboardView.BATTERY -> handleBatteryKey(key)
             DashboardView.QUEUE -> handleQueueKey(key)
-            DashboardView.HELP -> handleHelpKey(key)
+            DashboardView.HELP -> handleHelpKey()
             DashboardView.SEND_LOCAL_PICKER -> handleSendLocalPickerKey(key)
             DashboardView.SEND_TARGET_PICKER -> handleSendTargetPickerKey(key)
             DashboardView.RETRIEVE_DEVICE_PICKER -> handleRetrieveDevicePickerKey(key)
@@ -243,7 +240,7 @@ class CliDashboard(
         }
     }
 
-    private fun handleHelpKey(key: KeyEvent) {
+    private fun handleHelpKey() {
         currentView = DashboardView.MAIN
         TerminalConsole.clearScreen()
     }

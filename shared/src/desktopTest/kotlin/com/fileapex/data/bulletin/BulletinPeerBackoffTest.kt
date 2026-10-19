@@ -38,4 +38,12 @@ class BulletinPeerBackoffTest {
         assertTrue(backoff.canAttempt("a", nowMs = 0L))
         assertEquals(1_000L, backoff.onFailure("a", nowMs = 0L))
     }
+
+    @Test
+    fun resetLetsAnewPostThroughAtOnceAfterLongFailures() {
+        repeat(12) { backoff.onFailure("a", nowMs = 0L) }
+        assertFalse(backoff.canAttempt("a", nowMs = 1L))
+        backoff.reset("a")
+        assertTrue(backoff.canAttempt("a", nowMs = 1L))
+    }
 }

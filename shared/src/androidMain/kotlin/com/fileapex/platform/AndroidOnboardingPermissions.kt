@@ -71,7 +71,7 @@ object AndroidOnboardingPermissions {
             .apply()
     }
 
-    fun isOemPersistenceRequired(context: Context): Boolean {
+    fun isOemPersistenceRequired(): Boolean {
         val vendor = detectOemVendor(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())
         return when (vendor) {
             // Only prompt for OEMs that have separate, proprietary auto-start / app launch managers.
@@ -124,7 +124,7 @@ object AndroidOnboardingPermissions {
                 isOptional = true
             )
         )
-        if (isOemPersistenceRequired(context)) {
+        if (isOemPersistenceRequired()) {
             val vendor = detectOemVendor(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())
             val (titleKey, reasonKey, deniedHintKey) = oemKeysForVendor(vendor)
             add(

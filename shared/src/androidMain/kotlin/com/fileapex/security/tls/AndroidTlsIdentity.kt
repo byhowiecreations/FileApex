@@ -9,7 +9,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
 /** AES-GCM key held in the Android Keystore wraps the identity file. Keystore faults fall back to plain. */
-class AndroidKeystoreTlsVault : TlsSecretVault {
+class AndroidKeystoreTlsVault(private val alias: String = ALIAS) : TlsSecretVault {
     override val scheme = SCHEME
 
     override fun seal(plain: ByteArray) = GcmBlob.seal(key(), plain)
@@ -17,10 +17,10 @@ class AndroidKeystoreTlsVault : TlsSecretVault {
 
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(ALIAS, null) as? SecretKey)?.let { return it }
+        (store.getKey(alias, null) as? SecretKey)?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
-            KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
@@ -29,9 +29,11 @@ class AndroidKeystoreTlsVault : TlsSecretVault {
         return generator.generateKey()
     }
 
-    private companion object {
-        const val SCHEME = 1
+    companion object {
+        private const val SCHEME = 1
         const val ALIAS = "fileapex_tls_wrap_v1"
+        /** Wraps the settings secrets (PIN, private keys, tokens); separate from the TLS identity key. */
+        const val SETTINGS_ALIAS = "fileapex_settings_wrap_v1"
     }
 }
 

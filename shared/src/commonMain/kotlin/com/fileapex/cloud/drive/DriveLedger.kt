@@ -53,9 +53,6 @@ data class DriveLedgerEntry(
         }
     }
 
-    fun markPending(deviceId: String, nowEpochMs: Long): DriveLedgerEntry =
-        withDelivery(deviceId, DriveDeliveryStates.PENDING_SYNC, nowEpochMs)
-
     fun markRetrieved(deviceId: String, nowEpochMs: Long): DriveLedgerEntry {
         val next = withDelivery(deviceId, DriveDeliveryStates.RETRIEVED, nowEpochMs)
         return next.copy(retrievedBy = (next.retrievedBy + deviceId).distinct())

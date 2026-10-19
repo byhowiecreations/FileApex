@@ -226,6 +226,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // The Iroh Kotlin jar carries desktop natives; Android gets its own from iroh-android.
+            excludes += listOf("win32-x86-64/**", "linux-aarch64/**", "linux-x86-64/**", "darwin-aarch64/**")
             pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
         jniLibs {

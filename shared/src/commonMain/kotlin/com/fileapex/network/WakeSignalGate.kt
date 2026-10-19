@@ -13,6 +13,16 @@ object WakeSignalGate {
     private var lastAcceptedEpochMs: Long = 0L
 
     /**
+     * A signed packet addressed to this device was seen. It is never held back here, since each sender is limited
+     * on its own after its proof is checked; this only makes the plain wake that follows it count as a duplicate.
+     */
+    fun noteSigned() {
+        synchronized(lock) {
+            lastAcceptedEpochMs = TimeUtils.now()
+        }
+    }
+
+    /**
      * @return true when this signal should run a wake/process action.
      */
     fun tryAccept(): Boolean {

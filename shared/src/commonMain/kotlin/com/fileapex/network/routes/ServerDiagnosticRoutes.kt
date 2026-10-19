@@ -20,12 +20,28 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import com.fileapex.network.TransferTransactionJournal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
     get("/api/v1/health") {
-        // Older clients only read the status; the id lets a prober confirm who answered at this address.
+        // A stranger gets the id and nothing else. A paired device that proved who it is (pinned TLS certificate,
+        // or a roster member inside the tailnet tunnel) also gets this node's change versions, and its probe
+        // clears the update-install records kept for it.
+        val peerId = server.authenticatedPeerId(call)
+        if (peerId != null) {
+            runCatching { TransferTransactionJournal.purgeInstalledForSender(peerId) }
+            runCatching { com.fileapex.di.FileApexServices.deviceRepository.selfMembershipVersion().toString() }.getOrNull()?.let { version ->
+                call.response.headers.append(com.fileapex.network.PeerHttpHeaders.MEMBERSHIP_VERSION, version)
+            }
+            runCatching { server.removalFingerprint() }.getOrNull()?.let { value ->
+                call.response.headers.append(com.fileapex.network.PeerHttpHeaders.REMOVALS, value)
+            }
+            runCatching { com.fileapex.di.FileApexServices.bulletinSyncEngine.latestChange() }.getOrNull()?.let { version ->
+                call.response.headers.append(com.fileapex.network.PeerHttpHeaders.BULLETIN_VERSION, version.toString())
+            }
+        }
         call.respondText("ok:${server.identityProvider().deviceId}", ContentType.Text.Plain)
     }
 

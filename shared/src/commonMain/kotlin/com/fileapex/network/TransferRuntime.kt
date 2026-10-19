@@ -13,7 +13,7 @@ import kotlinx.coroutines.sync.Semaphore
 /**
  * Thread pools, stream limits, and size thresholds for LAN file transfers.
  *
- * Only leaf byte streams (one socket moving file bytes) take a [streamBudget] permit, and a
+ * Only leaf byte streams (one socket moving file bytes) take a [streamBudget] permit of their device, and a
  * holder never asks for a second one. Fan-out writers fed by a shared producer must not take
  * permits: a writer parked on the semaphore would stall the producer and every sibling.
  */
@@ -28,13 +28,16 @@ object TransferRuntime {
     private const val LOW_POWER_SMALL_FILE_WORKERS = 2
     private const val IDLE_THREAD_KEEPALIVE_SECONDS = 30L
 
-    val streamBudget = Semaphore(TOTAL_STREAM_BUDGET)
+    private val budgets = java.util.concurrent.ConcurrentHashMap<String, Semaphore>()
+
+    /** Each device has its own budget: streams to one device never wait for streams to another. */
+    fun streamBudget(host: String): Semaphore = budgets.getOrPut(host.trim().lowercase()) { Semaphore(TOTAL_STREAM_BUDGET) }
 
     // Sized above the stream budget: relay segments hold a reader and a writer thread each,
     // and fan-out writers sit outside the budget.
-    val outbound: CoroutineDispatcher = boundedPool("fileapex-transfer-out", 24)
+    val outbound: CoroutineDispatcher = boundedPool("fileapex-transfer-out", 64)
 
-    val inbound: CoroutineDispatcher = boundedPool("fileapex-transfer-in", 16)
+    val inbound: CoroutineDispatcher = boundedPool("fileapex-transfer-in", 48)
 
     fun segmentsFor(sizeBytes: Long): Int = when {
         sizeBytes < LARGE_FILE_THRESHOLD_BYTES -> 1

@@ -175,7 +175,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
 
     get("/api/v1/files/resume") {
         runCatching {
-            val preferredPathStr = call.request.queryParameters["targetPath"]
+            val preferredPathStr = server.targetPathParam(call)
                 ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
             if (!server.isPathAllowed(preferredPathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
@@ -208,7 +208,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
         cancellableCatching {
             // Browse/list/stream stay PIN-gated. Direct send (upload) is allowed
             // regardless of peer browse-lock state so Multi Copy / Send File work.
-            val preferredPathStr = call.request.queryParameters["targetPath"]
+            val preferredPathStr = server.targetPathParam(call)
                 ?: return@cancellableCatching call.respond(HttpStatusCode.BadRequest)
             if (!server.isPathAllowed(preferredPathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
@@ -310,6 +310,8 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 val actualSha256 = com.fileapex.platform.fileDigest(partPath, -1L)
                 if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
                     server.onLog("upload checksum mismatch expected=$expectedSha256 got=$actualSha256 path=$partPath", null)
+                    // A part that fails its hash is useless to resume: drop it so the retry starts clean.
+                    SocketFileStreamer.deleteQuietly(partPath)
                     call.respond(HttpStatusCode.BadRequest, "checksum_mismatch")
                     return@cancellableCatching
                 }
@@ -464,7 +466,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
             val txTimestamp = call.request.queryParameters[TransferResumeProtocol.TIMESTAMP_QUERY]?.toLongOrNull()
                 ?: com.fileapex.util.TimeUtils.now()
             var checksumFailed = false
-            val finalPath = segmentFinalizeMutex.withLock {
+            val finalPath = finalizeLockFor(target.partPath).withLock {
                 if (target.txId.isNotBlank() &&
                     TransferTransactionJournal.findCompleted(target.txId, target.senderId, target.totalSize) != null
                 ) {
@@ -482,6 +484,8 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                         if (actualSha256 == null || !actualSha256.equals(expectedSha256, ignoreCase = true)) {
                             server.onLog("upload-complete checksum mismatch path=${target.partPath} expected=$expectedSha256 got=$actualSha256", null)
                             checksumFailed = true
+                            SocketFileStreamer.deleteQuietly(target.partPath)
+                            RangeLedger.delete(target.partPath)
                             return@withContext null
                         }
                     }
@@ -529,7 +533,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
 
     post("/api/v1/files/mkdir") {
         runCatching {
-            val pathStr = call.request.queryParameters["targetPath"]
+            val pathStr = server.targetPathParam(call)
                 ?: return@runCatching call.respond(HttpStatusCode.BadRequest, "Missing targetPath")
             if (!server.isPathAllowed(pathStr)) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
@@ -554,7 +558,10 @@ private class SegmentTarget(
     val fileName: String
 )
 
-private val segmentFinalizeMutex = Mutex()
+private val finalizeLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+
+/** Finishing one file never waits for finishing another; only the same file is serialised. */
+private fun finalizeLockFor(partPath: String): Mutex = finalizeLocks.getOrPut(partPath) { Mutex() }
 
 /** Parts with an upload-segment request still writing; prepare must not delete them. */
 private object ActiveSegmentWriters {
@@ -573,7 +580,7 @@ private object ActiveSegmentWriters {
 }
 
 private suspend fun resolveSegmentTarget(server: FileApexServer, call: ApplicationCall): SegmentTarget? {
-    val preferred = call.request.queryParameters["targetPath"]?.takeIf { it.isNotBlank() }
+    val preferred = server.targetPathParam(call)?.takeIf { it.isNotBlank() }
     val totalSize = call.request.queryParameters[TransferResumeProtocol.TOTAL_SIZE_QUERY]?.toLongOrNull()
     if (preferred == null || totalSize == null || totalSize <= 0L) {
         call.respond(HttpStatusCode.BadRequest, "segment_target_invalid")

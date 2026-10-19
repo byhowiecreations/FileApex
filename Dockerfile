@@ -39,6 +39,7 @@ VOLUME [ "/app/data" ]
 ENV FILEAPEX_DATA=/app/data
 EXPOSE 8080/tcp
 EXPOSE 8081/tcp
+EXPOSE 8888/udp
 EXPOSE 8891/udp
 
 # Configure entrypoint so flags can be passed natively

@@ -2,7 +2,7 @@ package com.fileapex.domain.backup
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.PeerUnreachableException
-import com.fileapex.platform.DownloadsPaths
+import com.fileapex.network.InboxTarget
 import com.fileapex.platform.fastScanDirectory
 import com.fileapex.platform.generateDeviceId
 import com.fileapex.util.PathUtils
@@ -66,18 +66,17 @@ object BackupEngine {
         if (!config.isRunnable) return BackupRunResult()
         val device = FileApexServices.deviceRepository.getDevice(config.destinationDeviceId)
             ?: return BackupRunResult(unavailable = true)
-        val direct = cancellableCatching { FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) }.getOrNull()
-        val host = direct?.host ?: device.lastKnownIp
-        val port = direct?.port ?: device.port
+        val direct = cancellableCatching { FileApexServices.presenceMonitor.endpointIfOnline(device) }.getOrNull()
+            ?: return BackupRunResult(unavailable = true)
+        val host = direct.host
+        val port = direct.port
         val client = FileApexServices.client
         // Doubles as the reachability check: an unreachable destination ends the run before any work starts.
         val capabilities = cancellableCatching { client.transferCapabilities(host, port) }.getOrNull()
             ?: return BackupRunResult(unavailable = true)
 
-        val effectiveRoot = if (device.platform.trim().equals("android", ignoreCase = true) &&
-            (device.rootPath.isBlank() || device.rootPath == "/")
-        ) "/storage/emulated/0" else device.rootPath
-        val destinationRoot = DownloadsPaths.resolveReceiveRoot("", effectiveRoot, device.platform)
+        // The destination decides where its own receive folder is.
+        val destinationRoot = InboxTarget.ROOT
 
         val manifest = BackupManifest.load(config.destinationDeviceId)
         val candidates = config.sources.flatMap { collect(it) }

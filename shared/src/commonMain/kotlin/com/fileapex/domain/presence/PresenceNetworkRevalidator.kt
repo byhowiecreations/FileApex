@@ -23,6 +23,7 @@ object PresenceNetworkRevalidator {
 
     fun onLanNetworkTransition() {
         if (!FileApexServices.isDatabaseReady()) return
+        com.fileapex.iroh.IrohRuntime.onNetworkChanged()
         scope.launch {
             cancellableCatching {
                 revalidateAfterNetworkTransition()

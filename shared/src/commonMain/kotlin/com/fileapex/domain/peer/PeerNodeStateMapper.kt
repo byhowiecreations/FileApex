@@ -42,22 +42,25 @@ object PeerNodeStateMapper {
             os = hardware.os,
             deviceMake = hardware.deviceMake,
             deviceModel = hardware.deviceModel,
-            supportedProtocols = PeerNodeProtocols.DEFAULT,
+            supportedProtocols = com.fileapex.iroh.IrohRuntime.advertisedProtocols(),
             lastSeenTimestamp = lastSeenTimestamp,
             rootPath = identity.rootPath,
             publicKeyHash = com.fileapex.security.IdentityBinding.hashFor(identity.deviceId, localPublicKey),
             publicKey = localPublicKey,
             pinRequired = pinRequired,
-            downloadsPath = defaultDownloadsDir(),
             clusterVersion = lastSeenTimestamp.takeIf { it > 0L } ?: TimeUtils.now(),
             isRemoved = false,
             removedAt = null,
             membershipVersion = membershipVersion,
             membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL,
             tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
-            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port
+            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port,
+            hardwareHash = com.fileapex.platform.HardwareId.local
         )
     }
+
+    /** What an unauthenticated caller of `/identity` gets: no filesystem location. */
+    fun forStranger(state: PeerNodeState): PeerNodeState = state.copy(rootPath = "/", hardwareHash = "")
 
     fun toEntity(state: PeerNodeState, existing: PairedDeviceEntity? = null): PairedDeviceEntity {
         val deviceId = state.deviceId.trim()
@@ -111,7 +114,8 @@ object PeerNodeStateMapper {
             tailnetIpv4 = existing?.tailnetIpv4.orEmpty(),
             tlsPin = existing?.tlsPin.orEmpty(),
             tlsPinAlt = existing?.tlsPinAlt.orEmpty(),
-            tlsPort = state.tlsPort.takeIf { it in 1..65535 } ?: existing?.tlsPort ?: 0
+            tlsPort = state.tlsPort.takeIf { it in 1..65535 } ?: existing?.tlsPort ?: 0,
+            hardwareHash = state.hardwareHash.trim().ifBlank { existing?.hardwareHash.orEmpty() }
         )
     }
 

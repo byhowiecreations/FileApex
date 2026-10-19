@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,19 +68,25 @@ func TestResolvePathStaysInInbox(t *testing.T) {
 	if _, err := node.resolvePath(inbox, false); err == nil {
 		t.Fatal("upload onto the inbox directory itself was allowed")
 	}
-	shot, err := node.resolvePath(filepath.Join(inbox, "Downloads", "FileApex", "shot.png"), false)
+	shot, err := node.resolvePath("@inbox/shot.png", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if shot != filepath.Join(inbox, "shot.png") {
 		t.Fatalf("single file landed at %s", shot)
 	}
-	nested, err := node.resolvePath(filepath.Join(inbox, "Download", "FileApex", "Album", "a.jpg"), false)
+	nested, err := node.resolvePath(`@inbox\Album\a.jpg`, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if nested != filepath.Join(inbox, "Album", "a.jpg") {
+	if nested != filepath.Join(inbox, "Album", `a.jpg`) && nested != filepath.Join(inbox, `Album\a.jpg`) {
 		t.Fatalf("folder landed at %s", nested)
+	}
+	if _, err := node.resolvePath("@inbox/../cluster.json", false); err == nil {
+		t.Fatal("climbing out of the receive folder was allowed")
+	}
+	if _, err := node.resolvePath("@inbox", false); err == nil {
+		t.Fatal("naming the receive folder itself as a file was allowed")
 	}
 }
 
@@ -290,7 +298,6 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 							MembershipVersion:  5000,
 							MembershipProtocol: membershipProtocol,
 							RootPath:           node.inboxDir(),
-							DownloadsPath:      node.inboxDir(),
 						},
 						{
 							DeviceID:           "peer-2",
@@ -310,7 +317,10 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 					}},
 				}
 				payload, _ := json.Marshal(seed)
-				req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:"+strconv.Itoa(node.listenPort())+"/api/v1/devices/merge?from=host-1", strings.NewReader(string(payload)))
+				// A real host reaches this over pinned mutual TLS; the guard has already established who it is.
+				trusted := httptest.NewServer(node.routes())
+				defer trusted.Close()
+				req, err := http.NewRequest(http.MethodPost, trusted.URL+"/api/v1/devices/merge?from=host-1", strings.NewReader(string(payload)))
 				if err != nil {
 					return
 				}
@@ -383,16 +393,20 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 		t.Fatalf("host ip = %s", peers["host-1"].LastKnownIP)
 	}
 
+	// Peer routes are reached through the guard only by a pinned TLS peer; here the guard's verdict is simulated.
+	trusted := httptest.NewServer(node.routes())
+	defer trusted.Close()
+	tport, _ := strconv.Atoi(strings.TrimPrefix(trusted.URL, "http://127.0.0.1:"))
 	target := filepath.Join(node.inboxDir(), "backup.txt")
-	stranger := postUpload(t, node.listenPort(), target, "stranger", "nope", 0, 0)
+	stranger := postUpload(t, tport, target, "stranger", "nope", 0, 0)
 	if stranger != http.StatusForbidden {
 		t.Fatalf("stranger status = %d", stranger)
 	}
-	escape := postUpload(t, node.listenPort(), filepath.Join(node.inboxDir(), "..", "cluster.json"), "host-1", "x", 0, 0)
+	escape := postUpload(t, tport, filepath.Join(node.inboxDir(), "..", "cluster.json"), "host-1", "x", 0, 0)
 	if escape != http.StatusForbidden {
 		t.Fatalf("escape status = %d", escape)
 	}
-	status := postUpload(t, node.listenPort(), target, "host-1", "hello", 0, 0)
+	status := postUpload(t, tport, target, "host-1", "hello", 0, 0)
 	if status != http.StatusCreated {
 		t.Fatalf("upload status = %d", status)
 	}
@@ -405,14 +419,14 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 	}
 
 	partTarget := filepath.Join(node.inboxDir(), "partial.bin")
-	if got := postUpload(t, node.listenPort(), partTarget, "peer-2", "ab", 0, 4); got != http.StatusBadRequest {
+	if got := postUpload(t, tport, partTarget, "peer-2", "ab", 0, 4); got != http.StatusBadRequest {
 		t.Fatalf("partial status = %d", got)
 	}
-	resume := getJSON(t, "http://127.0.0.1:"+strconv.Itoa(node.listenPort())+"/api/v1/files/resume?from=peer-2&expectedSize=4&targetPath="+url.QueryEscape(partTarget))
+	resume := getJSON(t, "http://127.0.0.1:"+strconv.Itoa(tport)+"/api/v1/files/resume?from=peer-2&expectedSize=4&targetPath="+url.QueryEscape(partTarget))
 	if resume["offset"] != float64(2) || resume["complete"] != false {
 		t.Fatalf("resume = %+v", resume)
 	}
-	if got := postUpload(t, node.listenPort(), partTarget, "peer-2", "cd", 2, 4); got != http.StatusCreated {
+	if got := postUpload(t, tport, partTarget, "peer-2", "cd", 2, 4); got != http.StatusCreated {
 		t.Fatalf("resume upload status = %d", got)
 	}
 	body, err = os.ReadFile(partTarget)
@@ -426,7 +440,7 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 		t.Fatalf("part file still present: %v", err)
 	}
 
-	idResp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(node.listenPort()) + "/api/v1/identity")
+	idResp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(tport) + "/api/v1/identity")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +449,7 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 	if err := json.NewDecoder(idResp.Body).Decode(&state); err != nil {
 		t.Fatal(err)
 	}
-	if state.DownloadsPath != node.inboxDir() || state.MembershipVersion != 5000 || state.Platform != "linux" {
+	if state.MembershipVersion != 5000 || state.Platform != "linux" {
 		t.Fatalf("identity = %+v", state)
 	}
 }
@@ -508,7 +522,7 @@ func TestRosterResponseIsNotChunked(t *testing.T) {
 	}
 	server := httptest.NewServer(node.routes())
 	t.Cleanup(server.Close)
-	resp, err := http.Get(server.URL + "/api/v1/devices")
+	resp, err := http.Get(server.URL + "/api/v1/devices?from=peer-00")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,4 +592,86 @@ func waitForHealth(t *testing.T, port int) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("server did not become ready: %v", last)
+}
+
+func uploadWithHash(t *testing.T, node *Node, name, body, sum string) (int, string) {
+	t.Helper()
+	server := httptest.NewServer(node.routes())
+	t.Cleanup(server.Close)
+	q := url.Values{}
+	q.Set("targetPath", "@inbox/"+name)
+	q.Set("from", "host-1")
+	q.Set("totalSize", strconv.Itoa(len(body)))
+	if sum != "" {
+		q.Set("sha256", sum)
+	}
+	resp, err := http.Post(server.URL+"/api/v1/files/upload?"+q.Encode(), "application/octet-stream", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	got, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(got))
+}
+
+func nodeWithHost(t *testing.T) *Node {
+	t.Helper()
+	node, err := newNode(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	node.mu.Lock()
+	node.peers["host-1"] = deviceRecord{DeviceID: "host-1", DeviceName: "Phone", LastKnownIP: "192.168.1.2", Port: 8080, ClusterVersion: 100}
+	node.mu.Unlock()
+	return node
+}
+
+func TestUploadWithTheRightWholeFileHashIsStored(t *testing.T) {
+	node := nodeWithHost(t)
+	sum := sha256.Sum256([]byte("hello world"))
+	status, _ := uploadWithHash(t, node, "good.txt", "hello world", hex.EncodeToString(sum[:]))
+	if status != http.StatusCreated {
+		t.Fatalf("status %d", status)
+	}
+	got, err := os.ReadFile(filepath.Join(node.inboxDir(), "good.txt"))
+	if err != nil || string(got) != "hello world" {
+		t.Fatalf("stored %q (%v)", got, err)
+	}
+}
+
+func TestUploadWithAWrongWholeFileHashIsRefusedAndLeavesNothing(t *testing.T) {
+	node := nodeWithHost(t)
+	other := sha256.Sum256([]byte("something else"))
+	status, body := uploadWithHash(t, node, "bad.txt", "hello world", hex.EncodeToString(other[:]))
+	if status != http.StatusBadRequest || body != "checksum_mismatch" {
+		t.Fatalf("status %d body %q", status, body)
+	}
+	entries, _ := os.ReadDir(node.inboxDir())
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "bad.txt") {
+			t.Fatalf("left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestUploadWithoutAHashBehavesAsBefore(t *testing.T) {
+	node := nodeWithHost(t)
+	if status, _ := uploadWithHash(t, node, "plain.txt", "abc", ""); status != http.StatusCreated {
+		t.Fatalf("status %d", status)
+	}
+}
+
+func TestIdentityDoesNotTellAStrangerWhereTheFolderIs(t *testing.T) {
+	node := nodeWithHost(t)
+	server := httptest.NewServer(node.routes())
+	t.Cleanup(server.Close)
+	resp, err := http.Get(server.URL + "/api/v1/identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), node.inboxDir()) || strings.Contains(string(body), "downloadsPath") {
+		t.Fatalf("identity leaked the folder: %s", body)
+	}
 }

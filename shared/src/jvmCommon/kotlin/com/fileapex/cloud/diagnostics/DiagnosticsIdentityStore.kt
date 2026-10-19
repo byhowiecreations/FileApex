@@ -24,10 +24,6 @@ object DiagnosticsIdentityStore {
         return generated
     }
 
-    fun clearLocalKey() {
-        FileApexServices.settings.setDiagnosticsPrivateKeyBase64("")
-    }
-
     private fun derivePublicKey(privateKey: ByteArray): ByteArray {
         val publicKey = ByteArray(X25519.POINT_SIZE)
         X25519.generatePublicKey(privateKey, 0, publicKey, 0)

@@ -15,6 +15,7 @@ import com.fileapex.network.routes.registerClipboardRoutes
 import com.fileapex.network.routes.registerDiagnosticRoutes
 import com.fileapex.network.routes.registerFileRoutes
 import com.fileapex.network.routes.registerIdentityRoutes
+import com.fileapex.network.routes.registerIrohRoutes
 import com.fileapex.network.routes.registerNotificationRoutes
 import com.fileapex.network.routes.registerPresenceRoutes
 import com.fileapex.network.routes.registerTlsRoutes
@@ -70,6 +71,10 @@ class FileApexServer(
     /** True when the device id is an active member of this node's roster. Gates removals aimed at this node. */
     internal val isRosterMember: suspend (String) -> Boolean = { false },
     internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
+    /** Fingerprint of this node's removal records, sent to a proven peer on health and merge answers (RemovalFingerprint). */
+    internal val removalFingerprint: suspend () -> String = { com.fileapex.domain.pairing.RemovalFingerprint.NONE },
+    /** The removal records inside the fingerprint window, for a peer whose fingerprint differs. */
+    internal val removalRecords: suspend () -> List<com.fileapex.domain.pairing.RemovedDeviceRecord> = { emptyList() },
     internal val onListIntroductions: suspend (recipientId: String) -> List<com.fileapex.security.SealedIntroduction> = { emptyList() },
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
         if (error != null) {
@@ -80,6 +85,11 @@ class FileApexServer(
         }
     }
 ) {
+    internal val pairingThrottle = AuthFailureThrottle(limit = 10, windowMs = 60_000L)
+    private val unauthenticatedThrottle = AuthFailureThrottle(limit = 30, windowMs = 60_000L)
+    private val webIntakeThrottle = AuthFailureThrottle(limit = 60, windowMs = 60_000L)
+    private val rejectionLogged = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
     private val engineLock = Any()
     private var serverEngine: EmbeddedServer<*, *>? = null
     private var lifecycleJob: Job = SupervisorJob()
@@ -166,6 +176,34 @@ class FileApexServer(
                             return@intercept
                         }
                     }
+                    // Default deny: apart from the few open routes (RouteAuthPolicy), a caller has to be a paired device
+                    // that proved who it is. `from` is only a claim; the identity comes from the pinned TLS certificate
+                    // (TLS front or Iroh bridge) or, inside the tailnet tunnel, from a roster member's claim.
+                    val remoteSource = call.request.local.remoteAddress.trim()
+                    if (RouteAuthPolicy.accessFor(path) == RouteAccess.Peer) {
+                        if (authenticatedPeerId(call) == null) {
+                            val tooMany = unauthenticatedThrottle.hitAndCheck(remoteSource, com.fileapex.util.TimeUtils.now())
+                            if (!tooMany && rejectionLogged.putIfAbsent(remoteSource, true) == null) {
+                                onLog(
+                                    "Rejected unauthenticated ${call.request.local.method.value} ${path.substringBefore('?')} from " +
+                                        com.fileapex.util.NetworkUtils.lastOctetLabel(remoteSource),
+                                    null
+                                )
+                            }
+                            call.respond(
+                                if (tooMany) HttpStatusCode.TooManyRequests else HttpStatusCode.Unauthorized,
+                                "authentication_required"
+                            )
+                            finish()
+                            return@intercept
+                        }
+                    } else if (path.startsWith("/api/v1/web/") &&
+                        webIntakeThrottle.hitAndCheck(remoteSource, com.fileapex.util.TimeUtils.now())
+                    ) {
+                        call.respond(HttpStatusCode.TooManyRequests, "slow_down")
+                        finish()
+                        return@intercept
+                    }
                     if (!path.startsWith("/api/v1/pairing") && !path.startsWith("/api/v1/auth") && !path.contains("/cluster/remove")) {
                         val from = bridged?.deviceId ?: call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
                             call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
@@ -196,6 +234,7 @@ class FileApexServer(
 
                 routing {
                     registerIdentityRoutes(this@FileApexServer)
+                    registerIrohRoutes(this@FileApexServer)
                     registerFileRoutes(this@FileApexServer)
                     registerClipboardRoutes(this@FileApexServer)
                     registerBulletinRoutes(this@FileApexServer)
@@ -231,21 +270,35 @@ class FileApexServer(
     internal suspend fun respondSelfPeerState(call: ApplicationCall) {
         val identity = identityProvider()
         val settings = FileApexServices.settings
-        val state = PeerNodeStateMapper.selfState(
+        val full = PeerNodeStateMapper.selfState(
             identity = identity,
             membershipVersion = FileApexServices.deviceRepository.selfMembershipVersion(),
             pinRequired = settings.pinRequiredEnabled.value
         )
+        // A stranger learns who answers and how to reach it; the shared folder's location is for paired devices only.
+        val state = if (authenticatedPeerId(call) != null) full else PeerNodeStateMapper.forStranger(full)
         call.respondText(
             text = json.encodeToString(PeerNodeState.serializer(), state),
             contentType = ContentType.Application.Json
         )
     }
 
+    /**
+     * The `targetPath` of an upload-style request. `@inbox/<name>` means "your own receive folder" and is expanded here,
+     * so the sender never needs to know this device's folders; null when missing or when it climbs out of the folder.
+     */
+    internal fun targetPathParam(call: ApplicationCall): String? {
+        val raw = call.request.queryParameters["targetPath"] ?: return null
+        return InboxTarget.resolve(raw.trim(), com.fileapex.platform.defaultDownloadsDir())
+    }
+
     internal fun isPathAllowed(absolutePath: String): Boolean {
         val root = identityProvider().rootPath
         val normalized = PathUtils.normalize(absolutePath)
         if (normalized.isBlank() || normalized == "/" || normalized == "\\" || normalized == PathUtils.normalize(root)) return true
+        // The receive folder is this device's own choice, so it is always allowed even if the shared root sits elsewhere.
+        val inbox = com.fileapex.platform.defaultDownloadsDir()
+        if (inbox.isNotBlank() && PathUtils.normalize(inbox) != "/" && PathUtils.isWithinRoot(normalized, inbox)) return true
         return PathUtils.isWithinRoot(normalized, root)
     }
 
@@ -321,6 +374,19 @@ class FileApexServer(
     private data class InboundPeerWrite(val ip: String, val epochMs: Long)
 
     private val inboundPeerWrites = java.util.concurrent.ConcurrentHashMap<String, InboundPeerWrite>()
+
+    /**
+     * The paired device that proved who it is on this call, or null for an anonymous one. The proof is the pinned TLS
+     * certificate (TLS front or Iroh bridge); inside the tailnet tunnel, which is authenticated by WireGuard, a roster
+     * member's claim counts. A claimed `from` anywhere else proves nothing.
+     */
+    internal suspend fun authenticatedPeerId(call: ApplicationCall): String? {
+        val bridged = bridgedPeer(call)
+        if (bridged != null) return bridged.deviceId.takeIf { isRosterMember(it) }
+        if (!isSplicedLoopbackOrigin(call.request.local.remoteAddress.trim())) return null
+        val localId = runCatching { identityProvider().deviceId }.getOrNull().orEmpty()
+        return requesterDeviceId(call).takeIf { it.isNotEmpty() && (it == localId || isRosterMember(it)) }
+    }
 
     /** Certificate-derived id on the TLS front, else the claimed `from` (query or header). */
     internal fun requesterDeviceId(call: ApplicationCall): String =
@@ -547,7 +613,7 @@ class FileApexServer(
               }
               async function loadDevices() {
                 try {
-                  const res = await fetch('/api/v1/devices');
+                  const res = await fetch('/api/v1/web/devices');
                   const devices = await res.json();
                   const select = document.getElementById('deviceSelect');
                   select.innerHTML = '';
@@ -558,7 +624,7 @@ class FileApexServer(
                   devices.forEach(d => {
                     const opt = document.createElement('option');
                     opt.value = d.deviceId;
-                    opt.innerText = d.deviceName + ' (' + d.ipAddress + ')';
+                    opt.innerText = d.deviceName;
                     select.appendChild(opt);
                   });
                 } catch (e) {

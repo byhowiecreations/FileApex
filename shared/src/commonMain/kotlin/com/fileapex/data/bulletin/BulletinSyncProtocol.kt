@@ -59,3 +59,13 @@ data class BulletinRetractByKindPayload(
     val contentType: Int,
     val deletedAt: Long
 )
+
+/** One page of changes a returning device pulls from an online peer. [cursor] is on the answering peer's clock. */
+@Serializable
+data class BulletinDeltaResponse(
+    val batch: BulletinSyncBatch,
+    val cursor: Long,
+    val more: Boolean = false,
+    /** True when the answer is everything the peer has (no cursor, a stale one, or one from after a reset). */
+    val snapshot: Boolean = false
+)

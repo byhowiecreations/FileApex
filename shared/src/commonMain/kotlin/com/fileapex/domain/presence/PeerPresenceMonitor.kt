@@ -9,6 +9,11 @@ import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.di.FileApexServices
+import com.fileapex.iroh.IrohRuntime
+import com.fileapex.iroh.IrohSweepPolicy
+import com.fileapex.domain.pairing.ClusterSyncRequest
+import com.fileapex.domain.pairing.PeerSyncEventKind
+import com.fileapex.domain.pairing.RemovalPullLedger
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.TransferActivityGuard
@@ -16,10 +21,13 @@ import com.fileapex.network.FileApexClient
 import com.fileapex.network.FileApexMdnsBrowser
 import com.fileapex.network.PeerLanHttpPolicy
 import com.fileapex.network.ServerLifecycleManager
+import com.fileapex.network.WakeHelloOutbox
 import com.fileapex.network.sendWakeBroadcast
+import com.fileapex.platform.hasUsableNetwork
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.tailscale.TailscaleNodeRuntime
 import com.fileapex.tailscale.TailscalePhase
+import com.fileapex.tailscale.tailnetPeerIsOnline
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
@@ -46,29 +54,25 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Intent-driven peer reachability with battery-first background sweeps.
+ * Intent-driven peer reachability with battery-first background checks.
  *
- * - One coalesced sweep at a time (no overlapping LAN work)
- * - Full sweeps when UI is foreground / network changes / cold launch
- * - Light sweeps in background (health ping only, skip when all peers fresh)
- * - Yields during active file transfers
+ * - Every device is checked on its own job ([probes]); nothing waits for another device
+ * - Full checks when UI is foreground / network changes / cold launch
+ * - Light checks in background (health ping only, skip when the peer is fresh)
+ * - A device with bytes moving to or from it is not probed; that traffic is the proof
  */
 class PeerPresenceMonitor(
     private val repository: DeviceRepository,
-    private val client: FileApexClient
+    private val client: FileApexClient,
+    private val lanScanBackoff: LanScanBackoff
 ) {
-    private enum class SweepMode {
-        /** Health probe + discovery on failure + debounced self-broadcast / FCM. */
-        FULL,
-        /** Health ping only — no subnet scan, no broadcast storm. */
-        LIGHT
-    }
-
     private val tailnetRoster = TailscalePeerRoster(repository, client)
     private val mutex = Mutex()
     private val reachabilityLock = Mutex()
-    private val sweepMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val probes = PeerProbeScheduler(scope) { deviceId, mode -> probeDevice(deviceId, mode) }
+    @Volatile
+    private var digestRound: DigestRound? = null
     private var snapshotWatcherJob: Job? = null
     private var lanPollJob: Job? = null
     private var tailnetWatchJob: Job? = null
@@ -79,17 +83,57 @@ class PeerPresenceMonitor(
     @Volatile
     private var appInForeground = false
     @Volatile
-    private var coalescePendingMode: SweepMode? = null
-    @Volatile
     private var lastFcmWakeDispatchEpochMs = 0L
-    @Volatile
-    private var lastSelfBroadcastEpochMs = 0L
+    private val lastSelfBroadcastEpochMs = ConcurrentHashMap<String, Long>()
+    private val helloAnnounceLock = Any()
+    private var lastHelloAnnounce: Pair<String, Long>? = null
     private val uiInteractiveGate = CompletableDeferred<Unit>()
 
     private val lastReachableEpochById = mutableMapOf<String, Long>()
     private val nodeStateFetchedAtMs = ConcurrentHashMap<String, Long>()
+    private val nodeStateVersionSeen = ConcurrentHashMap<String, Long>()
     /** deviceId to (verified on LAN, epoch ms the answer expires). */
     private val lanDirectVerdicts = ConcurrentHashMap<String, Pair<Boolean, Long>>()
+    private val tailnetAnswers = com.fileapex.iroh.IrohReachabilityCache(
+        LAN_DIRECT_HIT_TTL_MS,
+        LAN_DIRECT_MISS_TTL_MS,
+        TimeUtils::now
+    )
+
+    /**
+     * The one route order (LAN, Tailscale, Iroh) for calls to a peer. The tailnet check is its own ping with
+     * its own result, because a shared "reached recently" flag also counts LAN and Iroh traffic.
+     */
+    val routes: PeerRouteResolver by lazy {
+        PeerRouteResolver(probes = object : PeerRouteProbes {
+            override fun networkAvailable() = hasUsableNetwork()
+
+            override suspend fun lan(peer: PairedDeviceEntity): PeerRoute? =
+                verifiedLanEndpoint(peer)?.let { PeerRoute(RouteKind.Lan, it.host, it.port) }
+
+            override fun tailnetEnabled() = isTailscaleEnabled()
+
+            override fun tailnetPeerOnline(peer: PairedDeviceEntity) =
+                tailnetPeerIsOnline(TailscaleNodeRuntime.observedTailnetPeers(), peer.deviceId, peer.deviceName)
+
+            override suspend fun tailnet(peer: PairedDeviceEntity): PeerRoute? = tailnetRoute(peer)
+
+            override fun irohUsable(peer: PairedDeviceEntity) = IrohRuntime.canReach(peer.deviceId)
+
+            override suspend fun iroh(peer: PairedDeviceEntity): PeerRoute? =
+                irohVerdict(peer)?.let { PeerRoute(RouteKind.Iroh, it.host, it.port) }
+        }, onRouteChange = { peer, route ->
+            if (IrohRuntime.isEnabled()) {
+                val via = when (route?.kind) {
+                    RouteKind.Lan -> "LAN"
+                    RouteKind.Tailnet -> "Tailscale"
+                    RouteKind.Iroh -> "Iroh"
+                    null -> "none"
+                }
+                com.fileapex.iroh.IrohLog.add("route to ${com.fileapex.iroh.IrohLog.short(peer.deviceId)}: $via")
+            }
+        })
+    }
     private val lastSweepWakeAtMs = AtomicLong(0L)
     private val digestSkips = DigestSkipLog()
     private val digestSupport = BulletinPeerBackoff(DIGEST_UNSUPPORTED_RETRY_MS, DIGEST_UNSUPPORTED_RETRY_MS)
@@ -103,12 +147,6 @@ class PeerPresenceMonitor(
 
     private val _onlineDeviceIds = MutableStateFlow<Set<String>>(emptySet())
     val onlineDeviceIds: StateFlow<Set<String>> = _onlineDeviceIds.asStateFlow()
-
-    suspend fun getDiscoveredEndpoints(): List<Pair<String, Int>> = mutex.withLock {
-        val cutoff = TimeUtils.now() - 300_000L
-        discoveredMdnsEndpoints.entries.removeAll { it.value < cutoff }
-        discoveredMdnsEndpoints.keys.toList()
-    }
 
     fun setAppInForeground(inForeground: Boolean) {
         appInForeground = inForeground
@@ -164,9 +202,9 @@ class PeerPresenceMonitor(
                     .collect { phase ->
                         val wasUp = previous == TailscalePhase.Up
                         if (phase == TailscalePhase.Up && !wasUp) {
-                            launchSweep(SweepMode.FULL)
+                            refreshAll(PresenceMode.Full)
                         } else if (wasUp && phase != TailscalePhase.Up) {
-                            launchSweep(SweepMode.LIGHT)
+                            refreshAll(PresenceMode.Light)
                         }
                         previous = phase
                     }
@@ -177,35 +215,27 @@ class PeerPresenceMonitor(
             // Do not FULL-sweep during first Compose frames — saturates CPU and Room writers.
             awaitUiInteractive()
             delay(400)
-            launchSweep(SweepMode.FULL)
+            refreshAll(PresenceMode.Full)
             while (isActive) {
-                if (TransferActivityGuard.isTransferActive()) {
-                    delay(LanPresenceTiming.TRANSFER_DEFER_POLL_MS)
-                    continue
-                }
                 val interval = if (appInForeground) {
                     LanPresenceTiming.FOREGROUND_LAN_POLL_MS
                 } else {
                     LanPresenceTiming.BACKGROUND_LAN_POLL_MS
                 }
                 delay(interval)
-                if (TransferActivityGuard.isTransferActive()) continue
-                val mode = if (appInForeground) SweepMode.FULL else SweepMode.LIGHT
+                val mode = if (appInForeground) PresenceMode.Full else PresenceMode.Light
                 // The connected phone's grant rides on this poll, so it is never skipped as fresh.
-                if (mode == SweepMode.LIGHT &&
+                if (mode == PresenceMode.Light &&
                     NotificationCompanion.desiredDeviceId().isEmpty() &&
                     allPeersRecentlyReachable(LanPresenceTiming.PEER_FRESH_SKIP_SWEEP_MS)
                 ) {
                     refreshOnlineSnapshot()
                     continue
                 }
-                launchSweep(mode)
+                refreshAll(mode)
             }
         }
     }
-
-    @Deprecated("Use ensureLanPollLoop()", ReplaceWith("ensureLanPollLoop()"))
-    fun ensureDesktopLanPoll() = ensureLanPollLoop()
 
     fun scheduleColdLaunchProbeOnce() {
         if (coldLaunchProbeScheduled) return
@@ -213,7 +243,7 @@ class PeerPresenceMonitor(
         scope.launch {
             awaitUiInteractive()
             delay(800)
-            launchSweep(SweepMode.FULL)
+            refreshAll(PresenceMode.Full)
         }
     }
 
@@ -227,11 +257,11 @@ class PeerPresenceMonitor(
             scope.launch {
                 awaitUiInteractive()
                 delay(400)
-                launchSweep(SweepMode.FULL)
+                refreshAll(PresenceMode.Full)
             }
             return
         }
-        launchSweep(SweepMode.FULL)
+        refreshAll(PresenceMode.Full)
     }
 
     fun onBackgroundWakeSignal(sourceDeviceId: String?) {
@@ -246,7 +276,8 @@ class PeerPresenceMonitor(
     }
 
     suspend fun runSingleShotRevalidation() {
-        runSweepOnce(SweepMode.FULL, skipFcmDispatch = true)
+        announceOnNetwork()
+        refreshAll(PresenceMode.Full, skipFcmDispatch = true)
     }
 
     fun onMdnsPeerDiscovered(host: String, port: Int, hintedDeviceId: String?) {
@@ -268,34 +299,75 @@ class PeerPresenceMonitor(
         }
     }
 
-    private fun launchSweep(mode: SweepMode) {
+    /**
+     * Asks every paired device to be checked. This only decides what is due and hands each device to its own job
+     * ([probes]); it never waits for a device, so it returns at once however many are slow or gone.
+     */
+    private fun refreshAll(mode: PresenceMode, skipFcmDispatch: Boolean = false) {
         scope.launch {
-            runSweepOnce(mode, skipFcmDispatch = false)
+            val peers = mutex.withLock { repository.listDevices() }
+            WakeHelloOutbox.setRoster(peers)
+            val lan = isActiveLanConnectivity()
+            if (lan || tailnetNodeUp()) {
+                scope.launch {
+                    cancellableCatching {
+                        awaitShareServerReady()
+                        if (repository.listCandidates().isNotEmpty()) FileApexServices.peerAdmission.verifyPending()
+                    }
+                }
+            }
+            if (peers.isEmpty()) {
+                refreshOnlineSnapshot()
+                if (mode == PresenceMode.Full) {
+                    scope.launch { cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() } }
+                }
+                return@launch
+            }
+            val wantsWake = mode == PresenceMode.Full || peers.any { !hasUsableEndpoint(it) || !isDeviceOnline(it) }
+            if (wantsWake && lan && claimSweepWake()) {
+                scope.launch(Dispatchers.IO) { cancellableCatching { sendWakeBroadcast() } }
+            }
+            digestRound = if (mode == PresenceMode.Light) startDigestRound(peers) else null
+            for (peer in peers) probes.poke(peer.deviceId, mode)
+            scope.launch { cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() } }
+            if (mode == PresenceMode.Full && !skipFcmDispatch) maybeDispatchFcmWake()
         }
     }
 
-    private suspend fun runSweepOnce(requestedMode: SweepMode, skipFcmDispatch: Boolean) {
-        if (!sweepMutex.tryLock()) {
-            coalescePendingMode = mergeSweepMode(coalescePendingMode, requestedMode)
-            return
+    /**
+     * A real network transition sends the signed hello without waiting for the sweep wake floor, but not again for
+     * the same network within the floor. It waits for the LAN link to be usable, then sends twice, the second time
+     * after the receivers' per-sender gap, so a receiver that was not listening yet still hears one. The sweep's own
+     * wake is held back so only this one goes out.
+     */
+    private suspend fun announceOnNetwork() {
+        scope.launch(Dispatchers.IO) {
+            cancellableCatching { announceWhenLanReady() }
+                .onFailure { error -> println("PeerPresenceMonitor: hello announce failed - ${error.message}") }
         }
-        try {
-            var mode = requestedMode
-            do {
-                coalescePendingMode = null
-                runPeerRefreshSweep(mode, skipFcmDispatch)
-                val pending = coalescePendingMode
-                if (pending == null) break
-                coalescePendingMode = null
-                mode = pending
-            } while (true)
-        } finally {
-            sweepMutex.unlock()
-            val pending = coalescePendingMode
-            if (pending != null) {
-                coalescePendingMode = null
-                runSweepOnce(pending, skipFcmDispatch = skipFcmDispatch)
-            }
+    }
+
+    private suspend fun announceWhenLanReady() {
+        val deadline = TimeUtils.now() + LanPresenceTiming.HELLO_LAN_WAIT_MS
+        while (!isActiveLanConnectivity() || LanScanBackoff.currentNetworkKey().isEmpty()) {
+            if (TimeUtils.now() >= deadline) return
+            delay(1_000L)
+        }
+        val key = LanScanBackoff.currentNetworkKey()
+        val now = TimeUtils.now()
+        synchronized(helloAnnounceLock) {
+            val last = lastHelloAnnounce
+            if (last != null && last.first == key && now - last.second < LanPresenceTiming.SWEEP_WAKE_FLOOR_MS) return
+            lastHelloAnnounce = key to now
+        }
+        lastSweepWakeAtMs.set(now)
+        WakeHelloOutbox.setRoster(mutex.withLock { repository.listDevices() })
+        com.fileapex.iroh.IrohLog.add("network changed: hello sent to ${WakeHelloOutbox.recipientCount()} paired devices")
+        sendWakeBroadcast()
+        delay(LanPresenceTiming.HELLO_RESEND_MS)
+        if (isActiveLanConnectivity() && LanScanBackoff.currentNetworkKey() == key) {
+            com.fileapex.iroh.IrohLog.add("hello sent again")
+            sendWakeBroadcast()
         }
     }
 
@@ -313,13 +385,30 @@ class PeerPresenceMonitor(
                     peer,
                     includeDiscovery = false,
                     allowPassiveWait = false,
-                    discoveryBudgetMs = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
+                    discoveryBudgetMs = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS,
+                    bypassScanBackoff = true
                 )
                 refreshOnlineSnapshot()
                 return
             }
         }
-        runPeerRefreshSweep(SweepMode.LIGHT, skipFcmDispatch = true)
+        refreshAll(PresenceMode.Light, skipFcmDispatch = true)
+    }
+
+    /** A hello or ack from a paired peer passed its proof; the address it came from is checked with a direct fetch. */
+    suspend fun onVerifiedHello(deviceId: String, host: String, port: Int) {
+        awaitShareServerReady()
+        val peer = mutex.withLock { repository.getDevice(deviceId) } ?: return
+        mutex.withLock { repository.touchPeerLastSeen(peer.deviceId, host, port) }
+        val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
+        primePeer(
+            refreshed,
+            includeDiscovery = false,
+            allowPassiveWait = false,
+            discoveryBudgetMs = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS,
+            bypassScanBackoff = true
+        )
+        refreshOnlineSnapshot()
     }
 
     private suspend fun handleMdnsPeerDiscovered(host: String, port: Int, hintedDeviceId: String?) {
@@ -335,7 +424,8 @@ class PeerPresenceMonitor(
             refreshed,
             includeDiscovery = false,
             allowPassiveWait = false,
-            discoveryBudgetMs = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
+            discoveryBudgetMs = LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS,
+            bypassScanBackoff = true
         )
         refreshOnlineSnapshot()
     }
@@ -377,100 +467,86 @@ class PeerPresenceMonitor(
         return mutex.withLock { repository.getDevice(matched.deviceId) } ?: matched
     }
 
-    private suspend fun runPeerRefreshSweep(mode: SweepMode, skipFcmDispatch: Boolean) {
-        if (TransferActivityGuard.isTransferActive()) return
-        val tailnetUp = tailnetNodeUp()
-        if (!isActiveLanConnectivity() && !tailnetUp) {
-            refreshOnlineSnapshot()
-            return
-        }
-        if (tailnetUp) {
-            cancellableCatching { tailnetRoster.refresh() }
-        }
-        awaitShareServerReady()
-        if (repository.listCandidates().isNotEmpty()) {
-            cancellableCatching { FileApexServices.peerAdmission.verifyPending() }
-        }
-        val peers = mutex.withLock { repository.listDevices() }
-        if (peers.isEmpty()) {
-            refreshOnlineSnapshot()
-            if (mode == SweepMode.FULL) {
-                cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
+    /** One device's whole check: its own endpoint, discovery, Iroh fallback and online mark. Runs on that device's job only. */
+    private suspend fun probeDevice(deviceId: String, mode: PresenceMode) {
+        val peer = mutex.withLock { repository.getDevice(deviceId) } ?: run { digestRound?.finish(deviceId); return }
+        val round = digestRound?.takeIf { mode == PresenceMode.Light || deviceId in it.sourceIds }
+        try {
+            if (TransferActivityGuard.isTransferActiveFor(deviceId)) {
+                markReachable(deviceId)
+                refreshOnlineSnapshot()
+                return
             }
-            return
+            val freshMs = if (mode == PresenceMode.Full) {
+                LanPresenceTiming.FOREGROUND_PEER_FRESH_MS
+            } else {
+                LanPresenceTiming.BACKGROUND_PEER_FRESH_MS
+            }
+            val tailnetUp = tailnetNodeUp()
+            if (!isActiveLanConnectivity() && !tailnetUp) {
+                irohProbe(peer, LanPresenceTiming.BACKGROUND_PEER_FRESH_MS)
+                refreshOnlineSnapshot()
+                return
+            }
+            if (tailnetUp) cancellableCatching { tailnetRoster.refresh(deviceId) }
+            awaitShareServerReady()
+            val isSource = round != null && deviceId in round.sourceIds
+            if (round != null && !isSource) {
+                // Bounded: the sources are devices that just answered, and a dead one only costs this short wait.
+                withTimeoutOrNull(DIGEST_WAIT_MS) { round.done.await() }
+                if (!alreadyFresh(peer, freshMs) && digestAllowsSkip(peer, round.hints)) return
+            }
+            probe(peer, mode, freshMs)
+            if (isSource && round != null) {
+                collectDigestHints(listOf(peer), freshMs).forEach { (id, at) -> round.hints.merge(id, at) { a, b -> maxOf(a, b) } }
+            }
+            irohProbe(peer, freshMs)
+            refreshOnlineSnapshot()
+            val live = mutex.withLock { repository.getDevice(deviceId) } ?: peer
+            if (mode == PresenceMode.Full && isDeviceOnline(live)) maybeBroadcastSelfIdentity(deviceId)
+        } finally {
+            digestRound?.finish(deviceId)
         }
-        val orderedPeers = peers.sortedWith(
-            compareByDescending<PairedDeviceEntity> { peer ->
-                if (isDeviceOnline(peer)) 2 else if (hasUsableEndpoint(peer)) 1 else 0
-            }.thenBy { it.deviceName.lowercase() }
+    }
+
+    private fun alreadyFresh(peer: PairedDeviceEntity, freshMs: Long): Boolean {
+        val isMetadataComplete = hasUsableEndpoint(peer) && peer.rootPath.isNotBlank() && peer.rootPath != "/"
+        return isMetadataComplete &&
+            !NotificationCompanion.isCompanion(peer.deviceId) &&
+            wasRecentlyReachable(peer.deviceId, freshMs)
+    }
+
+    private suspend fun probe(peer: PairedDeviceEntity, mode: PresenceMode, freshMs: Long) {
+        if (alreadyFresh(peer, freshMs)) return
+        val full = mode == PresenceMode.Full
+        primePeer(
+            peer,
+            includeDiscovery = full,
+            allowPassiveWait = full,
+            discoveryBudgetMs = if (full) {
+                LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS
+            } else {
+                LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
+            },
+            bypassScanBackoff = false
         )
-        val freshnessThresholdMs = if (mode == SweepMode.FULL) {
-            LanPresenceTiming.FOREGROUND_PEER_FRESH_MS
-        } else {
-            LanPresenceTiming.BACKGROUND_PEER_FRESH_MS
-        }
-        val wantsWake = mode == SweepMode.FULL || orderedPeers.any { !hasUsableEndpoint(it) || !isDeviceOnline(it) }
-        if (wantsWake && isActiveLanConnectivity() && claimSweepWake()) {
-            scope.launch(Dispatchers.IO) {
-                cancellableCatching { sendWakeBroadcast() }
-            }
-        }
-        val includeDiscovery = mode == SweepMode.FULL
-        val allowPassiveWait = mode == SweepMode.FULL
-        val staleDiscoveryBudget = if (mode == SweepMode.FULL) {
-            LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS
-        } else {
-            LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS
-        }
-        fun alreadyFresh(peer: PairedDeviceEntity): Boolean {
-            val isMetadataComplete = hasUsableEndpoint(peer) &&
-                peer.rootPath.isNotBlank() &&
-                peer.rootPath != "/"
-            return isMetadataComplete &&
-                !NotificationCompanion.isCompanion(peer.deviceId) &&
-                wasRecentlyReachable(peer.deviceId, freshnessThresholdMs)
-        }
+    }
 
-        suspend fun probe(peer: PairedDeviceEntity) {
-            if (TransferActivityGuard.isTransferActive()) return
-            if (alreadyFresh(peer)) return
-            primePeer(
-                peer,
-                includeDiscovery = includeDiscovery,
-                allowPassiveWait = allowPassiveWait,
-                discoveryBudgetMs = staleDiscoveryBudget
-            )
-        }
+    /** Devices that answered recently are asked what they have seen of the others, so the others can skip a ping. */
+    private class DigestRound(val sourceIds: Set<String>) {
+        val hints = ConcurrentHashMap<String, Long>()
+        val done = CompletableDeferred<Unit>()
+        private val waiting = java.util.concurrent.atomic.AtomicInteger(sourceIds.size)
+        private val finished = ConcurrentHashMap.newKeySet<String>()
 
-        val digestSources = if (mode == SweepMode.LIGHT) pickDigestSources(orderedPeers) else emptyList()
-        if (digestSources.isNotEmpty()) {
-            coroutineScope {
-                digestSources.map { source -> async(Dispatchers.IO) { probe(source) } }.awaitAll()
-            }
+        fun finish(id: String) {
+            if (id in sourceIds && finished.add(id) && waiting.decrementAndGet() == 0) done.complete(Unit)
         }
-        val digestHints = if (digestSources.isEmpty()) {
-            emptyMap()
-        } else {
-            collectDigestHints(digestSources, freshnessThresholdMs)
-        }
-        val sourceIds = digestSources.map { it.deviceId }.toSet()
-        coroutineScope {
-            orderedPeers.filter { it.deviceId !in sourceIds }.map { peer ->
-                async(Dispatchers.IO) {
-                    if (TransferActivityGuard.isTransferActive()) return@async
-                    if (!alreadyFresh(peer) && digestAllowsSkip(peer, digestHints)) return@async
-                    probe(peer)
-                }
-            }.awaitAll()
-        }
-        if (mode == SweepMode.FULL) {
-            maybeBroadcastSelfIdentity()
-        }
-        refreshOnlineSnapshot()
-        cancellableCatching { GoogleLinkCoordinator.publishSelfPresenceIfLinked() }
-        if (mode == SweepMode.FULL && !skipFcmDispatch) {
-            maybeDispatchFcmWake()
-        }
+    }
+
+    private fun startDigestRound(peers: List<PairedDeviceEntity>): DigestRound? {
+        val sources = pickDigestSources(peers.sortedBy { it.deviceName.lowercase() })
+        return if (sources.isEmpty()) null else DigestRound(sources.map { it.deviceId }.toSet())
     }
 
     fun verifiedEpochsSnapshot(): Map<String, Long> = _reachabilityEpochMs.value
@@ -535,13 +611,12 @@ class PeerPresenceMonitor(
         return digestSkips.trySkip(peer.deviceId)
     }
 
-    private suspend fun maybeBroadcastSelfIdentity() {
+    private suspend fun maybeBroadcastSelfIdentity(deviceId: String) {
         val now = TimeUtils.now()
-        if (now - lastSelfBroadcastEpochMs < LanPresenceTiming.SELF_BROADCAST_MIN_INTERVAL_MS) {
-            return
-        }
-        lastSelfBroadcastEpochMs = now
-        cancellableCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity() }
+        val last = lastSelfBroadcastEpochMs[deviceId] ?: 0L
+        if (now - last < LanPresenceTiming.SELF_BROADCAST_MIN_INTERVAL_MS) return
+        lastSelfBroadcastEpochMs[deviceId] = now
+        cancellableCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity(setOf(deviceId)) }
     }
 
     private fun maybeDispatchFcmWake() {
@@ -593,50 +668,43 @@ class PeerPresenceMonitor(
             peer,
             includeDiscovery = true,
             allowPassiveWait = true,
-            discoveryBudgetMs = LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS
+            discoveryBudgetMs = LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS,
+            bypassScanBackoff = true
         )
         refreshOnlineSnapshot()
         return reached
     }
 
-    /**
-     * Single quick LAN assessment for transfer, file navigation, and Device Details.
-     * Uses an ~800ms health ping only — never runs the full discovery sweep.
-     * Prefer [resolveOutboundEndpoint] for tap-to-browse and sends when the roster IP may be blank.
-     */
-    suspend fun quickAssessLanReachability(peer: PairedDeviceEntity): PeerLanReachabilityVerdict {
-        val refreshed = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
-        if (isTailscaleEnabled()) {
-            val endpoint = resolvePeerEndpoint(refreshed, tailnetUp = true)
-            if (endpoint?.tailnet == true && tailnetHealth(refreshed, endpoint)) {
-                return PeerLanReachabilityVerdict.Direct(endpoint.host, endpoint.port)
-            }
-        }
-        if (!isActiveLanConnectivity()) {
-            return PeerLanReachabilityVerdict.LocalOffLocalWifi
-        }
-        assessStoredEndpoint(refreshed)?.let { return it }
-        return PeerLanReachabilityVerdict.PeerOffline
-    }
+    /** True when some route type could exist: a LAN here, Tailscale up, or Iroh switched on. */
+    fun canAttemptRoutes(): Boolean = isActiveLanConnectivity() || isTailscaleEnabled() || IrohRuntime.isUsable()
 
     /**
-     * Outbound host:port for navigation, transfer, and queue drain.
-     * With Tailscale on, a verified tailnet address is dialed through tsnet.
-     * [allowTailnet] false is the LAN retry after that dial fails.
+     * Outbound host:port for every call to a peer, from [routes]. Features use [endpointIfOnline] or [probeNow], never this:
+     * LAN, then Tailscale if the peer is online there, then Iroh. When none answers, the stored LAN address
+     * is returned unverified so a peer that was only slow to answer the quick check can still be dialed.
+     * A caller whose request fails on the returned address calls [reportRouteFailure] before asking again.
      */
-    suspend fun resolveOutboundEndpoint(
+    suspend fun endpointIfOnline(
         peer: PairedDeviceEntity,
-        allowTailnet: Boolean = true
+        use: RouteUse = RouteUse.Request
     ): PeerLanReachabilityVerdict.Direct? {
         val live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
-        if (allowTailnet && isTailscaleEnabled()) {
-            verifiedLanEndpoint(live)?.let { return it }
-            val endpoint = resolvePeerEndpoint(live, tailnetUp = true)
-            if (endpoint?.tailnet == true) {
-                return PeerLanReachabilityVerdict.Direct(endpoint.host, endpoint.port)
-            }
-        }
-        if (!isActiveLanConnectivity()) return null
+        return PeerGate.ifOnline(isDeviceOnline(live)) { resolveOutboundEndpoint(live, use) }
+    }
+
+    /** For an action the user started (open, send, browse, wake): the peer is tried even when it shows offline. */
+    suspend fun probeNow(
+        peer: PairedDeviceEntity,
+        use: RouteUse = RouteUse.Request
+    ): PeerLanReachabilityVerdict.Direct? = resolveOutboundEndpoint(peer, use)
+
+    private suspend fun resolveOutboundEndpoint(
+        peer: PairedDeviceEntity,
+        use: RouteUse = RouteUse.Request
+    ): PeerLanReachabilityVerdict.Direct? {
+        val live = mutex.withLock { repository.getDevice(peer.deviceId) } ?: peer
+        routes.routeFor(live, use)?.let { return PeerLanReachabilityVerdict.Direct(it.host, it.port) }
+        if (use == RouteUse.AddressExchange || !isActiveLanConnectivity()) return null
         val host = live.lastKnownIp.trim()
         val port = live.port
         if (host.isNotEmpty() && NetworkUtils.isPrivateLanPeerHost(host) && port > 0) {
@@ -645,13 +713,60 @@ class PeerPresenceMonitor(
         return null
     }
 
+    /** The request to [host] failed: skip that kind of route for this peer for a while. */
+    fun reportRouteFailure(peer: PairedDeviceEntity, host: String) {
+        routes.routeFailed(peer, routeKindForHost(host))
+    }
+
+    /** The Iroh bridge endpoint when the peer answered through Iroh. Marks it reachable for presence. */
+    private suspend fun irohVerdict(peer: PairedDeviceEntity): PeerLanReachabilityVerdict.Direct? {
+        if (!IrohRuntime.canReach(peer.deviceId)) return null
+        val endpoint = IrohRuntime.reachableEndpoint(peer) ?: return null
+        markReachable(peer.deviceId, overLan = false)
+        mutex.withLock { repository.touchPeerLastSeenEpoch(peer.deviceId) }
+        return PeerLanReachabilityVerdict.Direct(endpoint.host, endpoint.port)
+    }
+
+    /** The tailnet route when Tailscale is on, reports the peer online and the peer answers a short ping. */
+    private suspend fun tailnetRoute(peer: PairedDeviceEntity): PeerRoute? {
+        if (!isTailscaleEnabled()) return null
+        if (!tailnetPeerIsOnline(TailscaleNodeRuntime.observedTailnetPeers(), peer.deviceId, peer.deviceName)) return null
+        val endpoint = resolvePeerEndpoint(peer, tailnetUp = true)?.takeIf { it.tailnet } ?: return null
+        val answers = tailnetAnswers.check(peer.deviceId) {
+            client.pingHealth(endpoint.host, endpoint.port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
+        }
+        if (answers) {
+            lanScanBackoff.recordRemoteReach(
+                peer.deviceId,
+                LanScanBackoff.currentNetworkKey(),
+                LanPresenceTiming.REMOTE_ROUTE_SCAN_HOLD_MS
+            )
+        }
+        return if (answers) PeerRoute(RouteKind.Tailnet, endpoint.host, endpoint.port) else null
+    }
+
+    /** A peer the LAN pass did not reach is tried through Iroh; this is that one peer's own attempt. */
+    private suspend fun irohProbe(peer: PairedDeviceEntity, freshMs: Long) {
+        if (!IrohRuntime.isUsable()) return
+        // A resting endpoint is started by the reconcile loop or an explicit request, never by a presence check.
+        if (!IrohRuntime.isUp() && FileApexServices.settings.irohRestWhenIdle.value) return
+        val now = TimeUtils.now()
+        val worth = IrohSweepPolicy.shouldProbe(
+            canReach = IrohRuntime.canReach(peer.deviceId),
+            msSinceReached = _reachabilityEpochMs.value[peer.deviceId]?.let { now - it },
+            freshMs = freshMs,
+            onLan = isActiveLanConnectivity()
+        )
+        if (worth) cancellableCatching { if (tailnetRoute(peer) == null) irohVerdict(peer) }
+    }
+
     /**
      * The tsnet userspace path is CPU bound and far slower than the local network, so a peer on
      * the same LAN is used directly even while Tailscale is on. The peer has to answer on its
      * stored LAN address with its own device id; a private address alone proves nothing because
      * another network can reuse it. Both answers are cached briefly so a queue of sends pays for one probe.
      * A peer on the local subnet answers in milliseconds; a stale address costs one short timeout, then
-     * the miss is remembered and the tailnet path is used straight away.
+     * the miss is remembered and the next route (Tailscale, then Iroh) is tried straight away.
      */
     suspend fun verifiedLanEndpoint(peer: PairedDeviceEntity): PeerLanReachabilityVerdict.Direct? {
         val host = peer.lastKnownIp.trim()
@@ -682,65 +797,12 @@ class PeerPresenceMonitor(
         return hash.isNotEmpty() && hash == state.publicKeyHash.trim()
     }
 
-    private suspend fun tailnetHealth(
-        peer: PairedDeviceEntity,
-        endpoint: ResolvedPeerEndpoint
-    ): Boolean {
-        if (wasRecentlyReachable(peer.deviceId, LanPresenceTiming.DEVICE_DETAILS_RECENT_REACHABILITY_MS)) {
-            return true
-        }
-        if (!client.pingHealth(endpoint.host, endpoint.port, LanPresenceTiming.DEVICE_DETAILS_PING_TIMEOUT_MS)) {
-            return false
-        }
-        markReachable(peer.deviceId)
-        mutex.withLock { repository.touchPeerLastSeenEpoch(peer.deviceId) }
-        return true
-    }
-
-    private suspend fun assessStoredEndpoint(
-        peer: PairedDeviceEntity
-    ): PeerLanReachabilityVerdict.Direct? {
-        val host = peer.lastKnownIp.trim()
-        val port = peer.port
-        if (host.isEmpty() || !NetworkUtils.isPrivateLanPeerHost(host) || !PeerLanHttpPolicy.canRoute(host)) {
-            return null
-        }
-        if (wasRecentlyReachable(
-                peer.deviceId,
-                LanPresenceTiming.DEVICE_DETAILS_RECENT_REACHABILITY_MS
-            )
-        ) {
-            return PeerLanReachabilityVerdict.Direct(host, port)
-        }
-        if (client.pingHealth(host, port, LanPresenceTiming.DEVICE_DETAILS_PING_TIMEOUT_MS)) {
-            markReachable(peer.deviceId)
-            mutex.withLock {
-                repository.touchPeerLastSeen(peer.deviceId, host, port)
-            }
-            return PeerLanReachabilityVerdict.Direct(host, port)
-        }
-        return null
-    }
-
     suspend fun prepareForTransfer(targets: List<MultiCopyDeviceOption>) {
         val remote = targets.filter { !it.isLocal }
         if (remote.isEmpty()) return
         val needsPrime = remote.filter { target ->
             val peer = mutex.withLock { repository.getDevice(target.deviceId) } ?: return@filter true
-            if (isTailscaleEnabled()) {
-                val endpoint = resolvePeerEndpoint(peer, tailnetUp = true)
-                if (endpoint?.tailnet == true && tailnetHealth(peer, endpoint)) {
-                    return@filter false
-                }
-            }
-            if (!wasRecentlyReachable(peer.deviceId, LanPresenceTiming.TRANSFER_RECENT_REACHABILITY_MS)) {
-                return@filter true
-            }
-            val host = peer.lastKnownIp.trim()
-            if (host.isEmpty() || !PeerLanHttpPolicy.canRoute(host)) {
-                return@filter true
-            }
-            !client.pingHealth(host, peer.port, LanPresenceTiming.ON_DEMAND_HEALTH_TIMEOUT_MS)
+            routes.routeFor(peer, RouteUse.Bulk) == null
         }
         if (needsPrime.isEmpty()) return
         primePeersForTransfer(needsPrime)
@@ -771,7 +833,8 @@ class PeerPresenceMonitor(
                         refreshed,
                         includeDiscovery = true,
                         allowPassiveWait = false,
-                        discoveryBudgetMs = LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS
+                        discoveryBudgetMs = LanPresenceTiming.STALE_PEER_LAN_DISCOVERY_BUDGET_MS,
+                        bypassScanBackoff = true
                     )
                 }
             }.awaitAll()
@@ -792,17 +855,21 @@ class PeerPresenceMonitor(
      * last fetch is older than [LanPresenceTiming.NODE_STATE_REFRESH_TTL_MS]. Claims the slot so
      * concurrent probes don't fetch twice.
      */
-    private fun claimNodeStateFetch(peer: PairedDeviceEntity): Boolean {
+    private fun claimNodeStateFetch(peer: PairedDeviceEntity, peerVersion: Long?): Boolean {
         val now = TimeUtils.now()
         val missingMetadata = peer.rootPath.isBlank() || peer.rootPath == "/" || peer.deviceName.isBlank()
         var claimed = false
         nodeStateFetchedAtMs.compute(peer.deviceId) { _, previous ->
-            val stale = previous == null ||
-                now - previous >= LanPresenceTiming.NODE_STATE_REFRESH_TTL_MS ||
-                (missingMetadata && now - previous >= LanPresenceTiming.NODE_STATE_MISSING_RETRY_MS)
+            val stale = PeerStateRefreshPolicy.shouldFetch(
+                peerVersion = peerVersion,
+                seenVersion = nodeStateVersionSeen[peer.deviceId],
+                ageMs = previous?.let { now - it },
+                missingMetadata = missingMetadata
+            )
             claimed = stale
             if (stale) now else previous
         }
+        if (claimed && peerVersion != null) nodeStateVersionSeen[peer.deviceId] = peerVersion
         return claimed
     }
 
@@ -815,7 +882,8 @@ class PeerPresenceMonitor(
         peer: PairedDeviceEntity,
         includeDiscovery: Boolean,
         allowPassiveWait: Boolean,
-        discoveryBudgetMs: Long
+        discoveryBudgetMs: Long,
+        bypassScanBackoff: Boolean = false
     ): Boolean {
         val attempts = LanPresenceTiming.ON_DEMAND_PRIME_ATTEMPTS
         val retryMs = LanPresenceTiming.ON_DEMAND_PRIME_RETRY_MS
@@ -844,6 +912,10 @@ class PeerPresenceMonitor(
         }
 
         val shouldDiscover = includeDiscovery || !hasUsableEndpoint(current)
+        val scanNetworkKey = LanScanBackoff.currentNetworkKey()
+        if (shouldDiscover && !bypassScanBackoff && !lanScanBackoff.shouldScan(peer.deviceId, scanNetworkKey)) {
+            return false
+        }
         if (shouldDiscover) {
             val target = mutex.withLock { repository.getDevice(peer.deviceId) } ?: current
             val discoveryBudget = if (hasUsableEndpoint(target)) {
@@ -856,6 +928,9 @@ class PeerPresenceMonitor(
                 client = client,
                 budgetMs = discoveryBudget
             )
+            if (discovered == null || discovered.deviceId.trim() != peer.deviceId) {
+                lanScanBackoff.recordFailure(peer.deviceId, scanNetworkKey)
+            }
             if (discovered != null && discovered.deviceId.trim() == peer.deviceId) {
                 mutex.withLock {
                     repository.applyPeerNodeState(discovered, rosterDeviceId = peer.deviceId, observedDirectly = true)
@@ -870,7 +945,7 @@ class PeerPresenceMonitor(
     }
 
     internal fun hasUsableEndpoint(peer: PairedDeviceEntity): Boolean =
-        resolvePeerEndpoint(peer, tailnetNodeUp()) != null
+        resolvePeerEndpoint(peer, tailnetNodeUp()) != null || IrohRuntime.canReach(peer.deviceId)
 
     private suspend fun tryStoredEndpoint(
         peer: PairedDeviceEntity,
@@ -879,7 +954,9 @@ class PeerPresenceMonitor(
         timeoutMs: Long,
         fetchNodeState: Boolean = true
     ): Boolean {
-        val endpoint = resolvePeerEndpoint(peer, tailnetNodeUp()) ?: return false
+        val tailnetUsable = tailnetNodeUp() &&
+            tailnetPeerIsOnline(TailscaleNodeRuntime.observedTailnetPeers(), peer.deviceId, peer.deviceName)
+        val endpoint = resolvePeerEndpoint(peer, tailnetUsable) ?: return false
         repeat(attempts) { attempt ->
             val companion = NotificationCompanion.pollValueFor(
                 peer.deviceId, peer.isDockerNode(), peer.os, peer.platform, peer.tlsPin
@@ -897,6 +974,8 @@ class PeerPresenceMonitor(
             }
             if (reached) {
                 markReachable(peer.deviceId)
+                probe.bulletinVersion?.let { FileApexServices.bulletinSyncEngine.onPeerBulletinVersion(peer, it) }
+                probe.removals?.let { theirs -> scope.launch { pullRemovals(peer, endpoint, theirs) } }
                 mutex.withLock {
                     if (endpoint.tailnet) {
                         repository.touchPeerLastSeenEpoch(peer.deviceId)
@@ -904,7 +983,7 @@ class PeerPresenceMonitor(
                         repository.touchPeerLastSeen(peer.deviceId, endpoint.host, endpoint.port)
                     }
                 }
-                if (fetchNodeState && claimNodeStateFetch(peer)) {
+                if (fetchNodeState && claimNodeStateFetch(peer, probe.membershipVersion)) {
                     val state = cancellableCatching {
                         client.fetchPeerNodeState(endpoint.host, endpoint.port, timeoutMs)
                     }.getOrNull()
@@ -920,6 +999,10 @@ class PeerPresenceMonitor(
                         mutex.withLock {
                             repository.applyPeerNodeState(state, rosterDeviceId = peer.deviceId, observedDirectly = true)
                         }
+                        // Same hardware under another id is the same device before a reinstall: retire the outdated row.
+                        if (state.hardwareHash.isNotBlank()) {
+                            cancellableCatching { FileApexServices.peerAdmission.supersedeHardwareTwins(state) }
+                        }
                         markReachable(state.deviceId.trim())
                     }
                 }
@@ -932,7 +1015,37 @@ class PeerPresenceMonitor(
         return false
     }
 
-    private suspend fun markReachable(vararg deviceIds: String, epochMs: Long = TimeUtils.now()) {
+    private val removalPulls = RemovalPullLedger()
+
+    /**
+     * A peer whose removal fingerprint differs from ours holds a removal we missed, or the reverse. Read its records
+     * once per distinct fingerprint and apply them under the usual rules (a record counts only when its stamp is
+     * newer than what we hold for that device). A record naming this device is never taken from a read.
+     */
+    private suspend fun pullRemovals(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String) {
+        val ours = cancellableCatching { repository.removalFingerprint() }.getOrNull() ?: return
+        if (!removalPulls.shouldPull(peer.deviceId, theirs.trim(), ours)) return
+        val localId = com.fileapex.data.identity.loadLocalIdentity().deviceId
+        cancellableCatching {
+            val records = client.fetchRemovedDevices(endpoint.host, endpoint.port)
+                .filter { it.deviceId.isNotBlank() && it.deviceId != localId }
+            if (records.isNotEmpty()) {
+                FileApexServices.pairingCoordinator.mergeIncoming(
+                    ClusterSyncRequest(
+                        eventKind = PeerSyncEventKind.REMOVAL,
+                        removedDevices = records,
+                        clusterVersion = records.maxOf { it.membershipVersion() }
+                    ),
+                    authenticatedSenderId = peer.deviceId
+                )
+            }
+        }.onFailure { error ->
+            removalPulls.forget(peer.deviceId)
+            println("PeerPresenceMonitor: removal read from ${peer.deviceName} failed: ${error.message}")
+        }
+    }
+
+    private suspend fun markReachable(vararg deviceIds: String, epochMs: Long = TimeUtils.now(), overLan: Boolean = true) {
         reachabilityLock.withLock {
             var changed = false
             for (id in deviceIds) {
@@ -960,11 +1073,20 @@ class PeerPresenceMonitor(
         for (id in deviceIds) {
             val trimmed = id.trim()
             if (trimmed.isNotEmpty()) {
+                if (overLan) {
+                    lanScanBackoff.recordSuccess(trimmed)
+                } else {
+                    lanScanBackoff.recordRemoteReach(
+                        trimmed,
+                        LanScanBackoff.currentNetworkKey(),
+                        LanPresenceTiming.REMOTE_ROUTE_SCAN_HOLD_MS
+                    )
+                }
                 digestSkips.directContact(trimmed)
                 val dev = repository.getDevice(trimmed)
                 if (dev != null && dev.lastKnownIp.isNotBlank() && dev.port > 0) {
                     repository.touchPeerLastSeen(trimmed, dev.lastKnownIp, dev.port, epochMs)
-                    if ((dev.rootPath.isBlank() || dev.rootPath == "/") && claimNodeStateFetch(dev)) {
+                    if ((dev.rootPath.isBlank() || dev.rootPath == "/") && claimNodeStateFetch(dev, null)) {
                         scope.launch(Dispatchers.IO) {
                             cancellableCatching {
                                 val state = client.fetchPeerNodeState(
@@ -992,16 +1114,12 @@ class PeerPresenceMonitor(
         }
     }
 
-    private fun mergeSweepMode(existing: SweepMode?, incoming: SweepMode): SweepMode {
-        if (existing == SweepMode.FULL || incoming == SweepMode.FULL) return SweepMode.FULL
-        return SweepMode.LIGHT
-    }
-
     companion object {
         const val OFFLINE_GRACE_MS = LanPresenceTiming.OFFLINE_GRACE_MS
         private const val DIGEST_MIN_PEERS = 4
         private const val DIGEST_UNSUPPORTED_RETRY_MS = 6 * 60 * 60_000L
         private const val DIGEST_MAX_SOURCES = 2
+        private const val DIGEST_WAIT_MS = 800L
         private const val SERVER_READY_ATTEMPTS = 25
         private const val LAN_DIRECT_HIT_TTL_MS = 30_000L
         private const val LAN_DIRECT_MISS_TTL_MS = 15_000L

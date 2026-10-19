@@ -349,42 +349,6 @@ object DriveRelayCoordinator {
         driveLog("removed ${entries.size} cancelled relay entr(ies) from Drive")
     }
 
-    suspend fun setNoteAttachmentPinned(driveFileId: String, pinned: Boolean) {
-        mutex.withLock {
-            mutateLedger { ledger ->
-                ledger.copy(
-                    entries = ledger.entries.map { entry ->
-                        if (entry.driveFileId == driveFileId &&
-                            entry.kind == DriveLedgerKinds.NOTE_ATTACHMENT
-                        ) {
-                            entry.copy(pinned = pinned)
-                        } else {
-                            entry
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    suspend fun deleteNoteAttachment(driveFileId: String) {
-        if (driveFileId.isBlank()) return
-        if (!GoogleDriveAuth.hasGrant()) return
-        withContext(Dispatchers.IO) {
-            cancellableCatching { GoogleDriveClient.deleteFile(driveFileId) }
-            mutex.withLock {
-                mutateLedger { ledger ->
-                    ledger.copy(
-                        entries = ledger.entries.filterNot { entry ->
-                            entry.driveFileId == driveFileId &&
-                                entry.kind == DriveLedgerKinds.NOTE_ATTACHMENT
-                        }
-                    )
-                }
-            }
-        }
-    }
-
     suspend fun purgeRelayNow(): Int {
         mutex.withLock {
             val deleted = GoogleDriveClient.purgeRelayFolder()

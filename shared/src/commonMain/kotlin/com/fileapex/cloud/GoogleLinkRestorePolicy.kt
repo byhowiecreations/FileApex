@@ -10,8 +10,4 @@ internal object GoogleLinkRestorePolicy {
         restoredIdToken: Boolean
     ): Boolean = linkedFlag && !hasFirebaseSession && !restoredIdToken
 
-    fun shouldAttemptSilentGoogleId(
-        linkedFlag: Boolean,
-        configuredEmail: String
-    ): Boolean = linkedFlag && configuredEmail.isNotBlank()
 }

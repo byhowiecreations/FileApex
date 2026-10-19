@@ -155,11 +155,6 @@ object ServiceWatchdogScheduler {
         return directBootPrefs(context).getBoolean(KEY_AUTO_LAUNCH_MIRROR, true)
     }
 
-    fun isExactAlarmWarningActive(context: Context): Boolean {
-        if (com.fileapex.di.FileApexServices.isPlayStoreBuild) return false
-        return directBootPrefs(context).getBoolean(KEY_EXACT_ALARM_WARNING, false)
-    }
-
     /** Live exact-alarm capability; syncs the persisted warning flag for Settings / boot. */
     fun refreshExactAlarmAvailability(context: Context): Boolean {
         if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
@@ -170,10 +165,6 @@ object ServiceWatchdogScheduler {
         val available = canScheduleExactAlarms(alarmManager)
         setExactAlarmWarning(context, !available)
         return available
-    }
-
-    fun isBatteryOptimizationWarningActive(context: Context): Boolean {
-        return directBootPrefs(context).getBoolean(KEY_BATTERY_OPTIMIZATION_WARNING, false)
     }
 
     fun syncBatteryOptimizationWarning(context: Context, restricted: Boolean) {

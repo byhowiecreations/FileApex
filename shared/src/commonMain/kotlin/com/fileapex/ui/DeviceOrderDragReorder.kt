@@ -27,8 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.fileapex.i18n.stringRes
@@ -150,13 +148,6 @@ fun DeviceOrderDragHandle(
     }
 }
 
-/** Vertical distance between paired-device card centers while reordering. */
-internal fun deviceOrderItemStridePx(
-    cardHeight: Dp,
-    itemSpacing: Dp,
-    density: Density
-): Float = with(density) { (cardHeight + itemSpacing).toPx() }
-
 /** Total height of device rows only (excludes trailing list spacer used for the Add button). */
 internal fun deviceOrderListItemsHeightPx(
     itemCount: Int,
@@ -172,7 +163,7 @@ internal fun deviceOrderListItemsHeightPx(
 
 /**
  * True when paired-device rows exceed the lazy list viewport — auto-scroll may be needed.
- * Ignores [bottomPaddingPx] so the Add-device spacer does not force scroll during reorder.
+ * The Add-device spacer below the list is left out so it does not force scroll during reorder.
  */
 internal fun deviceOrderListOverflowsViewport(
     itemCount: Int,

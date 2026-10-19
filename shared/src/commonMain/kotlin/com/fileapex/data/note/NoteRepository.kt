@@ -258,7 +258,7 @@ class NoteRepository {
             retractNotifications(snapshot, noteId, attachmentName)
             return
         }
-        applyRemoteRetractLegacy(noteId, driveFileId, checksum, attachmentName)
+        applyRemoteRetractLegacy(noteId, attachmentName)
     }
 
     fun isRetracted(noteId: String?, driveFileId: String?, checksum: String?): Boolean {
@@ -588,20 +588,6 @@ class NoteRepository {
         return path.takeIf { SystemFileSystem.exists(Path(it)) }
     }
 
-    private fun shouldAutoFetchAttachment(note: NoteRecord): Boolean {
-        val name = note.attachmentFileName.orEmpty().trim()
-        if (!note.isMine && BulletinApkUpdatePolicy.shouldAutoUpdateNote(
-                name,
-                note.noteId,
-                note.epochMs,
-                note.attachmentSizeBytes
-            )
-        ) {
-            return attachmentNeedsDownload(note)
-        }
-        return false
-    }
-
     private suspend fun hydrateIncomingAttachment(note: NoteRecord) {
         val driveId = note.driveFileId?.takeIf { it.isNotBlank() } ?: return
         var attempt = 0
@@ -695,8 +681,6 @@ class NoteRepository {
 
     private suspend fun applyRemoteRetractLegacy(
         noteId: String,
-        driveFileId: String? = null,
-        checksum: String? = null,
         attachmentName: String? = null
     ) {
         if (noteId.isNotBlank()) retractedKeys += noteId

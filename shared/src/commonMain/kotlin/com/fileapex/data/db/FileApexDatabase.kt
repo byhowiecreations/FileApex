@@ -66,7 +66,9 @@ data class PairedDeviceEntity(
     /** Second accepted pin while a key change is being confirmed. */
     val tlsPinAlt: String = "",
     /** Peer's TLS listener port; 0 when unknown. */
-    val tlsPort: Int = 0
+    val tlsPort: Int = 0,
+    /** Salted hash of the peer's OS machine id (see HardwareId); a hint that two ids are one device. Empty when unknown. */
+    val hardwareHash: String = ""
 )
 
 @Entity(tableName = "note_records")
@@ -84,21 +86,6 @@ data class NoteEntity(
     val attachmentSizeBytes: Long = 0L,
     val attachmentPinned: Boolean = false,
     val attachmentLocalPath: String? = null
-)
-
-fun NoteEntity.toRecord(): NoteRecord = NoteRecord(
-    noteId = noteId,
-    sourceDeviceId = sourceDeviceId,
-    sourceDeviceName = sourceDeviceName,
-    content = content,
-    driveFileId = driveFileId,
-    checksum = checksum,
-    epochMs = epochMs,
-    isMine = isMine,
-    attachmentFileName = attachmentFileName,
-    attachmentSizeBytes = attachmentSizeBytes,
-    attachmentPinned = attachmentPinned,
-    attachmentLocalPath = attachmentLocalPath
 )
 
 fun NoteRecord.toEntity(): NoteEntity = NoteEntity(
@@ -209,8 +196,6 @@ interface DeviceDao {
 
 @Dao
 interface ControlDeliveryDao {
-    @Query("SELECT COUNT(*) FROM pending_control_deliveries")
-    suspend fun countPending(): Int
 
     @Query("DELETE FROM pending_control_deliveries")
     suspend fun deleteAll()
@@ -218,8 +203,6 @@ interface ControlDeliveryDao {
 
 @Dao
 interface NoteDao {
-    @Query("SELECT * FROM note_records ORDER BY epochMs ASC")
-    fun observeAllNotes(): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM note_records ORDER BY epochMs ASC")
     suspend fun getAllNotesOnce(): List<NoteEntity>
@@ -233,8 +216,6 @@ interface NoteDao {
     @Query("DELETE FROM note_records")
     suspend fun deleteAllNotes()
 
-    @Query("SELECT COUNT(*) FROM note_records WHERE noteId = :noteId OR (checksum IS NOT NULL AND checksum = :checksum AND checksum != '')")
-    suspend fun countNoteOrChecksum(noteId: String, checksum: String?): Int
 }
 
 @Database(
@@ -246,7 +227,7 @@ interface NoteDao {
         NoteEntity::class,
         PeerCandidateEntity::class
     ],
-    version = 15
+    version = 16
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {

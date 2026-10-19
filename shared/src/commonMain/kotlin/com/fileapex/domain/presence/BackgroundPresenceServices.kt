@@ -52,7 +52,4 @@ object BackgroundPresenceServices {
         FileApexMdnsAdvertiser.start(port, deviceId)
     }
 
-    fun onShareServerStopped() {
-        FileApexMdnsAdvertiser.stop()
-    }
 }

@@ -31,8 +31,6 @@ object TransferClipboard {
         _payloads.value = _payloads.value.filter { it.remoteAbsolutePath !in paths }
     }
 
-    fun peek(): ClipboardPayload? = _payloads.value.firstOrNull()
-
     fun peekAll(): List<ClipboardPayload> = _payloads.value
 
     fun clear() {

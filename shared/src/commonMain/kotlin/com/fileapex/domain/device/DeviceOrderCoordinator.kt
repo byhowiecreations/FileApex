@@ -42,10 +42,6 @@ object DeviceOrderCoordinator {
         bumpRevision()
     }
 
-    fun revertToAlphabetical(rows: List<DeviceListRow>) {
-        saveLocalOrder(alphabeticalOrderIds(rows))
-    }
-
     private fun readSavedOrderIds(rows: List<DeviceListRow>): List<String> {
         val decoded = DeviceOrderCodec.decode(FileApexServices.settings.deviceOrderIds.value)
         if (decoded.isEmpty()) return emptyList()

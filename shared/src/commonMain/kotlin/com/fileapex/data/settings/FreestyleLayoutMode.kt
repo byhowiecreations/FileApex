@@ -14,7 +14,6 @@ enum class FreestyleLayoutMode(val storageKey: String) {
         TILES -> CARDS_HORIZONTAL
     }
 
-    val isTile: Boolean get() = this == TILES
     val isCard: Boolean get() = this != TILES
 
     companion object {

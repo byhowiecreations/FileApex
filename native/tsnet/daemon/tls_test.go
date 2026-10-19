@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -96,7 +97,7 @@ func TestRequiresTLSMatchesTheAppsPolicy(t *testing.T) {
 			t.Errorf("%s should need TLS", p)
 		}
 	}
-	for _, p := range []string{"/api/v1/pairing/respond", "/api/v1/auth/verify-pin", "/api/v1/tls/pin", "/api/v1/identity", "/api/v1/identity?from=x", "/api/v1/heartbeat", "/api/v1/health"} {
+	for _, p := range []string{"/api/v1/pairing/respond", "/api/v1/auth/verify-pin", "/api/v1/tls/pin", "/api/v1/identity", "/api/v1/identity?from=x", "/api/v1/health"} {
 		if requiresTLS(p) {
 			t.Errorf("%s should stay open", p)
 		}
@@ -163,17 +164,17 @@ func TestAnnouncementPinsBothSidesAndSwitchesToTLS(t *testing.T) {
 		t.Fatalf("A did not pin B from the reply: %+v %v", p, ok)
 	}
 
-	// Plain HTTP naming a pinned peer is refused on protected routes, open ones still work.
+	// Plain HTTP is refused on every protected route (whoever it names), open ones still work.
 	status, body := plainGet(t, "http://127.0.0.1:"+itoa(bHTTP)+"/api/v1/files/capabilities?from=dev-a")
-	if status != 403 || body != "tls_required" {
+	if status != 401 || body != "authentication_required" {
 		t.Fatalf("plain from pinned peer: %d %q", status, body)
 	}
 	if status, _ := plainGet(t, "http://127.0.0.1:"+itoa(bHTTP)+"/api/v1/identity?from=dev-a"); status != 200 {
 		t.Fatalf("identity must stay open, got %d", status)
 	}
-	// A stranger is not affected.
-	if status, body := plainGet(t, "http://127.0.0.1:"+itoa(bHTTP)+"/api/v1/files/capabilities?from=stranger"); body == "tls_required" {
-		t.Fatalf("stranger was told tls_required (%d)", status)
+	// A stranger gets the same refusal.
+	if status, _ := plainGet(t, "http://127.0.0.1:"+itoa(bHTTP)+"/api/v1/files/capabilities?from=stranger"); status != 401 {
+		t.Fatalf("stranger got %d, want 401", status)
 	}
 
 	// The node's own client reaches B over TLS and is identified by its certificate.
@@ -328,3 +329,43 @@ func TestSelfStateAdvertisesPinPortAndPairingKey(t *testing.T) {
 }
 
 func itoa(v int) string { return strconv.Itoa(v) }
+
+func TestPlainHTTPIsRefusedOnEveryRouteButTheOpenOnes(t *testing.T) {
+	reached := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true; w.WriteHeader(http.StatusOK) })
+	handler := (&Node{}).guard(next, false)
+	for _, p := range []string{"/api/v1/devices", "/api/v1/heartbeat", "/api/v1/files/list?path=/", "/api/v1/files/list/?from=paired-device", "/api/v1/files/delete", "/api/v1/files/upload",
+		"/api/v1/diagnostics", "/api/v1/clipboard/send", "/api/v1/devices/merge", "/api/v1/cluster/remove", "/cluster/remove", "/api/v1/identity/rename", "/unknown"} {
+		reached = false
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://example"+p, nil))
+		if rec.Code != http.StatusUnauthorized || reached {
+			t.Errorf("%s: want 401 and no handler call, got %d (reached=%v)", p, rec.Code, reached)
+		}
+	}
+	for _, p := range []string{"/api/v1/health", "/api/v1/health?from=x&mv=1", "/api/v1/identity", "/api/v1/tls/pin"} {
+		reached = false
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://example"+p, nil))
+		if rec.Code != http.StatusOK || !reached {
+			t.Errorf("%s: want it open, got %d (reached=%v)", p, rec.Code, reached)
+		}
+	}
+}
+
+func TestRouteIsOpenMatchesTheAppsOpenRoutes(t *testing.T) {
+	if routeIsOpen("/api/v1/identity/rename") || routeIsOpen("/api/v1/health/extra") || routeIsOpen("/") {
+		t.Error("only the exact open routes may be open")
+	}
+	if !routeIsOpen("/api/v1/health/") {
+		t.Error("a trailing slash must not change the decision")
+	}
+}
+
+func TestLogGateAllowsOneLinePerSourcePerMinute(t *testing.T) {
+	g := &logGate{last: map[string]time.Time{}}
+	now := time.Now()
+	if !g.allow("1.2.3.4", now) || g.allow("1.2.3.4", now.Add(30*time.Second)) || !g.allow("5.6.7.8", now) || !g.allow("1.2.3.4", now.Add(2*time.Minute)) {
+		t.Error("log gate did not behave as one line per source per minute")
+	}
+}

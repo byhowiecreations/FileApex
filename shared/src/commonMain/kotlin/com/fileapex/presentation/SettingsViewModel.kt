@@ -101,6 +101,7 @@ data class SettingsUiState(
     val systemPerformanceExpanded: Boolean = true,
     val appearanceBehaviorExpanded: Boolean = true,
     val securityAccountExpanded: Boolean = true,
+    val remoteAccessExpanded: Boolean = true,
     val tailscaleSetupExpanded: Boolean = false,
     val showAccessibilityRestrictedHelp: Boolean = false,
     val deviceNameBroadcasting: String = "",
@@ -146,7 +147,7 @@ class SettingsViewModel : ViewModel() {
             checkForUpdatesIntervalAmount = settings.checkForUpdatesIntervalAmount.value,
             checkForUpdatesAmountText = settings.checkForUpdatesIntervalAmount.value.toString(),
             enableServiceWatchdog = settings.enableServiceWatchdog.value,
-            autoLaunchOnReboot = settings.autoLaunchOnReboot.value,
+            autoLaunchOnReboot = if (BootLaunchPreference.usesDesktopAutostart()) settings.desktopAutostart.value else settings.autoLaunchOnReboot.value,
             desktopLayoutMode = settings.desktopLayoutMode.value,
             desktopUiStyle = settings.desktopUiStyle.value,
             deviceDetailsDisplayPreferences = settings.deviceDetailsDisplayPreferences.value,
@@ -166,6 +167,7 @@ class SettingsViewModel : ViewModel() {
             systemPerformanceExpanded = settings.settingsGroupSystemPerformanceExpanded.value,
             appearanceBehaviorExpanded = settings.settingsGroupAppearanceBehaviorExpanded.value,
             securityAccountExpanded = settings.settingsGroupSecurityAccountExpanded.value,
+            remoteAccessExpanded = settings.settingsGroupRemoteAccessExpanded.value,
             tailscaleSetupExpanded = settings.tailscaleSetupExpanded.value
         )
     )
@@ -308,6 +310,11 @@ class SettingsViewModel : ViewModel() {
             }
         }
         viewModelScope.launch {
+            settings.settingsGroupRemoteAccessExpanded.collect { expanded ->
+                _uiState.update { it.copy(remoteAccessExpanded = expanded) }
+            }
+        }
+        viewModelScope.launch {
             settings.tailscaleSetupExpanded.collect { expanded ->
                 _uiState.update { it.copy(tailscaleSetupExpanded = expanded) }
             }
@@ -376,6 +383,12 @@ class SettingsViewModel : ViewModel() {
         _uiState.update { it.copy(tailscaleSetupExpanded = expanded) }
     }
 
+    fun toggleRemoteAccessGroup() {
+        val newExpanded = !_uiState.value.remoteAccessExpanded
+        settings.setSettingsGroupRemoteAccessExpanded(newExpanded)
+        _uiState.update { it.copy(remoteAccessExpanded = newExpanded) }
+    }
+
     fun toggleSecurityAccountGroup() {
         val newExpanded = !_uiState.value.securityAccountExpanded
         settings.setSettingsGroupSecurityAccountExpanded(newExpanded)
@@ -421,7 +434,7 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun setAutoLaunchOnReboot(enabled: Boolean) {
-        settings.setAutoLaunchOnReboot(enabled)
+        if (BootLaunchPreference.usesDesktopAutostart()) settings.setDesktopAutostart(enabled) else settings.setAutoLaunchOnReboot(enabled)
         BootLaunchPreference.onPreferenceChanged(enabled)
         _uiState.update { it.copy(autoLaunchOnReboot = enabled) }
     }
@@ -621,11 +634,6 @@ class SettingsViewModel : ViewModel() {
         _uiState.update { it.copy(liveTransferCapsuleEnabled = enabled) }
     }
 
-    fun setLiveTransferShowQueue(enabled: Boolean) {
-        settings.setLiveTransferShowQueueEnabled(enabled)
-        _uiState.update { it.copy(liveTransferShowQueueEnabled = enabled) }
-    }
-
     fun setAppTheme(theme: AppTheme) {
         settings.setAppTheme(theme)
         _uiState.update { it.copy(appTheme = theme, themeIconStyle = settings.themeIconStyle.value) }
@@ -792,14 +800,6 @@ class SettingsViewModel : ViewModel() {
                 }
             }
         }
-    }
-
-    fun dismissGoogleAccountError() {
-        _uiState.update { it.copy(googleAccountError = null) }
-    }
-
-    fun dismissPinError() {
-        _uiState.update { it.copy(pinError = null) }
     }
 
     fun setDeviceDetailsFieldVisible(fieldId: DeviceDetailsFieldId, visible: Boolean) {

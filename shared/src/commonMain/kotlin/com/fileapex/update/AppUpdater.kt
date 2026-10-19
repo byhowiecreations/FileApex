@@ -75,30 +75,6 @@ object AppUpdater {
         }
     }
 
-    /**
-     * Fetches the latest release; if newer than the running app, downloads and installs it.
-     * [onNewerRelease] runs before download so the UI can surface update info immediately.
-     */
-    suspend fun checkForUpdatesAndInstall(
-        onNewerRelease: (UpdateCheckOutcome.Installing) -> Unit = {}
-    ): UpdateCheckOutcome {
-        return when (val outcome = probeForUpdates()) {
-            is UpdateCheckOutcome.AlreadyCurrent -> outcome
-            is UpdateCheckOutcome.NewerThanRelease -> outcome
-            is UpdateCheckOutcome.Available -> {
-                onNewerRelease(
-                    UpdateCheckOutcome.Installing(
-                        remoteVersion = outcome.offer.remoteVersion,
-                        releaseTitle = outcome.offer.releaseTitle,
-                        releaseNotes = outcome.offer.releaseNotes
-                    )
-                )
-                downloadAndInstall(outcome.offer)
-            }
-            is UpdateCheckOutcome.Installing -> outcome
-        }
-    }
-
     suspend fun downloadAndInstall(offer: PendingUpdateOffer): UpdateCheckOutcome.Installing {
         installMutex.withLock {
             val localPath = offer.localFilePath?.takeIf { it.isNotBlank() }

@@ -10,10 +10,6 @@ object BulletinMessageKind {
         else -> "The battery level is $levelPercent%."
     }
 
-    fun isBattery(contentType: Int, content: String): Boolean =
-        contentType == BulletinContentType.BATTERY_LOW ||
-            NoteNotifyPolicy.isCriticalBulletin(content)
-
     fun matchesRetract(
         messageContentType: Int,
         messageContent: String,

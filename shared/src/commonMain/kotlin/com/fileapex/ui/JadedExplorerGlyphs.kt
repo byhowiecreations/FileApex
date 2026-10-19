@@ -34,7 +34,6 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fileapex.domain.model.RemoteFileItem
@@ -197,10 +196,4 @@ private fun jadedFileIcon(kind: JadedFileKind): ImageVector = when (kind) {
     JadedFileKind.PDF -> Icons.Filled.PictureAsPdf
     JadedFileKind.MEDIA -> Icons.Filled.VideoFile
     JadedFileKind.OTHER -> Icons.AutoMirrored.Filled.InsertDriveFile
-}
-
-private fun jadedBadgeLabel(name: String, kind: JadedFileKind): String? = when (kind) {
-    JadedFileKind.ARCHIVE, JadedFileKind.TEXT, JadedFileKind.PDF, JadedFileKind.DISK ->
-        jadedExtensionLabel(name)
-    else -> null
 }

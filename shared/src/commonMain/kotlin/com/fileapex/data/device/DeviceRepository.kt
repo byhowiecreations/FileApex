@@ -10,6 +10,7 @@ import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
+import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -185,6 +186,36 @@ class DeviceRepository(
     suspend fun listDevices(): List<PairedDeviceEntity> =
         collapseAndExcludeSelf(deviceDao.getAllDevicesOnce())
 
+    /** Active rows with this hardware hash under another id; empty for a blank hash. */
+    suspend fun activeDevicesWithHardware(hash: String, exceptDeviceId: String): List<PairedDeviceEntity> {
+        val wanted = hash.trim()
+        if (wanted.isEmpty()) return emptyList()
+        return deviceDao.getAllDevicesOnce().filter { !it.isRemoved && it.hardwareHash == wanted && it.deviceId != exceptDeviceId }
+    }
+
+    /** The removal records inside the fingerprint window (see RemovalFingerprint). */
+    suspend fun windowedRemovals(): List<RemovedDeviceRecord> =
+        com.fileapex.domain.pairing.RemovalFingerprint.windowed(getTombstoneRecords(), TimeUtils.now())
+
+    @Volatile
+    private var fingerprintCache: Pair<Long, String>? = null
+
+    /** The fingerprint of [windowedRemovals], kept for 30 seconds so a busy health route does not read the database each time. */
+    suspend fun removalFingerprint(): String {
+        val now = TimeUtils.now()
+        fingerprintCache?.takeIf { now - it.first < FINGERPRINT_CACHE_MS }?.let { return it.second }
+        val value = com.fileapex.domain.pairing.RemovalFingerprint.of(windowedRemovals())
+        fingerprintCache = now to value
+        return value
+    }
+
+    /** Removed rows (tombstones) that carry this hardware hash. */
+    suspend fun removedDevicesWithHardware(hash: String): List<PairedDeviceEntity> {
+        val wanted = hash.trim()
+        if (wanted.isEmpty()) return emptyList()
+        return deviceDao.getTombstonedDevices().filter { it.hardwareHash == wanted }
+    }
+
     suspend fun getDevice(deviceId: String): PairedDeviceEntity? =
         deviceDao.getDevice(deviceId)?.takeUnless { it.isRemoved }
 
@@ -294,6 +325,19 @@ class DeviceRepository(
      * Pairing handshake performed on this device — clears every tombstone for the peer and
      * stamps the membership with [version] (already minted by [nextMembershipVersion]) or a new stamp.
      */
+    /**
+     * Undoes [adoptFromPairing] when the other device's user declined or never answered. The row simply goes; no removal
+     * is recorded, so a later pairing with the same device starts clean.
+     */
+    suspend fun discardUnconfirmedPairing(deviceId: String) {
+        mutateMutex.withLock {
+            val id = deviceId.trim()
+            if (id.isEmpty()) return
+            deviceDao.deleteDevice(id)
+            tombstoneIndex = null
+        }
+    }
+
     suspend fun adoptFromPairing(device: PairedDeviceEntity, version: Long? = null): Boolean =
         mutateMutex.withLock {
             seedClockLocked()
@@ -397,7 +441,17 @@ class DeviceRepository(
             val observedAt = if (observedDirectly) TimeUtils.now() else 0L
             val normalized = normalize(
                 PeerNodeStateMapper.toEntity(state, existing).let { entity ->
-                    entity.copy(lastSeenEpochMs = maxOf(existing?.lastSeenEpochMs ?: 0L, observedAt))
+                    // A relayed state never supplies presence, and an address from another
+                    // subnet must not evict a usable stored one: it is not this device's LAN.
+                    // Same-subnet moves still apply (DHCP churn on the peer's own heartbeat).
+                    val keepExistingEndpoint = !observedDirectly && existing != null &&
+                        hasUsableEndpoint(existing) && entity.lastKnownIp != existing.lastKnownIp &&
+                        !NetworkUtils.sameIpv4Slash24(entity.lastKnownIp, existing.lastKnownIp)
+                    entity.copy(
+                        lastSeenEpochMs = maxOf(existing?.lastSeenEpochMs ?: 0L, observedAt),
+                        lastKnownIp = if (keepExistingEndpoint) existing.lastKnownIp else entity.lastKnownIp,
+                        port = if (keepExistingEndpoint) existing.port else entity.port
+                    )
                 },
                 existing
             )
@@ -435,6 +489,11 @@ class DeviceRepository(
         if (existing.isRemoved) return false
         val cleanedIp = ip.trim()
         val nextEpoch = epochMs.coerceAtLeast(existing.lastSeenEpochMs)
+        if (PeerEndpointRules.isLoopbackOrUnspecified(cleanedIp)) {
+            // The peer answered through a loopback bridge: it was seen, but that is not its address.
+            deviceDao.touchLastSeenEpoch(trimmedId, nextEpoch)
+            return true
+        }
         if (existing.lastSeenEpochMs == nextEpoch &&
             existing.lastKnownIp == cleanedIp &&
             existing.port == port
@@ -1296,10 +1355,19 @@ class DeviceRepository(
     suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {
         mutateMutex.withLock {
             val cleanedIp = ip.trim()
+            if (PeerEndpointRules.isLoopbackOrUnspecified(cleanedIp)) return
             val existing = deviceDao.getDevice(deviceId) ?: return
             if (existing.lastKnownIp == cleanedIp && existing.port == port) return
             deviceDao.updateEndpoint(deviceId, cleanedIp, port)
         }
+    }
+
+    /** Repairs rows that stored a loopback bridge endpoint as the peer's address. Returns how many were fixed. */
+    suspend fun clearLoopbackEndpoints(): Int = mutateMutex.withLock {
+        val broken = deviceDao.getAllDevicesIncludingTombstones()
+            .filter { PeerEndpointRules.isLoopbackOrUnspecified(it.lastKnownIp) }
+        broken.forEach { deviceDao.updateEndpoint(it.deviceId, "", it.port) }
+        broken.size
     }
 
     suspend fun remove(deviceId: String) {
@@ -1429,6 +1497,7 @@ class DeviceRepository(
     private companion object {
         val TLS_PIN_FORMAT = Regex("[0-9a-f]{64}")
         const val TOMBSTONE_GOSSIP_MAX_AGE_MS = 30L * 24L * 60L * 60L * 1000L
+        private const val FINGERPRINT_CACHE_MS = 30_000L
         private const val DROPPED_RETRY_BLOCK_MS = 24L * 60L * 60L * 1000L
         private const val NEW_ROW_GRACE_MS = 10L * 60L * 1000L
     }

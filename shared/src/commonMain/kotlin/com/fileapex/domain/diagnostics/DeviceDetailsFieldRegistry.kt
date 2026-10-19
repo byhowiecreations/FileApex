@@ -100,11 +100,6 @@ data class DeviceDetailsDisplayPreferences(
             DeviceDetailsFieldId.entries.find { it.name == pref.id }
         }
 
-    fun orderedFieldIds(): List<DeviceDetailsFieldId> =
-        normalized().fields.mapNotNull { pref ->
-            DeviceDetailsFieldId.entries.find { it.name == pref.id }
-        }
-
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
 

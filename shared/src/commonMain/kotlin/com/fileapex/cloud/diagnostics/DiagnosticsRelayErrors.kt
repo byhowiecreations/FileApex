@@ -18,11 +18,7 @@ object DiagnosticsRelayErrors {
 
     fun peerFcmTokenMissing(): String = AppI18n.t("relay_peer_fcm_token_missing")
 
-    fun peerWakeFailed(): String = AppI18n.t("relay_peer_wake_failed")
-
     fun peerRespondedFailed(): String = AppI18n.t("relay_peer_responded_failed")
-
-    fun lanAndCloudUnavailable(): String = AppI18n.t("relay_lan_and_cloud_unavailable")
 
     fun firestorePermissionDenied(): String = AppI18n.t("relay_firestore_permission_denied")
 

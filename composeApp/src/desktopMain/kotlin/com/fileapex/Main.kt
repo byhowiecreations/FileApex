@@ -17,7 +17,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -92,6 +91,11 @@ fun main(args: Array<String>) {
         )
 
         val initialShare = parseCliSharePayload(args)
+        // A start at sign-in opens the window minimized (it stays in the taskbar), not in front of the user's work.
+        com.fileapex.platform.DesktopAutostart.launchedAtSignIn = com.fileapex.platform.DesktopAutostart.isAutostartLaunch(args)
+        Thread {
+            runCatching { com.fileapex.platform.BootLaunchPreference.syncFromSettings() }
+        }.apply { isDaemon = true; name = "autostart-sync" }.start()
         startDesktopApplication(initialShare)
     } catch (t: Throwable) {
         DesktopCrashHandler.handleCrash(Thread.currentThread(), t)
@@ -203,7 +207,8 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         val windowState = rememberWindowState(
             width = initialSize.width,
             height = initialSize.height,
-            position = initialPosition
+            position = initialPosition,
+            isMinimized = com.fileapex.platform.DesktopAutostart.launchedAtSignIn
         )
 
         val themeFlow = remember(servicesReady) {

@@ -183,6 +183,19 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
         call.respondText(FileApexServer.webShareHtml(), ContentType.Text.Html)
     }
 
+    // The browser share page needs a picker, so it gets names and ids only; the full roster needs a paired device.
+    get("/api/v1/web/devices") {
+        cancellableCatching {
+            val names = withContext(Dispatchers.IO) { server.onListDevices() }
+                .filter { !it.isRemoved }
+                .map { """{"deviceId":${server.json.encodeToString(it.deviceId)},"deviceName":${server.json.encodeToString(it.deviceName)}}""" }
+            call.respondText("[" + names.joinToString(",") + "]", ContentType.Application.Json)
+        }.onFailure { error ->
+            server.onLog("GET /api/v1/web/devices failed", error)
+            call.respond(HttpStatusCode.InternalServerError, "devices_failed")
+        }
+    }
+
     post("/api/v1/web/send-clipboard") {
         cancellableCatching {
             val body = call.receiveBoundedText()

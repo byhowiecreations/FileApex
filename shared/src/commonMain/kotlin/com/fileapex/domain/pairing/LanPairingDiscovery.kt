@@ -29,7 +29,6 @@ object LanPairingDiscovery {
     private val seen = LinkedHashMap<String, SeenBeacon>()
 
     private val _hostState = MutableStateFlow(HostPairingBroadcastState())
-    val hostState: StateFlow<HostPairingBroadcastState> = _hostState.asStateFlow()
 
     private val _discoveredPeers = MutableStateFlow<List<PairingBeacon>>(emptyList())
     val discoveredPeers: StateFlow<List<PairingBeacon>> = _discoveredPeers.asStateFlow()

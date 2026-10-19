@@ -4,6 +4,7 @@ import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.platform.DesktopMacTrayBridge
 import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.security.tls.PeerTlsConnector
+import com.fileapex.iroh.irohLoopbackOrNull
 import com.fileapex.tailscale.tailscaleLoopbackOrNull
 import com.fileapex.tailscale.writeTailscaleDialToken
 import com.fileapex.util.NetworkUtils
@@ -48,7 +49,7 @@ actual fun sendWakeBroadcastOnPrimaryInterface() {
     if (candidates.isEmpty()) {
         return
     }
-    val payload = WakeProtocol.PAYLOAD.toByteArray(Charsets.UTF_8)
+    val payloads = WakeHelloOutbox.payloads()
     for (localIp in candidates) {
         val networkInterface = networkInterfaceForIp(localIp) ?: continue
         DatagramSocket(null).use { socket ->
@@ -63,8 +64,9 @@ actual fun sendWakeBroadcastOnPrimaryInterface() {
             for (target in targets) {
                 cancellableCatching {
                     val address = InetAddress.getByName(target)
-                    val packet = DatagramPacket(payload, payload.size, address, WakeProtocol.PORT)
-                    socket.send(packet)
+                    for (payload in payloads) {
+                        socket.send(DatagramPacket(payload, payload.size, address, WakeProtocol.PORT))
+                    }
                 }
             }
         }
@@ -80,34 +82,13 @@ private fun networkInterfaceForIp(localIp: String): NetworkInterface? =
             }
     }
 
-internal fun openWakeListenerOnPrimaryInterface(onLog: (String) -> Unit): DatagramSocket? {
-    val localIp = LanInterfaceBinding.lanBindCandidates().firstOrNull()
-    val networkInterface = localIp?.let { networkInterfaceForIp(it) }
-    if (localIp == null || networkInterface == null) {
-        onLog("UDP wake bind skipped - no primary LAN interface")
-        return null
-    }
-    return cancellableCatching {
-        MulticastSocket(null).apply {
-            reuseAddress = true
-            broadcast = true
-            bind(InetSocketAddress(localIp, WakeProtocol.PORT))
-            val groupAddress = InetAddress.getByName(WakeProtocol.MULTICAST_ADDRESS)
-            joinGroup(InetSocketAddress(groupAddress, WakeProtocol.PORT), networkInterface)
-            onLog("UDP wake bound to ${NetworkUtils.lastOctetLabel(localIp)}:${WakeProtocol.PORT}")
-        }
-    }.onFailure { error ->
-        onLog("UDP wake bind failed on ${NetworkUtils.lastOctetLabel(localIp)}: ${error.message}")
-    }.getOrNull()
-}
-
 actual suspend fun peerHttpGet(
     host: String,
     port: Int,
     path: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
-    val loop = tailscaleLoopbackOrNull(host, port)
+    val loop = tailscaleLoopbackOrNull(host, port) ?: irohLoopbackOrNull(host, port)
     if (loop != null) {
         return@withContext runCatching {
             executeBoundHttpOnLocalIp(
@@ -153,7 +134,7 @@ actual suspend fun peerHttpPost(
     contentType: String,
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
-    val loop = tailscaleLoopbackOrNull(host, port)
+    val loop = tailscaleLoopbackOrNull(host, port) ?: irohLoopbackOrNull(host, port)
     if (loop != null) {
         return@withContext runCatching {
             executeBoundHttpOnLocalIp(
@@ -201,7 +182,7 @@ actual suspend fun peerHttpUploadFromChannel(
     uploadIdleTimeoutMs: Long,
     contentLength: Long?
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
-    val loop = tailscaleLoopbackOrNull(host, port)
+    val loop = tailscaleLoopbackOrNull(host, port) ?: irohLoopbackOrNull(host, port)
     if (loop != null) {
         return@withContext cancellableCatching {
             executeBoundUploadOnLocalIp(
@@ -273,7 +254,7 @@ actual suspend fun peerHttpUploadFromFile(
     uploadIdleTimeoutMs: Long,
     onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
-    val loop = tailscaleLoopbackOrNull(host, port)
+    val loop = tailscaleLoopbackOrNull(host, port) ?: irohLoopbackOrNull(host, port)
     if (loop != null) {
         val total = if (length >= 0L) offset + length else SocketFileStreamer.fileLength(sourcePath)
         var currentSent = offset
@@ -350,7 +331,7 @@ actual suspend fun peerHttpGetStreaming(
     onChunk: suspend (ByteArray, Int) -> Unit,
     onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? = withContext(TransferRuntime.outbound) {
-    val loop = tailscaleLoopbackOrNull(host, port)
+    val loop = tailscaleLoopbackOrNull(host, port) ?: irohLoopbackOrNull(host, port)
     if (loop != null) {
         return@withContext cancellableCatching {
             executeBoundGetStreamingOnLocalIp(
@@ -786,7 +767,7 @@ private fun parseHttpResponse(raw: String): PeerBoundHttpResponse {
     val statusLine = header.lineSequence().firstOrNull().orEmpty()
     val statusCode = Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull()
         ?: 0
-    return PeerBoundHttpResponse(statusCode = statusCode, body = body.trim())
+    return PeerBoundHttpResponse(statusCode = statusCode, body = body.trim(), headers = com.fileapex.network.PeerHttpHeaders.parse(header))
 }
 
 /**

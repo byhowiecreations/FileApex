@@ -8,6 +8,19 @@ import org.junit.Test
 class SettingsMenuTest {
 
     @Test
+    fun theStartAtSignInRowAppearsOnWindowsAndLinuxButNotOnTheMac() {
+        fun hasRow(autoLaunchOnDesktop: Boolean) = settingsMenuEntries(
+            playStoreBuild = false,
+            desktopFileSelection = true,
+            deviceNamePage = false,
+            windowsFluent = false,
+            autoLaunchOnDesktop = autoLaunchOnDesktop
+        ).any { it.id == SettingsMenuIds.AUTO_LAUNCH }
+        assertTrue(hasRow(true))
+        assertFalse(hasRow(false))
+    }
+
+    @Test
     fun phoneMenuPlacesMovedRowsInTheRequestedSections() {
         val entries = settingsMenuEntries(
             playStoreBuild = false,
@@ -23,7 +36,8 @@ class SettingsMenuTest {
         assertEquals(SettingsMenuSection.General, sectionOf(SettingsMenuIds.REPORT_ISSUE))
         assertEquals(SettingsMenuSection.SystemPerformance, sectionOf(SettingsMenuIds.BACKGROUND_PERSISTENCE))
         assertEquals(SettingsMenuSection.SystemPerformance, sectionOf(SettingsMenuIds.AUTO_LAUNCH))
-        assertEquals(SettingsMenuSection.SystemPerformance, sectionOf(SettingsMenuIds.TAILSCALE))
+        assertEquals(SettingsMenuSection.RemoteAccess, sectionOf(SettingsMenuIds.TAILSCALE))
+        assertEquals(SettingsMenuSection.RemoteAccess, sectionOf(SettingsMenuIds.DRIVE_RELAY))
         assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.THEMES))
         assertEquals(SettingsMenuSection.Appearance, sectionOf(SettingsMenuIds.BULLETIN_BOARD))
         assertFalse(entries.any { it.id == SettingsMenuIds.BACKUP_SYNC })
@@ -32,6 +46,7 @@ class SettingsMenuTest {
             listOf(
                 SettingsMenuSection.General,
                 SettingsMenuSection.SystemPerformance,
+                SettingsMenuSection.RemoteAccess,
                 SettingsMenuSection.Appearance,
                 SettingsMenuSection.Security
             ),
@@ -94,5 +109,24 @@ class SettingsMenuTest {
 
         assertTrue(ids(tailscale = true).contains(SettingsMenuIds.TAILSCALE))
         assertFalse(ids(tailscale = false).contains(SettingsMenuIds.TAILSCALE))
+    }
+
+    @Test
+    fun remoteAccessHoldsTailscaleIrohAndDriveRelayAndIsEmptyWithoutThem() {
+        fun ids(tailscale: Boolean, iroh: Boolean, googleCloud: Boolean) = settingsMenuEntries(
+            playStoreBuild = false,
+            desktopFileSelection = false,
+            deviceNamePage = true,
+            windowsFluent = false,
+            googleCloud = googleCloud,
+            tailscale = tailscale,
+            iroh = iroh
+        ).filter { it.section == SettingsMenuSection.RemoteAccess }.map { it.id }
+
+        assertEquals(
+            listOf(SettingsMenuIds.TAILSCALE, SettingsMenuIds.IROH, SettingsMenuIds.DRIVE_RELAY),
+            ids(tailscale = true, iroh = true, googleCloud = true)
+        )
+        assertTrue(ids(tailscale = false, iroh = false, googleCloud = false).isEmpty())
     }
 }

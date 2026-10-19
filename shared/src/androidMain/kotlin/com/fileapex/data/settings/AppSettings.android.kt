@@ -54,6 +54,14 @@ private class AndroidSettingsKvStore(
     }
 }
 
+/** The settings store with the secrets (PIN, private keys, tokens) sealed by the Android Keystore. */
+private fun sealedSettingsStore(prefs: SharedPreferences, googleBackup: SharedPreferences): SettingsKvStore =
+    SealingKvStore(
+        AndroidSettingsKvStore(prefs, googleBackup),
+        AndroidSettingsSecrets.sealer(),
+        BaseAppSettings.SECRET_KEYS
+    )
+
 private lateinit var androidAppContext: Context
 private var androidSettings: AppSettings? = null
 
@@ -68,7 +76,7 @@ fun initAndroidAppSettings(context: Context) {
     val googleBackup = androidAppContext.getSharedPreferences(GOOGLE_BACKUP_PREFS, Context.MODE_PRIVATE)
     hydrateGoogleBackup(settingsPrefs, googleBackup)
     androidSettings = BaseAppSettings(
-        AndroidSettingsKvStore(settingsPrefs, googleBackup),
+        sealedSettingsStore(settingsPrefs, googleBackup),
         existingInstall = androidAppContext.getDatabasePath("fileapex.db").exists()
     )
 }
@@ -83,7 +91,7 @@ actual fun createAppSettings(): AppSettings {
     val googleBackup = androidAppContext.getSharedPreferences(GOOGLE_BACKUP_PREFS, Context.MODE_PRIVATE)
     hydrateGoogleBackup(settingsPrefs, googleBackup)
     return BaseAppSettings(
-        AndroidSettingsKvStore(settingsPrefs, googleBackup),
+        sealedSettingsStore(settingsPrefs, googleBackup),
         existingInstall = androidAppContext.getDatabasePath("fileapex.db").exists()
     )
         .also { androidSettings = it }

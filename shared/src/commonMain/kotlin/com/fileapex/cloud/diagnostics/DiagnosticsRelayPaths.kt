@@ -1,13 +1,5 @@
 package com.fileapex.cloud.diagnostics
 
-/** Firestore relay document under users/{uid}/diagnosticsRelay/{sessionId}. */
-object DiagnosticsRelayPaths {
-    fun collection(uid: String): String = "users/$uid/diagnosticsRelay"
-
-    fun document(uid: String, sessionId: String): String =
-        "${collection(uid)}/$sessionId"
-}
-
 object DiagnosticsRelayStatus {
     const val PENDING = "pending"
     const val COMPLETE = "complete"

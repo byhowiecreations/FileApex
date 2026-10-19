@@ -2,7 +2,6 @@ package com.fileapex.security.tls
 
 import java.io.IOException
 import java.net.InetAddress
-import java.net.ServerSocket
 import java.net.Socket
 import java.security.KeyStore
 import java.security.cert.CertificateException

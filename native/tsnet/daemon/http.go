@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +24,7 @@ func (n *Node) serve() error {
 		return err
 	}
 	n.serveTLS()
+	n.serveHello()
 	return nil
 }
 
@@ -59,7 +62,12 @@ func (n *Node) serveHTTP() error {
 func (n *Node) shutdown(timeout time.Duration) {
 	n.mu.Lock()
 	srv := n.httpServer
+	hello := n.helloConn
+	n.helloConn = nil
 	n.mu.Unlock()
+	if hello != nil {
+		_ = hello.Close()
+	}
 	if srv == nil {
 		return
 	}
@@ -76,9 +84,9 @@ func (n *Node) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", n.handleHealth)
 	mux.HandleFunc("/api/v1/identity", n.handleIdentity)
-	mux.HandleFunc("/api/v1/heartbeat", n.handleIdentity)
 	mux.HandleFunc("/api/v1/devices", n.handleDevices)
 	mux.HandleFunc("/api/v1/devices/merge", n.handleMerge)
+	mux.HandleFunc("/api/v1/devices/removed", n.handleRemoved)
 	mux.HandleFunc("/api/v1/cluster/remove", n.handleRemove)
 	mux.HandleFunc("/cluster/remove", n.handleRemove)
 	mux.HandleFunc("/api/v1/identity/rename", n.handleRename)
@@ -104,6 +112,10 @@ func (n *Node) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if !n.pass(w, r, "open") {
 		return
 	}
+	// Only a peer that presented its pinned TLS certificate sees the removal fingerprint.
+	if r.TLS != nil {
+		w.Header().Set(removalsHeader, n.removalsDigest())
+	}
 	writeText(w, http.StatusOK, "ok")
 }
 
@@ -115,7 +127,12 @@ func (n *Node) handleIdentity(w http.ResponseWriter, r *http.Request) {
 	if !n.pass(w, r, "open") {
 		return
 	}
-	writeJSON(w, http.StatusOK, n.selfState())
+	state := n.selfState()
+	// Only a peer that presented its pinned TLS certificate learns where the shared folder is.
+	if r.TLS == nil {
+		state.RootPath = "/"
+	}
+	writeJSON(w, http.StatusOK, state)
 }
 
 func (n *Node) handleDevices(w http.ResponseWriter, r *http.Request) {
@@ -123,10 +140,22 @@ func (n *Node) handleDevices(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !n.pass(w, r, "open") {
+	if !n.pass(w, r, "peer") {
 		return
 	}
 	writeJSON(w, http.StatusOK, n.publishedRoster())
+}
+
+// handleRemoved lists the removal records inside the fingerprint window for a paired peer.
+func (n *Node) handleRemoved(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !n.pass(w, r, "peer") {
+		return
+	}
+	writeJSON(w, http.StatusOK, n.windowedRemovals())
 }
 
 func (n *Node) handleCapabilities(w http.ResponseWriter, r *http.Request) {
@@ -174,6 +203,10 @@ func (n *Node) handleMerge(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Removed from the cluster. Listening for a new pairing broadcast.")
 	} else {
 		log.Printf("Cluster sync %s from %s (%d peers now)", req.EventKind, id, len(n.roster()))
+	}
+	// The sender compares this with its own removal fingerprint; only a peer that presented its pinned certificate sees it.
+	if r.TLS != nil {
+		w.Header().Set(removalsHeader, n.removalsDigest())
 	}
 	writeJSON(w, http.StatusOK, n.publishedRoster())
 }
@@ -495,6 +528,16 @@ func (n *Node) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, reason, http.StatusBadRequest)
 		return
 	}
+	if expected := strings.TrimSpace(r.URL.Query().Get("sha256")); expected != "" {
+		actual, hashErr := fileSHA256(part)
+		if hashErr != nil || !strings.EqualFold(actual, expected) {
+			log.Printf("Upload checksum mismatch expected=%s got=%s path=%s", expected, actual, part)
+			// A part that fails its hash is useless to resume: drop it so the retry starts clean.
+			_ = os.Remove(part)
+			http.Error(w, "checksum_mismatch", http.StatusBadRequest)
+			return
+		}
+	}
 	n.uploadMu.Lock()
 	dest := finalPath
 	if _, err := os.Lstat(dest); err == nil && !backup {
@@ -623,6 +666,10 @@ func (n *Node) resolvePath(requested string, allowRoot bool) (string, error) {
 		return "", err
 	}
 	requested = strings.TrimSpace(requested)
+	// "@inbox/<name>" means "your own receive folder": the receiver decides where that is.
+	if requested == "@inbox" || strings.HasPrefix(requested, "@inbox/") || strings.HasPrefix(requested, `@inbox\`) {
+		requested = strings.TrimLeft(strings.TrimPrefix(requested, "@inbox"), `/\`)
+	}
 	var candidate string
 	switch {
 	case requested == "" || requested == "/" || requested == `\`:
@@ -632,7 +679,6 @@ func (n *Node) resolvePath(requested string, allowRoot bool) (string, error) {
 	default:
 		candidate = filepath.Clean(filepath.Join(root, requested))
 	}
-	candidate = stripSenderReceiveFolder(root, candidate)
 	resolved, err := resolveExisting(candidate)
 	if err != nil {
 		return "", err
@@ -667,29 +713,6 @@ func resolveExisting(path string) (string, error) {
 		}
 		cur = parent
 	}
-}
-
-// Senders build a Linux peer path as <root>/Downloads/FileApex/<file>.
-// This node's root is already the receive folder, so that prefix is removed
-// and only a transferred directory is kept underneath it.
-func stripSenderReceiveFolder(root, full string) string {
-	rel, err := filepath.Rel(root, full)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-		return full
-	}
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) < 2 {
-		return full
-	}
-	folder := strings.ToLower(parts[0])
-	if (folder != "downloads" && folder != "download") || !strings.EqualFold(parts[1], "FileApex") {
-		return full
-	}
-	rest := parts[2:]
-	if len(rest) == 0 {
-		return root
-	}
-	return filepath.Join(append([]string{root}, rest...)...)
 }
 
 var errOutsideRoot = errors.New("path outside shared root")
@@ -803,4 +826,18 @@ func fileSize(path string) int64 {
 		return 0
 	}
 	return info.Size()
+}
+
+// fileSHA256 is the whole-file hash a sender sends as `sha256`, lower-case hex.
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

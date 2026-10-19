@@ -18,18 +18,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
-import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.domain.clipboard.ClipboardSharePolicy
-import com.fileapex.data.settings.ThemeIconStyle
-import com.fileapex.data.settings.supportedIconStyles
 import com.fileapex.data.settings.traits
-import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 
-import androidx.compose.material3.RadioButtonDefaults
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 
 
@@ -80,9 +74,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -100,7 +92,6 @@ import androidx.compose.material3.AlertDialog
 import com.fileapex.ui.dialogs.ClipboardTargetConfigDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -112,8 +103,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -126,7 +115,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
-import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.platform.BackgroundPersistenceUiState
@@ -141,10 +129,6 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.AppLocale
 import com.fileapex.i18n.persistAppLanguage
 import com.fileapex.i18n.stringRes
-import com.fileapex.platform.rememberGoogleSignInLauncher
-import com.fileapex.platform.rememberGoogleDriveAuthLauncher
-import com.fileapex.cloud.drive.GoogleDriveAuth
-import com.fileapex.ui.dialogs.GoogleDrivePermissionDialog
 import com.fileapex.presentation.SettingsUiState
 import com.fileapex.presentation.SettingsViewModel
 import com.fileapex.ui.adaptive.CompactHomeTitleBand
@@ -156,14 +140,15 @@ import com.fileapex.platform.supportsDeviceNameSettingsPage
 import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
 import kotlinx.coroutines.delay
 
-private val settingsPageSaver = Saver<SettingsPage, String>(
-    save = { page -> page.name },
-    restore = { name ->
-        runCatching { SettingsPage.valueOf(name) }.getOrDefault(SettingsPage.Root)
-    }
-)
+/**
+ * Which settings page is open. The activity's view model holds it, not the composable, because the screen is hosted
+ * in two places (compact route and wide layout) and rotating or folding moves it from one to the other.
+ */
+internal class SettingsNavigationState : androidx.lifecycle.ViewModel() {
+    val page = mutableStateOf(SettingsPage.Root)
+}
 
-private enum class SettingsPage {
+internal enum class SettingsPage {
     Root,
     OnboardingPermissions,
     CheckForUpdates,
@@ -189,6 +174,7 @@ private enum class SettingsPage {
     Language,
     DeviceName,
     Tailscale,
+    Iroh,
     LeaveClusterWipe
 }
 
@@ -249,9 +235,8 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsState()
     val updateStatus by viewModel.updateStatusMessage.collectAsState()
     val googleLinkStatus by viewModel.googleLinkStatus.collectAsState()
-    var page by rememberSaveable(stateSaver = settingsPageSaver) {
-        mutableStateOf(deepLink?.let(::settingsPageFor) ?: SettingsPage.Root)
-    }
+    val navigation = viewModel { SettingsNavigationState() }
+    var page by navigation.page
     LaunchedEffect(deepLink) {
         val target = deepLink ?: return@LaunchedEffect
         page = settingsPageFor(target)
@@ -318,10 +303,12 @@ fun SettingsScreen(
             onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
             onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
             onOpenTailscale = { page = SettingsPage.Tailscale },
+            onOpenIroh = { page = SettingsPage.Iroh },
             onToggleGeneralGroup = viewModel::toggleGeneralGroup,
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
             onToggleAppearanceBehaviorGroup = viewModel::toggleAppearanceBehaviorGroup,
             onToggleSecurityAccountGroup = viewModel::toggleSecurityAccountGroup,
+            onToggleRemoteAccessGroup = viewModel::toggleRemoteAccessGroup,
             onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
             backgroundPersistence = backgroundPersistence,
             exactAlarmWarningActive = exactAlarmWarningActive,
@@ -600,6 +587,10 @@ fun SettingsScreen(
             onSetupExpandedChange = viewModel::setTailscaleSetupExpanded,
             onBack = { page = SettingsPage.Root }
         )
+        SettingsPage.Iroh -> IrohSettingsPage(
+            layoutMode = layoutMode,
+            onBack = { page = SettingsPage.Root }
+        )
         SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(
             layoutMode = layoutMode,
             onBack = { page = SettingsPage.Root }
@@ -646,10 +637,12 @@ private fun SettingsRootPage(
     onOpenWindowsDesign: () -> Unit,
     onOpenLeaveClusterWipe: () -> Unit = {},
     onOpenTailscale: () -> Unit = {},
+    onOpenIroh: () -> Unit = {},
     onToggleGeneralGroup: () -> Unit,
     onToggleSystemPerformanceGroup: () -> Unit,
     onToggleAppearanceBehaviorGroup: () -> Unit,
     onToggleSecurityAccountGroup: () -> Unit,
+    onToggleRemoteAccessGroup: () -> Unit,
     onVersionNumberEasterEgg: () -> Unit,
     backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean,
@@ -728,10 +721,12 @@ private fun SettingsRootPage(
                     playStoreBuild = com.fileapex.di.FileApexServices.managedByStore,
                     googleCloud = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     tailscale = !com.fileapex.di.FileApexServices.isFdroidBuild,
+                    iroh = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     desktopFileSelection = usesDesktopFileSelection(),
                     deviceNamePage = supportsDeviceNameSettingsPage(),
                     windowsFluent = supportsWindowsFluentDesign(),
-                    backupSync = com.fileapex.platform.backupSupported()
+                    backupSync = com.fileapex.platform.backupSupported(),
+                    autoLaunchOnDesktop = com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()
                 )
                 SettingsMenuSection.entries.forEach { section ->
                     val rows = menuEntries.filter { it.section == section }
@@ -741,12 +736,14 @@ private fun SettingsRootPage(
                         SettingsMenuSection.SystemPerformance -> state.systemPerformanceExpanded
                         SettingsMenuSection.Appearance -> state.appearanceBehaviorExpanded
                         SettingsMenuSection.Security -> state.securityAccountExpanded
+                        SettingsMenuSection.RemoteAccess -> state.remoteAccessExpanded
                     }
                     val onToggle = when (section) {
                         SettingsMenuSection.General -> onToggleGeneralGroup
                         SettingsMenuSection.SystemPerformance -> onToggleSystemPerformanceGroup
                         SettingsMenuSection.Appearance -> onToggleAppearanceBehaviorGroup
                         SettingsMenuSection.Security -> onToggleSecurityAccountGroup
+                        SettingsMenuSection.RemoteAccess -> onToggleRemoteAccessGroup
                     }
                     SettingsCategoryGroup(
                         title = stringRes(section.titleKey()),
@@ -792,7 +789,7 @@ private fun SettingsRootPage(
                                     onClick = onOpenBackgroundPersistence
                                 )
                                 SettingsMenuIds.AUTO_LAUNCH -> SettingsNavItem(
-                                    title = stringRes("auto_launch_on_reboot"),
+                                    title = stringRes(if (com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()) "auto_launch_on_signin" else "auto_launch_on_reboot"),
                                     subtitle = if (state.autoLaunchOnReboot) stringRes("on") else stringRes("off"),
                                     onClick = onOpenAutoLaunchOnReboot
                                 )
@@ -800,6 +797,11 @@ private fun SettingsRootPage(
                                     title = stringRes("tailscale_overlay"),
                                     subtitle = tailscaleRowSubtitle(tailscale),
                                     onClick = onOpenTailscale
+                                )
+                                SettingsMenuIds.IROH -> SettingsNavItem(
+                                    title = stringRes("iroh_title"),
+                                    subtitle = irohRowSubtitle(),
+                                    onClick = onOpenIroh
                                 )
                                 SettingsMenuIds.THEMES -> SettingsNavItem(
                                     title = stringRes("themes"),
@@ -854,6 +856,15 @@ private fun SettingsRootPage(
                                         localizedPinIdle(state.pinIdleTimeout)
                                     ),
                                     onClick = onOpenPinRequired
+                                )
+                                SettingsMenuIds.DRIVE_RELAY -> SettingsNavItem(
+                                    title = stringRes("drive_relay"),
+                                    subtitle = when {
+                                        !state.googleAccountLinkEnabled -> stringRes("google_unlinked")
+                                        state.googleDriveRelayEnabled -> stringRes("on")
+                                        else -> stringRes("off")
+                                    },
+                                    onClick = onOpenGoogleAccount
                                 )
                                 SettingsMenuIds.GOOGLE_ACCOUNT -> SettingsNavItem(
                                     title = stringRes("google_account"),
@@ -1238,9 +1249,17 @@ private fun AutoLaunchOnRebootSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             ListItem(
-                headlineContent = { Text(stringRes("start_share_after_reboot"), softWrap = true) },
+                headlineContent = {
+                    Text(
+                        stringRes(if (com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()) "desktop_autostart_title" else "start_share_after_reboot"),
+                        softWrap = true
+                    )
+                },
                 supportingContent = {
-                    Text(stringRes("start_share_after_reboot_desc"), softWrap = true)
+                    Text(
+                        stringRes(if (com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()) "desktop_autostart_desc" else "start_share_after_reboot_desc"),
+                        softWrap = true
+                    )
                 },
                 trailingContent = {
                     Switch(

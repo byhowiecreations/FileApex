@@ -122,11 +122,22 @@ object FileApexServices {
     val localIdentity: LocalIdentity
         get() = loadLocalIdentity()
 
+    private val lanScanBackoff: com.fileapex.domain.presence.LanScanBackoff by lazy {
+        com.fileapex.domain.presence.LanScanBackoff(
+            com.fileapex.domain.presence.LanPresenceTiming.LAN_SCAN_BACKOFF_BASE_MS,
+            com.fileapex.domain.presence.LanPresenceTiming.LAN_SCAN_BACKOFF_MAX_MS,
+            com.fileapex.util.TimeUtils::now,
+            settings.lanScanBackoffState,
+            { settings.lanScanBackoffState = it }
+        )
+    }
+
     val peerAdmission: com.fileapex.domain.pairing.PeerAdmission by lazy {
         com.fileapex.domain.pairing.PeerAdmission(
             repository = deviceRepository,
             client = client,
             identityProvider = { loadLocalIdentity() },
+            scanBackoff = lanScanBackoff,
             onSuperseded = { removed -> pairingCoordinator.broadcastDeviceRemoval(removed) },
             onPromoted = { device ->
                 presenceMonitor.notifyPassiveReachability(device.deviceId, epochMs = com.fileapex.util.TimeUtils.now())
@@ -149,7 +160,8 @@ object FileApexServices {
     val presenceMonitor: PeerPresenceMonitor by lazy {
         PeerPresenceMonitor(
             repository = deviceRepository,
-            client = client
+            client = client,
+            lanScanBackoff = lanScanBackoff
         )
     }
 
@@ -213,6 +225,7 @@ object FileApexServices {
         bootstrapScope.launch(Dispatchers.IO) {
             runCatching { com.fileapex.tailscale.TailscaleNodeRuntime.attach() }
         }
+        com.fileapex.iroh.IrohRuntime.attach()
         bootstrapScope.launch {
             cancellableCatching { deviceRepository.demoteUnverifiedRows() }
                 .onFailure { error -> println("FileApexServices: unverified roster check skipped - ${error.message}") }

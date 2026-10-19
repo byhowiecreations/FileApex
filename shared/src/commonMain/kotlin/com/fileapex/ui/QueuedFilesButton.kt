@@ -31,7 +31,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import com.fileapex.ui.adaptive.JadedRaisedTile
-import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexTiledChrome
 

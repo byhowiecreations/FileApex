@@ -8,7 +8,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.AppTheme

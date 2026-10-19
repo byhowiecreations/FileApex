@@ -15,6 +15,7 @@ import org.bouncycastle.math.ec.rfc7748.X25519
 
 object ClipboardCrypto {
     private const val HKDF_INFO = "FileApex-Clipboard-v1"
+    private const val HELLO_HKDF_INFO = "FileApex-Hello-v1"
     private const val GCM_IV_BYTES = 12
     private const val GCM_TAG_BITS = 128
     private val secureRandom = SecureRandom()
@@ -24,7 +25,6 @@ object ClipboardCrypto {
         val publicKey: ByteArray
     ) {
         fun publicKeyBase64(): String = Base64.getEncoder().encodeToString(publicKey)
-        fun privateKeyBase64(): String = Base64.getEncoder().encodeToString(privateKey)
     }
 
     fun generateKeyPair(): KeyPairMaterial {
@@ -79,6 +79,13 @@ object ClipboardCrypto {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
         return cipher.doFinal(ciphertext)
+    }
+
+    /** HMAC-SHA256 of [data] under a key derived for wake hellos only, never the clipboard encryption key. */
+    fun authenticate(data: ByteArray, localPrivateKey: ByteArray, peerPublicKey: ByteArray, salt: String): ByteArray {
+        val shared = x25519SharedSecret(localPrivateKey, peerPublicKey)
+        val key = hkdfSha256(shared, salt.encodeToByteArray(), HELLO_HKDF_INFO.encodeToByteArray(), 32)
+        return hmacSha256(key, data)
     }
 
     fun pairSalt(deviceIdA: String, deviceIdB: String): String {

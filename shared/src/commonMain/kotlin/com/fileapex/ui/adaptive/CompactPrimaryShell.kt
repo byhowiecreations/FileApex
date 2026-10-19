@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,10 +49,6 @@ import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.QueuedFilesButton
 import com.fileapex.ui.FileApexBottomBar
 import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.FluxGlassPalette
-import com.fileapex.ui.theme.fileApexChromeBottomEdge
-import com.fileapex.ui.theme.fileApexChromeContainerColor
-import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.fileApexFloatingChrome
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.isFileApexTiledChrome
@@ -65,10 +59,7 @@ import com.fileapex.ui.theme.isFileApexJadedSteel
 
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.di.FileApexServices
-import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.ViewColumn
-import androidx.compose.material.icons.filled.TableRows
 import com.fileapex.ui.FileApexIcons
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -81,8 +72,6 @@ import com.fileapex.ui.DesktopLayoutToggle
 
 /** Shared compact home header metrics — keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
-    /** Fixed teal strip height on every tab (IconButton row — same as Devices power affordance). */
-    val tealStripHeight = 56.dp
     val titleBandHorizontalPadding = 20.dp
     val titleBandVerticalPadding = 16.dp
     val eyebrowHeadlineGap = 4.dp
@@ -98,7 +87,6 @@ object CompactHomeChrome {
 fun CompactPrimaryShell(
     selectedTab: HomeTab,
     onMainHomeScreen: Boolean = true,
-    showExitPower: Boolean,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
     onSettings: () -> Unit,
@@ -136,16 +124,6 @@ fun CompactPrimaryShell(
     }
 }
 
-@Composable
-fun CompactTealStrip(
-    showExitPower: Boolean,
-    onExitClick: () -> Unit,
-    actions: @Composable RowScope.() -> Unit = {}
-) {
-    // Disabled to unify header band across themes.
-    return
-}
-
 enum class CompactHomeTitleStyle {
     /** Small eyebrow line + large headline (Devices / Settings root). */
     Prominent,
@@ -171,7 +149,6 @@ fun FluxGlassHeader(
     val cleanBar = isFileApexCleanCurved()
     val titleColor = if (isCustomGlass || cleanBar) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (isCustomGlass || cleanBar) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
-    val accentTint = if (isCustomGlass) FluxGlassPalette.accent else FileApexTeal
     val resolvedSecondary = secondaryTitle ?: stringRes("paired_devices_title")
 
     val headerBg = if (currentTheme.traits.canvasHome) Color.Black else if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.surface
@@ -485,14 +462,6 @@ private fun CompactHomeTitleBandRow(
 
 
 @Composable
-private fun compactHomeHeadlineStyle() =
-    MaterialTheme.typography.headlineLarge.copy(
-        fontWeight = FontWeight.Bold,
-        fontSize = 34.sp,
-        letterSpacing = (-0.5).sp
-    )
-
-@Composable
 internal fun JadedRaisedTile(
     tileSize: Dp,
     modifier: Modifier = Modifier,
@@ -608,17 +577,4 @@ fun FileApexPowerButton(
             }
         }
     }
-}
-
-/** @deprecated Use [CompactHomeTitleBand] with [CompactHomeTitleStyle.Detail]. */
-@Composable
-fun CompactPaneTitleBand(
-    title: String,
-    subtitle: String? = null
-) {
-    CompactHomeTitleBand(
-        primaryLine = title,
-        secondaryLine = subtitle,
-        style = CompactHomeTitleStyle.Detail
-    )
 }

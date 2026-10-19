@@ -22,13 +22,17 @@ class MacKeychainTlsVault(private val service: String = SERVICE) : TlsSecretVaul
     override fun seal(plain: ByteArray) = GcmBlob.sealWithRandomIv(key(), plain)
     override fun open(sealed: ByteArray) = GcmBlob.open(key(), sealed)
 
+    @Volatile private var cachedKey: SecretKeySpec? = null
+
+    @Synchronized
     private fun key(): SecretKeySpec {
-        readHex()?.let { return SecretKeySpec(it, "AES") }
+        cachedKey?.let { return it }
+        readHex()?.let { return SecretKeySpec(it, "AES").also { spec -> cachedKey = spec } }
         val fresh = ByteArray(32).also { SecureRandom().nextBytes(it) }
         val hex = fresh.joinToString("") { "%02x".format(it) }
         val (code, _) = run("add-generic-password", "-U", "-s", service, "-a", ACCOUNT, "-w", hex)
         check(code == 0) { "keychain add failed ($code)" }
-        return SecretKeySpec(fresh, "AES")
+        return SecretKeySpec(fresh, "AES").also { cachedKey = it }
     }
 
     private fun readHex(): ByteArray? {

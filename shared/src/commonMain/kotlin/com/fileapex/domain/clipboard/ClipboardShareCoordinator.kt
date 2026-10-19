@@ -8,8 +8,8 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.peer.PeerPlatform
-import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
+import com.fileapex.domain.presence.RouteKind
+import com.fileapex.domain.presence.routeKindForHost
 import com.fileapex.network.PeerLanHttpPolicy
 import com.fileapex.platform.BriefToast
 import com.fileapex.platform.ClipboardChangeMonitor
@@ -437,12 +437,6 @@ object ClipboardShareCoordinator {
         retryJob = null
     }
 
-    private suspend fun deliverToDevice(
-        device: PairedDeviceEntity,
-        text: String,
-        capturedAtEpochMs: Long
-    ): Boolean = deliverToDeviceWithDetail(device, text, capturedAtEpochMs).first
-
     private suspend fun deliverToDeviceWithDetail(
         device: PairedDeviceEntity,
         text: String,
@@ -471,124 +465,67 @@ object ClipboardShareCoordinator {
             capturedAtEpochMs = capturedAtEpochMs
         )
         var lastError: Throwable? = null
-        if (isTailscaleEnabled()) {
-            val viaTailnet = if (FileApexServices.presenceMonitor.verifiedLanEndpoint(device) != null) null
-                else resolvePeerEndpoint(device, tailnetUp = true)?.takeIf { it.tailnet }
-            if (viaTailnet != null) {
-                val tailnetResult = cancellableCatching {
-                    FileApexServices.client.sendClipboard(
-                        host = viaTailnet.host,
-                        port = viaTailnet.port,
-                        senderDeviceId = identity.deviceId,
+        val presence = FileApexServices.presenceMonitor
+        val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
+
+        suspend fun askPeerToOptIn(host: String, port: Int): Throwable {
+            cancellableCatching {
+                FileApexServices.client.requestClipboardOptIn(
+                    host = host,
+                    port = port,
+                    senderDeviceId = identity.deviceId,
+                    senderDeviceName = identity.deviceName,
+                    pendingPayload = pendingPayload
+                )
+            }
+            val settings = FileApexServices.settings
+            if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
+                cancellableCatching {
+                    FcmWakeCoordinator.dispatchClipboardOptIn(
+                        targetDeviceId = device.deviceId,
                         senderDeviceName = identity.deviceName,
-                        senderPublicKey = ClipboardE2ee.publicKeyBase64(),
-                        ciphertext = ciphertext,
-                        capturedAtEpochMs = capturedAtEpochMs
+                        pendingPayload = pendingPayload
                     )
                 }
-                if (tailnetResult.isSuccess) return Pair(true, null)
-                val tailnetError = tailnetResult.exceptionOrNull()
-                if (tailnetError?.message?.contains("clipboard_disabled") == true) {
-                    val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
-                    cancellableCatching {
-                        FileApexServices.client.requestClipboardOptIn(
-                            host = viaTailnet.host,
-                            port = viaTailnet.port,
-                            senderDeviceId = identity.deviceId,
-                            senderDeviceName = identity.deviceName,
-                            pendingPayload = pendingPayload
-                        )
-                    }
-                    return Pair(
-                        false,
-                        IllegalStateException(
-                            com.fileapex.i18n.AppI18n.t("peer_clipboard_disabled_opt_in_sent", peerName)
-                        )
-                    )
-                }
-                lastError = tailnetError
             }
+            return IllegalStateException(
+                com.fileapex.i18n.AppI18n.t("peer_clipboard_disabled_opt_in_sent", peerName)
+            )
         }
-        val lanOk = ClipboardSharePolicy.canUseLocalLan(
-            lanConnected = isActiveLanConnectivity() && PeerLanHttpPolicy.canRoute(device.lastKnownIp),
-            peerHost = device.lastKnownIp,
-            localBindIps = NetworkUtils.lanBindCandidates()
-        )
-        if (lanOk) {
-            val statusResult = cancellableCatching {
-                FileApexServices.client.getClipboardStatus(device.lastKnownIp, device.port)
+
+        for (attempt in 0 until 2) {
+            val route = presence.endpointIfOnline(device) ?: break
+            val host = route.host
+            val port = route.port
+            val usable = routeKindForHost(host) != RouteKind.Lan || ClipboardSharePolicy.canUseLocalLan(
+                lanConnected = isActiveLanConnectivity() && PeerLanHttpPolicy.canRoute(host),
+                peerHost = host,
+                localBindIps = NetworkUtils.lanBindCandidates()
+            )
+            if (!usable) break
+            val status = cancellableCatching { FileApexServices.client.getClipboardStatus(host, port) }.getOrNull()
+            if (status != null && !status.sharingEnabled) {
+                return Pair(false, askPeerToOptIn(host, port))
             }
-            if (statusResult.isSuccess) {
-                val status = statusResult.getOrThrow()
-                if (!status.sharingEnabled) {
-                    val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
-                    cancellableCatching {
-                        FileApexServices.client.requestClipboardOptIn(
-                            host = device.lastKnownIp,
-                            port = device.port,
-                            senderDeviceId = identity.deviceId,
-                            senderDeviceName = identity.deviceName,
-                            pendingPayload = pendingPayload
-                        )
-                    }
-                    val settings = FileApexServices.settings
-                    if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
-                        cancellableCatching {
-                            FcmWakeCoordinator.dispatchClipboardOptIn(
-                                targetDeviceId = device.deviceId,
-                                senderDeviceName = identity.deviceName,
-                                pendingPayload = pendingPayload
-                            )
-                        }
-                    }
-                    val msg = com.fileapex.i18n.AppI18n.t("peer_clipboard_disabled_opt_in_sent", peerName)
-                    return Pair(false, IllegalStateException(msg))
-                }
-            }
-            val lanResult = cancellableCatching {
+            val sent = cancellableCatching {
                 FileApexServices.client.sendClipboard(
-                    host = device.lastKnownIp,
-                    port = device.port,
+                    host = host,
+                    port = port,
                     senderDeviceId = identity.deviceId,
                     senderDeviceName = identity.deviceName,
                     senderPublicKey = ClipboardE2ee.publicKeyBase64(),
                     ciphertext = ciphertext,
                     capturedAtEpochMs = capturedAtEpochMs
                 )
-            }.onFailure { error ->
-                lastError = error
-                if (error.message?.contains("clipboard_disabled") == true) {
-                    val peerName = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
-                    cancellableCatching {
-                        FileApexServices.client.requestClipboardOptIn(
-                            host = device.lastKnownIp,
-                            port = device.port,
-                            senderDeviceId = identity.deviceId,
-                            senderDeviceName = identity.deviceName,
-                            pendingPayload = pendingPayload
-                        )
-                    }
-                    val settings = FileApexServices.settings
-                    if (PeerPlatform.isAndroid(device.os, device.platform) && settings.googleAccountLinkEnabled.value) {
-                        cancellableCatching {
-                            FcmWakeCoordinator.dispatchClipboardOptIn(
-                                targetDeviceId = device.deviceId,
-                                senderDeviceName = identity.deviceName,
-                                pendingPayload = pendingPayload
-                            )
-                        }
-                    }
-                    val msg = com.fileapex.i18n.AppI18n.t("peer_clipboard_disabled_opt_in_sent", peerName)
-                    lastError = IllegalStateException(msg)
-                }
-                println(
-                    "ClipboardShareCoordinator: LAN send to ${device.deviceName} failed - ${error.message}"
-                )
             }
-            if (lanResult.isSuccess) return Pair(true, null)
-            if (lastError is IllegalStateException) {
-                return Pair(false, lastError)
+            if (sent.isSuccess) return Pair(true, null)
+            val error = sent.exceptionOrNull()
+            if (error?.message?.contains("clipboard_disabled") == true) {
+                return Pair(false, askPeerToOptIn(host, port))
             }
+            lastError = error
+            println("ClipboardShareCoordinator: send to ${device.deviceName} failed - ${error?.message}")
+            presence.reportRouteFailure(device, host)
         }
         val settings = FileApexServices.settings
         val fcmOk = ClipboardSharePolicy.canUseCellularFcm(
@@ -633,12 +570,9 @@ object ClipboardShareCoordinator {
         val cloud = GoogleLinkCoordinator.cloudRecordFor(device.deviceId)
             ?.clipboardPublicKey.orEmpty().trim()
         if (cloud.isNotEmpty()) return cloud
-        val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
+        val route = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return ""
         val live = cancellableCatching {
-            FileApexServices.client.fetchPeerNodeState(
-                dial?.host ?: device.lastKnownIp,
-                dial?.port ?: device.port
-            )
+            FileApexServices.client.fetchPeerNodeState(route.host, route.port)
         }.getOrNull() ?: return ""
         val key = live.publicKey.trim()
         if (key.isNotEmpty()) {

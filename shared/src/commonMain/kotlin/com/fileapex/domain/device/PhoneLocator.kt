@@ -36,7 +36,7 @@ object PhoneLocator {
             return false
         }
         val device = FileApexServices.deviceRepository.getDevice(deviceId) ?: return false
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device)
+        val endpoint = FileApexServices.presenceMonitor.probeNow(device)
         if (endpoint == null) {
             NotificationDebugLog.log("locate failed: no endpoint")
             return false
@@ -72,7 +72,7 @@ object PhoneLocator {
     suspend fun reportFound() {
         val computerId = NotificationCompanionGrant.activeGrantor() ?: return
         val device = FileApexServices.deviceRepository.getDevice(computerId) ?: return
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return
+        val endpoint = FileApexServices.presenceMonitor.probeNow(device) ?: return
         cancellableCatching {
             FileApexServices.client.reportLocateFound(endpoint.host, endpoint.port)
         }.onFailure { println("PhoneLocator: found report failed - ${it::class.simpleName}") }
@@ -88,7 +88,7 @@ object PhoneLocator {
         }
         scope.launch {
             val device = FileApexServices.deviceRepository.getDevice(target.deviceId) ?: return@launch
-            val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) ?: return@launch
+            val endpoint = FileApexServices.presenceMonitor.probeNow(device) ?: return@launch
             cancellableCatching {
                 FileApexServices.client.stopDeviceBeep(endpoint.host, endpoint.port)
             }.onFailure { println("PhoneLocator: stop failed - ${it::class.simpleName}") }

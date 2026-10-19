@@ -4,21 +4,18 @@ import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
+import com.fileapex.domain.presence.RouteUse
 import com.fileapex.network.PeerLanHttpPolicy
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.textContainsWebUrl
+import com.fileapex.util.PerKeyRunner
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
@@ -32,7 +29,8 @@ class BulletinBoardSyncEngine(
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
-    private val drainMutex = Mutex()
+    private val drainRunner = PerKeyRunner(scope)
+    private val pullRunner = PerKeyRunner(scope)
     private val peerBackoff = BulletinPeerBackoff()
     private val messageDao = database.messageDao()
     private val tombstoneDao = database.tombstoneDao()
@@ -51,11 +49,18 @@ class BulletinBoardSyncEngine(
     fun ensureStarted() {
         if (drainWatcherStarted) return
         drainWatcherStarted = true
+        scope.launch { cancellableCatching { latestChange() } }
         scope.launch {
             FileApexServices.presenceMonitor.reachabilityEpochMs.collect { requestDrain() }
         }
         scope.launch {
-            FileApexServices.presenceMonitor.onlineDeviceIds.collect { requestDrain() }
+            var previous = emptySet<String>()
+            FileApexServices.presenceMonitor.onlineDeviceIds.collect { online ->
+                // A device that just came back is tried at once, however long it failed while it was away.
+                (online - previous).forEach { peerBackoff.reset(it) }
+                previous = online
+                requestDrain()
+            }
         }
         maintenanceJob = scope.launch {
             while (true) {
@@ -65,11 +70,107 @@ class BulletinBoardSyncEngine(
         }
     }
 
+    /** An offline peer that can pull a delta gets nothing queued; it asks for what it missed when it is back. */
+    private fun shouldQueueFor(peer: PairedDeviceEntity): Boolean =
+        BulletinDelta.queueForPeer(
+            supportsDelta = BulletinDelta.supportedBy(peer.clientVersion, peer.clientVersionCode),
+            isOnline = FileApexServices.presenceMonitor.isDeviceOnline(peer)
+        )
+
+    /** Latest change in this board on this device's clock; sent on every health answer. */
+    suspend fun latestChange(): Long =
+        maxOf(messageDao.latestChange(), tombstoneDao.latestChange()).also { BulletinStampClock.shared.observe(it) }
+
+    /** One page of what changed since [since] (everything when it is 0, stale or from before a reset). */
+    suspend fun buildDelta(since: Long, nowMs: Long = TimeUtils.now()): BulletinDeltaResponse {
+        val latest = latestChange()
+        val snapshot = BulletinDelta.isSnapshot(since, latest, nowMs)
+        val from = if (snapshot) 0L else since
+        val changes = messageDao.getChangedSince(from).map { message ->
+            BulletinDelta.Change(
+                message.updatedAt,
+                BulletinSyncItem(
+                    payloadType = BulletinPayloadType.MESSAGE,
+                    payloadId = message.id,
+                    body = json.encodeToString(
+                        BulletinMessagePayload(
+                            id = message.id,
+                            originDeviceId = message.originDeviceId,
+                            senderName = message.senderName,
+                            content = message.content,
+                            contentType = message.contentType,
+                            timestamp = message.timestamp,
+                            isPinned = message.isPinned
+                        )
+                    )
+                )
+            )
+        } + tombstoneDao.getChangedSince(from).map { tombstone ->
+            BulletinDelta.Change(
+                tombstone.updatedAt,
+                BulletinSyncItem(
+                    payloadType = BulletinPayloadType.TOMBSTONE,
+                    payloadId = tombstone.id,
+                    body = json.encodeToString(
+                        BulletinTombstonePayload(
+                            id = tombstone.id,
+                            deletedAt = tombstone.deletedAt,
+                            originDeviceId = tombstone.originDeviceId,
+                            remotePurge = tombstone.remotePurge
+                        )
+                    )
+                )
+            )
+        }
+        val page = BulletinDelta.page(changes, from)
+        // A finished pull is complete up to the latest change seen before the rows were read.
+        val cursor = if (page.more) page.cursor else maxOf(page.cursor, latest)
+        return BulletinDeltaResponse(
+            batch = BulletinSyncBatch(
+                packetId = "delta-" + TimeUtils.now() + "-" + (1000..9999).random(),
+                originDeviceId = loadLocalIdentity().deviceId,
+                items = page.items
+            ),
+            cursor = cursor,
+            more = page.more,
+            snapshot = snapshot
+        )
+    }
+
+    private val lastPullAttemptMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** A health answer showed [peerVersion]; pull the difference when it is ahead of what we have from that peer. */
+    fun onPeerBulletinVersion(peer: PairedDeviceEntity, peerVersion: Long) {
+        if (!BulletinDelta.supportedBy(peer.clientVersion, peer.clientVersionCode)) return
+        val cursor = FileApexServices.settings.bulletinDeltaCursor(peer.deviceId)
+        if (!BulletinDelta.shouldPull(peerVersion, cursor)) return
+        val now = TimeUtils.now()
+        val last = lastPullAttemptMs[peer.deviceId] ?: 0L
+        if (now - last < PULL_RETRY_MS) return
+        lastPullAttemptMs[peer.deviceId] = now
+        pullRunner.launch(peer.deviceId) {
+            cancellableCatching { pullFrom(peer) }
+                .onFailure { println("BulletinBoardSyncEngine: delta pull from ${peer.deviceName} failed - ${it.message}") }
+        }
+    }
+
+    private suspend fun pullFrom(peer: PairedDeviceEntity) {
+        val route = FileApexServices.presenceMonitor.endpointIfOnline(peer, RouteUse.Bulk) ?: return
+        var cursor = FileApexServices.settings.bulletinDeltaCursor(peer.deviceId)
+        repeat(MAX_DELTA_PAGES) {
+            val response = FileApexServices.client.fetchBulletinDelta(route.host, route.port, cursor)
+            processIncomingBatch(response.batch)
+            cursor = response.cursor
+            FileApexServices.settings.setBulletinDeltaCursor(peer.deviceId, cursor)
+            if (!response.more) return
+        }
+    }
+
     suspend fun publishMessage(message: MessageEntity) {
         val peers = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
         val selfId = loadLocalIdentity().deviceId
-        val remotePeers = peers.filter { it.deviceId != selfId }
-        val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() }
+        val remotePeers = peers.filter { it.deviceId != selfId && BulletinBoardPolicy.takesPartInBulletin(it) }
+        val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() && shouldQueueFor(it) }
         val legacyPeers = remotePeers.filterNot { it.supportsBulletinSync() }
 
         if (bulletinPeers.isNotEmpty()) {
@@ -78,6 +179,7 @@ class BulletinBoardSyncEngine(
                 payloadId = message.id,
                 peerIds = bulletinPeers.map { it.deviceId }
             )
+            bulletinPeers.forEach { peerBackoff.reset(it.deviceId) }
             requestDrain()
         }
         BulletinLegacyRelay.dispatchMessage(message, legacyPeers)
@@ -86,8 +188,8 @@ class BulletinBoardSyncEngine(
     suspend fun publishTombstone(messageId: String) {
         val peers = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
         val selfId = loadLocalIdentity().deviceId
-        val remotePeers = peers.filter { it.deviceId != selfId }
-        val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() }
+        val remotePeers = peers.filter { it.deviceId != selfId && BulletinBoardPolicy.takesPartInBulletin(it) }
+        val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() && shouldQueueFor(it) }
         val legacyPeers = remotePeers.filterNot { it.supportsBulletinSync() }
 
         if (bulletinPeers.isNotEmpty()) {
@@ -96,6 +198,7 @@ class BulletinBoardSyncEngine(
                 payloadId = messageId,
                 peerIds = bulletinPeers.map { it.deviceId }
             )
+            bulletinPeers.forEach { peerBackoff.reset(it.deviceId) }
             requestDrain()
         }
         FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
@@ -106,8 +209,8 @@ class BulletinBoardSyncEngine(
     suspend fun publishRetractByKind(originDeviceId: String, contentType: Int, deletedAt: Long) {
         val peers = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
         val selfId = loadLocalIdentity().deviceId
-        val remotePeers = peers.filter { it.deviceId != selfId }
-        val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() }
+        val remotePeers = peers.filter { it.deviceId != selfId && BulletinBoardPolicy.takesPartInBulletin(it) }
+        val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() && shouldQueueFor(it) }
         if (bulletinPeers.isEmpty()) return
         val payload = BulletinRetractByKindPayload(
             originDeviceId = originDeviceId,
@@ -121,6 +224,7 @@ class BulletinBoardSyncEngine(
             payloadId = payloadId,
             peerIds = bulletinPeers.map { it.deviceId }
         )
+        bulletinPeers.forEach { peerBackoff.reset(it.deviceId) }
         requestDrain()
         FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
     }
@@ -128,6 +232,7 @@ class BulletinBoardSyncEngine(
     suspend fun onDevicePairingComplete(peer: PairedDeviceEntity) {
         val selfId = loadLocalIdentity().deviceId
         if (peer.deviceId.isBlank() || peer.deviceId == selfId) return
+        if (!BulletinBoardPolicy.takesPartInBulletin(peer)) return
         if (!peer.supportsBulletinSync()) return
         val activeMessages = messageDao.getActiveOnce()
         val recentCutoff = TimeUtils.now() - 7 * 24 * 60 * 60 * 1000L
@@ -152,6 +257,7 @@ class BulletinBoardSyncEngine(
         }
         if (outboxEntries.isNotEmpty()) {
             transactionDao.insertOutboxEntries(outboxEntries)
+            peerBackoff.reset(peer.deviceId)
             requestDrain()
         }
     }
@@ -278,9 +384,9 @@ class BulletinBoardSyncEngine(
         val origin = FileApexServices.deviceRepositoryOrNull()?.getDevice(originId)
             ?: FileApexServices.deviceRepositoryOrNull()?.getDevice(message.originDeviceId)
             ?: return null
-        val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(origin) == null) resolvePeerEndpoint(origin, tailnetUp = true) else null
-        val host = dial?.host ?: origin.lastKnownIp
-        val port = dial?.port ?: origin.port
+        val route = FileApexServices.presenceMonitor.probeNow(origin, RouteUse.Bulk)
+        val host = route?.host ?: origin.lastKnownIp
+        val port = route?.port ?: origin.port
         if (host.isBlank() || port <= 0) return null
         ServerLifecycleManager.ensureRunning()
         return cancellableCatching {
@@ -319,50 +425,44 @@ class BulletinBoardSyncEngine(
         }
     }
 
-    suspend fun drainOutbox() {
-        drainMutex.withLock {
-            if (outboxDao.count() == 0) return@withLock
+    /**
+     * Starts one drain per device that has something queued. Nothing here waits on the network: every device is its
+     * own job, so a dead or slow device never delays another device or the next post.
+     */
+    fun drainOutbox() {
+        scope.launch(Dispatchers.IO) {
+            if (outboxDao.count() == 0) return@launch
             repository.pruneStaleOutbox()
             val selfId = loadLocalIdentity().deviceId
             val devices = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
-            val presence = FileApexServices.presenceMonitor
-            val pending = mutableListOf<PeerDrainJob>()
             for (device in devices) {
-                if (device.deviceId == selfId) continue
-                val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
-                val host = dial?.host ?: device.lastKnownIp
-                val port = dial?.port ?: device.port
-                if (!BulletinOutboxDrainPolicy.shouldAttemptPeer(
-                        supportsBulletinSync = device.supportsBulletinSync(),
-                        host = host,
-                        port = port,
-                        isOnline = presence.isDeviceOnline(device)
-                    )
-                ) {
-                    continue
-                }
-                if (!PeerLanHttpPolicy.canRoute(host)) continue
-                if (!peerBackoff.canAttempt(device.deviceId, TimeUtils.now())) continue
-
-                val entries = repository.getOutboxForDevice(
-                    device.deviceId,
-                    BulletinBoardPolicy.SYNC_BATCH_LIMIT
-                )
-                if (entries.isEmpty()) continue
-                val batch = buildBatch(entries)
-                if (batch.items.isEmpty()) continue
-                pending += PeerDrainJob(device.deviceId, device.deviceName, host, port, entries, batch)
-            }
-            if (pending.isEmpty()) return@withLock
-            ServerLifecycleManager.ensureRunning()
-            coroutineScope {
-                for (job in pending) {
-                    launch(Dispatchers.IO) {
-                        drainPeer(job)
-                    }
-                }
+                if (device.deviceId == selfId || !BulletinBoardPolicy.takesPartInBulletin(device)) continue
+                if (!device.supportsBulletinSync()) continue
+                drainRunner.launch(device.deviceId) { drainDevice(device) }
             }
         }
+    }
+
+    private suspend fun drainDevice(device: PairedDeviceEntity) {
+        if (!peerBackoff.canAttempt(device.deviceId, TimeUtils.now())) return
+        val entries = repository.getOutboxForDevice(device.deviceId, BulletinBoardPolicy.SYNC_BATCH_LIMIT)
+        if (entries.isEmpty()) return
+        val presence = FileApexServices.presenceMonitor
+        val route = presence.endpointIfOnline(device)
+        val host = route?.host ?: device.lastKnownIp
+        val port = route?.port ?: device.port
+        if (!BulletinOutboxDrainPolicy.shouldAttemptPeer(
+                supportsBulletinSync = device.supportsBulletinSync(),
+                host = host,
+                port = port,
+                isOnline = presence.isDeviceOnline(device)
+            )
+        ) return
+        if (!PeerLanHttpPolicy.canRoute(host)) return
+        val batch = buildBatch(entries)
+        if (batch.items.isEmpty()) return
+        ServerLifecycleManager.ensureRunning()
+        drainPeer(PeerDrainJob(device.deviceId, device.deviceName, host, port, entries, batch))
     }
 
     private suspend fun drainPeer(job: PeerDrainJob) {
@@ -385,6 +485,9 @@ class BulletinBoardSyncEngine(
                 }
             }
         }.onFailure { error ->
+            FileApexServices.deviceRepositoryOrNull()?.getDevice(job.deviceId)?.let {
+                FileApexServices.presenceMonitor.reportRouteFailure(it, job.host)
+            }
             val delayMs = peerBackoff.onFailure(job.deviceId, TimeUtils.now())
             println(
                 "BulletinBoardSyncEngine: drain to ${job.deviceName} failed - ${error.message}; " +
@@ -485,6 +588,8 @@ class BulletinBoardSyncEngine(
     companion object {
         private const val DRAIN_DEBOUNCE_MS = 400L
         private const val MAX_OUTBOX_RETRIES = 25
+        private const val MAX_DELTA_PAGES = 50
+        private const val PULL_RETRY_MS = 60_000L
         private const val MAINTENANCE_INTERVAL_MS = 6L * 60 * 60 * 1000
     }
 }

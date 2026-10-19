@@ -184,6 +184,11 @@ func pairSalt(a, b string) string {
 }
 
 func pairKey(local *ecdh.PrivateKey, peerPublicB64, salt string) ([]byte, error) {
+	return pairKeyFor(local, peerPublicB64, salt, pairHKDFInfo)
+}
+
+// pairKeyFor derives a key for one purpose; the info string keeps the keys for different purposes apart.
+func pairKeyFor(local *ecdh.PrivateKey, peerPublicB64, salt, info string) ([]byte, error) {
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(peerPublicB64))
 	if err != nil || len(raw) != 32 {
 		return nil, errors.New("invalid peer public key")
@@ -196,7 +201,7 @@ func pairKey(local *ecdh.PrivateKey, peerPublicB64, salt string) ([]byte, error)
 	if err != nil {
 		return nil, err
 	}
-	return hkdf.Key(sha256.New, shared, []byte(salt), pairHKDFInfo, 32)
+	return hkdf.Key(sha256.New, shared, []byte(salt), info, 32)
 }
 
 // sealPair and openPair match ClipboardCrypto: base64(iv(12) || AES-256-GCM(ciphertext || tag)).
@@ -340,6 +345,25 @@ func (t *tlsState) forgetAll() {
 
 // requiresTLS lists what a pinned peer may not do over plain HTTP. Pairing, presence and the pin
 // exchange stay open so a peer that lost our pin can still be seen and re-announce.
+// openRoutes can be called without proving who is asking: presence probes and the pin exchange (which is sealed
+// with the pairing key). Every other route needs a peer that presented its pinned TLS certificate, so a plain
+// HTTP request to it is refused whatever `from` it claims. The app applies the same rule (RouteAuthPolicy).
+var openRoutes = map[string]bool{
+	"/api/v1/health":   true,
+	"/api/v1/identity": true,
+	"/api/v1/tls/pin":  true,
+}
+
+func routeIsOpen(path string) bool {
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+	}
+	return openRoutes[path]
+}
+
 func requiresTLS(path string) bool {
 	if i := strings.IndexByte(path, '?'); i >= 0 {
 		path = path[:i]
@@ -347,7 +371,7 @@ func requiresTLS(path string) bool {
 	if path == "/api/v1/identity/rename" {
 		return true
 	}
-	for _, open := range []string{"/api/v1/pairing", "/api/v1/auth", "/api/v1/tls/pin", "/api/v1/identity", "/api/v1/heartbeat", "/api/v1/health"} {
+	for _, open := range []string{"/api/v1/pairing", "/api/v1/auth", "/api/v1/tls/pin", "/api/v1/identity", "/api/v1/health"} {
 		if path == open || strings.HasPrefix(path, open+"/") {
 			return false
 		}
@@ -498,12 +522,12 @@ func (n *Node) guard(next http.Handler, viaTLS bool) http.Handler {
 				return
 			}
 			r.Header.Set("X-FileApex-Device-Id", certID)
-		} else if n.tls != nil && claimed != "" && requiresTLS(r.URL.Path) {
-			if _, pinned := n.tls.peer(claimed); pinned {
-				log.Printf("Rejected plain HTTP %s from pinned peer %s", r.URL.Path, claimed)
-				http.Error(w, "tls_required", http.StatusForbidden)
-				return
+		} else if !routeIsOpen(r.URL.Path) {
+			if rejectLogGate.allow(remoteIPv4(r.RemoteAddr), time.Now()) {
+				log.Printf("Rejected unauthenticated %s %s from %s", r.Method, strings.SplitN(r.URL.Path, "?", 2)[0], lastOctetLabel(r.RemoteAddr))
 			}
+			http.Error(w, "authentication_required", http.StatusUnauthorized)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -803,4 +827,30 @@ func (n *Node) tlsAnnounceRound(ctx context.Context) {
 		n.tls.next[peer.DeviceID] = now.Add(wait)
 		n.tls.mu.Unlock()
 	}
+}
+
+// rejectLogGate lets the log note one rejected request per source address a minute, so a scanner cannot fill the log.
+var rejectLogGate = &logGate{last: map[string]time.Time{}}
+
+type logGate struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+func (g *logGate) allow(source string, now time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if prev, ok := g.last[source]; ok && now.Sub(prev) < time.Minute {
+		return false
+	}
+	g.last[source] = now
+	return true
+}
+
+func lastOctetLabel(remote string) string {
+	ip := remoteIPv4(remote)
+	if i := strings.LastIndexByte(ip, '.'); i >= 0 {
+		return ip[i:]
+	}
+	return "?"
 }

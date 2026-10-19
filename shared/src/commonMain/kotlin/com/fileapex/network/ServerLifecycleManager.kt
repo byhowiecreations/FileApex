@@ -78,9 +78,13 @@ object ServerLifecycleManager {
             },
             // Only peers this device reached itself are handed out: a roster is never a way to pass on hearsay.
             onListDevices = {
+                // One device's hardware hash is its own to give: it is never passed on in a roster.
                 FileApexServices.deviceRepository.listDevices()
                     .filter { com.fileapex.domain.pairing.PeerTrustRules.reachedDirectly(it) }
+                    .map { it.copy(hardwareHash = "") }
             },
+            removalFingerprint = { FileApexServices.deviceRepository.removalFingerprint() },
+            removalRecords = { FileApexServices.deviceRepository.windowedRemovals() },
             onListIntroductions = { recipientId ->
                 val recipient = FileApexServices.deviceRepository.getDevice(recipientId)
                 if (recipient == null || recipient.isRemoved) {

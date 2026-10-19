@@ -6,7 +6,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import com.fileapex.cloud.DesktopAuthCoordinator
 import com.fileapex.cloud.desktopOAuthClientId
-import com.fileapex.cloud.googleWebClientId
 import com.fileapex.util.cancellableCatching
 import java.awt.Desktop
 import java.net.URI

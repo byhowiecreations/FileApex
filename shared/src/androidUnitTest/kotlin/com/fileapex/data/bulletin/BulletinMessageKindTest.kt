@@ -50,28 +50,6 @@ class BulletinMessageKindTest {
     }
 
     @Test
-    fun isBatteryDetectsTypedAndLegacyMessages() {
-        assertTrue(
-            BulletinMessageKind.isBattery(
-                BulletinContentType.BATTERY_LOW,
-                "The battery level is 15%."
-            )
-        )
-        assertTrue(
-            BulletinMessageKind.isBattery(
-                BulletinContentType.TEXT,
-                "The battery level is 15% on HONOR MBH-N49"
-            )
-        )
-        assertFalse(
-            BulletinMessageKind.isBattery(
-                BulletinContentType.TEXT,
-                "See you at lunch"
-            )
-        )
-    }
-
-    @Test
     fun newBatteryContentIsCritical() {
         assertTrue(NoteNotifyPolicy.isCriticalBulletin("The battery level is 15%."))
         assertTrue(NoteNotifyPolicy.isCriticalBulletin("The battery is low."))

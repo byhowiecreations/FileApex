@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.fileapex.domain.presence.LanTransitionFilter
 import com.fileapex.util.cancellableCatching
 
 /**
@@ -204,14 +205,20 @@ object ShareServerKeepAliveCoordinator {
         if (networkCallback != null) return
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return
+        // Screen on and signal updates repeat capabilities; only a new network or one becoming validated counts.
+        val transitions = LanTransitionFilter()
         val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) = onNetworkEvent("available")
+            override fun onAvailable(network: Network) {
+                if (transitions.onAvailable(network.toString())) onNetworkEvent("available")
+            }
+
+            override fun onLost(network: Network) {
+                transitions.onLost(network.toString())
+            }
+
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-                ) {
-                    onNetworkEvent("capabilities")
-                }
+                val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                if (transitions.onCapabilities(network.toString(), validated)) onNetworkEvent("capabilities")
             }
         }
         val request = NetworkRequest.Builder()

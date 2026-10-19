@@ -1,6 +1,5 @@
 package com.fileapex.domain.browse
 
-import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.data.transfer.FileTransferService
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.presentation.BrowseTarget
@@ -144,9 +143,6 @@ class BrowserCoordinator(
     fun normalizePath(path: String): String =
         PathUtils.normalizeOr(path, browseRoot)
 
-    fun clipboardCanPaste(selectionMode: Boolean): Boolean {
-        return TransferClipboard.hasContent() && !selectionMode
-    }
 }
 
 /** Served without asking the device again; pull to refresh and any change made here bypass it. */

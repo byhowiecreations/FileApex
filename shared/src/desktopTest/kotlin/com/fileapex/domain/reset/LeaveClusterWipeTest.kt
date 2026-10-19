@@ -1,6 +1,5 @@
 package com.fileapex.domain.reset
 
-import com.fileapex.data.settings.AppSettings
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.BaseAppSettings
 import com.fileapex.data.settings.BulletinBoardStyle
@@ -10,7 +9,6 @@ import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.SettingsKvStore
-import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.domain.pairing.RemovedDeviceRecord
 import com.fileapex.presentation.ExplorerViewMode

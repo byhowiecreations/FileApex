@@ -8,9 +8,6 @@ object PeerTrustRules {
     /** This device itself reached the peer: presence is only ever stamped by direct contact. */
     fun reachedDirectly(row: PairedDeviceEntity): Boolean = !row.isRemoved && row.lastSeenEpochMs > 0L
 
-    fun onClusterVersion(protocol: Int, version: Long): Boolean =
-        protocol >= ClusterClock.MEMBERSHIP_PROTOCOL && ClusterClock.isAcceptable(version)
-
     /** A peer that never stamped itself (0) is covered by its introducer's stamp; a stamp that is set must be sane. */
     fun answersOnClusterClock(protocol: Int, version: Long): Boolean =
         protocol >= ClusterClock.MEMBERSHIP_PROTOCOL && (version == 0L || ClusterClock.isAcceptable(version))

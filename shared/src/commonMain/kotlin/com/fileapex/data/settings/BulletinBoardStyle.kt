@@ -1,6 +1,5 @@
 package com.fileapex.data.settings
 
-import androidx.compose.runtime.staticCompositionLocalOf
 
 enum class BulletinBoardStyle(val storageKey: String) {
     DEFAULT("default"),
@@ -21,5 +20,3 @@ enum class BulletinBoardStyle(val storageKey: String) {
         }
     }
 }
-
-val LocalBulletinBoardStyle = staticCompositionLocalOf { BulletinBoardStyle.DEFAULT }

@@ -11,7 +11,6 @@ import com.fileapex.network.FileApexServer
 import com.fileapex.network.LanInterfaceBinding
 import java.net.HttpURLConnection
 import java.net.Inet4Address
-import java.net.URL
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceEvent
 import javax.jmdns.ServiceInfo

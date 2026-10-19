@@ -11,7 +11,6 @@ object TlsTransportPolicy {
         "/api/v1/auth",
         "/api/v1/tls/pin",
         "/api/v1/identity",
-        "/api/v1/heartbeat",
         "/api/v1/health"
     )
 

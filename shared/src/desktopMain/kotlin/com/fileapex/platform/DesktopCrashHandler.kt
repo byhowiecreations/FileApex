@@ -9,7 +9,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import javax.swing.JOptionPane
-import kotlin.system.exitProcess
 
 /**
  * Handles early startup uncaught exceptions by capturing telemetry and writing

@@ -1,6 +1,9 @@
 package com.fileapex.cloud.drive
 
 import android.content.Context
+import com.fileapex.data.settings.AndroidSettingsSecrets
+import com.fileapex.data.settings.SealingKvStore
+import com.fileapex.data.settings.SharedPreferencesKvStore
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices
 import com.fileapex.shared.BuildConfig
@@ -31,18 +34,19 @@ actual object GoogleDriveAuth {
         val prefs = prefs() ?: return false
         val scope = prefs.getString(KEY_SCOPE, "").orEmpty()
         if (scope.isNotBlank() && scope != DRIVE_FILE_SCOPE) return false
-        return !prefs.getString(KEY_REFRESH, "").isNullOrBlank() ||
-            !prefs.getString(KEY_ACCESS, "").isNullOrBlank()
+        val secrets = secrets() ?: return false
+        return secrets.getString(KEY_REFRESH, "").isNotBlank() || secrets.getString(KEY_ACCESS, "").isNotBlank()
     }
 
     actual suspend fun accessToken(): String {
         val prefs = prefs() ?: error("Drive auth storage not ready")
-        val access = prefs.getString(KEY_ACCESS, "").orEmpty()
+        val secrets = secrets() ?: error("Drive auth storage not ready")
+        val access = secrets.getString(KEY_ACCESS, "")
         val expiresAt = prefs.getLong(KEY_EXPIRES_AT, 0L)
         val stale = expiresAt > 0L && System.currentTimeMillis() >= expiresAt - 60_000L
         if (access.isNotBlank() && !stale) return access
         if (refreshOnUnauthorized()) {
-            return prefs.getString(KEY_ACCESS, "").orEmpty()
+            return secrets.getString(KEY_ACCESS, "")
                 .ifBlank { error("Drive access token missing") }
         }
         error(com.fileapex.i18n.AppI18n.t("drive_signin_expired"))
@@ -54,11 +58,10 @@ actual object GoogleDriveAuth {
         expiresAtEpochMs: Long
     ) {
         val prefs = prefs() ?: return
+        val secrets = secrets() ?: return
+        secrets.putString(KEY_ACCESS, accessToken)
+        if (refreshToken.isNotBlank()) secrets.putString(KEY_REFRESH, refreshToken)
         prefs.edit()
-            .putString(KEY_ACCESS, accessToken)
-            .apply {
-                if (refreshToken.isNotBlank()) putString(KEY_REFRESH, refreshToken)
-            }
             .putLong(KEY_EXPIRES_AT, expiresAtEpochMs)
             .putString(KEY_SCOPE, DRIVE_FILE_SCOPE)
             .apply()
@@ -77,8 +80,7 @@ actual object GoogleDriveAuth {
     }
 
     private suspend fun refreshWithStoredToken(): Boolean {
-        val prefs = prefs() ?: return false
-        val refresh = prefs.getString(KEY_REFRESH, "").orEmpty()
+        val refresh = secrets()?.getString(KEY_REFRESH, "").orEmpty()
         if (refresh.isBlank()) {
             driveLog("no Drive refresh token - trying silent Google Identity reauth")
             return false
@@ -139,7 +141,7 @@ actual object GoogleDriveAuth {
                 driveLog("silent Drive reauth returned no access token")
                 return@cancellableCatching false
             }
-            val existingRefresh = prefs()?.getString(KEY_REFRESH, "").orEmpty()
+            val existingRefresh = secrets()?.getString(KEY_REFRESH, "").orEmpty()
             persistGrant(
                 accessToken = access,
                 refreshToken = existingRefresh,
@@ -154,11 +156,27 @@ actual object GoogleDriveAuth {
     }
 
     actual fun clearGrant() {
+        secrets()?.clear()
         prefs()?.edit()?.clear()?.apply()
     }
 
     private fun prefs() = androidAppContextOrNull()
         ?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    /** The access and refresh tokens, sealed by the Android Keystore; an older clear-text token is sealed on first read. */
+    @Volatile private var cachedSecrets: SealingKvStore? = null
+
+    private fun secrets(): SealingKvStore? {
+        cachedSecrets?.let { return it }
+        val prefs = prefs() ?: return null
+        return synchronized(this) {
+            cachedSecrets ?: SealingKvStore(
+                SharedPreferencesKvStore(prefs),
+                AndroidSettingsSecrets.sealer(),
+                setOf(KEY_ACCESS, KEY_REFRESH)
+            ).also { cachedSecrets = it }
+        }
+    }
 
     private fun enc(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 

@@ -9,4 +9,7 @@ expect object BootLaunchPreference {
 
     /** Sync mirror from persisted settings at app launch. */
     fun syncFromSettings()
+
+    /** True on Windows and Linux, where the choice is stored as `desktopAutostart` and written to the OS sign-in list. */
+    fun usesDesktopAutostart(): Boolean
 }

@@ -17,9 +17,6 @@ interface PendingTransferDao {
     @Query("SELECT * FROM pending_transfers ORDER BY createdAtEpochMs ASC")
     fun observeAll(): Flow<List<PendingTransferEntity>>
 
-    @Query("SELECT COUNT(*) FROM pending_transfers WHERE status = :status")
-    fun observeCountByStatus(status: String): Flow<Int>
-
     @Query("SELECT * FROM pending_transfers WHERE createdAtEpochMs < :cutoffEpochMs")
     suspend fun listCreatedBefore(cutoffEpochMs: Long): List<PendingTransferEntity>
 

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -32,14 +31,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.share.IncomingSharePayload
-import androidx.compose.ui.graphics.Brush
 import com.fileapex.data.settings.backgroundBrush
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.ui.theme.JadedSteelWash
 import com.fileapex.ui.theme.simpleSteelBackground
-import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.ProvideJadedHaze
 import com.fileapex.ui.theme.rememberJadedHazeState
 
@@ -55,7 +52,6 @@ import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerSplitSession
-import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.presentation.ExplorerViewModel
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.session.DeviceSessionManager
@@ -287,7 +283,7 @@ fun App(
     val kineticSpherePersistentWallpaperOn by FileApexServices.settings.kineticSpherePersistentWallpaperEnabled.collectAsState()
     val isKineticSphere = appTheme.traits.orbitalHome
     val isCustomGlass = appTheme.traits.glassChrome
-    val appLocale by AppI18n.localeFlowState
+    val appLocale by AppI18n.localeFlow.collectAsState()
     var showLanguagePrompt by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         applyStoredAppLanguage()
@@ -859,6 +855,41 @@ fun App(
     val optInPromptShown by FileApexServices.settings.clipboardOptInPromptShown.collectAsState()
     val clipboardSharingEnabled by FileApexServices.settings.clipboardSharingEnabled.collectAsState()
 
+    // Pairing needs both users: the host accepts a joiner, and the joiner confirms the same code before sending anything.
+    val pairingBoard = com.fileapex.domain.pairing.PairingConfirmations.board
+    val pendingJoin by pairingBoard.pendingJoin.collectAsState()
+    pendingJoin?.let { join ->
+        com.fileapex.ui.dialogs.PairingCheckDialog(
+            title = stringRes("pairing_host_title", join.deviceName),
+            body = stringRes("pairing_host_body", join.deviceName),
+            code = join.checkCode,
+            extra = when (val hint = join.hint) {
+                is com.fileapex.domain.pairing.PairingHint.SameHardware ->
+                    stringRes("pairing_hint_same_hardware", hint.names.joinToString())
+                com.fileapex.domain.pairing.PairingHint.RemovedBefore -> stringRes("pairing_hint_removed_before")
+                is com.fileapex.domain.pairing.PairingHint.SameNameDifferentHardware ->
+                    stringRes("pairing_hint_name_clash", hint.name)
+                com.fileapex.domain.pairing.PairingHint.None -> null
+            },
+            confirmLabel = stringRes("pairing_host_accept"),
+            cancelLabel = stringRes("pairing_host_decline"),
+            onConfirm = { pairingBoard.decideHost(true) },
+            onCancel = { pairingBoard.decideHost(false) }
+        )
+    }
+    val joinerCheck by pairingBoard.joinerCheck.collectAsState()
+    joinerCheck?.let { check ->
+        com.fileapex.ui.dialogs.PairingCheckDialog(
+            title = stringRes("pairing_check_title"),
+            body = stringRes("pairing_check_body", check.hostName),
+            code = check.checkCode,
+            confirmLabel = stringRes("pairing_check_match"),
+            cancelLabel = stringRes("pairing_check_cancel"),
+            onConfirm = { pairingBoard.decideJoiner(true) },
+            onCancel = { pairingBoard.decideJoiner(false) }
+        )
+    }
+
     val tlsPrompts by com.fileapex.security.tls.PeerTlsStatus.prompts.collectAsState()
     tlsPrompts.firstOrNull()?.let { tlsPrompt ->
         val tlsScope = rememberCoroutineScope()
@@ -986,7 +1017,6 @@ private fun CompactHomeContent(
     CompactPrimaryShell(
         selectedTab = selectedTab,
         onMainHomeScreen = onMainHomeScreen,
-        showExitPower = selectedTab == HomeTab.Devices,
         onDevices = onNavigateHome,
         onFiles = onOpenLocalFiles,
         onSettings = onOpenSettings,

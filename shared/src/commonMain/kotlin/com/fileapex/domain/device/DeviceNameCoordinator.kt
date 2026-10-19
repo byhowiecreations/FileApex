@@ -27,7 +27,7 @@ object DeviceNameCoordinator {
         cancellableCatching {
             GoogleLinkCoordinator.publishUserRenamedDevice(LocalIdentity.LOCAL_DEVICE_ID, trimmed)
         }
-        FileApexServices.pairingCoordinator.broadcastSelfIdentity()
+        FileApexServices.pairingCoordinator.broadcastSelfIdentity(FileApexServices.presenceMonitor.onlineDeviceIds.value)
     }
 
     suspend fun applyRemoteRename(
@@ -50,7 +50,7 @@ object DeviceNameCoordinator {
         cancellableCatching {
             GoogleLinkCoordinator.publishUserRenamedDevice(LocalIdentity.LOCAL_DEVICE_ID, trimmed)
         }
-        FileApexServices.pairingCoordinator.broadcastSelfIdentity()
+        FileApexServices.pairingCoordinator.broadcastSelfIdentity(FileApexServices.presenceMonitor.onlineDeviceIds.value)
     }
 
     suspend fun renamePeerDevice(deviceId: String, newName: String) {

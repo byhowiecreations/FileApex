@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.unit.dp
 import com.fileapex.ui.adaptive.JadedRaisedTile
-import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.isFileApexJadedSteel
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.di.FileApexServices

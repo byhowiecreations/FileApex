@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.LocalThemeIconStyle
-import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.ui.theme.JadedSteelWash
 import com.fileapex.ui.theme.KineticStyleLook
 import androidx.compose.ui.layout.ContentScale
@@ -50,7 +49,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -75,10 +73,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -102,18 +98,6 @@ private data class EllipticalOrbitConfig(
     val scaleY: Float
 )
 
-/**
- * Kinetic Sphere Theme (`AppTheme.KINETIC_SPHERE`) - Spatial Node-Based Orbital Network.
- * Dynamic data-driven layout supporting N paired devices placed on static 3D elliptical orbits.
- * Selected devices enlarge smoothly to indicate selection without shifting position on screen.
- * Tapping a device opens Option 1: Floating Glass Action Capsule on top Z-index layer with 100% opaque coverage.
- */
-/**
- * Set to true for smooth 'ellipses connected' orbital curves matching design mockup.
- * Set to false to revert to straight 'connected device lines' (spokes).
- */
-const val USE_ELLIPSES_CONNECTED = false
-
 @Composable
 fun KineticSphereWallpaperBackground(
     modifier: Modifier = Modifier
@@ -132,8 +116,6 @@ fun KineticSphereWallpaperBackground(
 @Composable
 fun KineticSphereDevicesView(
     deviceRows: List<DeviceListRow>,
-    connectingDeviceId: String?,
-    selectedDeviceId: String?,
     onOpenDevice: (String) -> Unit,
     onRenameDevice: (deviceId: String, deviceName: String) -> Unit,
     onDeviceDetails: (deviceId: String) -> Unit,

@@ -9,12 +9,13 @@ actual fun sendWakeBroadcast() {
         sendWakeBroadcastOnPrimaryInterface()
         return
     }
-    val payload = WakeProtocol.PAYLOAD.toByteArray(Charsets.UTF_8)
+    val payloads = WakeHelloOutbox.payloads()
     DatagramSocket().use { socket ->
         socket.broadcast = true
         val address = InetAddress.getByName(WakeProtocol.BROADCAST_ADDRESS)
-        val packet = DatagramPacket(payload, payload.size, address, WakeProtocol.PORT)
-        socket.send(packet)
+        for (payload in payloads) {
+            socket.send(DatagramPacket(payload, payload.size, address, WakeProtocol.PORT))
+        }
     }
 }
 

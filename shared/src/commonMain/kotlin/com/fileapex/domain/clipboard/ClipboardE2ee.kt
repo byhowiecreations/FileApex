@@ -16,4 +16,11 @@ expect object ClipboardE2ee {
         peerDeviceId: String,
         peerPublicKeyBase64: String
     ): ByteArray
+
+    fun authenticate(
+        data: ByteArray,
+        localDeviceId: String,
+        peerDeviceId: String,
+        peerPublicKeyBase64: String
+    ): ByteArray
 }

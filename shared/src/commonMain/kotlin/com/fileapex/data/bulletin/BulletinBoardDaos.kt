@@ -23,14 +23,14 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(message: MessageEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertAll(messages: List<MessageEntity>)
+    @Query("UPDATE messages SET isPinned = :pinned, updatedAt = :nowMs WHERE id = :id")
+    suspend fun setPinned(id: String, pinned: Boolean, nowMs: Long)
 
-    @Query("UPDATE messages SET isDeleted = 1 WHERE id = :id AND isPinned = 0")
-    suspend fun markDeleted(id: String)
+    @Query("SELECT * FROM messages WHERE isDeleted = 0 AND updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getChangedSince(since: Long): List<MessageEntity>
 
-    @Query("UPDATE messages SET isPinned = :pinned WHERE id = :id")
-    suspend fun setPinned(id: String, pinned: Boolean)
+    @Query("SELECT COALESCE(MAX(updatedAt), 0) FROM messages")
+    suspend fun latestChange(): Long
 
     @Query(
         "DELETE FROM messages WHERE isPinned = 0 AND timestamp < :cutoff AND isDeleted = 0"
@@ -58,14 +58,18 @@ interface TombstoneDao {
     @Query("SELECT * FROM tombstones WHERE deletedAt > :cutoff ORDER BY deletedAt ASC")
     suspend fun getRecentOnce(cutoff: Long): List<TombstoneEntity>
 
+    @Query("SELECT * FROM tombstones WHERE updatedAt > :since ORDER BY updatedAt ASC")
+    suspend fun getChangedSince(since: Long): List<TombstoneEntity>
+
+    @Query("SELECT COALESCE(MAX(updatedAt), 0) FROM tombstones")
+    suspend fun latestChange(): Long
+
     @Query("DELETE FROM tombstones")
     suspend fun deleteAllTombstones()
 }
 
 @Dao
 interface OutboxDao {
-    @Query("SELECT * FROM outbox ORDER BY createdAt ASC")
-    suspend fun getAllOnce(): List<OutboxEntity>
 
     @Query("SELECT COUNT(*) FROM outbox")
     suspend fun count(): Int
@@ -80,9 +84,6 @@ interface OutboxDao {
 
     @Query("DELETE FROM outbox WHERE outboxId = :outboxId")
     suspend fun deleteById(outboxId: Long)
-
-    @Query("DELETE FROM outbox WHERE payloadId = :payloadId AND targetDeviceId = :targetDeviceId")
-    suspend fun deleteByPayload(targetDeviceId: String, payloadId: String)
 
     @Query("DELETE FROM outbox WHERE createdAt < :cutoff")
     suspend fun deleteOlderThan(cutoff: Long): Int
@@ -117,6 +118,9 @@ abstract class BulletinBoardTransactionDao {
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     protected abstract suspend fun getMessageById(id: String): MessageEntity?
 
+    @Query("SELECT * FROM tombstones WHERE id = :id LIMIT 1")
+    protected abstract suspend fun getTombstoneById(id: String): TombstoneEntity?
+
     @Query("UPDATE messages SET isDeleted = 1 WHERE id = :id AND isPinned = 0")
     protected abstract suspend fun markMessageDeleted(id: String)
 
@@ -133,7 +137,7 @@ abstract class BulletinBoardTransactionDao {
     open suspend fun applyTombstone(tombstone: TombstoneEntity) {
         val existing = getMessageById(tombstone.id)
         if (existing != null && existing.isPinned) return
-        insertTombstone(tombstone)
+        BulletinChange.tombstoneToStore(getTombstoneById(tombstone.id), tombstone, BulletinStampClock.next())?.let { insertTombstone(it) }
         markMessageDeleted(tombstone.id)
     }
 
@@ -143,11 +147,13 @@ abstract class BulletinBoardTransactionDao {
         tombstones: List<TombstoneEntity>,
         packet: ProcessedPacketEntity
     ) {
-        for (message in messages) upsertMessage(message)
+        for (message in messages) {
+            BulletinChange.messageToStore(getMessageById(message.id), message, BulletinStampClock.next())?.let { upsertMessage(it) }
+        }
         for (tombstone in tombstones) {
             val existing = getMessageById(tombstone.id)
             if (existing != null && existing.isPinned) continue
-            insertTombstone(tombstone)
+            BulletinChange.tombstoneToStore(getTombstoneById(tombstone.id), tombstone, BulletinStampClock.next())?.let { insertTombstone(it) }
             markMessageDeleted(tombstone.id)
         }
         insertProcessedPacket(packet)
@@ -170,6 +176,6 @@ abstract class BulletinBoardTransactionDao {
 
     @Transaction
     open suspend fun migrateLegacyMessages(messages: List<MessageEntity>) {
-        for (message in messages) upsertMessage(message)
+        for (message in messages) upsertMessage(message.copy(updatedAt = BulletinStampClock.next()))
     }
 }

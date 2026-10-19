@@ -16,7 +16,7 @@ actual class BulletinBoardRoomDbBuilder {
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(BULLETIN_MIGRATION_1_2)
+            .addMigrations(BULLETIN_MIGRATION_1_2, BULLETIN_MIGRATION_2_3)
     }
 }
 

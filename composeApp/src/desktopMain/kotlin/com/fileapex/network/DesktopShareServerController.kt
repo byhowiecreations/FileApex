@@ -71,6 +71,7 @@ object DesktopShareServerController {
                 PresenceBackgroundWake.onRemoteWakeSignal(sourceDeviceId = null)
                 PresenceForegroundRefresh.onAppForegrounded()
             },
+            onSignedWake = { bytes, host -> WakeHelloReceiver.handle(bytes, host) },
             onLog = { message -> println("DesktopShareServer: $message") }
         ).also { it.start() }
     }

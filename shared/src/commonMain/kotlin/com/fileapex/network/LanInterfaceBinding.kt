@@ -17,12 +17,13 @@ object LanInterfaceBinding {
 
     fun shareServerListenHost(): String = "0.0.0.0"
 
-    fun shareServerBindHost(): String = primaryLanIpv4OrNull() ?: shareServerListenHost()
 }
 
 data class PeerBoundHttpResponse(
     val statusCode: Int,
-    val body: String
+    val body: String,
+    /** Lower-case header names; empty where the platform does not read them. */
+    val headers: Map<String, String> = emptyMap()
 )
 
 data class PeerBoundStreamResult(

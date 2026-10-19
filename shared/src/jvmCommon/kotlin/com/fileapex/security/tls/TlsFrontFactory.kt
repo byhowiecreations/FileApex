@@ -1,7 +1,6 @@
 package com.fileapex.security.tls
 
 import com.fileapex.di.FileApexServices
-import com.fileapex.network.LanInterfaceBinding
 import com.fileapex.data.device.DeviceRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -10,7 +9,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
-import java.net.InetAddress
 import java.net.ServerSocket
 
 /** Builds the TLS front for the platform's identity store. */

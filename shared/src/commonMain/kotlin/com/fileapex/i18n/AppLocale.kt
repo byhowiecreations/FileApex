@@ -3,13 +3,11 @@ package com.fileapex.i18n
 enum class AppLocale(
     val tag: String,
     val language: String,
-    val region: String?,
-    val englishName: String,
     val nativeName: String
 ) {
-    EN("en", "en", null, "English", "English"),
-    ES("es", "es", null, "Spanish", "Español"),
-    ZH_HANS("zh-Hans", "zh", "CN", "Simplified Chinese", "简体中文");
+    EN("en", "en", "English"),
+    ES("es", "es", "Español"),
+    ZH_HANS("zh-Hans", "zh", "简体中文");
 
     companion object {
         fun fromStorage(raw: String): AppLocale? {

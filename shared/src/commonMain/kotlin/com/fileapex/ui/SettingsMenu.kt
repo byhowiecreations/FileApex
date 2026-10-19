@@ -3,12 +3,14 @@ package com.fileapex.ui
 enum class SettingsMenuSection {
     General,
     SystemPerformance,
+    RemoteAccess,
     Appearance,
     Security;
 
     fun titleKey(): String = when (this) {
         General -> "settings_general"
         SystemPerformance -> "system_app_performance"
+        RemoteAccess -> "remote_access"
         Appearance -> "appearance_behavior"
         Security -> "security_account"
     }
@@ -22,6 +24,8 @@ object SettingsMenuIds {
     const val BACKGROUND_PERSISTENCE = "background_persistence"
     const val AUTO_LAUNCH = "auto_launch"
     const val TAILSCALE = "tailscale"
+    const val IROH = "iroh"
+    const val DRIVE_RELAY = "drive_relay"
     const val THEMES = "themes"
     const val BULLETIN_BOARD = "bulletin_board"
     const val BACKUP_SYNC = "backup_sync"
@@ -47,7 +51,10 @@ fun settingsMenuEntries(
     windowsFluent: Boolean,
     backupSync: Boolean = false,
     googleCloud: Boolean = true,
-    tailscale: Boolean = true
+    tailscale: Boolean = true,
+    iroh: Boolean = false,
+    /** Windows and Linux can start the app at sign-in; the desktop menu otherwise hides the row. */
+    autoLaunchOnDesktop: Boolean = false
 ): List<SettingsMenuEntry> {
     val entries = mutableListOf<SettingsMenuEntry>()
     fun add(section: SettingsMenuSection, id: String) {
@@ -61,8 +68,11 @@ fun settingsMenuEntries(
     add(SettingsMenuSection.General, SettingsMenuIds.REPORT_ISSUE)
 
     add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.BACKGROUND_PERSISTENCE)
-    if (!desktopFileSelection) add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.AUTO_LAUNCH)
-    if (tailscale) add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.TAILSCALE)
+    if (!desktopFileSelection || autoLaunchOnDesktop) add(SettingsMenuSection.SystemPerformance, SettingsMenuIds.AUTO_LAUNCH)
+
+    if (tailscale) add(SettingsMenuSection.RemoteAccess, SettingsMenuIds.TAILSCALE)
+    if (iroh) add(SettingsMenuSection.RemoteAccess, SettingsMenuIds.IROH)
+    if (googleCloud) add(SettingsMenuSection.RemoteAccess, SettingsMenuIds.DRIVE_RELAY)
 
     add(SettingsMenuSection.Appearance, SettingsMenuIds.THEMES)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.BULLETIN_BOARD)

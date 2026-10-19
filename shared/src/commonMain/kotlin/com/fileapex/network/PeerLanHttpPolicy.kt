@@ -1,5 +1,6 @@
 package com.fileapex.network
 
+import com.fileapex.iroh.isIrohRoute
 import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.tailscale.TailscaleNodeRuntime
 import com.fileapex.tailscale.usesUserspaceDial
@@ -11,7 +12,7 @@ import com.fileapex.util.NetworkUtils
 object PeerLanHttpPolicy {
     /** Non-throwing check used by background probes (presence sweep, health ping). */
     fun canRoute(host: String): Boolean {
-        if (isTailnetRoute(host)) return true
+        if (isTailnetRoute(host) || isIrohRoute(host)) return true
         if (!NetworkUtils.isPrivateLanPeerHost(host)) return false
         if (!isActiveLanConnectivity()) return false
         if (LanInterfaceBinding.lanBindCandidates().isEmpty()) return false
@@ -19,7 +20,7 @@ object PeerLanHttpPolicy {
     }
 
     fun ensureRoute(host: String) {
-        if (isTailnetRoute(host)) return
+        if (isTailnetRoute(host) || isIrohRoute(host)) return
         require(NetworkUtils.isPrivateLanPeerHost(host)) {
             "Peer host must be a private LAN address: $host"
         }

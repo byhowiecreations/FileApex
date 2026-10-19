@@ -9,6 +9,7 @@ import com.fileapex.cloud.diagnostics.DiagnosticsRelayErrors
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
+import com.fileapex.domain.presence.RouteUse
 import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.domain.peer.PeerPlatform
@@ -21,12 +22,9 @@ import com.fileapex.domain.pairing.LanPairingDiscovery
 import com.fileapex.domain.pairing.PairingBeacon
 import com.fileapex.domain.pairing.PairingPayload
 import com.fileapex.domain.presence.LanPresenceTiming
-import com.fileapex.domain.presence.PeerLanReachabilityVerdict
-import com.fileapex.domain.presence.isTailscaleEnabled
 import com.fileapex.network.PeerReachabilityMessages
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.platform.PlatformClipboard
-import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.platform.purgeDirectShareTarget
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
@@ -435,17 +433,17 @@ class DevicesViewModel : ViewModel() {
     }
 
     private suspend fun performDeviceConnectHandshake(device: PairedDeviceEntity): DeviceConnectOutcome {
-        if (!isTailscaleEnabled() && !isActiveLanConnectivity()) {
+        if (!presence.canAttemptRoutes()) {
             return DeviceConnectOutcome.Unreachable(
                 detail = PeerReachabilityMessages.localWifiRequired(),
                 quickFail = true
             )
         }
         val peer = repository.getDevice(device.deviceId) ?: device
-        val initialEndpoint = presence.resolveOutboundEndpoint(peer)
+        val initialEndpoint = presence.probeNow(peer)
             ?: run {
                 presence.validatePeerOnDemand(peer)
-                presence.resolveOutboundEndpoint(repository.getDevice(device.deviceId) ?: peer)
+                presence.probeNow(repository.getDevice(device.deviceId) ?: peer)
             }
             ?: return DeviceConnectOutcome.Unreachable(
                 detail = PeerReachabilityMessages.peerOffline()
@@ -475,9 +473,10 @@ class DevicesViewModel : ViewModel() {
             )
         }.getOrNull()
         if (remote == null) {
+            presence.reportRouteFailure(peer, endpoint.host)
             presence.validatePeerOnDemand(peer)
             refreshed = repository.getDevice(device.deviceId) ?: peer
-            endpoint = presence.resolveOutboundEndpoint(refreshed)
+            endpoint = presence.probeNow(refreshed)
                 ?: return DeviceConnectOutcome.Unreachable(
                     detail = PeerReachabilityMessages.peerOffline()
                 )
@@ -557,28 +556,6 @@ class DevicesViewModel : ViewModel() {
         LanPairingDiscovery.stopDiscovery()
     }
 
-    fun pairFromManualInput(input: String) {
-        viewModelScope.launch {
-            val trimmed = input.trim()
-            if (trimmed.isBlank()) {
-                _uiState.update { it.copy(errorMessage = AppI18n.t("enter_pairing_code")) }
-                return@launch
-            }
-
-            val matched = LanPairingDiscovery.matchInput(trimmed)
-            if (matched != null) {
-                pairFromQrPayload(matched)
-                return@launch
-            }
-
-            _uiState.update {
-                it.copy(
-                    errorMessage = AppI18n.t("no_nearby_broadcast")
-                )
-            }
-        }
-    }
-
     fun cancelPinPairing() {
         _uiState.update { it.copy(pendingPinPairing = null) }
     }
@@ -608,7 +585,7 @@ class DevicesViewModel : ViewModel() {
         viewModelScope.launch {
             cancellableCatching {
                 require(pin.isNotBlank()) { AppI18n.t("pin_required_error") }
-                val endpoint = presence.resolveOutboundEndpoint(pending.device)
+                val endpoint = presence.probeNow(pending.device)
                 val host = endpoint?.host ?: pending.device.lastKnownIp
                 val port = endpoint?.port ?: pending.device.port
                 FileApexServices.client.verifyPin(
@@ -640,6 +617,20 @@ class DevicesViewModel : ViewModel() {
         val broadcasterName = verified?.deviceName ?: payload.deviceName
         val broadcasterRoot = verified?.rootPath ?: payload.rootPath
 
+        // Both users confirm: this screen shows the check code and waits for the user to say it matches the other
+        // device's screen. Nothing is stored or sent before that, and the other device asks its own user afterwards.
+        val hostPin = payload.tlsPin.ifBlank { verified?.tlsPin.orEmpty() }
+        val hostPort = if (payload.tlsPort > 0) payload.tlsPort else verified?.tlsPort ?: 0
+        val checkCode = com.fileapex.domain.pairing.PairingCheckCode.derive(
+            hostKey = com.fileapex.domain.pairing.PairingCheckCode.key(hostPin, broadcasterId),
+            joinerKey = com.fileapex.domain.pairing.PairingCheckCode.key(com.fileapex.security.tls.LocalTlsInfo.pin, identity.deviceId),
+            pairingCode = payload.pairingCode
+        )
+        val codeMatches = com.fileapex.domain.pairing.PairingConfirmations.board.askJoiner(
+            com.fileapex.domain.pairing.JoinerCheck(hostName = broadcasterName, checkCode = checkCode)
+        )
+        if (!codeMatches) error(AppI18n.t("pairing_cancelled"))
+
         val broadcasterEntity = PairedDeviceEntity(
             deviceId = broadcasterId,
             deviceName = broadcasterName,
@@ -649,18 +640,9 @@ class DevicesViewModel : ViewModel() {
             rootPath = broadcasterRoot
         )
         repository.adoptFromPairing(broadcasterEntity)
-        if (payload.tlsPinTrusted) {
-            repository.recordTlsPin(broadcasterId, payload.tlsPin, payload.tlsPort)
-        } else if (payload.tlsPin.isNotEmpty() && payload.tlsPort > 0) {
-            // Manual code: the pin came over multicast, so the user checks it against the other screen.
-            com.fileapex.security.tls.PeerTlsStatus.requestConfirmation(
-                com.fileapex.security.tls.TlsPinPrompt(
-                    broadcasterId,
-                    com.fileapex.security.tls.TlsPromptKind.NEW_PEER_KEY,
-                    payload.tlsPin,
-                    payload.tlsPort
-                )
-            )
+        // The check code covered this key, so the user has verified it against the other screen.
+        if (hostPin.isNotEmpty() && hostPort > 0) {
+            repository.recordTlsPin(broadcasterId, hostPin, hostPort)
         }
         verified?.let { state ->
             repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
@@ -678,16 +660,25 @@ class DevicesViewModel : ViewModel() {
             publicKeyHash = "",
             rootPath = identity.rootPath,
             tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
-            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port
+            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port,
+            // Only the host sees this, after this user confirmed the code: it lets the host say "same hardware as X".
+            hardwareHash = com.fileapex.platform.HardwareId.local
         )
         FileApexServices.pairingCoordinator.awaitShareServerReady()
-        FileApexServices.client.postPairingRespond(
-            host = payload.host,
-            port = payload.port,
-            scannerDevice = scannerEntity,
-            pin = pin,
-            pairingCode = payload.pairingCode
-        )
+        _uiState.update { it.copy(statusMessage = AppI18n.t("pairing_waiting_host", broadcasterName)) }
+        try {
+            FileApexServices.client.postPairingRespond(
+                host = payload.host,
+                port = payload.port,
+                scannerDevice = scannerEntity,
+                pin = pin,
+                pairingCode = payload.pairingCode
+            )
+        } catch (error: Throwable) {
+            // The other user declined, or the request failed: do not keep a device that never accepted us.
+            if (broadcasterId !in preexistingIds) repository.discardUnconfirmedPairing(broadcasterId)
+            throw error
+        }
         if (!pin.isNullOrBlank()) {
             FileApexServices.client.rememberSessionPin(payload.host, payload.port, pin)
             DeviceSessionManager.markDeviceAccessed(broadcasterId)
@@ -990,31 +981,17 @@ class DevicesViewModel : ViewModel() {
                 )
             } else {
                 val dev = targetDevice!!
-                val effectiveRoot = if (dev.platform.trim().equals("android", ignoreCase = true) && (dev.rootPath.isBlank() || dev.rootPath == "/")) {
-                    "/storage/emulated/0"
-                } else {
-                    dev.rootPath
-                }
-                val resolvedRoot = com.fileapex.platform.DownloadsPaths.resolveReceiveRoot(
-                    downloadsPath = "",
-                    rootPath = effectiveRoot,
-                    platform = dev.platform
-                )
                 MultiCopyDeviceOption(
                     deviceId = dev.deviceId,
                     deviceName = dev.deviceName,
                     isLocal = false,
                     host = dev.lastKnownIp,
                     port = dev.port,
-                    destinationRoot = resolvedRoot
+                    destinationRoot = com.fileapex.network.InboxTarget.ROOT
                 )
             }
 
-            val sourceEndpoint = if (isTailscaleEnabled()) {
-                presence.resolveOutboundEndpoint(sourceDevice)
-            } else {
-                null
-            }
+            val sourceEndpoint = presence.probeNow(sourceDevice, RouteUse.Bulk)
             val source = MultiCopySource.Remote(
                 fileName = fileName,
                 sizeBytes = fileSize,
@@ -1046,12 +1023,6 @@ class DevicesViewModel : ViewModel() {
                     }
                 )
             }
-        }
-    }
-
-    fun refreshEndpoint(deviceId: String, host: String, port: Int) {
-        viewModelScope.launch {
-            repository.updateEndpoint(deviceId, host, port)
         }
     }
 
@@ -1165,7 +1136,7 @@ class DevicesViewModel : ViewModel() {
     }
 
     private suspend fun fetchDeviceDetailsSnapshot(device: PairedDeviceEntity, summaryOnly: Boolean): PeerDeviceDiagnostics {
-        presence.resolveOutboundEndpoint(device)?.let { direct ->
+        presence.probeNow(device)?.let { direct ->
             cancellableCatching {
                 FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port, summaryOnly)
             }.onSuccess { return it }
@@ -1186,7 +1157,7 @@ class DevicesViewModel : ViewModel() {
     }
 
     private suspend fun fetchDeviceBattery(device: PairedDeviceEntity): BatteryDiagnostics? {
-        presence.resolveOutboundEndpoint(device)?.let { direct ->
+        presence.probeNow(device)?.let { direct ->
             val directResult = cancellableCatching {
                 FileApexServices.client.fetchFastBattery(direct.host, direct.port)
             }.getOrNull()

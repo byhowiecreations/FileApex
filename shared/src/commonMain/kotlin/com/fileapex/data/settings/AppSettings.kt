@@ -6,6 +6,10 @@ import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import kotlinx.coroutines.flow.StateFlow
 
 interface AppSettings {
+    /** How far this device has pulled the bulletin from [deviceId], on that peer's clock; 0 when never. */
+    fun bulletinDeltaCursor(deviceId: String): Long
+    fun setBulletinDeltaCursor(deviceId: String, cursor: Long)
+
     val googleAccountLinkEnabled: StateFlow<Boolean>
     val googleAccountEmail: StateFlow<String>
     /** Firestore path users/{uid}/devices. Empty when unlinked. */
@@ -43,11 +47,17 @@ interface AppSettings {
     /** AlarmManager may restart the Android share-server FGS after OEM kills. */
     val enableServiceWatchdog: StateFlow<Boolean>
     val autoLaunchOnReboot: StateFlow<Boolean>
+
+    /** Windows and Linux: start FileApex (minimized) when the user signs in. Off until the user turns it on. */
+    val desktopAutostart: StateFlow<Boolean>
+    fun setDesktopAutostart(enabled: Boolean)
     val deviceOrderIds: StateFlow<String>
     val deviceOrderUpdatedAtEpochMs: StateFlow<Long>
     /** [com.fileapex.domain.peer.ClusterClock] stamp of this device's latest pairing; 0 until it pairs on 0.14.3a+. */
     val clusterMembershipVersion: StateFlow<Long>
     val membershipProtocolSinceEpochMs: StateFlow<Long>
+    /** Pending LAN subnet scan waits, so a restart does not scan every peer again. Empty when none. */
+    var lanScanBackoffState: String
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
     val desktopSplitFraction: StateFlow<Float>
     val explorerSplitFraction: StateFlow<Float>
@@ -112,8 +122,20 @@ interface AppSettings {
     val settingsGroupSystemPerformanceExpanded: StateFlow<Boolean>
     val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean>
     val settingsGroupSecurityAccountExpanded: StateFlow<Boolean>
+    val settingsGroupRemoteAccessExpanded: StateFlow<Boolean>
     val tailscaleSetupExpanded: StateFlow<Boolean>
     val tailscaleEnabled: StateFlow<Boolean>
+    val irohEnabled: StateFlow<Boolean>
+
+    /** Self-hosted relay: on only after a valid https host name was saved. */
+    val irohRelayEnabled: StateFlow<Boolean>
+    val irohRelayUrl: StateFlow<String>
+
+    /** Shows the Iroh log and per-device technical details on the Iroh page. */
+    val irohAdvancedDebug: StateFlow<Boolean>
+
+    /** Off by default: with it on, the Iroh endpoint may close while every paired device is reachable another way. */
+    val irohRestWhenIdle: StateFlow<Boolean>
     val tailscaleAuthKey: StateFlow<String>
     val tailscaleAuthKeyFingerprint: StateFlow<String>
 
@@ -160,8 +182,29 @@ interface AppSettings {
     fun setSettingsGroupSystemPerformanceExpanded(expanded: Boolean)
     fun setSettingsGroupAppearanceBehaviorExpanded(expanded: Boolean)
     fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean)
+    fun setSettingsGroupRemoteAccessExpanded(expanded: Boolean)
     fun setTailscaleSetupExpanded(expanded: Boolean)
     fun setTailscaleEnabled(enabled: Boolean)
+    fun setIrohEnabled(enabled: Boolean)
+    fun setIrohAdvancedDebug(enabled: Boolean)
+    fun setIrohRestWhenIdle(enabled: Boolean)
+
+    /** Access token for the self-hosted relay, empty when it has none. */
+    fun irohRelayToken(): String
+
+    /**
+     * Saves the relay. A blank or invalid [url] saves nothing and turns the relay off; returns whether it is on.
+     * Turning it off keeps the saved address and token for next time.
+     */
+    fun saveIrohRelay(enabled: Boolean, url: String, token: String): Boolean
+
+    /** Base64 of the 32-byte Iroh secret key, or empty before the first start. */
+    fun irohSecretKeyBase64(): String
+    fun setIrohSecretKeyBase64(value: String)
+
+    /** JSON from [com.fileapex.iroh.IrohPeerBook]. */
+    fun irohPeersJson(): String
+    fun setIrohPeersJson(value: String)
     fun setTailscaleAuthKey(authKey: String)
     fun setTailscaleAuthKeyFingerprint(fingerprint: String)
 

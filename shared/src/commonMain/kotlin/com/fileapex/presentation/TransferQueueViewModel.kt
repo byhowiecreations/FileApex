@@ -3,7 +3,6 @@ package com.fileapex.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.di.FileApexServices
-import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,7 +64,4 @@ class TransferQueueViewModel : ViewModel() {
         }
     }
 
-    fun clearMessages() {
-        _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
-    }
 }

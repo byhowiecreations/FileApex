@@ -124,8 +124,6 @@ import com.fileapex.domain.notifications.NotificationSyncFeature
 import com.fileapex.domain.notifications.NotificationSyncStatus
 import com.fileapex.domain.notifications.PhoneSettingsPage
 import com.fileapex.domain.peer.PeerPlatform
-import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.util.cancellableCatching
 import com.fileapex.i18n.formatLocalizedDateTime
 import com.fileapex.domain.device.PhoneLocator
@@ -296,7 +294,6 @@ fun SimpleHome(
     // Registered before SettingsScreen's own handler, so sub-pages still step back first.
     FileApexBackHandler(enabled = destination == SimpleDestination.Settings) { goTo(SimpleDestination.Home) }
     val sendClipboard: () -> Unit = devicesViewModel::sendClipboardNow
-    val make = active?.let { makeLabel(it) }
 
     val onRefreshExplorer = if (explorerVisible) explorerRefresh else null
     val topBar: @Composable () -> Unit = {
@@ -443,7 +440,6 @@ fun SimpleHome(
                     Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         SimpleRail(
                             destination = destination,
-                            make = make,
                             popover = popover,
                             onSelect = goTo,
                             onSendClipboard = sendClipboard,
@@ -457,7 +453,6 @@ fun SimpleHome(
                     Box(modifier = Modifier.weight(1f).fillMaxWidth().fadeBottomEdge()) { content() }
                     SimpleCompactBottom(
                         destination = destination,
-                        make = make,
                         popoverOpen = popover == SimplePopover.DeviceManagement,
                         onSelect = goTo,
                         onSendClipboard = sendClipboard,
@@ -648,8 +643,6 @@ private fun SimpleDropBox(
     }
 }
 
-private fun makeLabel(row: DeviceListRow): String = titleCase(row.deviceMake.trim().ifBlank { row.deviceName.trim() })
-
 private fun titleCase(text: String): String =
     text.split(' ').joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
 
@@ -787,7 +780,6 @@ private fun SimpleTopBar(
 @Composable
 private fun SimpleRail(
     destination: SimpleDestination,
-    make: String?,
     popover: SimplePopover?,
     onSelect: (SimpleDestination) -> Unit,
     onSendClipboard: () -> Unit,
@@ -895,7 +887,6 @@ private val RAIL_LABEL_MIN_WIDTH = 72.dp
 @Composable
 private fun SimpleCompactBottom(
     destination: SimpleDestination,
-    make: String?,
     popoverOpen: Boolean,
     onSelect: (SimpleDestination) -> Unit,
     onSendClipboard: () -> Unit,
@@ -1172,7 +1163,7 @@ private fun SimpleClipboardRow(device: DeviceListRow) {
     LaunchedEffect(device.deviceId, device.online, promptSent) {
         if (!device.online) return@LaunchedEffect
         val entity = FileApexServices.deviceRepository.getDevice(device.deviceId) ?: return@LaunchedEffect
-        val endpoint = FileApexServices.presenceMonitor.resolveOutboundEndpoint(entity) ?: return@LaunchedEffect
+        val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(entity) ?: return@LaunchedEffect
         do {
             sharingEnabled = cancellableCatching {
                 FileApexServices.client.getClipboardStatus(endpoint.host, endpoint.port).sharingEnabled

@@ -33,7 +33,6 @@ object FcmWakeProtocol {
     object Keys {
         const val TYPE = "type"
         const val SOURCE_DEVICE_ID = "sourceDeviceId"
-        const val SESSION_ID = "sessionId"
         const val NOTE_ID = "noteId"
         const val CONTENT = "content"
         const val DRIVE_FILE_ID = "driveFileId"

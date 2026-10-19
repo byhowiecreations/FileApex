@@ -35,7 +35,6 @@ data class DeviceListRow(
     val subtitle: String get() = peerStatusSubtitle(
         online = online,
         appVersion = appVersion,
-        appVersionCode = appVersionCode,
         lastSeenEpochMs = lastSeenEpochMs
     )
 
@@ -54,7 +53,6 @@ data class DeviceListRow(
         fun peerStatusSubtitle(
             online: Boolean,
             appVersion: String?,
-            appVersionCode: Int = 0,
             lastSeenEpochMs: Long = 0L
         ): String {
             val status = if (online) AppI18n.t("ready") else AppI18n.t("tap_to_wake")
@@ -79,22 +77,6 @@ data class DeviceListRow(
         fun localizedSubtitle(row: DeviceListRow): String {
             LocalAppLocale.current
             return row.subtitle
-        }
-
-        @Composable
-        fun localizedPeerStatus(
-            online: Boolean,
-            appVersion: String?,
-            appVersionCode: Int = 0,
-            lastSeenEpochMs: Long = 0L
-        ): String {
-            LocalAppLocale.current
-            return peerStatusSubtitle(online, appVersion, appVersionCode, lastSeenEpochMs)
-        }
-
-        fun versionLabel(appVersion: String?, appVersionCode: Int = 0): String? {
-            val version = appVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-            return "v$version"
         }
     }
 }

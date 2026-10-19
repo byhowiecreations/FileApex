@@ -66,3 +66,12 @@ fun verifiedTailnetAddress(
     if (host.isBlank()) return null
     return VerifiedTailnetAddress(hostname = host, ipv4 = ip)
 }
+
+/**
+ * Whether Tailscale reports this paired device's node online. A peer list that could not be read ([observed]
+ * null) counts as online so the health check decides; a peer missing from the list, or listed offline, does not.
+ */
+fun tailnetPeerIsOnline(observed: List<TailscaleObservedPeer>?, deviceId: String, deviceName: String): Boolean {
+    if (observed == null) return true
+    return observed.any { peer -> peer.online && tailnetPeerMatchesDevice(peer, deviceId, deviceName) }
+}

@@ -45,7 +45,6 @@ data class PairingBeacon(
         /** Re-broadcast until paired or [HOST_TTL_MS] expires (host ticker stops transport). */
         const val BROADCAST_INTERVAL_MS = 250L
         const val BEACON_STALE_MS = 1_500L
-        const val MULTICAST_TTL = 1
 
         private val json = Json {
             ignoreUnknownKeys = true

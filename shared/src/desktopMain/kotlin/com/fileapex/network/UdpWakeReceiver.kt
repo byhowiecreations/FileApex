@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.Mutex
  */
 class UdpWakeReceiver(
     private val onWakeAccepted: suspend () -> Unit,
+    private val onSignedWake: (ByteArray, String) -> Unit = { _, _ -> },
     private val onLog: (String) -> Unit = {}
 ) {
     private val processMutex = Mutex()
@@ -50,7 +51,7 @@ class UdpWakeReceiver(
     }
 
     private suspend fun listenLoop() {
-        val buffer = ByteArray(256)
+        val buffer = ByteArray(WakeHello.MAX_PACKET)
         while (currentCoroutineContext().isActive) {
             val activeSocket = openSocket()
             if (activeSocket == null) {
@@ -62,7 +63,19 @@ class UdpWakeReceiver(
                     val packet = DatagramPacket(buffer, buffer.size)
                     // Pure blocking receive — yields the thread until a datagram arrives.
                     activeSocket.receive(packet)
-                    val payload = String(packet.data, 0, packet.length, Charsets.UTF_8)
+                    if (!WakeSourcePolicy.accept(packet.address?.hostAddress.orEmpty(), com.fileapex.util.NetworkUtils.lanBindCandidates())) {
+                        continue
+                    }
+                    val bytes = packet.data.copyOf(packet.length)
+                    if (WakeHello.looksSigned(bytes)) {
+                        val toUs = WakeHelloReceiver.addressedToThisDevice(bytes)
+                        if (toUs) {
+                            WakeSignalGate.noteSigned()
+                            onSignedWake(bytes, packet.address?.hostAddress.orEmpty())
+                        }
+                        continue
+                    }
+                    val payload = String(bytes, Charsets.UTF_8)
                     if (payload != WakeProtocol.PAYLOAD) continue
                     if (!WakeSignalGate.tryAccept()) continue
                     if (!processMutex.tryLock()) continue

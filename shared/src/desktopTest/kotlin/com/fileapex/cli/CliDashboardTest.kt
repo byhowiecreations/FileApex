@@ -7,11 +7,9 @@ import com.fileapex.cli.ipc.CliClusterState
 import com.fileapex.cli.ipc.CliDeviceStatus
 import com.fileapex.cli.ipc.CliIpcPacket
 import com.fileapex.cli.ipc.CliQueueItem
-import com.fileapex.cli.ipc.CliRemoteFile
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CliDashboardTest {

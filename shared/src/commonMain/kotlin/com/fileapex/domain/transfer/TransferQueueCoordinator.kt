@@ -16,12 +16,8 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.domain.peer.PeerPlatform
-import com.fileapex.domain.presence.PeerLanReachabilityVerdict
+import com.fileapex.domain.presence.RouteUse
 import com.fileapex.domain.presence.PeerPresenceMonitor
-import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.network.PeerReachabilityMessages
-import com.fileapex.platform.isActiveLanConnectivity
-import com.fileapex.util.NetworkUtils
 import com.fileapex.network.TransferCancelledException
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
@@ -69,7 +65,6 @@ data class QueueAwareSendResult(
     val queuedDeviceNames: List<String>,
     val message: String,
     val relayedDeviceNames: List<String> = emptyList(),
-    val pendingDesktopSyncNames: List<String> = emptyList(),
     val needsCellularConfirm: Boolean = false
 ) {
     val hadImmediateSend: Boolean get() = batch != null && !batch.allFailed
@@ -79,7 +74,7 @@ data class QueueAwareSendResult(
 
 /**
  * Persists deferred outbound transfers (source paths only) and drains them when peers
- * become LAN-reachable. All sends still go through [TransferManager].
+ * become reachable on any route. All sends still go through [TransferManager].
  */
 class TransferQueueCoordinator(
     private val dao: PendingTransferDao,
@@ -142,7 +137,7 @@ class TransferQueueCoordinator(
     }
 
     /**
-     * Send to LAN-reachable peers now; queue the rest until they return to local Wi‑Fi.
+     * Send to reachable peers now (LAN, Tailscale or Iroh); queue the rest until a route answers.
      */
     suspend fun sendOrQueue(
         sources: List<MultiCopySource>,
@@ -285,11 +280,12 @@ class TransferQueueCoordinator(
     }
 
     private suspend fun resolveDrainTargets(
-        pendingIds: List<String>
+        pendingIds: List<String>,
+        userStarted: Boolean
     ): List<Pair<String, MultiCopyDeviceOption>> = buildList {
         for (deviceId in pendingIds) {
             val peer = deviceRepository.getDevice(deviceId) ?: continue
-            val endpoint = resolveTransferEndpoint(peer) ?: continue
+            val endpoint = resolveTransferEndpoint(peer, userStarted) ?: continue
             deviceRepository.touchPeerLastSeen(deviceId, endpoint.first, endpoint.second)
             val option = cancellableCatching {
                 transferManager.resolveRemoteDeviceOptionsAtEndpoint(
@@ -346,8 +342,8 @@ class TransferQueueCoordinator(
         }
 
         // Off the LAN, a tailnet endpoint is still a direct path; Drive is only for peers with none.
-        val routableTargets = if (isActiveLanConnectivity() || isTailscaleEnabled()) {
-            resolveDrainTargets(pendingIds)
+        val routableTargets = if (presenceMonitor.canAttemptRoutes()) {
+            resolveDrainTargets(pendingIds, TransferQueueRoutePolicy.mayProbeOfflinePeer(entity.lastAttemptEpochMs))
         } else {
             emptyList()
         }
@@ -415,6 +411,10 @@ class TransferQueueCoordinator(
                 if (failedIds.isNotEmpty()) {
                     lastError = batch.summaryMessage
                 }
+                for ((id, option) in routableTargets) {
+                    if (id in succeeded || batch.results.none { id in it.unreachableDeviceIds }) continue
+                    deviceRepository.getDevice(id)?.let { presenceMonitor.reportRouteFailure(it, option.host) }
+                }
             }
         }
 
@@ -472,19 +472,9 @@ class TransferQueueCoordinator(
         }
     }
 
-    private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity): Pair<String, Int>? {
-        if (isTailscaleEnabled()) {
-            presenceMonitor.resolveOutboundEndpoint(peer)?.let { return it.host to it.port }
-        }
-        val host = peer.lastKnownIp.trim()
-        val port = peer.port
-        if (host.isNotEmpty() && NetworkUtils.isPrivateLanPeerHost(host) && port > 0) {
-            return host to port
-        }
-        val direct = presenceMonitor.quickAssessLanReachability(peer) as? PeerLanReachabilityVerdict.Direct
-            ?: return null
-        return direct.host to direct.port
-    }
+    private suspend fun resolveTransferEndpoint(peer: PairedDeviceEntity, userStarted: Boolean): Pair<String, Int>? =
+        (if (userStarted) presenceMonitor.probeNow(peer, RouteUse.Bulk) else presenceMonitor.endpointIfOnline(peer, RouteUse.Bulk))
+            ?.let { it.host to it.port }
 
     suspend fun enqueueSources(
         sources: List<MultiCopySource>,
@@ -611,58 +601,6 @@ class TransferQueueCoordinator(
             val peer = deviceRepository.getDevice(id) ?: return@mapNotNull null
             if (PeerPlatform.isDesktop(peer.os, peer.platform)) peer.deviceName else null
         }
-
-    private fun buildResult(
-        batch: TransferBatchResult?,
-        queuedNames: List<String>,
-        hadImmediateTargets: Boolean,
-        relayedNames: List<String> = emptyList(),
-        pendingDesktopSyncNames: List<String> = emptyList(),
-        queueReason: String? = null
-    ): QueueAwareSendResult {
-        val sentPart = batch?.summaryMessage ?: AppI18n.t("sent")
-        val relayPart = relayMessage(relayedNames, pendingDesktopSyncNames)
-        val queuedPart = when (queueReason) {
-            "drive_not_ready" ->
-                PeerReachabilityMessages.fileTransferOffWifiDriveNotReady(queuedNames)
-            "relay_too_large" ->
-                AppI18n.t(
-                    "relay_too_large_queued",
-                    DriveRelayPolicy.relayLimitLabel(),
-                    queuedNames.joinToString(", ")
-                )
-            else -> queueOnlyMessage(queuedNames)
-        }
-        val needsConfirm = queuedNames.isEmpty() && relayedNames.isEmpty() &&
-            DriveRelayCoordinator.pendingSendPrompt.value
-        val message = when {
-            needsConfirm -> AppI18n.t("confirm_cellular_send")
-            queuedNames.isEmpty() && relayedNames.isEmpty() -> sentPart
-            relayedNames.isNotEmpty() && queuedNames.isEmpty() && !hadImmediateTargets ->
-                relayPart
-            relayedNames.isNotEmpty() && queuedNames.isEmpty() ->
-                "$sentPart $relayPart"
-            !hadImmediateTargets -> queuedPart
-            else -> "$sentPart ${queuedPart.replaceFirstChar { it.lowercase() }}"
-        }
-        return QueueAwareSendResult(
-            batch = batch,
-            queuedDeviceNames = queuedNames,
-            message = message,
-            relayedDeviceNames = relayedNames,
-            pendingDesktopSyncNames = pendingDesktopSyncNames,
-            needsCellularConfirm = needsConfirm
-        )
-    }
-
-    private fun relayMessage(relayedNames: List<String>, desktopNames: List<String>): String {
-        val sent = AppI18n.t("sent_via_drive_to", relayedNames.joinToString(", "))
-        if (desktopNames.isEmpty()) return sent
-        return "$sent. ${AppI18n.t("waiting_desktop_drive_sync")}"
-    }
-
-    private fun queueOnlyMessage(deviceNames: List<String>): String =
-        PeerReachabilityMessages.fileTransferOffWifiQueuedMultiple(deviceNames)
 
     private fun PendingTransferEntity.toUiItem(): PendingTransferItem? {
         val statusEnum = runCatching { PendingTransferStatus.valueOf(status) }.getOrNull()

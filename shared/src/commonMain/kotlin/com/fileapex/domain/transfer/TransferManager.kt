@@ -5,16 +5,16 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.transfer.FileTransferService
+import com.fileapex.domain.presence.RouteUse
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.presence.PeerPresenceMonitor
 import com.fileapex.network.FileApexClient
-import com.fileapex.platform.DownloadsPaths
+import com.fileapex.network.InboxTarget
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.domain.transfer.verifiedFromDisk
 import com.fileapex.network.TransferCancelledException
-import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,8 +90,6 @@ class TransferManager(
                 deviceName = peer.deviceName,
                 host = peer.lastKnownIp,
                 port = peer.port,
-                rootPath = peer.rootPath,
-                peerPlatform = peer.platform,
                 appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
             )
         }
@@ -128,8 +126,6 @@ class TransferManager(
                 deviceName = peer.deviceName,
                 host = peer.lastKnownIp,
                 port = peer.port,
-                rootPath = peer.rootPath,
-                peerPlatform = peer.platform,
                 appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
             )
         }
@@ -151,8 +147,6 @@ class TransferManager(
                 deviceName = peer.deviceName,
                 host = peer.lastKnownIp,
                 port = peer.port,
-                rootPath = peer.rootPath,
-                peerPlatform = peer.platform,
                 appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
             )
         }
@@ -178,8 +172,6 @@ class TransferManager(
                 deviceName = peer.deviceName,
                 host = host,
                 port = port,
-                rootPath = peer.rootPath,
-                peerPlatform = peer.platform,
                 appVersion = peer.clientVersion.takeIf { it.isNotEmpty() }
             )
         }
@@ -316,9 +308,12 @@ class TransferManager(
         val unreachableIds = results.flatMapTo(HashSet()) { it.unreachableDeviceIds }
         if (unreachableIds.isEmpty() || results.size != sources.size) return results
         val stale = devices.filter { it.deviceId in unreachableIds }
+        for (target in stale) {
+            deviceRepository().getDevice(target.deviceId)?.let { presenceMonitor().reportRouteFailure(it, target.host) }
+        }
         presenceMonitor().primePeersForTransfer(stale)
         val staleById = stale.associateBy { it.deviceId }
-        val moved = refreshRemoteHosts(stale, allowTailnet = false).filter { refreshed ->
+        val moved = refreshRemoteHosts(stale).filter { refreshed ->
             val before = staleById.getValue(refreshed.deviceId)
             refreshed.host.isNotBlank() && (refreshed.host != before.host || refreshed.port != before.port)
         }
@@ -350,12 +345,11 @@ class TransferManager(
     }
 
     private suspend fun refreshRemoteHosts(
-        options: List<MultiCopyDeviceOption>,
-        allowTailnet: Boolean = true
+        options: List<MultiCopyDeviceOption>
     ): List<MultiCopyDeviceOption> = options.map { option ->
         if (option.isLocal) return@map option
         val peer = deviceRepository().getDevice(option.deviceId) ?: return@map option
-        presenceMonitor().resolveOutboundEndpoint(peer, allowTailnet = allowTailnet)?.let { direct ->
+        presenceMonitor().probeNow(peer, RouteUse.Bulk)?.let { direct ->
             return@map option.copy(host = direct.host, port = direct.port)
         }
         val host = peer.lastKnownIp.trim()
@@ -369,67 +363,16 @@ class TransferManager(
         deviceName: String,
         host: String,
         port: Int,
-        rootPath: String,
-        peerPlatform: String,
         appVersion: String?
     ): MultiCopyDeviceOption {
-        val effectiveRoot = if (peerPlatform.trim().equals("android", ignoreCase = true) && (rootPath.isBlank() || rootPath == "/")) {
-            "/storage/emulated/0"
-        } else {
-            rootPath
-        }
-        val downloadsRoot = DownloadsPaths.resolveReceiveRoot(
-            downloadsPath = "",
-            rootPath = effectiveRoot,
-            platform = peerPlatform
-        )
         return MultiCopyDeviceOption(
             deviceId = deviceId,
             deviceName = deviceName,
             isLocal = false,
             host = host,
             port = port,
-            destinationRoot = downloadsRoot,
-            appVersion = appVersion
-        )
-    }
-
-    private suspend fun resolveRemoteOption(
-        deviceId: String,
-        deviceName: String,
-        host: String,
-        port: Int,
-        rootPath: String,
-        peerPlatform: String,
-        appVersion: String?
-    ): MultiCopyDeviceOption {
-        val effectiveRoot = if (peerPlatform.trim().equals("android", ignoreCase = true) && (rootPath.isBlank() || rootPath == "/")) {
-            "/storage/emulated/0"
-        } else {
-            rootPath
-        }
-        val downloadsRoot = cancellableCatching {
-            val remote = client.fetchPeerNodeState(host, port)
-            presenceMonitor().notifyPassiveReachability(deviceId)
-            DownloadsPaths.resolveReceiveRoot(
-                downloadsPath = remote.downloadsPath,
-                rootPath = remote.rootPath.ifBlank { effectiveRoot },
-                platform = remote.platform.ifBlank { peerPlatform }
-            )
-        }.getOrElse {
-            DownloadsPaths.resolveReceiveRoot(
-                downloadsPath = "",
-                rootPath = effectiveRoot,
-                platform = peerPlatform
-            )
-        }
-        return MultiCopyDeviceOption(
-            deviceId = deviceId,
-            deviceName = deviceName,
-            isLocal = false,
-            host = host,
-            port = port,
-            destinationRoot = downloadsRoot,
+            // The receiver decides where its own receive folder is.
+            destinationRoot = InboxTarget.ROOT,
             appVersion = appVersion
         )
     }

@@ -14,7 +14,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /**
  * Brings paired peers onto pinned TLS without a re-pair. For each online peer that has no pin yet it
@@ -30,15 +32,16 @@ class TlsPinAnnouncer(
     private val now: () -> Long = TimeUtils::now
 ) {
     private var job: Job? = null
-    private val nextAttempt = HashMap<String, Long>()
-    private val offeredPins = HashMap<String, String>()
+    private val nextAttempt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val offeredPins = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val nudgeBackoff = BulletinPeerBackoff(initialDelayMs = NUDGE_BASE_GAP_MS, maxDelayMs = NUDGE_MAX_GAP_MS)
-    private val lock = kotlinx.coroutines.sync.Mutex()
+    private val lock = Any()
+    private val nudgeRunner = com.fileapex.util.PerKeyRunner(scope)
 
     /** A caller just failed to reach [deviceId]: drop its back-off and retry that one peer, at most once per back-off step. */
     fun nudge(deviceId: String) {
         scope.launch {
-            val permitted = lock.withLock {
+            val permitted = synchronized(lock) {
                 val allowed = nudgeBackoff.canAttempt(deviceId, now())
                 if (allowed) {
                     nudgeBackoff.onFailure(deviceId, now())
@@ -47,8 +50,11 @@ class TlsPinAnnouncer(
                 allowed
             }
             if (!permitted) return@launch
-            cancellableCatching { lock.withLock { tickLocked(onlyDeviceId = deviceId) } }
-                .onFailure { if (it is CancellationException) throw it }
+            // One run per device: another device's slow answer never holds this one back.
+            nudgeRunner.launch(deviceId) {
+                cancellableCatching { tickLocked(onlyDeviceId = deviceId) }
+                    .onFailure { if (it is CancellationException) throw it }
+            }
         }
     }
 
@@ -69,7 +75,7 @@ class TlsPinAnnouncer(
         }
     }
 
-    internal suspend fun tick(): Long = lock.withLock { tickLocked() }
+    internal suspend fun tick(): Long = tickLocked()
 
     private suspend fun tickLocked(onlyDeviceId: String? = null): Long {
         val keysNeeded = fillMissingKeys(onlyDeviceId)
@@ -77,6 +83,7 @@ class TlsPinAnnouncer(
         val online = onlineDeviceIds()
         var announcementsNeeded = false
         var shortestDelay = IDLE_TICK_MS
+        val due = ArrayList<PairedDeviceEntity>()
         for (device in repository.listDevices()) {
             if (onlyDeviceId != null && device.deviceId != onlyDeviceId) continue
             if (device.tlsPin.isNotEmpty()) {
@@ -91,10 +98,19 @@ class TlsPinAnnouncer(
                 shortestDelay = minOf(shortestDelay, dueIn)
                 continue
             }
-            val delayMs = if (device.publicKey.isBlank()) offerFingerprint(device) else announce(device)
-            nextAttempt[device.deviceId] = now() + delayMs
-            shortestDelay = minOf(shortestDelay, delayMs)
+            due += device
         }
+        // Every device is asked at the same time, so one that does not answer costs only its own timeout.
+        val delays = coroutineScope {
+            due.map { device ->
+                async {
+                    val delayMs = if (device.publicKey.isBlank()) offerFingerprint(device) else announce(device)
+                    nextAttempt[device.deviceId] = now() + delayMs
+                    delayMs
+                }
+            }.awaitAll()
+        }
+        for (d in delays) shortestDelay = minOf(shortestDelay, d)
         return if (keysNeeded || announcementsNeeded) {
             maxOf(TICK_MS, shortestDelay)
         } else {
@@ -106,19 +122,26 @@ class TlsPinAnnouncer(
     private suspend fun fillMissingKeys(onlyDeviceId: String? = null): Boolean {
         val online = onlineDeviceIds()
         var needed = false
+        val pending = ArrayList<PairedDeviceEntity>()
         for (device in repository.listDevices()) {
             if (onlyDeviceId != null && device.deviceId != onlyDeviceId) continue
             if (device.publicKey.isNotBlank() || device.deviceId !in online) continue
             if (!NetworkUtils.isUsableLanIpv4(device.lastKnownIp) || device.port <= 0) continue
             needed = true
-            val slot = "key:${device.deviceId}"
-            if (now() < (nextAttempt[slot] ?: 0L)) continue
-            val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }
-                .onFailure { println("TlsPinAnnouncer: key fetch from ${NetworkUtils.lastOctetLabel(device.lastKnownIp)} failed (${it::class.simpleName})") }
-                .getOrNull()
-            val stored = state != null && state.deviceId.trim() == device.deviceId &&
-                repository.recordBoundPublicKey(device.deviceId, state.publicKey)
-            nextAttempt[slot] = now() + if (stored) DONE_MS else RETRY_MS
+            if (now() < (nextAttempt["key:${device.deviceId}"] ?: 0L)) continue
+            pending += device
+        }
+        coroutineScope {
+            pending.map { device ->
+                async {
+                    val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }
+                        .onFailure { println("TlsPinAnnouncer: key fetch from ${NetworkUtils.lastOctetLabel(device.lastKnownIp)} failed (${it::class.simpleName})") }
+                        .getOrNull()
+                    val stored = state != null && state.deviceId.trim() == device.deviceId &&
+                        repository.recordBoundPublicKey(device.deviceId, state.publicKey)
+                    nextAttempt["key:${device.deviceId}"] = now() + if (stored) DONE_MS else RETRY_MS
+                }
+            }.awaitAll()
         }
         return needed
     }

@@ -8,6 +8,7 @@ import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.domain.presence.LanPresenceTiming
+import com.fileapex.domain.presence.LanScanBackoff
 import com.fileapex.domain.presence.PeerLanDiscovery
 import com.fileapex.network.FileApexClient
 import com.fileapex.security.IdentityBinding
@@ -20,6 +21,7 @@ import com.fileapex.security.tls.TlsPinAnnouncer
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 
 sealed interface CandidateVerdict {
@@ -56,7 +58,13 @@ class PeerAdmission(
     },
     private val discover: suspend (PairedDeviceEntity) -> PeerNodeState? = { device ->
         PeerLanDiscovery.discoverPeerState(device, client, LanPresenceTiming.LIGHT_SWEEP_DISCOVERY_BUDGET_MS)
-    }
+    },
+    private val scanBackoff: LanScanBackoff = LanScanBackoff(
+        LanPresenceTiming.LAN_SCAN_BACKOFF_BASE_MS,
+        LanPresenceTiming.LAN_SCAN_BACKOFF_MAX_MS,
+        TimeUtils::now
+    ),
+    private val networkKey: () -> String = LanScanBackoff::currentNetworkKey
 ) {
     /** One sealed introduction per device this device has itself verified, addressed to [recipient]. */
     suspend fun sealedIntroductionsFor(
@@ -119,31 +127,47 @@ class PeerAdmission(
         return staged
     }
 
-    private val verifyLock = kotlinx.coroutines.sync.Mutex()
+    private val verifying = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
-    /** Drops expired candidates and tries the rest. Returns how many were promoted. */
-    suspend fun verifyPending(): Int = verifyLock.withLock {
+    /**
+     * Drops expired candidates and tries the rest, each on its own so a candidate that does not answer holds up
+     * no other. A candidate tried within the last [LanPresenceTiming.CANDIDATE_RETRY_MS] is left alone unless
+     * [force]. Returns how many were promoted.
+     */
+    suspend fun verifyPending(force: Boolean = false): Int {
         repository.expireCandidates()
-        var promoted = 0
-        for (candidate in repository.listCandidates()) {
-            val verdict = try {
-                verify(candidate)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                println("PeerAdmission: verify ${candidate.deviceId} failed - ${error::class.simpleName}")
-                CandidateVerdict.Pending("error")
-            }
-            when (verdict) {
-                CandidateVerdict.Promoted -> promoted++
-                is CandidateVerdict.Pending -> repository.recordCandidateAttempt(candidate.deviceId)
-                is CandidateVerdict.Rejected -> {
-                    println("PeerAdmission: rejected ${candidate.deviceId} - ${verdict.reason}")
-                    repository.dropCandidate(candidate.deviceId, remember = true)
+        val promoted = java.util.concurrent.atomic.AtomicInteger()
+        kotlinx.coroutines.coroutineScope {
+            for (candidate in repository.listCandidates()) {
+                if (!force && candidate.attempts > 0 &&
+                    now() - candidate.lastAttemptEpochMs < LanPresenceTiming.CANDIDATE_RETRY_MS
+                ) continue
+                if (!verifying.add(candidate.deviceId)) continue
+                launch {
+                    try {
+                        val verdict = try {
+                            verify(candidate)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            println("PeerAdmission: verify ${candidate.deviceId} failed - ${error::class.simpleName}")
+                            CandidateVerdict.Pending("error")
+                        }
+                        when (verdict) {
+                            CandidateVerdict.Promoted -> promoted.incrementAndGet()
+                            is CandidateVerdict.Pending -> repository.recordCandidateAttempt(candidate.deviceId)
+                            is CandidateVerdict.Rejected -> {
+                                println("PeerAdmission: rejected ${candidate.deviceId} - ${verdict.reason}")
+                                repository.dropCandidate(candidate.deviceId, remember = true)
+                            }
+                        }
+                    } finally {
+                        verifying.remove(candidate.deviceId)
+                    }
                 }
             }
         }
-        promoted
+        return promoted.get()
     }
 
     suspend fun verify(candidate: PeerCandidate): CandidateVerdict {
@@ -183,9 +207,19 @@ class PeerAdmission(
         val host = device.lastKnownIp.trim()
         if (NetworkUtils.isUsableLanIpv4(host) && device.port > 0) {
             val state = fetchState.fetch(host, device.port)
-            if (state != null) return state to host
+            if (state != null) {
+                scanBackoff.recordSuccess(device.deviceId)
+                return state to host
+            }
         }
-        val found = discover(device) ?: return null
+        val key = networkKey()
+        if (!scanBackoff.shouldScan(device.deviceId, key)) return null
+        val found = discover(device)
+        if (found == null) {
+            scanBackoff.recordFailure(device.deviceId, key)
+            return null
+        }
+        scanBackoff.recordSuccess(device.deviceId)
         val foundHost = found.resolvedIpAddress.trim()
         return if (NetworkUtils.isUsableLanIpv4(foundHost)) found to foundHost else null
     }
@@ -208,6 +242,29 @@ class PeerAdmission(
         val answered = state.publicKeyHash.trim()
         if (claimed.isNotEmpty() && answered.isNotEmpty() && claimed != answered) return "key hash differs"
         return null
+    }
+
+    /** Removes an outdated row for good and tells the cluster, e.g. the old entry of a device that was reinstalled. */
+    suspend fun supersede(oldDeviceId: String): Boolean {
+        if (!repository.removePermanently(oldDeviceId)) return false
+        repository.getDeviceEntry(oldDeviceId)?.let { onSuperseded(it) }
+        return true
+    }
+
+    /**
+     * [state] came from a paired device over TLS. A row with the same hardware hash under another id is the same
+     * physical device before a reinstall (new keys, new id): it is replaced when it no longer answers as itself, and
+     * both are kept when both answer (a cloned machine can share its id). Returns how many rows were replaced.
+     */
+    suspend fun supersedeHardwareTwins(state: PeerNodeState): Int {
+        val hash = state.hardwareHash.trim()
+        if (hash.isEmpty()) return 0
+        var replaced = 0
+        for (twin in repository.activeDevicesWithHardware(hash, state.deviceId.trim())) {
+            if (answersAs(twin)) continue
+            if (supersede(twin.deviceId)) replaced++
+        }
+        return replaced
     }
 
     private suspend fun answersAs(row: PairedDeviceEntity): Boolean {

@@ -1,7 +1,5 @@
 package com.fileapex.platform
 
-import android.content.Context
-import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -72,7 +70,6 @@ data class CapsuleDisplayData(
 @Composable
 fun LiveTransferCapsuleOverlay(
     modifier: Modifier = Modifier,
-    cutoutPaddingTop: Int = 0,
     isCornerCutout: Boolean = false
 ) {
     val settings = FileApexServices.settings

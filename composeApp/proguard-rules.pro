@@ -74,3 +74,10 @@
 -dontwarn javax.imageio.**
 -dontwarn javax.swing.**
 -dontwarn java.beans.**
+
+# Iroh Kotlin bindings reach Rust through JNA and uniffi, which look classes and fields up by name.
+-keep class computer.iroh.** { *; }
+-keep class com.sun.jna.** { *; }
+-keep class * implements com.sun.jna.** { *; }
+-dontwarn java.awt.**
+-dontwarn com.sun.jna.**

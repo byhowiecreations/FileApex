@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.adaptive.JadedRaisedTile
-import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.ui.theme.fileApexHeaderActionTint
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexTiledChrome

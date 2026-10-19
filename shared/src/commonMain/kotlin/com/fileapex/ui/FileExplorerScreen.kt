@@ -3,7 +3,6 @@ package com.fileapex.ui
 import com.fileapex.ui.theme.isFileApexCleanCurved
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexTiledChrome
-import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 
 import com.fileapex.data.settings.KineticStyle
@@ -307,7 +306,6 @@ fun FileExplorerScreen(
                         ExplorerTopBarActions(
                             state = state,
                             embeddedInCompactShell = false,
-                            onBack = onBack,
                             viewModel = viewModel,
                             hasExternalRefresh = false,
                             onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
@@ -439,7 +437,6 @@ fun FileExplorerScreen(
                                         ExplorerTopBarActions(
                                             state = state,
                                             embeddedInCompactShell = true,
-                                            onBack = onBack,
                                             viewModel = viewModel,
                                             onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
                                         )
@@ -990,14 +987,6 @@ fun FileExplorerScreen(
     }
 }
 
-private fun explorerSubtitle(state: ExplorerUiState): String =
-    if (state.isSelectionMode) {
-        val count = state.selectedFileIds.size
-        if (count == 0) AppI18n.t("select_files") else AppI18n.plural("selected_count", count)
-    } else {
-        state.currentPath
-    }
-
 @Composable
 private fun ExplorerNavigationAction(
     state: ExplorerUiState,
@@ -1027,7 +1016,6 @@ private fun ExplorerNavigationAction(
 private fun ExplorerTopBarActions(
     state: ExplorerUiState,
     embeddedInCompactShell: Boolean,
-    onBack: () -> Unit,
     viewModel: ExplorerViewModel,
     hasExternalRefresh: Boolean = false,
     onOpenTools: (() -> Unit)? = null

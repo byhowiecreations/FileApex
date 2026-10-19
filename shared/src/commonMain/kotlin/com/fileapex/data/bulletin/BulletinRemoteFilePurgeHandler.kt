@@ -14,7 +14,6 @@ import kotlinx.io.files.SystemFileSystem
 import com.fileapex.update.BulletinApkUpdatePolicy
 import com.fileapex.update.currentAppVersionName
 import com.fileapex.update.isInstalledVersionStrictlyNewer
-import com.fileapex.update.isRemoteVersionNewer
 import com.fileapex.platform.UniqueFileNames
 
 data class BulletinRemotePurgePrompt(

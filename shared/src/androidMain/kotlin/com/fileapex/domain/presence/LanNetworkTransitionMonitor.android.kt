@@ -2,39 +2,44 @@ package com.fileapex.domain.presence
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import com.fileapex.platform.androidApplicationContextOrNull
-import com.fileapex.util.TimeUtils
+import java.net.Inet4Address
 
 /** Observes Wi‑Fi/Ethernet transitions and triggers one-shot LAN revalidation. */
 internal object LanNetworkTransitionMonitor {
-    private const val CAPABILITIES_DEBOUNCE_MS = 60_000L
-
     @Volatile
     private var registered = false
 
-    @Volatile
-    private var lastCapabilitiesNotifyAtMs = 0L
+    private val filter = LanTransitionFilter()
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = notifyTransition("available")
-        override fun onLost(network: Network) = notifyTransition("lost")
+        override fun onAvailable(network: Network) {
+            if (filter.onAvailable(network.toString())) notifyTransition("available")
+        }
+
+        override fun onLost(network: Network) {
+            if (filter.onLost(network.toString())) notifyTransition("lost")
+        }
+
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
             if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
                 !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
             ) {
                 return
             }
-            val now = TimeUtils.now()
-            if (lastCapabilitiesNotifyAtMs > 0L &&
-                now - lastCapabilitiesNotifyAtMs < CAPABILITIES_DEBOUNCE_MS
-            ) {
-                return
-            }
-            lastCapabilitiesNotifyAtMs = now
-            notifyTransition("capabilities")
+            val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            if (filter.onCapabilities(network.toString(), validated)) notifyTransition("validated")
+        }
+
+        override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+            val ipv4 = linkProperties.linkAddresses
+                .mapNotNull { (it.address as? Inet4Address)?.hostAddress }
+                .toSet()
+            if (filter.onLinkAddresses(network.toString(), ipv4)) notifyTransition("address")
         }
     }
 

@@ -138,6 +138,4 @@ object FileApexIcons {
         }.build()
     }
 
-    val DesktopExpanded: ImageVector get() = RightPanelClose
-    val DesktopCompact: ImageVector get() = RightPanelOpen
 }

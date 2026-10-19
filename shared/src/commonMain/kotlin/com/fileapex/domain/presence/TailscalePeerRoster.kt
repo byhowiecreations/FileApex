@@ -17,11 +17,13 @@ class TailscalePeerRoster(
     private val repository: DeviceRepository,
     private val client: FileApexClient
 ) {
-    suspend fun refresh() {
+    /** Refreshes every paired device, or just [onlyDeviceId] so one device's check never waits on another's. */
+    suspend fun refresh(onlyDeviceId: String? = null) {
         if (!tailnetNodeUp()) return
         val observed = TailscaleNodeRuntime.observedTailnetPeers() ?: return
         val devices = repository.listDevices()
         for (device in devices) {
+            if (onlyDeviceId != null && device.deviceId != onlyDeviceId) continue
             if (device.port <= 0) continue
             val match = observed.firstOrNull { peer ->
                 tailnetPeerMatchesDevice(peer, device.deviceId, device.deviceName) &&

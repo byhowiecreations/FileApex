@@ -27,8 +27,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TableRows
-import androidx.compose.material.icons.filled.ViewColumn
 import com.fileapex.ui.FileApexIcons
 import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.data.settings.FreestyleLayoutMode
@@ -214,7 +212,6 @@ fun AdaptiveWideHome(
                 }
             }
         } else if (deviceRows.isNotEmpty()) {
-            val isJaded = LocalAppTheme.current.traits.orbitalHome && LocalKineticStyle.current == KineticStyle.JADED_STEEL
             if (isFileApexTiledChrome()) {
                 Box(
                     modifier = Modifier.size(40.dp).clickable(onClick = devicesViewModel::enterDeviceOrderEditMode),

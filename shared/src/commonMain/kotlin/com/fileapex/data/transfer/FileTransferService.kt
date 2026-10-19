@@ -54,14 +54,6 @@ class FileTransferService(
             client.listFiles(host, port, path)
         }
 
-    fun copyLocalFile(
-        localIdentity: LocalIdentity,
-        item: RemoteFileItem,
-        hostForPeers: String
-    ) {
-        copyLocalFiles(localIdentity, listOf(item), hostForPeers)
-    }
-
     fun copyLocalFiles(
         localIdentity: LocalIdentity,
         items: List<RemoteFileItem>,
@@ -84,16 +76,6 @@ class FileTransferService(
                 )
             }
         )
-    }
-
-    fun copyRemoteFile(
-        sourceDeviceId: String,
-        sourceDeviceName: String,
-        host: String,
-        port: Int,
-        item: RemoteFileItem
-    ) {
-        copyRemoteFiles(sourceDeviceId, sourceDeviceName, host, port, listOf(item))
     }
 
     fun copyRemoteFiles(

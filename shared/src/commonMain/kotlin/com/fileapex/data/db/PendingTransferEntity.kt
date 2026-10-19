@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Deferred outbound transfer — stores source paths only (no file copy).
- * Drained when peer presence shows the destination back on local Wi‑Fi.
+ * Drained when a route to the destination answers again.
  */
 @Entity(tableName = "pending_transfers")
 @Serializable

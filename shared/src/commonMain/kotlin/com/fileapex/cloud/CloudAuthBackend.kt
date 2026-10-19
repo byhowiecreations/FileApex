@@ -110,8 +110,6 @@ expect fun firebaseApiKey(): String
 
 expect fun firebaseProjectId(): String
 
-const val OAUTH_REDIRECT_URI = "apex://oauth-callback"
-
 /** Fixed loopback port/path — must match Web client Authorized redirect URI in Google Cloud Console. */
 const val DESKTOP_OAUTH_LOOPBACK_PORT = 8765
 const val DESKTOP_OAUTH_LOOPBACK_REDIRECT_URI = "http://127.0.0.1:8765/callback"

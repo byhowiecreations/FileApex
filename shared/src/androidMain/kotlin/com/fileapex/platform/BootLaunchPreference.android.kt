@@ -8,6 +8,8 @@ actual object BootLaunchPreference {
         ServiceWatchdogScheduler.syncAutoLaunchOnRebootMirror(context, enabled)
     }
 
+    actual fun usesDesktopAutostart(): Boolean = false
+
     actual fun syncFromSettings() {
         val context = androidAppContextOrNull() ?: return
         ServiceWatchdogScheduler.syncAutoLaunchOnRebootFromSettings(context)

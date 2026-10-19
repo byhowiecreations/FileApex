@@ -787,7 +787,7 @@ object GoogleLinkCoordinator {
         if (!DeviceDisplayNames.isFactory(current, hardware.deviceMake, hardware.deviceModel)) return
         if (DeviceDisplayNames.isFactory(trimmed, hardware.deviceMake, hardware.deviceModel)) return
         LocalDeviceNameStore.apply(trimmed)
-        cancellableCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity() }
+        cancellableCatching { FileApexServices.pairingCoordinator.broadcastSelfIdentity(FileApexServices.presenceMonitor.onlineDeviceIds.value) }
     }
 
     private fun resolveCloudDeviceId(deviceId: String): String {

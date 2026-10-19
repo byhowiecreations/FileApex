@@ -66,31 +66,4 @@ class GoogleLinkRestorePolicyTest {
         )
     }
 
-    @Test
-    fun silentGoogleOnlyWhenLinkedWithConfiguredEmail() {
-        assertFalse(
-            GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                linkedFlag = false,
-                configuredEmail = ""
-            )
-        )
-        assertFalse(
-            GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                linkedFlag = false,
-                configuredEmail = "user@example.com"
-            )
-        )
-        assertFalse(
-            GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                linkedFlag = true,
-                configuredEmail = ""
-            )
-        )
-        assertTrue(
-            GoogleLinkRestorePolicy.shouldAttemptSilentGoogleId(
-                linkedFlag = true,
-                configuredEmail = "user@example.com"
-            )
-        )
-    }
 }

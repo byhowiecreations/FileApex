@@ -7,8 +7,8 @@ import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
+import com.fileapex.domain.presence.RouteUse
 import com.fileapex.domain.browse.BrowseListing
-import com.fileapex.domain.presence.isTailscaleEnabled
 import com.fileapex.domain.browse.BrowserCoordinator
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.preview.FilePreviewManager
@@ -83,7 +83,6 @@ data class ExplorerUiState(
     val pinUnlockError: String? = null,
     val viewMode: ExplorerViewMode = ExplorerViewMode.List,
     val sourceDeviceId: String? = null,
-    val remoteSleeping: Boolean = false,
 )
 
 class ExplorerViewModel(
@@ -901,7 +900,7 @@ class ExplorerViewModel(
             return
         }
         val device = FileApexServices.deviceRepository.getDevice(parsed.remoteDeviceId) ?: error("device missing")
-        val endpoint = if (isTailscaleEnabled()) FileApexServices.presenceMonitor.resolveOutboundEndpoint(device) else null
+        val endpoint = FileApexServices.presenceMonitor.probeNow(device, RouteUse.Bulk)
         FileApexServices.transferService.downloadRemoteToDownloads(
             host = endpoint?.host ?: device.lastKnownIp,
             port = endpoint?.port ?: device.port,

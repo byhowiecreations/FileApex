@@ -5,12 +5,11 @@ import com.fileapex.cloud.drive.DriveRelayPolicy
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.presence.isTailscaleEnabled
-import com.fileapex.domain.presence.resolvePeerEndpoint
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /** LAN + FCM note paths for peers that predate bulletin batch sync (before v0.8.1a). */
@@ -44,12 +43,12 @@ object BulletinLegacyRelay {
             checksum = checksum,
             attachmentName = attachmentName
         )
-        scope.launch {
-            for (device in peers) {
-                val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
-                val host = dial?.host ?: device.lastKnownIp
-                val port = dial?.port ?: device.port
-                if (host.isBlank() || port <= 0) continue
+        for (device in peers) {
+            scope.launch {
+                val route = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return@launch
+                val host = route.host
+                val port = route.port
+                if (host.isBlank() || port <= 0) return@launch
                 cancellableCatching {
                     FileApexServices.client.postNoteDelete(
                         host = host,
@@ -71,11 +70,12 @@ object BulletinLegacyRelay {
             !fileName.isNullOrBlank() &&
             record.attachmentSizeBytes <= DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
         ServerLifecycleManager.ensureRunning()
-        for (device in peers) {
-            val dial = if (isTailscaleEnabled() && FileApexServices.presenceMonitor.verifiedLanEndpoint(device) == null) resolvePeerEndpoint(device, tailnetUp = true) else null
-            val host = dial?.host ?: device.lastKnownIp
-            val port = dial?.port ?: device.port
-            if (host.isBlank() || port <= 0) continue
+        coroutineScope {
+            for (device in peers) launch {
+            val route = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return@launch
+            val host = route.host
+            val port = route.port
+            if (host.isBlank() || port <= 0) return@launch
             cancellableCatching {
                 FileApexServices.client.postNote(host, port, record)
                 if (lanAttach) {
@@ -88,6 +88,7 @@ object BulletinLegacyRelay {
                     )
                 }
             }
+        }
         }
     }
 }
