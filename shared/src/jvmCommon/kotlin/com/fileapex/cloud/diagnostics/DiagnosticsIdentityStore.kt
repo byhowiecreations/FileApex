@@ -1,5 +1,7 @@
 package com.fileapex.cloud.diagnostics
 
+import com.fileapex.data.settings.BaseAppSettings
+import com.fileapex.data.settings.SecretAvailability
 import com.fileapex.di.FileApexServices
 import java.util.Base64
 import org.bouncycastle.math.ec.rfc7748.X25519
@@ -17,6 +19,7 @@ object DiagnosticsIdentityStore {
                 publicKey = derivePublicKey(privateKey)
             )
         }
+        SecretAvailability.requireAvailable(BaseAppSettings.KEY_DIAGNOSTICS_PRIVATE_KEY)
         val generated = DiagnosticsCrypto.generateKeyPair()
         FileApexServices.settings.setDiagnosticsPrivateKeyBase64(
             Base64.getEncoder().encodeToString(generated.privateKey)

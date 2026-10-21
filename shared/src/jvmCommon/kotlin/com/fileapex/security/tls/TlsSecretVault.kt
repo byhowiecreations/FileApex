@@ -11,6 +11,9 @@ interface TlsSecretVault {
     val scheme: Int
     fun seal(plain: ByteArray): ByteArray
     fun open(sealed: ByteArray): ByteArray
+
+    /** True for a blob this vault can still open but no longer writes; the settings store seals it again. */
+    fun needsReseal(sealed: ByteArray): Boolean = false
 }
 
 /** No platform protection; the file is owner-only. Fallback and Linux default. */

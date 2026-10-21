@@ -175,16 +175,13 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
         }
     }
 
-    get("/") {
-        call.respondText(FileApexServer.webShareHtml(), ContentType.Text.Html)
-    }
-
-    get("/share") {
-        call.respondText(FileApexServer.webShareHtml(), ContentType.Text.Html)
+    listOf("/", "/share").forEach { path ->
+        get(path) { if (WebIntakeGuard.check(call)) call.respondText(FileApexServer.webShareHtml(), ContentType.Text.Html) }
     }
 
     // The browser share page needs a picker, so it gets names and ids only; the full roster needs a paired device.
     get("/api/v1/web/devices") {
+        if (!WebIntakeGuard.check(call)) return@get
         cancellableCatching {
             val names = withContext(Dispatchers.IO) { server.onListDevices() }
                 .filter { !it.isRemoved }
@@ -197,6 +194,7 @@ internal fun Route.registerClipboardRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/web/send-clipboard") {
+        if (!WebIntakeGuard.check(call)) return@post
         cancellableCatching {
             val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject

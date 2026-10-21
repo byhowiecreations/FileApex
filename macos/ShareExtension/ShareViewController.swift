@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Share Extension host — stages attachments then presents the device picker.
+/// Share Extension host, stages attachments then presents the device picker.
 ///
 /// Triggered from Finder (right-click → Share → FileApex) or the system Share sheet.
 /// Never streams bytes itself: stages into Application Support, then

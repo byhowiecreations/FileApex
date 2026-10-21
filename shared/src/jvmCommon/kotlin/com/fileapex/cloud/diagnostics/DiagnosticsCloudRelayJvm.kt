@@ -7,6 +7,7 @@ import com.fileapex.cloud.FcmWakeBackend
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.clipboard.PeerE2eeVersions
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.network.FileApexHttpClientFactory
 import com.fileapex.platform.collectDeviceDiagnostics
@@ -69,12 +70,15 @@ internal object DiagnosticsCloudRelayJvm {
         val sessionId = UUID.randomUUID().toString()
         val now = TimeUtils.now()
         val requestPlain = json.encodeToString(DiagnosticsRelayRequest())
-        val requestEnc = DiagnosticsCrypto.encrypt(
-            plaintext = requestPlain.encodeToByteArray(),
-            localPrivateKey = keyPair.privateKey,
-            peerPublicKey = DiagnosticsCrypto.decodePublicKey(peerPublicKey),
-            googleUid = uid
-        )
+        val peerKeyBytes = DiagnosticsCrypto.decodePublicKey(peerPublicKey)
+        val requestEnc = if (PeerE2eeVersions.supportsBoundFormat(peerDeviceId)) {
+            DiagnosticsCrypto.encryptBound(
+                requestPlain.encodeToByteArray(), keyPair.privateKey, peerKeyBytes, uid,
+                DiagnosticsCrypto.boundData(selfId, peerDeviceId, sessionId, response = false)
+            )
+        } else {
+            DiagnosticsCrypto.encrypt(requestPlain.encodeToByteArray(), keyPair.privateKey, peerKeyBytes, uid)
+        }
         val session = DiagnosticsRelaySession(
             sessionId = sessionId,
             requesterDeviceId = selfId,
@@ -88,17 +92,22 @@ internal object DiagnosticsCloudRelayJvm {
 
         wakeAndroidResponder(peer, selfId, sessionId)
 
-        val deadline = now + DIAGNOSTICS_RELAY_FETCH_TIMEOUT_MS
+        val deadline = now + if (peer.platform.equals("android", ignoreCase = true)) {
+            DIAGNOSTICS_RELAY_FETCH_TIMEOUT_MS
+        } else {
+            DIAGNOSTICS_RELAY_DESKTOP_FETCH_TIMEOUT_MS
+        }
         while (TimeUtils.now() < deadline) {
             val current = CloudAuthBackend.fetchDiagnosticsRelaySession(uid, sessionId)
             when {
                 current != null && current.status == DiagnosticsRelayStatus.COMPLETE &&
                     current.responseEncPayload.isNotBlank() -> {
-                    val plain = DiagnosticsCrypto.decrypt(
-                        payloadBase64 = current.responseEncPayload,
+                    val plain = DiagnosticsCrypto.decryptEither(
+                        payload = current.responseEncPayload,
                         localPrivateKey = keyPair.privateKey,
-                        peerPublicKey = DiagnosticsCrypto.decodePublicKey(peerPublicKey),
-                        googleUid = uid
+                        peerPublicKey = peerKeyBytes,
+                        googleUid = uid,
+                        aad = DiagnosticsCrypto.boundData(peerDeviceId, selfId, sessionId, response = true)
                     )
                     cancellableCatching { CloudAuthBackend.deleteDiagnosticsRelaySession(uid, sessionId) }
                     return json.decodeFromString(plain.decodeToString())
@@ -244,12 +253,14 @@ internal object DiagnosticsCloudRelayJvm {
                 val keyPair = DiagnosticsIdentityStore.ensureKeyPair()
                 syncCloudOptIn(uid, selfId, enabled = true)
 
+                val requesterKeyBytes = DiagnosticsCrypto.decodePublicKey(requesterKey)
                 runCatching {
-                    DiagnosticsCrypto.decrypt(
-                        payloadBase64 = session.requestEncPayload,
+                    DiagnosticsCrypto.decryptEither(
+                        payload = session.requestEncPayload,
                         localPrivateKey = keyPair.privateKey,
-                        peerPublicKey = DiagnosticsCrypto.decodePublicKey(requesterKey),
-                        googleUid = uid
+                        peerPublicKey = requesterKeyBytes,
+                        googleUid = uid,
+                        aad = DiagnosticsCrypto.boundData(session.requesterDeviceId, selfId, session.sessionId, response = false)
                     )
                 }.getOrElse {
                     println("DiagnosticsCloudRelay: request decrypt failed - ${it.message}")
@@ -259,12 +270,15 @@ internal object DiagnosticsCloudRelayJvm {
 
                 val snapshot = withContext(Dispatchers.IO) { collectDeviceDiagnostics() }
                 val responsePlain = json.encodeToString(snapshot)
-                val responseEnc = DiagnosticsCrypto.encrypt(
-                    plaintext = responsePlain.encodeToByteArray(),
-                    localPrivateKey = keyPair.privateKey,
-                    peerPublicKey = DiagnosticsCrypto.decodePublicKey(requesterKey),
-                    googleUid = uid
-                )
+                // The reply is written in the format the request came in, so an older requester can still read it.
+                val responseEnc = if (DiagnosticsCrypto.isBound(session.requestEncPayload)) {
+                    DiagnosticsCrypto.encryptBound(
+                        responsePlain.encodeToByteArray(), keyPair.privateKey, requesterKeyBytes, uid,
+                        DiagnosticsCrypto.boundData(selfId, session.requesterDeviceId, session.sessionId, response = true)
+                    )
+                } else {
+                    DiagnosticsCrypto.encrypt(responsePlain.encodeToByteArray(), keyPair.privateKey, requesterKeyBytes, uid)
+                }
                 CloudAuthBackend.completeDiagnosticsRelaySession(
                     uid = uid,
                     sessionId = session.sessionId,

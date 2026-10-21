@@ -84,11 +84,66 @@ class SealingKvStoreTest {
     }
 
     @Test
-    fun ifSealingFailsTheValueIsKeptAndSealedOnTheNextRead() {
+    fun aSecretWhoseKeyIsUnavailableIsKeptAndFlaggedUntilItOpens() {
+        val inner = MapStore()
+        val good = FakeSealer()
+        SealingKvStore(inner, good, sealedKeys, log = {}).putString("clipboard_private_key_b64", secret)
+        val stored = inner.strings.getValue("clipboard_private_key_b64")
+        val locked = object : SecretSealer {
+            override fun seal(plain: ByteArray) = plain.reversedArray()
+            override fun open(sealed: ByteArray): ByteArray = throw SecretUnavailableException("keychain locked")
+        }
+        assertEquals("", SealingKvStore(inner, locked, sealedKeys, log = {}).getString("clipboard_private_key_b64", ""))
+        assertTrue(SecretAvailability.isUnavailable("clipboard_private_key_b64"))
+        assertEquals(stored, inner.strings["clipboard_private_key_b64"])
+        assertEquals(secret, SealingKvStore(inner, good, sealedKeys, log = {}).getString("clipboard_private_key_b64", ""))
+        assertFalse(SecretAvailability.isUnavailable("clipboard_private_key_b64"))
+    }
+
+    @Test
+    fun aSecretThatCannotBeOpenedForAnyOtherReasonIsNotFlaggedAsUnavailable() {
+        val sealer = FakeSealer()
+        val (store, inner, _) = store(sealer = sealer)
+        store.putString("clipboard_private_key_b64", secret)
+        sealer.failOpen = true
+        SealingKvStore(inner, sealer, sealedKeys, log = {}).getString("clipboard_private_key_b64", "")
+        assertFalse(SecretAvailability.isUnavailable("clipboard_private_key_b64"))
+    }
+
+    @Test
+    fun aValueSealedTheOldWayIsSealedAgainWhenItOpens() {
+        val inner = MapStore()
+        val oldWay = FakeSealer()
+        SealingKvStore(inner, oldWay, sealedKeys, log = {}).putString("device_pin", secret)
+        val before = inner.strings.getValue("device_pin")
+        val migrating = object : SecretSealer {
+            override fun seal(plain: ByteArray) = byteArrayOf(9) + plain
+            override fun open(sealed: ByteArray): ByteArray = sealed.reversedArray()
+            override fun needsReseal(sealed: ByteArray) = true
+        }
+        assertEquals(secret, SealingKvStore(inner, migrating, sealedKeys, log = {}).getString("device_pin", ""))
+        assertTrue(inner.strings.getValue("device_pin") != before)
+    }
+
+    @Test
+    fun aNewSecretThatCannotBeSealedIsNeverWrittenInClearTextAndIsSealedOnALaterRead() {
         val sealer = FakeSealer()
         val (store, inner, _) = store(sealer = sealer)
         sealer.failSeal = true
         store.putString("device_pin", secret)
+        assertEquals(null, inner.strings["device_pin"])
+        assertEquals(secret, store.getString("device_pin", ""))
+        sealer.failSeal = false
+        assertEquals(secret, store.getString("device_pin", ""))
+        assertTrue(inner.strings.getValue("device_pin").startsWith("sealed:1:"))
+    }
+
+    @Test
+    fun aPlainValueFromAnOlderVersionStaysUntilItCanBeSealed() {
+        val sealer = FakeSealer().also { it.failSeal = true }
+        val inner = MapStore().also { it.strings["device_pin"] = secret }
+        val store = SealingKvStore(inner, sealer, sealedKeys, log = {})
+        assertEquals(secret, store.getString("device_pin", ""))
         assertEquals(secret, inner.strings["device_pin"])
         sealer.failSeal = false
         assertEquals(secret, SealingKvStore(inner, sealer, sealedKeys, log = {}).getString("device_pin", ""))

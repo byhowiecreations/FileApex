@@ -146,7 +146,6 @@ func (n *Node) handleDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, n.publishedRoster())
 }
 
-// handleRemoved lists the removal records inside the fingerprint window for a paired peer.
 func (n *Node) handleRemoved(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -214,6 +213,9 @@ func (n *Node) handleMerge(w http.ResponseWriter, r *http.Request) {
 func (n *Node) handleRemove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !n.pass(w, r, "peer") {
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -407,8 +409,13 @@ func (n *Node) handleResume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"offset": entry.Size, "complete": true})
 		return
 	}
-	finalPath := uniqueName(resolved)
-	part := finalPath + partSuffix
+	// A backup replaces the file at the preferred path, so its part sits beside that file.
+	// Any other upload lands at the first free numbered name, and only that name's part counts.
+	finalPath := resolved
+	if r.URL.Query().Get("backup") != "1" {
+		finalPath = uniqueName(resolved)
+	}
+	part := partPathForTx(finalPath, tx)
 	onDisk := fileSize(part)
 	if expected > 0 && onDisk > expected {
 		writeJSON(w, http.StatusOK, map[string]any{"offset": int64(0), "complete": false})
@@ -440,6 +447,10 @@ func (n *Node) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Path outside shared root", http.StatusForbidden)
 		return
 	}
+	if !hasRoomFor(filepath.Dir(resolved), r.ContentLength) {
+		http.Error(w, "insufficient_storage", http.StatusInsufficientStorage)
+		return
+	}
 	tx := strings.TrimSpace(r.URL.Query().Get("txId"))
 	totalSize := queryInt64(r, "totalSize")
 	if entry, ok := n.findCompleted(tx, sender, totalSize); ok {
@@ -459,7 +470,9 @@ func (n *Node) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if !backup {
 		finalPath = uniqueName(resolved)
 	}
-	part := finalPath + partSuffix
+	// One part per transaction: a retry resumes its own bytes, a different upload of the
+	// same name never writes into it. Uploads with no transaction keep the shared path.
+	part := partPathForTx(finalPath, tx)
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0o755); err != nil {
 		n.uploadMu.Unlock()
 		http.Error(w, "upload_failed", http.StatusInternalServerError)
@@ -792,6 +805,25 @@ func mimeFor(name string, dir bool) string {
 
 func isScratch(name string) bool {
 	return strings.HasSuffix(name, partSuffix) || strings.Contains(name, ".fileapex-segpart")
+}
+
+// partPathForTx names the part file for one transfer. The id comes from a peer, so it is
+// cut down to a plain file-name piece beside the target.
+func partPathForTx(finalPath, tx string) string {
+	key := strings.TrimSpace(tx)
+	if len(key) > 64 {
+		key = key[:64]
+	}
+	key = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, key)
+	if key == "" {
+		return finalPath + partSuffix
+	}
+	return finalPath + "." + key + partSuffix
 }
 
 func uniqueName(preferred string) string {

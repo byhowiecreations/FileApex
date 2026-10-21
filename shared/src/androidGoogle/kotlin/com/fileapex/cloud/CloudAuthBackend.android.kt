@@ -80,7 +80,7 @@ actual object CloudAuthBackend {
         cancellableCatching {
             ref.update(fields).await()
         }.onFailure {
-            // Document missing (first heartbeat before register completed) — create without clobbering name
+            // Document missing (first heartbeat before register completed), create without clobbering name
             // if another client already wrote one: merge omits deviceName so existing name is preserved.
             ref.set(fields, SetOptions.merge()).await()
         }

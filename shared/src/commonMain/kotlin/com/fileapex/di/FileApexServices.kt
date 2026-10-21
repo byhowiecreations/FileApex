@@ -36,8 +36,6 @@ object FileApexServices {
     private val bootstrapDeferred = CompletableDeferred<Unit>()
     private const val ROSTER_CATCH_UP_FIRST_MS = 60_000L
     private const val ROSTER_CATCH_UP_EVERY_MS = 10L * 60_000L
-    private const val ROSTER_CATCH_UP_SMALL_MS = 60_000L
-    private const val ROSTER_SMALL_COUNT = 3
 
     @Volatile
     private var bootstrapStarted = false
@@ -92,7 +90,7 @@ object FileApexServices {
 
     fun bulletinSyncEngineOrNull(): BulletinBoardSyncEngine? = bulletinSyncEngineInstance
 
-    /** Outbound Multi Copy orchestration — single entry for UI and extension handoff. */
+    /** Outbound Multi Copy orchestration, single entry for UI and extension handoff. */
     val transferManager: TransferManager by lazy {
         TransferManager(
             deviceRepository = { deviceRepository },
@@ -194,10 +192,10 @@ object FileApexServices {
         client.membershipVersionProvider = { deviceRepository.selfMembershipVersion() }
         // Routes must exist before the first request, or a pinned peer could be reached over HTTP.
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-            com.fileapex.security.tls.PeerTlsRoutes.update(deviceRepository.listDevices())
+            deviceRepository.listDevices().also { com.fileapex.security.tls.PeerTlsRoutes.update(it); com.fileapex.domain.clipboard.PeerE2eeVersions.update(it) }
         }
         bootstrapScope.launch {
-            deviceRepository.observeDevices().collect { com.fileapex.security.tls.PeerTlsRoutes.update(it) }
+            deviceRepository.observeDevices().collect { com.fileapex.security.tls.PeerTlsRoutes.update(it); com.fileapex.domain.clipboard.PeerE2eeVersions.update(it) }
         }
         com.fileapex.security.tls.TlsPinAnnouncer(
             repository = deviceRepository,
@@ -210,8 +208,7 @@ object FileApexServices {
             while (true) {
                 cancellableCatching { pairingCoordinator.catchUpFromPeers(presenceMonitor.onlineDeviceIds.value) }
                     .onFailure { error -> if (error is kotlinx.coroutines.CancellationException) throw error }
-                val small = runCatching { deviceRepository.listDevices().size < ROSTER_SMALL_COUNT }.getOrDefault(false)
-                kotlinx.coroutines.delay(if (small) ROSTER_CATCH_UP_SMALL_MS else ROSTER_CATCH_UP_EVERY_MS)
+                kotlinx.coroutines.delay(ROSTER_CATCH_UP_EVERY_MS)
             }
         }
         LocalDeviceNameStore.ensureLoaded()
@@ -219,7 +216,6 @@ object FileApexServices {
         noteRepository.attachLegacyDao(database.noteDao(), bootstrapScope)
         presenceMonitor.ensureOnlineSnapshotWatcher()
         presenceMonitor.ensureLanPollLoop()
-        presenceMonitor.scheduleColdLaunchProbeOnce()
         transferQueue.ensureDrainWatcher()
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.ensureStarted()
         bootstrapScope.launch(Dispatchers.IO) {

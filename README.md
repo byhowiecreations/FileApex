@@ -114,9 +114,21 @@ No typing IP addresses. Generate a QR code on one device, then on the other use 
 |  |  |
 | --- | --- |
 | **Same network** | Discovery and transfer over Wi-Fi or Ethernet, after paired. |
-| **Tailscale** | Reach paired devices across networks through your tailnet. |
+| **Tailscale** | Reach paired devices across networks through your tailnet, using [Tailscale](https://tailscale.com)'s embedded `tsnet`. |
+| **Iroh** | Reach paired devices over the internet by device key, with no IP address needed, using [Iroh](https://www.iroh.computer) from [n0 computer](https://n0.computer). |
 | **Docker** | Run the FileApex daemon as an always-on node. See [DOCKER.md](https://www.google.com/search?q=./DOCKER.md). |
 | **Google account (opt-in)** | Cloud presence and wake signals, plus optional Drive relay for Bulletin Board files. Files stay on your devices otherwise. |
+
+---
+
+## Acknowledgements
+
+FileApex builds on the work of others:
+
+- **[Tailscale](https://tailscale.com)**: the open-source ([BSD-3-Clause](https://github.com/tailscale/tailscale/blob/main/LICENSE), [source](https://github.com/tailscale/tailscale)) `tsnet` library gives FileApex private, encrypted connections between your devices across networks. Thank you to the Tailscale team for making it open and embeddable.
+- **[Iroh](https://www.iroh.computer)** by [n0 computer](https://n0.computer): open source ([MIT and Apache-2.0](https://github.com/n0-computer/iroh), [Kotlin bindings](https://github.com/n0-computer/iroh-ffi)), peer-to-peer connections by key, with hole punching and relays, so paired devices can find each other over the internet. Thank you to the Iroh team and contributors.
+
+Their licence notices, and those of the Go libraries behind the Tailscale bridge, are reproduced in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), which also ships inside the app. Tailscale and Iroh are trademarks of their respective owners. FileApex is not affiliated with or endorsed by them.
 
 ---
 

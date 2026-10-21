@@ -627,7 +627,7 @@ object DriveRelayCoordinator {
         val destRoot = defaultDownloadsDir()
         val relative = entry.relativeDestPath.ifBlank { entry.fileName }
         val preferred = "${destRoot.trimEnd('/', '\\')}/${relative.trimStart('/', '\\')}"
-        val preferredPath = Path(preferred)
+        val preferredPath = Path(preferred).takeIf { com.fileapex.util.PathUtils.isConfinedOnDisk(preferred, destRoot) } ?: return RetrieveResult.FAILED
         val existingSize = SystemFileSystem.metadataOrNull(preferredPath)?.size
         val finalSize = entry.encryption?.plainSizeBytes ?: entry.sizeBytes
         if (SystemFileSystem.exists(preferredPath) &&
@@ -724,7 +724,7 @@ object DriveRelayCoordinator {
     suspend fun materializeNoteAttachment(note: NoteRecord): String? {
         val driveId = note.driveFileId?.takeIf { it.isNotBlank() } ?: return null
         if (!GoogleDriveAuth.hasGrant()) return null
-        val name = note.attachmentFileName?.ifBlank { null } ?: "attachment"
+        val name = note.attachmentFileName?.let { com.fileapex.util.PathUtils.safeFileName(it) } ?: "attachment"
         val destRoot = defaultDownloadsDir()
         val preferred = "${destRoot.trimEnd('/', '\\')}/$name"
         val existing = Path(preferred)

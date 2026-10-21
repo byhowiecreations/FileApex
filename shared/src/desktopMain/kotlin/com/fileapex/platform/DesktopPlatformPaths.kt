@@ -39,7 +39,7 @@ object DesktopPlatformPaths {
 
     /**
      * Local Desktop folder for crash logs and similar user-visible files.
-     * Always `%USERPROFILE%\Desktop` / `~/Desktop` — never OneDrive-redirected paths.
+     * Always `%USERPROFILE%\Desktop` / `~/Desktop`, never OneDrive-redirected paths.
      */
     fun userDesktopDirectory(): File {
         val desktop = File(userHomeDirectory(), "Desktop")

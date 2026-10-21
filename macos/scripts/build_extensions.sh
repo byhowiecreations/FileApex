@@ -8,7 +8,7 @@ OUT="$MACOS/build"
 CONFIGURATION="${1:-Release}"
 
 if ! command -v xcodebuild >/dev/null 2>&1; then
-  echo "xcodebuild not found — install Xcode to build macOS extensions."
+  echo "xcodebuild not found, install Xcode to build macOS extensions."
   exit 1
 fi
 

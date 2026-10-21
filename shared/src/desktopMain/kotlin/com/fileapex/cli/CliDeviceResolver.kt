@@ -13,7 +13,7 @@ object CliDeviceResolver {
      */
     suspend fun getAuthenticatedDevices(repository: DeviceRepository): List<PairedDeviceEntity> {
         // listDevices() already excludes self and removed/blocklisted rows are deleted from the roster.
-        // Do not call isBlocklisted() per device — that serializes N Room queries under a mutex and
+        // Do not call isBlocklisted() per device, that serializes N Room queries under a mutex and
         // stalls the TUI first paint for seconds.
         return repository.listDevices().filter { dev ->
             dev.deviceId.isNotBlank() &&
@@ -44,30 +44,25 @@ object CliDeviceResolver {
         val devices = getAuthenticatedDevices(repository)
         if (devices.isEmpty()) return null
 
-        // 1. Direct deviceId match
         val byId = devices.firstOrNull { it.deviceId.equals(cleanQuery, ignoreCase = true) }
         if (byId != null) return byId
 
-        // 2. Custom alias match
         val byCustomAlias = devices.firstOrNull { dev ->
             CliDeviceAliasManager.getAlias(dev.deviceId)?.equals(cleanQuery, ignoreCase = true) == true
         }
         if (byCustomAlias != null) return byCustomAlias
 
-        // 3. Generated slug exact match
         val bySlug = devices.firstOrNull { dev ->
             CliDeviceAliasManager.resolveEffectiveSlug(dev).equals(cleanQuery, ignoreCase = true)
         }
         if (bySlug != null) return bySlug
 
-        // 4. Exact deviceName match (case-insensitive)
         val byExactName = devices.filter { it.deviceName.trim().equals(cleanQuery, ignoreCase = true) }
         if (byExactName.size == 1) return byExactName.first()
         if (byExactName.size > 1) {
             return promptDisambiguation(cleanQuery, byExactName, out, readLine)
         }
 
-        // 5. Fuzzy match against name, model, make, and slug
         val fuzzyCandidates = devices.filter { dev ->
             val name = dev.deviceName.lowercase()
             val slug = CliDeviceAliasManager.resolveEffectiveSlug(dev).lowercase()

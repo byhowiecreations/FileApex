@@ -1,6 +1,6 @@
 package com.fileapex.cloud
 
-/** Silent FCM data payload keys — no notification channel; high-priority data-only wake. */
+/** Silent FCM data payload keys, no notification channel; high-priority data-only wake. */
 object FcmWakeProtocol {
     const val TYPE_PRESENCE_WAKE = "presence_wake"
     const val TYPE_DIAGNOSTICS_REQUEST = "diagnostics_request"

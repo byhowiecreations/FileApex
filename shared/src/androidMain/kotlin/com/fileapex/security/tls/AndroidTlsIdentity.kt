@@ -1,5 +1,6 @@
 package com.fileapex.security.tls
 
+import com.fileapex.data.settings.SecretUnavailableException
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.fileapex.data.settings.androidAppContextOrNull
@@ -16,8 +17,16 @@ class AndroidKeystoreTlsVault(private val alias: String = ALIAS) : TlsSecretVaul
     override fun open(sealed: ByteArray) = GcmBlob.open(key(), sealed)
 
     private fun key(): SecretKey {
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(alias, null) as? SecretKey)?.let { return it }
+        // A keystore that cannot answer is not a key that is gone: only a null answer means the key is absent.
+        val existing = try {
+            val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            store.getKey(alias, null) as? SecretKey
+        } catch (e: java.security.GeneralSecurityException) {
+            throw SecretUnavailableException("the Android keystore could not be read", e)
+        } catch (e: java.io.IOException) {
+            throw SecretUnavailableException("the Android keystore could not be read", e)
+        }
+        existing?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
             KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)

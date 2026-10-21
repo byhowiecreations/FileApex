@@ -46,7 +46,7 @@ class BulletinBoardSyncEngine(
     private var maintenanceJob: Job? = null
     private val drainScheduleLock = Any()
 
-    fun ensureStarted() {
+    @Synchronized fun ensureStarted() {
         if (drainWatcherStarted) return
         drainWatcherStarted = true
         scope.launch { cancellableCatching { latestChange() } }
@@ -97,7 +97,7 @@ class BulletinBoardSyncEngine(
                             id = message.id,
                             originDeviceId = message.originDeviceId,
                             senderName = message.senderName,
-                            content = message.content,
+                            content = repository.stripRemoteLocalPath(message.content, message.contentType),
                             contentType = message.contentType,
                             timestamp = message.timestamp,
                             isPinned = message.isPinned
@@ -289,9 +289,8 @@ class BulletinBoardSyncEngine(
         val remotePurgeMessageIds = mutableListOf<String>()
         val kindRetractedMessageIds = mutableListOf<String>()
         for (item in batch.items) {
-            if (tombstoneDao.countById(item.payloadId) > 0 && item.payloadType == BulletinPayloadType.MESSAGE) {
-                continue
-            }
+            if (tombstoneDao.countById(item.payloadId) > 0 && item.payloadType == BulletinPayloadType.MESSAGE) continue
+            if (item.retractsForAnUntrustedDevice(json)) { accepted += item.payloadId; continue }
             when (item.payloadType) {
                 BulletinPayloadType.MESSAGE -> {
                     val payload = json.decodeFromString<BulletinMessagePayload>(item.body)
@@ -300,7 +299,7 @@ class BulletinBoardSyncEngine(
                         id = payload.id,
                         originDeviceId = payload.originDeviceId,
                         senderName = payload.senderName,
-                        content = repository.stripMissingLocalPath(
+                        content = repository.stripRemoteLocalPath(
                             payload.content,
                             payload.contentType
                         ),
@@ -529,7 +528,7 @@ class BulletinBoardSyncEngine(
                                 id = message.id,
                                 originDeviceId = message.originDeviceId,
                                 senderName = message.senderName,
-                                content = message.content,
+                                content = repository.stripRemoteLocalPath(message.content, message.contentType),
                                 contentType = message.contentType,
                                 timestamp = message.timestamp,
                                 isPinned = message.isPinned

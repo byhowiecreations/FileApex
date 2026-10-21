@@ -37,7 +37,7 @@ object DesktopShareServerController {
         shutdownBlocking(fast = false)
     }
 
-    /** Non-blocking quit path — do not wait on the UI thread for Ktor/mDNS teardown. */
+    /** Non-blocking quit path, do not wait on the UI thread for Ktor/mDNS teardown. */
     fun shutdownForQuit() {
         ensureRunningJob?.cancel()
         ensureRunningJob = null

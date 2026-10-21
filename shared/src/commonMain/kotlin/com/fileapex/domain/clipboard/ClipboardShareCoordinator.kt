@@ -290,7 +290,7 @@ object ClipboardShareCoordinator {
             ciphertextBase64 = ciphertext,
             localDeviceId = localId,
             peerDeviceId = senderDeviceId.trim(),
-            peerPublicKeyBase64 = verifiedKey
+            peerPublicKeyBase64 = verifiedKey, context = capturedAtEpochMs.toString()
         ).decodeToString()
         val prepared = ClipboardCopySignals.prepare(plaintext)
         if (prepared !is ClipboardCopySignals.Prepared.Ok) {
@@ -455,7 +455,7 @@ object ClipboardShareCoordinator {
             plaintext = text.encodeToByteArray(),
             localDeviceId = identity.deviceId,
             peerDeviceId = device.deviceId,
-            peerPublicKeyBase64 = peerKey
+            peerPublicKeyBase64 = peerKey, context = capturedAtEpochMs.toString()
         )
         val pendingPayload = ClipboardSendRequest(
             senderDeviceId = identity.deviceId,

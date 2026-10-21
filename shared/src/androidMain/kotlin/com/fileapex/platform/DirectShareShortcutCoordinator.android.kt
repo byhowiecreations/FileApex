@@ -27,7 +27,7 @@ import kotlinx.coroutines.sync.withLock
  * Long-lived shortcuts need resource (or properly granted URI) icons.
  * Do not use [ShortcutInfoCompat.setExcludedFromSurfaces] with
  * [ShortcutInfoCompat.SURFACE_LAUNCHER] when publishing via
- * [ShortcutManagerCompat] — Compat strips those shortcuts before the
+ * [ShortcutManagerCompat], Compat strips those shortcuts before the
  * platform call, so the share sheet never sees device targets.
  */
 object DirectShareShortcutCoordinator {
@@ -347,7 +347,7 @@ object DirectShareShortcutCoordinator {
     private fun buildShortcut(peer: PairedDeviceEntity, rank: Int): ShortcutInfoCompat {
         // Launcher long-press uses this VIEW + fileapex://open/… intent.
         // Direct Share still starts ACTION_SEND with EXTRA_SHORTCUT_ID from
-        // shortcuts.xml — it does not use setIntent().
+        // shortcuts.xml, it does not use setIntent().
         val launchIntent = launcherOpenIntent(deviceOpenUri(peer.deviceId)) {
             putExtra(EXTRA_TARGET_DEVICE_ID, peer.deviceId)
         }

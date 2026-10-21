@@ -8,27 +8,12 @@ import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.i18n.AppI18n
-import com.fileapex.platform.generateDeviceId
-import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import io.ktor.http.encodeURLParameter
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.io.Buffer
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.readByteArray
 import kotlinx.io.write
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -41,7 +26,7 @@ import kotlinx.serialization.json.Json
  * Cloud traffic uses the process-wide Ktor client from [com.fileapex.di.FileApexServices].
  */
 class FileApexClient(
-    private val json: Json = FileApexHttpClientFactory.defaultJson,
+    internal val json: Json = FileApexHttpClientFactory.defaultJson,
     private val localDeviceId: () -> String = { loadLocalIdentity().deviceId }
 ) {
     var onRevocationDetected: (suspend (host: String) -> Unit)? = null
@@ -52,7 +37,9 @@ class FileApexClient(
     private val sessionPinsLock = Any()
     private val sessionPins = mutableMapOf<String, String>()
 
-    private val capabilityCache = ConcurrentHashMap<String, Pair<TransferCapabilities, Long>>()
+    val transferCapabilities: TransferCapabilityCache = TransferCapabilityCache(this)
+    val downloads: PeerDownloadClient = PeerDownloadClient(this, transferCapabilities)
+    val uploads: PeerUploadClient = PeerUploadClient(this, transferCapabilities, downloads)
 
     fun rememberSessionPin(host: String, port: Int, pin: String) {
         val trimmed = pin.trim()
@@ -63,7 +50,7 @@ class FileApexClient(
         }
     }
 
-    private fun endpointKey(host: String, port: Int): String = "$host:$port"
+    internal fun endpointKey(host: String, port: Int): String = "$host:$port"
 
     private fun sessionPin(host: String, port: Int): String? =
         synchronized(sessionPinsLock) {
@@ -899,886 +886,23 @@ class FileApexClient(
         return fallback != null && fallback.statusCode in 200..299
     }
 
-    suspend fun downloadBytes(
-        host: String,
-        port: Int,
-        remotePath: String,
-        maxBytes: Long = 25L * 1024L * 1024L
-    ): ByteArray {
-        val sink = Buffer()
-        var total = 0L
-        streamRemoteFile(host, port, remotePath) { buffer, length ->
-            total += length.toLong()
-            if (total > maxBytes) {
-                error(AppI18n.t("file_too_large_preview_mb", (maxBytes / (1024 * 1024)).toString()))
-            }
-            sink.write(buffer, startIndex = 0, endIndex = length)
-        }
-        return sink.readByteArray()
-    }
 
-    /**
-     * Pulls a remote file to [localTargetPath]. Files at or above
-     * [TransferRuntime.LARGE_FILE_THRESHOLD_BYTES] are fetched as parallel byte ranges when the
-     * peer supports bounded streams; everything else uses one resumable stream.
-     */
-    suspend fun downloadToLocal(
-        host: String,
-        port: Int,
-        remotePath: String,
-        localTargetPath: String,
-        expectedSizeBytes: Long? = null,
-        onProgress: ((receivedBytes: Long, totalBytes: Long) -> Unit)? = null
-    ) {
-        val expected = expectedSizeBytes?.takeIf { it > 0L } ?: 0L
-        val segments = TransferRuntime.segmentsFor(expected)
-        if (segments > 1 && transferCapabilities(host, port).rangedStream) {
-            downloadSegmented(host, port, remotePath, localTargetPath, expected, segments, onProgress)
-            return
-        }
-        val partPath = SocketFileStreamer.partPathFor(localTargetPath)
-        var lastError: Throwable? = null
-        for (attempt in 0 until TransferResumeProtocol.MAX_ATTEMPTS) {
-            if (attempt > 0) {
-                delay(TransferResumeProtocol.RETRY_DELAY_MS * attempt)
-            }
-            val requestedOffset = SocketFileStreamer.fileLength(partPath)
-            if (expected > 0L && requestedOffset >= expected) {
-                SocketFileStreamer.finalizePart(partPath, localTargetPath)
-                return
-            }
-            val failure = transferCatching {
-                TransferRuntime.streamBudget(host).withPermit {
-                    downloadSingleStreamAttempt(
-                        host, port, remotePath, localTargetPath, partPath, requestedOffset, expected, onProgress
-                    )
-                }
-            }.exceptionOrNull() ?: return
-            if (failure is PeerUnreachableException || failure is TransferCancelledException) throw failure
-            lastError = failure
-        }
-        throw lastError ?: error(AppI18n.t("download_failed"))
-    }
 
-    private suspend fun downloadSingleStreamAttempt(
-        host: String,
-        port: Int,
-        remotePath: String,
-        localTargetPath: String,
-        partPath: String,
-        requestedOffset: Long,
-        expectedSizeBytes: Long,
-        onProgress: ((Long, Long) -> Unit)?
-    ) {
-        var appender: java.io.RandomAccessFile? = null
-        try {
-            var bytesWritten = requestedOffset
-            streamRemoteFile(
-                host = host,
-                port = port,
-                remotePath = remotePath,
-                offset = requestedOffset,
-                onStatus = { status ->
-                    if (status in 200..299) {
-                        val writeOffset = if (status == 206) requestedOffset else 0L
-                        appender = SocketFileStreamer.openAppender(partPath, writeOffset)
-                        bytesWritten = writeOffset
-                    }
-                }
-            ) { buffer, length ->
-                val raf = appender ?: error("Download body arrived before HTTP status")
-                raf.write(buffer, 0, length)
-                bytesWritten += length.toLong()
-                if (expectedSizeBytes > 0L) onProgress?.invoke(bytesWritten, expectedSizeBytes)
-            }
-            if (expectedSizeBytes > 0L && bytesWritten != expectedSizeBytes) {
-                error(
-                    "Download incomplete for ${Path(localTargetPath).name} " +
-                        "(got $bytesWritten bytes, expected $expectedSizeBytes)"
-                )
-            }
-            runCatching { appender?.close() }
-            appender = null
-            SocketFileStreamer.finalizePart(partPath, localTargetPath)
-        } finally {
-            runCatching { appender?.close() }
-        }
-    }
 
-    private suspend fun downloadSegmented(
-        host: String,
-        port: Int,
-        remotePath: String,
-        localTargetPath: String,
-        totalSize: Long,
-        segments: Int,
-        onProgress: ((Long, Long) -> Unit)?
-    ) {
-        val partPath = SocketFileStreamer.segmentPartPathFor(localTargetPath)
-        java.io.File(partPath).parentFile?.mkdirs()
-        val initial = RangeLedger.prepare(partPath, totalSize)
-        val plan = TransferRanges.plan(totalSize, segments)
-        val received = AtomicLong(TransferRanges.coveredBytes(initial).coerceAtMost(totalSize))
-        onProgress?.invoke(received.get(), totalSize)
-        coroutineScope {
-            plan.map { segment ->
-                async(TransferRuntime.outbound) {
-                    downloadOneSegment(
-                        host = host,
-                        port = port,
-                        remotePath = remotePath,
-                        partPath = partPath,
-                        totalSize = totalSize,
-                        segment = segment,
-                        isLast = segment.endExclusive == totalSize,
-                        initial = initial
-                    ) { delta ->
-                        onProgress?.invoke(received.addAndGet(delta).coerceIn(0L, totalSize), totalSize)
-                    }
-                }
-            }.awaitAll()
-        }
-        val ranges = RangeLedger.read(partPath, totalSize)
-        check(TransferRanges.covers(ranges, totalSize) && SocketFileStreamer.fileLength(partPath) == totalSize) {
-            "Download incomplete for ${Path(localTargetPath).name} " +
-                "(got ${TransferRanges.coveredBytes(ranges)} bytes, expected $totalSize)"
-        }
-        SocketFileStreamer.finalizePart(partPath, localTargetPath)
-        RangeLedger.delete(partPath)
-    }
 
-    private suspend fun downloadOneSegment(
-        host: String,
-        port: Int,
-        remotePath: String,
-        partPath: String,
-        totalSize: Long,
-        segment: ByteSpan,
-        isLast: Boolean,
-        initial: List<ByteSpan>,
-        onBytes: (Long) -> Unit
-    ) {
-        var known = initial
-        var lastError: Throwable? = null
-        for (attempt in 0 until TransferResumeProtocol.MAX_ATTEMPTS) {
-            if (attempt > 0) {
-                delay(TransferResumeProtocol.RETRY_DELAY_MS * attempt)
-                known = RangeLedger.read(partPath, totalSize)
-            }
-            val from = TransferRanges.resumePoint(segment, known)
-            if (from >= segment.endExclusive) return
-            val failure = transferCatching {
-                TransferRuntime.streamBudget(host).withPermit {
-                    streamRangeToPart(host, port, remotePath, partPath, totalSize, from, segment.endExclusive, isLast, onBytes)
-                }
-            }.exceptionOrNull() ?: return
-            if (failure is PeerUnreachableException || failure is SourceSizeChangedException ||
-                failure is TransferCancelledException
-            ) {
-                throw failure
-            }
-            lastError = failure
-        }
-        throw lastError ?: error(AppI18n.t("download_failed"))
-    }
 
-    private suspend fun streamRangeToPart(
-        host: String,
-        port: Int,
-        remotePath: String,
-        partPath: String,
-        totalSize: Long,
-        from: Long,
-        end: Long,
-        isLast: Boolean,
-        onBytes: (Long) -> Unit
-    ) {
-        // The last range asks for one byte past the expected end so a file that grew since
-        // listing fails loudly instead of finalizing truncated.
-        val requestLength = (end - from) + if (isLast) 1L else 0L
-        java.io.RandomAccessFile(partPath, "rw").use { raf ->
-            raf.seek(from)
-            var position = from
-            var recorded = from
-            try {
-                streamRemoteFile(
-                    host = host,
-                    port = port,
-                    remotePath = remotePath,
-                    offset = from,
-                    length = requestLength
-                ) { buffer, length ->
-                    if (position + length > end) {
-                        throw SourceSizeChangedException("Remote file is larger than $totalSize bytes: $remotePath")
-                    }
-                    raf.write(buffer, 0, length)
-                    position += length.toLong()
-                    onBytes(length.toLong())
-                    if (position - recorded >= TransferRuntime.CHECKPOINT_BYTES) {
-                        raf.channel.force(false)
-                        RangeLedger.record(partPath, totalSize, ByteSpan(from, position))
-                        recorded = position
-                    }
-                }
-            } finally {
-                if (position > recorded) {
-                    runCatching {
-                        raf.channel.force(false)
-                        RangeLedger.record(partPath, totalSize, ByteSpan(from, position))
-                    }
-                }
-            }
-            check(position == end) { "Range incomplete ($position of $end) for $remotePath" }
-        }
-    }
 
-    suspend fun transferCapabilities(host: String, port: Int): TransferCapabilities {
-        val key = endpointKey(host, port)
-        val now = TimeUtils.now()
-        capabilityCache[key]?.let { (cached, at) ->
-            if (now - at < CAPABILITY_CACHE_MS) return cached
-        }
-        val response = boundGet(host, port, "/api/v1/files/capabilities", HEALTH_PROBE_TIMEOUT_MS)
-        val capabilities = if (response.statusCode in 200..299) {
-            runCatching {
-                json.decodeFromString(TransferCapabilities.serializer(), response.body)
-            }.getOrDefault(TransferCapabilities())
-        } else {
-            TransferCapabilities()
-        }
-        capabilityCache[key] = capabilities to now
-        return capabilities
-    }
 
-    suspend fun streamRemoteFile(
-        host: String,
-        port: Int,
-        remotePath: String,
-        offset: Long = 0L,
-        length: Long? = null,
-        onStatus: ((Int) -> Unit)? = null,
-        onChunk: suspend (ByteArray, Int) -> Unit
-    ) {
-        PeerLanHttpPolicy.ensureRoute(host)
-        val params = buildMap {
-            put("path", remotePath)
-            if (offset > 0L) {
-                put(TransferResumeProtocol.OFFSET_QUERY, offset.toString())
-            }
-            if (length != null && length > 0L) {
-                put(TransferResumeProtocol.LENGTH_QUERY, length.toString())
-            }
-        }
-        val result = peerHttpGetStreaming(
-            host = host,
-            port = port,
-            pathWithQuery = withSenderQuery(
-                queryPath(
-                    basePath = "/api/v1/files/stream",
-                    host = host,
-                    port = port,
-                    params = params
-                )
-            ),
-            connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-            readIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-            onChunk = onChunk,
-            onStatus = onStatus
-        ) ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
-        if (result.statusCode == 403) {
-            error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
-        }
-        require(result.statusCode in 200..299) {
-            "Stream failed (${result.statusCode})"
-        }
-    }
 
-    suspend fun queryUploadResumeOffset(
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        expectedSizeBytes: Long = 0L,
-        transactionId: String = ""
-    ): Long {
-        return cancellableCatching {
-            PeerLanHttpPolicy.ensureRoute(host)
-            val response = boundGet(
-                host = host,
-                port = port,
-                pathWithQuery = withSenderQuery(
-                    queryPath(
-                        basePath = "/api/v1/files/resume",
-                        host = host,
-                        port = port,
-                        params = buildMap {
-                            put("targetPath", remoteTargetPath)
-                            if (expectedSizeBytes > 0L) {
-                                put(TransferResumeProtocol.EXPECTED_SIZE_QUERY, expectedSizeBytes.toString())
-                            }
-                            if (transactionId.isNotBlank()) {
-                                put(TransferResumeProtocol.TRANSACTION_ID_QUERY, transactionId)
-                            }
-                        }
-                    )
-                ),
-                timeoutMs = PEER_REQUEST_TIMEOUT_MS
-            )
-            response
-        }.getOrNull()?.let { response ->
-            if (response.statusCode !in 200..299) return@let 0L
-            runCatching {
-                json.decodeFromString(ResumeOffsetResponse.serializer(), response.body).offset
-            }.getOrDefault(0L).coerceAtLeast(0L)
-        } ?: 0L
-    }
 
-    suspend fun uploadFromLocal(
-        host: String,
-        port: Int,
-        localSourcePath: String,
-        remoteTargetPath: String,
-        knownResumeOffset: Long? = null,
-        transactionId: String? = null,
-        transactionTimestampEpochMs: Long? = null,
-        /** Folder backup: the receiver replaces an older copy in place and skips the per-file "received" alert. */
-        backup: Boolean = false,
-        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
-    ) {
-        val source = Path(localSourcePath)
-        check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
-        val totalSize = SystemFileSystem.metadataOrNull(source)?.size?.coerceAtLeast(0L) ?: 0L
-        val txTimestamp = transactionTimestampEpochMs ?: TimeUtils.now()
-        val fileSha256 = com.fileapex.platform.fileDigest(localSourcePath, -1L).orEmpty()
-        val segments = TransferRuntime.segmentsFor(totalSize)
-        if (!backup && segments > 1 && transferCapabilities(host, port).segmentedUpload) {
-            uploadSegmented(
-                host = host,
-                port = port,
-                remoteTargetPath = remoteTargetPath,
-                totalSize = totalSize,
-                segments = segments,
-                transactionId = transactionId?.takeIf { it.isNotBlank() } ?: generateDeviceId(),
-                transactionTimestamp = txTimestamp,
-                sha256 = fileSha256,
-                onProgress = onProgress
-            ) { start, end, pathWithQuery, onSent ->
-                peerHttpUploadFromFile(
-                    host = host,
-                    port = port,
-                    pathWithQuery = pathWithQuery,
-                    contentType = "application/octet-stream",
-                    sourcePath = localSourcePath,
-                    offset = start,
-                    length = end - start,
-                    connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-                    uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-                    onProgress = { sent, _ -> onSent(sent - start) }
-                )
-            }
-            return
-        }
-        val txId = transactionId.orEmpty()
-        var lastError: Throwable? = null
-        for (attempt in 0 until TransferResumeProtocol.MAX_ATTEMPTS) {
-            if (attempt > 0) {
-                delay(TransferResumeProtocol.RETRY_DELAY_MS * attempt)
-            }
-            val offset = (if (attempt == 0 && knownResumeOffset != null) knownResumeOffset else queryUploadResumeOffset(host, port, remoteTargetPath, totalSize, txId))
-                .coerceAtMost(totalSize)
-            if (offset >= totalSize && totalSize > 0L) {
-                onProgress?.invoke(totalSize, totalSize)
-                return
-            }
-            val remaining = (totalSize - offset).coerceAtLeast(0L)
-            val failure = transferCatching {
-                TransferRuntime.streamBudget(host).withPermit {
-                    PeerLanHttpPolicy.ensureRoute(host)
-                    val response = peerHttpUploadFromFile(
-                        host = host,
-                        port = port,
-                        pathWithQuery = withSenderQuery(
-                            uploadPathWithQuery(
-                                host = host,
-                                port = port,
-                                remoteTargetPath = remoteTargetPath,
-                                offset = offset,
-                                totalSize = totalSize,
-                                transactionId = txId,
-                                transactionTimestamp = txTimestamp,
-                                backup = backup,
-                                sha256 = fileSha256
-                            )
-                        ),
-                        contentType = "application/octet-stream",
-                        sourcePath = localSourcePath,
-                        offset = offset,
-                        length = remaining,
-                        connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-                        uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-                        onProgress = onProgress
-                    ) ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
-                    if (response.statusCode == 403) {
-                        error(AppI18n.t("pin_required_open_device"))
-                    }
-                    require(response.statusCode in 200..299) {
-                        "${AppI18n.t("upload_failed")} (${response.statusCode})"
-                    }
-                }
-            }.exceptionOrNull()
-            if (failure == null) {
-                onProgress?.invoke(totalSize, totalSize)
-                return
-            }
-            if (failure is PeerUnreachableException || failure is TransferCancelledException) throw failure
-            lastError = failure
-        }
-        throw lastError ?: error(AppI18n.t("upload_failed"))
-    }
 
-    /**
-     * Streams a file from one peer straight into another without touching local disk.
-     * Large files go as parallel ranges when both peers support it.
-     */
-    suspend fun relayRemoteFile(
-        sourceHost: String,
-        sourcePort: Int,
-        sourcePath: String,
-        sizeBytes: Long,
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        transactionId: String,
-        transactionTimestampEpochMs: Long,
-        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)? = null
-    ) {
-        val segments = TransferRuntime.segmentsFor(sizeBytes)
-        if (segments > 1 &&
-            transferCapabilities(host, port).segmentedUpload &&
-            transferCapabilities(sourceHost, sourcePort).rangedStream
-        ) {
-            uploadSegmented(
-                host = host,
-                port = port,
-                remoteTargetPath = remoteTargetPath,
-                totalSize = sizeBytes,
-                segments = segments,
-                transactionId = transactionId,
-                transactionTimestamp = transactionTimestampEpochMs,
-                onProgress = onProgress
-            ) { start, end, pathWithQuery, onSent ->
-                relayRange(sourceHost, sourcePort, sourcePath, host, port, pathWithQuery, start, end, onSent)
-            }
-            return
-        }
-        relaySingleStream(
-            sourceHost = sourceHost,
-            sourcePort = sourcePort,
-            sourcePath = sourcePath,
-            sizeBytes = sizeBytes,
-            host = host,
-            port = port,
-            remoteTargetPath = remoteTargetPath,
-            transactionId = transactionId,
-            transactionTimestampEpochMs = transactionTimestampEpochMs,
-            onProgress = onProgress
-        )
-    }
 
-    private suspend fun relayRange(
-        sourceHost: String,
-        sourcePort: Int,
-        sourcePath: String,
-        host: String,
-        port: Int,
-        pathWithQuery: String,
-        start: Long,
-        end: Long,
-        onSent: (Long) -> Unit
-    ): PeerBoundHttpResponse? = coroutineScope {
-        val length = end - start
-        val chunks = Channel<ByteArray>(capacity = RELAY_CHANNEL_CAPACITY)
-        val producer = launch(TransferRuntime.outbound) {
-            var produced = 0L
-            try {
-                streamRemoteFile(sourceHost, sourcePort, sourcePath, offset = start, length = length) { buffer, read ->
-                    if (produced + read > length) {
-                        throw SourceSizeChangedException("Source sent more than the requested range: $sourcePath")
-                    }
-                    chunks.send(buffer.copyOf(read))
-                    produced += read.toLong()
-                    onSent(produced)
-                }
-                chunks.close()
-            } catch (error: Throwable) {
-                chunks.close(error)
-                throw error
-            }
-        }
-        val response = try {
-            peerHttpUploadFromChannel(
-                host = host,
-                port = port,
-                pathWithQuery = pathWithQuery,
-                contentType = "application/octet-stream",
-                chunks = chunks,
-                connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-                uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-                contentLength = length
-            )
-        } catch (error: Throwable) {
-            producer.cancel()
-            throw error
-        }
-        if (response == null) {
-            // Upload never connected, so nothing drains the channel; the producer would park forever.
-            producer.cancel()
-        } else {
-            producer.join()
-        }
-        response
-    }
 
-    private suspend fun relaySingleStream(
-        sourceHost: String,
-        sourcePort: Int,
-        sourcePath: String,
-        sizeBytes: Long,
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        transactionId: String,
-        transactionTimestampEpochMs: Long,
-        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
-    ) {
-        var lastError: Throwable? = null
-        for (attempt in 0 until TransferResumeProtocol.MAX_ATTEMPTS) {
-            if (attempt > 0) {
-                delay(TransferResumeProtocol.RETRY_DELAY_MS * attempt)
-            }
-            val offset = if (sizeBytes > 0L) {
-                queryUploadResumeOffset(host, port, remoteTargetPath, sizeBytes, transactionId).coerceAtMost(sizeBytes)
-            } else {
-                0L
-            }
-            if (sizeBytes > 0L && offset >= sizeBytes) {
-                onProgress?.invoke(sizeBytes, sizeBytes)
-                return
-            }
-            val failure = transferCatching {
-                TransferRuntime.streamBudget(host).withPermit {
-                    coroutineScope {
-                        val chunks = Channel<ByteArray>(capacity = RELAY_CHANNEL_CAPACITY)
-                        val producer = launch(TransferRuntime.outbound) {
-                            var sent = offset
-                            try {
-                                streamRemoteFile(sourceHost, sourcePort, sourcePath, offset = offset) { buffer, read ->
-                                    chunks.send(buffer.copyOf(read))
-                                    sent += read.toLong()
-                                    if (sizeBytes > 0L) onProgress?.invoke(sent, sizeBytes)
-                                }
-                                chunks.close()
-                            } catch (error: Throwable) {
-                                chunks.close(error)
-                                throw error
-                            }
-                        }
-                        try {
-                            uploadFromChunkChannel(
-                                host = host,
-                                port = port,
-                                remoteTargetPath = remoteTargetPath,
-                                chunks = chunks,
-                                contentLength = (sizeBytes - offset).takeIf { sizeBytes > 0L },
-                                resumeOffset = offset,
-                                totalSize = sizeBytes.takeIf { it > 0L },
-                                transactionId = transactionId,
-                                transactionTimestampEpochMs = transactionTimestampEpochMs
-                            )
-                        } catch (error: Throwable) {
-                            producer.cancel()
-                            throw error
-                        }
-                        producer.join()
-                    }
-                }
-            }.exceptionOrNull() ?: return
-            if (failure is PeerUnreachableException || failure is TransferCancelledException) throw failure
-            lastError = failure
-        }
-        throw lastError ?: error(AppI18n.t("upload_failed"))
-    }
 
-    /**
-     * Sends [totalSize] bytes as parallel ranges, then asks the receiver to finalize.
-     * [sendRange] streams `[start, end)` to the given path and reports bytes sent within it.
-     * Coordinator coroutines hold no stream permit; each range takes one while it moves bytes.
-     */
-    private suspend fun uploadSegmented(
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        totalSize: Long,
-        segments: Int,
-        transactionId: String,
-        transactionTimestamp: Long,
-        sha256: String = "",
-        onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?,
-        sendRange: suspend (start: Long, end: Long, pathWithQuery: String, onSent: (Long) -> Unit) -> PeerBoundHttpResponse?
-    ) {
-        val plan = TransferRanges.plan(totalSize, segments)
-        for (round in 0 until SEGMENT_COMPLETE_ROUNDS) {
-            val state = querySegmentState(host, port, remoteTargetPath, totalSize, transactionId, prepare = round == 0)
-            if (state.complete) {
-                onProgress?.invoke(totalSize, totalSize)
-                return
-            }
-            // Progress is what the receiver confirms, not what the socket accepted: userspace and
-            // carrier buffers can hold tens of MB that have not arrived.
-            val alreadyThere = TransferRanges.coveredBytes(state.ranges).coerceAtMost(totalSize)
-            val confirmed = AtomicLong(alreadyThere)
-            val sentByUs = AtomicLong(0L)
-            val overIroh = com.fileapex.iroh.IrohBridgePorts.contains(port) && host == "127.0.0.1"
-            onProgress?.invoke(confirmed.get(), totalSize)
-            coroutineScope {
-                val poller = launch(TransferRuntime.outbound) {
-                    while (true) {
-                        delay(CONFIRM_POLL_INTERVAL_MS)
-                        val polled = try {
-                            withTimeoutOrNull(com.fileapex.iroh.IrohTransferProgress.pollTimeoutMs(host, port, CONFIRM_POLL_TIMEOUT_MS)) {
-                                querySegmentState(host, port, remoteTargetPath, totalSize, transactionId, prepare = false)
-                            }
-                        } catch (cancelled: TransferCancelledException) {
-                            throw cancelled
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                            null
-                        } ?: continue
-                        if (polled.complete) continue
-                        val landed = (TransferRanges.coveredBytes(polled.ranges) + polled.inFlightBytes)
-                            .coerceIn(0L, totalSize)
-                        val shown = confirmed.updateAndGet { previous -> maxOf(previous, landed) }
-                        onProgress?.invoke(shown, totalSize)
-                    }
-                }
-                try {
-                plan.map { segment ->
-                    async(TransferRuntime.outbound) {
-                        uploadOneSegment(
-                            host = host,
-                            port = port,
-                            remoteTargetPath = remoteTargetPath,
-                            totalSize = totalSize,
-                            transactionId = transactionId,
-                            transactionTimestamp = transactionTimestamp,
-                            segment = segment,
-                            initial = state.ranges,
-                            sendRange = sendRange
-                        ) { delta ->
-                            if (overIroh) {
-                                val sent = sentByUs.addAndGet(delta)
-                                val shown = confirmed.updateAndGet { previous ->
-                                    com.fileapex.iroh.IrohTransferProgress.shown(previous, alreadyThere, sent, totalSize)
-                                }
-                                onProgress?.invoke(shown, totalSize)
-                            }
-                        }
-                    }
-                }.awaitAll()
-                } finally {
-                    poller.cancel()
-                }
-            }
-            val response = boundPost(
-                host = host,
-                port = port,
-                pathWithQuery = segmentPath(
-                    basePath = "/api/v1/files/upload-complete",
-                    host = host,
-                    port = port,
-                    remoteTargetPath = remoteTargetPath,
-                    totalSize = totalSize,
-                    transactionId = transactionId,
-                    extra = buildMap {
-                        put(TransferResumeProtocol.TIMESTAMP_QUERY, transactionTimestamp.toString())
-                        if (sha256.isNotBlank()) put(TransferResumeProtocol.SHA256_QUERY, sha256)
-                    }
-                ),
-                body = "",
-                contentType = "text/plain",
-                timeoutMs = PEER_REQUEST_TIMEOUT_MS
-            )
-            when {
-                response.statusCode in 200..299 -> {
-                    onProgress?.invoke(totalSize, totalSize)
-                    return
-                }
-                response.statusCode == 403 -> error(AppI18n.t("pin_required_open_device"))
-                response.statusCode != 409 -> error("${AppI18n.t("upload_failed")} (${response.statusCode})")
-            }
-        }
-        error("${AppI18n.t("upload_failed")} (segments_missing)")
-    }
 
-    private suspend fun uploadOneSegment(
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        totalSize: Long,
-        transactionId: String,
-        transactionTimestamp: Long,
-        segment: ByteSpan,
-        initial: List<ByteSpan>,
-        sendRange: suspend (start: Long, end: Long, pathWithQuery: String, onSent: (Long) -> Unit) -> PeerBoundHttpResponse?,
-        onDelta: (Long) -> Unit
-    ) {
-        var known = initial
-        var lastError: Throwable? = null
-        for (attempt in 0 until TransferResumeProtocol.MAX_ATTEMPTS) {
-            if (attempt > 0) {
-                delay(TransferResumeProtocol.RETRY_DELAY_MS * attempt)
-                val state = querySegmentState(host, port, remoteTargetPath, totalSize, transactionId, prepare = false)
-                if (state.complete) return
-                known = state.ranges
-            }
-            val from = TransferRanges.resumePoint(segment, known)
-            if (from >= segment.endExclusive) return
-            val pathWithQuery = segmentPath(
-                basePath = "/api/v1/files/upload-segment",
-                host = host,
-                port = port,
-                remoteTargetPath = remoteTargetPath,
-                totalSize = totalSize,
-                transactionId = transactionId,
-                extra = mapOf(
-                    TransferResumeProtocol.OFFSET_QUERY to from.toString(),
-                    TransferResumeProtocol.LENGTH_QUERY to (segment.endExclusive - from).toString(),
-                    TransferResumeProtocol.TIMESTAMP_QUERY to transactionTimestamp.toString()
-                )
-            )
-            val result = transferCatching {
-                PeerLanHttpPolicy.ensureRoute(host)
-                TransferRuntime.streamBudget(host).withPermit {
-                    var reported = 0L
-                    sendRange(from, segment.endExclusive, withSenderQuery(pathWithQuery)) { sentInRange ->
-                        onDelta(sentInRange - reported)
-                        reported = sentInRange
-                    } ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
-                }
-            }
-            val failure = result.exceptionOrNull()
-            if (failure is PeerUnreachableException || failure is SourceSizeChangedException ||
-                failure is TransferCancelledException
-            ) {
-                throw failure
-            }
-            val response = result.getOrNull()
-            when {
-                response == null -> lastError = failure
-                response.statusCode in 200..299 -> return
-                response.statusCode == 410 -> throw TransferCancelledException()
-                response.statusCode == 403 -> error(AppI18n.t("pin_required_open_device"))
-                else -> lastError = IllegalStateException("${AppI18n.t("upload_failed")} (${response.statusCode})")
-            }
-        }
-        throw lastError ?: error(AppI18n.t("upload_failed"))
-    }
 
-    private suspend fun querySegmentState(
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        totalSize: Long,
-        transactionId: String,
-        prepare: Boolean
-    ): SegmentStateResponse {
-        val response = boundGet(
-            host = host,
-            port = port,
-            pathWithQuery = segmentPath(
-                basePath = "/api/v1/files/segments",
-                host = host,
-                port = port,
-                remoteTargetPath = remoteTargetPath,
-                totalSize = totalSize,
-                transactionId = transactionId,
-                extra = if (prepare) mapOf(TransferResumeProtocol.PREPARE_QUERY to "1") else emptyMap()
-            ),
-            timeoutMs = PEER_REQUEST_TIMEOUT_MS
-        )
-        if (response.statusCode == 403) {
-            error(AppI18n.t("pin_required_open_device"))
-        }
-        if (response.statusCode == 410) throw TransferCancelledException()
-        requireSuccess(response, "Segment state failed (${response.statusCode})")
-        return json.decodeFromString(SegmentStateResponse.serializer(), response.body)
-    }
 
-    private fun segmentPath(
-        basePath: String,
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        totalSize: Long,
-        transactionId: String,
-        extra: Map<String, String>
-    ): String = queryPath(
-        basePath = basePath,
-        host = host,
-        port = port,
-        params = buildMap {
-            put("targetPath", remoteTargetPath)
-            put(TransferResumeProtocol.TOTAL_SIZE_QUERY, totalSize.toString())
-            if (transactionId.isNotBlank()) {
-                put(TransferResumeProtocol.TRANSACTION_ID_QUERY, transactionId)
-            }
-            putAll(extra)
-        }
-    )
 
-    suspend fun uploadFromChunkChannel(
-        host: String,
-        port: Int,
-        remoteTargetPath: String,
-        chunks: ReceiveChannel<ByteArray>,
-        contentLength: Long? = null,
-        resumeOffset: Long = 0L,
-        totalSize: Long? = null,
-        transactionId: String? = null,
-        transactionTimestampEpochMs: Long? = null
-    ) {
-        PeerLanHttpPolicy.ensureRoute(host)
-        val txId = transactionId.orEmpty()
-        val txTimestamp = transactionTimestampEpochMs ?: com.fileapex.util.TimeUtils.now()
-        val remaining = contentLength?.takeIf { it > 0L }
-        val response = peerHttpUploadFromChannel(
-            host = host,
-            port = port,
-            pathWithQuery = withSenderQuery(
-                uploadPathWithQuery(
-                    host = host,
-                    port = port,
-                    remoteTargetPath = remoteTargetPath,
-                    offset = resumeOffset,
-                    totalSize = totalSize ?: contentLength,
-                    transactionId = txId,
-                    transactionTimestamp = txTimestamp
-                )
-            ),
-            contentType = "application/octet-stream",
-            chunks = chunks,
-            connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-            uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS,
-            contentLength = remaining
-        ) ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
-        if (response.statusCode == 403) {
-            error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
-        }
-        if (response.statusCode == 410) throw TransferCancelledException()
-        require(response.statusCode in 200..299) {
-            "${AppI18n.t("upload_failed")} (${response.statusCode})"
-        }
-    }
 
     /** Deletes [remotePath] on the peer. The peer's owner must have remote deletion switched on. */
     suspend fun deleteRemote(host: String, port: Int, remotePath: String) {
@@ -1842,7 +966,7 @@ class FileApexClient(
         }
     }
 
-    private suspend fun boundGet(
+    internal suspend fun boundGet(
         host: String,
         port: Int,
         pathWithQuery: String,
@@ -1855,7 +979,7 @@ class FileApexClient(
         return response
     }
 
-    private suspend fun boundPost(
+    internal suspend fun boundPost(
         host: String,
         port: Int,
         pathWithQuery: String,
@@ -1883,7 +1007,7 @@ class FileApexClient(
         return pathWithQuery + (if (pathWithQuery.contains('?')) "&" else "?") + "companion=1"
     }
 
-    private fun withSenderQuery(pathWithQuery: String): String {
+    internal fun withSenderQuery(pathWithQuery: String): String {
         val id = localDeviceId().trim()
         if (id.isEmpty()) return pathWithQuery
         val part = buildString {
@@ -1898,7 +1022,7 @@ class FileApexClient(
         }
     }
 
-    private fun queryPath(
+    internal fun queryPath(
         basePath: String,
         host: String,
         port: Int,
@@ -1918,7 +1042,7 @@ class FileApexClient(
         return "$basePath?${queryParts.joinToString("&")}"
     }
 
-    private fun uploadPathWithQuery(
+    internal fun uploadPathWithQuery(
         host: String,
         port: Int,
         remoteTargetPath: String,
@@ -1966,7 +1090,7 @@ class FileApexClient(
         }
     }
 
-    private fun requireSuccess(response: PeerBoundHttpResponse, message: String) {
+    internal fun requireSuccess(response: PeerBoundHttpResponse, message: String) {
         if (response.statusCode !in 200..299) {
             error(message)
         }
@@ -1974,27 +1098,22 @@ class FileApexClient(
 
     companion object {
         const val CHUNK_SIZE = SocketFileStreamer.BUFFER_BYTES
-        private const val PEER_CONNECT_TIMEOUT_MS = 5_000L
+        internal const val PEER_CONNECT_TIMEOUT_MS = 5_000L
         /**
          * A stream that moves no bytes for this long is abandoned and its range resumes from the
          * ledger. The progress sheet starts reporting silence well before this.
          */
-        private const val TRANSFER_IDLE_TIMEOUT_MS = 2 * 60 * 1000L
-        private const val PEER_REQUEST_TIMEOUT_MS = 15_000L
+        internal const val TRANSFER_IDLE_TIMEOUT_MS = 2 * 60 * 1000L
+        internal const val PEER_REQUEST_TIMEOUT_MS = 15_000L
         private const val PAIRING_CONFIRM_TIMEOUT_MS = 105_000L
         private const val LIST_REQUEST_TIMEOUT_MS = 4_000L
         private const val LIST_PAGE_SIZE = 2_000
         private const val LIST_MAX_ITEMS = 500_000
-        private const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
+        internal const val HEALTH_PROBE_TIMEOUT_MS = 5_000L
         private const val PEER_STATE_TIMEOUT_MS = 5_000L
         private const val BATTERY_CHECK_TIMEOUT_MS = 20_000L
         private const val DIAGNOSTICS_TIMEOUT_MS = 25_000L
         private const val CLUSTER_SYNC_TIMEOUT_MS = 15_000L
-        private const val CAPABILITY_CACHE_MS = 10 * 60 * 1000L
-        private const val RELAY_CHANNEL_CAPACITY = 2
-        private const val SEGMENT_COMPLETE_ROUNDS = 2
-        private const val CONFIRM_POLL_INTERVAL_MS = 1_000L
-        private const val CONFIRM_POLL_TIMEOUT_MS = 5_000L
     }
 }
 

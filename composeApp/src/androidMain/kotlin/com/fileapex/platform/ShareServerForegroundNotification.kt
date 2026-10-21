@@ -35,7 +35,7 @@ object ShareServerForegroundNotification {
     private var posted = false
 
     /**
-     * Minimal FGS promotion for [Service.onCreate] — channel must already exist
+     * Minimal FGS promotion for [Service.onCreate], channel must already exist
      * ([AndroidNotificationChannels.ensureShareServerChannel] in Application.onCreate).
      */
     fun promoteImmediately(service: Service): Boolean {
@@ -73,7 +73,7 @@ object ShareServerForegroundNotification {
 
     /**
      * Rebuilds the persistent FGS alert after a language change.
-     * Uses [NotificationManager.notify] — never [Service.startForeground] (Motorola ~5s / re-assert).
+     * Uses [NotificationManager.notify], never [Service.startForeground] (Motorola ~5s / re-assert).
      */
     fun refreshLocalizedCopy(context: Context) {
         if (!posted) return

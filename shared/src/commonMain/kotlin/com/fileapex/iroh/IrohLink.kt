@@ -45,6 +45,9 @@ interface IrohLinkHandle : IrohLink {
 
     /** Calls [onChange] whenever this endpoint's own address changes (new network, new home relay). */
     fun onAddressChanged(onChange: () -> Unit)
+
+    /** Looks at the address now instead of at the next slow check; a network change calls it. */
+    fun checkAddressNow() = Unit
 }
 
 interface IrohEngine {

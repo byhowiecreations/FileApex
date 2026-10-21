@@ -45,7 +45,7 @@ object TerminalConsole {
     private var cachedTerminalSize = Pair(80, 24)
     private var lastSizeCheckEpochMs = 0L
 
-    // JLine (Windows): real console input via JNA — System.in.available() is unreliable there.
+    // JLine (Windows): real console input via JNA, System.in.available() is unreliable there.
     private var jlineTerminal: Terminal? = null
     private var jlineSavedAttributes: Attributes? = null
     private var jlineReader: NonBlockingReader? = null

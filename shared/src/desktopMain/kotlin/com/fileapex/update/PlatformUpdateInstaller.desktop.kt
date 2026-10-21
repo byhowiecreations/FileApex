@@ -11,9 +11,13 @@ actual object PlatformUpdateInstaller {
         get() = DesktopPlatformPaths.isLinux() && LinuxInstall.kind == LinuxInstallKind.Other
 
     actual fun updateCacheDirectory(): String {
-        val dir = File(System.getProperty("java.io.tmpdir"), "FileApexUpdates")
+        // The user's own app-data folder, owner-only: a shared temp folder lets another local user swap the download.
+        val dir = File(DesktopPlatformPaths.applicationSupportDirectory(), "updates")
         if (!dir.exists()) {
             dir.mkdirs()
+        }
+        runCatching {
+            java.nio.file.Files.setPosixFilePermissions(dir.toPath(), java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))
         }
         return dir.absolutePath
     }
@@ -104,7 +108,7 @@ actual object PlatformUpdateInstaller {
         if (resourcesDir.isNullOrBlank()) {
             val message =
                 "CRITICAL: cannot resolve FileApex.app bundle " +
-                    "(compose.application.resources.dir is missing). Aborting update — " +
+                    "(compose.application.resources.dir is missing). Aborting update, " +
                     "refusing to fall back to /Applications/FileApex.app"
             System.err.println("PlatformUpdateInstaller: $message")
             error(message)
@@ -114,7 +118,7 @@ actual object PlatformUpdateInstaller {
         if (appBundle == null || !appBundle.name.endsWith(".app") || !appBundle.isDirectory) {
             val message =
                 "CRITICAL: cannot resolve FileApex.app from resources.dir=$resourcesDir. " +
-                    "Aborting update — refusing to fall back to /Applications/FileApex.app"
+                    "Aborting update, refusing to fall back to /Applications/FileApex.app"
             System.err.println("PlatformUpdateInstaller: $message")
             error(message)
         }
@@ -134,6 +138,14 @@ actual object PlatformUpdateInstaller {
             appendLine("TMP_DIR=\"${d}(mktemp -d /tmp/FileApexUpdate.XXXXXX)\"")
             appendLine("cleanup() { rm -rf \"${d}TMP_DIR\"; }")
             appendLine("trap cleanup EXIT")
+            appendLine()
+            appendLine("verify_app() {")
+            appendLine("  codesign --verify --deep --strict \"${d}1\" || { echo \"FileApex update: signature check failed\" >&2; return 1; }")
+            appendLine(
+                "  [[ \"${d}(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"${d}1/Contents/Info.plist\")\" == \"com.fileapex\" ]] " +
+                    "|| { echo \"FileApex update: not a FileApex bundle\" >&2; return 1; }"
+            )
+            appendLine("}")
             appendLine()
             appendLine("if [[ \"${d}ASSET\" == *.dmg ]]; then")
             appendLine("  ATTACH_OUT=\"${d}(hdiutil attach -nobrowse -readonly \"${d}ASSET\")\"")
@@ -155,6 +167,7 @@ actual object PlatformUpdateInstaller {
             appendLine("    hdiutil detach \"${d}MOUNT\" -quiet || true")
             appendLine("    exit 1")
             appendLine("  fi")
+            appendLine("  verify_app \"${d}SRC_APP\" || { hdiutil detach \"${d}MOUNT\" -quiet || true; exit 1; }")
             appendLine("  ditto \"${d}SRC_APP\" \"${d}TARGET\"")
             appendLine("  hdiutil detach \"${d}MOUNT\" -quiet || true")
             appendLine("elif [[ \"${d}ASSET\" == *.zip ]]; then")
@@ -166,6 +179,7 @@ actual object PlatformUpdateInstaller {
             appendLine("    echo \"FileApex update: no .app found in ZIP\" >&2")
             appendLine("    exit 1")
             appendLine("  fi")
+            appendLine("  verify_app \"${d}SRC_APP\" || exit 1")
             appendLine("  ditto \"${d}SRC_APP\" \"${d}TARGET\"")
             appendLine("else")
             appendLine("  echo \"FileApex update: unsupported asset ${d}ASSET\" >&2")

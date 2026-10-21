@@ -295,19 +295,19 @@ class FileApexServer(
     internal fun isPathAllowed(absolutePath: String): Boolean {
         val root = identityProvider().rootPath
         val normalized = PathUtils.normalize(absolutePath)
-        if (normalized.isBlank() || normalized == "/" || normalized == "\\" || normalized == PathUtils.normalize(root)) return true
-        // The receive folder is this device's own choice, so it is always allowed even if the shared root sits elsewhere.
+        if (normalized == PathUtils.normalize(root)) return true
+        if (normalized == "/" || PathUtils.hasParentSegment(absolutePath)) return false
+        // Resolved on disk, so a link must not lead out. The receive folder is this device's own choice and is always allowed.
         val inbox = com.fileapex.platform.defaultDownloadsDir()
-        if (inbox.isNotBlank() && PathUtils.normalize(inbox) != "/" && PathUtils.isWithinRoot(normalized, inbox)) return true
-        return PathUtils.isWithinRoot(normalized, root)
+        return PathUtils.isConfinedOnDisk(absolutePath, root) ||
+            (inbox.isNotBlank() && PathUtils.normalize(inbox) != "/" && PathUtils.isConfinedOnDisk(absolutePath, inbox))
     }
 
     /** Strictly inside the shared root: the root itself, blank and "/" are never deletable. */
     internal fun isDeletablePath(absolutePath: String): Boolean {
-        val root = PathUtils.normalize(identityProvider().rootPath)
-        val normalized = PathUtils.normalize(absolutePath)
-        if (normalized.isBlank() || normalized == "/" || normalized == "\\" || normalized == root) return false
-        return PathUtils.isWithinRoot(normalized, root)
+        val root = identityProvider().rootPath
+        if (PathUtils.normalize(absolutePath).let { it == "/" || it == PathUtils.normalize(root) }) return false
+        return PathUtils.isConfinedOnDisk(absolutePath, root) && java.io.File(absolutePath).canonicalPath != java.io.File(root).canonicalPath
     }
 
     internal fun providedPin(call: ApplicationCall): String {
@@ -323,7 +323,7 @@ class FileApexServer(
     }
 
     /**
-     * TCP source IP is the route we can actually reply on — overwrite advertised lastKnownIp.
+     * TCP source IP is the route we can actually reply on, overwrite advertised lastKnownIp.
      */
     private fun rememberInboundPeer(call: ApplicationCall) {
         val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
@@ -384,8 +384,7 @@ class FileApexServer(
         val bridged = bridgedPeer(call)
         if (bridged != null) return bridged.deviceId.takeIf { isRosterMember(it) }
         if (!isSplicedLoopbackOrigin(call.request.local.remoteAddress.trim())) return null
-        val localId = runCatching { identityProvider().deviceId }.getOrNull().orEmpty()
-        return requesterDeviceId(call).takeIf { it.isNotEmpty() && (it == localId || isRosterMember(it)) }
+        return requesterDeviceId(call).takeIf { it.isNotEmpty() && isRosterMember(it) }
     }
 
     /** Certificate-derived id on the TLS front, else the claimed `from` (query or header). */

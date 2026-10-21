@@ -40,10 +40,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
             val body = call.receiveBoundedText()
             val request = server.json.decodeFromString(RenameDeviceRequest.serializer(), body)
             val trimmed = request.deviceName.trim()
-            if (trimmed.isEmpty()) {
-                call.respond(HttpStatusCode.BadRequest, "empty_name")
-                return@cancellableCatching
-            }
+            if (server.denyRename(call, request, trimmed)) return@cancellableCatching
             withContext(Dispatchers.IO) {
                 com.fileapex.domain.device.DeviceNameCoordinator.applyRemoteRename(
                     assignedName = trimmed,

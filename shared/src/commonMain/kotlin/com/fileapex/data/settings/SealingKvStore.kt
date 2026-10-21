@@ -7,12 +7,36 @@ import java.util.concurrent.ConcurrentHashMap
 interface SecretSealer {
     fun seal(plain: ByteArray): ByteArray
     fun open(sealed: ByteArray): ByteArray
+
+    /** True for a blob sealed in a way this sealer no longer uses for new secrets; it is sealed again once opened. */
+    fun needsReseal(sealed: ByteArray): Boolean = false
+}
+
+/**
+ * The key that wraps a secret may exist but cannot be read right now (locked keychain, keyring not ready, keystore not
+ * started). It is not the same as a key that is gone: the secret must not be replaced while this lasts.
+ */
+class SecretUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** Settings keys whose stored secret exists but could not be opened because its wrapping key was unavailable. */
+object SecretAvailability {
+    private val unavailable = ConcurrentHashMap.newKeySet<String>()
+
+    fun isUnavailable(key: String): Boolean = key in unavailable
+
+    /** Call before generating a replacement for [key]: a secret that exists but cannot be opened must not be replaced. */
+    fun requireAvailable(key: String) {
+        if (isUnavailable(key)) throw SecretUnavailableException("the stored secret cannot be opened right now")
+    }
+    internal fun markUnavailable(key: String) { unavailable.add(key) }
+    internal fun markAvailable(key: String) { unavailable.remove(key) }
 }
 
 /**
  * Settings store that never keeps the listed keys in clear text. A value is stored as `sealed:1:<base64>`. A plain
- * value left by an older version is sealed the first time it is read. If a secret cannot be sealed it is kept as it was
- * and sealed on a later read; if it cannot be opened it reads as missing and the stored value is left untouched.
+ * value left by an older version is sealed the first time it is read (if that fails it stays as it was and is tried
+ * again). A new value that cannot be sealed is kept in memory only and sealed on a later read; it is never written in
+ * clear text. If a secret cannot be opened it reads as missing and the stored value is left untouched.
  * Values are never logged. Each secret is opened once per run and then served from memory.
  */
 class SealingKvStore(
@@ -22,6 +46,7 @@ class SealingKvStore(
     private val log: (String) -> Unit = { println(it) }
 ) : SettingsKvStore {
     private val opened = ConcurrentHashMap<String, String>()
+    private val pendingSeal = ConcurrentHashMap.newKeySet<String>()
 
     override fun contains(key: String): Boolean = inner.contains(key)
     override fun getBoolean(key: String, default: Boolean): Boolean = inner.getBoolean(key, default)
@@ -34,31 +59,43 @@ class SealingKvStore(
 
     override fun remove(key: String) {
         opened.remove(key)
+        SecretAvailability.markAvailable(key)
         inner.remove(key)
     }
 
     override fun clear() {
+        opened.keys.forEach { SecretAvailability.markAvailable(it) }
+        sealedKeys.forEach { SecretAvailability.markAvailable(it) }
         opened.clear()
         inner.clear()
     }
 
     override fun getString(key: String, default: String): String {
         if (key !in sealedKeys) return inner.getString(key, default)
-        opened[key]?.let { return it }
+        opened[key]?.let {
+            if (key in pendingSeal) sealInto(key, it, legacyPlain = false)
+            return it
+        }
         val stored = inner.getString(key, "")
         if (stored.isEmpty()) return default
         if (stored.startsWith(PREFIX)) {
-            val plain = runCatching {
-                String(sealer.open(Base64.getDecoder().decode(stored.removePrefix(PREFIX))), Charsets.UTF_8)
-            }.getOrElse {
-                log("SealingKvStore: a stored secret could not be opened (${it.javaClass.simpleName}); treating it as missing")
+            val blob = runCatching { Base64.getDecoder().decode(stored.removePrefix(PREFIX)) }.getOrNull()
+            val plain = runCatching { String(sealer.open(checkNotNull(blob)), Charsets.UTF_8) }.getOrElse {
+                if (generateSequence(it) { e -> e.cause }.any { e -> e is SecretUnavailableException }) {
+                    SecretAvailability.markUnavailable(key)
+                    log("SealingKvStore: a stored secret cannot be opened right now (${it.javaClass.simpleName}); it is kept and tried again")
+                } else {
+                    log("SealingKvStore: a stored secret could not be opened (${it.javaClass.simpleName}); treating it as missing")
+                }
                 return default
             }
+            SecretAvailability.markAvailable(key)
             opened[key] = plain
+            if (blob != null && sealer.needsReseal(blob)) sealInto(key, plain, legacyPlain = false)
             return plain
         }
         // Written in clear text by an older version: seal it now.
-        sealInto(key, stored)
+        sealInto(key, stored, legacyPlain = true)
         opened[key] = stored
         return stored
     }
@@ -74,16 +111,22 @@ class SealingKvStore(
             return
         }
         opened[key] = value
-        sealInto(key, value)
+        SecretAvailability.markAvailable(key)
+        sealInto(key, value, legacyPlain = false)
     }
 
-    private fun sealInto(key: String, plain: String) {
+    private fun sealInto(key: String, plain: String, legacyPlain: Boolean) {
         val sealed = runCatching { sealer.seal(plain.toByteArray(Charsets.UTF_8)) }.getOrElse {
-            // Losing a PIN or a key would be worse than keeping it as it was; the next read tries again.
-            log("SealingKvStore: a secret could not be sealed (${it.javaClass.simpleName}); it stays as stored for now")
-            inner.putString(key, plain)
+            if (legacyPlain) {
+                // Already in clear text from an older version: leave it until it can be sealed.
+                log("SealingKvStore: a secret could not be sealed (${it.javaClass.simpleName}); it stays as stored for now")
+            } else {
+                pendingSeal.add(key)
+                log("SealingKvStore: a secret could not be sealed (${it.javaClass.simpleName}); it is kept in memory and tried again")
+            }
             return
         }
+        pendingSeal.remove(key)
         inner.putString(key, PREFIX + Base64.getEncoder().encodeToString(sealed))
     }
 

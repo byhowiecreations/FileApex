@@ -29,7 +29,7 @@ data class RemovedDeviceRecord(
 }
 
 /**
- * Direct peer metadata delta — receivers ingest [nodeStates] and [removedDevices] only.
+ * Direct peer metadata delta, receivers ingest [nodeStates] and [removedDevices] only.
  *
  * [introducer] and [devices] are legacy gossip fields ignored on ingest (direct heartbeat discovery).
  */
@@ -41,8 +41,8 @@ data class ClusterSyncRequest(
     val clusterVersion: Long = 0L,
     /** Sealed per recipient by the sending device. A new peer is only considered through these. */
     val introductions: List<com.fileapex.security.SealedIntroduction> = emptyList(),
-    @Deprecated("Legacy gossip — ignored on ingest")
+    @Deprecated("Legacy gossip, ignored on ingest")
     val introducer: PairedDeviceEntity? = null,
-    @Deprecated("Legacy gossip — ignored on ingest")
+    @Deprecated("Legacy gossip, ignored on ingest")
     val devices: List<PairedDeviceEntity> = emptyList()
 )

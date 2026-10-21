@@ -748,6 +748,7 @@ fun App(
     if (showUpdateSheet && offer != null) {
         UpdateAvailableSheet(offer = offer)
     }
+    ClusterResetOutcomeDialog(onNavigateHome = onNavigateHome)
     if (pendingCellularSend) {
         AlertDialog(
             onDismissRequest = { com.fileapex.cloud.drive.DriveRelayCoordinator.dismissSendPrompt() },
@@ -1114,23 +1115,6 @@ private fun CompactHomeContent(
                 embeddedInCompactShell = true
             )
         }
-    }
-
-    val resetOutcome by com.fileapex.domain.reset.ClusterResetManager.outcome.collectAsState()
-    resetOutcome?.let { wiped ->
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text(stringRes(if (wiped) "leave_cluster_done_title" else "leave_cluster_failed_title")) },
-            text = { Text(stringRes(if (wiped) "leave_cluster_done_message" else "leave_cluster_failed_message")) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        com.fileapex.domain.reset.ClusterResetManager.acknowledgeOutcome()
-                        if (wiped) onNavigateHome()
-                    }
-                ) { Text(stringRes("ok")) }
-            }
-        )
     }
 
     if (confirmExit) {

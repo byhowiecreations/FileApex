@@ -1,8 +1,5 @@
 package com.fileapex.ui
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -24,47 +21,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import com.fileapex.data.settings.KineticStyle
-import com.fileapex.data.settings.LocalKineticStyle
-import com.fileapex.data.settings.LocalThemeIconStyle
-import com.fileapex.ui.theme.JadedSteelWash
-import com.fileapex.ui.theme.KineticStyleLook
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
-import fileapex.shared.generated.resources.Res
-import fileapex.shared.generated.resources.bg
-import org.jetbrains.compose.resources.painterResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import com.fileapex.di.FileApexServices
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -73,10 +46,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,15 +58,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fileapex.data.settings.KineticStyle
+import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
-import com.fileapex.ui.dnd.deviceFileDropTarget
-import kotlin.math.PI
+import com.fileapex.ui.kinetic.KineticBatteryChip
+import com.fileapex.ui.kinetic.KineticClipboardChip
+import com.fileapex.ui.kinetic.KineticEffects
+import com.fileapex.ui.kinetic.KineticHub
+import com.fileapex.ui.kinetic.KineticInputs
+import com.fileapex.ui.kinetic.KineticLive
+import com.fileapex.ui.kinetic.KineticNodes
+import com.fileapex.ui.kinetic.KineticOrbitCanvas
+import com.fileapex.ui.kinetic.KineticScope
+import com.fileapex.ui.kinetic.rememberKineticFrame
+import com.fileapex.ui.theme.JadedSteelWash
+import com.fileapex.ui.theme.KineticStyleLook
+import fileapex.shared.generated.resources.Res
+import fileapex.shared.generated.resources.bg
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import org.jetbrains.compose.resources.painterResource
 
-private data class EllipticalOrbitConfig(
+internal data class EllipticalOrbitConfig(
     val rotationDeg: Float,
     val scaleX: Float,
     val scaleY: Float
@@ -129,757 +118,52 @@ fun KineticSphereDevicesView(
     onOpenNotes: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var addMenuOpen by remember { mutableStateOf(false) }
-    var activeRadialNodeId by remember { mutableStateOf<String?>(null) }
-    // Do NOT store LayoutCoordinates in Compose state — onGloballyPositioned fires every
-    // layout pass with a new instance and will recompose the whole kinetic tree forever (~multi-core).
-    val sphereCoordsRef = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val inputs = KineticInputs(
+        deviceRows = deviceRows,
+        onOpenDevice = onOpenDevice,
+        onRenameDevice = onRenameDevice,
+        onDeviceDetails = onDeviceDetails,
+        onSendClipboardDevice = onSendClipboardDevice,
+        onRemoveDevice = onRemoveDevice,
+        onFilesDropped = onFilesDropped,
+        onGenerateQr = onGenerateQr,
+        onJoinDevice = onJoinDevice,
+        onCheckBatteries = onCheckBatteries,
+        onSendClipboard = onSendClipboard,
+        onOpenNotes = onOpenNotes
+    )
+    val live = remember { KineticLive() }
     val density = LocalDensity.current
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .onGloballyPositioned { sphereCoordsRef[0] = it }
+            .onGloballyPositioned { live.sphereCoordsRef[0] = it }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
-                activeRadialNodeId = null
+                live.activeRadialNodeId = null
             }
     ) {
-        val widthPx = with(density) { maxWidth.toPx() }
-        val heightPx = with(density) { maxHeight.toPx() }
-        val centerX = widthPx / 2f
-        val centerY = heightPx * 0.50f
-        val hubCenter = Offset(centerX, centerY)
-
-        val nodeCount = deviceRows.size
-        val minR = with(density) { 120.dp.toPx() }
-        val maxR = with(density) { 240.dp.toPx() }
-        val baseRadiusPx = (minOf(widthPx, heightPx) * 0.36f).coerceIn(minR, maxR)
-
-        val orbitConfigs = remember {
-            listOf(
-                EllipticalOrbitConfig(rotationDeg = -28f, scaleX = 1.28f, scaleY = 0.68f),
-                EllipticalOrbitConfig(rotationDeg = 35f, scaleX = 1.42f, scaleY = 0.78f),
-                EllipticalOrbitConfig(rotationDeg = 115f, scaleX = 1.58f, scaleY = 0.88f),
-                EllipticalOrbitConfig(rotationDeg = 155f, scaleX = 1.32f, scaleY = 0.64f)
-            )
-        }
-
-        val staticNodePositions = remember(deviceRows, widthPx, heightPx, baseRadiusPx) {
-            val marginPx = with(density) { 70.dp.toPx() }
-            val topMarginPx = with(density) { 55.dp.toPx() }
-            val minDistancePx = with(density) { 135.dp.toPx() }
-            val minHubDistancePx = with(density) { 138.dp.toPx() }
-
-            val rawPositions = deviceRows.mapIndexed { index, _ ->
-                val config = orbitConfigs[index % orbitConfigs.size]
-                val radiusMultiplier = if (nodeCount <= 4) 1.0f else (if (index % 2 == 0) 0.85f else 1.38f)
-                val angleStep = (2.0 * PI / nodeCount)
-                val baseAngle = (angleStep * index) - (PI / 2.0)
-
-                val rx = baseRadiusPx * config.scaleX * radiusMultiplier
-                val ry = baseRadiusPx * config.scaleY * radiusMultiplier
-
-                val localX = rx * cos(baseAngle)
-                val localY = ry * sin(baseAngle)
-
-                val rad = config.rotationDeg * (PI / 180.0)
-                val rotX = (localX * cos(rad) - localY * sin(rad)).toFloat()
-                val rotY = (localX * sin(rad) + localY * cos(rad)).toFloat()
-
-                var cx = centerX + rotX
-                var cy = centerY + rotY
-
-                val hubDx = cx - centerX
-                val hubDy = cy - centerY
-                val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
-                if (hubDist < minHubDistancePx && hubDist > 0.001f) {
-                    val factor = minHubDistancePx / hubDist
-                    cx = centerX + (hubDx * factor)
-                    cy = centerY + (hubDy * factor)
-                }
-
-                cx = cx.coerceIn(marginPx, widthPx - marginPx)
-                cy = cy.coerceIn(topMarginPx, heightPx - marginPx)
-                Offset(cx, cy)
-            }.toMutableList()
-
-            for (iter in 0 until 6) {
-                for (i in 0 until rawPositions.size) {
-                    for (j in i + 1 until rawPositions.size) {
-                        val posI = rawPositions[i]
-                        val posJ = rawPositions[j]
-                        val dx = posJ.x - posI.x
-                        val dy = posJ.y - posI.y
-                        val dist = kotlin.math.sqrt(dx * dx + dy * dy)
-                        if (dist < minDistancePx && dist > 0.001f) {
-                            val overlap = (minDistancePx - dist) / 2f
-                            val nx = dx / dist
-                            val ny = dy / dist
-                            val newIx = (posI.x - nx * overlap).coerceIn(marginPx, widthPx - marginPx)
-                            val newIy = (posI.y - ny * overlap).coerceIn(topMarginPx, heightPx - marginPx)
-                            val newJx = (posJ.x + nx * overlap).coerceIn(marginPx, widthPx - marginPx)
-                            val newJy = (posJ.y + ny * overlap).coerceIn(topMarginPx, heightPx - marginPx)
-                            rawPositions[i] = Offset(newIx, newIy)
-                            rawPositions[j] = Offset(newJx, newJy)
-                        }
-                    }
-                }
-            }
-            rawPositions
-        }
-
-        val layoutBucket = deviceLayoutBucket(maxWidth, maxHeight)
-
-        val persistedNodeOffsets by FileApexServices.settings.kineticNodeOffsets.collectAsState()
-
-        val effectiveNodePositions = remember(
-            staticNodePositions,
-            persistedNodeOffsets,
-            deviceRows,
-            widthPx,
-            heightPx,
-            layoutBucket,
-            baseRadiusPx
-        ) {
-            val marginPx = with(density) { 70.dp.toPx() }
-            val topMarginPx = with(density) { 55.dp.toPx() }
-            val minDistancePx = with(density) { 135.dp.toPx() }
-            val minHubDistancePx = with(density) { 138.dp.toPx() }
-
-            val placedPositions = arrayOfNulls<Offset>(deviceRows.size)
-
-            // Place all devices with user-assigned or persisted offsets first
-            deviceRows.forEachIndexed { index, row ->
-                val stored = kineticStoredNode(
-                    offsets = persistedNodeOffsets,
-                    bucket = layoutBucket,
-                    deviceId = row.deviceId,
-                    widthPx = widthPx,
-                    heightPx = heightPx,
-                    marginPx = marginPx,
-                    topMarginPx = topMarginPx
-                )
-                if (stored != null) {
-                    val rawX = if (stored.fractional) stored.x * widthPx else stored.x
-                    val rawY = if (stored.fractional) stored.y * heightPx else stored.y
-                    val clampedX = if (widthPx > marginPx * 2) rawX.coerceIn(marginPx, widthPx - marginPx) else rawX
-                    val clampedY = if (heightPx > topMarginPx + marginPx) rawY.coerceIn(topMarginPx, heightPx - marginPx) else rawY
-                    placedPositions[index] = Offset(clampedX, clampedY)
-                } else if (layoutBucket.startsWith("land-")) {
-                    val deltaKey = if (layoutBucket.endsWith("-cmp")) "cmp:${row.deviceId}" else "exp:${row.deviceId}"
-                    val legacy = persistedNodeOffsets[deltaKey] ?: persistedNodeOffsets[row.deviceId]
-                    if (legacy != null) {
-                        val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
-                        placedPositions[index] = Offset(
-                            (staticPos.x + legacy.first).coerceIn(marginPx, widthPx - marginPx),
-                            (staticPos.y + legacy.second).coerceIn(topMarginPx, heightPx - marginPx)
-                        )
-                    }
-                }
-            }
-
-            // Next, place unassigned or newly joined devices into non-overlapping areas
-            deviceRows.indices.map { index ->
-                val existing = placedPositions[index]
-                if (existing != null) return@map existing
-
-                val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
-                val currentPlaced = placedPositions.filterNotNull()
-
-                fun isClear(pos: Offset): Boolean {
-                    val hubDx = pos.x - centerX
-                    val hubDy = pos.y - centerY
-                    if (kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy) < minHubDistancePx) return false
-                    return currentPlaced.none { placed ->
-                        val dx = pos.x - placed.x
-                        val dy = pos.y - placed.y
-                        kotlin.math.sqrt(dx * dx + dy * dy) < minDistancePx
-                    }
-                }
-
-                val resolvedPos = if (isClear(staticPos)) {
-                    staticPos
-                } else {
-                    var bestCandidate: Offset = staticPos
-                    var maxMinDistance = -1f
-                    val candidateRadii = listOf(baseRadiusPx, baseRadiusPx * 0.82f, baseRadiusPx * 1.25f, baseRadiusPx * 1.45f)
-                    val steps = 24
-                    var foundNonOverlapping = false
-
-                    for (r in candidateRadii) {
-                        if (foundNonOverlapping) break
-                        for (s in 0 until steps) {
-                            val angle = (2.0 * PI * s / steps) - (PI / 2.0)
-                            val candX = (centerX + (r * cos(angle)).toFloat()).coerceIn(marginPx, widthPx - marginPx)
-                            val candY = (centerY + (r * sin(angle)).toFloat()).coerceIn(topMarginPx, heightPx - marginPx)
-                            val candidate = Offset(candX, candY)
-
-                            val hubDx = candX - centerX
-                            val hubDy = candY - centerY
-                            val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
-                            if (hubDist < minHubDistancePx) continue
-
-                            val minOtherDist = if (currentPlaced.isEmpty()) Float.MAX_VALUE else {
-                                currentPlaced.minOf { placed ->
-                                    val dx = candidate.x - placed.x
-                                    val dy = candidate.y - placed.y
-                                    kotlin.math.sqrt(dx * dx + dy * dy)
-                                }
-                            }
-
-                            if (minOtherDist >= minDistancePx) {
-                                bestCandidate = candidate
-                                foundNonOverlapping = true
-                                break
-                            } else if (minOtherDist > maxMinDistance) {
-                                maxMinDistance = minOtherDist
-                                bestCandidate = candidate
-                            }
-                        }
-                    }
-                    bestCandidate
-                }
-
-                placedPositions[index] = resolvedPos
-                resolvedPos
-            }
-        }
-
-        val positionsForBucket by rememberUpdatedState(effectiveNodePositions)
-        val widthForBucket by rememberUpdatedState(widthPx)
-        val heightForBucket by rememberUpdatedState(heightPx)
-        val bucketDeviceIds = deviceRows.joinToString(",") { it.deviceId }
-        LaunchedEffect(layoutBucket, bucketDeviceIds) {
-            delay(500)
-            val canvasW = widthForBucket
-            val canvasH = heightForBucket
-            if (canvasW < 200f || canvasH < 200f) return@LaunchedEffect
-            val current = FileApexServices.settings.kineticNodeOffsets.value
-            val marginPx = with(density) { 70.dp.toPx() }
-            val topMarginPx = with(density) { 55.dp.toPx() }
-            val fractional = mutableMapOf<String, Pair<Float, Float>>()
-            deviceRows.forEachIndexed { index, row ->
-                val key = kineticFractionKey(layoutBucket, row.deviceId)
-                if (current.containsKey(key)) return@forEachIndexed
-                val stored = kineticStoredNode(
-                    offsets = current,
-                    bucket = layoutBucket,
-                    deviceId = row.deviceId,
-                    widthPx = canvasW,
-                    heightPx = canvasH,
-                    marginPx = marginPx,
-                    topMarginPx = topMarginPx
-                )
-                if (stored == null || stored.fractional) return@forEachIndexed
-                val pos = positionsForBucket.getOrNull(index) ?: return@forEachIndexed
-                val savedX = stored.x
-                val savedY = stored.y
-                if (kotlin.math.abs(pos.x - savedX) > 1.5f || kotlin.math.abs(pos.y - savedY) > 1.5f) {
-                    return@forEachIndexed
-                }
-                fractional[key] = Pair((pos.x / canvasW).coerceIn(0f, 1f), (pos.y / canvasH).coerceIn(0f, 1f))
-            }
-            FileApexServices.settings.setKineticNodeOffsets(fractional)
-        }
-
-        val showConnectedLines by FileApexServices.settings.kineticSphereConnectedLinesEnabled.collectAsState()
-        val kineticStyle = LocalKineticStyle.current
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stars = listOf(
-                Offset(centerX * 0.3f, centerY * 0.4f),
-                Offset(centerX * 1.6f, centerY * 0.3f),
-                Offset(centerX * 0.2f, centerY * 1.5f),
-                Offset(centerX * 1.7f, centerY * 1.6f),
-                Offset(centerX * 1.4f, centerY * 0.8f),
-                Offset(centerX * 0.6f, centerY * 1.2f)
-            )
-            if (kineticStyle == KineticStyle.SPACE) {
-                stars.forEach { star ->
-                    drawCircle(color = Color.White.copy(alpha = 0.4f), radius = 2f, center = star)
-                }
-            }
-
-            if (showConnectedLines) {
-                effectiveNodePositions.forEachIndexed { index, pos ->
-                    val row = deviceRows.getOrNull(index) ?: return@forEachIndexed
-                    val online = row.online
-                    val statusGlow = if (online) Color(0xFF00E676) else Color(0xFFFFC107)
-                    val start = Offset(centerX, centerY)
-                        val lineColor = if (kineticStyle == KineticStyle.JADED_STEEL) {
-                            statusGlow
-                        } else {
-                            statusGlow.copy(alpha = 0.50f)
-                        }
-                        val lineWidth = if (kineticStyle == KineticStyle.JADED_STEEL) 1f else 1.5f.dp.toPx()
-                        drawLine(
-                            color = lineColor,
-                            start = start,
-                            end = pos,
-                            strokeWidth = lineWidth,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
-                        )
-                }
-            }
-        }
-
-        val hubSizeDp = 110.dp
-        val hubPx = with(density) { hubSizeDp.toPx() }
-        Box(
-            modifier = Modifier.offset {
-                IntOffset((centerX - hubPx / 2f).roundToInt(), (centerY - hubPx / 2f).roundToInt())
-            }
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(hubSizeDp)
-                    .then(
-                            Modifier
-                                .clip(CircleShape)
-                                .then(
-                                    when (kineticStyle) {
-                                        KineticStyle.JADED_STEEL -> Modifier.background(KineticStyleLook.jadedCard)
-                                        KineticStyle.SPACE -> Modifier.background(
-                                            Brush.radialGradient(
-                                                colors = listOf(
-                                                    Color(0x9900E5FF),
-                                                    Color(0x660A2A4A),
-                                                    Color(0x22030B14)
-                                                )
-                                            )
-                                        )
-                                    }
-                                )
-                                .border(
-                                    when (kineticStyle) {
-                                        KineticStyle.JADED_STEEL -> BorderStroke(
-                                            1.dp,
-                                            KineticStyleLook.jadedCardEdge
-                                        )
-                                        KineticStyle.SPACE -> BorderStroke(2.dp, Color(0xFF00E5FF).copy(alpha = 0.85f))
-                                    },
-                                    CircleShape
-                                )
-                    )
-                    .clickable { addMenuOpen = true },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = stringRes("add_new_device"),
-                        tint = when (kineticStyle) {
-                            KineticStyle.JADED_STEEL -> KineticStyleLook.jade
-                            KineticStyle.SPACE -> Color(0xFF00E5FF)
-                        },
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringRes("add_new_device"),
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp
-                        ),
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                        softWrap = true,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .padding(horizontal = 8.dp)
-                            .width(94.dp)
-                    )
-                }
-            }
-
-            DropdownMenu(
-                expanded = addMenuOpen,
-                onDismissRequest = { addMenuOpen = false }
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.QrCode,
-                                contentDescription = null,
-                                tint = Color(0xFF00E676),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(text = stringRes("generate_qr"), color = Color.White)
-                        }
-                    },
-                    onClick = {
-                        addMenuOpen = false
-                        onGenerateQr()
-                    }
-                )
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.QrCodeScanner,
-                                contentDescription = null,
-                                tint = Color(0xFF00E676),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(text = stringRes("join_device"), color = Color.White)
-                        }
-                    },
-                    onClick = {
-                        addMenuOpen = false
-                        onJoinDevice()
-                    }
-                )
-            }
-        }
-
-        if (onSendClipboard != null) {
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            centerX.roundToInt(),
-                            (centerY - hubPx / 2f - 16.dp.toPx()).roundToInt()
-                        )
-                    }
-                    .layout { measurable, constraints ->
-                        val placeable = measurable.measure(constraints)
-                        layout(placeable.width, placeable.height) {
-                            placeable.placeRelative(-placeable.width / 2, -placeable.height)
-                        }
-                    }
-            ) {
-                SendClipboardActionChip(onClick = onSendClipboard)
-            }
-        }
-
-        if (deviceRows.isNotEmpty() && onCheckBatteries != null) {
-            val batteryText = if (deviceRows.size <= 1) {
-                stringRes("check_battery")
-            } else {
-                stringRes("check_batteries")
-            }
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            centerX.roundToInt(),
-                            (centerY + hubPx / 2f + 16.dp.toPx()).roundToInt()
-                        )
-                    }
-                    .layout { measurable, constraints ->
-                        val placeable = measurable.measure(constraints)
-                        layout(placeable.width, placeable.height) {
-                            placeable.placeRelative(-placeable.width / 2, 0)
-                        }
-                    }
-            ) {
-                val batteryShape = RoundedCornerShape(16.dp)
-                Surface(
-                    onClick = onCheckBatteries,
-                    shape = batteryShape,
-                    color = when (kineticStyle) {
-                        KineticStyle.JADED_STEEL -> KineticStyleLook.jadedCard
-                        KineticStyle.SPACE -> Color(0xDD0D1C22)
-                    },
-                    border = when (kineticStyle) {
-                        KineticStyle.JADED_STEEL -> BorderStroke(1.dp, KineticStyleLook.jadedCardEdge)
-                        KineticStyle.SPACE -> BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.50f))
-                    },
-                    shadowElevation = if (kineticStyle == KineticStyle.JADED_STEEL) 0.dp else 8.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        BatteryIcon(
-                            modifier = Modifier.size(15.dp),
-                            tint = Color(0xFF00E676)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = batteryText,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.5.sp
-                            ),
-                            color = Color.White,
-                            softWrap = true,
-                            maxLines = 2
-                        )
-                    }
-                }
-            }
-        }
-
-        if (nodeCount > 0) {
-            deviceRows.forEachIndexed { index, row ->
-                val pos = effectiveNodePositions.getOrNull(index) ?: return@forEachIndexed
-                val nodeCx = pos.x
-                val nodeCy = pos.y
-
-                val isFocused = activeRadialNodeId == row.deviceId
-                val focusProgress by animateFloatAsState(
-                    targetValue = if (isFocused) 1.0f else 0.0f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
-                    ),
-                    label = "nodeFocus_${row.deviceId}"
-                )
-
-                val baseOrbSizeDp = 68.dp
-                val focusedOrbSizeDp = 88.dp
-                val currentOrbSizeDp = baseOrbSizeDp + ((focusedOrbSizeDp - baseOrbSizeDp) * focusProgress)
-                val currentOrbSizePx = with(density) { currentOrbSizeDp.toPx() }
-
-                val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFC107)
-                var dropHover by remember { mutableStateOf(false) }
-                val latestNodeCx by rememberUpdatedState(nodeCx)
-                val latestNodeCy by rememberUpdatedState(nodeCy)
-
-                Box(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset((nodeCx - currentOrbSizePx / 2f).roundToInt(), (nodeCy - currentOrbSizePx / 2f).roundToInt())
-                        }
-                        .size(currentOrbSizeDp)
-                        .deviceFileDropTarget(
-                            enabled = true,
-                            onHoverChange = { dropHover = it },
-                            onFilesDropped = { paths ->
-                                val firstName = paths.firstOrNull()
-                                    ?.substringAfterLast('/')
-                                    ?.substringAfterLast('\\')
-                                    .orEmpty()
-                                if (firstName.isNotEmpty()) {
-                                    sphereCoordsRef[0]?.let { coords ->
-                                        startKineticDropFx(
-                                            sphere = coords,
-                                            node = Offset(nodeCx, nodeCy),
-                                            queued = !row.online,
-                                            fileName = firstName
-                                        )
-                                    }
-                                }
-                                onFilesDropped(row.deviceId, paths)
-                            }
-                        )
-                        .then(
-                                Modifier
-                                    .clip(CircleShape)
-                                    .then(
-                                        when (kineticStyle) {
-                                            KineticStyle.JADED_STEEL -> Modifier.background(
-                                                if (dropHover || isFocused) KineticStyleLook.jadedCardSelected else KineticStyleLook.jadedCard
-                                            )
-                                            KineticStyle.SPACE -> Modifier.background(
-                                                Brush.radialGradient(
-                                                    colors = listOf(
-                                                        if (dropHover) Color(0xAA00E676) else (if (isFocused) Color(0xAA00E5FF) else Color(0x7714344D)),
-                                                        if (isFocused) Color(0x660A2A4A) else Color(0x440B1B2B),
-                                                        Color(0x11040B14)
-                                                    )
-                                                )
-                                            )
-                                        }
-                                    )
-                                    .border(
-                                        BorderStroke(
-                                            width = if (kineticStyle == KineticStyle.JADED_STEEL) {
-                                                with(density) { 1f.toDp() }
-                                            } else {
-                                                1.5.dp + (2.dp * focusProgress)
-                                            },
-                                            color = when (kineticStyle) {
-                                                KineticStyle.JADED_STEEL -> if (dropHover || isFocused) KineticStyleLook.jade else statusColor
-                                                KineticStyle.SPACE -> if (dropHover) Color(0xFF00E676) else (if (isFocused) Color(0xFF00E5FF) else statusColor)
-                                            }
-                                        ),
-                                        CircleShape
-                                    )
-                        )
-                        // Do not key on nodeCx/nodeCy — that restarts the gesture mid-drag and locks nodes.
-                        .pointerInput(row.deviceId, layoutBucket) {
-                            var dragX = 0f
-                            var dragY = 0f
-                            var dragged = false
-                            fun saveDrag(persist: Boolean) {
-                                if (!dragged || widthPx <= 1f || heightPx <= 1f) return
-                                val edge = with(density) { 70.dp.toPx() }
-                                val top = with(density) { 55.dp.toPx() }
-                                val maxX = (widthPx - edge).coerceAtLeast(edge)
-                                val maxY = (heightPx - edge).coerceAtLeast(top)
-                                val px = dragX.coerceIn(edge, maxX).roundToInt().toFloat().coerceIn(edge, maxX)
-                                val py = dragY.coerceIn(top, maxY).roundToInt().toFloat().coerceIn(top, maxY)
-                                val pixelKey = if (layoutBucket.endsWith("-cmp")) {
-                                    "pos:cmp:${row.deviceId}"
-                                } else {
-                                    "pos:exp:${row.deviceId}"
-                                }
-                                FileApexServices.settings.setKineticNodeOffsets(
-                                    mapOf(
-                                        kineticFractionKey(layoutBucket, row.deviceId) to
-                                            Pair((px / widthPx).coerceIn(0f, 1f), (py / heightPx).coerceIn(0f, 1f)),
-                                        pixelKey to Pair(px, py),
-                                        "pos:${row.deviceId}" to Pair(px, py)
-                                    ),
-                                    persist = persist
-                                )
-                            }
-                            detectDragGestures(
-                                onDragStart = {
-                                    activeRadialNodeId = null
-                                    dragged = false
-                                    dragX = latestNodeCx
-                                    dragY = latestNodeCy
-                                },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    dragged = true
-                                    dragX += dragAmount.x
-                                    dragY += dragAmount.y
-                                    saveDrag(persist = false)
-                                },
-                                onDragCancel = { saveDrag(persist = true) },
-                                onDragEnd = { saveDrag(persist = true) }
-                            )
-                        }
-                        .clickable {
-                            activeRadialNodeId = if (isFocused) null else row.deviceId
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    val iconStyle = LocalThemeIconStyle.current
-                    val nodeBorderWidth = 1.5.dp + (2.dp * focusProgress)
-                    DeviceEntryIcon(
-                        row = row,
-                        modifier = if (deviceIconFillsOrb(iconStyle)) {
-                            Modifier.fillMaxSize().padding(nodeBorderWidth)
-                        } else {
-                            Modifier.size(28.dp + (8.dp * focusProgress))
-                        },
-                        tint = Color.White
-                    )
-                }
-
-                val labelWidthDp = 125.dp
-                val labelWidthPx = with(density) { labelWidthDp.toPx() }
-                val labelTopPx = nodeCy + (currentOrbSizePx / 2f) + with(density) { 4.dp.toPx() }
-                val labelAlpha = (1.0f - focusProgress).coerceIn(0f, 1f)
-
-                if (labelAlpha > 0.01f) {
-                    Column(
-                        modifier = Modifier
-                            .offset {
-                                IntOffset((nodeCx - labelWidthPx / 2f).roundToInt(), labelTopPx.roundToInt())
-                            }
-                            .width(labelWidthDp)
-                            .alpha(labelAlpha),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = row.title,
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                lineHeight = 14.sp
-                            ),
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = DeviceListRow.localizedSubtitle(row),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = statusColor,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = true,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            activeRadialNodeId?.let { activeId ->
-                val activeIndex = deviceRows.indexOfFirst { it.deviceId == activeId }
-                if (activeIndex != -1) {
-                    val row = deviceRows[activeIndex]
-                    val pos = effectiveNodePositions.getOrNull(activeIndex)
-                    if (pos != null) {
-                        KineticGlassActionCapsule(
-                            centerPx = pos,
-                            hubCenter = hubCenter,
-                            canvasWidthPx = widthPx,
-                            canvasHeightPx = heightPx,
-                            expansionProgress = 1.0f,
-                            row = row,
-                            onOpen = {
-                                activeRadialNodeId = null
-                                onOpenDevice(row.deviceId)
-                            },
-                            onSendClipboard = {
-                                activeRadialNodeId = null
-                                onSendClipboardDevice(row.deviceId)
-                            },
-                            onRename = {
-                                activeRadialNodeId = null
-                                onRenameDevice(row.deviceId, row.deviceName)
-                            },
-                            onInfo = {
-                                activeRadialNodeId = null
-                                onDeviceDetails(row.deviceId)
-                            },
-                            onRemove = {
-                                activeRadialNodeId = null
-                                onRemoveDevice(row.deviceId, row.deviceName)
-                            }
-                        )
-                    }
-                }
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 80.dp),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Text(
-                    text = stringRes("kinetic_empty_hint"),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp
-                    ),
-                    color = when (kineticStyle) {
-                        KineticStyle.JADED_STEEL -> KineticStyleLook.ink
-                        KineticStyle.SPACE -> Color.White.copy(alpha = 0.7f)
-                    },
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
+        val frame = rememberKineticFrame(inputs, density, maxWidth, maxHeight)
+        val scope = KineticScope(inputs, frame, live)
+        scope.KineticEffects()
+        scope.KineticOrbitCanvas()
+        scope.KineticHub()
+        scope.KineticClipboardChip()
+        scope.KineticBatteryChip()
+        scope.KineticNodes()
     }
 }
+
 
 /**
  * Option 1: Floating Glass Action Capsule
  * Rendered on top Z-index layer with 100% opaque glass container to cover underlying nodes & labels.
  */
 @Composable
-private fun KineticGlassActionCapsule(
+internal fun KineticGlassActionCapsule(
     centerPx: Offset,
     hubCenter: Offset,
     canvasWidthPx: Float,

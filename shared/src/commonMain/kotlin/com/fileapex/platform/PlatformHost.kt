@@ -2,7 +2,7 @@ package com.fileapex.platform
 
 import kotlin.math.roundToInt
 
-/** True on macOS/desktop JVM host — used for desktop-only LAN poll loop. */
+/** True on macOS/desktop JVM host, used for desktop-only LAN poll loop. */
 expect fun isDesktopHost(): Boolean
 
 /** 1000 where the host labels file and disk sizes in decimal MB. 1024 on Windows. */

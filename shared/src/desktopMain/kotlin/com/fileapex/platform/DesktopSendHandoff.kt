@@ -102,6 +102,7 @@ object DesktopSendHandoff {
     }
 
     fun enqueueJob(jobId: String) {
+        if (!HandoffJobIds.isSafe(jobId)) return
         _incomingJobIds.tryEmit(jobId)
     }
 
@@ -112,13 +113,14 @@ object DesktopSendHandoff {
             ?.mapNotNull { file ->
                 runCatching {
                     val job = json.decodeFromString<SendJobFile>(file.readText(Charsets.UTF_8))
-                    job.id.takeIf { job.status == STATUS_PENDING }
+                    job.id.takeIf { job.status == STATUS_PENDING && HandoffJobIds.isSafe(job.id) }
                 }.getOrNull()
             }
             .orEmpty()
     }
 
     suspend fun processJob(jobId: String) {
+        if (!HandoffJobIds.isSafe(jobId)) return
         processMutex.withLock {
             if (!inFlight.add(jobId)) return
         }
@@ -143,6 +145,7 @@ object DesktopSendHandoff {
             println("DesktopSendHandoff: bad job JSON $jobId :: ${error.message}")
             return
         }
+        if (job.id != jobId) return
         if (job.status == STATUS_DONE || job.status == STATUS_FAILED) {
             jobFile(jobId).delete()
             cleanupStaging(jobId)
@@ -193,10 +196,7 @@ object DesktopSendHandoff {
     }
 
     private fun cleanupStaging(jobId: String) {
-        val staging = File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging/$jobId")
-        if (staging.isDirectory) {
-            staging.deleteRecursively()
-        }
+        HandoffJobIds.deleteStaging(File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging"), jobId)
     }
 
     private fun scheduleJobFilePrune(jobId: String) {
@@ -224,7 +224,7 @@ object DesktopSendHandoff {
             }
             val stagingDir = File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging")
             stagingDir.listFiles()?.forEach { dir ->
-                if (dir.isDirectory && (dir.lastModified() < cutoff || !jobFile(dir.name).exists())) {
+                if (dir.isDirectory && (dir.lastModified() < cutoff || !HandoffJobIds.isSafe(dir.name) || !jobFile(dir.name).exists())) {
                     dir.deleteRecursively()
                 }
             }
@@ -235,7 +235,10 @@ object DesktopSendHandoff {
         jobFile(job.id).writeText(json.encodeToString(job), Charsets.UTF_8)
     }
 
-    private fun jobFile(jobId: String): File = File(jobsDir, "$jobId.json")
+    private fun jobFile(jobId: String): File {
+        require(HandoffJobIds.isSafe(jobId)) { "unsafe job id" }
+        return File(jobsDir, "$jobId.json")
+    }
 
     private fun handleOAuthCallback(uri: URI): Boolean {
         val scheme = uri.scheme?.lowercase() ?: return false
@@ -269,7 +272,7 @@ object DesktopSendHandoff {
 
     private fun parseJobId(uri: URI): String? {
         if (uri.scheme != "fileapex") return null
-        return parseQuery(uri)["job"]?.takeIf { it.isNotBlank() }
+        return HandoffJobIds.safeOrNull(parseQuery(uri)["job"])
     }
 
     const val STATUS_PENDING = "pending"

@@ -5,7 +5,7 @@ import androidx.room3.PrimaryKey
 import kotlinx.serialization.Serializable
 
 /**
- * Deferred outbound transfer — stores source paths only (no file copy).
+ * Deferred outbound transfer, stores source paths only (no file copy).
  * Drained when a route to the destination answers again.
  */
 @Entity(tableName = "pending_transfers")
@@ -18,7 +18,7 @@ data class PendingTransferEntity(
     val status: String,
     /** [QueuedTransferSourceKind.name] */
     val sourceKind: String,
-    /** JSON payload — root paths or serialized [QueuedSourceSnapshot] list. */
+    /** JSON payload, root paths or serialized [QueuedSourceSnapshot] list. */
     val sourceJson: String,
     /** JSON list of device IDs still waiting for LAN reachability. */
     val pendingDeviceIdsJson: String,
@@ -37,9 +37,9 @@ enum class PendingTransferStatus {
 }
 
 enum class QueuedTransferSourceKind {
-    /** [sourceJson] is List<String> absolute root paths — expanded at send time. */
+    /** [sourceJson] is List<String> absolute root paths, expanded at send time. */
     LocalRoots,
-    /** [sourceJson] is List<QueuedSourceSnapshot> — full Multi Copy sources. */
+    /** [sourceJson] is List<QueuedSourceSnapshot>, full Multi Copy sources. */
     Sources
 }
 

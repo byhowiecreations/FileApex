@@ -22,6 +22,10 @@ actual object ClusterResetPlatform {
             node.putBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_THEME_DEFAULT_MIGRATED, true)
             node.flush()
         }
+        // Sign-in tokens are not settings, so clearing the settings node alone would leave them behind.
+        listOf("com.fileapex.firebase", "com.fileapex.drive").forEach { name ->
+            cancellableCatching { Preferences.userRoot().node(name).also { it.clear(); it.flush() } }
+        }
         runCatching {
             DesktopPlatformPaths.sendJobsDirectory().deleteRecursively()
             // The roster backup would be read back into an empty roster at the next start.

@@ -73,7 +73,7 @@ object AppI18n {
         ).toString()
     }
 
-    /** Localized UI copy. Dialogs, toasts, banners, and labels must use this (or [stringRes]) — never hardcoded English. */
+    /** Localized UI copy. Dialogs, toasts, banners, and labels must use this (or [stringRes]), never hardcoded English. */
     fun t(key: String, vararg args: Any): String {
         val current = locale
         val raw = catalog(current).string(key)

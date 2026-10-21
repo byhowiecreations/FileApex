@@ -99,7 +99,7 @@ object GoogleLinkCoordinator {
     }
 
     /**
-     * Scheduled Firestore heartbeat — always refreshes `updatedAtEpochMs` even when LAN fields
+     * Scheduled Firestore heartbeat, always refreshes `updatedAtEpochMs` even when LAN fields
      * are unchanged so peers can show Ready/Tap to wake from cloud last_seen.
      */
     suspend fun publishScheduledPresenceHeartbeat() {
@@ -163,7 +163,7 @@ object GoogleLinkCoordinator {
 
     /**
      * Drive-relay FCM targets for [deviceIds]. Cache first, then a live Firestore read.
-     * A token is enough — do not drop Honor/other Android rows whose platform string is not
+     * A token is enough, do not drop Honor/other Android rows whose platform string is not
      * exactly "Android". If the paired ID still has no token, wake every linked token;
      * retrieve stays scoped by ledger target.
      */
@@ -385,14 +385,14 @@ object GoogleLinkCoordinator {
     private suspend fun restoreSessionAndListen() {
         gate.withLock {
             val session = CloudAuthBackend.currentSession()
-                ?: error("No Firebase session — sign in again")
+                ?: error("No Firebase session, sign in again")
             val settings = FileApexServices.settings
             if (settings.googleAccountEmail.value.isBlank() && session.email.isNotBlank()) {
                 settings.setGoogleAccountEmail(session.email)
             }
             settings.setGoogleAccountUid(session.firebaseUid)
             shutdownCloudSessionLocked()
-            // Presence only on restore — never overwrite remote deviceName with stale local memory.
+            // Presence only on restore, never overwrite remote deviceName with stale local memory.
             cancellableCatching { patchSelfPresence(session.firebaseUid) }
             startCloudSessionLocked(session.firebaseUid)
             _status.value = "Cloud registry active"
@@ -630,7 +630,7 @@ object GoogleLinkCoordinator {
         val next = buildSelfPresence()
         val previous = lastPublishedPresence
         if (previous != null && previous.sameNetworkFieldsAs(next)) {
-            // No LAN/identity change — skip Firestore write so listeners (and UIs) stay quiet.
+            // No LAN/identity change, skip Firestore write so listeners (and UIs) stay quiet.
             return
         }
         CloudAuthBackend.patchDevicePresence(uid, next)

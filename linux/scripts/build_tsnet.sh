@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build libFileApexTsnet.so — in-process userspace Tailscale node (tsnet) for desktop Linux.
+# Build libFileApexTsnet.so, in-process userspace Tailscale node (tsnet) for desktop Linux.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -16,7 +16,7 @@ if [[ ! -x "$GO" ]]; then
   if command -v go >/dev/null 2>&1; then
     GO="$(command -v go)"
   else
-    echo "go not found — tsnet .so was not built."
+    echo "go not found, tsnet .so was not built."
     exit 1
   fi
 fi
@@ -37,9 +37,10 @@ esac
 mkdir -p "$OUT"
 cd "$ROOT/native/tsnet"
 
-# prepare_tsnet.py patches the downloaded Tailscale source, so the modules must be present first.
+# prepare_tsnet.py patches a copy of the downloaded Tailscale source, so the modules must be present first.
 "$GO" mod download
 LDFLAGS="$("$ROOT/native/tsnet/prepare_tsnet.py" "$GO")"
+export GOFLAGS="${GOFLAGS:-} -modfile=$ROOT/native/tsnet/build/tsnet-patched/tsnet.mod"
 
 echo "Building tsnet linux/$GOARCH_VALUE"
 CGO_ENABLED=1 GOOS=linux GOARCH="$GOARCH_VALUE" \

@@ -10,5 +10,5 @@ internal expect object PairingBeaconTransport {
     fun stopListener()
 }
 
-/** Platform log sink — Android uses Logcat (`FileApexPairing`); desktop uses stdout. */
+/** Platform log sink, Android uses Logcat (`FileApexPairing`); desktop uses stdout. */
 internal expect fun pairingBeaconLog(message: String)

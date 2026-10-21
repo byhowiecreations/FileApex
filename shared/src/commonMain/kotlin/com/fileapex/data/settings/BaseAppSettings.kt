@@ -30,7 +30,7 @@ interface SettingsKvStore {
 }
 
 /**
- * Shared AppSettings logic — Android/Desktop only supply a [SettingsKvStore].
+ * Shared AppSettings logic, Android/Desktop only supply a [SettingsKvStore].
  */
 class BaseAppSettings(
     private val store: SettingsKvStore,
@@ -378,6 +378,7 @@ class BaseAppSettings(
     private val settingsGroupRemoteAccessFlow = MutableStateFlow(
         store.getBoolean(KEY_SETTINGS_GROUP_REMOTE_ACCESS, true)
     )
+    private val showAdvancedSettingsFlow = MutableStateFlow(store.getBoolean(KEY_SHOW_ADVANCED_SETTINGS, false))
     private val tailscaleSetupExpandedFlow = MutableStateFlow(
         store.getBoolean(KEY_TAILSCALE_SETUP_EXPANDED, false)
     )
@@ -482,6 +483,7 @@ class BaseAppSettings(
         settingsGroupSecurityAccountFlow.asStateFlow()
     override val settingsGroupRemoteAccessExpanded: StateFlow<Boolean> =
         settingsGroupRemoteAccessFlow.asStateFlow()
+    override val showAdvancedSettings: StateFlow<Boolean> = showAdvancedSettingsFlow.asStateFlow()
     override val tailscaleSetupExpanded: StateFlow<Boolean> = tailscaleSetupExpandedFlow.asStateFlow()
     override val tailscaleEnabled: StateFlow<Boolean> = tailscaleEnabledFlow.asStateFlow()
     override val irohEnabled: StateFlow<Boolean> = irohEnabledFlow.asStateFlow()
@@ -771,6 +773,11 @@ class BaseAppSettings(
     override fun setSettingsGroupRemoteAccessExpanded(expanded: Boolean) {
         store.putBoolean(KEY_SETTINGS_GROUP_REMOTE_ACCESS, expanded)
         settingsGroupRemoteAccessFlow.value = expanded
+    }
+
+    override fun setShowAdvancedSettings(show: Boolean) {
+        store.putBoolean(KEY_SHOW_ADVANCED_SETTINGS, show)
+        showAdvancedSettingsFlow.value = show
     }
 
     override fun setTailscaleSetupExpanded(expanded: Boolean) {
@@ -1525,6 +1532,7 @@ class BaseAppSettings(
         const val KEY_SETTINGS_GROUP_APPEARANCE_BEHAVIOR = "settings_group_appearance_behavior_expanded"
         const val KEY_SETTINGS_GROUP_SECURITY_ACCOUNT = "settings_group_security_account_expanded"
         const val KEY_SETTINGS_GROUP_REMOTE_ACCESS = "settings_group_remote_access_expanded"
+        const val KEY_SHOW_ADVANCED_SETTINGS = "show_advanced_settings"
     }
 }
 

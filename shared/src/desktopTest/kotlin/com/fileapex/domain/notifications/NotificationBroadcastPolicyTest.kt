@@ -68,6 +68,14 @@ class NotificationBroadcastPolicyTest {
     }
 
     @Test
+    fun aCodeThatLooksLikeAYearIsStillACode() {
+        assertTrue(NotificationBroadcastPolicy.containsVerificationCode("Bank", "Your code is 2024"))
+        assertTrue(NotificationBroadcastPolicy.containsVerificationCode("Bank", "1987 is your verification code"))
+        assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Mail", "Security alert: login on March 3, 2026"))
+        assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Mail", "Your account since 2019 was reviewed"))
+    }
+
+    @Test
     fun ordinaryNumbersAreNotMistakenForCodes() {
         assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Sam", "Meet at 1234 Main Street"))
         assertFalse(NotificationBroadcastPolicy.containsVerificationCode("Mail", "You have 12 new messages"))

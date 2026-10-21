@@ -87,6 +87,9 @@ object LanPairingDiscovery {
         _hostState.value = HostPairingBroadcastState(remainingLabel = "0:00")
     }
 
+    /** True while this device is showing its pairing code (the Add Device screen is open and not timed out). */
+    fun isHostingPairing(): Boolean = synchronized(lock) { activeCode != null && !hostTimedOut }
+
     fun matchesActiveCode(code: String): Boolean {
         val digits = PairingBeacon.digitsOnly(code)
         if (digits.length != 6) return false

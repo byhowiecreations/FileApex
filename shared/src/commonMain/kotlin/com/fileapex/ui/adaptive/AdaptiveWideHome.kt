@@ -1,5 +1,6 @@
 package com.fileapex.ui.adaptive
 
+import com.fileapex.ui.tools.ToolsHeaderButton
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexTiledChrome
 import com.fileapex.ui.explorerIcon
@@ -671,7 +672,7 @@ private fun WideTopBar(
                         )
                     }
                     commands.onOpenTools?.let { onOpenTools ->
-                        com.fileapex.ui.ToolsHeaderButton(
+                        ToolsHeaderButton(
                             onClick = onOpenTools,
                             tint = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
                             modifier = Modifier.size(40.dp)

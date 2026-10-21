@@ -273,6 +273,20 @@ class BulletinBoardRepository(
         }.getOrNull()
     }
 
+    /** A peer's file path means nothing on this device and must never decide which local file is served. */
+    fun stripRemoteLocalPath(content: String, contentType: Int): String {
+        if (contentType != BulletinContentType.FILE_METADATA &&
+            contentType != BulletinContentType.IMAGE_PREVIEW
+        ) {
+            return content
+        }
+        val meta = runCatching {
+            json.decodeFromString<BulletinFileMetadata>(extractMetadataJson(content))
+        }.getOrNull() ?: return content
+        if (meta.localPath.isNullOrBlank()) return content
+        return rebuildContent(content, meta.copy(localPath = null))
+    }
+
     fun stripMissingLocalPath(content: String, contentType: Int): String {
         if (contentType != BulletinContentType.FILE_METADATA &&
             contentType != BulletinContentType.IMAGE_PREVIEW

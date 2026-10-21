@@ -22,7 +22,7 @@ object ShareServerRestartCoordinator {
         BOOT_COMPLETED,
         STICKY_RESTART,
         UI_FOREGROUND,
-        /** Screen-on / user-present freeze-guard — attempt FGS without visible-process preflight. */
+        /** Screen-on / user-present freeze-guard, attempt FGS without visible-process preflight. */
         SCREEN_WAKE
     }
 
@@ -89,7 +89,7 @@ object ShareServerRestartCoordinator {
     }
 
     /**
-     * Watchdog / boot path — restart [FileShareServerService] or defer without crashing the process.
+     * Watchdog / boot path, restart [FileShareServerService] or defer without crashing the process.
      */
     fun attemptWatchdogRestart(context: Context, trigger: RestartTrigger) {
         val appContext = context.applicationContext

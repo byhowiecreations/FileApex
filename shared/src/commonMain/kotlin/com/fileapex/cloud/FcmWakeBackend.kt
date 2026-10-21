@@ -13,7 +13,7 @@ import io.ktor.http.isSuccess
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** FCM HTTP v1 — silent high-priority data messages via Firebase Admin service account. */
+/** FCM HTTP v1, silent high-priority data messages via Firebase Admin service account. */
 object FcmWakeBackend {
     fun isConfigured(): Boolean = fcmServiceAccountConfig()?.isUsable == true
 

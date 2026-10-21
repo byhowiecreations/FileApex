@@ -54,7 +54,7 @@ object ShareServerKeepAliveCoordinator {
     fun onForegroundServiceInactive(context: Context, retainRecoveryJob: Boolean = false) {
         val appContext = context.applicationContext
         unregisterNetworkCallback(appContext)
-        // Battery backstop must survive a clean FGS stop — Motorola withholds BATTERY_LOW
+        // Battery backstop must survive a clean FGS stop, Motorola withholds BATTERY_LOW
         // from stopped apps, so this job is the wake that can still read BatteryManager.
         scheduleJobIfNeeded(appContext)
         if (!retainRecoveryJob) {
@@ -62,7 +62,7 @@ object ShareServerKeepAliveCoordinator {
         }
     }
 
-    /** Register freeze-guard at app launch — survives FGS death for OEM recovery. */
+    /** Register freeze-guard at app launch, survives FGS death for OEM recovery. */
     fun registerFreezeGuardIfNeeded(context: Context) {
         registerFreezeGuard(context.applicationContext)
     }

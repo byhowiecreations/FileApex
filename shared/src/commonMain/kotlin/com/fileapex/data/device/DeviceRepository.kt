@@ -72,6 +72,8 @@ class DeviceRepository(
     private val candidates: PeerCandidateStore? = null
 ) {
     private val mutateMutex = Mutex()
+
+    val layouts = DeviceLayoutStore(deviceDao, mutateMutex)
     private var clockSeeded = false
 
     @Volatile
@@ -239,8 +241,8 @@ class DeviceRepository(
 
     suspend fun upsert(device: PairedDeviceEntity) {
         mutateMutex.withLock {
-            val normalized = normalize(device)
-            if (isLocalDevice(normalized)) {
+            val normalized = RosterMerge.normalize(device)
+            if (RosterMerge.isLocalDevice(normalized, localDeviceProvider())) {
                 purgeLocalRowsLocked()
                 return
             }
@@ -262,8 +264,8 @@ class DeviceRepository(
      */
     suspend fun upsertReplacingAliases(device: PairedDeviceEntity): Boolean =
         mutateMutex.withLock {
-            val normalized = normalize(device)
-            if (isLocalDevice(normalized)) {
+            val normalized = RosterMerge.normalize(device)
+            if (RosterMerge.isLocalDevice(normalized, localDeviceProvider())) {
                 return purgeLocalRowsLocked()
             }
             if (tombstoneBlocksLocked(normalized, canReinstate = false)) return false
@@ -286,8 +288,8 @@ class DeviceRepository(
     ): CloudSeedOutcome =
         mutateMutex.withLock {
             seedClockLocked()
-            val normalized = normalize(device)
-            if (isLocalDevice(normalized)) {
+            val normalized = RosterMerge.normalize(device)
+            if (RosterMerge.isLocalDevice(normalized, localDeviceProvider())) {
                 purgeLocalRowsLocked()
                 return CloudSeedOutcome.Skipped
             }
@@ -300,7 +302,7 @@ class DeviceRepository(
             if (existing == null) {
                 val versioned = membershipProtocol >= ClusterClock.MEMBERSHIP_PROTOCOL &&
                     ClusterClock.isAcceptable(membershipVersion)
-                if (!versioned || !hasUsableEndpoint(normalized)) return CloudSeedOutcome.Skipped
+                if (!versioned || !RosterMerge.hasUsableEndpoint(normalized)) return CloudSeedOutcome.Skipped
                 if (candidates != null) {
                     stageCandidateLocked(normalized.copy(clusterVersion = membershipVersion), "cloud", CandidateOrigin.CLOUD)
                     return CloudSeedOutcome.Skipped
@@ -310,7 +312,7 @@ class DeviceRepository(
                 return CloudSeedOutcome.Applied
             }
             val merged = normalized.withVersionNotBelow(existing)
-            val changed = if (hasUsableEndpoint(merged)) {
+            val changed = if (RosterMerge.hasUsableEndpoint(merged)) {
                 upsertReplacingAliasesLocked(merged)
             } else if (existing != merged) {
                 writeDeviceKeepingTlsTrust(merged)
@@ -322,7 +324,7 @@ class DeviceRepository(
         }
 
     /**
-     * Pairing handshake performed on this device — clears every tombstone for the peer and
+     * Pairing handshake performed on this device, clears every tombstone for the peer and
      * stamps the membership with [version] (already minted by [nextMembershipVersion]) or a new stamp.
      */
     /**
@@ -341,8 +343,8 @@ class DeviceRepository(
     suspend fun adoptFromPairing(device: PairedDeviceEntity, version: Long? = null): Boolean =
         mutateMutex.withLock {
             seedClockLocked()
-            val normalized = normalize(device)
-            if (isLocalDevice(normalized)) {
+            val normalized = RosterMerge.normalize(device)
+            if (RosterMerge.isLocalDevice(normalized, localDeviceProvider())) {
                 return purgeLocalRowsLocked()
             }
             clearTombstonesLocked(normalized.deviceId, normalized.publicKeyHash.trim())
@@ -359,7 +361,7 @@ class DeviceRepository(
 
     /**
      * Peer learned from another node's roster (import or legacy recovery). Last-writer-wins and
-     * never lifts a tombstone — only a [ClusterClock]-stamped intro or a local pairing can.
+     * never lifts a tombstone, only a [ClusterClock]-stamped intro or a local pairing can.
      */
     suspend fun adoptFromRosterIntro(
         device: PairedDeviceEntity,
@@ -368,8 +370,8 @@ class DeviceRepository(
     ): Boolean =
         mutateMutex.withLock {
             seedClockLocked()
-            val normalized = normalize(device)
-            if (isLocalDevice(normalized)) {
+            val normalized = RosterMerge.normalize(device)
+            if (RosterMerge.isLocalDevice(normalized, localDeviceProvider())) {
                 return purgeLocalRowsLocked()
             }
             if (normalized.isRemoved) return false
@@ -439,13 +441,13 @@ class DeviceRepository(
             }
 
             val observedAt = if (observedDirectly) TimeUtils.now() else 0L
-            val normalized = normalize(
+            val normalized = RosterMerge.normalize(
                 PeerNodeStateMapper.toEntity(state, existing).let { entity ->
                     // A relayed state never supplies presence, and an address from another
                     // subnet must not evict a usable stored one: it is not this device's LAN.
                     // Same-subnet moves still apply (DHCP churn on the peer's own heartbeat).
                     val keepExistingEndpoint = !observedDirectly && existing != null &&
-                        hasUsableEndpoint(existing) && entity.lastKnownIp != existing.lastKnownIp &&
+                        RosterMerge.hasUsableEndpoint(existing) && entity.lastKnownIp != existing.lastKnownIp &&
                         !NetworkUtils.sameIpv4Slash24(entity.lastKnownIp, existing.lastKnownIp)
                     entity.copy(
                         lastSeenEpochMs = maxOf(existing?.lastSeenEpochMs ?: 0L, observedAt),
@@ -455,7 +457,7 @@ class DeviceRepository(
                 },
                 existing
             )
-            if (isLocalDevice(normalized)) {
+            if (RosterMerge.isLocalDevice(normalized, localDeviceProvider())) {
                 return purgeLocalRowsLocked()
             }
             if (tombstoneBlocksLocked(normalized.copy(clusterVersion = incomingVersion), canReinstate = versioned)) {
@@ -628,7 +630,7 @@ class DeviceRepository(
         origin: CandidateOrigin
     ): Boolean = mutateMutex.withLock {
         seedClockLocked()
-        stageCandidateLocked(normalize(device), introducedBy, origin)
+        stageCandidateLocked(RosterMerge.normalize(device), introducedBy, origin)
     }
 
     private suspend fun stageCandidateLocked(
@@ -638,7 +640,7 @@ class DeviceRepository(
     ): Boolean {
         val store = candidates ?: return false
         val id = normalized.deviceId
-        if (id.isEmpty() || id == LocalIdentity.LOCAL_DEVICE_ID || isLocalDevice(normalized) || normalized.isRemoved) {
+        if (id.isEmpty() || id == LocalIdentity.LOCAL_DEVICE_ID || RosterMerge.isLocalDevice(normalized, localDeviceProvider()) || normalized.isRemoved) {
             return false
         }
         val existing = deviceDao.getDevice(id)
@@ -718,7 +720,7 @@ class DeviceRepository(
             seedClockLocked()
             val liveVersion = live.membershipVersion.takeIf { live.hasMembershipProtocol && ClusterClock.isAcceptable(it) }
             val version = liveVersion ?: candidate.device.clusterVersion
-            val entity = normalize(
+            val entity = RosterMerge.normalize(
                 PeerNodeStateMapper.toEntity(live, candidate.device).copy(
                     clusterVersion = version,
                     lastSeenEpochMs = TimeUtils.now(),
@@ -728,7 +730,7 @@ class DeviceRepository(
                 candidate.device
             )
             store.remove(candidate.deviceId)
-            if (isLocalDevice(entity)) return false
+            if (RosterMerge.isLocalDevice(entity, localDeviceProvider())) return false
             if (tombstoneBlocksLocked(entity, canReinstate = true)) return false
             ClusterClock.observe(version)
             writeDeviceKeepingTlsTrust(entity)
@@ -767,7 +769,7 @@ class DeviceRepository(
         val now = TimeUtils.now()
         var moved = 0
         for (row in deviceDao.getAllDevicesOnce()) {
-            if (isLocalDevice(row) || row.lastSeenEpochMs > 0L) continue
+            if (RosterMerge.isLocalDevice(row, localDeviceProvider()) || row.lastSeenEpochMs > 0L) continue
             if (row.clusterVersion > 0L && now - row.clusterVersion < NEW_ROW_GRACE_MS) continue
             deviceDao.deleteDevice(row.deviceId)
             if (stageCandidateLocked(row, "migration", CandidateOrigin.LOCAL)) moved++
@@ -833,7 +835,7 @@ class DeviceRepository(
      * protocol and is strictly newer than every version held for that device, so echoes of old
      * removals and legacy re-stamps can never evict a re-paired peer.
      *
-     * @return true when applied — the only case in which it should be forwarded.
+     * @return true when applied, the only case in which it should be forwarded.
      */
     suspend fun applyRemoteRemoval(record: RemovedDeviceRecord): Boolean =
         mutateMutex.withLock {
@@ -904,7 +906,7 @@ class DeviceRepository(
         mutateMutex.withLock {
             purgeLocalRowsLocked()
             compactNamelessTombstonesLocked()
-            val all = deviceDao.getAllDevicesOnce().filterNot { isLocalDevice(it) }
+            val all = deviceDao.getAllDevicesOnce().filterNot { RosterMerge.isLocalDevice(it, localDeviceProvider()) }
             if (all.size < 2) return
             persistCollapsed(all)
         }
@@ -943,10 +945,10 @@ class DeviceRepository(
     ): Boolean {
         require(normalized.deviceId.isNotEmpty()) { "deviceId cannot be empty" }
         val rosterId = rosterDeviceId?.trim().orEmpty()
-        val endpoint = endpointKey(normalized.lastKnownIp, normalized.port)
+        val endpoint = RosterMerge.endpointKey(normalized.lastKnownIp, normalized.port)
         for (row in deviceDao.getAllDevicesOnce()) {
             if (row.deviceId == normalized.deviceId) continue
-            val sameEndpoint = endpoint != null && endpointKey(row.lastKnownIp, row.port) == endpoint
+            val sameEndpoint = endpoint != null && RosterMerge.endpointKey(row.lastKnownIp, row.port) == endpoint
             val sameDevice = RosterIdentity.samePhysicalDevice(
                 incomingId = normalized.deviceId,
                 incomingPublicKeyHash = normalized.publicKeyHash,
@@ -965,7 +967,7 @@ class DeviceRepository(
         }
         val purgedSelf = purgeLocalRowsLocked()
         val existing = deviceDao.getDevice(normalized.deviceId)
-        val merged = normalize(normalized, existing)
+        val merged = RosterMerge.normalize(normalized, existing)
         if (existing == merged && !purgedSelf) {
             return false
         }
@@ -978,27 +980,27 @@ class DeviceRepository(
 
         val existing = deviceDao.getDevice(normalized.deviceId)
         val aliases = findAliasesLocked(normalized)
-            .filterNot { isLocalDevice(it) }
+            .filterNot { RosterMerge.isLocalDevice(it, localDeviceProvider()) }
         val related = buildList {
             add(normalized)
-            if (existing != null && !isLocalDevice(existing)) add(existing)
+            if (existing != null && !RosterMerge.isLocalDevice(existing, localDeviceProvider())) add(existing)
             addAll(aliases)
         }.distinctBy { it.deviceId }
-            .filterNot { isLocalDevice(it) }
+            .filterNot { RosterMerge.isLocalDevice(it, localDeviceProvider()) }
 
         if (related.isEmpty()) {
             return purgeLocalRowsLocked()
         }
 
-        val hasUsableEndpoint = related.any { hasUsableEndpoint(it) }
+        val hasUsableEndpoint = related.any { RosterMerge.hasUsableEndpoint(it) }
         if (!hasUsableEndpoint && existing == null && aliases.isEmpty()) {
             return false
         }
 
-        val winnerId = pickWinner(related).deviceId
+        val winnerId = RosterMerge.pickWinner(related).deviceId
         var merged = related.first { it.deviceId == winnerId }
         for (row in related) {
-            merged = preferRicher(merged, row).copy(deviceId = winnerId)
+            merged = RosterMerge.preferRicher(merged, row).copy(deviceId = winnerId)
         }
 
         val toDelete = related.map { it.deviceId }.filter { it != winnerId }.toSet()
@@ -1008,27 +1010,25 @@ class DeviceRepository(
             return false
         }
 
+        if (currentWinner != merged) writeDeviceKeepingTlsTrust(merged) // survivor first: the list never misses it
         for (id in toDelete) {
             deviceDao.deleteDevice(id)
-        }
-        if (currentWinner != merged) {
-            writeDeviceKeepingTlsTrust(merged)
         }
         return true
     }
 
     private suspend fun persistCollapsed(all: List<PairedDeviceEntity>) {
-        val collapsed = collapseAliases(all)
+        val collapsed = RosterMerge.collapseAliases(all)
         val keepIds = collapsed.map { it.deviceId }.toSet()
         val byId = all.associateBy { it.deviceId }
-        for (device in all) {
-            if (device.deviceId !in keepIds) {
-                deviceDao.deleteDevice(device.deviceId)
-            }
-        }
         for (keeper in collapsed) {
             if (byId[keeper.deviceId] != keeper) {
                 writeDeviceKeepingTlsTrust(keeper)
+            }
+        }
+        for (device in all) {
+            if (device.deviceId !in keepIds) {
+                deviceDao.deleteDevice(device.deviceId)
             }
         }
     }
@@ -1036,310 +1036,24 @@ class DeviceRepository(
     private suspend fun findAliasesLocked(canonical: PairedDeviceEntity): List<PairedDeviceEntity> {
         val all = deviceDao.getAllDevicesOnce()
         return all.filter { other ->
-            other.deviceId != canonical.deviceId && areAliases(canonical, other)
+            other.deviceId != canonical.deviceId && RosterMerge.areAliases(canonical, other)
         }
     }
 
     private fun collapseAndExcludeSelf(devices: List<PairedDeviceEntity>): List<PairedDeviceEntity> {
         val local = localDeviceProvider()
-        return collapseAliases(devices.filterNot { isLocalDevice(it, local) })
-    }
-
-    /**
-     * Pure in-memory collapse used by Flows and list reads so the UI never sees
-     * duplicate deviceIds / blank-IP name twins even before Room is cleaned.
-     */
-    private fun collapseAliases(devices: List<PairedDeviceEntity>): List<PairedDeviceEntity> {
-        if (devices.size < 2) return devices
-        val kept = mutableListOf<PairedDeviceEntity>()
-        for (device in devices.sortedWith(devicePreferenceOrder())) {
-            val rivalIndex = kept.indexOfFirst { areAliases(it, device) }
-            if (rivalIndex < 0) {
-                if (kept.any { it.deviceId == device.deviceId }) continue
-                kept += device
-                continue
-            }
-            val rival = kept[rivalIndex]
-            val winner = pickWinner(listOf(rival, device))
-            val merged = preferRicher(rival, device).copy(deviceId = winner.deviceId)
-            kept[rivalIndex] = merged
-        }
-        return kept.sortedBy { it.deviceName.lowercase() }
-    }
-
-    private fun pickWinner(related: List<PairedDeviceEntity>): PairedDeviceEntity =
-        related.maxWith(devicePreferenceOrder())
-
-    private fun areAliases(a: PairedDeviceEntity, b: PairedDeviceEntity): Boolean {
-        if (a.deviceId == b.deviceId) return true
-
-        val hashA = a.publicKeyHash.trim()
-        val hashB = b.publicKeyHash.trim()
-        if (hashA.isNotEmpty() && hashA == hashB) {
-            return true
-        }
-
-        val endpointA = endpointKey(a.lastKnownIp, a.port)
-        val endpointB = endpointKey(b.lastKnownIp, b.port)
-        val nameA = normalizeName(a.deviceName)
-        val nameB = normalizeName(b.deviceName)
-        if (nameA.isNotEmpty() && nameA == nameB && (endpointA == null || endpointB == null)) {
-            return true
-        }
-
-        return false
-    }
-
-    private fun preferRicher(
-        existing: PairedDeviceEntity?,
-        incoming: PairedDeviceEntity
-    ): PairedDeviceEntity {
-        if (existing == null) return incoming
-        val existingOk = hasUsableEndpoint(existing)
-        val incomingOk = hasUsableEndpoint(incoming)
-        val endpointSource = pickEndpointSource(existing, incoming)
-        val primary = when {
-            !existingOk && incomingOk -> incoming
-            existingOk && !incomingOk -> existing
-            else -> incoming
-        }
-        val secondary = if (primary.deviceId == incoming.deviceId) existing else incoming
-        return primary.copy(
-            deviceName = DeviceDisplayNames.merge(
-                existingName = existing.deviceName.ifBlank { primary.deviceName.ifBlank { secondary.deviceName } },
-                incomingName = incoming.deviceName,
-                make = firstNonBlank(incoming.deviceMake, primary.deviceMake, secondary.deviceMake),
-                model = firstNonBlank(incoming.deviceModel, primary.deviceModel, secondary.deviceModel)
-            ),
-            lastKnownIp = when {
-                hasUsableEndpoint(endpointSource) -> endpointSource.lastKnownIp
-                hasUsableEndpoint(secondary) -> secondary.lastKnownIp
-                else -> primary.lastKnownIp
-            },
-            port = when {
-                hasUsableEndpoint(endpointSource) -> endpointSource.port
-                hasUsableEndpoint(secondary) -> secondary.port
-                else -> primary.port
-            },
-            publicKeyHash = primary.publicKeyHash.ifBlank { secondary.publicKeyHash },
-            publicKey = firstNonBlank(incoming.publicKey, primary.publicKey, secondary.publicKey),
-            e2eeEnabled = incoming.e2eeEnabled || primary.e2eeEnabled || secondary.e2eeEnabled,
-            rootPath = primary.rootPath.ifBlank {
-                secondary.rootPath.ifBlank { "/" }
-            },
-            clientVersion = firstNonBlank(
-                incoming.clientVersion,
-                primary.clientVersion,
-                secondary.clientVersion
-            ),
-            clientVersionCode = firstPositive(
-                incoming.clientVersionCode,
-                primary.clientVersionCode,
-                secondary.clientVersionCode
-            ),
-            platform = firstNonBlank(incoming.platform, primary.platform, secondary.platform),
-            os = firstNonBlank(incoming.os, primary.os, secondary.os),
-            deviceMake = firstNonBlank(incoming.deviceMake, primary.deviceMake, secondary.deviceMake),
-            deviceModel = firstNonBlank(incoming.deviceModel, primary.deviceModel, secondary.deviceModel),
-            supportedProtocolsJson = incoming.supportedProtocolsJson.ifBlank {
-                primary.supportedProtocolsJson.ifBlank { secondary.supportedProtocolsJson }
-            },
-            lastSeenEpochMs = maxOf(
-                incoming.lastSeenEpochMs,
-                primary.lastSeenEpochMs,
-                secondary.lastSeenEpochMs
-            ),
-            cardPosX = primary.cardPosX ?: secondary.cardPosX,
-            cardPosY = primary.cardPosY ?: secondary.cardPosY,
-            cardSortOrder = if (primary.cardSortOrder != 0) primary.cardSortOrder else secondary.cardSortOrder,
-            cardMenuOrder = primary.cardMenuOrder.ifBlank { secondary.cardMenuOrder },
-            tilePosX = primary.tilePosX ?: secondary.tilePosX,
-            tilePosY = primary.tilePosY ?: secondary.tilePosY,
-            tileSortOrder = if (primary.tileSortOrder != 0) primary.tileSortOrder else secondary.tileSortOrder,
-            tileMenuOrder = primary.tileMenuOrder.ifBlank { secondary.tileMenuOrder },
-            clusterVersion = maxOf(incoming.clusterVersion, primary.clusterVersion, secondary.clusterVersion),
-            isRemoved = existing.isRemoved && incoming.isRemoved,
-            removedAt = if (existing.isRemoved && incoming.isRemoved) primary.removedAt ?: secondary.removedAt else null,
-            tailnetHostname = firstNonBlank(
-                incoming.tailnetHostname,
-                primary.tailnetHostname,
-                secondary.tailnetHostname
-            ),
-            tailnetIpv4 = listOf(incoming.tailnetIpv4, primary.tailnetIpv4, secondary.tailnetIpv4)
-                .firstOrNull { com.fileapex.tailscale.isTailscaleIPv4(it.trim()) }
-                ?.trim()
-                .orEmpty()
-        )
-    }
-
-    private fun devicePreferenceOrder(): Comparator<PairedDeviceEntity> =
-        compareBy<PairedDeviceEntity> { hasUsableEndpoint(it) }
-            .thenBy { it.lastSeenEpochMs }
-            .thenBy { it.clientVersion.isNotBlank() }
-            .thenBy { it.deviceId }
-
-    private fun hasUsableEndpoint(device: PairedDeviceEntity): Boolean =
-        endpointKey(device.lastKnownIp, device.port) != null
-
-    /**
-     * Prefer the endpoint observed most recently on the LAN. Cloud snapshots with
-     * [PairedDeviceEntity.lastSeenEpochMs] = 0 must not overwrite a fresher local probe.
-     */
-    private fun pickEndpointSource(
-        existing: PairedDeviceEntity?,
-        incoming: PairedDeviceEntity
-    ): PairedDeviceEntity {
-        if (existing == null) return incoming
-        val existingOk = hasUsableEndpoint(existing)
-        val incomingOk = hasUsableEndpoint(incoming)
-        return when {
-            !existingOk && incomingOk -> incoming
-            existingOk && !incomingOk -> existing
-            !existingOk && !incomingOk -> incoming
-            existing.lastSeenEpochMs > incoming.lastSeenEpochMs -> existing
-            incoming.lastSeenEpochMs > existing.lastSeenEpochMs -> incoming
-            existing.lastSeenEpochMs == 0L && incoming.lastSeenEpochMs == 0L -> incoming
-            else -> existing
-        }
-    }
-
-    /**
-     * True when [device] is this phone/Mac — must never appear under paired peers.
-     * Matches local deviceId, the UI sentinel id, or this node's current LAN endpoint.
-     */
-    private fun isLocalDevice(
-        device: PairedDeviceEntity,
-        local: LocalDeviceRef = localDeviceProvider()
-    ): Boolean {
-        if (device.deviceId == LocalIdentity.LOCAL_DEVICE_ID) return true
-        if (local.deviceId.isNotBlank() && device.deviceId == local.deviceId) return true
-        val endpoint = endpointKey(device.lastKnownIp, device.port) ?: return false
-        return endpoint in local.endpoints
+        return RosterMerge.collapseAliases(devices.filterNot { RosterMerge.isLocalDevice(it, local) })
     }
 
     private suspend fun purgeLocalRowsLocked(): Boolean {
         val all = deviceDao.getAllDevicesOnce()
         val local = localDeviceProvider()
-        val victims = all.filter { isLocalDevice(it, local) }
+        val victims = all.filter { RosterMerge.isLocalDevice(it, local) }
         if (victims.isEmpty()) return false
         for (row in victims) {
             deviceDao.deleteDevice(row.deviceId)
         }
         return true
-    }
-
-    private fun normalize(
-        device: PairedDeviceEntity,
-        preserveFrom: PairedDeviceEntity? = null
-    ): PairedDeviceEntity {
-        val platformStr = device.platform.trim().ifBlank { preserveFrom?.platform.orEmpty() }
-        val isAndroid = platformStr.trim().equals("android", ignoreCase = true)
-        val defaultRoot = if (isAndroid) "/storage/emulated/0" else "/"
-        val preservedRoot = preserveFrom?.rootPath?.trim()?.takeIf { it.isNotEmpty() && it != "/" }
-        val rootPathCandidate = device.rootPath.trim().takeIf { it.isNotEmpty() && it != "/" }
-            ?: preservedRoot
-            ?: defaultRoot
-        val trimmed = device.copy(
-            deviceId = device.deviceId.trim(),
-            deviceName = device.deviceName.trim(),
-            lastKnownIp = device.lastKnownIp.trim(),
-            publicKeyHash = device.publicKeyHash.trim(),
-            rootPath = rootPathCandidate,
-            clientVersion = device.clientVersion.trim(),
-            platform = platformStr,
-            os = device.os.trim(),
-            deviceMake = device.deviceMake.trim(),
-            deviceModel = device.deviceModel.trim(),
-            supportedProtocolsJson = device.supportedProtocolsJson.ifBlank { "[]" },
-            lastSeenEpochMs = maxOf(
-                device.lastSeenEpochMs.coerceAtLeast(0L),
-                preserveFrom?.lastSeenEpochMs?.coerceAtLeast(0L) ?: 0L
-            ),
-            tlsPin = preserveFrom?.tlsPin.orEmpty(),
-            tlsPinAlt = preserveFrom?.tlsPinAlt.orEmpty(),
-            tlsPort = device.tlsPort.takeIf { it in 1..65535 } ?: preserveFrom?.tlsPort ?: 0,
-            tailnetHostname = device.tailnetHostname.trim().ifBlank { preserveFrom?.tailnetHostname.orEmpty() },
-            tailnetIpv4 = device.tailnetIpv4.trim().let { incoming ->
-                if (com.fileapex.tailscale.isTailscaleIPv4(incoming)) {
-                    incoming
-                } else {
-                    preserveFrom?.tailnetIpv4?.trim().orEmpty()
-                        .takeIf { com.fileapex.tailscale.isTailscaleIPv4(it) }
-                        .orEmpty()
-                }
-            }
-        )
-        return trimmed.copy(
-            lastKnownIp = trimmed.lastKnownIp.ifBlank { preserveFrom?.lastKnownIp.orEmpty() },
-            port = trimmed.port.takeIf { it > 0 } ?: preserveFrom?.port ?: 0,
-            rootPath = trimmed.rootPath.takeIf { it.isNotEmpty() && it != "/" } ?: preservedRoot ?: defaultRoot,
-            clientVersion = trimmed.clientVersion.ifBlank { preserveFrom?.clientVersion.orEmpty() },
-            clientVersionCode = trimmed.clientVersionCode.takeIf { it > 0 }
-                ?: preserveFrom?.clientVersionCode
-                ?: 0,
-            platform = platformStr,
-            os = trimmed.os.ifBlank { preserveFrom?.os.orEmpty() },
-            deviceMake = trimmed.deviceMake.ifBlank { preserveFrom?.deviceMake.orEmpty() },
-            deviceModel = trimmed.deviceModel.ifBlank { preserveFrom?.deviceModel.orEmpty() },
-            cardPosX = trimmed.cardPosX ?: preserveFrom?.cardPosX,
-            cardPosY = trimmed.cardPosY ?: preserveFrom?.cardPosY,
-            cardSortOrder = if (trimmed.cardSortOrder != 0) trimmed.cardSortOrder else preserveFrom?.cardSortOrder ?: 0,
-            cardMenuOrder = trimmed.cardMenuOrder.ifBlank { preserveFrom?.cardMenuOrder.orEmpty() },
-            tilePosX = trimmed.tilePosX ?: preserveFrom?.tilePosX,
-            tilePosY = trimmed.tilePosY ?: preserveFrom?.tilePosY,
-            tileSortOrder = if (trimmed.tileSortOrder != 0) trimmed.tileSortOrder else preserveFrom?.tileSortOrder ?: 0,
-            tileMenuOrder = trimmed.tileMenuOrder.ifBlank { preserveFrom?.tileMenuOrder.orEmpty() }
-        )
-    }
-
-    private fun normalizeName(name: String): String = name.trim().lowercase()
-
-    private fun firstNonBlank(vararg values: String): String =
-        values.firstOrNull { it.trim().isNotEmpty() }?.trim().orEmpty()
-
-    private fun firstPositive(vararg values: Int): Int =
-        values.firstOrNull { it > 0 } ?: 0
-
-    private fun endpointKey(ip: String, port: Int): String? {
-        val cleaned = ip.trim()
-        if (cleaned.isEmpty() || cleaned == "127.0.0.1" || cleaned == "0.0.0.0") {
-            return null
-        }
-        return "$cleaned:$port"
-    }
-
-    suspend fun saveDeviceCardLayout(
-        deviceId: String,
-        x: Float?,
-        y: Float?,
-        sortOrder: Int = 0,
-        menuOrder: String = ""
-    ) {
-        mutateMutex.withLock {
-            val existing = deviceDao.getDevice(deviceId) ?: return
-            val finalX = x ?: existing.cardPosX
-            val finalY = y ?: existing.cardPosY
-            val finalOrder = if (sortOrder != 0) sortOrder else existing.cardSortOrder
-            val finalMenu = menuOrder.ifBlank { existing.cardMenuOrder }
-            deviceDao.updateCardLayout(deviceId, finalX, finalY, finalOrder, finalMenu)
-        }
-    }
-
-    suspend fun saveDeviceTileLayout(
-        deviceId: String,
-        x: Float?,
-        y: Float?,
-        sortOrder: Int = 0,
-        menuOrder: String = ""
-    ) {
-        mutateMutex.withLock {
-            val existing = deviceDao.getDevice(deviceId) ?: return
-            val finalX = x ?: existing.tilePosX
-            val finalY = y ?: existing.tilePosY
-            val finalOrder = if (sortOrder != 0) sortOrder else existing.tileSortOrder
-            val finalMenu = menuOrder.ifBlank { existing.tileMenuOrder }
-            deviceDao.updateTileLayout(deviceId, finalX, finalY, finalOrder, finalMenu)
-        }
     }
 
     suspend fun rename(deviceId: String, newName: String) {
@@ -1417,7 +1131,7 @@ class DeviceRepository(
         mutateMutex.withLock {
             seedClockLocked()
             val trimmedId = remote.deviceId.trim()
-            if (trimmedId.isEmpty() || isLocalDevice(remote) || remote.isRemoved) return@withLock false
+            if (trimmedId.isEmpty() || RosterMerge.isLocalDevice(remote, localDeviceProvider()) || remote.isRemoved) return@withLock false
             val incomingVersion = remote.clusterVersion.takeIf { ClusterClock.isAcceptable(it) }
                 ?: return@withLock false
             val existing = deviceDao.getDevice(trimmedId)
@@ -1430,7 +1144,7 @@ class DeviceRepository(
                 return@withLock false
             }
             ClusterClock.observe(incomingVersion)
-            val activeEntity = normalize(
+            val activeEntity = RosterMerge.normalize(
                 remote.copy(
                     isRemoved = false,
                     removedAt = null,

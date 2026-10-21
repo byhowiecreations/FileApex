@@ -2,7 +2,7 @@ package com.fileapex.util
 
 /**
  * Stable identity markers derived from [deviceId].
- * Not signing keys — used for alias matching and blocklist correlation only.
+ * Not signing keys, used for alias matching and blocklist correlation only.
  */
 object DeviceIdentityMarkers {
     fun fingerprint(deviceId: String): String {

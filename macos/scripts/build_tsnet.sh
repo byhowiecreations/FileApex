@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build libFileApexTsnet.dylib — in-process userspace Tailscale node (tsnet).
+# Build libFileApexTsnet.dylib, in-process userspace Tailscale node (tsnet).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -16,7 +16,7 @@ if [[ ! -x "$GO" ]]; then
   if command -v go >/dev/null 2>&1; then
     GO="$(command -v go)"
   else
-    echo "go not found — tsnet dylib was not built."
+    echo "go not found, tsnet dylib was not built."
     exit 1
   fi
 fi
@@ -33,6 +33,8 @@ cd "$ROOT/native/tsnet"
 
 SDK="$(xcrun --show-sdk-path)"
 LDFLAGS="$("$ROOT/native/tsnet/prepare_tsnet.py" "$GO")"
+# prepare_tsnet.py patched a copy of Tailscale under build/tsnet-patched; build against it.
+export GOFLAGS="${GOFLAGS:-} -modfile=$ROOT/native/tsnet/build/tsnet-patched/tsnet.mod"
 
 compile_arch() {
   local arch="$1"

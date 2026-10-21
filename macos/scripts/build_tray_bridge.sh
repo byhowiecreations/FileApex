@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build libFileApexTray.dylib — native NSStatusItem / NSPopover / SwiftUI tray UI.
+# Build libFileApexTray.dylib, native NSStatusItem / NSPopover / SwiftUI tray UI.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -12,7 +12,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 if ! command -v swiftc >/dev/null 2>&1; then
-  echo "swiftc not found — skipping native tray bridge."
+  echo "swiftc not found, skipping native tray bridge."
   exit 0
 fi
 

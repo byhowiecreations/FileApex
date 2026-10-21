@@ -70,7 +70,12 @@ class TlsIdentityStore(
                 sealed = result.getOrThrow()
                 break
             }
-            println("TlsIdentity: vault ${vault.scheme} failed to seal - ${result.exceptionOrNull()?.javaClass?.simpleName}")
+            val failure = result.exceptionOrNull()
+            // A vault that may work again soon is no reason to write the private key in clear text.
+            if (generateSequence(failure) { it.cause }.any { it is com.fileapex.data.settings.SecretUnavailableException }) {
+                throw TlsIdentityUnavailableException("secure storage is not available right now", failure)
+            }
+            println("TlsIdentity: vault ${vault.scheme} failed to seal - ${failure?.javaClass?.simpleName}")
         }
         writeAtomically(byteArrayOf(chosen.scheme.toByte()) + checkNotNull(sealed))
     }

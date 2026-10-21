@@ -14,7 +14,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * On-demand LAN sweep for a paired peer when its stored endpoint is stale.
- * Scans every usable local /24 (Wi‑Fi + vendor interfaces) — critical for Mac↔Android when
+ * Scans every usable local /24 (Wi‑Fi + vendor interfaces), critical for Mac↔Android when
  * one side stored the wrong Mac or phone IP.
  */
 internal object PeerLanDiscovery {

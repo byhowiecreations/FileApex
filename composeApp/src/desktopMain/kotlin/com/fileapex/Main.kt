@@ -46,8 +46,8 @@ import com.fileapex.platform.MacOsExtensionRegistrar
 import com.fileapex.platform.DesktopSendHandoff
 import com.fileapex.platform.DesktopBulletinHandoff
 import com.fileapex.platform.DesktopWindowsBackdrop
-import com.fileapex.ui.DeviceCardSlotHeight
-import com.fileapex.ui.DeviceListToAddGap
+import com.fileapex.ui.devices.DeviceCardSlotHeight
+import com.fileapex.ui.devices.DeviceListToAddGap
 import com.fileapex.ui.ThemeDeviceIconPreloader
 import com.fileapex.update.AppUpdateCoordinator
 import com.fileapex.update.FileApexAppVersion
@@ -127,7 +127,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
     // Decode Freestyle/Flux PNGs off the UI thread while the window comes up.
     ThemeDeviceIconPreloader.startFor(createAppSettings().themeIconStyle.value)
 
-    // Mac: never System.exit when Compose scope ends — native tray + share server keep running.
+    // Mac: never System.exit when Compose scope ends, native tray + share server keep running.
     application(exitProcessOnExit = !DesktopPlatformPaths.isMacOs()) {
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
         var mainWindowVisible by remember { mutableStateOf(true) }
@@ -277,7 +277,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             },
             title = "FileApex",
             state = windowState,
-            // Mac: never bind Compose visible to hide — sole Window hidden => application{} exits (#1897).
+            // Mac: never bind Compose visible to hide, sole Window hidden => application{} exits (#1897).
             // Windows: visible=false is the supported hide-to-tray path (CMP #2928).
             visible = if (DesktopPlatformPaths.isMacOs()) true else mainWindowVisible,
         ) {

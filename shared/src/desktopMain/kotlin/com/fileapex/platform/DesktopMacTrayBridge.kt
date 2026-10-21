@@ -20,7 +20,7 @@ object DesktopMacTrayBridge {
     @Volatile
     private var native: FileApexTrayNative? = null
 
-    // Strong refs — JNA discards unretained callback proxies and native calls become no-ops.
+    // Strong refs, JNA discards unretained callback proxies and native calls become no-ops.
     @Volatile
     private var sendCallback: SendCallback? = null
     @Volatile
@@ -68,7 +68,7 @@ object DesktopMacTrayBridge {
             println("DesktopMacTrayBridge: libFileApexTray.dylib not found")
             return false
         }
-        // Native.load only — never call AppKit here. fileapex_tray_install_app_lifecycle
+        // Native.load only, never call AppKit here. fileapex_tray_install_app_lifecycle
         // uses DispatchQueue.main.sync; invoking that from a background preload/IO thread
         // stalls behind Compose's first frames (~6s+) and made Mac cold start feel broken.
         return runCatching {
@@ -153,7 +153,7 @@ object DesktopMacTrayBridge {
     }
 
     /**
-     * Native Bonjour resolve — Finder/Dock Local Network permission applies here, not to Java sockets.
+     * Native Bonjour resolve, Finder/Dock Local Network permission applies here, not to Java sockets.
      */
     fun setLanPeerDiscoveredListener(listener: ((host: String, port: Int, serviceName: String?) -> Unit)?) {
         if (!DesktopPlatformPaths.isMacOs()) return

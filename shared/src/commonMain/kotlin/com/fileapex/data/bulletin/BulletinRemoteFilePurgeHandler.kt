@@ -58,7 +58,8 @@ object BulletinRemoteFilePurgeHandler {
         val downloadsDir = defaultDownloadsDir()
         val localPath = BulletinRemoteFilePurgeResolver.resolve(meta, downloadsDir)
 
-        val isAutoUpdateApk = BulletinApkUpdatePolicy.matchesAutoUpdateApk(meta.fileName)
+        val isAutoUpdateApk = BulletinApkUpdatePolicy.matchesAutoUpdateApk(meta.fileName) &&
+            FileApexServices.settings.bulletinRemoteFilePurgePreference.value != BulletinRemoteFilePurgePreference.DISABLED
         if (isAutoUpdateApk) {
             if (!localPath.isNullOrBlank()) {
                 if (scrubLocalFile(localPath, downloadsDir)) {

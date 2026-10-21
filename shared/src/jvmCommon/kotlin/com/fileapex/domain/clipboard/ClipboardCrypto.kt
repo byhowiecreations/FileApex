@@ -1,12 +1,13 @@
 package com.fileapex.domain.clipboard
 
+import com.fileapex.security.E2eePrimitives.hkdfSha256
+import com.fileapex.security.E2eePrimitives.hmacSha256
+import com.fileapex.security.E2eePrimitives.x25519SharedSecret
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
-import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import org.bouncycastle.crypto.agreement.X25519Agreement
 import org.bouncycastle.crypto.generators.X25519KeyPairGenerator
 import org.bouncycastle.crypto.params.X25519KeyGenerationParameters
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters
@@ -52,12 +53,14 @@ object ClipboardCrypto {
         plaintext: ByteArray,
         localPrivateKey: ByteArray,
         peerPublicKey: ByteArray,
-        salt: String
+        salt: String,
+        aad: ByteArray? = null
     ): String {
         val key = deriveAesKey(localPrivateKey, peerPublicKey, salt)
         val iv = ByteArray(GCM_IV_BYTES).also(secureRandom::nextBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+        aad?.let(cipher::updateAAD)
         val encrypted = cipher.doFinal(plaintext)
         val payload = ByteArray(iv.size + encrypted.size)
         System.arraycopy(iv, 0, payload, 0, iv.size)
@@ -69,7 +72,8 @@ object ClipboardCrypto {
         payloadBase64: String,
         localPrivateKey: ByteArray,
         peerPublicKey: ByteArray,
-        salt: String
+        salt: String,
+        aad: ByteArray? = null
     ): ByteArray {
         val payload = Base64.getDecoder().decode(payloadBase64.trim())
         require(payload.size > GCM_IV_BYTES) { "Encrypted clipboard payload too short" }
@@ -78,6 +82,7 @@ object ClipboardCrypto {
         val key = deriveAesKey(localPrivateKey, peerPublicKey, salt)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+        aad?.let(cipher::updateAAD)
         return cipher.doFinal(ciphertext)
     }
 
@@ -104,36 +109,5 @@ object ClipboardCrypto {
             info = HKDF_INFO.encodeToByteArray(),
             length = 32
         )
-    }
-
-    private fun x25519SharedSecret(privateKey: ByteArray, peerPublicKey: ByteArray): ByteArray {
-        val agreement = X25519Agreement()
-        agreement.init(X25519PrivateKeyParameters(privateKey, 0))
-        val shared = ByteArray(agreement.agreementSize)
-        agreement.calculateAgreement(X25519PublicKeyParameters(peerPublicKey, 0), shared, 0)
-        return shared
-    }
-
-    private fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
-        val prk = hmacSha256(if (salt.isEmpty()) ByteArray(32) else salt, ikm)
-        val okm = ByteArray(length)
-        var t = ByteArray(0)
-        var offset = 0
-        var counter = 1
-        while (offset < length) {
-            val input = t + info + byteArrayOf(counter.toByte())
-            t = hmacSha256(prk, input)
-            val copyLen = minOf(t.size, length - offset)
-            System.arraycopy(t, 0, okm, offset, copyLen)
-            offset += copyLen
-            counter++
-        }
-        return okm
-    }
-
-    private fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(key, "HmacSHA256"))
-        return mac.doFinal(data)
     }
 }

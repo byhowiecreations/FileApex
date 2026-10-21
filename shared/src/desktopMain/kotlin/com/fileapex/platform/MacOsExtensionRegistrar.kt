@@ -10,7 +10,7 @@ import java.time.Instant
  * running from `/Applications/FileApex.app`. Never registers project/`current/` builds.
  *
  * Appexes are signed with sandbox entitlements at package time. This registrar
- * must not codesign or xattr the installed bundle — that invalidates the host
+ * must not codesign or xattr the installed bundle, that invalidates the host
  * signature and makes Gatekeeper re-scan on every launch.
  *
  * Deprecated Finder Sync (`com.fileapex.FinderSync`) is unregistered on every launch.

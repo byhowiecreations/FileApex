@@ -20,7 +20,8 @@ class ServerInboxTargetTest {
         port = ServerSocket(0).use { it.localPort }
         server = FileApexServer(
             port = port,
-            identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = System.getProperty("java.io.tmpdir"), sharePort = port) }
+            identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = System.getProperty("java.io.tmpdir"), sharePort = port) },
+            isRosterMember = { it == "self-test" }
         ).also { it.start() }
         Thread.sleep(500)
     }

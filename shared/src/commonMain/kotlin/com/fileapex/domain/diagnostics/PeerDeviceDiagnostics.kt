@@ -3,7 +3,7 @@ package com.fileapex.domain.diagnostics
 import kotlinx.serialization.Serializable
 
 /**
- * On-demand peer diagnostic snapshot — never included in periodic LAN heartbeats.
+ * On-demand peer diagnostic snapshot, never included in periodic LAN heartbeats.
  */
 @Serializable
 data class PeerDeviceDiagnostics(
@@ -17,7 +17,17 @@ data class PeerDeviceDiagnostics(
     val network: NetworkDiagnostics = NetworkDiagnostics(),
     val uptime: UptimeDiagnostics = UptimeDiagnostics(),
     val thermal: ThermalDiagnostics = ThermalDiagnostics(),
-    val memory: MemoryDiagnostics = MemoryDiagnostics()
+    val memory: MemoryDiagnostics = MemoryDiagnostics(),
+    /** The app on that device. Empty from a device too old to report it, so a viewer never shows its own version for it. */
+    val app: AppDiagnostics = AppDiagnostics()
+)
+
+@Serializable
+data class AppDiagnostics(
+    val versionName: String = "",
+    val versionCode: Int = 0,
+    /** Where the install came from: `github`, `fdroid` or `play`. */
+    val source: String = ""
 )
 
 @Serializable
@@ -69,7 +79,7 @@ data class NetworkDiagnostics(
     /** 2.4 GHz, 5 GHz, 6 GHz, Unknown */
     val frequencyBand: String = "",
     val channel: Int? = null,
-    /** LTE, 5G NR, HSPA, etc. — populated when [interfaceType] is Cellular. */
+    /** LTE, 5G NR, HSPA, etc., populated when [interfaceType] is Cellular. */
     val networkGeneration: String = "",
     val carrier: String = "",
     /** Downlink/uplink frequency in MHz when available on cellular. */

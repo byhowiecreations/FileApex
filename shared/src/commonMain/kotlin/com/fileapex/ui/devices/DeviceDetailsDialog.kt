@@ -1,0 +1,82 @@
+package com.fileapex.ui.devices
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.fileapex.di.FileApexServices
+import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
+import com.fileapex.domain.diagnostics.DeviceDiagnosticsFormatter
+import com.fileapex.i18n.stringRes
+import com.fileapex.presentation.DeviceDetailsState
+
+@Composable
+internal fun DeviceDetailsDialog(
+    details: DeviceDetailsState,
+    onDismiss: () -> Unit
+) {
+    val displayPreferences by FileApexServices.settings.deviceDetailsDisplayPreferences
+        .collectAsState(DeviceDetailsDisplayPreferences.defaults())
+
+    // Nothing saved and still loading: a message said so and the dialog waits for the answer.
+    if (details.loading && details.snapshot == null) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringRes("device_details_title", details.deviceName), softWrap = true) },
+        text = {
+            val snapshot = details.snapshot
+            if (snapshot == null) {
+                Text(text = details.errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
+                return@AlertDialog
+            }
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = Modifier.fillMaxWidth().height(320.dp).verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (details.loading) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringRes("device_details_updating"), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                details.errorMessage?.let {
+                    Text(text = it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                }
+                DeviceDiagnosticsFormatter.detailRows(snapshot = snapshot, preferences = displayPreferences)
+                    .forEach { (label, value) ->
+                        Column {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(text = value, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringRes("close")) }
+        }
+    )
+}

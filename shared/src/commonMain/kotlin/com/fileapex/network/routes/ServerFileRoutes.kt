@@ -192,7 +192,8 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 preferredPath = preferredPathStr,
                 expectedSize = expectedSize,
                 transactionId = txId,
-                senderDeviceId = senderId
+                senderDeviceId = senderId,
+                backup = call.request.queryParameters["backup"] == "1"
             )
             call.respondText(
                 text = server.json.encodeToString(ResumeOffsetResponse.serializer(), snapshot),
@@ -234,7 +235,10 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                 return@cancellableCatching
             }
-            val partPath = SocketFileStreamer.partPathFor(targetPathStr)
+            if (server.denyWrite(call, targetPathStr, backup)) return@cancellableCatching
+            // One part per transaction: a retry resumes its own bytes, a different upload of the
+            // same name never writes into it. Uploads with no transaction keep the shared path.
+            val partPath = SocketFileStreamer.partPathFor(targetPathStr, txId)
             val cancelKey = txId.ifBlank { partPath }
             if (ReceiverCancelRegistry.isCancelled(cancelKey)) {
                 call.respond(HttpStatusCode.Gone, ReceiverCancelRegistry.CANCELLED_BODY)
@@ -340,22 +344,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
         }
     }
 
-    post("/api/v1/files/delete") {
-        runCatching {
-            val path = call.request.queryParameters["targetPath"]
-                ?: return@runCatching call.respond(HttpStatusCode.BadRequest)
-            if (!server.isDeletablePath(path)) {
-                call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
-                return@runCatching
-            }
-            com.fileapex.platform.trashLocalEntriesQuietly(listOf(path))
-            server.onLog("Remote delete: 1 item", null)
-            call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.OK)
-        }.onFailure { error ->
-            server.onLog("POST /api/v1/files/delete failed", error)
-            call.respond(HttpStatusCode.InternalServerError, "delete_failed")
-        }
-    }
+    registerFileDeleteRoute(server)
 
     get("/api/v1/files/capabilities") {
         call.respondText(
@@ -539,6 +528,7 @@ internal fun Route.registerFileRoutes(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
                 return@runCatching
             }
+            if (server.denyWrite(call, pathStr)) return@runCatching
             val dir = java.io.File(pathStr)
             dir.mkdirs()
             call.respondText("ok", ContentType.Text.Plain, HttpStatusCode.Created)
@@ -595,12 +585,14 @@ private suspend fun resolveSegmentTarget(server: FileApexServer, call: Applicati
         call.respond(HttpStatusCode.Forbidden, "Path outside shared root")
         return null
     }
+    if (server.denyWrite(call, resolved)) return null
     val senderId = call.request.queryParameters["from"]
         ?: call.request.queryParameters[TransferResumeProtocol.SENDER_DEVICE_ID_QUERY]
         ?: ""
+    val segmentTxId = call.request.queryParameters[TransferResumeProtocol.TRANSACTION_ID_QUERY].orEmpty()
     return SegmentTarget(
         resolvedPath = resolved,
-        partPath = SocketFileStreamer.segmentPartPathFor(resolved),
+        partPath = SocketFileStreamer.segmentPartPathFor(resolved, segmentTxId),
         totalSize = totalSize,
         txId = call.request.queryParameters[TransferResumeProtocol.TRANSACTION_ID_QUERY].orEmpty(),
         senderId = senderId,

@@ -72,7 +72,7 @@ object BackupEngine {
         val port = direct.port
         val client = FileApexServices.client
         // Doubles as the reachability check: an unreachable destination ends the run before any work starts.
-        val capabilities = cancellableCatching { client.transferCapabilities(host, port) }.getOrNull()
+        val capabilities = cancellableCatching { client.transferCapabilities.of(host, port) }.getOrNull()
             ?: return BackupRunResult(unavailable = true)
 
         // The destination decides where its own receive folder is.
@@ -100,7 +100,7 @@ object BackupEngine {
             }
             _status.value = BackupStatus.Running(index, queue.size, file.relativePath.substringAfterLast('/'))
             try {
-                client.uploadFromLocal(
+                client.uploads.uploadFromLocal(
                     host = host,
                     port = port,
                     localSourcePath = file.absolutePath,

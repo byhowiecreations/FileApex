@@ -20,3 +20,31 @@ class SettingsNavigationStateTest {
         assertEquals(SettingsPage.BulletinBoardStyles, asSeenByTheOtherHost)
     }
 }
+
+class SettingsPageTreeTest {
+    @Test
+    fun everyPageReachesTheRootAndOnlyTheRootLeavesSettings() {
+        SettingsPage.entries.forEach { start ->
+            var page = start
+            var steps = 0
+            while (page.parent != null) {
+                page = page.parent!!
+                steps++
+                org.junit.Assert.assertTrue("${start.name} loops", steps <= SettingsPage.entries.size)
+            }
+            assertEquals("${start.name} ends at the root", SettingsPage.Root, page)
+        }
+        assertEquals(listOf(SettingsPage.Root), SettingsPage.entries.filter { it.parent == null })
+    }
+
+    @Test
+    fun subPagesReturnToTheirOwnMenu() {
+        assertEquals(SettingsPage.Notifications, SettingsPage.BroadcastNotifications.parent)
+        assertEquals(SettingsPage.Notifications, SettingsPage.FileTransferNotifications.parent)
+        assertEquals(SettingsPage.BulletinBoard, SettingsPage.BulletinBoardStyles.parent)
+        assertEquals(SettingsPage.BulletinBoard, SettingsPage.RemoteFileDeletion.parent)
+        assertEquals(SettingsPage.Clipboard, SettingsPage.ClipboardDiagnostics.parent)
+        assertEquals(SettingsPage.Clipboard, SettingsPage.ClipboardShareTargets.parent)
+        assertEquals(SettingsPage.Clipboard, SettingsPage.ClipboardAccessibility.parent)
+    }
+}

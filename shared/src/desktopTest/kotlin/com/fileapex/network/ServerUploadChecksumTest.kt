@@ -26,7 +26,8 @@ class ServerUploadChecksumTest {
         port = ServerSocket(0).use { it.localPort }
         server = FileApexServer(
             port = port,
-            identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = root.absolutePath, sharePort = port) }
+            identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = root.absolutePath, sharePort = port) },
+            isRosterMember = { it == "self-test" }
         ).also { it.start() }
         Thread.sleep(500)
     }

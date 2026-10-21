@@ -1,6 +1,8 @@
 package com.fileapex.security
 
 import com.fileapex.data.settings.SecretSealer
+import com.fileapex.data.settings.SecretUnavailableException
+import com.fileapex.security.tls.GcmBlob
 import com.fileapex.security.tls.TlsSecretVault
 import java.io.File
 import java.nio.file.Files
@@ -16,26 +18,14 @@ import javax.crypto.spec.SecretKeySpec
 class VaultSealer(private val vault: TlsSecretVault) : SecretSealer {
     override fun seal(plain: ByteArray): ByteArray = vault.seal(plain)
     override fun open(sealed: ByteArray): ByteArray = vault.open(sealed)
+    override fun needsReseal(sealed: ByteArray): Boolean = vault.needsReseal(sealed)
 }
 
-/** AES-256-GCM with a random IV prepended. */
+/** Same stored format as [GcmBlob]. */
 internal object SecretAes {
-    private const val IV_BYTES = 12
-    private const val TAG_BITS = 128
+    fun seal(key: ByteArray, plain: ByteArray): ByteArray = GcmBlob.sealWithRandomIv(SecretKeySpec(key, "AES"), plain)
 
-    fun seal(key: ByteArray, plain: ByteArray): ByteArray {
-        val iv = ByteArray(IV_BYTES).also { SecureRandom().nextBytes(it) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, iv))
-        return iv + cipher.doFinal(plain)
-    }
-
-    fun open(key: ByteArray, sealed: ByteArray): ByteArray {
-        require(sealed.size > IV_BYTES) { "sealed blob too short" }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, sealed.copyOfRange(0, IV_BYTES)))
-        return cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES)
-    }
+    fun open(key: ByteArray, sealed: ByteArray): ByteArray = GcmBlob.open(SecretKeySpec(key, "AES"), sealed)
 }
 
 /**
@@ -102,34 +92,28 @@ class LinuxSecretVault(
     override val scheme = SCHEME
     @Volatile private var keyringKey: ByteArray? = null
 
-    override fun seal(plain: ByteArray): ByteArray {
-        val keyring = keyringKeyOrNull()
-        return if (keyring != null) byteArrayOf(KIND_KEYRING) + SecretAes.seal(keyring, plain)
-        else byteArrayOf(KIND_FILE) + fallback.seal(plain)
-    }
+    /** New secrets always use the key file: it survives a keyring reset, which a keyring key does not. */
+    override fun seal(plain: ByteArray): ByteArray = byteArrayOf(KIND_FILE) + fallback.seal(plain)
 
     override fun open(sealed: ByteArray): ByteArray {
         require(sealed.isNotEmpty()) { "sealed blob empty" }
         val body = sealed.copyOfRange(1, sealed.size)
         return when (sealed[0]) {
-            KIND_KEYRING -> SecretAes.open(checkNotNull(keyringKeyOrNull()) { "the desktop keyring is not available" }, body)
+            KIND_KEYRING -> SecretAes.open(keyringKeyOrThrow(), body)
             KIND_FILE -> fallback.open(body)
             else -> error("unknown sealed kind")
         }
     }
 
+    override fun needsReseal(sealed: ByteArray): Boolean = sealed.firstOrNull() == KIND_KEYRING
+
+    /** Reads the keyring key that an older version sealed with. It is never created here: a new key would orphan every value sealed with the old one. */
     @Synchronized
-    private fun keyringKeyOrNull(): ByteArray? {
+    private fun keyringKeyOrThrow(): ByteArray {
         keyringKey?.let { return it }
         val found = runCatching { lookup() }.getOrNull()
-        if (found != null) return found.also { keyringKey = it }
-        val fresh = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        val hex = fresh.joinToString("") { "%02x".format(it) }
-        val stored = runCatching {
-            runner.run(listOf("secret-tool", "store", "--label=FileApex settings key", "service", SERVICE, "account", ACCOUNT), hex).first == 0
-        }.getOrDefault(false)
-        if (!stored) return null
-        return (runCatching { lookup() }.getOrNull() ?: return null).also { keyringKey = it }
+            ?: throw SecretUnavailableException("the desktop keyring key cannot be read")
+        return found.also { keyringKey = it }
     }
 
     private fun lookup(): ByteArray? {

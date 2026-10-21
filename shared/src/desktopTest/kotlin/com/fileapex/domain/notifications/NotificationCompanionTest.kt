@@ -19,7 +19,8 @@ class NotificationCompanionTest {
     @Test
     fun garbageStorageReadsAsNoGrant() {
         assertNull(NotificationCompanionGrant.decode("{not json"))
-        assertTrue(NotificationCompanionGrant.allows("{not json", "mac", now = 1_000L))
+        // A record that cannot be read does not open anything up; having no record at all is the allowed default.
+        assertFalse(NotificationCompanionGrant.allows("{not json", "mac", now = 1_000L))
     }
 
     @Test

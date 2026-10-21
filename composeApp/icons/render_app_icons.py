@@ -50,7 +50,7 @@ def save_square_png(image: Image.Image, size: int, path: Path) -> None:
 
 
 def write_notification_icon(source: Image.Image, path: Path, size: int = 96) -> None:
-    """White silhouette on transparent — Android tints only opaque pixels in the status bar."""
+    """White silhouette on transparent, Android tints only opaque pixels in the status bar."""
     path.parent.mkdir(parents=True, exist_ok=True)
     resized = source.resize((size, size), Image.Resampling.LANCZOS).convert("RGBA")
     pixels = resized.load()

@@ -43,7 +43,7 @@ internal object LanNetworkTransitionMonitor {
         }
     }
 
-    fun ensureRegistered() {
+    @Synchronized fun ensureRegistered() {
         if (registered) return
         val context = androidApplicationContextOrNull() ?: return
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager

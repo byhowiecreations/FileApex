@@ -1,14 +1,18 @@
 package com.fileapex.update
 
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.os.Build
 import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.FileApexFileProvider
 import java.io.File
 import java.io.RandomAccessFile
+import java.security.MessageDigest
 
 actual object PlatformUpdateInstaller {
     actual val opensReleasePage: Boolean = false
@@ -109,15 +113,45 @@ actual object PlatformUpdateInstaller {
         }
         val context = androidAppContextOrNull()
         if (context != null) {
-            val archiveInfo = context.packageManager.getPackageArchiveInfo(
-                apkFile.absolutePath,
-                PackageManager.GET_ACTIVITIES
-            )
+            val pm = context.packageManager
+            val archiveInfo = pm.getPackageArchiveInfo(apkFile.absolutePath, archiveFlags())
             check(archiveInfo != null) {
                 AppI18n.t("update_invalid_package")
             }
+            val installed = pm.getPackageInfo(context.packageName, installedFlags())
+            val verdict = ApkUpdateVerdict.judge(
+                archivePackage = archiveInfo.packageName,
+                ownPackage = context.packageName,
+                archiveVersionCode = PackageInfoCompat.getLongVersionCode(archiveInfo),
+                installedVersionCode = PackageInfoCompat.getLongVersionCode(installed),
+                signaturesMatch = signaturesMatch(archiveInfo, installed)
+            )
+            check(verdict == ApkUpdateVerdict.ACCEPT) {
+                AppI18n.t(verdict.messageKey ?: "update_invalid_package")
+            }
         }
     }
+
+    private fun archiveFlags(): Int =
+        PackageManager.GET_ACTIVITIES or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else 0
+
+    private fun installedFlags(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else 0
+
+    /** Android 8 and 8.1 cannot read an archive's signers without a deprecated API; the system installer checks them there. */
+    private fun signaturesMatch(archive: PackageInfo, installed: PackageInfo): Boolean? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        val archiveSigning = archive.signingInfo ?: return null
+        val installedSigning = installed.signingInfo ?: return null
+        val archiveDigests = (archiveSigning.apkContentsSigners.orEmpty().toList() + archiveSigning.signingCertificateHistory.orEmpty().toList())
+            .map(::certificateDigest).toSet()
+        val installedDigests = installedSigning.apkContentsSigners.orEmpty().map(::certificateDigest)
+        return installedDigests.isNotEmpty() && installedDigests.all { it in archiveDigests }
+    }
+
+    private fun certificateDigest(signature: Signature): String =
+        MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).joinToString("") { "%02x".format(it) }
 
     private fun requireContext() =
         androidAppContextOrNull()

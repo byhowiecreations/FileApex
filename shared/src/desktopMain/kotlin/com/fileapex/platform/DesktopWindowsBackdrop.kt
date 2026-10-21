@@ -12,7 +12,7 @@ import javax.swing.SwingUtilities
  * Applies Windows 11 Mica to the main window title bar via DWM.
  *
  * Compose Desktop uses a decorated frame; do not call [DwmExtendFrameIntoClientArea] or set a
- * transparent AWT background — both break decorated windows ("The frame is decorated").
+ * transparent AWT background, both break decorated windows ("The frame is decorated").
  */
 object DesktopWindowsBackdrop {
     private const val DWMWA_SYSTEMBACKDROP_TYPE = 38
@@ -70,7 +70,7 @@ object DesktopWindowsBackdrop {
  * Windows CLI console attach for the GUI-subsystem [FileApex.exe] only.
  *
  * Preferred path: [fileapex.exe] is built as CONSOLE subsystem (see prepareWindowsCliLauncher)
- * so Java already owns a real console — same model as macOS tty. In that case this is a no-op
+ * so Java already owns a real console, same model as macOS tty. In that case this is a no-op
  * aside from enabling VT.
  *
  * Fallback: GUI exe launched with args via AttachConsole(parent) + rebind FileDescriptor streams

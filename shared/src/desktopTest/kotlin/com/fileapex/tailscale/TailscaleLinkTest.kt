@@ -193,7 +193,7 @@ class TailscaleLinkTest {
             "https://login.tailscale.com/admin/settings/keys",
             TAILSCALE_ADMIN_KEYS_URL
         )
-        val page = File("src/commonMain/kotlin/com/fileapex/ui/SettingsTailscalePage.kt")
+        val page = File("src/commonMain/kotlin/com/fileapex/ui/settings/SettingsTailscalePage.kt")
         val text = page.readText()
         assertTrue(text.contains("TAILSCALE_ADMIN_KEYS_URL"))
         assertFalse(text.contains("adminSettings/keys"))

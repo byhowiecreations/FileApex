@@ -392,14 +392,21 @@ func splice(a, b net.Conn) {
 	defer a.Close()
 	defer b.Close()
 	done := make(chan struct{}, 2)
-	go func() {
-		_, _ = io.Copy(a, b)
+	pipe := func(dst, src net.Conn) {
+		if _, err := io.Copy(dst, src); err != nil {
+			// A broken direction ends both; a clean end only closes the write side, so the reply can still arrive.
+			_ = dst.Close()
+			_ = src.Close()
+		} else if cw, ok := dst.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		} else {
+			_ = dst.Close()
+		}
 		done <- struct{}{}
-	}()
-	go func() {
-		_, _ = io.Copy(b, a)
-		done <- struct{}{}
-	}()
+	}
+	go pipe(a, b)
+	go pipe(b, a)
+	<-done
 	<-done
 }
 

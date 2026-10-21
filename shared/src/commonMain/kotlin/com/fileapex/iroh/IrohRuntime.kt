@@ -66,7 +66,7 @@ object IrohRuntime {
     private val names = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val hadAnswerBefore = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
-    fun attach() {
+    @Synchronized fun attach() {
         if (attached) return
         attached = true
         IrohLog.labeler = { id -> names[id] }
@@ -106,10 +106,7 @@ object IrohRuntime {
     /** Called when the device moves between networks, so a lost LAN wakes the endpoint at once. */
     fun onNetworkChanged() {
         if (!isEnabled()) return
-        scope.launch {
-            delay(NETWORK_SETTLE_MS)
-            reconcile()
-        }
+        scope.launch { delay(NETWORK_SETTLE_MS); reconcile(); link?.checkAddressNow() }
     }
 
     private suspend fun reconcileLoop() {
@@ -218,9 +215,11 @@ object IrohRuntime {
             val newBridge = IrohBridge(
                 link = started,
                 serverPort = loadLocalIdentity().sharePort,
-                isPeerAllowed = ::isPairedEndpoint,
+                isPeerAllowed = { bridgedPeerFor(it) != null },
                 scope = scope,
-                onPeerActive = ::peerEndpointActive
+                onPeerActive = ::peerEndpointActive,
+                bridgePort = ServerLifecycleManager::bridgePort,
+                identify = ::bridgedPeerFor
             )
             newBridge.start()
             link = started
@@ -265,11 +264,11 @@ object IrohRuntime {
     }
 
     private fun loadOrCreateSecret(): ByteArray {
-        val settings = FileApexServices.settings
-        val stored = runCatching { Base64.getDecoder().decode(settings.irohSecretKeyBase64()) }.getOrNull()
+        val stored = runCatching { Base64.getDecoder().decode(FileApexServices.settings.irohSecretKeyBase64()) }.getOrNull()
         if (stored != null && stored.size == SECRET_BYTES) return stored
+        com.fileapex.data.settings.SecretAvailability.requireAvailable(com.fileapex.data.settings.BaseAppSettings.KEY_IROH_SECRET_KEY)
         val fresh = ByteArray(SECRET_BYTES).also { SecureRandom().nextBytes(it) }
-        settings.setIrohSecretKeyBase64(Base64.getEncoder().encodeToString(fresh))
+        FileApexServices.settings.setIrohSecretKeyBase64(Base64.getEncoder().encodeToString(fresh))
         return fresh
     }
 
@@ -283,11 +282,9 @@ object IrohRuntime {
     }
 
     /** True only for an endpoint that a paired, non-removed device handed us through the sealed exchange. */
-    private suspend fun isPairedEndpoint(endpointId: String): Boolean {
-        val deviceId = peerBook().deviceIdFor(endpointId) ?: return false
-        val device = FileApexServices.deviceRepository.getDevice(deviceId) ?: return false
-        return !device.isRemoved
-    }
+    private suspend fun bridgedPeerFor(endpointId: String) = peerBook().deviceIdFor(endpointId)
+        ?.let { FileApexServices.deviceRepository.getDevice(it) }?.takeIf { !it.isRemoved }
+        ?.let { com.fileapex.security.tls.BridgedPeer(it.deviceId, pin = "", remoteIp = "") }
 
     private fun httpStatusOverBridge(port: Int, selfId: String, timeoutMs: Int = PROBE_TIMEOUT_MS): Int? {
         java.net.Socket().use { socket ->
@@ -561,9 +558,9 @@ object IrohRuntime {
     }
 
     private const val SECRET_BYTES = 32
-    private const val RECONCILE_MS = 20_000L
+    private const val RECONCILE_MS = 60_000L
     private const val ADDRESS_PUSH_MIN_MS = 30_000L
-    private const val EXCHANGE_TICK_MS = 60_000L
+    private const val EXCHANGE_TICK_MS = 150_000L
     private const val NETWORK_SETTLE_MS = 3_000L
     const val MIN_VERSION_CODE = 206
     private const val HIT_TTL_MS = 5 * 60_000L

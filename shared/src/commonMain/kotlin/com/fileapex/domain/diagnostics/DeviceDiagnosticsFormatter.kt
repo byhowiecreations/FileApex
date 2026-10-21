@@ -7,24 +7,24 @@ import com.fileapex.util.TimeUtils
 /** Human-readable labels for [PeerDeviceDiagnostics] UI rows. */
 object DeviceDiagnosticsFormatter {
     fun formatBytes(bytes: Long?): String {
-        if (bytes == null || bytes < 0L) return "—"
+        if (bytes == null || bytes < 0L) return "-"
         return com.fileapex.platform.formatHostFileSize(bytes)
     }
 
     fun formatPercent(value: Int?): String =
-        value?.takeIf { it in 0..100 }?.let { "$it%" } ?: "—"
+        value?.takeIf { it in 0..100 }?.let { "$it%" } ?: "-"
 
     fun formatTemperature(celsius: Double?): String =
-        celsius?.let { String.format("%.1f °C", it) } ?: "—"
+        celsius?.let { String.format("%.1f °C", it) } ?: "-"
 
     fun formatDbm(value: Int?): String =
-        value?.let { "$it dBm" } ?: "—"
+        value?.let { "$it dBm" } ?: "-"
 
     fun formatFrequencyMhz(value: Int?): String =
-        value?.takeIf { it > 0 }?.let { "$it MHz" } ?: "—"
+        value?.takeIf { it > 0 }?.let { "$it MHz" } ?: "-"
 
     fun formatUptime(uptimeMs: Long?): String {
-        if (uptimeMs == null || uptimeMs < 0L) return "—"
+        if (uptimeMs == null || uptimeMs < 0L) return "-"
         val totalMinutes = uptimeMs / 60_000L
         val days = totalMinutes / (24 * 60)
         val hours = (totalMinutes % (24 * 60)) / 60
@@ -37,7 +37,7 @@ object DeviceDiagnosticsFormatter {
     }
 
     fun formatBootEpoch(epochMs: Long?): String {
-        if (epochMs == null || epochMs <= 0L) return "—"
+        if (epochMs == null || epochMs <= 0L) return "-"
         return TimeUtils.formatUtcToLocal(epochMs)
     }
 
@@ -45,7 +45,7 @@ object DeviceDiagnosticsFormatter {
         val used = storage.usedBytes
         val total = storage.totalBytes
         if (used == null || total == null || total <= 0L) {
-            return "—"
+            return "-"
         }
         return AppI18n.t("storage_used", formatBytes(used), formatBytes(total))
     }
@@ -54,7 +54,7 @@ object DeviceDiagnosticsFormatter {
         val available = memory.availableBytes
         val total = memory.totalBytes
         if (available == null || total == null || total <= 0L) {
-            return "—"
+            return "-"
         }
         val used = memory.usedBytes ?: (total - available).coerceAtLeast(0L)
         return AppI18n.t(
@@ -66,7 +66,7 @@ object DeviceDiagnosticsFormatter {
     }
 
     fun formatRefreshRate(hz: Float?): String =
-        hz?.takeIf { it > 0f }?.let { String.format("%.1f Hz", it) } ?: "—"
+        hz?.takeIf { it > 0f }?.let { String.format("%.1f Hz", it) } ?: "-"
 
     fun processorSummary(processor: ProcessorDiagnostics): String {
         val cores = when {
@@ -78,12 +78,26 @@ object DeviceDiagnosticsFormatter {
                 )
             processor.totalCoreCount != null ->
                 AppI18n.plural("n_cores", processor.totalCoreCount, formatLocalizedNumber(processor.totalCoreCount))
-            else -> "—"
+            else -> "-"
         }
-        val arch = processor.architecture.ifBlank { "—" }
-        val hardware = processor.hardware.ifBlank { "—" }
-        val freq = processor.frequencyScaling.ifBlank { "—" }
+        val arch = processor.architecture.ifBlank { "-" }
+        val hardware = processor.hardware.ifBlank { "-" }
+        val freq = processor.frequencyScaling.ifBlank { "-" }
         return "$arch · $hardware · $cores · $freq"
+    }
+
+    /** "0.19.2 (GitHub, build 210)", or a dash from a device too old to report its app version. */
+    fun appVersionSummary(app: AppDiagnostics): String {
+        if (app.versionName.isBlank()) return "-"
+        val source = when (app.source) {
+            "play" -> AppI18n.t("app_source_play")
+            "fdroid" -> AppI18n.t("app_source_fdroid")
+            "github" -> AppI18n.t("app_source_github")
+            else -> ""
+        }
+        val build = if (app.versionCode > 0) AppI18n.t("app_build_number", app.versionCode.toString()) else ""
+        val detail = listOf(source, build).filter { it.isNotBlank() }.joinToString(", ")
+        return if (detail.isBlank()) app.versionName else "${app.versionName} ($detail)"
     }
 
     fun detailRows(
@@ -95,15 +109,16 @@ object DeviceDiagnosticsFormatter {
         val isCellular = networkType.equals("Cellular", ignoreCase = true)
 
         fun valueFor(field: DeviceDetailsFieldId): String = when (field) {
-            DeviceDetailsFieldId.Platform -> snapshot.platform.ifBlank { "—" }
+            DeviceDetailsFieldId.Platform -> snapshot.platform.ifBlank { "-" }
             DeviceDetailsFieldId.Collected -> formatBootEpoch(snapshot.collectedAtEpochMs)
-            DeviceDetailsFieldId.Make -> snapshot.device.make.ifBlank { "—" }
-            DeviceDetailsFieldId.Model -> snapshot.device.model.ifBlank { "—" }
-            DeviceDetailsFieldId.Kernel -> snapshot.device.kernelVersion.ifBlank { "—" }
-            DeviceDetailsFieldId.OsBuild -> snapshot.device.osBuildVersion.ifBlank { "—" }
+            DeviceDetailsFieldId.Make -> snapshot.device.make.ifBlank { "-" }
+            DeviceDetailsFieldId.Model -> snapshot.device.model.ifBlank { "-" }
+            DeviceDetailsFieldId.AppVersion -> appVersionSummary(snapshot.app)
+            DeviceDetailsFieldId.Kernel -> snapshot.device.kernelVersion.ifBlank { "-" }
+            DeviceDetailsFieldId.OsBuild -> snapshot.device.osBuildVersion.ifBlank { "-" }
             DeviceDetailsFieldId.Processor -> processorSummary(snapshot.processor)
-            DeviceDetailsFieldId.CpuArchitecture -> snapshot.processor.architecture.ifBlank { "—" }
-            DeviceDetailsFieldId.CpuHardware -> snapshot.processor.hardware.ifBlank { "—" }
+            DeviceDetailsFieldId.CpuArchitecture -> snapshot.processor.architecture.ifBlank { "-" }
+            DeviceDetailsFieldId.CpuHardware -> snapshot.processor.hardware.ifBlank { "-" }
             DeviceDetailsFieldId.CpuCores -> when {
                 snapshot.processor.activeCoreCount != null &&
                     snapshot.processor.totalCoreCount != null ->
@@ -114,10 +129,10 @@ object DeviceDiagnosticsFormatter {
                     )
                 snapshot.processor.totalCoreCount != null ->
                     AppI18n.t("n_total", formatLocalizedNumber(snapshot.processor.totalCoreCount))
-                else -> "—"
+                else -> "-"
             }
-            DeviceDetailsFieldId.CpuFrequency -> snapshot.processor.frequencyScaling.ifBlank { "—" }
-            DeviceDetailsFieldId.DisplayResolution -> snapshot.display.resolution.ifBlank { "—" }
+            DeviceDetailsFieldId.CpuFrequency -> snapshot.processor.frequencyScaling.ifBlank { "-" }
+            DeviceDetailsFieldId.DisplayResolution -> snapshot.display.resolution.ifBlank { "-" }
             DeviceDetailsFieldId.RefreshRate -> formatRefreshRate(snapshot.display.refreshRateHz)
             DeviceDetailsFieldId.Brightness -> formatPercent(snapshot.display.brightnessPercent)
             DeviceDetailsFieldId.BatteryLevel -> formatPercent(snapshot.battery.levelPercent)
@@ -125,18 +140,18 @@ object DeviceDiagnosticsFormatter {
             DeviceDetailsFieldId.BatteryTemp -> formatTemperature(snapshot.battery.temperatureCelsius)
             DeviceDetailsFieldId.Storage -> storageSummary(snapshot.storage)
             DeviceDetailsFieldId.NetworkType -> localizeNetworkType(networkType)
-            DeviceDetailsFieldId.Ssid -> snapshot.network.ssid.ifBlank { "—" }
+            DeviceDetailsFieldId.Ssid -> snapshot.network.ssid.ifBlank { "-" }
             DeviceDetailsFieldId.Signal -> formatDbm(snapshot.network.signalDbm)
             DeviceDetailsFieldId.LinkSpeed ->
-                snapshot.network.linkSpeedMbps?.let { "$it Mbps" } ?: "—"
-            DeviceDetailsFieldId.FrequencyBand -> snapshot.network.frequencyBand.ifBlank { "—" }
-            DeviceDetailsFieldId.Channel -> snapshot.network.channel?.toString() ?: "—"
+                snapshot.network.linkSpeedMbps?.let { "$it Mbps" } ?: "-"
+            DeviceDetailsFieldId.FrequencyBand -> snapshot.network.frequencyBand.ifBlank { "-" }
+            DeviceDetailsFieldId.Channel -> snapshot.network.channel?.toString() ?: "-"
             DeviceDetailsFieldId.CellularGeneration ->
-                snapshot.network.networkGeneration.ifBlank { "—" }
-            DeviceDetailsFieldId.CellularCarrier -> snapshot.network.carrier.ifBlank { "—" }
+                snapshot.network.networkGeneration.ifBlank { "-" }
+            DeviceDetailsFieldId.CellularCarrier -> snapshot.network.carrier.ifBlank { "-" }
             DeviceDetailsFieldId.CellularSignal -> formatDbm(snapshot.network.signalDbm)
             DeviceDetailsFieldId.CellularFrequency -> formatFrequencyMhz(snapshot.network.frequencyMhz)
-            DeviceDetailsFieldId.CellularBand -> snapshot.network.cellBand.ifBlank { "—" }
+            DeviceDetailsFieldId.CellularBand -> snapshot.network.cellBand.ifBlank { "-" }
             DeviceDetailsFieldId.Uptime -> formatUptime(snapshot.uptime.uptimeMs)
             DeviceDetailsFieldId.LastBoot -> formatBootEpoch(snapshot.uptime.bootEpochMs)
             DeviceDetailsFieldId.ThermalState -> localizeThermal(snapshot.thermal.state)
@@ -158,7 +173,7 @@ object DeviceDiagnosticsFormatter {
 
     private fun localizeCharging(raw: String): String {
         val token = raw.trim()
-        if (token.isEmpty()) return "—"
+        if (token.isEmpty()) return "-"
         return when (token.lowercase()) {
             "full" -> AppI18n.t("charge_full")
             "ac" -> AppI18n.t("charge_ac")
@@ -173,7 +188,7 @@ object DeviceDiagnosticsFormatter {
 
     private fun localizeNetworkType(raw: String): String {
         val token = raw.trim()
-        if (token.isEmpty()) return "—"
+        if (token.isEmpty()) return "-"
         return when (token.lowercase()) {
             "wi-fi", "wifi" -> AppI18n.t("net_wifi")
             "ethernet" -> AppI18n.t("net_ethernet")
@@ -185,7 +200,7 @@ object DeviceDiagnosticsFormatter {
 
     private fun localizeThermal(raw: String): String {
         val token = raw.trim()
-        if (token.isEmpty()) return "—"
+        if (token.isEmpty()) return "-"
         return when (token.lowercase()) {
             "nominal" -> AppI18n.t("thermal_nominal")
             "fair" -> AppI18n.t("thermal_fair")

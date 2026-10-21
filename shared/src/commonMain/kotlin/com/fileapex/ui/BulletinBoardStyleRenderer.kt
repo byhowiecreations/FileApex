@@ -195,14 +195,12 @@ fun PushPin(
         val h = size.height
         val cx = w / 2f
 
-        // 1. Drop shadow cast onto paper below pin
         drawOval(
             color = Color(0x50000000),
             topLeft = Offset(cx - 5.dp.toPx(), h - 5.dp.toPx()),
             size = Size(10.dp.toPx(), 4.dp.toPx())
         )
 
-        // 2. Metallic pin needle entering paper
         val needlePath = Path().apply {
             moveTo(cx - 1.dp.toPx(), h - 8.dp.toPx())
             lineTo(cx + 1.dp.toPx(), h - 8.dp.toPx())
@@ -211,7 +209,6 @@ fun PushPin(
         }
         drawPath(needlePath, Color(0xFF9E9E9E))
 
-        // 3. Base collar disc
         drawOval(
             brush = Brush.verticalGradient(
                 listOf(
@@ -223,7 +220,6 @@ fun PushPin(
             size = Size(9.dp.toPx(), 4.5.dp.toPx())
         )
 
-        // 4. Pin body waist with cylindrical specular highlight
         val bodyPath = Path().apply {
             moveTo(cx - 3.5.dp.toPx(), h - 7.5.dp.toPx())
             lineTo(cx - 2.5.dp.toPx(), 7.dp.toPx())
@@ -242,7 +238,6 @@ fun PushPin(
             )
         )
 
-        // 5. Spherical bulbous head with radial specular highlight reflection
         val headRadius = 4.5.dp.toPx()
         val headCenter = Offset(cx, 6.dp.toPx())
         drawCircle(
@@ -411,7 +406,6 @@ fun BulletinBubbleContainer(
                             val inset = strokePx / 2f
                             val rPx = 18.dp.toPx() - inset
 
-                            // 1. Soft translucent frosted glass border around the entire pill
                             drawRoundRect(
                                 color = Color.White.copy(alpha = 0.28f),
                                 topLeft = Offset(inset, inset),
@@ -420,7 +414,6 @@ fun BulletinBubbleContainer(
                                 style = Stroke(width = strokePx)
                             )
 
-                            // 2. Clean 1px top specular white highlight border with alpha = 0.5f
                             drawLine(
                                 color = Color.White.copy(alpha = 0.5f),
                                 start = Offset(14.dp.toPx(), 1f),
@@ -428,7 +421,6 @@ fun BulletinBubbleContainer(
                                 strokeWidth = 1.dp.toPx()
                             )
 
-                            // 3. Diffuse horizontal specular sheen along the upper rim
                             drawLine(
                                 brush = Brush.horizontalGradient(
                                     listOf(
@@ -442,7 +434,6 @@ fun BulletinBubbleContainer(
                                 strokeWidth = 1.5.dp.toPx()
                             )
 
-                            // 4. Subtle frosted top gradient wash to simulate glass refraction
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     listOf(

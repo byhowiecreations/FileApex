@@ -22,7 +22,7 @@ import SwiftUI
         super.init()
     }
 
-    /// Re-chain after Skiko/Compose init — they replace NSApp.delegate and default to quit-on-last-window.
+    /// Re-chain after Skiko/Compose init, they replace NSApp.delegate and default to quit-on-last-window.
     public func installApplicationLifecycle() {
         MacApplicationLifecycle.shared.install(trayManager: self)
     }
@@ -81,7 +81,7 @@ import SwiftUI
 
     public func bindMainWindow(_ candidate: NSWindow) {
         guard isValidMainWindow(candidate) else {
-            NSLog("FileApex MacTrayManager: bind rejected — pointer is not an NSWindow")
+            NSLog("FileApex MacTrayManager: bind rejected, pointer is not an NSWindow")
             return
         }
         mainWindow = candidate

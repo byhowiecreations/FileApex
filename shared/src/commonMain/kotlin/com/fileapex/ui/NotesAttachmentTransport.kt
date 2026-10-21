@@ -258,7 +258,6 @@ private fun DrawScope.drawCometAndRipples(
     dest: Rect,
     source: Rect
 ) {
-    // 1. Landing Ripple Rings radiating outward upon touchdown (headT >= 0.60f)
     if (headT >= 0.60f) {
         val rippleT = ((headT - 0.60f) / 0.40f).coerceIn(0f, 1f)
         val center = Offset(dest.center.x, dest.center.y)
@@ -295,7 +294,6 @@ private fun DrawScope.drawCometAndRipples(
         }
     }
 
-    // 2. Radiant Comet Tail Ribbon trailing continuously behind the thumbnail
     for (particle in particles) {
         val t = (headT - particle.lagFraction).coerceIn(0f, 1f)
         if (headT < particle.lagFraction * 0.6f) continue

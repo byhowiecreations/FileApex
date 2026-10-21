@@ -14,12 +14,6 @@ import kotlinx.coroutines.runBlocking
 
 object CliRunner {
 
-    /**
-     * Entry point for CLI execution.
-     * 1. Attempts to forward the command to active GUI app IPC daemon.
-     * 2. If daemon is not running, initializes headless services and executes locally.
-     * 3. Cleanly terminates the process with the returned exit code.
-     */
     fun run(args: Array<String>) {
         val normalizedArgs = CliTokenizer.normalizeArgs(args)
         val first = normalizedArgs.firstOrNull()?.lowercase()

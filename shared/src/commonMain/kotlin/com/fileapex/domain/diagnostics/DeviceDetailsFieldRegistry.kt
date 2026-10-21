@@ -12,6 +12,7 @@ enum class DeviceDetailsFieldId(val label: String) {
     Collected("Collected"),
     Make("Make"),
     Model("Model"),
+    AppVersion("App version"),
     Kernel("Kernel"),
     OsBuild("OS build"),
     Processor("Processor"),
@@ -43,15 +44,23 @@ enum class DeviceDetailsFieldId(val label: String) {
     ThermalTemp("Thermal temp"),
     Memory("Memory");
 
-    /** Wi-Fi-only rows — hidden when the peer is on cellular or ethernet. */
+    /** Shown by default and listed first; everything else is advanced and off until the user turns it on. */
+    val isBasic: Boolean
+        get() = this in BASIC
+
+    /** Wi-Fi-only rows, hidden when the peer is on cellular or ethernet. */
     val wifiOnly: Boolean
         get() = this in WIFI_ONLY
 
-    /** Cellular-only rows — hidden when the peer is on Wi-Fi or ethernet. */
+    /** Cellular-only rows, hidden when the peer is on Wi-Fi or ethernet. */
     val cellularOnly: Boolean
         get() = this in CELLULAR_ONLY
 
     companion object {
+        private val BASIC = listOf(
+            Platform, Make, Model, AppVersion, OsBuild, Kernel,
+            BatteryLevel, Storage, Memory, CpuArchitecture, CpuHardware
+        )
         private val WIFI_ONLY = setOf(Ssid, Signal, LinkSpeed, FrequencyBand, Channel)
         private val CELLULAR_ONLY = setOf(
             CellularGeneration,
@@ -61,7 +70,11 @@ enum class DeviceDetailsFieldId(val label: String) {
             CellularBand
         )
 
-        val defaultOrder: List<DeviceDetailsFieldId> = entries.toList()
+        val basicFields: List<DeviceDetailsFieldId> = BASIC
+
+        val advancedFields: List<DeviceDetailsFieldId> = entries.filterNot { it in BASIC }
+
+        val defaultOrder: List<DeviceDetailsFieldId> = BASIC + advancedFields
     }
 }
 
@@ -89,7 +102,8 @@ data class DeviceDetailsDisplayPreferences(
             fields = ordered.map { id ->
                 DeviceDetailsFieldPreference(
                     id = id.name,
-                    visible = storedById[id.name] ?: true
+                    // A field this user has no setting for yet (new install, or one added later) follows its default.
+                    visible = storedById[id.name] ?: id.isBasic
                 )
             }
         )
@@ -106,7 +120,7 @@ data class DeviceDetailsDisplayPreferences(
         fun defaults(): DeviceDetailsDisplayPreferences =
             DeviceDetailsDisplayPreferences(
                 fields = DeviceDetailsFieldId.defaultOrder.map { id ->
-                    DeviceDetailsFieldPreference(id = id.name, visible = true)
+                    DeviceDetailsFieldPreference(id = id.name, visible = id.isBasic)
                 }
             )
 

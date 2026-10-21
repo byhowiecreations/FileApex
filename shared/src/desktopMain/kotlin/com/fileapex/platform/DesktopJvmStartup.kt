@@ -46,7 +46,7 @@ object DesktopJvmStartup {
 
     /**
      * Skiko defaults to Direct3D on Windows, which stretches the framebuffer during live
-     * resize until Compose redraws — visibly jerky compared to macOS Metal. OpenGL
+     * resize until Compose redraws, visibly jerky compared to macOS Metal. OpenGL
      * repaints on each size change (Skiko #923, Compose Multiplatform #2925).
      *
      * Must run before any Compose/Skiko window is created. Honors an explicit

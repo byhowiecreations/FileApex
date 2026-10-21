@@ -25,7 +25,7 @@ private fun linuxDebArch(): String =
 private fun linuxRpmArch(): String =
     if (linuxDebArch() == "arm64") "aarch64" else "x86_64"
 
-/** Inno LZMA2 thread budget — scale with CPU, cap at 6 (Inno compresses faster above that with diminishing returns). */
+/** Inno LZMA2 thread budget, scale with CPU, cap at 6 (Inno compresses faster above that with diminishing returns). */
 private val innoThreadCap = 6
 
 private fun innoSetupThreadCount(): Int {
@@ -71,7 +71,7 @@ private fun pruneJlinkRuntime(runtimeHome: java.io.File) {
 
 /**
  * Register only the installer format for the current OS so Gradle never schedules
- * Mac DMG work on Windows (or jpackage EXE work on macOS — Windows ships Inno EXE only).
+ * Mac DMG work on Windows (or jpackage EXE work on macOS, Windows ships Inno EXE only).
  */
 private fun desktopInstallerFormats(): Array<TargetFormat> = when {
     isMacHost() -> arrayOf(TargetFormat.Dmg)
@@ -235,7 +235,7 @@ android {
         }
     }
 
-    // rules.md §18 — keystore at ~/AndroidStudioProjects/signed_files/{project}/;
+    // rules.md §18, keystore at ~/AndroidStudioProjects/signed_files/{project}/;
     // credentials from KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS only.
     val releaseKeystoreDir = file("${System.getProperty("user.home")}/AndroidStudioProjects/signed_files/FileApex")
     val releaseKeystoreFileName = "fileapex-release.jks"
@@ -346,7 +346,7 @@ tasks.register("verifyReleaseApkSigned") {
                 }
             }
             throw org.gradle.api.GradleException(
-                "Release APK signing failed — unsigned artifact(s) removed. " +
+                "Release APK signing failed, unsigned artifact(s) removed. " +
                     "Configure ~/AndroidStudioProjects/signed_files/FileApex/*.jks and " +
                     "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then rebuild."
             )
@@ -560,7 +560,7 @@ compose.desktop {
 
 
                 bundleID = "com.fileapex"
-                // Empty entitlements — no App Sandbox (avoids TCC "access data from other apps").
+                // Empty entitlements, no App Sandbox (avoids TCC "access data from other apps").
                 entitlementsFile.set(project.file("macos/FileApex.entitlements"))
                 runtimeEntitlementsFile.set(project.file("macos/FileApex.entitlements"))
                 // Prompt for Local Network so phones can reach this Mac share server.
@@ -768,7 +768,7 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
             return@doLast
         }
 
-        // Wrong arch — rebuild using the correct JDK's jlink directly.
+        // Wrong arch, rebuild using the correct JDK's jlink directly.
         logger.lifecycle("Runtime image is $producedArch but need $needsArch - rebuilding with correct jlink")
         val correctJdkHome = when (needsArch) {
             "arm64"  -> File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
@@ -824,7 +824,7 @@ private fun Project.embedMacTrayBridgeIn(appBundle: File) {
 private fun Project.embedMacTsnetIn(appBundle: File) {
     if (!isMacHost()) return
     val dylib = rootProject.layout.projectDirectory.file("macos/build/Tsnet/libFileApexTsnet.dylib").asFile
-    check(dylib.isFile) { "libFileApexTsnet.dylib missing — the Tailscale node cannot start" }
+    check(dylib.isFile) { "libFileApexTsnet.dylib missing, the Tailscale node cannot start" }
     val frameworksDir = appBundle.resolve("Contents/Frameworks")
     frameworksDir.mkdirs()
     val dest = frameworksDir.resolve("libFileApexTsnet.dylib")
@@ -936,7 +936,7 @@ private fun runOrFail(vararg command: String) {
  * Compose Desktop's DMG task (hdiutil create + osascript Finder styling) never sets a custom
  * volume icon. hdiutil then leaves whatever `.VolumeIcon.icns` happens to already be attached to
  * the source folder's Finder metadata, which resolves to the JDK's own generic `JavaApp.icns`
- * (jpackage's placeholder "Duke" icon) — so every mounted FileApex.dmg showed that instead of the
+ * (jpackage's placeholder "Duke" icon), so every mounted FileApex.dmg showed that instead of the
  * app icon. Fix: decompress the finished DMG to a writable image, drop our own icon in as
  * `.VolumeIcon.icns`, flag the volume as having a custom icon, then recompress in place.
  */
@@ -1030,7 +1030,7 @@ afterEvaluate {
     }
 
     if (isWindowsHost()) {
-        // Windows ships release Inno EXE only — disable jpackage debug app-image / EXE tasks.
+        // Windows ships release Inno EXE only, disable jpackage debug app-image / EXE tasks.
         tasks.matching { it.name == "createDistributable" || it.name == "packageExe" }.configureEach {
             enabled = false
         }
@@ -1100,7 +1100,7 @@ private fun Project.copyToBackupDir(shipped: File, logger: org.gradle.api.loggin
 }
 
 /**
- * Moves build outputs into project-root `current/` (never copies — avoids duplicating large artifacts).
+ * Moves build outputs into project-root `current/` (never copies, avoids duplicating large artifacts).
  */
 private fun Project.currentBuildsDest(): File =
     rootProject.layout.projectDirectory.dir("current").asFile
@@ -1255,7 +1255,7 @@ private fun requireMacShareEntitlements(appBundle: File) {
             "codesign entitlements dump failed for $appex:\n$output"
         }
         check(dump.isFile && dump.length() > 0L) {
-            "$appex has no embedded entitlements — pluginkit will ignore it"
+            "$appex has no embedded entitlements, pluginkit will ignore it"
         }
     }
 }
@@ -1376,7 +1376,7 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         .inheritIO()
         .start()
         .waitFor()
-    check(embedCode == 0) { "embed_extensions.sh exited $embedCode — Share PlugIns were not embedded" }
+    check(embedCode == 0) { "embed_extensions.sh exited $embedCode, Share PlugIns were not embedded" }
     patchAppInfoPlistVersions(appBundle, fileapexVersionName, fileapexVersionCode)
     logger.lifecycle("Set FileApex.app CFBundleShortVersionString=$fileapexVersionName before final codesign")
     val uuidScript = rootProject.layout.projectDirectory.file("macos/scripts/unique_main_uuid.sh").asFile
@@ -1387,7 +1387,7 @@ private fun Project.embedMacExtensionsIn(appBundle: File) {
         .inheritIO()
         .start()
         .waitFor()
-    check(uuidCode == 0) { "unique_main_uuid.sh exited $uuidCode — Local Network UUID patch failed" }
+    check(uuidCode == 0) { "unique_main_uuid.sh exited $uuidCode, Local Network UUID patch failed" }
     finalizeMacAppSignature(appBundle)
     requireMacShareCatalogs(appBundle)
 }
@@ -1419,7 +1419,7 @@ private fun Project.shipToCurrent(
         apks.forEach { apk ->
             if (variant == "release" && apk.name.contains("unsigned", ignoreCase = true)) {
                 error(
-                    "Release APK is unsigned (${apk.name}) — not shipped. " +
+                    "Release APK is unsigned (${apk.name}), not shipped. " +
                         "Configure ~/AndroidStudioProjects/signed_files/FileApex/*.jks and " +
                         "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then run assembleRelease."
                 )
@@ -1595,7 +1595,7 @@ private fun Project.moveFlavorReleaseApkToCurrent(flavor: String) {
     apks.forEach { apk ->
         if (apk.name.contains("unsigned", ignoreCase = true)) {
             error(
-                "Release APK is unsigned (${apk.name}) — not shipped. " +
+                "Release APK is unsigned (${apk.name}), not shipped. " +
                     "Configure ~/AndroidStudioProjects/signed_files/FileApex/*.jks and " +
                     "KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS, then rebuild."
             )
@@ -1833,7 +1833,7 @@ tasks.register("prepareWindowsCliLauncher") {
         val stubSource = when {
             guiExe.isFile -> guiExe
             installedStub.isFile -> {
-                logger.warn("App image missing FileApex.exe — using installed launcher stub")
+                logger.warn("App image missing FileApex.exe, using installed launcher stub")
                 installedStub
             }
             else -> error(
@@ -1847,7 +1847,7 @@ tasks.register("prepareWindowsCliLauncher") {
         }
 
         // Console launcher must sit beside FileApex.exe so jpackage finds ../app/*.cfg.
-        // Cannot use fileapex.exe in the same folder — Windows is case-insensitive.
+        // Cannot use fileapex.exe in the same folder, Windows is case-insensitive.
         val cliExe = File(appRoot, "FileApexCli.exe")
         guiExe.copyTo(cliExe, overwrite = true)
         setWindowsPeSubsystemConsole(cliExe)
@@ -1908,7 +1908,7 @@ tasks.register("packageInnoExe") {
         check(issFile.exists()) { "FileApex.iss not found at ${issFile.absolutePath}" }
 
         val tsnetDll = rootProject.layout.projectDirectory.file("windows/build/Tsnet/libFileApexTsnet.dll").asFile
-        check(tsnetDll.isFile) { "libFileApexTsnet.dll missing — the Windows Tailscale node cannot start" }
+        check(tsnetDll.isFile) { "libFileApexTsnet.dll missing, the Windows Tailscale node cannot start" }
         val appRoot = layout.buildDirectory.dir("compose/binaries/main-release/app/FileApex").get().asFile
         check(appRoot.isDirectory) { "Windows app image missing at ${appRoot.absolutePath}" }
         Files.copy(
@@ -1992,7 +1992,7 @@ fun escapeJsonString(value: String): String =
 /**
  * Writes `composeApp/google-services.json` before the Google Services plugin runs.
  * Prefers `json/google-services.json` when present; otherwise generates from ~/.gradle/gradle.properties.
- * The output file is gitignored — never commit real credentials.
+ * The output file is gitignored, never commit real credentials.
  */
 val generateGoogleServicesJson = tasks.register("generateGoogleServicesJson") {
     group = "build setup"
@@ -2023,7 +2023,7 @@ val generateGoogleServicesJson = tasks.register("generateGoogleServicesJson") {
         }
         val projectNumber = appId.split(":").getOrNull(1)
             ?: error(
-                "Invalid fileapex.firebase.application.id — expected format " +
+                "Invalid fileapex.firebase.application.id, expected format " +
                     "1:<project_number>:android:<app_hash>"
             )
         outFile.asFile.writeText(
@@ -2086,7 +2086,7 @@ if (fileapexFdroid) {
 }
 
 /**
- * Silicon (arm64) .app only — no DMG, no Android. Use while iterating Mac launch fixes.
+ * Silicon (arm64) .app only, no DMG, no Android. Use while iterating Mac launch fixes.
  */
 tasks.register("packageSiliconApp") {
     group = "distribution"
@@ -2207,7 +2207,7 @@ tasks.register("packageSiliconDmg") {
             finalizeMacAppSignature(stagingApp)
         }
 
-        // Fresh dylib — buildMacTrayBridge may have run after createDistributable cached the .app.
+        // Fresh dylib, buildMacTrayBridge may have run after createDistributable cached the .app.
         embedMacTrayBridgeIn(stagingApp)
         embedMacTsnetIn(stagingApp)
         patchAppInfoPlistVersions(stagingApp, fileapexVersionName, fileapexVersionCode)
@@ -2333,7 +2333,7 @@ tasks.register("copyCompleteBuilds") {
     finalizedBy("copyAllBuildsFinalize")
 }
 
-/** Ships Firefox XPI — wired to [copyCompleteBuilds] only, not Mac/Android/Windows partial builds. */
+/** Ships Firefox XPI, wired to [copyCompleteBuilds] only, not Mac/Android/Windows partial builds. */
 tasks.register("copyAllBuildsFinalize") {
     group = "distribution"
     description = "Ship Firefox XPI (copyCompleteBuilds only)"

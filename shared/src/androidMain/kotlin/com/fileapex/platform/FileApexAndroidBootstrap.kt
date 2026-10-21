@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  *
  * [android.app.Application.onCreate] can return early during Direct Boot (storage locked). That
  * leaves a half-alive process that later receives [android.content.Intent.ACTION_USER_UNLOCKED],
- * boot auto-launch, or a UI start without re-running Application.onCreate — so identity /
+ * boot auto-launch, or a UI start without re-running Application.onCreate, so identity /
  * Room / settings stay uninitialized and [FileShareServerService] crashes with
  * `Call initAndroidLocalIdentity(context) before loadLocalIdentity()`.
  *

@@ -12,7 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Cloud-linked peer wake — dispatches silent FCM data pushes so Doze'd Android nodes
+ * Cloud-linked peer wake, dispatches silent FCM data pushes so Doze'd Android nodes
  * run a targeted health probe without foreground UI.
  */
 object FcmWakeCoordinator {

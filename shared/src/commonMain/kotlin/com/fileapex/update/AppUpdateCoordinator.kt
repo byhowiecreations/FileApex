@@ -159,10 +159,29 @@ object AppUpdateCoordinator {
         )
     }
 
+    private var lastPromptedOfferKey = ""
+
+    private fun offerKey(offer: PendingUpdateOffer): String =
+        offer.transactionId?.takeIf { it.isNotBlank() } ?: offer.originNoteId?.takeIf { it.isNotBlank() }
+            ?: "${offer.assetName}_${offer.remoteVersion}"
+
+    /**
+     * Back in the foreground with an offer waiting: show the sheet once per offer and never start the installer, so
+     * cancelling the system installer does not bring it straight back. The notification and the sheet install.
+     */
+    fun showSheetOnResume() {
+        restorePendingOffer()
+        val offer = _pendingUpdate.value ?: PendingUpdateStore.load() ?: return
+        if (offerKey(offer) == lastPromptedOfferKey) return
+        lastPromptedOfferKey = offerKey(offer)
+        _showUpdateSheet.value = true
+    }
+
     fun requestShowUpdateSheet() {
         restorePendingOffer()
         val offer = _pendingUpdate.value ?: PendingUpdateStore.load()
         if (offer != null) {
+            lastPromptedOfferKey = offerKey(offer)
             val local = offer.localFilePath
             if (!local.isNullOrBlank() && fileExists(local)) {
                 _showUpdateSheet.value = false
@@ -316,13 +335,13 @@ object AppUpdateCoordinator {
         }
     }
 
-    private fun restartScheduler() {
+    @Synchronized private fun restartScheduler() {
         schedulerJob?.cancel()
         schedulerJob = null
         ensureSchedulerRunning()
     }
 
-    private fun ensureSchedulerRunning() {
+    @Synchronized private fun ensureSchedulerRunning() {
         if (FileApexServices.managedByStore) return
         if (schedulerJob?.isActive == true) return
         schedulerJob = scope.launch {
@@ -527,7 +546,7 @@ object AppUpdateCoordinator {
             return
         }
 
-        // 1. Offers without a transaction ID or origin note ID cannot represent a valid tracked same-version update.
+        // Offers without a transaction ID or origin note ID cannot represent a valid tracked same-version update.
         // If current app version strictly exceeds target, drop immediately.
         if (txId.isBlank() && noteId.isBlank() && isInstalledVersionStrictlyNewer(currentAppVersionName(), offer.remoteVersion)) {
             setPendingOffer(null)
@@ -535,7 +554,7 @@ object AppUpdateCoordinator {
             return
         }
 
-        // 2. Direct local file offers MUST have a valid transaction ID. Stale files in Downloads without a txId are dropped.
+        // Direct local file offers MUST have a valid transaction ID. Stale files in Downloads without a txId are dropped.
         if (localPath != null && noteId.isBlank() && txId.isBlank()) {
             setPendingOffer(null)
             dismissAppUpdateNotification()
@@ -588,75 +607,6 @@ object AppUpdateCoordinator {
         if (_pendingUpdate.value == null) {
             _pendingUpdate.value = offer
         }
-    }
-
-    private fun resolveFallbackBulletinApkOffer(): PendingUpdateOffer? {
-        val noteRepo = FileApexServices.noteRepository
-        val candidateNote = noteRepo.notes.value.reversed().firstOrNull { note ->
-            BulletinApkUpdatePolicy.matchesAutoUpdateApk(note.attachmentFileName) &&
-                PendingUpdateStore.getNoteInstallStatus(note.noteId) == null
-        }
-        if (candidateNote != null) {
-            val fileName = candidateNote.attachmentFileName.orEmpty()
-            val version = BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
-            if (isRemoteVersionNewer(currentAppVersionName(), version)) {
-                val localPath = noteRepo.resolveLocalAttachmentPath(candidateNote)
-                if (!localPath.isNullOrBlank() && fileExists(localPath)) {
-                    val apkSize = runCatching { SystemFileSystem.metadataOrNull(Path(localPath))?.size }.getOrNull()
-                        ?: candidateNote.attachmentSizeBytes
-                    return PendingUpdateOffer(
-                        remoteVersion = version,
-                        releaseTitle = "FileApex $version",
-                        releaseNotes = candidateNote.content.takeIf { it.isNotBlank() },
-                        assetName = fileName,
-                        assetDownloadUrl = "",
-                        assetSizeBytes = apkSize,
-                        localFilePath = localPath,
-                        originNoteId = candidateNote.noteId
-                    )
-                }
-            }
-        }
-
-        val downloadsDir = defaultDownloadsDir()
-        val dir = Path(downloadsDir)
-        if (SystemFileSystem.exists(dir)) {
-            val apks = runCatching {
-                SystemFileSystem.list(dir).filter { path ->
-                    val name = path.name
-                    BulletinApkUpdatePolicy.matchesAutoUpdateApk(name)
-                }
-            }.getOrNull().orEmpty()
-
-            val newestApk = apks.maxByOrNull { path ->
-                runCatching { SystemFileSystem.metadataOrNull(path)?.size }.getOrNull() ?: 0L
-            }
-            if (newestApk != null) {
-                val meta = runCatching { SystemFileSystem.metadataOrNull(newestApk) }.getOrNull()
-                if (meta != null && meta.size > 1024L) {
-                    val fileName = newestApk.name
-                    val version = BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
-                    if (isRemoteVersionNewer(currentAppVersionName(), version)) {
-                        val matchingNote = noteRepo.notes.value.firstOrNull {
-                            it.attachmentFileName == fileName
-                        }
-                        if (matchingNote == null || PendingUpdateStore.getNoteInstallStatus(matchingNote.noteId) == null) {
-                            return PendingUpdateOffer(
-                                remoteVersion = version,
-                                releaseTitle = "FileApex $version",
-                                releaseNotes = null,
-                                assetName = fileName,
-                                assetDownloadUrl = "",
-                                assetSizeBytes = meta.size,
-                                localFilePath = newestApk.toString(),
-                                originNoteId = matchingNote?.noteId
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        return null
     }
 
     private fun isOfferSkipped(offer: PendingUpdateOffer): Boolean {

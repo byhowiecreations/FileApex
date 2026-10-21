@@ -2,7 +2,7 @@ package com.fileapex.domain.transfer
 
 /**
  * One selectable destination in the Multi Copy picker.
- * Local is optional — files go there only when the user selects This device.
+ * Local is optional, files go there only when the user selects This device.
  */
 data class MultiCopyDeviceOption(
     val deviceId: String,

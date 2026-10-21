@@ -60,7 +60,6 @@ class GoDaemonInteropTest {
         val mine = store.getOrCreate()
         PeerTlsConnector.configure { store }
 
-        // 1. Announce our pin, sealed with the pairing key, and verify the reply came from the daemon.
         val payload = """{"pin":"${mine.pin}","tlsPort":5555,"issuedAtEpochMs":${System.currentTimeMillis()}}"""
         val ann = TlsPinAnnouncement(me, aPubB64, ClipboardCrypto.encrypt(payload.encodeToByteArray(), aPriv, bPub, salt))
         val conn = URL("http://127.0.0.1:18080/api/v1/tls/pin").openConnection() as HttpURLConnection
@@ -73,13 +72,11 @@ class GoDaemonInteropTest {
         val opened = ClipboardCrypto.decrypt(reply.ciphertext, aPriv, bPub, salt).decodeToString()
         assertTrue(opened.contains(goPinClaim))
 
-        // 2. Plain HTTP naming us is now refused on protected routes; open routes still answer.
         val plain = URL("http://127.0.0.1:18080/api/v1/files/capabilities?from=$me").openConnection() as HttpURLConnection
         assertEquals(403, plain.responseCode)
         assertEquals("tls_required", plain.errorStream.readBytes().decodeToString().trim())
         assertEquals(200, (URL("http://127.0.0.1:18080/api/v1/identity?from=$me").openConnection() as HttpURLConnection).responseCode)
 
-        // 3. JVM client over TLS with the pin from the authenticated reply.
         PeerTlsRoutes.update(listOf(PairedDeviceEntity(
             deviceId = goId, deviceName = "Go", lastKnownIp = "127.0.0.1", port = 18080, publicKeyHash = "", rootPath = "/",
             tlsPin = goPinClaim, tlsPort = 18081)))
@@ -91,7 +88,6 @@ class GoDaemonInteropTest {
             assertTrue(text.contains("backupSync"))
         }
 
-        // 4. A 64 MB upload over TLS is stored by the daemon.
         val size = 64L * 1024 * 1024
         PeerTlsConnector.connect(Socket(), "127.0.0.1", 18080, 5000).use { sock ->
             sock.soTimeout = 60_000
@@ -105,7 +101,6 @@ class GoDaemonInteropTest {
             assertTrue(text.take(60), text.startsWith("HTTP/1.1 201") || text.startsWith("HTTP/1.1 200"))
         }
 
-        // 5. The same, from the Swift client, with the same identity.
         val dylib = File("../macos/build/Tray/libFileApexTray.dylib").absoluteFile
         if (dylib.isFile && System.getProperty("os.name").contains("Mac")) {
             val lib = Native.load(dylib.absolutePath, Native_::class.java)

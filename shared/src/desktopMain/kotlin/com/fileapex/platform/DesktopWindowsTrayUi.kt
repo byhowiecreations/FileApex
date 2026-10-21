@@ -38,7 +38,7 @@ import javax.swing.WindowConstants
 import com.fileapex.i18n.AppI18n
 
 /**
- * Windows "Drop Files" panel — Mac [DropBoxWindowManager] parity (drag/drop + Send).
+ * Windows "Drop Files" panel, Mac [DropBoxWindowManager] parity (drag/drop + Send).
  */
 object DesktopWindowsDropBox {
     private val teal = Color(0x1B, 0x5E, 0x4B)
@@ -301,7 +301,7 @@ object DesktopWindowsDropBox {
 }
 
 /**
- * Floating tray device popover — Mac [TrayMenuView] parity (Ctrl multi-select + Drop Files).
+ * Floating tray device popover, Mac [TrayMenuView] parity (Ctrl multi-select + Drop Files).
  */
 internal class DesktopWindowsTrayPopover(
     private val onLaunchApp: () -> Unit,
@@ -310,7 +310,7 @@ internal class DesktopWindowsTrayPopover(
     private val onRefreshDevices: () -> Unit
 ) {
     private val teal = Color(0x1B, 0x5E, 0x4B)
-    // Opaque colors only — alpha backgrounds corrupt Swing text on hover.
+    // Opaque colors only, alpha backgrounds corrupt Swing text on hover.
     private val selectedBg = Color(0xDC, 0xEB, 0xE5)
     private val hoverBg = Color(0xF2, 0xF2, 0xF2)
     private val rowWidth = 280
@@ -581,7 +581,7 @@ internal class DesktopWindowsTrayPopover(
                 }
 
                 override fun mouseExited(e: MouseEvent) {
-                    // Point is relative to the source component — convert into row space.
+                    // Point is relative to the source component, convert into row space.
                     val inRow = SwingUtilities.convertPoint(e.component, e.point, row)
                     if (row.contains(inRow)) return
                     applyRowBackground(row, device.id, hovered = false)

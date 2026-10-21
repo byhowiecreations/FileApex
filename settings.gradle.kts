@@ -65,14 +65,17 @@ val (fileapexVersionName, fileapexVersionCode, fileapexExtensionVersion) = loadF
 val fileapexFdroid = gradle.startParameter.projectProperties["fileapex.fdroid"] == "true" ||
     gradle.startParameter.taskNames.any { it.contains("fdroid", ignoreCase = true) }
 
-// Play bundle: Iroh's prebuilt arm64 library is not 16 KB aligned (computer.iroh:iroh-android 1.1.0), which Google Play
-// refuses, so any bundle build leaves Iroh out (an Iroh-less stub is used, as in the F-Droid build).
-// Remove this only after the Iroh library passes scripts/check_play_bundle.py.
+// The published computer.iroh:iroh-android 1.1.0 is not 16 KB aligned, which Google Play refuses. scripts/build_iroh_android.sh
+// builds a 16 KB copy (1.1.0-16k) into ~/.fileapex/maven. Without it any bundle build leaves Iroh out (an Iroh-less stub is
+// used, as in the F-Droid build).
+val fileapexIrohMaven = File(System.getProperty("user.home"), ".fileapex/maven")
+val fileapexIroh16k = File(fileapexIrohMaven, "computer/iroh/iroh-android/1.1.0-16k/iroh-android-1.1.0-16k.aar").isFile
 val fileapexNoIroh = gradle.startParameter.projectProperties["fileapex.noiroh"] == "true" ||
-    gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
+    (!fileapexIroh16k && gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) })
 
 gradle.beforeProject {
     extensions.extraProperties.set("fileapex.noiroh", fileapexNoIroh)
+    extensions.extraProperties.set("fileapex.iroh16k", fileapexIroh16k)
     extensions.extraProperties.set("fileapex.fdroid", fileapexFdroid)
     extensions.extraProperties.set("fileapex.version.name", fileapexVersionName)
     extensions.extraProperties.set("fileapex.version.code", fileapexVersionCode)
@@ -100,6 +103,12 @@ dependencyResolutionManagement {
                 includeGroupAndSubgroups("androidx")
                 includeGroupAndSubgroups("com.android")
                 includeGroupAndSubgroups("com.google")
+            }
+        }
+        if (fileapexIroh16k) {
+            maven {
+                url = fileapexIrohMaven.toURI()
+                content { includeVersion("computer.iroh", "iroh-android", "1.1.0-16k") }
             }
         }
         mavenCentral()

@@ -130,7 +130,7 @@ class MultiCopyBroadcastEngine(
                 when (destination) {
                     is MultiCopyDestination.LocalDevice -> when (source) {
                         is MultiCopySource.Local -> copyLocalWithResume(source, destination.absolutePath, onProgress)
-                        is MultiCopySource.Remote -> client.downloadToLocal(
+                        is MultiCopySource.Remote -> client.downloads.downloadToLocal(
                             host = source.host,
                             port = source.port,
                             remotePath = source.absolutePath,
@@ -140,7 +140,7 @@ class MultiCopyBroadcastEngine(
                         )
                     }
                     is MultiCopyDestination.RemoteDevice -> when (source) {
-                        is MultiCopySource.Local -> client.uploadFromLocal(
+                        is MultiCopySource.Local -> client.uploads.uploadFromLocal(
                             host = destination.host,
                             port = destination.port,
                             localSourcePath = source.absolutePath,
@@ -149,7 +149,7 @@ class MultiCopyBroadcastEngine(
                             transactionTimestampEpochMs = transactionTimestamp,
                             onProgress = onProgress
                         )
-                        is MultiCopySource.Remote -> client.relayRemoteFile(
+                        is MultiCopySource.Remote -> client.uploads.relayRemoteFile(
                             sourceHost = source.host,
                             sourcePort = source.port,
                             sourcePath = source.absolutePath,
@@ -194,7 +194,7 @@ class MultiCopyBroadcastEngine(
                             )
                         }
                         is MultiCopyDestination.RemoteDevice -> {
-                            client.uploadFromChunkChannel(
+                            client.uploads.uploadFromChunkChannel(
                                 host = destination.host,
                                 port = destination.port,
                                 remoteTargetPath = destination.absolutePath,
@@ -304,7 +304,7 @@ class MultiCopyBroadcastEngine(
                 }
             }
             is MultiCopySource.Remote -> {
-                client.streamRemoteFile(
+                client.downloads.streamRemoteFile(
                     host = source.host,
                     port = source.port,
                     remotePath = source.absolutePath

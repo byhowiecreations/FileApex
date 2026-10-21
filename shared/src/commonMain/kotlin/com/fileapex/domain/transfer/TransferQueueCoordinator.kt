@@ -58,7 +58,7 @@ data class PendingTransferItem(
 )
 
 /**
- * Outcome of [TransferQueueCoordinator.sendOrQueue] — immediate send plus optional queue.
+ * Outcome of [TransferQueueCoordinator.sendOrQueue], immediate send plus optional queue.
  */
 data class QueueAwareSendResult(
     val batch: TransferBatchResult?,
@@ -98,7 +98,7 @@ class TransferQueueCoordinator(
     val pendingItems: Flow<List<PendingTransferItem>> =
         dao.observeAll().map { rows -> rows.mapNotNull { it.toUiItem() } }
 
-    /** Queued + in-flight drain attempts — keeps the header badge stable while sending. */
+    /** Queued + in-flight drain attempts, keeps the header badge stable while sending. */
     val pendingCount: Flow<Int> = dao.observeAll().map { it.size }
 
     fun ensureDrainWatcher() {
@@ -797,10 +797,10 @@ class TransferQueueCoordinator(
             isWaitingDriveGrant(raw) -> AppI18n.t("waiting_drive_grant")
             raw == USER_CANCELLED -> AppI18n.t("transfer_cancelled")
             raw == "Drive relay did not finish" -> AppI18n.t("drive_relay_did_not_finish")
-            raw == "Nothing to send — empty folder or missing files" ||
+            raw == "Nothing to send, empty folder or missing files" ||
                 raw == "Nothing to send" -> AppI18n.t("nothing_to_send_empty_folder")
             raw == "Nothing to queue" -> AppI18n.t("nothing_to_queue")
-            raw == "Send did not finish — retrying" -> AppI18n.t("send_did_not_finish_retrying")
+            raw == "Send did not finish, retrying" -> AppI18n.t("send_did_not_finish_retrying")
             raw == "Source read failed" || raw.startsWith("Missing local file") -> AppI18n.t("source_read_failed")
             else -> UserFacingErrors.messageForRaw(raw) ?: raw
         }

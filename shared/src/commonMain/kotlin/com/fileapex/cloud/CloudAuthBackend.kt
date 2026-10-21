@@ -21,24 +21,24 @@ expect object CloudAuthBackend {
     suspend fun registerDevice(uid: String, record: CloudDeviceRecord)
 
     /**
-     * Partial field update for LAN/presence only — never writes [deviceName].
+     * Partial field update for LAN/presence only, never writes [deviceName].
      */
     suspend fun patchDevicePresence(uid: String, presence: CloudDevicePresence)
 
     /**
-     * Partial field update for display name only — caller must be an explicit user rename action.
+     * Partial field update for display name only, caller must be an explicit user rename action.
      */
     suspend fun patchDeviceName(uid: String, deviceId: String, deviceName: String, updatedAtEpochMs: Long)
 
     suspend fun deleteDevice(uid: String, deviceId: String)
 
-    /** Patches the Android FCM token for silent background wake — never touches [deviceName]. */
+    /** Patches the Android FCM token for silent background wake, never touches [deviceName]. */
     suspend fun patchDeviceFcmToken(uid: String, deviceId: String, fcmToken: String)
 
     suspend fun patchDeviceClipboardPublicKey(uid: String, deviceId: String, clipboardPublicKey: String)
 
     /**
-     * Patches diagnostics relay opt-in + public key — never part of presence heartbeats.
+     * Patches diagnostics relay opt-in + public key, never part of presence heartbeats.
      */
     suspend fun patchDeviceDiagnosticsCloud(
         uid: String,
@@ -81,7 +81,7 @@ expect object CloudAuthBackend {
      * Start listening / polling the user device collection (includes this device’s document).
      * Remote snapshots seed peer devices into the local repository.
      * This device's own [CloudDeviceRecord.deviceName] is published only via
-     * [GoogleLinkCoordinator.publishUserRenamedDevice] / initial register — never imported
+     * [GoogleLinkCoordinator.publishUserRenamedDevice] / initial register, never imported
      * back onto the local identity from a snapshot.
      * @return a handle that stops the listener when [CloudRegistryHandle.stop] is called.
      */
@@ -110,6 +110,6 @@ expect fun firebaseApiKey(): String
 
 expect fun firebaseProjectId(): String
 
-/** Fixed loopback port/path — must match Web client Authorized redirect URI in Google Cloud Console. */
+/** Fixed loopback port/path, must match Web client Authorized redirect URI in Google Cloud Console. */
 const val DESKTOP_OAUTH_LOOPBACK_PORT = 8765
 const val DESKTOP_OAUTH_LOOPBACK_REDIRECT_URI = "http://127.0.0.1:8765/callback"

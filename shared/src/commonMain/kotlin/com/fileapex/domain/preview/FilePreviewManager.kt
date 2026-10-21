@@ -33,7 +33,7 @@ class FilePreviewManager(
         return when (val browseTarget = target) {
             is BrowseTarget.Local -> readLocalBytesCapped(item.absolutePath, maxBytes)
             is BrowseTarget.Remote -> {
-                FileApexServices.client.downloadBytes(
+                FileApexServices.client.downloads.downloadBytes(
                     host = browseTarget.host,
                     port = browseTarget.port,
                     remotePath = item.absolutePath,

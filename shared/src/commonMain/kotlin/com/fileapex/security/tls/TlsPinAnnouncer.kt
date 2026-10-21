@@ -58,7 +58,7 @@ class TlsPinAnnouncer(
         }
     }
 
-    fun ensureStarted() {
+    @Synchronized fun ensureStarted() {
         current = this
         if (job?.isActive == true) return
         job = scope.launch {

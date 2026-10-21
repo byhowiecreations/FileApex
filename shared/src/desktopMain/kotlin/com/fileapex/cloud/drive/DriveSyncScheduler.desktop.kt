@@ -14,7 +14,7 @@ actual object DriveSyncScheduler {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loopJob: Job? = null
 
-    actual fun ensureScheduled() {
+    @Synchronized actual fun ensureScheduled() {
         if (loopJob?.isActive == true) return
         loopJob = scope.launch {
             while (isActive) {

@@ -1,5 +1,6 @@
 package com.fileapex.security.tls
 
+import com.fileapex.data.settings.SecretUnavailableException
 import com.fileapex.platform.DesktopPlatformPaths
 import com.sun.jna.Library
 import com.sun.jna.Memory
@@ -24,23 +25,36 @@ class MacKeychainTlsVault(private val service: String = SERVICE) : TlsSecretVaul
 
     @Volatile private var cachedKey: SecretKeySpec? = null
 
+    /**
+     * Only an item the keychain reports as missing is created. A locked keychain, a denied prompt or a timeout means the
+     * key may exist, and making a new one over it would orphan everything sealed with it.
+     */
     @Synchronized
     private fun key(): SecretKeySpec {
         cachedKey?.let { return it }
-        readHex()?.let { return SecretKeySpec(it, "AES").also { spec -> cachedKey = spec } }
+        val (code, out) = runCatching { run("find-generic-password", "-s", service, "-a", ACCOUNT, "-w") }
+            .getOrElse { throw SecretUnavailableException("the keychain could not be asked", it) }
+        if (code == 0) {
+            val hex = out.trim()
+            if (hex.length != 64) throw SecretUnavailableException("the keychain item is not a wrapping key")
+            return SecretKeySpec(ByteArray(32) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }, "AES")
+                .also { cachedKey = it }
+        }
+        if (code != ITEM_NOT_FOUND) throw SecretUnavailableException("the keychain could not be read ($code)")
         val fresh = ByteArray(32).also { SecureRandom().nextBytes(it) }
         val hex = fresh.joinToString("") { "%02x".format(it) }
-        val (code, _) = run("add-generic-password", "-U", "-s", service, "-a", ACCOUNT, "-w", hex)
-        check(code == 0) { "keychain add failed ($code)" }
+        // Passed on stdin to `security -i`, so the key never appears in a process list.
+        runCatching { addViaStdin(hex) }.getOrElse { throw SecretUnavailableException("the keychain could not be written", it) }
+        val (readBack, stored) = run("find-generic-password", "-s", service, "-a", ACCOUNT, "-w")
+        if (readBack != 0 || stored.trim() != hex) throw SecretUnavailableException("the keychain did not keep the new key")
         return SecretKeySpec(fresh, "AES").also { cachedKey = it }
     }
 
-    private fun readHex(): ByteArray? {
-        val (code, out) = run("find-generic-password", "-s", service, "-a", ACCOUNT, "-w")
-        if (code != 0) return null
-        val hex = out.trim()
-        if (hex.length != 64) return null
-        return ByteArray(32) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    private fun addViaStdin(hex: String) {
+        val process = ProcessBuilder(listOf("/usr/bin/security", "-i")).redirectErrorStream(true).start()
+        process.outputStream.bufferedWriter().use { it.write("add-generic-password -s $service -a $ACCOUNT -w $hex\n") }
+        process.inputStream.bufferedReader().readText()
+        check(process.waitFor(10, TimeUnit.SECONDS)) { "security timed out" }
     }
 
     private fun run(vararg args: String): Pair<Int, String> {
@@ -54,6 +68,8 @@ class MacKeychainTlsVault(private val service: String = SERVICE) : TlsSecretVaul
         private const val SCHEME = 2
         const val SERVICE = "com.fileapex.tls"
         const val ACCOUNT = "wrap-key"
+        /** errSecItemNotFound as `security` reports it. */
+        private const val ITEM_NOT_FOUND = 44
     }
 }
 

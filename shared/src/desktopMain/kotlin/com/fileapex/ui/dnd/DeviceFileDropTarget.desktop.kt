@@ -81,7 +81,6 @@ private fun DragAndDropEvent.dropOffsetInRoot(): Offset {
 private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
     val transferable = runCatching { event.awtTransferable }.getOrNull() ?: return emptyList()
 
-    // 1. Check for in-app or custom string transfer payload (fileapex-transfer://)
     if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
         val text = runCatching {
             transferable.getTransferData(DataFlavor.stringFlavor) as? String
@@ -91,7 +90,6 @@ private fun extractAbsoluteFilePaths(event: DragAndDropEvent): List<String> {
         }
     }
 
-    // 2. Fall back to standard OS javaFileListFlavor
     if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
         val files = runCatching {
             transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>

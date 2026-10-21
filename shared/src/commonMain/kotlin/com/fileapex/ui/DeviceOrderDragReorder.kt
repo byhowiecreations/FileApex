@@ -50,7 +50,7 @@ val DeviceOrderItemPlacementSpec: FiniteAnimationSpec<IntOffset> = spring(
 
 /**
  * Live drag state for paired-device reorder (handle-only gesture).
- * List order is not mutated until [end] — only visual offsets change during the drag.
+ * List order is not mutated until [end], only visual offsets change during the drag.
  */
 class DeviceOrderDragState {
     var draggingDeviceId: String? by mutableStateOf(null)
@@ -104,7 +104,7 @@ fun rememberDeviceOrderDragState(): DeviceOrderDragState = remember { DeviceOrde
 
 /**
  * Grab handle (`=`) for paired-device reorder in edit mode.
- * Pointer input is scoped strictly to this handle — the parent card must not receive drag gestures.
+ * Pointer input is scoped strictly to this handle, the parent card must not receive drag gestures.
  */
 @Composable
 fun DeviceOrderDragHandle(
@@ -162,7 +162,7 @@ internal fun deviceOrderListItemsHeightPx(
 }
 
 /**
- * True when paired-device rows exceed the lazy list viewport — auto-scroll may be needed.
+ * True when paired-device rows exceed the lazy list viewport, auto-scroll may be needed.
  * The Add-device spacer below the list is left out so it does not force scroll during reorder.
  */
 internal fun deviceOrderListOverflowsViewport(
@@ -179,7 +179,7 @@ internal fun deviceOrderListOverflowsViewport(
 
 /**
  * Final drop index from drag start and accumulated pointer offset (half-stride thresholds).
- * Does not mutate list data — call once on drag end.
+ * Does not mutate list data, call once on drag end.
  */
 internal fun computeDeviceOrderDropIndex(
     startIndex: Int,
@@ -294,7 +294,7 @@ fun DeviceOrderEdgeAutoScrollEffect(
 }
 
 /**
- * Lazy-list variant — same edge rules as [DeviceOrderEdgeAutoScrollEffect] for [ScrollState].
+ * Lazy-list variant, same edge rules as [DeviceOrderEdgeAutoScrollEffect] for [ScrollState].
  */
 @Composable
 fun DeviceOrderEdgeAutoScrollEffect(

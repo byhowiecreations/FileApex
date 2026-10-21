@@ -18,7 +18,7 @@ internal object DesktopLanNetworkTransitionMonitor {
     @Volatile
     private var lastSnapshot: Set<String> = emptySet()
 
-    fun ensureRegistered() {
+    @Synchronized fun ensureRegistered() {
         if (started) return
         started = true
         lastSnapshot = currentSnapshot()

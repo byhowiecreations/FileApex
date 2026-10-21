@@ -1,5 +1,10 @@
 package com.fileapex.presentation
 
+import com.fileapex.presentation.explorer.ExplorerPreviewActions
+import com.fileapex.presentation.explorer.ExplorerMutationActions
+import com.fileapex.presentation.explorer.ExplorerCopyActions
+import com.fileapex.presentation.explorer.ExplorerSelectionActions
+import com.fileapex.presentation.explorer.ExplorerWatchActions
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -103,16 +108,8 @@ class ExplorerViewModel(
     private val remoteDeviceId: String? = (target as? BrowseTarget.Remote)?.deviceId
     /** Resume after mid-explorer PIN re-entry. */
     private var pendingBrowseAction: (suspend () -> Unit)? = null
-    /** Anchor for desktop Shift-click range selection. */
-    private var selectionAnchorId: String? = null
     private var browseJob: Job? = null
     private var browseGeneration = 0
-    private var localWatchDebounce: Job? = null
-    private var contentWatch: DirectoryWatch? = null
-    private var paneWatch: DirectoryWatch? = null
-    private var watchedContent: String? = null
-    private var watchedPane: String? = null
-
     private val _uiState = MutableStateFlow(
         ExplorerUiState(
             deviceTitle = target.displayName,
@@ -124,10 +121,16 @@ class ExplorerViewModel(
     )
     val uiState: StateFlow<ExplorerUiState> = _uiState.asStateFlow()
 
+    private val previewActions = ExplorerPreviewActions(_uiState, viewModelScope, target, preview, transfers, isRemote)
+    private val mutations = ExplorerMutationActions(_uiState, viewModelScope, target, browser, browseRoot, remoteDeviceId, { refresh() }, { selection.selectedItems() })
+    private val copying = ExplorerCopyActions(_uiState, viewModelScope, settings, transfers, { refresh() }, { selection.selectedItems() })
+    private val selection = ExplorerSelectionActions(_uiState, viewModelScope, target, preview, isRemote, { onDirectoryClick(it) }, { previewActions.openImagePreview(it) }, { previewActions.openTextPreview(it) })
+    private val watching = ExplorerWatchActions(_uiState, viewModelScope, target, browser, browseRoot, { browseGeneration }, { reloadListing(it) })
+
     init {
         openPath(browseRoot)
         if (target is BrowseTarget.Remote) {
-            viewModelScope.launch { browser.revalidated.collect(::onFolderRevalidated) }
+            viewModelScope.launch { browser.revalidated.collect(watching::onFolderRevalidated) }
         }
         if (target is BrowseTarget.Local) {
             viewModelScope.launch {
@@ -392,267 +395,7 @@ class ExplorerViewModel(
                 isRefreshing = false
             )
         }
-        syncLocalWatch(normalizedContent, normalizedPane)
-    }
-
-    fun onFileClick(item: RemoteFileItem) {
-        if (_uiState.value.isSelectionMode) {
-            toggleFileSelection(item)
-            return
-        }
-        activateFile(item)
-    }
-
-    fun onFileLongClick(item: RemoteFileItem) {
-        enterSelectionMode(preselect = item)
-    }
-
-    /** Desktop: plain click replaces selection with this file or folder. */
-    fun selectFileExclusive(item: RemoteFileItem) {
-        selectionAnchorId = item.id
-        enterSelectionMode(preselect = item)
-    }
-
-    /** Desktop: ⌘/Ctrl-click toggles membership in the selection. */
-    fun toggleFileSelectionDesktop(item: RemoteFileItem) {
-        if (!_uiState.value.isSelectionMode) {
-            selectionAnchorId = item.id
-            enterSelectionMode(preselect = item)
-            return
-        }
-        toggleFileSelection(item)
-        val selected = _uiState.value.selectedFileIds
-        if (item.id in selected) {
-            selectionAnchorId = item.id
-        }
-        if (selected.isEmpty()) {
-            exitSelectionMode()
-        }
-    }
-
-    /** Desktop: Shift-click selects a contiguous range from the anchor. */
-    fun extendFileSelection(item: RemoteFileItem) {
-        val items = _uiState.value.contentDirectories + _uiState.value.contentFiles
-        val anchorId = selectionAnchorId
-        val anchorIndex = anchorId?.let { id -> items.indexOfFirst { it.id == id } } ?: -1
-        val targetIndex = items.indexOfFirst { it.id == item.id }
-        if (anchorIndex < 0 || targetIndex < 0) {
-            selectFileExclusive(item)
-            return
-        }
-        val from = minOf(anchorIndex, targetIndex)
-        val to = maxOf(anchorIndex, targetIndex)
-        val rangeIds = items.subList(from, to + 1).map { it.id }.toSet()
-        _uiState.update {
-            it.copy(
-                isSelectionMode = true,
-                selectedFileIds = rangeIds,
-                canDownloadSelection = isRemote && rangeIds.isNotEmpty(),
-                canPaste = false,
-                statusMessage = null
-            )
-        }
-    }
-
-    /** Open / preview a file (Android tap outside selection; desktop double-click). */
-    fun activateFile(item: RemoteFileItem) {
-        when {
-            item.isDirectory -> onDirectoryClick(item)
-            preview.isImageFile(item) -> openImagePreview(item)
-            preview.isTextFile(item) -> openTextPreview(item)
-            else -> {
-                if (target is BrowseTarget.Local) {
-                    com.fileapex.platform.openLocalFile(item.absolutePath, item.name)
-                } else {
-                    _uiState.update {
-                        it.copy(statusMessage = "${item.name} · ${preview.formatBytes(item.sizeBytes)}")
-                    }
-                }
-            }
-        }
-    }
-
-    fun enterSelectionMode(preselect: RemoteFileItem? = null) {
-        val selected = if (preselect != null) setOf(preselect.id) else emptySet()
-        if (preselect != null) {
-            selectionAnchorId = preselect.id
-        }
-        _uiState.update {
-            it.copy(
-                isSelectionMode = true,
-                selectedFileIds = selected,
-                canDownloadSelection = isRemote && selected.isNotEmpty(),
-                canPaste = false,
-                statusMessage = null
-            )
-        }
-    }
-
-    fun exitSelectionMode() {
-        selectionAnchorId = null
-        _uiState.update {
-            it.copy(
-                isSelectionMode = false,
-                selectedFileIds = emptySet(),
-                canDownloadSelection = false,
-                canPaste = TransferClipboard.hasContent()
-            )
-        }
-    }
-
-    fun toggleFileSelection(item: RemoteFileItem) {
-        _uiState.update { state ->
-            val next = if (item.id in state.selectedFileIds) {
-                state.selectedFileIds - item.id
-            } else {
-                state.selectedFileIds + item.id
-            }
-            state.copy(
-                selectedFileIds = next,
-                canDownloadSelection = isRemote && next.isNotEmpty()
-            )
-        }
-    }
-
-    fun selectedItems(): List<RemoteFileItem> {
-        val ids = _uiState.value.selectedFileIds
-        val all = _uiState.value.contentDirectories + _uiState.value.contentFiles +
-            _uiState.value.paneDirectories + _uiState.value.paneFiles
-        return all.distinctBy { it.id }.filter { it.id in ids }
-    }
-
-    private fun openImagePreview(item: RemoteFileItem) {
-        if (target is BrowseTarget.Local) {
-            viewModelScope.launch {
-                _uiState.update {
-                    it.copy(
-                        previewItem = item,
-                        previewText = null,
-                        previewImage = null,
-                        isPreviewLoading = true,
-                        canDownloadPreview = false,
-                        statusMessage = null,
-                        errorMessage = null
-                    )
-                }
-                val bitmap = withContext(Dispatchers.IO) {
-                    decodeLocalImageFile(item.absolutePath, previewMaxEdgePx().coerceAtMost(1600))
-                }
-                if (bitmap == null) {
-                    _uiState.update {
-                        it.copy(
-                            previewItem = null,
-                            previewImage = null,
-                            isPreviewLoading = false,
-                            errorMessage = AppI18n.t("preview_failed")
-                        )
-                    }
-                } else {
-                    _uiState.update {
-                        it.copy(previewImage = bitmap, isPreviewLoading = false)
-                    }
-                }
-            }
-            return
-        }
-        runCatching {
-            preview.assertPreviewAllowed(item, FilePreviewManager.MAX_PREVIEW_BYTES)
-        }.onFailure { error ->
-            _uiState.update {
-                it.copy(errorMessage = UserFacingErrors.message(error, "preview_failed"))
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    previewItem = item,
-                    previewText = null,
-                    previewImage = null,
-                    isPreviewLoading = true,
-                    canDownloadPreview = isRemote,
-                    statusMessage = null,
-                    errorMessage = null
-                )
-            }
-            cancellableCatching {
-                val bytes = withContext(Dispatchers.IO) {
-                    preview.loadPreviewBytes(item, FilePreviewManager.MAX_PREVIEW_BYTES)
-                }
-                withContext(Dispatchers.Default) { decodeImageBytes(bytes, maxEdge = previewMaxEdgePx().coerceAtMost(1600)) }
-                    ?: error("Unable to decode image")
-            }.fold(
-                onSuccess = { bitmap ->
-                    _uiState.update {
-                        it.copy(
-                            previewImage = bitmap,
-                            isPreviewLoading = false
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            previewItem = null,
-                            previewImage = null,
-                            isPreviewLoading = false,
-                            canDownloadPreview = false,
-                            errorMessage = UserFacingErrors.message(error, "preview_failed")
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    private fun openTextPreview(item: RemoteFileItem) {
-        runCatching {
-            preview.assertPreviewAllowed(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
-        }.onFailure { error ->
-            _uiState.update {
-                it.copy(errorMessage = UserFacingErrors.message(error, "text_preview_too_large"))
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    previewItem = item,
-                    previewImage = null,
-                    previewText = null,
-                    isPreviewLoading = true,
-                    canDownloadPreview = isRemote,
-                    statusMessage = null,
-                    errorMessage = null
-                )
-            }
-            cancellableCatching {
-                withContext(Dispatchers.IO) {
-                    preview.loadPreviewBytes(item, FilePreviewManager.MAX_TEXT_PREVIEW_BYTES)
-                        .decodeToString()
-                        .take(12_000)
-                }
-            }.fold(
-                onSuccess = { text ->
-                    _uiState.update {
-                        it.copy(
-                            previewText = text,
-                            isPreviewLoading = false
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            previewItem = null,
-                            isPreviewLoading = false,
-                            canDownloadPreview = false,
-                            errorMessage = UserFacingErrors.message(error, "preview_failed")
-                        )
-                    }
-                }
-            )
-        }
+        watching.syncLocalWatch(normalizedContent, normalizedPane)
     }
 
     fun navigateUp() {
@@ -717,240 +460,6 @@ class ExplorerViewModel(
         return false
     }
 
-    fun renameItem(item: RemoteFileItem, newName: String) {
-        if (target !is BrowseTarget.Local) return
-        viewModelScope.launch {
-            val renamed = withContext(Dispatchers.IO) {
-                runCatching { renameLocalEntry(item.absolutePath, newName) }
-            }
-            renamed.onSuccess { afterMutation() }
-                .onFailure { error ->
-                    _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
-                }
-        }
-    }
-
-    fun compressItem(item: RemoteFileItem) {
-        if (target !is BrowseTarget.Local) return
-        viewModelScope.launch {
-            val zipped = withContext(Dispatchers.IO) {
-                runCatching { zipLocalEntry(item.absolutePath) }
-            }
-            zipped.onSuccess { afterMutation() }
-                .onFailure { error ->
-                    _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
-                }
-        }
-    }
-
-    fun uncompressItem(item: RemoteFileItem) {
-        if (target !is BrowseTarget.Local) return
-        viewModelScope.launch {
-            val unpacked = withContext(Dispatchers.IO) {
-                runCatching { unzipLocalEntry(item.absolutePath) }
-            }
-            unpacked.onSuccess { afterMutation() }
-                .onFailure { error ->
-                    _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
-                }
-        }
-    }
-
-    /** Refreshes this folder and tells the Tools lists their data changed. */
-    private fun afterMutation() {
-        refresh()
-        com.fileapex.platform.StorageToolsEvents.changed.tryEmit(Unit)
-    }
-
-    fun moveItem(item: RemoteFileItem, destination: String) {
-        if (target !is BrowseTarget.Local) return
-        val items = if (item.id in _uiState.value.selectedFileIds) {
-            selectedItems().ifEmpty { listOf(item) }
-        } else {
-            listOf(item)
-        }
-        viewModelScope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                runCatching { items.forEach { com.fileapex.platform.moveLocalEntryInto(it.absolutePath, destination) } }
-            }
-            outcome.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        isSelectionMode = false,
-                        selectedFileIds = emptySet(),
-                        canDownloadSelection = false,
-                        statusMessage = AppI18n.t("moved_ok")
-                    )
-                }
-                afterMutation()
-            }.onFailure { error ->
-                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")) }
-            }
-        }
-    }
-
-    private fun deleteRemoteItems(remote: BrowseTarget.Remote, item: RemoteFileItem) {
-        val items = if (item.id in _uiState.value.selectedFileIds) {
-            selectedItems().ifEmpty { listOf(item) }
-        } else {
-            listOf(item)
-        }
-        viewModelScope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                cancellableCatching {
-                    browser.ensureBrowseAccess()
-                    items.forEach { FileApexServices.client.deleteRemote(remote.host, remote.port, it.absolutePath) }
-                }
-            }
-            outcome.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        isSelectionMode = false,
-                        selectedFileIds = emptySet(),
-                        canDownloadSelection = false,
-                        statusMessage = AppI18n.t("remote_deleted")
-                    )
-                }
-                refresh()
-            }.onFailure { error ->
-                // Some of a multi-selection may already be gone, so show what the device really has.
-                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "trash_failed")) }
-                refresh()
-            }
-        }
-    }
-
-    fun deleteItem(item: RemoteFileItem) {
-        (target as? BrowseTarget.Remote)?.let { return deleteRemoteItems(it, item) }
-        if (target !is BrowseTarget.Local) return
-        val items = if (item.id in _uiState.value.selectedFileIds) {
-            selectedItems().ifEmpty { listOf(item) }
-        } else {
-            listOf(item)
-        }
-        viewModelScope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                runCatching { trashLocalEntries(items.map { it.absolutePath }) }
-            }
-            outcome.onSuccess { finished ->
-                TransferClipboard.dropPaths(items.map { it.absolutePath }.toSet())
-                _uiState.update {
-                    it.copy(
-                        isSelectionMode = false,
-                        selectedFileIds = emptySet(),
-                        canDownloadSelection = false,
-                        statusMessage = if (finished) AppI18n.t("moved_to_trash") else null,
-                        clipboardLabel = TransferClipboard.label(),
-                        canPaste = TransferClipboard.hasContent()
-                    )
-                }
-                if (finished) afterMutation()
-            }.onFailure { error ->
-                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "trash_failed")) }
-            }
-        }
-    }
-
-    fun importDropped(paths: List<String>, destinationDirectory: String? = null) {
-        if (paths.isEmpty()) return
-        val destination = destinationDirectory?.takeIf { it.isNotBlank() }
-            ?: _uiState.value.currentPath.ifBlank { browseRoot }
-        viewModelScope.launch {
-            val failed = withContext(Dispatchers.IO) {
-                when (val browseTarget = target) {
-                    is BrowseTarget.Local -> paths.mapNotNull { payload ->
-                        cancellableCatching { dropOntoLocal(payload, destination) }.exceptionOrNull()
-                    }
-                    is BrowseTarget.Remote -> {
-                        val localPaths = paths.mapNotNull { localPathOfDrop(it) }
-                        if (localPaths.isEmpty()) emptyList()
-                        else cancellableCatching {
-                            val sources = com.fileapex.domain.transfer.LocalTransferTree.expandAbsolutePaths(localPaths)
-                            FileApexServices.transferService.multiCopyToDevices(
-                                sources,
-                                listOf(
-                                    MultiCopyDeviceOption(
-                                        deviceId = browseTarget.deviceId,
-                                        deviceName = browseTarget.displayName,
-                                        isLocal = false,
-                                        host = browseTarget.host,
-                                        port = browseTarget.port,
-                                        destinationRoot = destination
-                                    )
-                                )
-                            )
-                        }.exceptionOrNull()?.let { listOf(it) }.orEmpty()
-                    }
-                    is BrowseTarget.Demo -> emptyList()
-                }
-            }
-            if (failed.isNotEmpty()) {
-                _uiState.update {
-                    it.copy(errorMessage = UserFacingErrors.message(failed.first(), "unable_to_open_folder"))
-                }
-            }
-            refresh()
-        }
-    }
-
-    private suspend fun dropOntoLocal(payload: String, destination: String) {
-        val parsed = parseDropPayload(payload)
-        if (parsed.remoteDeviceId == null) {
-            moveLocalEntryInto(parsed.path, destination)
-            return
-        }
-        val device = FileApexServices.deviceRepository.getDevice(parsed.remoteDeviceId) ?: error("device missing")
-        val endpoint = FileApexServices.presenceMonitor.probeNow(device, RouteUse.Bulk)
-        FileApexServices.transferService.downloadRemoteToDownloads(
-            host = endpoint?.host ?: device.lastKnownIp,
-            port = endpoint?.port ?: device.port,
-            items = listOf(
-                RemoteFileItem(
-                    name = parsed.name,
-                    absolutePath = parsed.path,
-                    sizeBytes = parsed.size,
-                    lastModified = 0L,
-                    isDirectory = false,
-                    mimeType = "application/octet-stream"
-                )
-            ),
-            destinationDirectory = destination
-        )
-    }
-
-    private data class DropPayload(
-        val path: String,
-        val name: String,
-        val size: Long,
-        val remoteDeviceId: String?
-    )
-
-    private fun parseDropPayload(payload: String): DropPayload {
-        if (!payload.startsWith("fileapex-transfer://")) {
-            val fileName = payload.substringAfterLast('/')
-            return DropPayload(payload, fileName, 0L, null)
-        }
-        val withoutScheme = payload.removePrefix("fileapex-transfer://")
-        val sourceId = withoutScheme.substringBefore('/')
-        val rest = withoutScheme.substringAfter('/', "")
-        val rawPath = rest.substringBefore('?')
-        val query = rest.substringAfter('?', "")
-        val name = query.substringAfter("name=", "").substringBefore('&').ifBlank {
-            rawPath.substringAfterLast('/')
-        }
-        val size = query.substringAfter("size=", "0").substringBefore('&').toLongOrNull() ?: 0L
-        return if (sourceId == "local") {
-            DropPayload(rawPath, name, size, null)
-        } else {
-            DropPayload(rawPath, name, size, sourceId)
-        }
-    }
-
-    private fun localPathOfDrop(payload: String): String? {
-        val parsed = parseDropPayload(payload)
-        return if (parsed.remoteDeviceId == null) parsed.path else null
-    }
-
     fun toggleViewMode() {
         settings.setExplorerViewMode(_uiState.value.viewMode.cycled())
     }
@@ -971,11 +480,6 @@ class ExplorerViewModel(
             return
         }
         if (isRemote) refresh()
-    }
-
-    fun clearPendingCopy() {
-        TransferClipboard.clear()
-        _uiState.update { it.copy(canPaste = false, clipboardLabel = null) }
     }
 
     private fun reloadListing(showRefreshing: Boolean) {
@@ -1023,400 +527,50 @@ class ExplorerViewModel(
         }
     }
 
-    fun copySelected() {
-        val items = selectedItems()
-        runCatching {
-            val message = transfers.copySelected(items)
-            _uiState.update {
-                it.copy(
-                    isSelectionMode = false,
-                    selectedFileIds = emptySet(),
-                    canDownloadSelection = false,
-                    canPaste = true,
-                    clipboardLabel = TransferClipboard.label(),
-                    statusMessage = message
-                )
-            }
-        }.onFailure { error ->
-            _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "copy_failed")) }
-        }
-    }
-
-    fun copyItem(item: RemoteFileItem) {
-        val items = if (item.id in _uiState.value.selectedFileIds) {
-            selectedItems()
-        } else {
-            listOf(item)
-        }
-        runCatching {
-            val message = transfers.copySelected(items)
-            _uiState.update {
-                it.copy(
-                    isSelectionMode = false,
-                    selectedFileIds = emptySet(),
-                    canDownloadSelection = false,
-                    canPaste = true,
-                    clipboardLabel = TransferClipboard.label(),
-                    statusMessage = message
-                )
-            }
-        }.onFailure { error ->
-            _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "copy_failed")) }
-        }
-    }
-
-    fun onMultiCopyFabClick() {
-        if (selectedItems().isEmpty()) {
-            _uiState.update { it.copy(errorMessage = ExplorerActionCopy.ERROR_SELECT_FILES) }
-            return
-        }
-        if (!settings.multiCopyIntroAcknowledged.value) {
-            _uiState.update { it.copy(showMultiCopyIntro = true) }
-            return
-        }
-        openMultiCopyPicker()
-    }
-
-    fun sendItemToDevices(item: RemoteFileItem) {
-        if (item.id !in _uiState.value.selectedFileIds) {
-            _uiState.update {
-                it.copy(
-                    isSelectionMode = true,
-                    selectedFileIds = setOf(item.id)
-                )
-            }
-        }
-        if (!settings.multiCopyIntroAcknowledged.value) {
-            _uiState.update { it.copy(showMultiCopyIntro = true) }
-            return
-        }
-        openMultiCopyPicker()
-    }
-
-    fun acknowledgeMultiCopyIntro() {
-        settings.setMultiCopyIntroAcknowledged(true)
-        _uiState.update { it.copy(showMultiCopyIntro = false) }
-        openMultiCopyPicker()
-    }
-
-    fun dismissMultiCopyIntro() {
-        _uiState.update { it.copy(showMultiCopyIntro = false) }
-    }
-
-    /** Closes the picker and leaves a running send alone; it reports through the status message. */
-    fun hideMultiCopyPicker() {
-        _uiState.update { it.copy(showMultiCopyPicker = false) }
-    }
-
-    fun dismissMultiCopyPicker() {
-        _uiState.update {
-            it.copy(
-                showMultiCopyPicker = false,
-                multiCopyOptions = emptyList(),
-                selectedMultiCopyDeviceIds = emptySet()
-            )
-        }
-    }
-
-    fun toggleMultiCopyDevice(deviceId: String) {
-        _uiState.update { state ->
-            val next = if (deviceId in state.selectedMultiCopyDeviceIds) {
-                state.selectedMultiCopyDeviceIds - deviceId
-            } else {
-                state.selectedMultiCopyDeviceIds + deviceId
-            }
-            state.copy(selectedMultiCopyDeviceIds = next)
-        }
-    }
-
-    fun confirmMultiCopy() {
-        val items = selectedItems()
-        if (items.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = ExplorerActionCopy.ERROR_SELECT_FILES) }
-            return
-        }
-        val selectedIds = _uiState.value.selectedMultiCopyDeviceIds
-        val selectedDevices = _uiState.value.multiCopyOptions.filter { it.deviceId in selectedIds }
-        if (selectedDevices.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = AppI18n.t("select_destination_device")) }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isMultiCopying = true, errorMessage = null) }
-            cancellableCatching {
-                val sources = transfers.sourcesFrom(items)
-                transfers.sendOrQueue(sources, selectedDevices)
-            }.fold(
-                onSuccess = { outcome ->
-                    val batch = outcome.batch
-                    val failCount = batch?.results?.sumOf { it.failures.size } ?: 0
-                    val message = when {
-                        outcome.hadQueue && (batch == null || failCount == 0) -> outcome.message
-                        failCount == 0 && batch != null -> {
-                            val deviceLabel = if (selectedDevices.size == 1) {
-                                selectedDevices.first().deviceName
-                            } else {
-                                AppI18n.plural("device_count", selectedDevices.size)
-                            }
-                            if (items.size == 1) {
-                                AppI18n.t("file_sent_to", deviceLabel)
-                            } else {
-                                AppI18n.t("files_sent_to", deviceLabel)
-                            }.let { base ->
-                                if (outcome.hadQueue) "$base ${outcome.message}" else base
-                            }
-
-                        }
-                        batch?.allFailed == true && !outcome.hadQueue -> ExplorerActionCopy.ERROR_SEND_FAILED
-                        else -> outcome.message.ifBlank {
-                            ExplorerActionCopy.sendFinishedWithErrors(failCount)
-                        }
-                    }
-                    _uiState.update {
-                        it.copy(
-                            isMultiCopying = false,
-                            showMultiCopyPicker = false,
-                            multiCopyOptions = emptyList(),
-                            selectedMultiCopyDeviceIds = emptySet(),
-                            isSelectionMode = false,
-                            selectedFileIds = emptySet(),
-                            canDownloadSelection = false,
-                            canPaste = TransferClipboard.hasContent(),
-                            statusMessage = message,
-                            errorMessage = batch?.results
-                                ?.flatMap { it.failures.values }
-                                ?.firstOrNull()
-                                ?.takeIf { batch.allFailed && !outcome.hadQueue }
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isMultiCopying = false,
-                            errorMessage = error.message ?: ExplorerActionCopy.ERROR_SEND_FAILED
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    private fun openMultiCopyPicker() {
-        _uiState.update {
-            it.copy(
-                showMultiCopyPicker = true,
-                selectedMultiCopyDeviceIds = emptySet()
-            )
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            val options = transfers.buildMultiCopyOptions()
-            _uiState.update {
-                it.copy(multiCopyOptions = options)
-            }
-        }
-    }
-
-    fun downloadItem(item: RemoteFileItem) {
-        val items = if (item.id in _uiState.value.selectedFileIds) {
-            selectedItems()
-        } else {
-            listOf(item)
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            cancellableCatching {
-                transfers.downloadRemote(items)
-            }.fold(
-                onSuccess = { paths ->
-                    _uiState.update {
-                        it.copy(
-                            isDownloading = false,
-                            isSelectionMode = false,
-                            selectedFileIds = emptySet(),
-                            canDownloadSelection = false,
-                            canPaste = TransferClipboard.hasContent(),
-                            statusMessage = if (paths.size == 1) {
-                                AppI18n.t("downloaded_to", paths.first())
-                            } else {
-                                AppI18n.t("downloaded_files_to", paths.size, DownloadsPaths.displayLabel())
-                            },
-                            lastDownloadedPaths = paths
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isDownloading = false,
-                            errorMessage = UserFacingErrors.message(error, "download_failed")
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    fun downloadSelected() {
-        val items = selectedItems()
-        viewModelScope.launch {
-            _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            cancellableCatching {
-                transfers.downloadRemote(items)
-            }.fold(
-                onSuccess = { paths ->
-                    _uiState.update {
-                        it.copy(
-                            isDownloading = false,
-                            isSelectionMode = false,
-                            selectedFileIds = emptySet(),
-                            canDownloadSelection = false,
-                            canPaste = TransferClipboard.hasContent(),
-                            statusMessage = if (paths.size == 1) {
-                                AppI18n.t("downloaded_to", paths.first())
-                            } else {
-                                AppI18n.t("downloaded_files_to", paths.size, DownloadsPaths.displayLabel())
-                            },
-                            lastDownloadedPaths = paths
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isDownloading = false,
-                            errorMessage = UserFacingErrors.message(error, "download_failed")
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    fun downloadPreview() {
-        val item = _uiState.value.previewItem ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isDownloading = true, errorMessage = null) }
-            cancellableCatching {
-                transfers.downloadRemote(listOf(item))
-            }.fold(
-                onSuccess = { paths ->
-                    _uiState.update {
-                        it.copy(
-                            isDownloading = false,
-                            statusMessage = AppI18n.t("downloaded_to", paths.first()),
-                            lastDownloadedPaths = paths
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isDownloading = false,
-                            errorMessage = UserFacingErrors.message(error, "download_failed")
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    fun pasteHere() {
-        viewModelScope.launch {
-            cancellableCatching {
-                val paths = transfers.pasteInto(_uiState.value.currentPath)
-                _uiState.update {
-                    it.copy(
-                        statusMessage = if (paths.size == 1) {
-                            AppI18n.t("pasted_to", paths.first())
-                        } else {
-                            AppI18n.t("pasted_files", paths.size)
-                        }
-                    )
-                }
-                refresh()
-            }.onFailure { error ->
-                _uiState.update { it.copy(errorMessage = UserFacingErrors.message(error, "paste_failed")) }
-            }
-        }
-    }
-
-    fun dismissPreview() {
-        _uiState.update {
-            it.copy(
-                previewItem = null,
-                previewText = null,
-                previewImage = null,
-                isPreviewLoading = false,
-                canDownloadPreview = false
-            )
-        }
-    }
-
     fun dismissMessages() {
         _uiState.update { it.copy(statusMessage = null, errorMessage = null, lastDownloadedPaths = emptyList()) }
     }
 
-    private fun syncLocalWatch(contentPath: String, panePath: String) {
-        if (target !is BrowseTarget.Local) return
-        if (contentPath == watchedContent && panePath == watchedPane) return
-        contentWatch?.close()
-        paneWatch?.close()
-        contentWatch = null
-        paneWatch = null
-        watchedContent = contentPath
-        watchedPane = panePath
-        contentWatch = openLocalWatch(contentPath)
-        if (panePath != contentPath) {
-            paneWatch = openLocalWatch(panePath)
-        }
-    }
-
-    private fun openLocalWatch(path: String): DirectoryWatch? {
-        if (path.isBlank()) return null
-        return runCatching { watchLocalDirectory(path, ::onLocalFolderChanged) }.getOrNull()
-    }
-
-    private fun onLocalFolderChanged() {
-        val generation = browseGeneration
-        localWatchDebounce?.cancel()
-        localWatchDebounce = viewModelScope.launch {
-            delay(400)
-            if (generation != browseGeneration) return@launch
-            if (target !is BrowseTarget.Local) return@launch
-            reloadListing(showRefreshing = false)
-        }
-    }
-
-    /** A remote folder shown from cache changed on the device: swap in the fresh listing unless the user is mid-navigation. */
-    private fun onFolderRevalidated(normalizedPath: String) {
-        val state = _uiState.value
-        if (state.isLoading) return
-        val isContent = browser.normalizePath(state.currentPath) == normalizedPath
-        val isPane = browser.normalizePath(state.panePath.ifBlank { browseRoot }) == normalizedPath
-        if (!isContent && !isPane) return
-        val generation = browseGeneration
-        viewModelScope.launch {
-            val listing = cancellableCatching { browser.listAt(normalizedPath) }.getOrNull() ?: return@launch
-            if (generation != browseGeneration) return@launch
-            _uiState.update {
-                it.copy(
-                    paneDirectories = if (isPane) listing.directories else it.paneDirectories,
-                    paneFiles = if (isPane) listing.files else it.paneFiles,
-                    contentDirectories = if (isContent) listing.directories else it.contentDirectories,
-                    contentFiles = if (isContent) listing.files else it.contentFiles
-                )
-            }
-        }
-    }
-
     override fun onCleared() {
         browser.close()
-        localWatchDebounce?.cancel()
-        contentWatch?.close()
-        paneWatch?.close()
+        watching.localWatchDebounce?.cancel()
+        watching.contentWatch?.close()
+        watching.paneWatch?.close()
         super.onCleared()
     }
+
+    fun downloadPreview() = previewActions.downloadPreview()
+    fun dismissPreview() = previewActions.dismissPreview()
+    fun renameItem(item: RemoteFileItem, newName: String) = mutations.renameItem(item, newName)
+    fun compressItem(item: RemoteFileItem) = mutations.compressItem(item)
+    fun uncompressItem(item: RemoteFileItem) = mutations.uncompressItem(item)
+    fun moveItem(item: RemoteFileItem, destination: String) = mutations.moveItem(item, destination)
+    fun deleteItem(item: RemoteFileItem) = mutations.deleteItem(item)
+    fun importDropped(paths: List<String>, destinationDirectory: String? = null) = mutations.importDropped(paths, destinationDirectory)
+    fun clearPendingCopy() = copying.clearPendingCopy()
+    fun copySelected() = copying.copySelected()
+    fun copyItem(item: RemoteFileItem) = copying.copyItem(item)
+    fun onMultiCopyFabClick() = copying.onMultiCopyFabClick()
+    fun sendItemToDevices(item: RemoteFileItem) = copying.sendItemToDevices(item)
+    fun acknowledgeMultiCopyIntro() = copying.acknowledgeMultiCopyIntro()
+    fun dismissMultiCopyIntro() = copying.dismissMultiCopyIntro()
+    fun hideMultiCopyPicker() = copying.hideMultiCopyPicker()
+    fun dismissMultiCopyPicker() = copying.dismissMultiCopyPicker()
+    fun toggleMultiCopyDevice(deviceId: String) = copying.toggleMultiCopyDevice(deviceId)
+    fun confirmMultiCopy() = copying.confirmMultiCopy()
+    fun downloadItem(item: RemoteFileItem) = copying.downloadItem(item)
+    fun downloadSelected() = copying.downloadSelected()
+    fun pasteHere() = copying.pasteHere()
+    fun onFileClick(item: RemoteFileItem) = selection.onFileClick(item)
+    fun onFileLongClick(item: RemoteFileItem) = selection.onFileLongClick(item)
+    fun selectFileExclusive(item: RemoteFileItem) = selection.selectFileExclusive(item)
+    fun toggleFileSelectionDesktop(item: RemoteFileItem) = selection.toggleFileSelectionDesktop(item)
+    fun extendFileSelection(item: RemoteFileItem) = selection.extendFileSelection(item)
+    fun activateFile(item: RemoteFileItem) = selection.activateFile(item)
+    fun enterSelectionMode(preselect: RemoteFileItem? = null) = selection.enterSelectionMode(preselect)
+    fun exitSelectionMode() = selection.exitSelectionMode()
+    fun toggleFileSelection(item: RemoteFileItem) = selection.toggleFileSelection(item)
+    fun selectedItems(): List<RemoteFileItem> = selection.selectedItems()
 }
 
 /** Thrown when a PIN-protected peer needs (re)unlock before folder navigation. */

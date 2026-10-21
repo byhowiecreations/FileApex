@@ -14,7 +14,7 @@ internal object JvmLocaleSupport {
         AppLocale.ZH_HANS -> Locale.SIMPLIFIED_CHINESE
     }
 
-        // Captured before [apply] overwrites Locale.getDefault — landing/onboarding must
+        // Captured before [apply] overwrites Locale.getDefault, landing/onboarding must
     // still see the OS language after the user has not picked an app language.
     private val hostLanguageTag: String = Locale.getDefault().toLanguageTag()
 

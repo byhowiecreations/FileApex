@@ -5,7 +5,7 @@ package com.fileapex.platform
  * [android.content.Intent.ACTION_BATTERY_LOW] from stopped apps, so callers must also
  * evaluate the current level on process/service start and on the keep-alive job.
  *
- * No dedicated JobScheduler wake above [STEP_DOWN_PERCENT] — FGS / FCM / UI / boot /
+ * No dedicated JobScheduler wake above [STEP_DOWN_PERCENT], FGS / FCM / UI / boot /
  * freeze-guard already run [BatteryBulletinCoordinator.onProcessStart].
  */
 object BatteryBulletinPolicy {

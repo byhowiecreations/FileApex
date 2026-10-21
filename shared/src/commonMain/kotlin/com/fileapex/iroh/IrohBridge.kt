@@ -7,6 +7,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import com.fileapex.security.tls.BridgedPeer
+import com.fileapex.security.tls.TlsBridgeRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +27,9 @@ class IrohBridge(
     private val scope: CoroutineScope,
     private val maxConcurrentStreams: Int = DEFAULT_MAX_STREAMS,
     private val bufferSize: Int = DEFAULT_BUFFER_BYTES,
-    private val onPeerActive: (String) -> Unit = {}
+    private val onPeerActive: (String) -> Unit = {},
+    private val bridgePort: () -> Int = { 0 },
+    private val identify: suspend (String) -> BridgedPeer? = { null }
 ) {
     private class Listener(val socket: ServerSocket, val job: Job)
 
@@ -34,7 +38,7 @@ class IrohBridge(
     private val activeInbound = AtomicInteger()
     private var acceptJob: Job? = null
 
-    fun start() {
+    @Synchronized fun start() {
         if (acceptJob != null) return
         acceptJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
@@ -117,18 +121,29 @@ class IrohBridge(
             return
         }
         scope.launch(Dispatchers.IO) {
+            var registeredPort = -1
             try {
+                // The endpoint id is proven by the QUIC handshake. Entering through the bridge connector under a
+                // registered source port is how the server learns which paired device this stream belongs to.
+                val peer = identify(inbound.peerId)
+                val bridge = bridgePort()
+                val viaBridge = peer != null && bridge > 0
                 val server = Socket()
                 try {
-                    server.connect(InetSocketAddress(LOOPBACK_V4, serverPort), CONNECT_TIMEOUT_MS)
+                    server.connect(InetSocketAddress(LOOPBACK_V4, if (viaBridge) bridge else serverPort), CONNECT_TIMEOUT_MS)
                 } catch (e: IOException) {
                     logDrop("server", e)
                     server.closeQuietly()
                     inbound.stream.abort()
                     return@launch
                 }
+                if (viaBridge && peer != null) {
+                    registeredPort = server.localPort
+                    TlsBridgeRegistry.register(registeredPort, peer)
+                }
                 pump(server, inbound.stream, requestsFromSocket = false, peerId = inbound.peerId)
             } finally {
+                if (registeredPort > 0) TlsBridgeRegistry.unregister(registeredPort)
                 activeInbound.decrementAndGet()
             }
         }

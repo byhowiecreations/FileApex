@@ -5,7 +5,7 @@ import android.os.Build
 import android.os.PowerManager
 
 /**
- * Builds the ordered onboarding grant list — runtime/special permissions only.
+ * Builds the ordered onboarding grant list, runtime/special permissions only.
  */
 object AndroidOnboardingPermissions {
     const val ID_MANAGE_EXTERNAL_STORAGE = "manage_external_storage"

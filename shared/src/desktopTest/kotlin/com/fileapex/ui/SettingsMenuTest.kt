@@ -129,4 +129,47 @@ class SettingsMenuTest {
         )
         assertTrue(ids(tailscale = false, iroh = false, googleCloud = false).isEmpty())
     }
+
+    private val advancedIds = listOf(
+        SettingsMenuIds.TAILSCALE, SettingsMenuIds.IROH, SettingsMenuIds.DRIVE_RELAY, SettingsMenuIds.PIN_REQUIRED,
+        SettingsMenuIds.GOOGLE_ACCOUNT, SettingsMenuIds.BACKUP_SYNC, SettingsMenuIds.LEAVE_CLUSTER
+    )
+
+    private fun menu(showAdvanced: Boolean, inUse: Set<String> = emptySet()) = settingsMenuEntries(
+        playStoreBuild = false, desktopFileSelection = false, deviceNamePage = true, windowsFluent = false,
+        backupSync = true, iroh = true, showAdvanced = showAdvanced, inUseAdvancedIds = inUse
+    )
+
+    @Test
+    fun advancedRowsAreHiddenUntilTheSwitchIsOn() {
+        val ids = menu(showAdvanced = false).map { it.id }
+        advancedIds.forEach { assertFalse("$it should be advanced", ids.contains(it)) }
+        listOf(
+            SettingsMenuIds.DEVICE_NAME, SettingsMenuIds.LANGUAGE, SettingsMenuIds.CHECK_FOR_UPDATES, SettingsMenuIds.REPORT_ISSUE,
+            SettingsMenuIds.BACKGROUND_PERSISTENCE, SettingsMenuIds.THEMES, SettingsMenuIds.BULLETIN_BOARD,
+            SettingsMenuIds.NOTIFICATIONS, SettingsMenuIds.CLIPBOARD, SettingsMenuIds.DEVICE_DETAILS
+        ).forEach { assertTrue("$it should stay basic", ids.contains(it)) }
+        val advancedOn = menu(showAdvanced = true).map { it.id }
+        advancedIds.forEach { assertTrue(advancedOn.contains(it)) }
+    }
+
+    @Test
+    fun anAdvancedRowThatIsInUseStaysVisibleWithTheSwitchOff() {
+        val ids = menu(showAdvanced = false, inUse = setOf(SettingsMenuIds.TAILSCALE, SettingsMenuIds.PIN_REQUIRED)).map { it.id }
+        assertTrue(ids.contains(SettingsMenuIds.TAILSCALE))
+        assertTrue(ids.contains(SettingsMenuIds.PIN_REQUIRED))
+        assertFalse(ids.contains(SettingsMenuIds.IROH))
+    }
+
+    @Test
+    fun sectionsThatAreAllAdvancedDisappearWithTheSwitchOff() {
+        val sections = menu(showAdvanced = false).map { it.section }.toSet()
+        assertFalse(sections.contains(SettingsMenuSection.RemoteAccess))
+        assertFalse(sections.contains(SettingsMenuSection.Security))
+    }
+
+    @Test
+    fun theClusterWipeIsNeverTreatedAsInUse() {
+        assertFalse(menu(showAdvanced = false).any { it.id == SettingsMenuIds.LEAVE_CLUSTER })
+    }
 }

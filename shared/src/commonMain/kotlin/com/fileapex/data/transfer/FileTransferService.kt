@@ -105,7 +105,7 @@ class FileTransferService(
     }
 
     /**
-     * Broadcast selected file(s) to destinations. Engine-only — call via
+     * Broadcast selected file(s) to destinations. Engine-only, call via
      * [com.fileapex.domain.transfer.TransferManager.sendToDevices].
      */
     internal suspend fun multiCopyToDevices(
@@ -356,7 +356,7 @@ class FileTransferService(
         remoteTarget: String
     ) {
         if (payload.isLocalSource) {
-            client.uploadFromLocal(
+            client.uploads.uploadFromLocal(
                 host = host,
                 port = port,
                 localSourcePath = sourcePath,
@@ -365,7 +365,7 @@ class FileTransferService(
                 transactionTimestampEpochMs = TimeUtils.now()
             )
         } else {
-            client.relayRemoteFile(
+            client.uploads.relayRemoteFile(
                 sourceHost = payload.sourceHost,
                 sourcePort = payload.sourcePort,
                 sourcePath = sourcePath,
@@ -381,7 +381,7 @@ class FileTransferService(
 
     private suspend fun download(host: String, port: Int, remotePath: String, target: String, sizeBytes: Long) {
         Path(target).parent?.let { SystemFileSystem.createDirectories(it) }
-        client.downloadToLocal(
+        client.downloads.downloadToLocal(
             host = host,
             port = port,
             remotePath = remotePath,

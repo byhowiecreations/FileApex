@@ -14,7 +14,7 @@ import io.ktor.server.routing.routing
 
 /**
  * Desktop OAuth loopback on a fixed port so the Web OAuth client can register an exact redirect URI.
- * Uses Ktor CIO (shipped in FileApex.app) — not jdk.httpserver, which jpackage omits by default.
+ * Uses Ktor CIO (shipped in FileApex.app), not jdk.httpserver, which jpackage omits by default.
  */
 internal object DesktopOAuthLoopbackServer {
     private var engine: EmbeddedServer<*, *>? = null
@@ -43,7 +43,7 @@ internal object DesktopOAuthLoopbackServer {
             server.start(wait = false)
         }.getOrElse { error ->
             throw IllegalStateException(
-                "OAuth loopback could not bind 127.0.0.1:$port — close any app using that port and retry",
+                "OAuth loopback could not bind 127.0.0.1:$port, close any app using that port and retry",
                 error
             )
         }

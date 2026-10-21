@@ -145,7 +145,7 @@ actual object PairingBeaconTransport {
         while (currentCoroutineContext().isActive) {
             val socket = openListenerSocket()
             if (socket == null) {
-                log("listener bind failed — retrying in 1s")
+                log("listener bind failed, retrying in 1s")
                 delay(1_000L)
                 continue
             }
@@ -202,7 +202,7 @@ actual object PairingBeaconTransport {
         val localIp = LanInterfaceBinding.lanBindCandidates().firstOrNull()
         val networkInterface = localIp?.let { networkInterfaceForIp(it) }
         if (localIp == null || networkInterface == null) {
-            log("listener primary bind skipped — no LAN interface")
+            log("listener primary bind skipped, no LAN interface")
             return null
         }
         return cancellableCatching {

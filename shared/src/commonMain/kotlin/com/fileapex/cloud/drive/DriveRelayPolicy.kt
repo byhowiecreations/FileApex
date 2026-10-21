@@ -11,7 +11,7 @@ import kotlin.random.Random
 object DriveRelayPolicy {
     const val NOTES_LAN_ATTACHMENT_MAX_BYTES: Long = 35L * 1024L * 1024L
     const val PURGE_AFTER_MS: Long = 72L * 60L * 60L * 1000L
-    /** Background log.md ETag poll — 15 minutes keeps Drive well under rate limits. */
+    /** Background log.md ETag poll, 15 minutes keeps Drive well under rate limits. */
     const val LEDGER_POLL_INTERVAL_MS: Long = 15L * 60L * 1000L
     /** Desktop only, and only while on AC power: an unchanged ledger is one tiny conditional request. */
     const val LEDGER_POLL_INTERVAL_AC_MS: Long = 2L * 60L * 1000L

@@ -22,7 +22,7 @@ private var clipboardCallback: FileApexClipboardCallback?
 private var clipboardTimer: Timer?
 private var lastPasteboardChangeCount = -1
 
-/// Hop to AppKit main without blocking the caller. Never use main.sync from JNA —
+/// Hop to AppKit main without blocking the caller. Never use main.sync from JNA:
 /// Compose/AWT often runs on a different thread than NSThread.main, and sync then
 /// stalls cold start for several seconds behind first-frame work.
 private func onMainThread(_ block: @escaping () -> Void) {
@@ -31,6 +31,27 @@ private func onMainThread(_ block: @escaping () -> Void) {
     } else {
         DispatchQueue.main.async(execute: block)
     }
+}
+
+/// For calls that return a value the caller reads right away: run on AppKit main and wait for it. A plain async hop
+/// would return before the block ran, so a picker reported "cancelled" and the panel opened later, and a clipboard read
+/// came back empty. Waits on a semaphore, not main.sync, so a busy main thread cannot stall the caller forever when a
+/// timeout is given; the block writes only into Swift-owned captured variables, never into caller memory.
+private func onMainThreadAndWait(timeout: TimeInterval?, _ block: @escaping () -> Void) -> Bool {
+    if Thread.isMainThread {
+        block()
+        return true
+    }
+    let finished = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async {
+        block()
+        finished.signal()
+    }
+    guard let timeout else {
+        finished.wait()
+        return true
+    }
+    return finished.wait(timeout: .now() + timeout) == .success
 }
 
 private func wireTrayManagerCallbacks() {
@@ -257,7 +278,7 @@ public func fileapex_pick_open_file(
 ) -> Int32 {
     var picked: String?
     var skipped = false
-    onMainThread {
+    _ = onMainThreadAndWait(timeout: nil) {
         if openPanelBusy {
             skipped = true
             return
@@ -344,7 +365,7 @@ public func fileapex_clipboard_start_watch(_ callback: FileApexClipboardCallback
             guard count != lastPasteboardChangeCount else { return }
             lastPasteboardChangeCount = count
             guard let text = currentPasteboardText(), !text.isEmpty else { return }
-            // JNA must not run on the AppKit/AWT main thread — that SIGABRTs the JVM.
+            // JNA must not run on the AppKit/AWT main thread, that SIGABRTs the JVM.
             DispatchQueue.global(qos: .userInitiated).async {
                 guard let callback = clipboardCallback else { return }
                 text.withCString { ptr in
@@ -378,7 +399,7 @@ public func fileapex_clipboard_read_text(
     _ outText: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
 ) -> Int32 {
     var result: String?
-    onMainThread {
+    _ = onMainThreadAndWait(timeout: 1.0) {
         result = currentPasteboardText()
     }
     guard let text = result, !text.isEmpty else {

@@ -163,7 +163,7 @@ class PeerPresenceMonitor(
 
     private suspend fun awaitUiInteractive(timeoutMs: Long = 8_000L) {
         if (uiInteractiveGate.isCompleted) return
-        // Desktop Main calls markUiInteractive(); Android has no window gate — fail open fast.
+        // Desktop Main calls markUiInteractive(); Android has no window gate, fail open fast.
         val timeout = if (com.fileapex.cloud.currentPlatformLabel() == "Android") 50L else timeoutMs
         withTimeoutOrNull(timeout) { uiInteractiveGate.await() }
         if (!uiInteractiveGate.isCompleted) {
@@ -178,13 +178,11 @@ class PeerPresenceMonitor(
         return TimeUtils.isWithinWindow(lastSeen, LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS)
     }
 
-    fun ensureOnlineSnapshotWatcher() {
+    @Synchronized fun ensureOnlineSnapshotWatcher() {
         if (snapshotWatcherJob?.isActive == true) return
         snapshotWatcherJob = scope.launch {
-            refreshOnlineSnapshot()
-            while (isActive) {
-                delay(LanPresenceTiming.ONLINE_SNAPSHOT_REFRESH_MS)
-                refreshOnlineSnapshot()
+            watchOnlineSnapshot(repository.observeDevices(), { refreshOnlineSnapshot() }) {
+                onlineExpiryWaitMs(mutex.withLock { repository.listDevices() }, _onlineDeviceIds.value, _reachabilityEpochMs.value, TimeUtils.now())
             }
         }
     }
@@ -192,7 +190,7 @@ class PeerPresenceMonitor(
     /**
      * Battery-first LAN poll: 5 min foreground and background; defers during transfers.
      */
-    fun ensureLanPollLoop() {
+    @Synchronized fun ensureLanPollLoop() {
         if (tailnetWatchJob?.isActive != true) {
             tailnetWatchJob = scope.launch {
                 var previous: TailscalePhase? = null
@@ -212,7 +210,7 @@ class PeerPresenceMonitor(
         }
         if (lanPollJob?.isActive == true) return
         lanPollJob = scope.launch {
-            // Do not FULL-sweep during first Compose frames — saturates CPU and Room writers.
+            // Do not FULL-sweep during first Compose frames, saturates CPU and Room writers.
             awaitUiInteractive()
             delay(400)
             refreshAll(PresenceMode.Full)
@@ -469,8 +467,9 @@ class PeerPresenceMonitor(
 
     /** One device's whole check: its own endpoint, discovery, Iroh fallback and online mark. Runs on that device's job only. */
     private suspend fun probeDevice(deviceId: String, mode: PresenceMode) {
-        val peer = mutex.withLock { repository.getDevice(deviceId) } ?: run { digestRound?.finish(deviceId); return }
-        val round = digestRound?.takeIf { mode == PresenceMode.Light || deviceId in it.sourceIds }
+        val started = digestRound
+        val peer = mutex.withLock { repository.getDevice(deviceId) } ?: run { started?.finish(deviceId); return }
+        val round = started?.takeIf { mode == PresenceMode.Light || deviceId in it.sourceIds }
         try {
             if (TransferActivityGuard.isTransferActiveFor(deviceId)) {
                 markReachable(deviceId)
@@ -505,7 +504,7 @@ class PeerPresenceMonitor(
             val live = mutex.withLock { repository.getDevice(deviceId) } ?: peer
             if (mode == PresenceMode.Full && isDeviceOnline(live)) maybeBroadcastSelfIdentity(deviceId)
         } finally {
-            digestRound?.finish(deviceId)
+            started?.finish(deviceId)
         }
     }
 

@@ -8,7 +8,7 @@ object LanPresenceTiming {
     /** Peer last_seen within this window shows "Ready". */
     const val PRESENCE_READY_THRESHOLD_MS = 20 * 60 * 1000L
 
-    /** @deprecated Use [PRESENCE_READY_THRESHOLD_MS] — kept for internal reachability checks. */
+    /** @deprecated Use [PRESENCE_READY_THRESHOLD_MS], kept for internal reachability checks. */
     const val OFFLINE_GRACE_MS = PRESENCE_READY_THRESHOLD_MS
 
     /**
@@ -18,9 +18,6 @@ object LanPresenceTiming {
     const val FIRESTORE_PRESENCE_HEARTBEAT_MS = 10 * 60 * 1000L
 
     const val DEVICE_CONNECT_HANDSHAKE_MS = 2_000L
-
-    /** Local UI re-evaluation when grace windows expire (no network I/O). */
-    const val ONLINE_SNAPSHOT_REFRESH_MS = 60_000L
 
     const val FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000L
 

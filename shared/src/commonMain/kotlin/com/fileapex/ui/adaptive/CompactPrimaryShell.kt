@@ -47,7 +47,7 @@ import com.fileapex.ui.HomeTab
 import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.QueuedFilesButton
-import com.fileapex.ui.FileApexBottomBar
+import com.fileapex.ui.devices.FileApexBottomBar
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexFloatingChrome
 import com.fileapex.ui.theme.isFileApexCleanCurved
@@ -70,7 +70,7 @@ import androidx.compose.material.icons.filled.GridView
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.ui.DesktopLayoutToggle
 
-/** Shared compact home header metrics — keeps Devices, Settings, and explorer bands aligned. */
+/** Shared compact home header metrics, keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
     val titleBandHorizontalPadding = 20.dp
     val titleBandVerticalPadding = 16.dp

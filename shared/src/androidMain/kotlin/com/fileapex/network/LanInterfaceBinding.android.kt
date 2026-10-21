@@ -399,14 +399,14 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
         writeTailscaleDialToken(output, dialToken)
         val request = buildString {
             append("GET ")
-            append(pathWithQuery)
+            append(PeerPinHeader.stripPin(pathWithQuery))
             append(" HTTP/1.1\r\n")
             append("Host: ")
             append(host)
             append(':')
             append(port)
             append("\r\n")
-            append("Connection: close\r\n")
+            append("Connection: close\r\n").appendPinHeader(pathWithQuery)
             append("Accept: application/octet-stream\r\n")
             val resumeOffset = pathWithQuery.substringAfter("offset=", missingDelimiterValue = "")
                 .substringBefore('&')
@@ -523,14 +523,14 @@ private suspend fun executeBoundUploadOnLocalIp(
         writeTailscaleDialToken(output, dialToken)
         val header = buildString {
             append("POST ")
-            append(pathWithQuery)
+            append(PeerPinHeader.stripPin(pathWithQuery))
             append(" HTTP/1.1\r\n")
             append("Host: ")
             append(host)
             append(':')
             append(port)
             append("\r\n")
-            append("Connection: close\r\n")
+            append("Connection: close\r\n").appendPinHeader(pathWithQuery)
             append("Content-Type: ")
             append(contentType)
             append("\r\n")
@@ -574,14 +574,14 @@ private fun executeBoundHttpOnLocalIp(
         val request = buildString {
             append(method)
             append(' ')
-            append(path)
+            append(PeerPinHeader.stripPin(path))
             append(" HTTP/1.1\r\n")
             append("Host: ")
             append(host)
             append(':')
             append(port)
             append("\r\n")
-            append("Connection: close\r\n")
+            append("Connection: close\r\n").appendPinHeader(path)
             append("Accept: application/json\r\n")
             if (contentType != null) {
                 append("Content-Type: ")
@@ -618,60 +618,6 @@ private fun readHttpStatusLine(input: java.io.BufferedInputStream): Int {
     return Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
 }
 
-private const val MAX_PEER_RESPONSE_BYTES = 32 * 1024 * 1024
-private const val MAX_HEADER_LINE_CHARS = 16 * 1024
-private const val MAX_HEADER_LINES = 256
 
-/** Peer control responses are small JSON; cap so a misbehaving peer cannot exhaust the heap. */
-private fun java.io.InputStream.readBoundedBytes(limit: Int = MAX_PEER_RESPONSE_BYTES): ByteArray {
-    val out = java.io.ByteArrayOutputStream()
-    val buffer = ByteArray(8 * 1024)
-    while (true) {
-        val n = read(buffer)
-        if (n < 0) break
-        if (out.size() + n > limit) throw java.io.IOException("Peer response exceeds $limit bytes")
-        out.write(buffer, 0, n)
-    }
-    return out.toByteArray()
-}
 
-private fun readHttpHeaderLines(input: java.io.BufferedInputStream): List<String> {
-    val lines = ArrayList<String>()
-    while (true) {
-        val line = input.readAsciiLine()
-        if (line.isEmpty()) {
-            return lines
-        }
-        if (lines.size >= MAX_HEADER_LINES) throw java.io.IOException("Too many HTTP header lines")
-        lines += line
-    }
-}
 
-private fun skipHttpHeaders(input: java.io.BufferedInputStream) {
-    readHttpHeaderLines(input)
-}
-
-private fun drainAvailable(input: java.io.BufferedInputStream) {
-    val buffer = ByteArray(1024)
-    while (input.read(buffer) > 0) {
-        // discard error bodies
-    }
-}
-
-private fun java.io.InputStream.readAsciiLine(): String {
-    val builder = StringBuilder()
-    while (true) {
-        val byte = read()
-        if (byte == -1) {
-            break
-        }
-        if (byte == '\n'.code) {
-            break
-        }
-        if (byte != '\r'.code) {
-            if (builder.length >= MAX_HEADER_LINE_CHARS) throw java.io.IOException("HTTP header line too long")
-            builder.append(byte.toChar())
-        }
-    }
-    return builder.toString()
-}

@@ -37,7 +37,7 @@ actual fun notifyAppUpdateAvailable(offer: PendingUpdateOffer) {
     val title = com.fileapex.i18n.AppI18n.t("update_available_title", offer.remoteVersion)
     val body = offer.notificationDetail()
 
-    // Activity PendingIntents — BroadcastReceiver startActivity is blocked by BAL on Samsung/API 31+.
+    // Activity PendingIntents, BroadcastReceiver startActivity is blocked by BAL on Samsung/API 31+.
     val contentIntent = activityPendingIntent(
         requestCode = REQUEST_OPEN_UPDATE,
         extras = mapOf(EXTRA_SHOW_UPDATE_SHEET to true)

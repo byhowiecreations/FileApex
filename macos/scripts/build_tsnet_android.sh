@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build tsnetbridge.aar — in-process userspace Tailscale for Android (arm64).
+# Build tsnetbridge.aar, in-process userspace Tailscale for Android (arm64).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -8,7 +8,7 @@ GO="${FILEAPEX_GO:-$HOME/Library/FileApex-build/go/bin/go}"
 export GOBIN="${FILEAPEX_GOBIN:-$HOME/Library/FileApex-build/gobin}"
 
 if [[ ! -x "$GO" ]]; then
-  echo "go not found — Android tsnet AAR was not built."
+  echo "go not found, Android tsnet AAR was not built."
   exit 1
 fi
 
@@ -27,6 +27,19 @@ GOTOOLCHAIN=go1.27.1 "$GO" install golang.org/x/mobile/cmd/gomobile@latest
 GOTOOLCHAIN=go1.27.1 "$GO" install golang.org/x/mobile/cmd/gobind@latest
 "$GOBIN/gomobile" init
 LDFLAGS="$("$ROOT/native/tsnet/prepare_tsnet.py" "$GO")"
+# prepare_tsnet.py patched a copy of Tailscale under build/tsnet-patched. gomobile accepts no
+# alternate go.mod, so bind from a scratch copy of this module whose go.mod replaces
+# tailscale.com with that patched copy. Only the root package is bound, so only it is copied.
+SRC_COPY="$ROOT/native/tsnet/build/tsnet-src"
+rm -rf "$SRC_COPY"
+mkdir -p "$SRC_COPY"
+for gofile in "$ROOT/native/tsnet"/*.go; do
+  case "$gofile" in *_test.go) continue ;; esac
+  cp "$gofile" "$SRC_COPY/"
+done
+cp "$ROOT/native/tsnet/go.mod" "$ROOT/native/tsnet/go.sum" "$SRC_COPY/"
+printf '\nreplace tailscale.com => %s\n' "$ROOT/native/tsnet/build/tsnet-patched/tailscale.com" >> "$SRC_COPY/go.mod"
+cd "$SRC_COPY"
 # Play requires 16 KB page alignment for native libraries; gomobile links at 4 KB by default.
 LDFLAGS="$LDFLAGS -extldflags=-Wl,-z,max-page-size=16384"
 # Drop the symbol table and DWARF: about half of the library.

@@ -16,7 +16,7 @@ object CloudPresenceHeartbeat {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var heartbeatJob: Job? = null
 
-    fun start() {
+    @Synchronized fun start() {
         if (heartbeatJob?.isActive == true) return
         heartbeatJob = scope.launch {
             while (isActive) {
@@ -31,7 +31,7 @@ object CloudPresenceHeartbeat {
         }
     }
 
-    fun stop() {
+    @Synchronized fun stop() {
         heartbeatJob?.cancel()
         heartbeatJob = null
     }

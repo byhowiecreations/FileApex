@@ -521,14 +521,14 @@ private suspend fun executeBoundGetStreamingOnLocalIp(
         writeTailscaleDialToken(output, dialToken)
         val request = buildString {
             append("GET ")
-            append(pathWithQuery)
+            append(PeerPinHeader.stripPin(pathWithQuery))
             append(" HTTP/1.1\r\n")
             append("Host: ")
             append(host)
             append(':')
             append(port)
             append("\r\n")
-            append("Connection: close\r\n")
+            append("Connection: close\r\n").appendPinHeader(pathWithQuery)
             append("Accept: application/octet-stream\r\n")
             val resumeOffset = pathWithQuery.substringAfter("offset=", missingDelimiterValue = "")
                 .substringBefore('&')
@@ -670,14 +670,14 @@ private suspend fun executeBoundUploadOnLocalIp(
         writeTailscaleDialToken(output, dialToken)
         val header = buildString {
             append("POST ")
-            append(pathWithQuery)
+            append(PeerPinHeader.stripPin(pathWithQuery))
             append(" HTTP/1.1\r\n")
             append("Host: ")
             append(host)
             append(':')
             append(port)
             append("\r\n")
-            append("Connection: close\r\n")
+            append("Connection: close\r\n").appendPinHeader(pathWithQuery)
             append("Content-Type: ")
             append(contentType)
             append("\r\n")
@@ -729,14 +729,14 @@ private fun executeBoundHttpOnLocalIp(
         val request = buildString {
             append(method)
             append(' ')
-            append(path)
+            append(PeerPinHeader.stripPin(path))
             append(" HTTP/1.1\r\n")
             append("Host: ")
             append(host)
             append(':')
             append(port)
             append("\r\n")
-            append("Connection: close\r\n")
+            append("Connection: close\r\n").appendPinHeader(path)
             append("Accept: application/json\r\n")
             if (contentType != null) {
                 append("Content-Type: ")
@@ -776,16 +776,12 @@ private fun parseHttpResponse(raw: String): PeerBoundHttpResponse {
  */
 private fun readHttpResponse(stream: java.io.InputStream): String {
     val buf = stream.buffered(8192)
-    val headerLines = mutableListOf<String>()
-    while (true) {
-        val line = buf.readAsciiLine()
-        if (line.isEmpty()) break
-        headerLines += line
-    }
+    val headerLines = readHttpHeaderLines(buf)
     val bodyHeaders = HttpTransferBodyReader.parseHeaders(headerLines)
     val bodyBytes = when {
         bodyHeaders.isChunked -> readChunkedBodySync(buf)
         bodyHeaders.contentLength != null && bodyHeaders.contentLength >= 0 -> {
+            if (bodyHeaders.contentLength > MAX_PEER_RESPONSE_BYTES) throw java.io.IOException("Peer response exceeds $MAX_PEER_RESPONSE_BYTES bytes")
             val bodyBytes = ByteArray(bodyHeaders.contentLength.toInt())
             var offset = 0
             while (offset < bodyBytes.size) {
@@ -795,7 +791,7 @@ private fun readHttpResponse(stream: java.io.InputStream): String {
             }
             if (offset == bodyBytes.size) bodyBytes else bodyBytes.copyOf(offset)
         }
-        else -> buf.readBytes()
+        else -> buf.readBoundedBytes()
     }
 
     val headerBlock = headerLines.joinToString("\r\n")
@@ -815,6 +811,9 @@ private fun readChunkedBodySync(input: java.io.BufferedInputStream): ByteArray {
             }
             break
         }
+        if (chunkSize < 0 || out.size().toLong() + chunkSize > MAX_PEER_RESPONSE_BYTES) {
+            throw java.io.IOException("Peer response exceeds $MAX_PEER_RESPONSE_BYTES bytes")
+        }
         val chunk = ByteArray(chunkSize)
         var offset = 0
         while (offset < chunkSize) {
@@ -833,41 +832,6 @@ private fun readHttpStatusLine(input: java.io.BufferedInputStream): Int {
     return Regex("HTTP/\\d\\.\\d (\\d+)").find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
 }
 
-private fun readHttpHeaderLines(input: java.io.BufferedInputStream): List<String> {
-    val lines = ArrayList<String>()
-    while (true) {
-        val line = input.readAsciiLine()
-        if (line.isEmpty()) {
-            return lines
-        }
-        lines += line
-    }
-}
 
-private fun skipHttpHeaders(input: java.io.BufferedInputStream) {
-    readHttpHeaderLines(input)
-}
 
-private fun drainAvailable(input: java.io.BufferedInputStream) {
-    val buffer = ByteArray(1024)
-    while (input.read(buffer) > 0) {
-        // discard error bodies
-    }
-}
 
-private fun java.io.InputStream.readAsciiLine(): String {
-    val builder = StringBuilder()
-    while (true) {
-        val byte = read()
-        if (byte == -1) {
-            break
-        }
-        if (byte == '\n'.code) {
-            break
-        }
-        if (byte != '\r'.code) {
-            builder.append(byte.toChar())
-        }
-    }
-    return builder.toString()
-}

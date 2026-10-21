@@ -1,13 +1,13 @@
 @echo off
 setlocal
-REM Build libFileApexTsnet.dll — in-process userspace Tailscale for Windows.
+REM Build libFileApexTsnet.dll, in-process userspace Tailscale for Windows.
 REM Must compile from native/tsnet. The repo root is not a Go module.
 set "ROOT=%~dp0..\.."
 set "OUT=%ROOT%\windows\build\Tsnet"
 if not exist "%OUT%" mkdir "%OUT%"
 where go >nul 2>&1
 if errorlevel 1 (
-  echo go not found — Windows tsnet DLL was not built.
+  echo go not found, Windows tsnet DLL was not built.
   exit /b 1
 )
 set "GOTOOLCHAIN=go1.27.1"
@@ -23,6 +23,8 @@ if errorlevel 1 (
   exit /b 1
 )
 set /p LDFLAGS=<"%TEMP%\fileapex-tsnet-ldflags.txt"
+REM prepare_tsnet.py patched a copy of Tailscale under build\tsnet-patched; build against it.
+set "GOFLAGS=-modfile=%ROOT%\native\tsnet\build\tsnet-patched\tsnet.mod"
 if not defined LDFLAGS (
   echo prepare_tsnet.py printed no linker flags.
   popd

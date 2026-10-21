@@ -166,7 +166,7 @@ actual object FileApexMdnsBrowser {
                 }
             }
             instance.addServiceListener(FileApexMdns.SERVICE_TYPE, listener)
-            // Non-blocking browse — the old 3s requestServiceInfo held ensureRunning on cold start.
+            // Non-blocking browse, the old 3s requestServiceInfo held ensureRunning on cold start.
             instances += instance
             val bind = address?.hostAddress ?: "default"
             println("FileApexMdnsBrowser: listening for ${FileApexMdns.SERVICE_TYPE} on $bind")

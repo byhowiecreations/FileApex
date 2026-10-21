@@ -1,37 +1,7 @@
 package com.fileapex.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import com.fileapex.data.settings.AppTheme
-import com.fileapex.data.settings.LocalAppTheme
-import com.fileapex.domain.clipboard.ClipboardSharePolicy
-import com.fileapex.data.settings.traits
-import androidx.compose.ui.graphics.Color
-
-import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
-
-
-import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
-import kotlin.math.roundToInt
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Switch
+import androidx.compose.material3.ListItem
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -39,64 +9,47 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.ui.graphics.vector.ImageVector
-import com.fileapex.platform.Diagnostics
-import com.fileapex.platform.supportsDevicePopups
-import com.fileapex.platform.OnboardingPermissionStep
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.ui.draw.rotate
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.ui.semantics.Role
-import com.fileapex.cloud.currentPlatformLabel
-import com.fileapex.domain.clipboard.ClipboardShareMode
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-
-import androidx.compose.material3.AlertDialog
-import com.fileapex.ui.dialogs.ClipboardTargetConfigDialog
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
-import com.fileapex.di.FileApexServices
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -106,101 +59,75 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.fileapex.data.settings.PinIdleTimeout
+import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.UpdateCheckFrequency
-import com.fileapex.data.settings.UpdateCheckUnit
+import com.fileapex.data.settings.traits
+import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
+import com.fileapex.i18n.stringRes
 import com.fileapex.platform.BackgroundPersistenceUiState
-import com.fileapex.platform.ClipboardDiagnosticsPolicy
-import com.fileapex.platform.ClipboardRuntimeDiagnostics
-import com.fileapex.platform.ClipboardShizukuPolicy
+import com.fileapex.platform.Diagnostics
 import com.fileapex.platform.FileApexBackHandler
+import com.fileapex.platform.OnboardingPermissionStep
+import com.fileapex.platform.supportsDeviceNameSettingsPage
 import com.fileapex.platform.supportsWindowsFluentDesign
 import com.fileapex.platform.usesDesktopFileSelection
-import com.fileapex.util.TimeUtils
-import com.fileapex.i18n.AppI18n
-import com.fileapex.i18n.AppLocale
-import com.fileapex.i18n.persistAppLanguage
-import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.SettingsUiState
 import com.fileapex.presentation.SettingsViewModel
-import com.fileapex.ui.adaptive.CompactHomeTitleBand
-import com.fileapex.ui.adaptive.CompactHomeTitleStyle
-import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
-import com.fileapex.ui.theme.fileApexTopAppBarColors
 import com.fileapex.tailscale.TailscaleNodeRuntime
-import com.fileapex.platform.supportsDeviceNameSettingsPage
-import com.fileapex.update.rememberRequestInstallUnknownAppsPermission
-import kotlinx.coroutines.delay
-
-/**
- * Which settings page is open. The activity's view model holds it, not the composable, because the screen is hosted
- * in two places (compact route and wide layout) and rotating or folding moves it from one to the other.
- */
-internal class SettingsNavigationState : androidx.lifecycle.ViewModel() {
-    val page = mutableStateOf(SettingsPage.Root)
-}
-
-internal enum class SettingsPage {
-    Root,
-    OnboardingPermissions,
-    CheckForUpdates,
-    PinRequired,
-    BackgroundPersistence,
-    AutoLaunchOnReboot,
-    Notifications,
-    BroadcastNotifications,
-    FileTransferNotifications,
-    Themes,
-    BulletinBoard,
-    BulletinBoardStyles,
-    Clipboard,
-    ClipboardAccessibility,
-    ClipboardShareTargets,
-    ClipboardDiagnostics,
-    DeviceDetails,
-    GoogleAccount,
-    RemoteFileDeletion,
-    BackupSync,
-    DesktopLayout,
-    WindowsDesign,
-    Language,
-    DeviceName,
-    Tailscale,
-    Iroh,
-    LeaveClusterWipe
-}
-
-
-
-/** Settings pages other screens can open directly. */
-enum class SettingsDeepLink { Clipboard, Tailscale, Notifications, BroadcastNotifications }
-
-private fun settingsPageFor(link: SettingsDeepLink): SettingsPage = when (link) {
-    SettingsDeepLink.Clipboard -> SettingsPage.Clipboard
-    SettingsDeepLink.Tailscale -> SettingsPage.Tailscale
-    SettingsDeepLink.Notifications -> SettingsPage.Notifications
-    SettingsDeepLink.BroadcastNotifications -> SettingsPage.BroadcastNotifications
-}
-
-enum class SettingsScreenLayoutMode {
-    /** Phone / compact: teal top bar scaffold. */
-    FullScreen,
-    /** Wide navigation rail: white pane header matching Devices list pane. */
-    ListPane,
-    /** Compact primary shell: pane title band on root, section header on sub-pages. */
-    CompactShell
-}
-
-private val LocalSettingsHomeAction = compositionLocalOf<(() -> Unit)?> { null }
-private val LocalSettingsExitAction = compositionLocalOf<(() -> Unit)?> { null }
+import com.fileapex.ui.dialogs.ClipboardTargetConfigDialog
+import com.fileapex.ui.settings.AboutSettingsPage
+import com.fileapex.ui.settings.SettingsAdvancedAndAboutRows
+import com.fileapex.ui.settings.rememberAdvancedSettingsInUse
+import com.fileapex.ui.settings.AutoLaunchOnRebootSettingsPage
+import com.fileapex.ui.settings.BackgroundPersistenceSettingsPage
+import com.fileapex.ui.settings.BackupSyncSettingsPage
+import com.fileapex.ui.settings.BroadcastNotificationsSettingsPage
+import com.fileapex.ui.settings.BulletinBoardHubPage
+import com.fileapex.ui.settings.BulletinBoardStylesSettingsPage
+import com.fileapex.ui.settings.CheckForUpdatesSettingsPage
+import com.fileapex.ui.settings.ClipboardAccessibilityPage
+import com.fileapex.ui.settings.ClipboardDiagnosticsSettingsPage
+import com.fileapex.ui.settings.ClipboardSettingsPage
+import com.fileapex.ui.settings.ClipboardShareTargetsPage
+import com.fileapex.ui.settings.DesktopLayoutSettingsPage
+import com.fileapex.ui.settings.DeviceDetailsSettingsPage
+import com.fileapex.ui.settings.DeviceNameSettingsPage
+import com.fileapex.ui.settings.DisclosureScreen
+import com.fileapex.ui.settings.FileTransferNotificationsSettingsPage
+import com.fileapex.ui.settings.GoogleAccountSettingsPage
+import com.fileapex.ui.settings.IrohSettingsPage
+import com.fileapex.ui.settings.LanguageSettingsPage
+import com.fileapex.ui.settings.LocalSettingsExitAction
+import com.fileapex.ui.settings.LocalSettingsHomeAction
+import com.fileapex.ui.settings.NotificationsSettingsPage
+import com.fileapex.ui.settings.OnboardingPermissionsSettingsPage
+import com.fileapex.ui.settings.PinRequiredSettingsPage
+import com.fileapex.ui.settings.RemoteFileDeletionSettingsPage
+import com.fileapex.ui.settings.SettingsNavItem
+import com.fileapex.ui.settings.SettingsPageShell
+import com.fileapex.ui.settings.TailscaleSettingsPage
+import com.fileapex.ui.settings.ThemesSettingsPage
+import com.fileapex.ui.settings.WindowsDesignSettingsPage
+import com.fileapex.ui.settings.backupSummary
+import com.fileapex.ui.settings.clipboardShareTargetsSubtitle
+import com.fileapex.ui.settings.googleAccountSubtitle
+import com.fileapex.ui.settings.irohRowSubtitle
+import com.fileapex.ui.settings.localizedBulletinBoardStyleName
+import com.fileapex.ui.settings.localizedPinIdle
+import com.fileapex.ui.settings.localizedThemeName
+import com.fileapex.ui.settings.tailscaleRowSubtitle
+import com.fileapex.util.TimeUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -250,17 +177,12 @@ fun SettingsScreen(
     val isFreestyleCompact = currentTheme.traits.canvasHome && layoutMode == SettingsScreenLayoutMode.CompactShell
     val allowRootBack = showRootBackNavigation || isFreestyleCompact
 
+    val goUp: () -> Unit = { page = page.parent ?: SettingsPage.Root }
     val leavePage: () -> Unit = {
-        when (page) {
-            SettingsPage.Root -> if (allowRootBack) onBack()
-            SettingsPage.FileTransferNotifications,
-            SettingsPage.BroadcastNotifications -> page = SettingsPage.Notifications
-            SettingsPage.BulletinBoardStyles,
-            SettingsPage.RemoteFileDeletion -> page = SettingsPage.BulletinBoard
-            SettingsPage.ClipboardDiagnostics,
-            SettingsPage.ClipboardShareTargets,
-            SettingsPage.ClipboardAccessibility -> page = SettingsPage.Clipboard
-            else -> page = SettingsPage.Root
+        if (page == SettingsPage.Root) {
+            if (allowRootBack) onBack()
+        } else {
+            goUp()
         }
     }
 
@@ -296,7 +218,6 @@ fun SettingsScreen(
             onOpenBulletinBoard = { page = SettingsPage.BulletinBoard },
             onOpenBackupSync = { page = SettingsPage.BackupSync },
             onOpenClipboard = { page = SettingsPage.Clipboard },
-
             onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
             onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
             onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
@@ -304,7 +225,9 @@ fun SettingsScreen(
             onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
             onOpenTailscale = { page = SettingsPage.Tailscale },
             onOpenIroh = { page = SettingsPage.Iroh },
+            onOpenAbout = { page = SettingsPage.About },
             onToggleGeneralGroup = viewModel::toggleGeneralGroup,
+            onShowAdvancedChange = viewModel::setShowAdvancedSettings,
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
             onToggleAppearanceBehaviorGroup = viewModel::toggleAppearanceBehaviorGroup,
             onToggleSecurityAccountGroup = viewModel::toggleSecurityAccountGroup,
@@ -321,12 +244,12 @@ fun SettingsScreen(
             deniedOnboardingStepIds = deniedOnboardingStepIds,
             onGrantOnboardingStep = onGrantOnboardingStep,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root }
+            onBack = goUp
         )
         SettingsPage.Notifications -> NotificationsSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onToggleFileTransferNotifications = viewModel::setFileTransferNotifications,
             onToggleNotesNotifications = viewModel::setNotesNotifications,
             onToggleDriveRelayNotifications = viewModel::setDriveRelayNotifications,
@@ -335,7 +258,7 @@ fun SettingsScreen(
         )
         SettingsPage.BroadcastNotifications -> BroadcastNotificationsSettingsPage(
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Notifications },
+            onBack = goUp,
             onOpenAppDetailsSettings = onOpenAppDetailsSettings
         )
         SettingsPage.CheckForUpdates -> {
@@ -350,7 +273,7 @@ fun SettingsScreen(
                         whatText = stringRes("install_packages_disclosure_what"),
                         whyText = stringRes("install_packages_disclosure_why"),
                         layoutMode = layoutMode,
-                        onBack = { page = SettingsPage.Root },
+                        onBack = goUp,
                         onAgree = { viewModel.setInstallPackagesDisclosureAcknowledged(true) }
                     )
                 } else {
@@ -358,7 +281,7 @@ fun SettingsScreen(
                         state = state,
                         updateStatus = updateStatus,
                         layoutMode = layoutMode,
-                        onBack = { page = SettingsPage.Root },
+                        onBack = goUp,
                         onToggle = viewModel::setCheckForUpdates,
                         onUnitSelected = viewModel::setCheckForUpdatesUnit,
                         onAmountTextChange = viewModel::setCheckForUpdatesAmountText,
@@ -370,7 +293,7 @@ fun SettingsScreen(
         SettingsPage.PinRequired -> PinRequiredSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onToggle = viewModel::setPinRequired,
             onPinChange = viewModel::setDevicePin,
             onIdleTimeoutSelected = viewModel::setPinIdleTimeout
@@ -378,7 +301,7 @@ fun SettingsScreen(
         SettingsPage.BackgroundPersistence -> BackgroundPersistenceSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
             backgroundPersistence = backgroundPersistence,
             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
@@ -392,20 +315,20 @@ fun SettingsScreen(
         SettingsPage.AutoLaunchOnReboot -> AutoLaunchOnRebootSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onToggle = viewModel::setAutoLaunchOnReboot
         )
         SettingsPage.FileTransferNotifications -> FileTransferNotificationsSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Notifications },
+            onBack = goUp,
             onToggle = viewModel::setFileTransferNotifications
         )
 
         SettingsPage.Themes -> ThemesSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onSelectTheme = viewModel::setAppTheme,
             onSelectThemeIconStyle = { viewModel.setThemeIconStyle(state.appTheme, it) },
             onSelectKineticStyle = viewModel::setKineticStyle,
@@ -417,20 +340,20 @@ fun SettingsScreen(
         SettingsPage.BulletinBoard -> BulletinBoardHubPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onOpenStyles = { page = SettingsPage.BulletinBoardStyles },
             onOpenRemoteDeletion = { page = SettingsPage.RemoteFileDeletion }
         )
 
         SettingsPage.BackupSync -> BackupSyncSettingsPage(
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root }
+            onBack = goUp
         )
 
         SettingsPage.BulletinBoardStyles -> BulletinBoardStylesSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.BulletinBoard },
+            onBack = goUp,
             onSelectStyle = viewModel::setBulletinBoardStyle
         )
 
@@ -442,14 +365,14 @@ fun SettingsScreen(
                     whatText = stringRes("clipboard_disclosure_what"),
                     whyText = stringRes("clipboard_disclosure_why"),
                     layoutMode = layoutMode,
-                    onBack = { page = SettingsPage.Root },
+                    onBack = goUp,
                     onAgree = { viewModel.setClipboardDisclosureAcknowledged(true) }
                 )
             } else {
                 ClipboardSettingsPage(
                     state = state,
                     layoutMode = layoutMode,
-                    onBack = { page = SettingsPage.Root },
+                    onBack = goUp,
                     onToggle = viewModel::setClipboardSharing,
                     onToggleViaCellular = viewModel::setClipboardViaCellular,
                     onToggleSendNotification = viewModel::setClipboardSendNotification,
@@ -470,14 +393,14 @@ fun SettingsScreen(
                     whatText = stringRes("accessibility_disclosure_what"),
                     whyText = stringRes("accessibility_disclosure_why"),
                     layoutMode = layoutMode,
-                    onBack = { page = SettingsPage.Clipboard },
+                    onBack = goUp,
                     onAgree = { viewModel.setAccessibilityDisclosureAcknowledged(true) }
                 )
             } else {
                 ClipboardAccessibilityPage(
                     state = state,
                     layoutMode = layoutMode,
-                    onBack = { page = SettingsPage.Clipboard },
+                    onBack = goUp,
                     onToggleAccessibility = viewModel::setClipboardAccessibility,
                     onToggleShizuku = viewModel::setClipboardShizuku,
                     onDismissRestrictedHelp = viewModel::dismissAccessibilityRestrictedHelp,
@@ -489,40 +412,23 @@ fun SettingsScreen(
         SettingsPage.ClipboardShareTargets -> ClipboardShareTargetsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Clipboard },
+            onBack = goUp,
             onShareModeChange = viewModel::setClipboardShareMode,
             onTogglePeer = viewModel::setClipboardTargetDevice
         )
-        SettingsPage.ClipboardDiagnostics -> SettingsPageShell(
-            title = stringRes("clipboard_diagnostics"),
+        SettingsPage.ClipboardDiagnostics -> ClipboardDiagnosticsSettingsPage(
+            state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Clipboard }
-        ) { contentModifier ->
-            Column(
-                modifier = contentModifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                ClipboardDiagnosticsContent(
-                    sharingEnabled = state.clipboardSharingEnabled,
-                    recipientsChosen = ClipboardDiagnosticsPolicy.recipientsChosen(
-                        shareModeAll = state.clipboardShareMode == ClipboardShareMode.ALL,
-                        shareModeSpecific = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
-                        specificTargetCount = state.clipboardTargetDeviceIds.size
-                    ),
-                    accessibilityEnabled = state.clipboardAccessibilityEnabled,
-                    shizukuOptedIn = state.clipboardShizukuEnabled,
-                    onOpenAccessibility = viewModel::openAccessibilitySystemSettings,
-                    onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-                    onOpenAppInfo = viewModel::openAccessibilityAppInfo
-                )
-            }
-        }
+            onBack = goUp,
+            onOpenAccessibility = viewModel::openAccessibilitySystemSettings,
+            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+            onOpenAppInfo = viewModel::openAccessibilityAppInfo
+        )
         SettingsPage.DeviceDetails -> DeviceDetailsSettingsPage(
             preferences = state.deviceDetailsDisplayPreferences,
             allowOverCellular = state.deviceDetailsAllowOverCellular,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
             onAllowOverCellularChange = viewModel::setDeviceDetailsAllowOverCellular,
             onFieldVisibleChange = viewModel::setDeviceDetailsFieldVisible,
@@ -533,7 +439,7 @@ fun SettingsScreen(
             state = state,
             linkStatus = googleLinkStatus,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onDisable = viewModel::disableGoogleAccountLink,
             onIdToken = viewModel::onGoogleIdToken,
             onCellularChange = viewModel::setCellularEnabled,
@@ -547,13 +453,13 @@ fun SettingsScreen(
         SettingsPage.RemoteFileDeletion -> RemoteFileDeletionSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.BulletinBoard },
+            onBack = goUp,
             onAllowRemoteFileDeletionChange = viewModel::setAllowRemoteFileDeletion
         )
         SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onExpanded = { expanded ->
                 viewModel.setDesktopLayoutMode(
                     if (expanded) DesktopLayoutMode.Expanded else DesktopLayoutMode.Compact
@@ -563,7 +469,7 @@ fun SettingsScreen(
         SettingsPage.WindowsDesign -> WindowsDesignSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onFluent = { enabled ->
                 viewModel.setDesktopUiStyle(
                     if (enabled) DesktopUiStyle.WindowsFluent else DesktopUiStyle.Standard
@@ -572,12 +478,12 @@ fun SettingsScreen(
         )
         SettingsPage.Language -> LanguageSettingsPage(
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root }
+            onBack = goUp
         )
         SettingsPage.DeviceName -> DeviceNameSettingsPage(
             state = state,
             layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root },
+            onBack = goUp,
             onDraftChange = viewModel::setDeviceNameDraft,
             onSave = viewModel::saveDeviceName
         )
@@ -585,16 +491,11 @@ fun SettingsScreen(
             layoutMode = layoutMode,
             setupExpanded = state.tailscaleSetupExpanded,
             onSetupExpandedChange = viewModel::setTailscaleSetupExpanded,
-            onBack = { page = SettingsPage.Root }
+            onBack = goUp
         )
-        SettingsPage.Iroh -> IrohSettingsPage(
-            layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root }
-        )
-        SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(
-            layoutMode = layoutMode,
-            onBack = { page = SettingsPage.Root }
-        )
+        SettingsPage.Iroh -> IrohSettingsPage(layoutMode, goUp)
+        SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(layoutMode, goUp)
+        SettingsPage.About -> AboutSettingsPage(layoutMode, goUp)
     }
     }
 
@@ -630,7 +531,6 @@ private fun SettingsRootPage(
     onOpenBulletinBoard: () -> Unit,
     onOpenBackupSync: () -> Unit = {},
     onOpenClipboard: () -> Unit,
-
     onOpenDeviceDetails: () -> Unit,
     onOpenGoogleAccount: () -> Unit,
     onOpenDesktopLayout: () -> Unit,
@@ -638,7 +538,9 @@ private fun SettingsRootPage(
     onOpenLeaveClusterWipe: () -> Unit = {},
     onOpenTailscale: () -> Unit = {},
     onOpenIroh: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     onToggleGeneralGroup: () -> Unit,
+    onShowAdvancedChange: (Boolean) -> Unit,
     onToggleSystemPerformanceGroup: () -> Unit,
     onToggleAppearanceBehaviorGroup: () -> Unit,
     onToggleSecurityAccountGroup: () -> Unit,
@@ -726,7 +628,9 @@ private fun SettingsRootPage(
                     deviceNamePage = supportsDeviceNameSettingsPage(),
                     windowsFluent = supportsWindowsFluentDesign(),
                     backupSync = com.fileapex.platform.backupSupported(),
-                    autoLaunchOnDesktop = com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()
+                    autoLaunchOnDesktop = com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart(),
+                    showAdvanced = state.showAdvancedSettings,
+                    inUseAdvancedIds = rememberAdvancedSettingsInUse(state)
                 )
                 SettingsMenuSection.entries.forEach { section ->
                     val rows = menuEntries.filter { it.section == section }
@@ -882,6 +786,7 @@ private fun SettingsRootPage(
                         }
                     }
                 }
+                SettingsAdvancedAndAboutRows(state.showAdvancedSettings, onShowAdvancedChange, onOpenAbout)
             }
             val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
             val isAndroidGitHub = !usesDesktopFileSelection() && !com.fileapex.di.FileApexServices.managedByStore
@@ -979,79 +884,6 @@ private fun SettingsRootPage(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun OnboardingPermissionsSettingsPage(
-    onboardingSteps: List<OnboardingPermissionStep>,
-    deniedOnboardingStepIds: Set<String>,
-    onGrantOnboardingStep: (String) -> Unit,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("onboarding_permissions_title"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        val remainingSteps = onboardingSteps.filter { !it.granted }
-        if (remainingSteps.isEmpty()) {
-            Column(
-                modifier = contentModifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = stringRes("all_permissions_granted"),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringRes("all_permissions_granted_desc"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = onBack) {
-                    Text(stringRes("back_to_settings"))
-                }
-            }
-        } else {
-            Column(
-                modifier = contentModifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringRes("onboarding_permissions_subpage_hint"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-                )
-                remainingSteps.forEach { step ->
-                    OnboardingPermissionCard(
-                        step = step,
-                        denied = step.id in deniedOnboardingStepIds,
-                        onGrant = { onGrantOnboardingStep(step.id) }
-                    )
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun FeedbackOptionCard(
     icon: ImageVector,
@@ -1117,796 +949,6 @@ private fun backgroundPersistenceSubtitle(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BackgroundPersistenceSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onEnableServiceWatchdog: (Boolean) -> Unit,
-    backgroundPersistence: BackgroundPersistenceUiState,
-    onRequestBatteryUnrestricted: () -> Unit,
-    onOpenBackgroundPersistenceSettings: () -> Unit,
-    onOpenUnusedAppRestrictionsSettings: () -> Unit,
-    onOpenAppBatteryUsageSettings: () -> Unit,
-    exactAlarmWarningActive: Boolean,
-    onOpenExactAlarmSettings: () -> Unit,
-    onOpenAppDetailsSettings: () -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("background_persistence"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("service_watchdog"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("watchdog_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.enableServiceWatchdog,
-                        onCheckedChange = onEnableServiceWatchdog
-                    )
-                }
-            )
-            if (backgroundPersistence.backgroundRestricted) {
-                ListItem(
-                    headlineContent = { Text(stringRes("background_restricted"), softWrap = true) },
-                    supportingContent = {
-                        Text(
-                            backgroundPersistence.oemGuidance?.let { guidance ->
-                                stringRes(
-                                    "background_restricted_desc_steps",
-                                    stringRes(guidance.batteryStepsKey)
-                                )
-                            } ?: stringRes("background_restricted_desc"),
-                            softWrap = true
-                        )
-                    },
-                    modifier = Modifier.clickable { onOpenAppBatteryUsageSettings() }
-                )
-            }
-            if (backgroundPersistence.batteryOptimizationRestricted) {
-                ListItem(
-                    headlineContent = { Text(stringRes("battery_optimization_active"), softWrap = true) },
-                    supportingContent = {
-                        Text(stringRes("battery_optimization_desc"), softWrap = true)
-                    },
-                    modifier = Modifier.clickable { onRequestBatteryUnrestricted() }
-                )
-            }
-            if (backgroundPersistence.unusedAppRestrictionsActive) {
-                ListItem(
-                    headlineContent = { Text(stringRes("pause_unused"), softWrap = true) },
-                    supportingContent = {
-                        Text(stringRes("pause_unused_desc"), softWrap = true)
-                    },
-                    modifier = Modifier.clickable { onOpenUnusedAppRestrictionsSettings() }
-                )
-            }
-            backgroundPersistence.oemGuidance?.let { guidance ->
-                if (backgroundPersistence.showOemSetup) {
-                    ListItem(
-                        headlineContent = { Text(stringRes("vendor_setup", guidance.vendorLabel), softWrap = true) },
-                        supportingContent = {
-                            Text(
-                                buildString {
-                                    append(stringRes(guidance.batteryStepsKey))
-                                    guidance.autoStartHintKey?.let { hintKey ->
-                                        append('\n')
-                                        append(stringRes(hintKey))
-                                    }
-                                },
-                                softWrap = true
-                            )
-                        },
-                        modifier = Modifier.clickable { onOpenBackgroundPersistenceSettings() }
-                    )
-                }
-            }
-            if (!com.fileapex.di.FileApexServices.isPlayStoreBuild && exactAlarmWarningActive) {
-                ListItem(
-                    headlineContent = { Text(stringRes("exact_alarms_disabled"), softWrap = true) },
-                    supportingContent = {
-                        Text(stringRes("exact_alarms_desc"), softWrap = true)
-                    },
-                    modifier = Modifier.clickable { onOpenExactAlarmSettings() }
-                )
-            }
-            ListItem(
-                headlineContent = { Text(stringRes("system_app_settings"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("system_app_settings_desc"), softWrap = true)
-                },
-                modifier = Modifier.clickable { onOpenAppDetailsSettings() }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AutoLaunchOnRebootSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onToggle: (Boolean) -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("auto_launch_on_reboot"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = {
-                    Text(
-                        stringRes(if (com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()) "desktop_autostart_title" else "start_share_after_reboot"),
-                        softWrap = true
-                    )
-                },
-                supportingContent = {
-                    Text(
-                        stringRes(if (com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()) "desktop_autostart_desc" else "start_share_after_reboot_desc"),
-                        softWrap = true
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.autoLaunchOnReboot,
-                        onCheckedChange = onToggle
-                    )
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun NotificationsSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onToggleFileTransferNotifications: (Boolean) -> Unit,
-    onToggleNotesNotifications: (Boolean) -> Unit,
-    onToggleDriveRelayNotifications: (Boolean) -> Unit,
-    onToggleLiveTransferCapsule: (Boolean) -> Unit,
-    onOpenBroadcastNotifications: () -> Unit
-) {
-    val driveRelayReady = state.googleDriveRelayEnabled
-    SettingsPageShell(
-        title = stringRes("notifications"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            FileApexPaneSectionHeader(title = stringRes("notifications"))
-
-            ListItem(
-                headlineContent = { Text(stringRes("bulletin_board"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("bulletin_board_notif_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.notesNotificationsEnabled,
-                        onCheckedChange = onToggleNotesNotifications
-                    )
-                }
-            )
-
-            if (!com.fileapex.di.FileApexServices.isFdroidBuild) {
-                HorizontalDivider()
-
-                ListItem(
-                    headlineContent = { Text(stringRes("drive_relay"), softWrap = true) },
-                    supportingContent = {
-                        Text(
-                            if (driveRelayReady) {
-                                stringRes("drive_relay_notif_desc")
-                            } else {
-                                stringRes("drive_relay_notif_off")
-                            },
-                            softWrap = true
-                        )
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = driveRelayReady && state.driveRelayNotificationsEnabled,
-                            onCheckedChange = onToggleDriveRelayNotifications,
-                            enabled = driveRelayReady
-                        )
-                    }
-                )
-            }
-
-            HorizontalDivider()
-
-            ListItem(
-                headlineContent = { Text(stringRes("file_transfer"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("file_transfer_notif_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.fileTransferNotificationsEnabled,
-                        onCheckedChange = onToggleFileTransferNotifications
-                    )
-                }
-            )
-
-            if (!usesDesktopFileSelection() && state.fileTransferNotificationsEnabled) {
-                ListItem(
-                    modifier = Modifier.padding(start = 16.dp),
-                    headlineContent = { Text(stringRes("live_activity"), softWrap = true) },
-                    supportingContent = {
-                        Text(stringRes("live_activity_desc"), softWrap = true)
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = state.fileTransferNotificationsEnabled &&
-                                state.liveTransferCapsuleEnabled,
-                            onCheckedChange = onToggleLiveTransferCapsule,
-                            enabled = state.fileTransferNotificationsEnabled
-                        )
-                    }
-                )
-            }
-
-            if (supportsDevicePopups() && com.fileapex.domain.notifications.NotificationSyncFeature.ENABLED) {
-                val popups by com.fileapex.di.FileApexServices.settings.deviceNotificationPopups.collectAsState()
-                HorizontalDivider()
-                ListItem(
-                    headlineContent = { Text(stringRes("device_popups"), softWrap = true) },
-                    supportingContent = { Text(stringRes("device_popups_desc"), softWrap = true) },
-                    trailingContent = {
-                        Switch(
-                            checked = popups,
-                            onCheckedChange = com.fileapex.di.FileApexServices.settings::setDeviceNotificationPopups
-                        )
-                    }
-                )
-            }
-
-            if (!usesDesktopFileSelection() && com.fileapex.domain.notifications.NotificationSyncFeature.ENABLED) {
-                HorizontalDivider()
-                SettingsNavItem(
-                    title = stringRes("broadcast_notifications"),
-                    subtitle = stringRes("broadcast_notifications_desc"),
-                    onClick = onOpenBroadcastNotifications
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FileTransferNotificationsSettingsPage(
-
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onToggle: (Boolean) -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("file_transfer_notifications"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("show_receive_notifications"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("show_receive_notif_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.fileTransferNotificationsEnabled,
-                        onCheckedChange = onToggle
-                    )
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun DisclosureScreen(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    whatText: String,
-    whyText: String,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onAgree: () -> Unit
-) {
-    SettingsPageShell(
-        title = title,
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Box(
-            modifier = contentModifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            contentAlignment = Alignment.TopCenter
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(14.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = stringRes("what_label"),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = whatText,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = stringRes("why_label"),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = whyText,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = onAgree,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringRes("agree_and_continue"))
-                    }
-                    OutlinedButton(
-                        onClick = onBack,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringRes("cancel"))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ClipboardAccessibilityPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onToggleAccessibility: (Boolean) -> Unit,
-    onToggleShizuku: (Boolean) -> Unit,
-    onDismissRestrictedHelp: () -> Unit,
-    onOpenAppInfo: () -> Unit,
-    onOpenAccessibilitySettings: () -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("accessibility"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("accessibility"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("accessibility_subtitle"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.clipboardAccessibilityEnabled,
-                        onCheckedChange = onToggleAccessibility
-                    )
-                }
-            )
-            ClipboardAccessibilityBanner(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
-                ClipboardShizukuToggle(
-                    enabled = state.clipboardShizukuEnabled,
-                    onToggle = onToggleShizuku
-                )
-            }
-        }
-        if (state.showAccessibilityRestrictedHelp) {
-            AlertDialog(
-                onDismissRequest = onDismissRestrictedHelp,
-                title = { Text(stringRes("allow_restricted_settings")) },
-                text = {
-                    Text(stringRes("restricted_settings_body"))
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            onOpenAppInfo()
-                            onDismissRestrictedHelp()
-                        }
-                    ) { Text(stringRes("open_app_info")) }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            onOpenAccessibilitySettings()
-                            onDismissRestrictedHelp()
-                        }
-                    ) { Text(stringRes("open_accessibility")) }
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ClipboardSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onToggle: (Boolean) -> Unit,
-    onToggleViaCellular: (Boolean) -> Unit,
-    onToggleSendNotification: (Boolean) -> Unit,
-    onToggleAutoSend: (Boolean) -> Unit,
-    onOpenAccessibility: () -> Unit,
-    onOpenShareTargets: () -> Unit,
-    onOpenDiagnostics: () -> Unit
-) {
-    val isAndroid = currentPlatformLabel() == "Android"
-    // Simple is built for one paired device, which is assumed as the target; other themes keep the chooser.
-    val pairedDevices by FileApexServices.deviceRepository.observeDevices().collectAsState(emptyList())
-    val assumedSingleTarget = LocalAppTheme.current == AppTheme.SIMPLE && remember(pairedDevices) {
-        val selfId = com.fileapex.data.identity.loadLocalIdentity().deviceId
-        val peers = pairedDevices
-            .filter { !it.isRemoved && it.deviceId != com.fileapex.data.identity.LocalIdentity.LOCAL_DEVICE_ID && it.deviceId != selfId }
-            .distinctBy { it.deviceId }
-            .map {
-                ClipboardSharePolicy.PeerRef(
-                    deviceId = it.deviceId,
-                    isDesktop = com.fileapex.domain.peer.PeerPlatform.isDesktop(it.os, it.platform)
-                )
-            }
-        ClipboardSharePolicy.resolveAutoDefaultTargetId(isAndroid, peers) != null
-    }
-    SettingsPageShell(
-        title = stringRes("clipboard"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("clipboard_sharing"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("clipboard_sharing_subtitle"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.clipboardSharingEnabled,
-                        onCheckedChange = onToggle
-                    )
-                }
-            )
-            if (state.clipboardSharingEnabled) {
-                if (isAndroid) {
-                    ListItem(
-                        modifier = Modifier.padding(start = 16.dp),
-                        headlineContent = { Text(stringRes("send_clipboard"), softWrap = true) },
-                        supportingContent = {
-                            Text(stringRes("send_clipboard_notification_subtitle"), softWrap = true)
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = state.clipboardSendNotificationEnabled,
-                                onCheckedChange = onToggleSendNotification
-                            )
-                        }
-                    )
-                    if (!com.fileapex.di.FileApexServices.isPlayStoreBuild) {
-                        SettingsNavItem(
-                            title = stringRes("accessibility"),
-                            subtitle = if (state.clipboardAccessibilityEnabled) {
-                                stringRes("enabled")
-                            } else {
-                                stringRes("disabled")
-                            },
-                            onClick = onOpenAccessibility
-                        )
-                    }
-                    ListItem(
-                        headlineContent = { Text(stringRes("via_cellular"), softWrap = true) },
-                        supportingContent = {
-                            Text(stringRes("via_cellular_subtitle"), softWrap = true)
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = state.clipboardViaCellularEnabled,
-                                onCheckedChange = onToggleViaCellular
-                            )
-                        }
-                    )
-                } else {
-                    ListItem(
-                        headlineContent = { Text(stringRes("automatically_send"), softWrap = true) },
-                        supportingContent = {
-                            Text(stringRes("automatically_send_subtitle"), softWrap = true)
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = state.clipboardAutoSendEnabled,
-                                onCheckedChange = onToggleAutoSend
-                            )
-                        }
-                    )
-                }
-                if (!assumedSingleTarget) {
-                    SettingsNavItem(
-                        title = stringRes("share_clipboard_with"),
-                        subtitle = clipboardShareTargetsSubtitle(state),
-                        onClick = onOpenShareTargets
-                    )
-                }
-                if (isAndroid) {
-                    ClipboardDiagnosticsEntry(
-                        accessibilityEnabled = state.clipboardAccessibilityEnabled,
-                        shizukuOptedIn = state.clipboardShizukuEnabled,
-                        recipientsChosen = ClipboardDiagnosticsPolicy.recipientsChosen(
-                            shareModeAll = state.clipboardShareMode == ClipboardShareMode.ALL,
-                            shareModeSpecific = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
-                            specificTargetCount = state.clipboardTargetDeviceIds.size
-                        ),
-                        onOpenDiagnostics = onOpenDiagnostics
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ClipboardShareTargetsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onShareModeChange: (ClipboardShareMode) -> Unit,
-    onTogglePeer: (String, Boolean) -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("share_clipboard_with"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            if (state.clipboardShareMode == ClipboardShareMode.UNSET) {
-                Text(
-                    text = stringRes("choose_all_or_specific"),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Column(modifier = Modifier.selectableGroup()) {
-                ClipboardShareModeRow(
-                    title = stringRes("all_devices"),
-                    subtitle = stringRes("broadcast_clipboard_wifi"),
-                    selected = state.clipboardShareMode == ClipboardShareMode.ALL,
-                    onClick = { onShareModeChange(ClipboardShareMode.ALL) }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                )
-                ClipboardShareModeRow(
-                    title = stringRes("specific_devices"),
-                    subtitle = stringRes("only_checked_devices"),
-                    selected = state.clipboardShareMode == ClipboardShareMode.SPECIFIC,
-                    onClick = { onShareModeChange(ClipboardShareMode.SPECIFIC) }
-                )
-            }
-            if (state.clipboardShareMode == ClipboardShareMode.SPECIFIC) {
-                if (state.clipboardPeers.isEmpty()) {
-                    Text(
-                        text = stringRes("no_paired_devices"),
-                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    state.clipboardPeers.forEach { peer ->
-                        val checked = peer.deviceId in state.clipboardTargetDeviceIds
-                        ListItem(
-                            modifier = Modifier.padding(start = 16.dp),
-                            headlineContent = { Text(peer.deviceName.ifBlank { stringRes("paired_device") }) },
-                            supportingContent = {
-                                val platform = peer.platform.ifBlank { peer.os }.ifBlank { null }
-                                if (platform != null) {
-                                    Text(platform)
-                                }
-                            },
-                            trailingContent = {
-                                Checkbox(
-                                    checked = checked,
-                                    onCheckedChange = { onTogglePeer(peer.deviceId, it) }
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ClipboardShizukuToggle(
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit
-) {
-    var snapshot by remember { mutableStateOf(ClipboardRuntimeDiagnostics.snapshot()) }
-    LaunchedEffect(enabled) {
-        while (true) {
-            snapshot = ClipboardRuntimeDiagnostics.snapshot()
-            delay(1_500)
-        }
-    }
-    val supporting = when (
-        ClipboardShizukuPolicy.toggleHint(
-            optedIn = enabled,
-            installed = snapshot.shizukuInstalled,
-            running = snapshot.shizukuRunning,
-            active = snapshot.shizukuActive
-        )
-    ) {
-        ClipboardShizukuPolicy.ToggleHint.USING -> stringRes("shizuku_using")
-        ClipboardShizukuPolicy.ToggleHint.CONNECTED_UNUSED -> stringRes("shizuku_connected_unused")
-        ClipboardShizukuPolicy.ToggleHint.AUTHORIZE -> stringRes("shizuku_step_authorize")
-        ClipboardShizukuPolicy.ToggleHint.START -> stringRes("shizuku_step_start")
-        ClipboardShizukuPolicy.ToggleHint.SUBTITLE -> stringRes("shizuku_subtitle")
-    }
-    ListItem(
-        headlineContent = { Text(stringRes("diag_shizuku_active"), softWrap = true) },
-        supportingContent = { Text(supporting, softWrap = true) },
-        trailingContent = {
-            Switch(
-                checked = enabled,
-                onCheckedChange = onToggle
-            )
-        }
-    )
-}
-
-@Composable
-private fun ClipboardShareModeRow(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    ListItem(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(
-                selected = selected,
-                onClick = onClick,
-                role = Role.RadioButton
-            ),
-        headlineContent = { Text(title) },
-        supportingContent = { Text(subtitle) },
-        trailingContent = {
-            RadioButton(
-                selected = selected,
-                onClick = onClick
-            )
-        }
-    )
-}
-
-private fun clipboardShareTargetsSubtitle(state: SettingsUiState): String {
-    return when (state.clipboardShareMode) {
-        ClipboardShareMode.SPECIFIC -> AppI18n.t("specific_devices")
-        ClipboardShareMode.ALL -> AppI18n.t("all_devices")
-        ClipboardShareMode.UNSET -> AppI18n.t("choose_devices")
-    }
-}
-
 private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
     if (!state.clipboardSharingEnabled) return AppI18n.t("off")
     val mode = clipboardShareTargetsSubtitle(state)
@@ -1924,13 +966,6 @@ private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
 }
 
 @Composable
-private fun localizedUpdateUnit(unit: UpdateCheckUnit): String = when (unit) {
-    UpdateCheckUnit.Hours -> stringRes("unit_hours")
-    UpdateCheckUnit.Days -> stringRes("unit_days")
-    UpdateCheckUnit.Weeks -> stringRes("unit_weeks")
-}
-
-@Composable
 private fun localizedDesktopLayout(mode: DesktopLayoutMode): String = when (mode) {
     DesktopLayoutMode.Compact -> stringRes("layout_compact")
     DesktopLayoutMode.Expanded -> stringRes("layout_expanded")
@@ -1942,823 +977,8 @@ private fun localizedDesktopUiStyle(style: DesktopUiStyle): String = when (style
     DesktopUiStyle.WindowsFluent -> stringRes("windows_fluent")
 }
 
-private fun localizedPinIdle(timeout: PinIdleTimeout): String = when (timeout) {
-    PinIdleTimeout.Immediate -> AppI18n.t("pin_idle_immediate")
-    PinIdleTimeout.OneMinute -> AppI18n.t("pin_idle_1m")
-    PinIdleTimeout.FiveMinutes -> AppI18n.t("pin_idle_5m")
-    PinIdleTimeout.TenMinutes -> AppI18n.t("pin_idle_10m")
-}
-
-@Composable
-private fun DeviceNameSettingsPage(
-    state: com.fileapex.presentation.SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onDraftChange: (String) -> Unit,
-    onSave: () -> Unit
-) {
-    val broadcast = state.deviceNameBroadcasting.ifBlank { stringRes("paired_device") }
-    SettingsPageShell(
-        title = stringRes("device_name"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp)
-        ) {
-            Text(
-                text = stringRes("device_name_page_desc"),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = AppI18n.t("currently_broadcasting_as", broadcast),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.titleSmall
-            )
-            if (state.deviceNameClusterSync.isNotBlank() &&
-                !state.deviceNameClusterSync.equals(broadcast, ignoreCase = true)
-            ) {
-                Text(
-                    text = AppI18n.t("device_name_cluster_sync", state.deviceNameClusterSync),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            OutlinedTextField(
-                value = state.deviceNameDraft,
-                onValueChange = onDraftChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                singleLine = true,
-                label = { Text(stringRes("device_name_field_label")) },
-                supportingText = state.deviceNameError?.let { err ->
-                    { Text(text = err, color = MaterialTheme.colorScheme.error) }
-                } ?: {
-                    Text(stringRes("device_name_alphanumeric_hint"))
-                },
-                isError = state.deviceNameError != null,
-                keyboardOptions = KeyboardOptions.Default
-            )
-            Button(
-                onClick = onSave,
-                enabled = !state.deviceNameSaveBusy &&
-                    state.deviceNameDraft.trim().isNotEmpty() &&
-                    !state.deviceNameDraft.trim().equals(broadcast, ignoreCase = true),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                if (state.deviceNameSaveBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text(stringRes("device_name_save"))
-            }
-            state.deviceNameStatus?.let { status ->
-                Text(
-                    text = status,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            if (state.deviceNamePeerLabels.isNotEmpty()) {
-                Text(
-                    text = stringRes("device_name_peer_labels_title"),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.titleSmall
-                )
-                state.deviceNamePeerLabels.forEach { label ->
-                    val peerLabel = label.peerDeviceName.ifBlank { label.peerDeviceId }
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                AppI18n.t("device_name_peer_label_row", peerLabel, label.assignedName),
-                                softWrap = true
-                            )
-                        }
-                    )
-                    HorizontalDivider()
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LanguageSettingsPage(
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit
-) {
-    val selected = AppI18n.locale
-    SettingsPageShell(
-        title = stringRes("language"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            AppLocale.entries.forEach { locale ->
-                val label = AppI18n.languageRowLabel(locale)
-                ListItem(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = locale == selected,
-                            onClick = { persistAppLanguage(locale) },
-                            role = Role.RadioButton
-                        ),
-                    headlineContent = {
-                        Text(label, softWrap = true, modifier = Modifier.fillMaxWidth())
-                    },
-                    trailingContent = {
-                        RadioButton(
-                            selected = locale == selected,
-                            onClick = { persistAppLanguage(locale) }
-                        )
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RemoteFileDeletionSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onAllowRemoteFileDeletionChange: (Boolean) -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("bulletin_delete_remote_title"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("bulletin_delete_remote_title"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("remote_delete_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.allowRemoteFileDeletion,
-                        onCheckedChange = onAllowRemoteFileDeletionChange
-                    )
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DeviceDetailsSettingsPage(
-    preferences: DeviceDetailsDisplayPreferences,
-    allowOverCellular: Boolean,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onBeforeAllowOverCellularEnabled: (onProceed: () -> Unit) -> Unit,
-    onAllowOverCellularChange: (Boolean) -> Unit,
-    onFieldVisibleChange: (DeviceDetailsFieldId, Boolean) -> Unit,
-    onReorderFields: (fromIndex: Int, toIndex: Int) -> Unit,
-    onReset: () -> Unit
-) {
-    val normalized = preferences.normalized()
-    val fieldEntries = normalized.fields.mapNotNull { pref ->
-        DeviceDetailsFieldId.entries.find { it.name == pref.id }
-            ?.takeUnless { com.fileapex.di.FileApexServices.isPlayStoreBuild && it.cellularOnly }
-            ?.let { id -> id to pref.visible }
-    }
-    val dragState = rememberDeviceOrderDragState()
-    val density = LocalDensity.current
-    val itemStridePx = with(density) { 72.dp.toPx() }
-    val scrollState = rememberScrollState()
-    val fieldIds = fieldEntries.map { it.first.name }
-
-    DeviceOrderEdgeAutoScrollEffect(
-        dragState = dragState,
-        scrollState = scrollState,
-        deviceIds = fieldIds,
-        itemStridePx = itemStridePx,
-        viewportHeightPx = 480,
-        listOverflowsViewport = fieldEntries.size > 6
-    )
-
-    SettingsPageShell(
-        title = stringRes("device_details"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-        ) {
-            Text(
-                text = stringRes("device_details_intro"),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            ListItem(
-                headlineContent = { Text(stringRes("allow_over_cellular"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("allow_over_cellular_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = allowOverCellular,
-                        onCheckedChange = { enabled ->
-                            if (enabled) {
-                                onBeforeAllowOverCellularEnabled {
-                                    onAllowOverCellularChange(true)
-                                }
-                            } else {
-                                onAllowOverCellularChange(false)
-                            }
-                        }
-                    )
-                }
-            )
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            fieldEntries.forEachIndexed { index, (fieldId, visible) ->
-                val visualOffsetPx = deviceOrderItemVisualOffsetPx(
-                    index = index,
-                    dragState = dragState,
-                    itemCount = fieldEntries.size,
-                    itemStridePx = itemStridePx
-                )
-                ListItem(
-                    modifier = Modifier.offset { IntOffset(0, visualOffsetPx.roundToInt()) },
-                    headlineContent = { Text(stringRes("field_${fieldId.name}"), softWrap = true) },
-                    supportingContent = when {
-                        fieldId.wifiOnly -> {
-                            {
-                                Text(stringRes("shown_when_wifi"), softWrap = true)
-                            }
-                        }
-                        fieldId.cellularOnly -> {
-                            {
-                                Text(stringRes("shown_when_cellular"), softWrap = true)
-                            }
-                        }
-                        else -> null
-                    },
-                    leadingContent = {
-                        DeviceOrderDragHandle(
-                            deviceId = fieldId.name,
-                            startIndex = index,
-                            itemCount = fieldEntries.size,
-                            dragState = dragState,
-                            itemStridePx = itemStridePx,
-                            onReorder = onReorderFields
-                        )
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = visible,
-                            onCheckedChange = { enabled -> onFieldVisibleChange(fieldId, enabled) }
-                        )
-                    }
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            TextButton(
-                onClick = onReset,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            ) {
-                Text(stringRes("reset_to_defaults"))
-            }
-            Spacer(modifier = Modifier.height(48.dp))
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DesktopLayoutSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onExpanded: (Boolean) -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("desktop_layout"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("expanded_layout"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("expanded_layout_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.desktopLayoutMode == DesktopLayoutMode.Expanded,
-                        onCheckedChange = onExpanded
-                    )
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WindowsDesignSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onFluent: (Boolean) -> Unit
-) {
-    SettingsPageShell(
-        title = stringRes("windows_design"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("windows_11_modern"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("windows_fluent_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.desktopUiStyle == DesktopUiStyle.WindowsFluent,
-                        onCheckedChange = onFluent
-                    )
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CheckForUpdatesSettingsPage(
-    state: SettingsUiState,
-    updateStatus: String?,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onToggle: (Boolean) -> Unit,
-    onUnitSelected: (UpdateCheckUnit) -> Unit,
-    onAmountTextChange: (String) -> Unit,
-    onWeekAmountSelected: (Int) -> Unit
-) {
-    val requestInstallUnknownAppsPermission = rememberRequestInstallUnknownAppsPermission()
-
-    SettingsPageShell(
-        title = stringRes("check_for_updates"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("enable_check_for_updates"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("check_updates_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.checkForUpdatesEnabled,
-                        onCheckedChange = { enabled ->
-                            // BAL-safe: only open install-permission Settings from this user gesture.
-                            if (enabled) {
-                                requestInstallUnknownAppsPermission()
-                            }
-                            onToggle(enabled)
-                        }
-                    )
-                }
-            )
-            if (state.checkForUpdatesEnabled) {
-                UpdateFrequencyRow(
-                    unit = state.checkForUpdatesIntervalUnit,
-                    amountText = state.checkForUpdatesAmountText,
-                    amount = state.checkForUpdatesIntervalAmount,
-                    onUnitSelected = onUnitSelected,
-                    onAmountTextChange = onAmountTextChange,
-                    onWeekAmountSelected = onWeekAmountSelected
-                )
-                Text(
-                    text = UpdateCheckFrequency.label(
-                        state.checkForUpdatesIntervalUnit,
-                        state.checkForUpdatesIntervalAmount
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                updateStatus?.let { status ->
-                    Text(
-                        text = status,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PinRequiredSettingsPage(
-    state: SettingsUiState,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: () -> Unit,
-    onToggle: (Boolean) -> Unit,
-    onPinChange: (String) -> Unit,
-    onIdleTimeoutSelected: (PinIdleTimeout) -> Unit
-) {
-    var timeoutExpanded by remember { mutableStateOf(false) }
-
-    SettingsPageShell(
-        title = stringRes("pin_required"),
-        layoutMode = layoutMode,
-        onBack = onBack
-    ) { contentModifier ->
-        Column(
-            modifier = contentModifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            ListItem(
-                headlineContent = { Text(stringRes("require_pin"), softWrap = true) },
-                supportingContent = {
-                    Text(stringRes("require_pin_desc"), softWrap = true)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = state.pinRequiredEnabled,
-                        onCheckedChange = onToggle
-                    )
-                }
-            )
-            if (state.pinRequiredEnabled) {
-                OutlinedTextField(
-                    value = state.devicePin,
-                    onValueChange = onPinChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    singleLine = true,
-                    label = { Text(stringRes("device_pin")) },
-                    supportingText = state.pinError?.let { err ->
-                        {
-                            Text(
-                                text = err,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    },
-                    isError = state.pinError != null,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
-                )
-            }
-
-            Text(
-                text = stringRes("browse_unlock_idle"),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleSmall
-            )
-            Text(
-                text = stringRes("browse_unlock_idle_desc"),
-                modifier = Modifier.padding(horizontal = 16.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                TextButton(onClick = { timeoutExpanded = true }) {
-                    Text(localizedPinIdle(state.pinIdleTimeout))
-                }
-                DropdownMenu(
-                    expanded = timeoutExpanded,
-                    onDismissRequest = { timeoutExpanded = false }
-                ) {
-                    PinIdleTimeout.entries.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(localizedPinIdle(option)) },
-                            onClick = {
-                                onIdleTimeoutSelected(option)
-                                timeoutExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun SettingsPageShell(
-    title: String,
-    layoutMode: SettingsScreenLayoutMode,
-    onBack: (() -> Unit)?,
-    onOpenTransferQueue: (() -> Unit)? = null,
-    content: @Composable (Modifier) -> Unit
-) {
-    val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme.traits.glassChrome
-    val containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background
-    val onHome = LocalSettingsHomeAction.current
-    val onExit = LocalSettingsExitAction.current
-
-    when (layoutMode) {
-        SettingsScreenLayoutMode.FullScreen -> {
-            Scaffold(
-                containerColor = containerColor,
-                topBar = { SettingsTopBar(title = title, onBack = onBack) }
-            ) { padding ->
-                content(Modifier.fillMaxSize().padding(padding))
-            }
-        }
-
-        SettingsScreenLayoutMode.ListPane -> {
-            Column(modifier = Modifier.fillMaxSize()) {
-                FileApexPaneSectionHeader(title = title, onBack = onBack)
-                content(Modifier.weight(1f).fillMaxWidth())
-            }
-        }
-        SettingsScreenLayoutMode.CompactShell -> {
-            val isFreestyle = currentTheme.traits.canvasHome
-            val homeAction: @Composable RowScope.() -> Unit = {
-                if (isFreestyle && onHome != null) {
-                    IconButton(
-                        onClick = onHome,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Home,
-                            contentDescription = stringRes("home"),
-                            tint = Color(0xFF00E676),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (onBack != null) {
-                    FileApexPaneSectionHeader(
-                        title = title,
-                        onBack = onBack,
-                        actions = homeAction
-                    )
-                } else {
-                    CompactHomeTitleBand(
-                        primaryLine = "FileApex",
-                        secondaryLine = title,
-                        style = CompactHomeTitleStyle.Prominent,
-                        onOpenTransferQueue = onOpenTransferQueue,
-                        showCloseService = onExit != null,
-                        onCloseService = onExit,
-                        actions = homeAction
-                    )
-                }
-                content(Modifier.weight(1f).fillMaxWidth())
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun SettingsTopBar(title: String, onBack: (() -> Unit)?) {
-    TopAppBar(
-        title = { Text(title) },
-        navigationIcon = {
-            if (onBack != null) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringRes("back")
-                    )
-                }
-            }
-        },
-        colors = fileApexTopAppBarColors()
-    )
-}
-
-@Composable
-private fun ClipboardDiagnosticsEntry(
-    accessibilityEnabled: Boolean,
-    shizukuOptedIn: Boolean,
-    recipientsChosen: Boolean,
-    onOpenDiagnostics: () -> Unit
-) {
-    var snapshot by remember { mutableStateOf(ClipboardRuntimeDiagnostics.snapshot()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            snapshot = ClipboardRuntimeDiagnostics.snapshot()
-            delay(1_500)
-        }
-    }
-    if (!ClipboardDiagnosticsPolicy.shouldShowEntry(sharingEnabled = true)) return
-    val ready = ClipboardDiagnosticsPolicy.allRequiredGranted(
-        ClipboardDiagnosticsPolicy.checks(
-            sharingEnabled = true,
-            recipientsChosen = recipientsChosen,
-            accessibilitySettingEnabled = accessibilityEnabled,
-            accessibilityListed = snapshot.accessibilityListed,
-            accessibilityBound = snapshot.accessibilityBound,
-            batteryWhitelisted = snapshot.batteryWhitelisted,
-            notificationsEnabled = snapshot.notificationsEnabled,
-            restrictedSettingsRelevant = snapshot.restrictedSettingsRelevant,
-            restrictedSettingsBlocked = snapshot.restrictedSettingsBlocked,
-            shizukuActive = snapshot.shizukuActive,
-            shizukuOptedIn = shizukuOptedIn
-        )
-    )
-    SettingsNavItem(
-        title = stringRes("clipboard_diagnostics"),
-        subtitle = if (ready) stringRes("diag_all_granted") else stringRes("diag_missing_required"),
-        onClick = onOpenDiagnostics
-    )
-}
-
-@Composable
-private fun SettingsNavItem(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    isDestructive: Boolean = false,
-    leadingIcon: ImageVector? = null
-) {
-    val headlineColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-    val trailingTint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-    val destructiveColors = if (isDestructive) {
-        ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
-            headlineColor = MaterialTheme.colorScheme.onErrorContainer,
-            supportingColor = MaterialTheme.colorScheme.onErrorContainer,
-            leadingIconColor = MaterialTheme.colorScheme.error,
-            trailingIconColor = MaterialTheme.colorScheme.error
-        )
-    } else {
-        ListItemDefaults.colors()
-    }
-    ListItem(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = destructiveColors,
-        leadingContent = leadingIcon?.let { icon ->
-            {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        },
-        headlineContent = { Text(title, color = headlineColor, softWrap = true) },
-        supportingContent = { Text(subtitle, softWrap = true) },
-        trailingContent = {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = trailingTint
-            )
-        }
-    )
-}
-
-@Composable
-private fun UpdateFrequencyRow(
-    unit: UpdateCheckUnit,
-    amountText: String,
-    amount: Int,
-    onUnitSelected: (UpdateCheckUnit) -> Unit,
-    onAmountTextChange: (String) -> Unit,
-    onWeekAmountSelected: (Int) -> Unit
-) {
-    var unitExpanded by remember { mutableStateOf(false) }
-    var weekExpanded by remember { mutableStateOf(false) }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringRes("check_every"),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Box {
-                TextButton(onClick = { unitExpanded = true }) {
-                    Text(localizedUpdateUnit(unit))
-                }
-                DropdownMenu(
-                    expanded = unitExpanded,
-                    onDismissRequest = { unitExpanded = false }
-                ) {
-                    UpdateCheckUnit.entries.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(localizedUpdateUnit(option)) },
-                            onClick = {
-                                onUnitSelected(option)
-                                unitExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        when (unit) {
-            UpdateCheckUnit.Weeks -> {
-                Column(modifier = Modifier.width(112.dp)) {
-                    Text(
-                        text = stringRes("unit_weeks"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Box {
-                        TextButton(onClick = { weekExpanded = true }) {
-                            Text(amount.toString())
-                        }
-                        DropdownMenu(
-                            expanded = weekExpanded,
-                            onDismissRequest = { weekExpanded = false }
-                        ) {
-                            UpdateCheckFrequency.allowedWeekValues().forEach { weeks ->
-                                DropdownMenuItem(
-                                    text = { Text(weeks.toString()) },
-                                    onClick = {
-                                        onWeekAmountSelected(weeks)
-                                        weekExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            UpdateCheckUnit.Hours -> {
-                OutlinedTextField(
-                    value = amountText,
-                    onValueChange = onAmountTextChange,
-                    modifier = Modifier.width(112.dp),
-                    singleLine = true,
-                    label = { Text(stringRes("range_1_24")) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            }
-            UpdateCheckUnit.Days -> {
-                OutlinedTextField(
-                    value = amountText,
-                    onValueChange = onAmountTextChange,
-                    modifier = Modifier.width(112.dp),
-                    singleLine = true,
-                    label = { Text(stringRes("range_1_30")) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            }
-        }
-    }
-}
-
 private const val VERSION_EASTER_EGG_TAP_COUNT = 5
+
 private const val VERSION_EASTER_EGG_TAP_WINDOW_MS = 2_000L
 
 @Composable
@@ -2833,4 +1053,3 @@ private fun SettingsCategoryGroup(
         )
     }
 }
-

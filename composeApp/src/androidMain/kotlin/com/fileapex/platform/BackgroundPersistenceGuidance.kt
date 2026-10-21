@@ -213,7 +213,7 @@ object BackgroundPersistenceGuidance {
         )
         OemVendor.Tcl -> listOf(
             // Confirmed exported on TCL devices (MTK/One Touch Booster):
-            // "Abnormal power consumption application management" — TCL's watchdog that
+            // "Abnormal power consumption application management", TCL's watchdog that
             // automatically re-restricts apps it flags as high-power consumers, overriding
             // the standard battery exemption. This is the primary cause of the periodic
             // exemption revocation on TCL.
@@ -221,7 +221,7 @@ object BackgroundPersistenceGuidance {
                 "com.tct.onetouchbooster",
                 "com.tct.onetouchbooster.module.battery.activity.PowerAbnormalAppDisplayActivity"
             ),
-            // Battery hub (Smart Manager → Battery) — secondary landing for "More battery
+            // Battery hub (Smart Manager → Battery), secondary landing for "More battery
             // settings → Battery manager" toggle.
             ComponentName(
                 "com.tct.onetouchbooster",

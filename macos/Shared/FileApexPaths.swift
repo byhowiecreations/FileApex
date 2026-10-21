@@ -2,14 +2,14 @@ import Darwin
 import Foundation
 
 /// Shared on-disk locations for the FileApex macOS app and its extensions.
-/// Uses Application Support — not App Groups — so ad-hoc builds can share the roster DB.
+/// Uses Application Support, not App Groups, so ad-hoc builds can share the roster DB.
 public enum FileApexPaths {
     public static let mainBundleId = "com.fileapex"
     public static let shareExtensionBundleId = "com.fileapex.ShareExtension"
     public static let databaseFileName = "fileapex.db"
     public static let readyDeviceIdsFileName = "ready-device-ids.json"
 
-    /// Real user home from the passwd database — never the App Extension container home.
+    /// Real user home from the passwd database, never the App Extension container home.
     /// `FileManager.homeDirectoryForCurrentUser` / `NSHomeDirectory()` resolve inside
     /// `~/Library/Containers/<bundle-id>/Data` when App Sandbox is on.
     public static var realUserHomeDirectory: URL {
@@ -25,7 +25,7 @@ public enum FileApexPaths {
     }
 
     /// Forced global path: `~/Library/Application Support/com.fileapex/fileapex.db`
-    /// Always under the real user home from passwd — never a sandboxed container.
+    /// Always under the real user home from passwd, never a sandboxed container.
     public static var databaseURL: URL {
         let url = realUserHomeDirectory
             .appendingPathComponent("Library/Application Support", isDirectory: true)

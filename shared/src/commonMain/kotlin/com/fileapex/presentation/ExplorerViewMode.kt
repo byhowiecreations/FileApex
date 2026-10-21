@@ -1,7 +1,7 @@
 package com.fileapex.presentation
 
 /**
- * File browser layout — persisted via [com.fileapex.data.settings.AppSettings].
+ * File browser layout, persisted via [com.fileapex.data.settings.AppSettings].
  */
 enum class ExplorerViewMode {
     List,

@@ -54,7 +54,7 @@ class TransferManager(
         val deadline = TimeUtils.now() + timeoutMs
         while (!isReady()) {
             check(TimeUtils.now() < deadline) {
-                "TransferManager is not ready — FileApexServices.init was not completed"
+                "TransferManager is not ready, FileApexServices.init was not completed"
             }
             delay(READY_POLL_MS)
         }
@@ -109,7 +109,7 @@ class TransferManager(
     }
 
     /**
-     * Direct Share / one-tap send: use roster endpoint only — no pre-send network probe.
+     * Direct Share / one-tap send: use roster endpoint only, no pre-send network probe.
      * Upload starts immediately; [prepareForTransfer] handles stale endpoints only when needed.
      */
     suspend fun resolveRemoteDeviceOptionsForImmediateSend(
@@ -133,7 +133,7 @@ class TransferManager(
 
     /**
      * Extension / handoff path: resolve explicit paired device IDs into transfer options
-     * (no online filter — caller already chose destinations).
+     * (no online filter, caller already chose destinations).
      */
     suspend fun resolveRemoteDeviceOptions(deviceIds: List<String>): List<MultiCopyDeviceOption> {
         awaitReady()
@@ -298,7 +298,7 @@ class TransferManager(
 
     /**
      * Sends go straight to the stored endpoint. Only peers that refused the connection are
-     * re-resolved, and only if they turn out to have moved are their failed sources resent — once.
+     * re-resolved, and only if they turn out to have moved are their failed sources resent, once.
      */
     private suspend fun retryMovedPeers(
         sources: List<MultiCopySource>,

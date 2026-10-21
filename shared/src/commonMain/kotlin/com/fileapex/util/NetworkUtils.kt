@@ -30,7 +30,7 @@ object NetworkUtils {
             ?: "127.0.0.1"
 
     /**
-     * Ordered bind candidates for force-routed peer TCP/UDP — active Wi‑Fi/Ethernet only.
+     * Ordered bind candidates for force-routed peer TCP/UDP, active Wi‑Fi/Ethernet only.
      * Never falls back to cellular or inactive interfaces.
      */
     fun lanBindCandidates(): List<String> {
@@ -144,7 +144,7 @@ object NetworkUtils {
 
     /**
      * User-facing `host:port` label for device subtitles.
-     * Ports must never pass through [com.fileapex.i18n.formatLocalizedNumber] — grouping breaks LAN endpoints.
+     * Ports must never pass through [com.fileapex.i18n.formatLocalizedNumber], grouping breaks LAN endpoints.
      */
     fun formatEndpointDisplay(host: String, port: Int): String {
         val cleanedHost = host.trim()

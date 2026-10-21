@@ -20,7 +20,7 @@ class FileApexApplication : Application() {
         }
         if (!isUserStorageUnlocked(this)) {
             // Pre-unlock process start (should be rare now that LOCKED_BOOT_COMPLETED is not
-            // registered). Credential-encrypted storage throws until unlock — skip full init.
+            // registered). Credential-encrypted storage throws until unlock, skip full init.
             // [FileApexAndroidBootstrap.ensureInitialized] completes init later from
             // USER_UNLOCKED / BOOT_COMPLETED / MainActivity / FileShareServerService.
             Log.i(TAG, "onCreate: user storage still locked - deferring full init")

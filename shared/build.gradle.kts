@@ -83,7 +83,7 @@ fun org.gradle.api.Project.resolveWebOAuthFromJson(): Pair<String, String> {
         ?: ("" to "")
 }
 
-/** Desktop OAuth JSON in json/ (PKCE loopback — no client_secret required for token exchange). */
+/** Desktop OAuth JSON in json/ (PKCE loopback, no client_secret required for token exchange). */
 @Suppress("UNCHECKED_CAST")
 fun org.gradle.api.Project.resolveDesktopOAuthFromJson(): Pair<String, String> {
     val expectedProject = resolvedFirebaseProjectId()
@@ -165,6 +165,7 @@ val fileapexVersionName = extra["fileapex.version.name"] as String
 val fileapexVersionCode = extra["fileapex.version.code"] as String
 val fileapexFdroid = extra["fileapex.fdroid"] as Boolean
 val fileapexNoIroh = extra["fileapex.noiroh"] as Boolean
+val fileapexIroh16k = extra["fileapex.iroh16k"] as Boolean
 
 kotlin {
     compilerOptions {
@@ -241,7 +242,8 @@ kotlin {
             implementation(libs.zxing.android.embedded)
             implementation(libs.androidx.work.runtime)
             if (!fileapexFdroid) {
-                if (!fileapexNoIroh) implementation(libs.iroh.android) // fdroid:remove
+                if (!fileapexNoIroh && fileapexIroh16k) implementation("computer.iroh:iroh-android:1.1.0-16k") // fdroid:remove
+                if (!fileapexNoIroh && !fileapexIroh16k) implementation(libs.iroh.android) // fdroid:remove
                 implementation(project.dependencies.platform(libs.firebase.bom)) // fdroid:remove
                 implementation(libs.firebase.auth) // fdroid:remove
                 implementation(libs.firebase.firestore) // fdroid:remove
@@ -342,7 +344,7 @@ val generateDesktopCloudConfig = tasks.register("generateDesktopCloudConfig") {
             """
             |package com.fileapex.cloud
             |
-            |/** Generated from json/google-services.json + gradle.properties — do not edit or commit. */
+            |/** Generated from json/google-services.json + gradle.properties, do not edit or commit. */
             |internal object GeneratedDesktopCloudConfig {
             |    const val WEB_CLIENT_ID = "${escapeKotlinString(webClientId)}"
             |    const val WEB_CLIENT_SECRET = "${escapeKotlinString(webClientSecret)}"
@@ -392,7 +394,7 @@ val generateFcmCredentials = tasks.register("generateFcmCredentials") {
                 """
                 |package com.fileapex.cloud
                 |
-                |/** Generated at build time — credentials empty when service account JSON is missing. */
+                |/** Generated at build time, credentials empty when service account JSON is missing. */
                 |internal object GeneratedFcmCredentials {
                 |    const val PROJECT_ID = ""
                 |    const val CLIENT_EMAIL = ""
@@ -413,7 +415,7 @@ val generateFcmCredentials = tasks.register("generateFcmCredentials") {
             """
             |package com.fileapex.cloud
             |
-            |/** Generated from local Firebase Admin SDK JSON — never commit this file. */
+            |/** Generated from local Firebase Admin SDK JSON, never commit this file. */
             |internal object GeneratedFcmCredentials {
             |    const val PROJECT_ID = "${escapeKotlinString(projectId)}"
             |    const val CLIENT_EMAIL = "${escapeKotlinString(clientEmail)}"
@@ -450,7 +452,7 @@ val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
             |package com.fileapex.update
             |
             |/**
-            | * Generated from version.md — do not edit.
+            | * Generated from version.md, do not edit.
             | *   name= → [NAME]
             | *   code= → [CODE]
             | */
@@ -512,7 +514,7 @@ tasks.register("verifyGoogleOAuthProjectAlignment") {
     doLast {
         val webClientId = resolvedWebClientId()
         require(webClientId.isNotBlank()) {
-            "Missing Web OAuth client ID — add json/google-services.json or fileapex.google.web.client.id"
+            "Missing Web OAuth client ID, add json/google-services.json or fileapex.google.web.client.id"
         }
         val webProjectNumber = webClientId.substringBefore('-')
         require(webProjectNumber.all { it.isDigit() }) {
@@ -601,7 +603,7 @@ tasks.register("verifyMacOAuthRedirect") {
             logger.warn(
                 """
                 |Mac Google Sign-In: OAuth credentials missing for desktop builds.
-                |See docs/gcp-mac-oauth-setup.md — quickest fix:
+                |See docs/gcp-mac-oauth-setup.md, quickest fix:
                 |  GCP project fileapex-22813 → Credentials → Create OAuth client → Desktop app
                 |  → Download JSON → json/ → rebuild (no client_secret needed)
                 |

@@ -17,7 +17,7 @@ data class CloudDeviceRecord(
     val updatedAtEpochMs: Long,
     /** Android FCM registration token for silent background wake (Path A). */
     val fcmToken: String = "",
-    /** Base64 X25519 public key for encrypted diagnostics relay — optional. */
+    /** Base64 X25519 public key for encrypted diagnostics relay, optional. */
     val diagnosticsPublicKey: String = "",
     /** Base64 X25519 public key for encrypted clipboard payloads. */
     val clipboardPublicKey: String = "",

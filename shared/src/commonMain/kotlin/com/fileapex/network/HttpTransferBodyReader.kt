@@ -5,7 +5,7 @@ package com.fileapex.network
  * Handles [Transfer-Encoding: chunked] and [Content-Length] so binary file streams are not
  * corrupted by chunk framing bytes.
  *
- * [onChunk] must consume `buffer[0, length)` before returning — the array is reused.
+ * [onChunk] must consume `buffer[0, length)` before returning, the array is reused.
  */
 internal object HttpTransferBodyReader {
 

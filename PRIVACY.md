@@ -7,7 +7,7 @@
 
 ## Summary
 
-FileApex is a local-first, peer-to-peer file manager. By default, all file transfers, clipboard sharing, and messaging happen directly between your paired devices over your local network — nothing touches external servers. Optional, opt-in features (Google Account, Firebase Cloud Messaging, Google Drive) add cross-network convenience and use Google's infrastructure as a relay when enabled.
+FileApex is a local-first, peer-to-peer file manager. By default, all file transfers, clipboard sharing, and messaging happen directly between your paired devices over your local network, nothing touches external servers. Optional, opt-in features (Google Account, Firebase Cloud Messaging, Google Drive) add cross-network convenience and use Google's infrastructure as a relay when enabled.
 
 FileApex has no ads, no third-party trackers, no analytics SDKs, and does not sell or monetize user data.
 
@@ -15,7 +15,7 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 
 **Files (Local mode, default):** Transferred directly between paired devices over LAN via local HTTP sockets. Saved to `Download/FileApex/` (Android) or `~/Downloads/FileApex/` (macOS/Windows). Never uploaded to external servers in this mode.
 
-**Files (Cloud Relay, opt-in):** If you enable Google Drive Relay, files/attachments are stored in a `FileApex Relay` folder in your own Google Drive, and receiving devices download them directly from that folder. Access is scoped to that folder only — FileApex cannot see or modify other files in your Drive.
+**Files (Cloud Relay, opt-in):** If you enable Google Drive Relay, files/attachments are stored in a `FileApex Relay` folder in your own Google Drive, and receiving devices download them directly from that folder. Access is scoped to that folder only, FileApex cannot see or modify other files in your Drive.
 
 **Device pairing metadata:** Device name, hardware model/OS, local IP and port, battery/storage/RAM (shown in Device Details), and cryptographic pairing tokens, public keys, and optional PIN hashes. Stored locally in an on-device SQLite database, protected by OS-level sandboxing and file-based encryption. Deleted immediately when you unpair a device.
 
@@ -48,9 +48,9 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 | Firebase Cloud Messaging (Google) | Push signaling, wake notifications | Device push tokens, connection signaling, Bulletin Board text/attachment metadata, encrypted clipboard ciphertext |
 | Google Drive API (Google) | Optional file relay & attachment storage | Files stored in your own `FileApex Relay` Drive folder |
 | Google Sign-In / OAuth (Google) | Account authentication | OAuth tokens tied to your paired devices |
-| GitHub Releases API | Update checks | Public release tag lookup only — no identifiers sent |
+| GitHub Releases API | Update checks | Public release tag lookup only, no identifiers sent |
 
-If you never sign in with Google or enable cloud relay, none of these are contacted, and FileApex runs entirely offline on your local network — with the sole exception of the GitHub update checker, which is contacted if you manually trigger a version check.
+If you never sign in with Google or enable cloud relay, none of these are contacted, and FileApex runs entirely offline on your local network, with the sole exception of the GitHub update checker, which is contacted if you manually trigger a version check.
 
 ## Permissions
 

@@ -9,9 +9,9 @@ import androidx.core.content.ContextCompat
 /**
  * Dangerous / runtime Android permissions declared in the app manifest.
  *
- * First-run grants are handled one-at-a-time in onboarding — never bulk-requested here.
+ * First-run grants are handled one-at-a-time in onboarding, never bulk-requested here.
  *
- * [Manifest.permission.READ_PHONE_STATE] is excluded — requested only when the user
+ * [Manifest.permission.READ_PHONE_STATE] is excluded, requested only when the user
  * enables Settings → Device Details → Allow over cellular.
  */
 object AndroidRuntimePermissions {

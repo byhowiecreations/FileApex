@@ -1,6 +1,6 @@
 import AppKit
 
-// Chain ahead of Skiko's delegate — Java posts Quit AppleEvent after hide; must cancel terminate.
+// Chain ahead of Skiko's delegate, Java posts Quit AppleEvent after hide; must cancel terminate.
 @objc final class MacApplicationLifecycle: NSObject, NSApplicationDelegate {
     static let shared = MacApplicationLifecycle()
 

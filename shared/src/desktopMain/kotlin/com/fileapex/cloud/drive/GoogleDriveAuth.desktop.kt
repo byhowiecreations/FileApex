@@ -16,24 +16,25 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 actual object GoogleDriveAuth {
-    private val prefs = Preferences.userRoot().node("com.fileapex.drive")
+    private val driveNode = Preferences.userRoot().node("com.fileapex.drive")
+    private val prefs = com.fileapex.data.settings.DesktopSettingsSecrets.sealedNode(driveNode, setOf(KEY_ACCESS, KEY_REFRESH))
 
     actual fun hasGrant(): Boolean =
         prefs.getBoolean(KEY_VERIFIED, false) && hasStoredAccess()
 
     actual fun hasStoredAccess(): Boolean {
-        val scope = prefs.get(KEY_SCOPE, "")
+        val scope = prefs.getString(KEY_SCOPE, "")
         if (scope.isNotBlank() && scope != DRIVE_FILE_SCOPE) return false
-        return prefs.get(KEY_REFRESH, "").isNotBlank() || prefs.get(KEY_ACCESS, "").isNotBlank()
+        return prefs.getString(KEY_REFRESH, "").isNotBlank() || prefs.getString(KEY_ACCESS, "").isNotBlank()
     }
 
     actual suspend fun accessToken(): String {
-        val access = prefs.get(KEY_ACCESS, "")
+        val access = prefs.getString(KEY_ACCESS, "")
         val expiresAt = prefs.getLong(KEY_EXPIRES_AT, 0L)
         val stale = expiresAt > 0L && System.currentTimeMillis() >= expiresAt - 60_000L
         if (access.isNotBlank() && !stale) return access
         if (refreshOnUnauthorized()) {
-            return prefs.get(KEY_ACCESS, "").ifBlank { error("Drive access token missing") }
+            return prefs.getString(KEY_ACCESS, "").ifBlank { error("Drive access token missing") }
         }
         error(com.fileapex.i18n.AppI18n.t("drive_signin_expired"))
     }
@@ -43,11 +44,11 @@ actual object GoogleDriveAuth {
         refreshToken: String,
         expiresAtEpochMs: Long
     ) {
-        prefs.put(KEY_ACCESS, accessToken)
-        if (refreshToken.isNotBlank()) prefs.put(KEY_REFRESH, refreshToken)
+        prefs.putString(KEY_ACCESS, accessToken)
+        if (refreshToken.isNotBlank()) prefs.putString(KEY_REFRESH, refreshToken)
         prefs.putLong(KEY_EXPIRES_AT, expiresAtEpochMs)
-        prefs.put(KEY_SCOPE, DRIVE_FILE_SCOPE)
-        prefs.flush()
+        prefs.putString(KEY_SCOPE, DRIVE_FILE_SCOPE)
+        driveNode.flush()
         if (refreshToken.isBlank()) {
             driveLog("persistGrant has no refresh token - Drive posts will fail after the access token expires")
         }
@@ -55,11 +56,11 @@ actual object GoogleDriveAuth {
 
     actual fun markAccessVerified() {
         prefs.putBoolean(KEY_VERIFIED, true)
-        runCatching { prefs.flush() }
+        runCatching { driveNode.flush() }
     }
 
     actual suspend fun refreshOnUnauthorized(): Boolean {
-        val refresh = prefs.get(KEY_REFRESH, "")
+        val refresh = prefs.getString(KEY_REFRESH, "")
         if (refresh.isBlank()) return false
         val clientId = desktopOAuthClientId()
         val clientSecret = desktopOAuthClientSecret()
@@ -97,7 +98,7 @@ actual object GoogleDriveAuth {
         prefs.remove(KEY_EXPIRES_AT)
         prefs.remove(KEY_SCOPE)
         prefs.remove(KEY_VERIFIED)
-        runCatching { prefs.flush() }
+        runCatching { driveNode.flush() }
     }
 
     private fun enc(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)

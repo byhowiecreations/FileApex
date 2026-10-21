@@ -40,7 +40,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     post("/api/v1/notes/attachment") {
         cancellableCatching {
             val noteId = call.request.queryParameters["noteId"].orEmpty().trim()
-            val fileName = call.request.queryParameters["fileName"].orEmpty().trim()
+            val fileName = com.fileapex.util.PathUtils.safeFileName(call.request.queryParameters["fileName"].orEmpty()).orEmpty()
             if (noteId.isBlank() || fileName.isBlank()) {
                 call.respond(HttpStatusCode.BadRequest, "note_attachment_missing")
                 return@cancellableCatching
@@ -125,7 +125,8 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
                 com.fileapex.data.bulletin.BulletinSyncBatch.serializer(),
                 body
             )
-            val isPaired = FileApexServices.deviceRepositoryOrNull()?.getDevice(batch.originDeviceId) != null
+            val isPaired = FileApexServices.deviceRepositoryOrNull()?.getDevice(batch.originDeviceId) != null &&
+                server.authenticatedPeerId(call) == batch.originDeviceId
             if (!isPaired) {
                 call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
                 return@cancellableCatching
@@ -143,10 +144,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
 
     get("/api/v1/bulletin/file") {
         cancellableCatching {
-            val from = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
-                call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
-            }
-            if (from.isNotBlank() && FileApexServices.deviceRepositoryOrNull()?.getDevice(from) == null) {
+            if (server.authenticatedPeerId(call) == null) {
                 call.respond(HttpStatusCode.Unauthorized, "unauthorized_peer")
                 return@cancellableCatching
             }
@@ -193,6 +191,7 @@ internal fun Route.registerBulletinRoutes(server: FileApexServer) {
     }
 
     post("/api/v1/web/post-bulletin") {
+        if (!WebIntakeGuard.check(call, loopbackOnly = true)) return@post
         cancellableCatching {
             val body = call.receiveBoundedText()
             val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject

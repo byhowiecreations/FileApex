@@ -17,7 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Silent FCM data handler — wakes Doze'd instances for targeted peer health checks (Path A).
+ * Silent FCM data handler, wakes Doze'd instances for targeted peer health checks (Path A).
  * No notification channel; high-priority data-only payloads per [FcmWakeProtocol].
  */
 class FileApexFcmMessagingService : FirebaseMessagingService() {
@@ -212,7 +212,7 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
         Log.i(TAG, "Drive sync note received noteId=$id from $sourceId driveFileId=${driveFileId.ifBlank { "none" }}")
         serviceScope.launch {
             if (FileApexServices.noteRepository.isRetracted(id, driveFileId, remoteChecksum)) return@launch
-            // TYPE_NOTE_SYNC with no driveFileId has nothing to fetch — skip the ledger sweep.
+            // TYPE_NOTE_SYNC with no driveFileId has nothing to fetch, skip the ledger sweep.
             if (driveFileId.isNotBlank()) {
                 DriveRelayCoordinator.onFcmRelayPointer()
             } else {

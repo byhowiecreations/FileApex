@@ -54,7 +54,10 @@ fun settingsMenuEntries(
     tailscale: Boolean = true,
     iroh: Boolean = false,
     /** Windows and Linux can start the app at sign-in; the desktop menu otherwise hides the row. */
-    autoLaunchOnDesktop: Boolean = false
+    autoLaunchOnDesktop: Boolean = false,
+    /** When false, advanced rows are left out unless they are in use (see [inUseAdvancedIds]). */
+    showAdvanced: Boolean = true,
+    inUseAdvancedIds: Set<String> = emptySet()
 ): List<SettingsMenuEntry> {
     val entries = mutableListOf<SettingsMenuEntry>()
     fun add(section: SettingsMenuSection, id: String) {
@@ -85,5 +88,19 @@ fun settingsMenuEntries(
     add(SettingsMenuSection.Security, SettingsMenuIds.PIN_REQUIRED)
     if (googleCloud) add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
     add(SettingsMenuSection.Security, SettingsMenuIds.LEAVE_CLUSTER)
-    return entries
+    return entries.filter { showAdvanced || it.id !in ADVANCED_IDS || it.id in inUseAdvancedIds }
 }
+
+/**
+ * Rows kept out of the menu until "Show advanced settings" is on. A row that is in use (Tailscale signed in, Iroh on,
+ * a PIN set, Drive Relay or backup running) stays visible so nothing that works disappears.
+ */
+val ADVANCED_IDS: Set<String> = setOf(
+    SettingsMenuIds.TAILSCALE,
+    SettingsMenuIds.IROH,
+    SettingsMenuIds.DRIVE_RELAY,
+    SettingsMenuIds.PIN_REQUIRED,
+    SettingsMenuIds.GOOGLE_ACCOUNT,
+    SettingsMenuIds.BACKUP_SYNC,
+    SettingsMenuIds.LEAVE_CLUSTER
+)

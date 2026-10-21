@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Job handoff file written by the Share Extension for the main FileApex.app.
-/// The main app runs TransferManager.sendLocalPathsToDeviceIds — same path as in-app Multi Copy.
+/// The main app runs TransferManager.sendLocalPathsToDeviceIds, same path as in-app Multi Copy.
 struct FileApexSendJob: Codable {
     var id: String
     var filePaths: [String]
@@ -16,7 +16,7 @@ struct FileApexSendJob: Codable {
     static let statusFailed = "failed"
 }
 
-/// Thin shell for macOS extensions. Never starts transfers itself — only stages files,
+/// Thin shell for macOS extensions. Never starts transfers itself, only stages files,
 /// writes a pending job, and opens the main app with a normalized `fileapex://send?job=` URI.
 enum FileApexSendHandoff {
     /// Canonical deep link for the Share Extension → main-app TransferManager handoff.
@@ -53,7 +53,7 @@ enum FileApexSendHandoff {
         try jobsDirectory().appendingPathComponent("\(jobId).json", isDirectory: false)
     }
 
-    /// Regular files only — matches main-app Multi Copy (directories are not sent).
+    /// Regular files only, matches main-app Multi Copy (directories are not sent).
     static func regularFileURLs(from urls: [URL]) -> [URL] {
         urls.compactMap { url in
             let resolved = url.resolvingSymlinksInPath().standardizedFileURL
@@ -156,7 +156,7 @@ enum FileApexSendHandoff {
                 lock.lock()
                 opened = (error == nil)
                 if let error {
-                    NSLog("FileApexSendHandoff: open main app failed — \(error.localizedDescription)")
+                    NSLog("FileApexSendHandoff: open main app failed, \(error.localizedDescription)")
                 }
                 lock.unlock()
                 semaphore.signal()

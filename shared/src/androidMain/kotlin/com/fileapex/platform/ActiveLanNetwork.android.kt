@@ -22,7 +22,7 @@ actual fun activeLanIpv4Addresses(): List<String> {
     }.getOrDefault(emptyList())
 }
 
-/** Wi-Fi or Ethernet data interfaces — excludes cellular (rmnet/ccmni/…). */
+/** Wi-Fi or Ethernet data interfaces, excludes cellular (rmnet/ccmni/…). */
 private fun isAndroidLanDataInterface(iface: NetworkInterface): Boolean {
     val name = iface.name.lowercase()
     if (name.startsWith("rmnet") ||

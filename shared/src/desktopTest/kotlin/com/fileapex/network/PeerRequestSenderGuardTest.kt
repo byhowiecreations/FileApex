@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * Every request to a peer names its sender (`from=<deviceId>&mv=<membershipVersion>`, added by withSenderQuery) so the
  * receiver can tell who is asking and which membership version they hold. Raw peer HTTP calls therefore live only in
- * FileApexClient, and the plain GET and POST ones must build their path with withSenderQuery.
+ * FileApexClient and the peer download and upload clients, and the plain GET and POST ones must build their path with withSenderQuery.
  */
 class PeerRequestSenderGuardTest {
     private val sourceRoots = listOf("src/commonMain/kotlin", "src/androidMain/kotlin", "src/desktopMain/kotlin", "src/jvmCommon/kotlin")
@@ -19,7 +19,7 @@ class PeerRequestSenderGuardTest {
     fun rawPeerHttpCallsLiveOnlyInTheClient() {
         val offenders = sourceRoots.flatMap { root ->
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.filter { file ->
-                file.name != "FileApexClient.kt" && !file.name.startsWith("LanInterfaceBinding") && !file.name.startsWith("DesktopMacTrayBridge") &&
+                file.name != "FileApexClient.kt" && file.name != "PeerDownloadClient.kt" && file.name != "PeerUploadClient.kt" && !file.name.startsWith("LanInterfaceBinding") && !file.name.startsWith("DesktopMacTrayBridge") &&
                     file.readLines().any { line ->
                         rawCall.containsMatchIn(line) && !line.contains("fun peerHttp") && !line.trimStart().startsWith("*") && !line.trimStart().startsWith("//")
                     }
@@ -30,12 +30,14 @@ class PeerRequestSenderGuardTest {
 
     @Test
     fun plainGetAndPostCallsAddTheSender() {
-        val lines = File("src/commonMain/kotlin/com/fileapex/network/FileApexClient.kt").readLines()
-        val offenders = lines.withIndex().filter { (_, line) ->
+        val offenders = listOf("FileApexClient.kt", "PeerDownloadClient.kt", "PeerUploadClient.kt").flatMap { name ->
+        val lines = File("src/commonMain/kotlin/com/fileapex/network/$name").readLines()
+        lines.withIndex().filter { (_, line) ->
             Regex("""\bpeerHttp(Get|Post)\(""").containsMatchIn(line) && !line.contains("fun peerHttp")
         }.filter { (index, _) ->
             lines.subList(index, minOf(index + 8, lines.size)).none { it.contains("withSenderQuery") }
-        }.map { (index, _) -> index + 1 }
-        assertEquals(emptyList<Int>(), offenders)
+        }.map { (index, _) -> "$name:${index + 1}" }
+        }
+        assertEquals(emptyList<String>(), offenders)
     }
 }

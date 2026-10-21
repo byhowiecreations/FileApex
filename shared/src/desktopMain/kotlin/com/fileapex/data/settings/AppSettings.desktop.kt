@@ -4,7 +4,7 @@ import com.fileapex.util.cancellableCatching
 import java.util.concurrent.atomic.AtomicReference
 import java.util.prefs.Preferences
 
-private class DesktopSettingsKvStore(
+internal class DesktopSettingsKvStore(
     private val prefs: Preferences
 ) : SettingsKvStore {
     override fun contains(key: String): Boolean = prefs.get(key, null) != null

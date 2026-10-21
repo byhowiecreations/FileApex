@@ -512,7 +512,7 @@ enum LanHttpClient {
         }
         // Bind to a real LAN IPv4 like v0.10.6a. Leaving this unset (0.10.7a) made
         // Network.framework probe virtual/VPN paths and stall every peer HTTP call.
-        // Do not use prohibitedInterfaceTypes=[.other] — that also broke usable routes.
+        // Do not use prohibitedInterfaceTypes=[.other], that also broke usable routes.
         if let local = lanIpv4() {
             params.requiredLocalEndpoint = .hostPort(host: .ipv4(local), port: .any)
         }
@@ -530,7 +530,7 @@ enum LanHttpClient {
             let flags = Int32(bitPattern: ptr.pointee.ifa_flags)
             guard (flags & IFF_UP) != 0 else { continue }
             guard (flags & IFF_LOOPBACK) == 0 else { continue }
-            // IFF_POINTOPPOINT (0x10) — skip VPN/utun tunnels without relying on the Darwin alias.
+            // IFF_POINTOPPOINT (0x10), skip VPN/utun tunnels without relying on the Darwin alias.
             guard (flags & 0x10) == 0 else { continue }
             guard let sa = ptr.pointee.ifa_addr, sa.pointee.sa_family == sa_family_t(AF_INET) else {
                 continue

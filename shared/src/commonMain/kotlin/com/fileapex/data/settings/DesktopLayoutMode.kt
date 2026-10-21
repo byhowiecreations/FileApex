@@ -1,7 +1,7 @@
 package com.fileapex.data.settings
 
 /**
- * Desktop window layout preference — overrides width-based adaptive breakpoints.
+ * Desktop window layout preference, overrides width-based adaptive breakpoints.
  */
 enum class DesktopLayoutMode {
     Compact,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Manual helper for /Applications/FileApex.app ONLY.
-# Prefer launching FileApex from Applications — the app registers the Share extension on startup.
+# Prefer launching FileApex from Applications, the app registers the Share extension on startup.
 # This script never copies from the project tree; it only re-signs + pluginkit-registers
 # PlugIns already present under /Applications/FileApex.app.
 set -euo pipefail
@@ -13,7 +13,7 @@ SHARE_ENTS="$ROOT/macos/ShareExtension/ShareExtension.entitlements"
 HOST_ENTS="$ROOT/composeApp/macos/FileApex.entitlements"
 
 if [[ ! -d "$DEST" ]]; then
-  echo "Missing $DEST — copy current/FileApex.app there yourself, then launch FileApex (or re-run this)."
+  echo "Missing $DEST, copy current/FileApex.app there yourself, then launch FileApex (or re-run this)."
   exit 1
 fi
 if [[ ! -d "$SHARE" ]]; then
@@ -62,4 +62,4 @@ echo "=== entitlements check ==="
 codesign -d --entitlements - --xml "$SHARE" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null || true
 
 echo "=== pluginkit status ==="
-/usr/bin/pluginkit -mAvvv 2>&1 | rg -i 'fileapex' -A 6 || echo "(not listed — enable in System Settings → Login Items & Extensions, then relaunch Finder)"
+/usr/bin/pluginkit -mAvvv 2>&1 | rg -i 'fileapex' -A 6 || echo "(not listed, enable in System Settings → Login Items & Extensions, then relaunch Finder)"

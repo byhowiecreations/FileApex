@@ -123,6 +123,8 @@ interface AppSettings {
     val settingsGroupAppearanceBehaviorExpanded: StateFlow<Boolean>
     val settingsGroupSecurityAccountExpanded: StateFlow<Boolean>
     val settingsGroupRemoteAccessExpanded: StateFlow<Boolean>
+    /** Shows the advanced settings rows (remote access, security extras, backup). Off for new installs. */
+    val showAdvancedSettings: StateFlow<Boolean>
     val tailscaleSetupExpanded: StateFlow<Boolean>
     val tailscaleEnabled: StateFlow<Boolean>
     val irohEnabled: StateFlow<Boolean>
@@ -183,6 +185,7 @@ interface AppSettings {
     fun setSettingsGroupAppearanceBehaviorExpanded(expanded: Boolean)
     fun setSettingsGroupSecurityAccountExpanded(expanded: Boolean)
     fun setSettingsGroupRemoteAccessExpanded(expanded: Boolean)
+    fun setShowAdvancedSettings(show: Boolean)
     fun setTailscaleSetupExpanded(expanded: Boolean)
     fun setTailscaleEnabled(enabled: Boolean)
     fun setIrohEnabled(enabled: Boolean)

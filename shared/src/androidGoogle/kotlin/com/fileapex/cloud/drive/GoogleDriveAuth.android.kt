@@ -116,7 +116,7 @@ actual object GoogleDriveAuth {
     }
 
     /**
-     * Identity Authorization already granted Drive — mint a new access token without UI.
+     * Identity Authorization already granted Drive, mint a new access token without UI.
      * Android often never stores a refresh token; this is the working refresh path.
      */
     private suspend fun refreshWithGoogleIdentity(): Boolean {

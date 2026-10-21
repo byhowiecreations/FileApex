@@ -8,7 +8,7 @@ import android.util.Log
 import com.fileapex.shared.R
 
 object AndroidNotificationChannels {
-    /** Monochrome app silhouette — every FileApex status-bar notification icon. */
+    /** Monochrome app silhouette, every FileApex status-bar notification icon. */
     val smallIcon: Int = R.drawable.ic_fileapex_notification
 
     /** Full-color app icon for notification shade / expanded headers. */
@@ -30,7 +30,7 @@ object AndroidNotificationChannels {
     const val BULLETIN_CRITICAL = BATTERY_ALERTS
     const val DRIVE_RELAY = "fileapex_drive_relay"
     const val FOLDER_BACKUP = "fileapex_folder_backup_progress"
-    /** Persistent share-server FGS alert — static after first post ([ShareServerForegroundNotification]). */
+    /** Persistent share-server FGS alert, static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
     private const val LEGACY_BULLETIN_CRITICAL_CHANNEL = "fileapex_bulletin_critical_v2"
     private const val LEGACY_BULLETIN_CRITICAL_CHANNEL_V1 = "fileapex_bulletin_critical"
@@ -185,7 +185,7 @@ object AndroidNotificationChannels {
         manager.createNotificationChannel(channel)
     }
 
-    /** One-time legacy cleanup — not on the FGS [startForeground] critical path. */
+    /** One-time legacy cleanup, not on the FGS [startForeground] critical path. */
     fun migrateLegacyShareServerChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

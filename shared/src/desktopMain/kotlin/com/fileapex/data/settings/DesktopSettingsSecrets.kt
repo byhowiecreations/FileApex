@@ -17,4 +17,8 @@ object DesktopSettingsSecrets {
         DesktopPlatformPaths.DesktopOs.Other ->
             VaultSealer(LinuxSecretVault(FileKeyVault(File(DesktopPlatformPaths.applicationSupportDirectory(), "secrets"))))
     }
+
+    /** A Preferences node whose listed keys (tokens) are stored sealed. Call `node.flush()` on the node itself. */
+    fun sealedNode(node: java.util.prefs.Preferences, sealedKeys: Set<String>): SettingsKvStore =
+        SealingKvStore(DesktopSettingsKvStore(node), sealer(), sealedKeys)
 }

@@ -10,14 +10,14 @@ import com.fileapex.network.FileApexMdnsBrowser
 import com.fileapex.network.ServerLifecycleManager
 
 /**
- * Dual-path background presence bootstrap — mDNS listener, network revalidation, FCM token sync.
+ * Dual-path background presence bootstrap, mDNS listener, network revalidation, FCM token sync.
  * Started with the share server (FGS on Android, desktop controller on Mac).
  */
 object BackgroundPresenceServices {
     @Volatile
     private var started = false
 
-    fun start() {
+    @Synchronized fun start() {
         if (started) return
         started = true
         if (ServerLifecycleManager.isRunning) {
@@ -38,7 +38,7 @@ object BackgroundPresenceServices {
         runCatching { GoogleLinkCoordinator.invalidatePublishedPresenceCache() }
     }
 
-    fun stop(fast: Boolean = false) {
+    @Synchronized fun stop(fast: Boolean = false) {
         if (!started) return
         started = false
         FileApexMdnsAdvertiser.stop(fast = fast)

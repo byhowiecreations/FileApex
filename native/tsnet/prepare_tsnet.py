@@ -4,6 +4,13 @@
 The pin is deliberate: this script patches Tailscale's source, so a bump needs those patches
 rechecked and tailnet transfers retested. Set FILEAPEX_REQUIRE_LATEST_TSNET=1 to fail instead.
 
+The patches go on a copy of the module under build/tsnet-patched, never on the shared Go
+module cache: the cache is read-only and shared with every other Go build on the machine.
+An alternate go.mod (tsnet.mod, with its tsnet.sum beside it) replaces tailscale.com with
+that copy; the build scripts point the Go tool at it with -modfile. gomobile accepts no
+alternate go.mod, so the Android script instead binds from a copy of this module whose
+go.mod carries the same replace.
+
 Also lets Android start when the process path is hidden, and prints the linker
 flags that stamp the embedded client as that stable version.
 """
@@ -11,12 +18,16 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent
 GO_MOD = ROOT / "go.mod"
+PATCHED_ROOT = ROOT / "build" / "tsnet-patched"
+PATCHED_MODULE = PATCHED_ROOT / "tailscale.com"
+MODFILE = PATCHED_ROOT / "tsnet.mod"
 
 
 def pinned_version() -> str:
@@ -52,7 +63,6 @@ def replace_once(source: pathlib.Path, current: str, updated: str, missing: str)
         return
     if current not in text:
         sys.exit(missing)
-    source.chmod(source.stat().st_mode | 0o200)
     source.write_text(text.replace(current, updated, 1))
 
 
@@ -84,6 +94,52 @@ def patch_darwin_unbind(module: pathlib.Path) -> None:
     sys.exit("local.go no longer sets disableBindConnToInterface from the netmap")
 
 
+def patched_copy(module: pathlib.Path, patched_root: pathlib.Path = PATCHED_ROOT) -> pathlib.Path:
+    """Copy the module out of the cache, patch the copy, and return it. The cache is left alone."""
+    copy = patched_root / "tailscale.com"
+    marker = patched_root / ".source"
+    origin = str(module)
+    if copy.exists() and marker.exists() and marker.read_text().strip() == origin:
+        try:
+            patch_android_executable(copy)
+            patch_darwin_unbind(copy)
+            return copy
+        except SystemExit:
+            pass  # Stale or half-written copy: make it again below.
+    if patched_root.exists():
+        # Module cache trees are read-only, directories included; make the old copy removable.
+        for path in sorted(patched_root.rglob("*"), reverse=True):
+            if not path.is_symlink():
+                path.chmod(path.stat().st_mode | 0o200)
+        patched_root.chmod(patched_root.stat().st_mode | 0o200)
+        shutil.rmtree(patched_root)
+    patched_root.mkdir(parents=True)
+    shutil.copytree(module, copy, symlinks=True)
+    # Module cache files are read-only; the copy is ours to edit and rebuild from.
+    for path in copy.rglob("*"):
+        if not path.is_symlink():
+            path.chmod(path.stat().st_mode | 0o200)
+    patch_android_executable(copy)
+    patch_darwin_unbind(copy)
+    marker.write_text(origin + "\n")
+    return copy
+
+
+def write_modfile(go_mod: pathlib.Path, copy: pathlib.Path, patched_root: pathlib.Path = PATCHED_ROOT) -> pathlib.Path:
+    """Write the alternate go.mod/go.sum that build against the patched copy."""
+    modfile = patched_root / "tsnet.mod"
+    text = go_mod.read_text()
+    if "replace tailscale.com" not in text:
+        # An absolute path: the Go tool reads a replace in an alternate go.mod relative to
+        # the main module directory, not to the alternate file's folder.
+        text = text.rstrip() + f"\n\nreplace tailscale.com => {copy.resolve()}\n"
+    modfile.write_text(text)
+    go_sum = go_mod.with_name("go.sum")
+    if go_sum.exists():
+        shutil.copyfile(go_sum, patched_root / "tsnet.sum")
+    return modfile
+
+
 def main() -> None:
     go = sys.argv[1] if len(sys.argv) > 1 else "go"
     pinned = pinned_version()
@@ -101,9 +157,8 @@ def main() -> None:
         if os.environ.get("FILEAPEX_REQUIRE_LATEST_TSNET") == "1":
             sys.exit(message)
         print(f"WARNING: {message}", file=sys.stderr)
-    module = module_dir(go)
-    patch_android_executable(module)
-    patch_darwin_unbind(module)
+    copy = patched_copy(module_dir(go))
+    write_modfile(GO_MOD, copy)
     stamp = pinned[1:]
     print(
         f"-X tailscale.com/version.longStamp={stamp} "

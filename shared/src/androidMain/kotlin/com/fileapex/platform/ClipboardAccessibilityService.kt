@@ -13,6 +13,13 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 import com.fileapex.domain.clipboard.ClipboardShareCoordinator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -25,6 +32,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
     private val pendingClipRetry = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -43,6 +51,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
         }
         FileApexAndroidBootstrap.ensureInitialized(this)
         ClipboardAccessibilityHealth.onBound()
+        followCaptureSetting()
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         val listener = ClipboardManager.OnPrimaryClipChangedListener {
             if (ClipboardShareSuppressor.isApplyingRemote) return@OnPrimaryClipChangedListener
@@ -53,6 +62,21 @@ class ClipboardAccessibilityService : AccessibilityService() {
         clipListener = listener
         clipboard.addPrimaryClipChangedListener(listener)
         Log.i(TAG, "clipboard a11y connected sdk=${Build.VERSION.SDK_INT}")
+    }
+
+    /** Event types wake this process for every tap and keystroke in every app, so they are off while sharing is off. */
+    private fun followCaptureSetting() {
+        if (!FileApexServices.isDatabaseReady()) return
+        val settings = FileApexServices.settings
+        scope.launch {
+            combine(settings.clipboardSharingEnabled, settings.clipboardAccessibilityEnabled) { sharing, accessibility ->
+                sharing && accessibility
+            }.distinctUntilChanged().collect { capture ->
+                runCatching {
+                    serviceInfo = serviceInfo?.apply { eventTypes = if (capture) CAPTURE_EVENT_TYPES else 0 }
+                }.onFailure { Log.w(TAG, "Could not change accessibility event types", it) }
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -95,6 +119,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        scope.cancel()
         mainHandler.removeCallbacksAndMessages(null)
         pendingClipRetry.set(false)
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager

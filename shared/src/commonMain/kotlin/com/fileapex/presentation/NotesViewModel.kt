@@ -11,6 +11,7 @@ import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -160,6 +161,10 @@ class NotesViewModel(
         started = SharingStarted.Eagerly,
         initialValue = NotesUiState()
     )
+
+    override fun onCleared() {
+        scope.cancel()
+    }
 
     fun setFilter(filter: BulletinFilter) {
         activeFilterFlow.value = filter

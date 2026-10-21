@@ -25,12 +25,26 @@ object ClusterResetManager {
     /** Result of a wipe that finished inside the running app: true wiped, false incomplete; null when none is pending. */
     val outcome: StateFlow<Boolean?> = outcomeFlow.asStateFlow()
 
+    private val runningFlow = MutableStateFlow(false)
+
+    /** True from the moment a wipe starts until its result is known; the first-run questions wait for it. */
+    val inProgress: StateFlow<Boolean> = runningFlow.asStateFlow()
+
     fun acknowledgeOutcome() {
         outcomeFlow.value = null
     }
 
     /** NonCancellable: leaving the settings page while the wipe runs must not stop it half done. */
     suspend fun executeLeaveClusterAndReset(): Boolean = withContext(Dispatchers.IO + NonCancellable) {
+        runningFlow.value = true
+        try {
+            runLeaveClusterAndReset()
+        } finally {
+            runningFlow.value = false
+        }
+    }
+
+    private suspend fun runLeaveClusterAndReset(): Boolean {
         // Step A: Cluster Broadcast to online peers
         cancellableCatching { broadcastClusterRemoval() }
 
@@ -48,7 +62,7 @@ object ClusterResetManager {
             cancellableCatching { purgeDatabases() }
             if (!rosterIsEmpty()) {
                 outcomeFlow.value = false
-                return@withContext false
+                return false
             }
         }
 
@@ -60,7 +74,7 @@ object ClusterResetManager {
             outcomeFlow.value = true
         }
 
-        true
+        return true
     }
 
     private suspend fun broadcastClusterRemoval() {

@@ -25,7 +25,7 @@ data class PairingPayload(
     val tlsPinTrusted: Boolean = false
 ) {
     /**
-     * Compact URI for QR codes — omits [rootPath] / [publicKeyHash] (fetched from the broadcaster after scan).
+     * Compact URI for QR codes, omits [rootPath] / [publicKeyHash] (fetched from the broadcaster after scan).
      * Smaller matrix = faster generation and easier phone scanning.
      */
     fun toQrText(): String = buildString {

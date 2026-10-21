@@ -10,21 +10,27 @@ import com.fileapex.platform.isActiveLanConnectivity
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Event-driven LAN revalidation — mDNS re-register, cloud presence publish, and peer sweep
+ * Event-driven LAN revalidation, mDNS re-register, cloud presence publish, and peer sweep
  * after network transitions. Retries until DHCP assigns a LAN IP (callbacks often fire early).
  */
 object PresenceNetworkRevalidator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile
+    private var revalidation: Job? = null
+
     fun onLanNetworkTransition() {
         if (!FileApexServices.isDatabaseReady()) return
         com.fileapex.iroh.IrohRuntime.onNetworkChanged()
-        scope.launch {
+        // onAvailable and onLinkPropertiesChanged arrive back to back; the later one restarts the sequence.
+        revalidation?.cancel()
+        revalidation = scope.launch {
             cancellableCatching {
                 revalidateAfterNetworkTransition()
             }.onFailure { error ->

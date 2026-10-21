@@ -65,7 +65,7 @@ object TailscaleNodeRuntime {
         }
     }
 
-    fun attach() {
+    @Synchronized fun attach() {
         if (attached) return
         attached = true
         scope.launch(Dispatchers.IO) {

@@ -102,6 +102,7 @@ data class SettingsUiState(
     val appearanceBehaviorExpanded: Boolean = true,
     val securityAccountExpanded: Boolean = true,
     val remoteAccessExpanded: Boolean = true,
+    val showAdvancedSettings: Boolean = false,
     val tailscaleSetupExpanded: Boolean = false,
     val showAccessibilityRestrictedHelp: Boolean = false,
     val deviceNameBroadcasting: String = "",
@@ -168,6 +169,7 @@ class SettingsViewModel : ViewModel() {
             appearanceBehaviorExpanded = settings.settingsGroupAppearanceBehaviorExpanded.value,
             securityAccountExpanded = settings.settingsGroupSecurityAccountExpanded.value,
             remoteAccessExpanded = settings.settingsGroupRemoteAccessExpanded.value,
+            showAdvancedSettings = settings.showAdvancedSettings.value,
             tailscaleSetupExpanded = settings.tailscaleSetupExpanded.value
         )
     )
@@ -310,6 +312,11 @@ class SettingsViewModel : ViewModel() {
             }
         }
         viewModelScope.launch {
+            settings.showAdvancedSettings.collect { show ->
+                _uiState.update { it.copy(showAdvancedSettings = show) }
+            }
+        }
+        viewModelScope.launch {
             settings.settingsGroupRemoteAccessExpanded.collect { expanded ->
                 _uiState.update { it.copy(remoteAccessExpanded = expanded) }
             }
@@ -381,6 +388,11 @@ class SettingsViewModel : ViewModel() {
     fun setTailscaleSetupExpanded(expanded: Boolean) {
         settings.setTailscaleSetupExpanded(expanded)
         _uiState.update { it.copy(tailscaleSetupExpanded = expanded) }
+    }
+
+    fun setShowAdvancedSettings(show: Boolean) {
+        settings.setShowAdvancedSettings(show)
+        _uiState.update { it.copy(showAdvancedSettings = show) }
     }
 
     fun toggleRemoteAccessGroup() {

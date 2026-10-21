@@ -35,7 +35,7 @@ object DesktopAuthCoordinator {
     @Volatile
     private var pending: PendingAuth? = null
 
-    /** Last loopback redirect used — required as Firebase signInWithIdp requestUri. */
+    /** Last loopback redirect used, required as Firebase signInWithIdp requestUri. */
     @Volatile
     private var lastOAuthRedirectUri: String = DESKTOP_OAUTH_LOOPBACK_REDIRECT_URI
 
@@ -44,7 +44,7 @@ object DesktopAuthCoordinator {
     /** Null when Mac Google Sign-In credentials are present; otherwise a user-facing setup message. */
     fun macGoogleSignInSetupError(): String? {
         if (desktopOAuthClientId().isBlank()) {
-            return "Google OAuth client ID is missing — rebuild after adding json/google-services.json"
+            return "Google OAuth client ID is missing, rebuild after adding json/google-services.json"
         }
         if (desktopOAuthClientSecret().isNotBlank()) return null
         if (GeneratedDesktopCloudConfig.DESKTOP_CLIENT_ID.isNotBlank()) return null
@@ -253,7 +253,7 @@ internal fun googleWebClientSecret(): String =
         GeneratedDesktopCloudConfig.WEB_CLIENT_SECRET.trim()
     }
 
-/** Mac OAuth client — Desktop client when configured, otherwise Web client (requires client_secret). */
+/** Mac OAuth client, Desktop client when configured, otherwise Web client (requires client_secret). */
 internal fun desktopOAuthClientId(): String =
     GeneratedDesktopCloudConfig.DESKTOP_CLIENT_ID.trim().ifBlank {
         googleWebClientId()

@@ -3,7 +3,7 @@ package com.fileapex.cloud.drive
 const val DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
 /**
- * User Drive OAuth ([DRIVE_FILE_SCOPE] only — files FileApex creates). Tokens refresh only
+ * User Drive OAuth ([DRIVE_FILE_SCOPE] only, files FileApex creates). Tokens refresh only
  * when a Drive call returns 401, never on a timer.
  */
 expect object GoogleDriveAuth {

@@ -217,7 +217,7 @@ This is a simulated demo file showing how FileApex transfers documents and media
 
 Pair your real devices to transfer at full LAN speed."""
 
-    const val DEMO_PDF_CONTENT: String = """FileApex — Local P2P Ecosystem File Manager
+    const val DEMO_PDF_CONTENT: String = """FileApex, Local P2P Ecosystem File Manager
 
 FileApex seamlessly syncs, manages, and broadcasts files across Android devices, Mac, and Windows.
 

@@ -34,6 +34,7 @@ class IrohEndpointLink private constructor(private val endpoint: Endpoint) : Iro
     private val connections = ConcurrentHashMap<String, Connection>()
     private val connectLocks = ConcurrentHashMap<String, Mutex>()
     private var addressWatch: Job? = null
+    private val addressNudge = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
 
     override val id: String = endpoint.id().toBytes().toHex()
 
@@ -63,7 +64,7 @@ class IrohEndpointLink private constructor(private val endpoint: Endpoint) : Iro
         addressWatch = scope.launch {
             var last = IrohAddressKey.of(address())
             while (true) {
-                delay(ADDRESS_POLL_MS)
+                kotlinx.coroutines.withTimeoutOrNull(ADDRESS_POLL_MS) { addressNudge.receive() }
                 val now = runCatching { IrohAddressKey.of(address()) }.getOrNull() ?: continue
                 if (now != last) {
                     IrohLog.add("address changed: ${IrohAddressKey.describeChange(last, now)}")
@@ -72,6 +73,10 @@ class IrohEndpointLink private constructor(private val endpoint: Endpoint) : Iro
                 }
             }
         }
+    }
+
+    override fun checkAddressNow() {
+        addressNudge.trySend(Unit)
     }
 
     override fun pathKind(peerId: String): String? {
@@ -257,7 +262,7 @@ class IrohEndpointLink private constructor(private val endpoint: Endpoint) : Iro
         val ALPN = "fileapex/http/1".encodeToByteArray()
         private const val CONNECT_TIMEOUT_MS = 30_000L
         private const val BY_ID_DELAY_MS = 1_500L
-        private const val ADDRESS_POLL_MS = 10_000L
+        private const val ADDRESS_POLL_MS = 30_000L
 
         /**
          * [bindAddr] null binds all interfaces. [relay] false keeps traffic off any relay, which is

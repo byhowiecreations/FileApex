@@ -67,6 +67,74 @@ class TransferResumeProtocolTest {
     }
 
     @Test
+    fun inspectIncomingBackupResumesThePartOfTheFileItReplaces() {
+        val dir = File.createTempFile("fileapex-backup-resume-", ".dir")
+        check(dir.delete() && dir.mkdirs())
+        try {
+            val preferred = File(dir, "report.txt").absolutePath
+            File(preferred).writeBytes(ByteArray(900) { 1 })
+            File(SocketFileStreamer.partPathFor(preferred)).writeBytes(ByteArray(1500) { 7 })
+
+            val backup = TransferResumeProtocol.inspectIncoming(preferred, expectedSize = 4000L, backup = true)
+            assertEquals(1500L, backup.offset)
+            assertFalse(backup.complete)
+
+            // Without backup the earlier copy is not the target: a numbered name is, and it has no part.
+            val fresh = TransferResumeProtocol.inspectIncoming(preferred, expectedSize = 4000L, backup = false)
+            assertEquals(0L, fresh.offset)
+            assertFalse(fresh.complete)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun inspectIncomingBackupFinalizesInPlaceWhenThePartIsComplete() {
+        val dir = File.createTempFile("fileapex-backup-done-", ".dir")
+        check(dir.delete() && dir.mkdirs())
+        try {
+            val preferred = File(dir, "report.txt").absolutePath
+            File(preferred).writeBytes(ByteArray(900) { 1 })
+            File(SocketFileStreamer.partPathFor(preferred)).writeBytes(ByteArray(4000) { 8 })
+
+            val done = TransferResumeProtocol.inspectIncoming(preferred, expectedSize = 4000L, backup = true)
+            assertTrue(done.complete)
+            assertEquals(4000L, File(preferred).length())
+            assertTrue(File(preferred).readBytes().all { it == 8.toByte() })
+            assertFalse(File(dir, "report (1).txt").exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun inspectIncomingKeepsSameNameTransfersApartByTransaction() {
+        val dir = File.createTempFile("fileapex-tx-parts-", ".dir")
+        check(dir.delete() && dir.mkdirs())
+        try {
+            val preferred = File(dir, "photo.jpg").absolutePath
+            File(SocketFileStreamer.partPathFor(preferred, "tx-a")).writeBytes(ByteArray(1200) { 3 })
+
+            val a = TransferResumeProtocol.inspectIncoming(preferred, expectedSize = 4000L, transactionId = "tx-a")
+            assertEquals(1200L, a.offset)
+            val b = TransferResumeProtocol.inspectIncoming(preferred, expectedSize = 4000L, transactionId = "tx-b")
+            assertEquals(0L, b.offset)
+            val noTx = TransferResumeProtocol.inspectIncoming(preferred, expectedSize = 4000L)
+            assertEquals(0L, noTx.offset)
+
+            assertFalse(SocketFileStreamer.partPathFor(preferred, "tx-a") == SocketFileStreamer.partPathFor(preferred, "tx-b"))
+            assertFalse(SocketFileStreamer.segmentPartPathFor(preferred, "tx-a") == SocketFileStreamer.segmentPartPathFor(preferred, "tx-b"))
+            // A hostile transaction id stays a plain file name in the same folder.
+            val hostile = SocketFileStreamer.partPathFor(preferred, "../../evil")
+            assertEquals(dir.absolutePath, File(hostile).parent)
+            assertTrue(SocketFileStreamer.isTransferScratchFile(File(hostile).name))
+            assertTrue(SocketFileStreamer.isTransferScratchFile(File(SocketFileStreamer.partPathFor(preferred, "tx-a")).name))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun transactionJournalDeduplicatesSameTransactionAndAllowsFreshTransfer() {
         val dir = File.createTempFile("fileapex-tx-journal-", ".dir")
         check(dir.delete() && dir.mkdirs())
@@ -85,7 +153,6 @@ class TransferResumeProtocolTest {
                 timestampEpochMs = 123456789L
             )
 
-            // 1. Same transaction ID query -> returns complete=true, offset=2048L (skips duplicate upload)
             val sameTx = TransferResumeProtocol.inspectIncoming(
                 preferredPath = file.absolutePath,
                 expectedSize = 2048L,
@@ -95,7 +162,6 @@ class TransferResumeProtocolTest {
             assertEquals(2048L, sameTx.offset)
             assertTrue(sameTx.complete)
 
-            // 2. Different transaction ID query (new rebuild / patch with same name and size) -> does not falsely deduplicate
             val txId2 = "tx-event-2"
             val newTx = TransferResumeProtocol.inspectIncoming(
                 preferredPath = file.absolutePath,
@@ -107,7 +173,6 @@ class TransferResumeProtocolTest {
             assertEquals(0L, newTx.offset)
             assertFalse(newTx.complete)
 
-            // 3. Test install tracking
             assertFalse(TransferTransactionJournal.isInstalled(txId1))
             TransferTransactionJournal.markInstallAttempted(txId1)
             assertFalse(TransferTransactionJournal.isInstalled(txId1))
@@ -119,7 +184,6 @@ class TransferResumeProtocolTest {
             val recordAfter = TransferTransactionJournal.findRecordByFilePath(file.absolutePath)
             assertTrue(recordAfter?.installed == true)
 
-            // 4. Test purge
             TransferTransactionJournal.purgeTransaction(txId1)
             assertFalse(TransferTransactionJournal.isInstalled(txId1))
         } finally {

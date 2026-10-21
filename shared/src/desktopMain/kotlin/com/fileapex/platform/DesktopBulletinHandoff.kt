@@ -52,10 +52,11 @@ object DesktopBulletinHandoff {
             val key = java.net.URLDecoder.decode(part.substring(0, idx), Charsets.UTF_8)
             val value = java.net.URLDecoder.decode(part.substring(idx + 1), Charsets.UTF_8)
             if (key == "job") value else null
-        }.firstOrNull()?.takeIf { it.isNotBlank() }
+        }.firstOrNull()?.let { HandoffJobIds.safeOrNull(it) }
     }
 
     fun enqueueJob(jobId: String) {
+        if (!HandoffJobIds.isSafe(jobId)) return
         _incomingJobIds.tryEmit(jobId)
     }
 
@@ -78,13 +79,14 @@ object DesktopBulletinHandoff {
             ?.mapNotNull { file ->
                 runCatching {
                     val job = json.decodeFromString<BulletinJobFile>(file.readText(Charsets.UTF_8))
-                    job.id.takeIf { job.status == STATUS_PENDING }
+                    job.id.takeIf { job.status == STATUS_PENDING && HandoffJobIds.isSafe(job.id) }
                 }.getOrNull()
             }
             .orEmpty()
     }
 
     suspend fun processJob(jobId: String) {
+        if (!HandoffJobIds.isSafe(jobId)) return
         processMutex.withLock {
             if (!inFlight.add(jobId)) return
         }
@@ -105,6 +107,7 @@ object DesktopBulletinHandoff {
         }.getOrElse {
             return
         }
+        if (job.id != jobId) return
         if (job.status == STATUS_DONE || job.status == STATUS_FAILED) return
 
         val text = job.sharedText?.trim().orEmpty()
@@ -137,10 +140,7 @@ object DesktopBulletinHandoff {
     }
 
     private fun cleanupStaging(jobId: String) {
-        val staging = File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging/$jobId")
-        if (staging.isDirectory) {
-            staging.deleteRecursively()
-        }
+        HandoffJobIds.deleteStaging(File(DesktopPlatformPaths.applicationSupportDirectory(), "send-staging"), jobId)
     }
 
     private fun writeJob(job: BulletinJobFile) {
@@ -148,7 +148,10 @@ object DesktopBulletinHandoff {
         jobFile(job.id).writeText(json.encodeToString(job), Charsets.UTF_8)
     }
 
-    private fun jobFile(jobId: String): File = File(jobsDir, "$jobId.json")
+    private fun jobFile(jobId: String): File {
+        require(HandoffJobIds.isSafe(jobId)) { "unsafe job id" }
+        return File(jobsDir, "$jobId.json")
+    }
 
     const val STATUS_PENDING = "pending"
     const val STATUS_DONE = "done"

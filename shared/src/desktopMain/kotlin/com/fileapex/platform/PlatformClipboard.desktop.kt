@@ -12,7 +12,7 @@ import com.fileapex.domain.clipboard.ClipboardCopySignals
 actual object PlatformClipboard {
     actual fun getSystemClipboardText(): String? {
         val onEdt = java.awt.EventQueue.isDispatchThread()
-        // Never run pbpaste/osascript on the AWT EDT — that froze clicks for ~1s after first paint.
+        // Never run pbpaste/osascript on the AWT EDT, that froze clicks for ~1s after first paint.
         val appKit = if (!onEdt) {
             DesktopMacTrayBridge.readClipboardText()?.takeIf { it.isNotBlank() }
         } else {

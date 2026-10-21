@@ -11,7 +11,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * All-files / legacy storage grant. Android 10 (MIUI 12) must not require
- * WRITE_EXTERNAL_STORAGE — that permission is maxSdkVersion 28 in the manifest, so
+ * WRITE_EXTERNAL_STORAGE, that permission is maxSdkVersion 28 in the manifest, so
  * checkSelfPermission(WRITE) is always denied and onboarding never completes.
  */
 object AndroidStorageAccess {

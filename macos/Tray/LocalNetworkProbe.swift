@@ -53,7 +53,7 @@ enum LocalNetworkProbe {
         return params
     }
 
-    /// Advertise `_fileapex-ln._tcp` on `local.` — this is the evaluation the
+    /// Advertise `_fileapex-ln._tcp` on `local.`, this is the evaluation the
     /// policy daemon needs for GUI-launched processes.
     private static func startPolicyListener() {
         if listener != nil { return }

@@ -247,10 +247,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="com.fileapex.action.SERVICE_WATCHDOG" />
-            </intent-filter>
         </receiver>
+
+        <!-- The watchdog alarm fires this explicitly from inside the app; nothing outside can reach it. -->
+        <receiver
+            android:name="com.fileapex.platform.FileApexWatchdogAlarmReceiver"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

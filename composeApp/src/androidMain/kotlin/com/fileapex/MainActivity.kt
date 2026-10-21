@@ -58,6 +58,8 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -274,7 +276,7 @@ class MainActivity : ComponentActivity() {
         val pendingOffer = com.fileapex.update.AppUpdateCoordinator.pendingUpdate.value
         val hasDownloadUpdateExtra = intent?.getBooleanExtra(com.fileapex.platform.EXTRA_DOWNLOAD_UPDATE, false) == true
         if (pendingOffer != null && !hasDownloadUpdateExtra) {
-            requestShowUpdateSheet = true
+            com.fileapex.update.AppUpdateCoordinator.showSheetOnResume()
         }
     }
 
@@ -291,11 +293,13 @@ class MainActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             cancellableCatching {
-                com.fileapex.di.FileApexServices.deviceRepository.observeDevices().collect { devices ->
-                    if (devices.isNotEmpty() && onboardingComplete) {
-                        startShareServer(force = true)
+                // Only "has paired devices" matters here; a peer's last-seen update must not restart the service call.
+                com.fileapex.di.FileApexServices.deviceRepository.observeDevices()
+                    .map { it.isNotEmpty() }
+                    .distinctUntilChanged()
+                    .collect { hasDevices ->
+                        if (hasDevices && onboardingComplete) startShareServer(force = true)
                     }
-                }
             }
         }
     }
@@ -547,7 +551,7 @@ class MainActivity : ComponentActivity() {
 
     private fun configureVisibleSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        // Honor the system display timeout — do not keep the screen on while FileApex is open.
+        // Honor the system display timeout, do not keep the screen on while FileApex is open.
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val controller = WindowInsetsControllerCompat(window, window.decorView)

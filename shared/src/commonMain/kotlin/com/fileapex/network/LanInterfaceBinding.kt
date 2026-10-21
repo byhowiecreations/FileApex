@@ -78,7 +78,7 @@ expect suspend fun peerHttpUploadFromFile(
  * Streams a GET response body over TCP bound to a LAN interface.
  * Returns null only when no bind candidate could connect.
  *
- * [onChunk] must consume `buffer[0, length)` before returning — the array is reused.
+ * [onChunk] must consume `buffer[0, length)` before returning, the array is reused.
  * [onStatus] runs after the HTTP status line, before any body bytes.
  */
 expect suspend fun peerHttpGetStreaming(

@@ -208,7 +208,8 @@ object TransferResumeProtocol {
         preferredPath: String,
         expectedSize: Long,
         transactionId: String = "",
-        senderDeviceId: String = ""
+        senderDeviceId: String = "",
+        backup: Boolean = false
     ): ResumeOffsetResponse {
         if (transactionId.isNotBlank()) {
             val completedRecord = TransferTransactionJournal.findCompleted(transactionId, senderDeviceId, expectedSize)
@@ -216,15 +217,17 @@ object TransferResumeProtocol {
                 return ResumeOffsetResponse(offset = completedRecord.byteSize, complete = true)
             }
         }
-        val resolved = UniqueFileNames.resolve(preferredPath)
-        val partPath = SocketFileStreamer.partPathFor(resolved)
+        // A backup replaces the file at the preferred path, so its part sits beside that file.
+        // Any other upload lands at the first free numbered name, and only that name's part counts.
+        val resolved = if (backup) preferredPath else UniqueFileNames.resolve(preferredPath)
+        val partPath = SocketFileStreamer.partPathFor(resolved, transactionId)
         val onDisk = SocketFileStreamer.fileLength(partPath)
         if (expectedSize > 0L && onDisk > expectedSize) {
             return ResumeOffsetResponse(offset = 0L, complete = false)
         }
         val complete = expectedSize > 0L && onDisk == expectedSize
         if (complete) {
-            SocketFileStreamer.finalizePart(partPath, resolved)
+            SocketFileStreamer.finalizePart(partPath, resolved, overwrite = backup)
         }
         return ResumeOffsetResponse(offset = onDisk, complete = complete)
     }

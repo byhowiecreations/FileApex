@@ -1,7 +1,7 @@
 package com.fileapex.platform
 
 /**
- * Google Drive Relay notifications — channel is created and the Settings toggle is
+ * Google Drive Relay notifications, channel is created and the Settings toggle is
  * switched on when Drive is enabled and the grant has been verified.
  */
 expect object DriveRelayNotifier {

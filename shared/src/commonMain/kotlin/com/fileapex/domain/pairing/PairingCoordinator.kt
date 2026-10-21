@@ -30,7 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Coordinates one-time pairing/rename/removal deltas and local-only metadata broadcasts.
  *
  * Peer rosters are maintained from direct identity/heartbeat ingestion. On QR pair, the
- * broadcaster shares its local roster once with the newcomer (direct peer only — not multi-hop gossip).
+ * broadcaster shares its local roster once with the newcomer (direct peer only, not multi-hop gossip).
  */
 class PairingCoordinator(
     private val repository: DeviceRepository,
@@ -133,7 +133,7 @@ class PairingCoordinator(
     }
 
     /**
-     * Passive merge from a direct peer packet — ingest metadata/removals only (no roster gossip).
+     * Passive merge from a direct peer packet, ingest metadata/removals only (no roster gossip).
      */
     suspend fun mergeIncoming(request: ClusterSyncRequest, authenticatedSenderId: String? = null) {
         val localId = identityProvider().deviceId
@@ -287,11 +287,7 @@ class PairingCoordinator(
         }
     }
 
-    /**
-     * Fan-out a permanent removal:
-     * 1. Priority direct removal notification to the removed device if reachable on LAN.
-     * 2. Parallel tombstone broadcast to every remaining paired peer.
-     */
+    /** The removed device is told first if it is reachable on the LAN, then every remaining peer gets the tombstone in parallel. */
     suspend fun broadcastDeviceRemoval(removed: PairedDeviceEntity) {
         val entry = repository.getDeviceEntry(removed.deviceId)
         val clusterVersion = entry?.takeIf { it.isRemoved }?.let { maxOf(it.clusterVersion, it.removedAt ?: 0L) }
@@ -528,7 +524,7 @@ class PairingCoordinator(
             return
         }
 
-        // 1. Announce the newcomer to all existing cluster peers FIRST with the new clusterVersion
+        // Announce the newcomer to all existing cluster peers FIRST with the new clusterVersion
         // so their tombstones are cleared before the newcomer starts communicating with them.
         if (existing.isNotEmpty()) {
             coroutineScope {
@@ -562,7 +558,7 @@ class PairingCoordinator(
             }
         }
 
-        // 2. Seed the newcomer with every cluster device, plus its own stamp so its revocation-gate
+        // Seed the newcomer with every cluster device, plus its own stamp so its revocation-gate
         // version outranks any tombstone peers still hold from before this pairing.
         val rosterForNewcomer = buildList {
             add(selfState)

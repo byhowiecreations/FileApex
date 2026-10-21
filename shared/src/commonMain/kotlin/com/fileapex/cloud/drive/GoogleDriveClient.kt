@@ -3,7 +3,7 @@ package com.fileapex.cloud.drive
 import com.fileapex.i18n.AppI18n
 
 /**
- * Drive API v3 over HTTPS — single I/O surface for relay uploads, downloads, and [log.md].
+ * Drive API v3 over HTTPS, single I/O surface for relay uploads, downloads, and [log.md].
  */
 expect object GoogleDriveClient {
     suspend fun uploadResumable(
@@ -43,7 +43,7 @@ class DriveUnauthorizedException(message: String) : Exception(message)
 
 class DriveHttpException(val status: Int, message: String) : Exception(message)
 
-/** Short Settings copy — never dump Google JSON bodies. */
+/** Short Settings copy, never dump Google JSON bodies. */
 fun driveGrantUserMessage(error: Throwable): String {
     val raw = generateSequence(error) { it.cause }
         .mapNotNull { it.message }

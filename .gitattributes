@@ -1,8 +1,8 @@
-# Unix line endings for scripts — CRLF from Windows breaks shebangs on macOS/Linux.
+# Unix line endings for scripts, CRLF from Windows breaks shebangs on macOS/Linux.
 gradlew text eol=lf
 *.sh text eol=lf
 
-# Gradle / Kotlin / XML — normalize text, leave line endings to platform where safe.
+# Gradle / Kotlin / XML, normalize text, leave line endings to platform where safe.
 *.gradle text
 *.gradle.kts text
 *.kt text
@@ -12,7 +12,7 @@ gradlew text eol=lf
 *.properties text
 *.json text
 
-# Binary artifacts — never let Git rewrite bytes.
+# Binary artifacts, never let Git rewrite bytes.
 *.apk binary
 *.aab binary
 *.dmg binary

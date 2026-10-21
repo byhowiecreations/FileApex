@@ -58,7 +58,8 @@ object NotificationCompanionGrant {
     }
 
     internal fun allows(stored: String, computerId: String, now: Long): Boolean {
-        val record = decode(stored) ?: return true
+        // No record is the default (allowed); a record that cannot be read is not a reason to open anything up.
+        val record = decode(stored) ?: return stored.isBlank()
         if (record.grantorDeviceId != computerId.trim()) return true
         return record.active && now < record.expiresAtEpochMs
     }

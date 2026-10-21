@@ -176,7 +176,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="nothing_to_send">Nada que enviar</string>
     <string name="nothing_to_send_empty_folder">Nada que enviar: carpeta vacía o archivos faltantes</string>
     <string name="nothing_to_queue">Nada que poner en cola</string>
-    <string name="send_did_not_finish_retrying">El envío no terminó — reintentando</string>
+    <string name="send_did_not_finish_retrying">El envío no terminó: reintentando</string>
     <string name="source_read_failed">Falló la lectura del origen</string>
     <string name="drive_signin_expired">El inicio de sesión de Google Drive caducó. Toca Conceder acceso otra vez.</string>
     <string name="nothing_to_post_bulletin">Nada que publicar en el Tablón</string>
@@ -241,7 +241,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="could_not_download_attachment">No se pudo descargar el adjunto</string>
     <string name="no_preview">No hay vista previa.</string>
     <string name="posted_to_bulletin">Publicado en el tablón</string>
-    <string name="text_copied_select_device">Texto copiado — elige un dispositivo para enviarlo</string>
+    <string name="text_copied_select_device">Texto copiado: elige un dispositivo para enviarlo</string>
     <string name="filter_all">Todos</string>
     <string name="filter_links">Enlaces</string>
     <string name="filter_images">Imágenes</string>
@@ -276,7 +276,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="checking">Comprobando…</string>
     <string name="download_install">Descargar e instalar</string>
     <string name="update_open_release_page">Abrir la página de la versión</string>
-    <string name="update_details_missing">Faltan datos de la actualización — comprobando de nuevo…</string>
+    <string name="update_details_missing">Faltan datos de la actualización: comprobando de nuevo…</string>
     <string name="update_download_progress">La descarga de la actualización ya está en curso…</string>
     <string name="exit_fileapex">Salir de FileApex</string>
     <string name="exit_fileapex_q">¿Salir de FileApex?</string>
@@ -345,7 +345,10 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="last_seen">Visto %1$s</string>
     <string name="wifi_ecosystem">Ecosistema Wi‑Fi local seguro en ejecución...</string>
     <string name="fetching_snapshot">Obteniendo instantánea…</string>
-    <string name="device_details_title">Detalles del dispositivo — %1$s</string>
+    <string name="getting_device_details">Obteniendo los detalles de %1$s…</string>
+    <string name="device_details_updating">Actualizando…</string>
+    <string name="device_details_ready">Los detalles de %1$s están listos</string>
+    <string name="device_details_title">Detalles del dispositivo: %1$s</string>
     <string name="keep_file">Conservar archivo</string>
     <string name="keep_files">Conservar archivos</string>
     <string name="delete_files">Eliminar archivos</string>
@@ -402,7 +405,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="remote_delete_desc">Permite que el Tablón borre de forma remota todos los archivos del almacenamiento local.</string>
     <string name="drive_relay_desc">Guarda archivos retransmitidos en una carpeta FileApex Relay de tu Google Drive. Funciona por Wi‑Fi. FileApex no puede ver tus otros archivos de Drive. En escritorio no hay FCM, así que se comprueba esa carpeta al iniciar y cada 15 minutos fuera de Wi‑Fi.</string>
     <string name="drive_cellular_desc">Usa también Google Drive Relay cuando este dispositivo no está en Wi‑Fi local. Es independiente del Portapapeles por datos móviles.</string>
-    <string name="relay_size_limit_desc">Tamaño máximo de un envío por Google Drive Relay — un archivo o un grupo seleccionado. El valor predeterminado es %1$s.</string>
+    <string name="relay_size_limit_desc">Tamaño máximo de un envío por Google Drive Relay: un archivo o un grupo seleccionado. El valor predeterminado es %1$s.</string>
     <string name="purge_after_72h_desc">Elimina los archivos de retransmisión de Drive no fijados 72 horas después de subirlos. Las transferencias directas también se quitan en cuanto el destino las recupera.</string>
     <string name="delete_relay_now_desc">Quita de inmediato todos los archivos de FileApex Relay, incluidas las subidas que nunca se descargaron. No espera 72 horas.</string>
     <string name="deleting">Eliminando…</string>
@@ -419,7 +422,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="themes_intro">Elige el estilo visual de FileApex. Los cambios se aplican de inmediato en todas las pantallas y ventanas.</string>
     <string name="default_badge">PREDET.</string>
     <string name="also_remove_remote">¿También quitar el archivo del almacenamiento remoto?</string>
-    <string name="onboarding_wifi_intro">FileApex envía y recibe archivos entre tus dispositivos por Wi‑Fi — en directo, sin subirlos a la nube. También puedes explorar carpetas en teléfonos y equipos emparejados cuando necesites elegir archivos a distancia.</string>
+    <string name="onboarding_wifi_intro">FileApex envía y recibe archivos entre tus dispositivos por Wi‑Fi: en directo, sin subirlos a la nube. También puedes explorar carpetas en teléfonos y equipos emparejados cuando necesites elegir archivos a distancia.</string>
     <string name="onboarding_tap_grant">Toca Conceder en cada tarjeta. Solo pedimos permisos que debes aprobar.</string>
     <string name="granted">Concedido</string>
     <string name="grant">Conceder</string>
@@ -630,8 +633,8 @@ Toca el hub central (+) para emparejar</string>
     <string name="peer_unreachable_wifi">Par inalcanzable por Wi-Fi en %1$s:%2$s. Confirma que ambos dispositivos están en la misma red local.</string>
     <string name="peer_unreachable_tailnet">El par de la tailnet en %1$s:%2$s no respondió. Puede estar sin conexión o su ruta caída; inténtalo de nuevo en breve.</string>
     <string name="file_nav_off_wifi">La navegación de archivos no está disponible hasta volver a la Wi‑Fi local.</string>
-    <string name="file_transfer_off_wifi_queued">%1$s está fuera de la Wi‑Fi local — transferencia en cola hasta volver a Wi‑Fi.</string>
-    <string name="file_transfer_off_wifi_queued_multiple">%1$s fuera de la Wi‑Fi local — transferencia(s) en cola hasta volver a Wi‑Fi.</string>
+    <string name="file_transfer_off_wifi_queued">%1$s está fuera de la Wi‑Fi local: transferencia en cola hasta volver a Wi‑Fi.</string>
+    <string name="file_transfer_off_wifi_queued_multiple">%1$s fuera de la Wi‑Fi local: transferencia(s) en cola hasta volver a Wi‑Fi.</string>
     <string name="file_transfer_off_wifi_drive_not_ready">%1$s está fuera de la Wi‑Fi local. Activa Google Drive Relay y Datos móviles en Cuenta de Google para enviar ahora.</string>
     <string name="local_wifi_required">Conéctate a Wi‑Fi o Ethernet para alcanzar dispositivos emparejados en tu red local.</string>
     <string name="unable_to_reach_device">No se puede alcanzar el dispositivo</string>
@@ -669,10 +672,10 @@ Toca el hub central (+) para emparejar</string>
     <string name="no_lan_ipv4_reverse">No hay dirección IPv4 LAN para el emparejamiento inverso</string>
     <string name="pin_required_error">Se requiere PIN</string>
     <string name="incorrect_pin">PIN incorrecto</string>
-    <string name="incorrect_pin_pairing">PIN incorrecto — emparejamiento rechazado</string>
+    <string name="incorrect_pin_pairing">PIN incorrecto: emparejamiento rechazado</string>
     <string name="pairing_code_expired">El código de emparejamiento caducó o es incorrecto. Pide al otro dispositivo que pulse Reintentar.</string>
     <string name="pairing_handshake_failed">Fallo en el emparejamiento (%1$s)</string>
-    <string name="pairing_not_fileapex">No es un código de emparejamiento de FileApex — escanea con Cámara y pulsa Abrir FileApex, o usa Escanear QR dentro de FileApex. El escáner vio: %1$s</string>
+    <string name="pairing_not_fileapex">No es un código de emparejamiento de FileApex: escanea con Cámara y pulsa Abrir FileApex, o usa Escanear QR dentro de FileApex. El escáner vio: %1$s</string>
     <string name="live_qr_android_only">La cámara QR en vivo está disponible en Android</string>
     <string name="live_qr_desktop_hint">Usa el código de 6 dígitos del dispositivo anfitrión abajo, o pega un enlace de emparejamiento en el campo de código.</string>
     <string name="enter_pin_for">Introduce el PIN de %1$s</string>
@@ -680,7 +683,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="clipboard_send_success">Recibido correctamente por %1$s</string>
     <string name="clipboard_send_failed">Error al enviar el portapapeles a %1$s</string>
     <string name="clipboard_disabled_on_peer">El uso compartido del portapapeles está desactivado en el dispositivo de destino</string>
-    <string name="pin_required_open_device">Se requiere PIN — abre el dispositivo e introduce su PIN</string>
+    <string name="pin_required_open_device">Se requiere PIN: abre el dispositivo e introduce su PIN</string>
     <string name="name_cannot_be_empty">El nombre no puede estar vacío</string>
     <string name="updating_device_name">Actualizando el nombre del dispositivo…</string>
     <string name="device_name">Nombre del dispositivo</string>
@@ -694,13 +697,13 @@ Toca el hub central (+) para emparejar</string>
     <string name="device_name_peer_label_row">%1$s → %2$s</string>
     <string name="device_name_cluster_sync">Sincronización del clúster: %1$s</string>
     <string name="device_name_saved">Guardado como %1$s y sincronizado con dispositivos vinculados</string>
-    <string name="renamed_synced">Renombrado a %1$s — sincronizado con el clúster</string>
+    <string name="renamed_synced">Renombrado a %1$s: sincronizado con el clúster</string>
     <string name="rename_failed">Error al renombrar</string>
     <string name="device_not_found">Dispositivo no encontrado</string>
     <string name="device_not_in_list">El dispositivo ya no está en la lista emparejada</string>
-    <string name="device_removed_restore">%1$s eliminado — empareja de nuevo para restaurarlo</string>
+    <string name="device_removed_restore">%1$s eliminado: empareja de nuevo para restaurarlo</string>
     <string name="remove_failed">Error al eliminar</string>
-    <string name="cannot_send_to_self">No se puede enviar a este dispositivo — suéltalo sobre un par emparejado</string>
+    <string name="cannot_send_to_self">No se puede enviar a este dispositivo: suéltalo sobre un par emparejado</string>
     <string name="drop_files_or_folders">Suelta uno o más archivos o carpetas</string>
     <string name="device_no_longer_paired">El dispositivo ya no está emparejado</string>
     <string name="sending_to_device">Enviando a %1$s…</string>
@@ -753,7 +756,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="downloading_update">Descargando FileApex %1$s…</string>
     <string name="installing_update">Instalando FileApex %1$s…</string>
     <string name="update_download_failed">Error al descargar la actualización</string>
-    <string name="update_available_installing">FileApex %1$s disponible — instalando…</string>
+    <string name="update_available_installing">FileApex %1$s disponible: instalando…</string>
     <string name="drive_relay_not_enabled">Google Drive Relay no estaba activado.</string>
     <string name="no_queued_remove">No se pudo quitar el archivo en cola</string>
     <string name="could_not_load_devices">No se pudieron cargar los dispositivos</string>
@@ -816,8 +819,8 @@ Toca el hub central (+) para emparejar</string>
     <string name="waiting_desktop_drive_sync">Esperando la sincronización de Drive en el escritorio.</string>
     <string name="relay_too_large_queued">Este envío supera el límite de Google Drive Relay (%1$s por archivo o grupo). En cola hasta Wi‑Fi: %2$s</string>
     <string name="sent">Enviado</string>
-    <string name="copied_file_paste_hint">Se copió %1$s — abre una carpeta y toca Pegar aquí</string>
-    <string name="copied_files_paste_hint">Se copiaron %1$s archivos — abre una carpeta y toca Pegar aquí</string>
+    <string name="copied_file_paste_hint">Se copió %1$s: abre una carpeta y toca Pegar aquí</string>
+    <string name="copied_files_paste_hint">Se copiaron %1$s archivos: abre una carpeta y toca Pegar aquí</string>
     <string name="directories_not_supported_copy">Las carpetas aún no se pueden copiar</string>
     <string name="download_remote_only">La descarga solo está disponible en dispositivos remotos</string>
     <string name="selected_devices_not_paired">Los dispositivos seleccionados no están en la lista emparejada</string>
@@ -858,6 +861,9 @@ Toca el hub central (+) para emparejar</string>
     <string name="update_html_download">Falló la descarga de la actualización. Inténtalo de nuevo.</string>
     <string name="update_allow_unknown_apps">Permite Instalar apps desconocidas para FileApex en Ajustes → Buscar actualizaciones y vuelve a intentarlo.</string>
     <string name="update_invalid_package">No se pudo verificar la actualización descargada. Inténtalo de nuevo.</string>
+    <string name="update_wrong_package">La actualización es de otra aplicación y no se instaló.</string>
+    <string name="update_signature_mismatch">La actualización está firmada con otra clave distinta a la de esta aplicación y no se instaló.</string>
+    <string name="update_older_version">La actualización es anterior a la versión instalada y no se instaló.</string>
     <string name="update_mac_only">La actualización automática de escritorio solo está disponible en macOS.</string>
     <string name="camera_scan_reason">Se necesita acceso a la cámara para escanear códigos QR de emparejamiento.</string>
     <string name="allow_camera">Permitir cámara</string>
@@ -963,7 +969,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="demo_mode_card_desc">Explora cómo funciona FileApex con un entorno simulado de dispositivos por los que puedes navegar virtualmente.</string>
     <string name="launch_demo">Iniciar demostración</string>
     <string name="exit_demo">Salir de la demostración</string>
-    <string name="demo_mode_banner">MODO DEMO — Entorno simulado (No se mueven archivos)</string>
+    <string name="demo_mode_banner">MODO DEMO: Entorno simulado (No se mueven archivos)</string>
     <string name="demo_transfer_complete">¡Transferencia de demostración completa! ¿Listo para conectar tus dispositivos reales?</string>
     <string name="set_up_later">Configurar más tarde</string>
     <string name="continue_to_app">Continuar a la aplicación</string>
@@ -980,11 +986,11 @@ Toca el hub central (+) para emparejar</string>
     <string name="all_permissions_granted">Todos los permisos concedidos</string>
     <string name="all_permissions_granted_desc">FileApex tiene todos los permisos necesarios para transferir archivos y detectar dispositivos cercanos.</string>
     <string name="back_to_settings">Volver a Configuración</string>
-    <string name="peer_revoked_this_device">%1$s ya no reconoce este dispositivo — vuelve a emparejarlo para unirte</string>
+    <string name="peer_revoked_this_device">%1$s ya no reconoce este dispositivo: vuelve a emparejarlo para unirte</string>
     <string name="transfer_cancelled">Transferencia cancelada</string>
     <string name="queue_retry_failed">No se pudo reintentar esta transferencia</string>
     <string name="queue_retry_now">Reintentar ahora</string>
-    <string name="queue_paused">En pausa — toca reintentar para continuar</string>
+    <string name="queue_paused">En pausa: toca reintentar para continuar</string>
     <string name="show_in_folder">Mostrar en carpeta</string>
     <string name="error_peer_timeout">El dispositivo tardó demasiado en responder. Comprueba que esté activo y en la misma red Wi-Fi.</string>
     <string name="error_peer_unreachable">No se pudo conectar con el dispositivo. Comprueba que FileApex esté en ejecución y que ambos estén en la misma red.</string>
@@ -1295,5 +1301,27 @@ Toca el hub central (+) para emparejar</string>
     <string name="auto_launch_on_signin">Iniciar al iniciar sesión</string>
     <string name="desktop_autostart_title">Iniciar FileApex al iniciar sesión</string>
     <string name="desktop_autostart_desc">Si está activado, FileApex se inicia minimizado cuando inicias sesión en este equipo, para que tus otros dispositivos puedan alcanzarlo. Desactivado, queda cerrado hasta que lo abras.</string>
+    <string name="field_AppVersion">Versión de la app</string>
+    <string name="app_source_github">GitHub</string>
+    <string name="app_source_fdroid">F-Droid</string>
+    <string name="app_source_play">Play Store</string>
+    <string name="app_build_number">compilación %1$s</string>
+    <string name="device_details_advanced">Mostrar detalles avanzados</string>
+    <string name="device_details_advanced_desc">Filas de red, señal, térmicas, pantalla, tiempo activo y otras técnicas. Activa las que quieras.</string>
+    <string name="settings_show_advanced">Mostrar ajustes avanzados</string>
+    <string name="settings_show_advanced_desc">Acceso remoto (Tailscale, Iroh, Drive Relay), PIN para explorar, copias de seguridad y herramientas del clúster. Lo que ya usas sigue visible.</string>
+    <string name="about_title">Acerca de</string>
+    <string name="about_desc">Créditos de código abierto y licencias</string>
+    <string name="about_fileapex_heading">FileApex</string>
+    <string name="about_fileapex_body">FileApex mueve archivos, texto del portapapeles y notas entre tus propios dispositivos. No tiene anuncios, rastreadores ni analíticas. Se publica bajo la licencia MIT.</string>
+    <string name="about_tailscale_heading">Tailscale</string>
+    <string name="about_tailscale_body">Para llegar a tus dispositivos entre redes se usa la biblioteca de código abierto tsnet de Tailscale (BSD-3-Clause). FileApex no está afiliado ni respaldado por Tailscale.</string>
+    <string name="about_iroh_heading">Iroh</string>
+    <string name="about_iroh_body">Para llegar a tus dispositivos por internet mediante clave se usa Iroh de n0 computer, de código abierto (MIT y Apache-2.0). FileApex no está afiliado ni respaldado por n0 computer.</string>
+    <string name="about_licenses_heading">Licencias de código abierto</string>
+    <string name="about_licenses_body">Los avisos de derechos de autor y los textos completos de las licencias de estas y otras bibliotecas que incluye FileApex, como la biblioteca estándar de Go y los módulos de Go del puente de Tailscale.</string>
+    <string name="about_source_link">Ver código fuente</string>
+    <string name="about_licenses_link">Leer las licencias completas</string>
+    <string name="about_trademarks">Tailscale, Iroh y los demás nombres pertenecen a sus propietarios y se usan solo para indicar con qué funciona FileApex.</string>
 </resources>
 

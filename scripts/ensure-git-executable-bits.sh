@@ -48,5 +48,5 @@ done
 if [[ "$fixed_index" -eq 0 && "$fixed_disk" -eq 0 ]]; then
   echo "All tracked scripts already executable in index and on disk."
 else
-  echo "Fixed index=$fixed_index disk=$fixed_disk — commit if index changed (git status)."
+  echo "Fixed index=$fixed_index disk=$fixed_disk, commit if index changed (git status)."
 fi

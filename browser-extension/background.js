@@ -26,7 +26,6 @@ async function notify(title, message) {
 
 async function showBadgeOk() {
   await browser.action.setBadgeBackgroundColor({ color: "#0f766e" });
-  await browser.action.setBadgeText({ color: "#ffffff" });
   await browser.action.setBadgeText({ text: "✓" });
   setTimeout(() => {
     browser.action.setBadgeText({ text: "" });
@@ -35,7 +34,6 @@ async function showBadgeOk() {
 
 async function showBadgeError() {
   await browser.action.setBadgeBackgroundColor({ color: "#b91c1c" });
-  await browser.action.setBadgeText({ color: "#ffffff" });
   await browser.action.setBadgeText({ text: "!" });
   setTimeout(() => {
     browser.action.setBadgeText({ text: "" });

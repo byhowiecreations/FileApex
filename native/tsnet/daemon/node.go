@@ -936,7 +936,6 @@ func (n *Node) postSync(ctx context.Context, peer deviceRecord, req clusterSync,
 	return body, status, err
 }
 
-// postSyncHeader is postSync that also returns the response headers.
 func (n *Node) postSyncHeader(ctx context.Context, peer deviceRecord, req clusterSync, timeout time.Duration) ([]byte, int, http.Header, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -1760,7 +1759,6 @@ func digestOfRemovals(records []removedRecord) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// windowedRemovals lists the removal records this node holds that fall inside the window.
 func (n *Node) windowedRemovals() []removedRecord {
 	cutoff := removalsCutoff(time.Now())
 	n.mu.Lock()
@@ -1842,7 +1840,6 @@ func (n *Node) pullRemovals(ctx context.Context, peer deviceRecord) error {
 	return nil
 }
 
-// rosterNames maps device id to display name for every roster member.
 func (n *Node) rosterNames() map[string]string {
 	out := map[string]string{}
 	for _, peer := range n.roster() {

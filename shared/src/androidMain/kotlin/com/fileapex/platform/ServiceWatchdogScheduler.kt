@@ -21,7 +21,7 @@ object ServiceWatchdogScheduler {
     private const val KEY_EXACT_ALARM_WARNING = "exact_alarm_unavailable"
     private const val KEY_BATTERY_OPTIMIZATION_WARNING = "battery_optimization_active"
     private const val KEY_SHARE_SERVER_HEARTBEAT_EPOCH_MS = "share_server_heartbeat_epoch_ms"
-    /** Disk flush cadence — in-memory skip until this age. 15 min stays inside the 25 min stale window. */
+    /** Disk flush cadence, in-memory skip until this age. 15 min stays inside the 25 min stale window. */
     private const val DUPLICATE_SCHEDULE_WINDOW_MS = 3_000L
     private const val HEARTBEAT_WRITE_MIN_INTERVAL_MS = 15 * 60 * 1000L
 
@@ -112,7 +112,7 @@ object ServiceWatchdogScheduler {
     }
 
     fun pendingIntent(context: Context): PendingIntent {
-        val intent = Intent(context, FileApexWatchdogReceiver::class.java).apply {
+        val intent = Intent(context, FileApexWatchdogAlarmReceiver::class.java).apply {
             action = ACTION_SERVICE_WATCHDOG
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or
@@ -142,14 +142,14 @@ object ServiceWatchdogScheduler {
     }
 
     /**
-     * Boot-safe watchdog toggle — reads device-protected mirror only (no credential storage).
+     * Boot-safe watchdog toggle, reads device-protected mirror only (no credential storage).
      */
     fun isWatchdogEnabled(context: Context): Boolean {
         return directBootPrefs(context).getBoolean(KEY_ENABLED_MIRROR, true)
     }
 
     /**
-     * Boot-safe auto-launch toggle — reads device-protected mirror only (no credential storage).
+     * Boot-safe auto-launch toggle, reads device-protected mirror only (no credential storage).
      */
     fun isAutoLaunchOnRebootEnabled(context: Context): Boolean {
         return directBootPrefs(context).getBoolean(KEY_AUTO_LAUNCH_MIRROR, true)

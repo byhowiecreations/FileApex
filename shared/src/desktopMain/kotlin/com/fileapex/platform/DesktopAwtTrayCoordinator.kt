@@ -99,7 +99,7 @@ object DesktopAwtTrayCoordinator {
     }
 
     fun hideMainWindow() {
-        // Compose Window must use the `visible` parameter — raw isVisible breaks show (CMP #2928).
+        // Compose Window must use the `visible` parameter, raw isVisible breaks show (CMP #2928).
         onHideWindow?.invoke()
     }
 

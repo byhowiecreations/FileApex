@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<!-- Intentionally empty: unsandboxed local desktop app.
-	     Do not set com.apple.security.app-sandbox (even to false) —
+	     Do not set com.apple.security.app-sandbox (even to false):
 	     that key and related file-access entitlements trigger TCC prompts. -->
 </dict>
 </plist>

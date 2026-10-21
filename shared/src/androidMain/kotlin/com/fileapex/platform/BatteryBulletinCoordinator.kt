@@ -24,7 +24,7 @@ import kotlin.math.roundToInt
  * [onProcessStart] and the keep-alive job read [BatteryManager] and post if already at or
  * below 15% for this discharge cycle.
  *
- * Does not register for [android.content.Intent.ACTION_BATTERY_CHANGED] — that would wake the
+ * Does not register for [android.content.Intent.ACTION_BATTERY_CHANGED], that would wake the
  * process on every 1% tick. Sticky battery state is read once with
  * `registerReceiver(null, …)` only to fill in the percent / charging check.
  */
@@ -247,7 +247,7 @@ object BatteryBulletinCoordinator {
         }
     }
 
-    /** One-shot sticky read — not a listener. */
+    /** One-shot sticky read, not a listener. */
     private fun stickyBatteryIntent(context: Context) =
         context.registerReceiver(null, IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
 

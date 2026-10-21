@@ -19,6 +19,9 @@ object ServerLifecycleManager {
     private var serverInstance: FileApexServer? = null
     private var tlsFront: TlsFront? = null
 
+    /** Loopback connector that trusts the identity registered under a connection's source port; 0 without a TLS front. */
+    fun bridgePort(): Int = synchronized(lock) { tlsFront?.bridgePort ?: 0 }
+
     val isRunning: Boolean
         get() = synchronized(lock) { serverInstance?.isRunning == true }
 

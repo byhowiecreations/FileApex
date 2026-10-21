@@ -40,7 +40,9 @@ object NotificationBroadcastPolicy {
         Regex("""[$€£¥]\s?\d[\d,]*"""),
         Regex("""\+?\d{1,3}[-. ]?\(?\d{3}\)?[-. ]\d{3}[-. ]\d{4}"""),
         Regex("""\d{1,2}[:/-]\d{1,2}([:/-]\d{1,4})?"""),
-        Regex("""(?<!\d)(19|20)\d{2}(?!\d)""")
+        // A year only counts as one next to a month or a word like "in" or "since"; a bare 1900-2099 can be a code.
+        Regex("""(?i)\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2},?\s+)?(19|20)\d{2}(?!\d)"""),
+        Regex("""(?i)\b(in|since|year|until|copyright|©)\s+(19|20)\d{2}(?!\d)""")
     )
 
     private val codeShapes = listOf(

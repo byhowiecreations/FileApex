@@ -15,6 +15,6 @@ expect object DiagnosticsCloudRelay {
 
     fun stopInbox()
 
-    /** Android FCM wake — process a specific pending relay session immediately. */
+    /** Android FCM wake, process a specific pending relay session immediately. */
     fun onDiagnosticsWake(sessionId: String)
 }

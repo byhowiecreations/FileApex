@@ -35,7 +35,7 @@ tasks.register("verifyGitExecutableScripts") {
             .redirectErrorStream(true)
             .start()
         if (git.waitFor() != 0) {
-            logger.lifecycle("Skipping verifyGitExecutableScripts — not a git checkout")
+            logger.lifecycle("Skipping verifyGitExecutableScripts, not a git checkout")
             return@doLast
         }
         val bad = mutableListOf<String>()
@@ -58,7 +58,7 @@ tasks.register("verifyGitExecutableScripts") {
                 appendLine("Git index missing executable bit on wrapper/scripts:")
                 bad.forEach { appendLine("  • $it") }
                 appendLine("Run: ./scripts/ensure-git-executable-bits.sh")
-                appendLine("Windows commits: git add --chmod=+x <path> — see docs/git-cross-platform.md")
+                appendLine("Windows commits: git add --chmod=+x <path>, see docs/git-cross-platform.md")
             }
         }
         logger.lifecycle("Git index executable bits OK for ${gitExecutableScriptPaths.size} paths")

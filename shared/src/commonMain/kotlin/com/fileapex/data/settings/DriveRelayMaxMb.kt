@@ -1,7 +1,7 @@
 package com.fileapex.data.settings
 
 /**
- * Max bytes for one Google Drive Relay send — a single file, or a selected group at once.
+ * Max bytes for one Google Drive Relay send, a single file, or a selected group at once.
  */
 enum class DriveRelayMaxMb(val megabytes: Int) {
     Five(5),

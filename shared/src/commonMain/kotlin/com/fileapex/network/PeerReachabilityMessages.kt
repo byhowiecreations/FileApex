@@ -3,7 +3,7 @@ package com.fileapex.network
 import com.fileapex.i18n.AppI18n
 
 /**
- * User-facing copy when direct LAN is unavailable — shared across transfer, navigation,
+ * User-facing copy when direct LAN is unavailable, shared across transfer, navigation,
  * and Device Details entry points.
  */
 object PeerReachabilityMessages {

@@ -30,7 +30,7 @@ class FileShareServerService : Service() {
         FileApexAndroidBootstrap.ensureInitialized(this)
         BatteryBulletinCoordinator.onProcessStart(this)
         ShareServerForegroundNotification.resetPostedState()
-        // Strict OEMs (Motorola): startForeground within ~5s of startForegroundService — before
+        // Strict OEMs (Motorola): startForeground within ~5s of startForegroundService, before
         // onStartCommand and before any server / UDP setup work.
         isForegroundPromoted = ShareServerForegroundNotification.promoteImmediately(this)
     }
@@ -133,7 +133,7 @@ class FileShareServerService : Service() {
             intent?.action == ACTION_START
 
     /**
-     * Server lifecycle + watchdog bookkeeping — never touches the notification manager.
+     * Server lifecycle + watchdog bookkeeping, never touches the notification manager.
      */
     private fun runBackgroundHousekeeping() {
         ensureServerRunning()
@@ -159,7 +159,7 @@ class FileShareServerService : Service() {
         stopSelf()
     }
 
-    /** UI path — must not crash the app when FGS/notification policy blocks promotion. */
+    /** UI path, must not crash the app when FGS/notification policy blocks promotion. */
     private fun promoteToForegroundFromUi(): Boolean {
         return try {
             postStaticNotificationOnce()
@@ -176,7 +176,7 @@ class FileShareServerService : Service() {
         }
     }
 
-    /** Guarded promotion for watchdog / boot / sticky restart — must not crash the process. */
+    /** Guarded promotion for watchdog / boot / sticky restart, must not crash the process. */
     private fun promoteToForegroundSafely(): Boolean {
         return try {
             postStaticNotificationOnce()

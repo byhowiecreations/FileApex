@@ -52,7 +52,7 @@ public enum ShareRoster {
 /// Removed peers stay in `paired_devices` (`isRemoved = 1`) so the cluster can reject them.
 public enum PairedDeviceStore {
     public static func loadDevices() throws -> [PairedDevice] {
-        // Always the host app DB — never a Containers/... path.
+        // Always the host app DB, never a Containers/... path.
         let path = FileApexPaths.databaseURL.path
         NSLog("FileApex PairedDeviceStore reading \(path)")
         guard FileManager.default.fileExists(atPath: path) else {

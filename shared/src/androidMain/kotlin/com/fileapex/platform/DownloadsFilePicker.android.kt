@@ -64,6 +64,7 @@ private fun copyUriToCache(context: android.content.Context, uri: Uri): PickedLo
             if (sizeIndex >= 0) sizeBytes = cursor.getLong(sizeIndex)
         }
     }
+    displayName = com.fileapex.util.PathUtils.safeFileName(displayName) ?: "attachment"
     val cacheDir = File(context.cacheDir, "note-attachments").apply { mkdirs() }
     val dest = File(cacheDir, displayName)
     resolver.openInputStream(uri)?.use { input ->

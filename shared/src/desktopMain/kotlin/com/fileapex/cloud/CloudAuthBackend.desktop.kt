@@ -41,7 +41,8 @@ import java.net.URLEncoder
 import java.util.Base64
 
 actual object CloudAuthBackend {
-    private val prefs = Preferences.userRoot().node("com.fileapex.firebase")
+    private val firebaseNode = Preferences.userRoot().node("com.fileapex.firebase")
+    private val prefs = com.fileapex.data.settings.DesktopSettingsSecrets.sealedNode(firebaseNode, setOf(KEY_ID_TOKEN, KEY_REFRESH_TOKEN))
     private val client get() = FileApexServices.httpClient
     private val desktopJson get() = FileApexHttpClientFactory.defaultJson
     private val pollScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -71,12 +72,12 @@ actual object CloudAuthBackend {
         val idTokenOut = body.idToken ?: error("Firebase response missing idToken")
         val refresh = body.refreshToken.orEmpty()
         val uid = body.localId ?: error("Firebase response missing localId")
-        prefs.put(KEY_ID_TOKEN, idTokenOut)
-        prefs.put(KEY_REFRESH_TOKEN, refresh)
-        prefs.put(KEY_UID, uid)
-        prefs.put(KEY_EMAIL, body.email.orEmpty())
-        prefs.put(KEY_DISPLAY_NAME, body.displayName.orEmpty())
-        runCatching { prefs.flush() }
+        prefs.putString(KEY_ID_TOKEN, idTokenOut)
+        prefs.putString(KEY_REFRESH_TOKEN, refresh)
+        prefs.putString(KEY_UID, uid)
+        prefs.putString(KEY_EMAIL, body.email.orEmpty())
+        prefs.putString(KEY_DISPLAY_NAME, body.displayName.orEmpty())
+        runCatching { firebaseNode.flush() }
         return GoogleAuthSession(
             firebaseUid = uid,
             email = body.email.orEmpty(),
@@ -85,14 +86,14 @@ actual object CloudAuthBackend {
     }
 
     actual suspend fun currentSession(): GoogleAuthSession? {
-        val uid = prefs.get(KEY_UID, "")
-        val refresh = prefs.get(KEY_REFRESH_TOKEN, "")
+        val uid = prefs.getString(KEY_UID, "")
+        val refresh = prefs.getString(KEY_REFRESH_TOKEN, "")
         if (uid.isBlank() || refresh.isBlank()) return null
         cancellableCatching { refreshIdTokenIfNeeded() }
         return GoogleAuthSession(
             firebaseUid = uid,
-            email = prefs.get(KEY_EMAIL, ""),
-            displayName = prefs.get(KEY_DISPLAY_NAME, "")
+            email = prefs.getString(KEY_EMAIL, ""),
+            displayName = prefs.getString(KEY_DISPLAY_NAME, "")
         )
     }
 
@@ -538,7 +539,7 @@ actual object CloudAuthBackend {
                         if (!state.stopped) onError(error)
                     }
                     if (state.stopped) break
-                    delay(RELAY_POLL_MS)
+                    delay(com.fileapex.cloud.diagnostics.DIAGNOSTICS_RELAY_DESKTOP_POLL_MS)
                 }
             } finally {
                 if (!idle.isCompleted) idle.complete(Unit)
@@ -678,7 +679,7 @@ actual object CloudAuthBackend {
 
     private suspend fun requireIdToken(): String {
         refreshIdTokenIfNeeded()
-        return prefs.get(KEY_ID_TOKEN, "").ifBlank { error("Not signed in to Firebase") }
+        return prefs.getString(KEY_ID_TOKEN, "").ifBlank { error("Not signed in to Firebase") }
     }
 
     private val refreshMutex = Mutex()
@@ -689,9 +690,9 @@ actual object CloudAuthBackend {
      * A transient refresh failure keeps using a still-valid cached token instead of dropping it.
      */
     private suspend fun refreshIdTokenIfNeeded() = refreshMutex.withLock {
-        val refresh = prefs.get(KEY_REFRESH_TOKEN, "")
+        val refresh = prefs.getString(KEY_REFRESH_TOKEN, "")
         if (refresh.isBlank()) return@withLock
-        val cached = prefs.get(KEY_ID_TOKEN, "")
+        val cached = prefs.getString(KEY_ID_TOKEN, "")
         val expiresAt = jwtExpiryMs(cached)
         if (cached.isNotBlank() && expiresAt - System.currentTimeMillis() > REFRESH_SKEW_MS) return@withLock
         val apiKey = firebaseApiKey()
@@ -716,12 +717,12 @@ actual object CloudAuthBackend {
         val idToken = obj["id_token"]?.jsonPrimitive?.contentOrNull
             ?: obj["access_token"]?.jsonPrimitive?.contentOrNull
         if (!idToken.isNullOrBlank()) {
-            prefs.put(KEY_ID_TOKEN, idToken)
+            prefs.putString(KEY_ID_TOKEN, idToken)
         }
         obj["refresh_token"]?.jsonPrimitive?.contentOrNull?.let {
-            prefs.put(KEY_REFRESH_TOKEN, it)
+            prefs.putString(KEY_REFRESH_TOKEN, it)
         }
-        runCatching { prefs.flush() }
+        runCatching { firebaseNode.flush() }
     }
 
     /** `exp` claim of a JWT in epoch ms; 0 when absent or unparsable (forces a refresh). */
@@ -848,7 +849,6 @@ actual object CloudAuthBackend {
     private const val KEY_DISPLAY_NAME = "display_name"
     private const val POLL_MS = 60_000L
     private const val REFRESH_SKEW_MS = 5 * 60 * 1000L
-    private const val RELAY_POLL_MS = 2_000L
 }
 
 @Serializable

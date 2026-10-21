@@ -5,7 +5,7 @@ import org.jetbrains.compose.resources.DrawableResource
 import com.fileapex.domain.peer.publishesPresence
 
 /**
- * Resolved device glyph — shared by list cards, grid cells, and platform shortcuts.
+ * Resolved device glyph, shared by list cards, grid cells, and platform shortcuts.
  */
 enum class DeviceIconKind {
     MacDesktop,

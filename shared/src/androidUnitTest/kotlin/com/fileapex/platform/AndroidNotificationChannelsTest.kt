@@ -59,7 +59,7 @@ class AndroidNotificationChannelsTest {
         val prefs = context.getSharedPreferences("fileapex_notification_channels", Context.MODE_PRIVATE)
         assertFalse(prefs.getBoolean("share_server_v2_channel_migrated", false))
 
-        // Clear notification and run migration again — should now complete and set flag to true
+        // Clear notification and run migration again, should now complete and set flag to true
         notificationManager.cancel(1)
         AndroidNotificationChannels.migrateLegacyShareServerChannels(context)
         assertTrue(prefs.getBoolean("share_server_v2_channel_migrated", false))

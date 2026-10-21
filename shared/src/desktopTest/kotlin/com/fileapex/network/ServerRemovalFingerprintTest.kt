@@ -23,6 +23,7 @@ class ServerRemovalFingerprintTest {
         server = FileApexServer(
             port = port,
             identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = System.getProperty("java.io.tmpdir"), sharePort = port) },
+            isRosterMember = { it == "self-test" },
             removalFingerprint = { "9bc86a65f2da0fbb" },
             removalRecords = { listOf(RemovedDeviceRecord(deviceId = "gone-1", clusterVersion = 5L, membershipProtocol = 2)) }
         ).also { it.start() }

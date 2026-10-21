@@ -25,7 +25,7 @@ object ServiceWatchdogState {
         return clean
     }
 
-    /** FGS hit Android dataSync / connectedDevice runtime quota — defer watchdog restart. */
+    /** FGS hit Android dataSync / connectedDevice runtime quota, defer watchdog restart. */
     fun markTimeoutStop(context: Context) {
         prefs(context).edit().putBoolean(KEY_TIMEOUT_STOP, true).commit()
     }

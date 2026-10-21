@@ -103,7 +103,7 @@ object DesktopMacTrayCoordinator {
     fun hideMainWindow() {
         if (!DesktopPlatformPaths.isMacOs()) return
         DesktopLifecycleLog.log("DesktopMacTrayCoordinator: hideMainWindow (native orderOut)")
-        // Never toggle AWT isVisible on Mac — Compose disposes the window panel and restore crashes.
+        // Never toggle AWT isVisible on Mac, Compose disposes the window panel and restore crashes.
         DesktopMacTrayBridge.hideMainWindow()
         DesktopMacTrayBridge.installAppLifecycle()
     }

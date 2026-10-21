@@ -42,6 +42,28 @@ object PathUtils {
         return current == root || current.startsWith("$root/")
     }
 
+    /** True when any segment of [path] is `..`, whichever separator is used. */
+    fun hasParentSegment(path: String): Boolean = path.replace('\\', '/').split('/').any { it == ".." }
+
+    /**
+     * For a path on this device's own disk: true when [absolutePath] is inside [rootPath] after `..` and symbolic links
+     * are resolved. [isWithinRoot] compares text only, so `<root>/../elsewhere` passes it. Never use this for a path that
+     * belongs to another device.
+     */
+    fun isConfinedOnDisk(absolutePath: String, rootPath: String): Boolean {
+        if (absolutePath.isBlank() || rootPath.isBlank() || hasParentSegment(absolutePath)) return false
+        return try {
+            val root = java.io.File(rootPath).canonicalFile.toPath()
+            java.io.File(absolutePath).canonicalFile.toPath().startsWith(root)
+        } catch (_: java.io.IOException) {
+            false
+        }
+    }
+
+    /** The last segment of [name] when it is a usable file name, otherwise null (blank, `.` or `..`). */
+    fun safeFileName(name: String): String? =
+        name.replace('\\', '/').substringAfterLast('/').trim().takeIf { it.isNotEmpty() && it != "." && it != ".." }
+
     fun resolveWithinRoot(path: String, browseRoot: String): String {
         val root = normalize(browseRoot)
         val normalized = normalizeOr(path, root)
