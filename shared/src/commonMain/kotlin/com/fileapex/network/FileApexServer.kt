@@ -163,12 +163,10 @@ class FileApexServer(
                             return@intercept
                         }
                     }
-                    // Tailnet connections are spliced in from loopback inside WireGuard: the tunnel is their transport security.
-                    val viaTailnetSplice = isSplicedLoopbackOrigin(call.request.local.remoteAddress.trim())
-                    if (bridged == null && !isBridgeConnection(call) && !viaTailnetSplice && TlsTransportPolicy.requiresTls(path)) {
+                    if (bridged == null && !isBridgeConnection(call) && TlsTransportPolicy.requiresTls(path)) {
                         val claimed = requesterDeviceId(call)
                         val claimedDevice = claimed.takeIf { it.isNotEmpty() }
-                            ?.let { FileApexServices.deviceRepository.getDevice(it) }
+                            ?.let { com.fileapex.util.cancellableCatching { FileApexServices.deviceRepository.getDevice(it) }.getOrNull() }
                         if (claimedDevice != null && !claimedDevice.isRemoved && claimedDevice.tlsPin.isNotEmpty()) {
                             onLog("Rejected plain HTTP from pinned peer $claimed", null)
                             call.respond(HttpStatusCode.Forbidden, "tls_required")
@@ -178,7 +176,7 @@ class FileApexServer(
                     }
                     // Default deny: apart from the few open routes (RouteAuthPolicy), a caller has to be a paired device
                     // that proved who it is. `from` is only a claim; the identity comes from the pinned TLS certificate
-                    // (TLS front or Iroh bridge) or, inside the tailnet tunnel, from a roster member's claim.
+                    // (the TLS front, which the LAN and the tailnet both reach) or the Iroh bridge.
                     val remoteSource = call.request.local.remoteAddress.trim()
                     if (RouteAuthPolicy.accessFor(path) == RouteAccess.Peer) {
                         if (authenticatedPeerId(call) == null) {
@@ -377,15 +375,11 @@ class FileApexServer(
 
     /**
      * The paired device that proved who it is on this call, or null for an anonymous one. The proof is the pinned TLS
-     * certificate (TLS front or Iroh bridge); inside the tailnet tunnel, which is authenticated by WireGuard, a roster
-     * member's claim counts. A claimed `from` anywhere else proves nothing.
+     * certificate (TLS front, which the LAN and the tailnet both reach) or the endpoint key of an Iroh stream. A claimed
+     * `from` proves nothing.
      */
-    internal suspend fun authenticatedPeerId(call: ApplicationCall): String? {
-        val bridged = bridgedPeer(call)
-        if (bridged != null) return bridged.deviceId.takeIf { isRosterMember(it) }
-        if (!isSplicedLoopbackOrigin(call.request.local.remoteAddress.trim())) return null
-        return requesterDeviceId(call).takeIf { it.isNotEmpty() && isRosterMember(it) }
-    }
+    internal suspend fun authenticatedPeerId(call: ApplicationCall): String? =
+        bridgedPeer(call)?.deviceId?.takeIf { isRosterMember(it) }
 
     /** Certificate-derived id on the TLS front, else the claimed `from` (query or header). */
     internal fun requesterDeviceId(call: ApplicationCall): String =

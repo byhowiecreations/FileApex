@@ -39,7 +39,12 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
                 Log.e(TAG, "FCM dropped type=$type - process not initialized")
                 return@launch
             }
-            dispatch(data, type)
+            val opened = com.fileapex.cloud.NotePushCrypto.unseal(data)
+            if (opened == null) {
+                Log.e(TAG, "FCM dropped type=$type - sealed content could not be opened")
+                return@launch
+            }
+            dispatch(opened, type)
         }
     }
 
@@ -115,6 +120,13 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
                     capturedAtEpochMs = data[FcmWakeProtocol.Keys.CAPTURED_AT]
                         ?: data[FcmWakeProtocol.KEY_CAPTURED_AT]
                 )
+            }
+            FcmWakeCoordinator.isClipboardAck(type) -> {
+                val receiver = sourceDeviceId.orEmpty()
+                val capturedAt = (data[FcmWakeProtocol.Keys.CAPTURED_AT] ?: data[FcmWakeProtocol.KEY_CAPTURED_AT])
+                    ?.toLongOrNull() ?: 0L
+                Log.i(TAG, "Clipboard ack from $receiver")
+                com.fileapex.domain.clipboard.ClipboardAckTracker.onAck(receiver, capturedAt)
             }
             FcmWakeCoordinator.isClipboardOptInRequest(type) -> {
                 val senderName = data[FcmWakeProtocol.Keys.SENDER_DEVICE_NAME]

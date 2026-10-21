@@ -2,28 +2,25 @@ package com.fileapex.cloud
 
 import com.fileapex.di.FileApexServices
 import com.fileapex.util.TimeUtils
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** FCM HTTP v1, silent high-priority data messages via Firebase Admin service account. */
+/** Silent high-priority FCM data messages, sent through the FileApex relay that holds the Firebase key. */
 object FcmWakeBackend {
-    fun isConfigured(): Boolean = fcmServiceAccountConfig()?.isUsable == true
+    private val relay = FcmRelayClient(
+        httpClient = { FileApexServices.httpClient },
+        idToken = { CloudAuthBackend.firebaseIdToken() }
+    )
+
+    /** Wakes go through the FileApex relay, which needs a Firebase sign-in; builds without cloud accounts have none. */
+    fun isConfigured(): Boolean = CloudAuthBackend.isConfigured()
 
     suspend fun sendPresenceWake(targetFcmToken: String, sourceDeviceId: String): Boolean {
-        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (!isConfigured()) return false
         if (targetFcmToken.isBlank()) return false
-        return FcmHttpV1Client.sendDataWake(
-            config = config,
-            targetToken = targetFcmToken,
-            data = buildJsonObject {
+        return relay.sendDataWake(
+            targetFcmToken,
+            buildJsonObject {
                 put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_PRESENCE_WAKE)
                 put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
                 put(FcmWakeProtocol.KEY_EPOCH_MS, TimeUtils.now().toString())
@@ -36,12 +33,11 @@ object FcmWakeBackend {
         sourceDeviceId: String,
         sessionId: String
     ): Boolean {
-        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (!isConfigured()) return false
         if (targetFcmToken.isBlank() || sessionId.isBlank()) return false
-        return FcmHttpV1Client.sendDataWake(
-            config = config,
-            targetToken = targetFcmToken,
-            data = buildJsonObject {
+        return relay.sendDataWake(
+            targetFcmToken,
+            buildJsonObject {
                 put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_DIAGNOSTICS_REQUEST)
                 put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
                 put(FcmWakeProtocol.KEY_SESSION_ID, sessionId)
@@ -60,7 +56,7 @@ object FcmWakeBackend {
         attachmentName: String? = null,
         attachmentSizeBytes: Long = 0L
     ): Boolean {
-        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (!isConfigured()) return false
         if (targetFcmToken.isBlank() || noteId.isBlank()) return false
         val MAX_INLINE_BYTES = 3000
         val contentBytes = content?.toByteArray(Charsets.UTF_8)
@@ -98,10 +94,29 @@ object FcmWakeBackend {
                 put(FcmWakeProtocol.Keys.CHECKSUM, checksum.orEmpty())
             }
         }
-        return FcmHttpV1Client.sendDataWake(
-            config = config,
-            targetToken = targetFcmToken,
-            data = dataObj
+        return relay.sendDataWake(targetFcmToken, dataObj)
+    }
+
+    /** A Bulletin Board push whose content is in [sealed]; only the type, note id and sender are readable. */
+    suspend fun sendSealedNoteWake(
+        targetFcmToken: String,
+        sourceDeviceId: String,
+        noteId: String,
+        type: String,
+        sealed: String
+    ): Boolean {
+        if (!isConfigured()) return false
+        if (targetFcmToken.isBlank() || noteId.isBlank() || sealed.isBlank()) return false
+        return relay.sendDataWake(
+            targetFcmToken,
+            buildJsonObject {
+                put(FcmWakeProtocol.Keys.TYPE, type)
+                put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
+                put(FcmWakeProtocol.Keys.NOTE_ID, noteId)
+                put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
+                put(FcmWakeProtocol.KEY_SENDER_PUBLIC_KEY, com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64())
+                put(FcmWakeProtocol.KEY_SEALED, sealed)
+            }
         )
     }
 
@@ -113,7 +128,7 @@ object FcmWakeBackend {
         checksum: String? = null,
         attachmentName: String? = null
     ): Boolean {
-        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (!isConfigured()) return false
         if (targetFcmToken.isBlank() || noteId.isBlank()) return false
         val dataObj = buildJsonObject {
             put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_NOTE_DELETE)
@@ -130,11 +145,7 @@ object FcmWakeBackend {
                 put(FcmWakeProtocol.Keys.ATTACHMENT_NAME, attachmentName)
             }
         }
-        return FcmHttpV1Client.sendDataWake(
-            config = config,
-            targetToken = targetFcmToken,
-            data = dataObj
-        )
+        return relay.sendDataWake(targetFcmToken, dataObj)
     }
 
     suspend fun sendDriveRelayPointer(
@@ -142,7 +153,7 @@ object FcmWakeBackend {
         sourceDeviceId: String,
         entryId: String
     ): Boolean {
-        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (!isConfigured()) return false
         if (targetFcmToken.isBlank()) return false
         val dataObj = buildJsonObject {
             put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_DRIVE_RELAY)
@@ -152,11 +163,7 @@ object FcmWakeBackend {
             put(FcmWakeProtocol.KEY_ENTRY_ID, entryId)
             put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
         }
-        return FcmHttpV1Client.sendDataWake(
-            config = config,
-            targetToken = targetFcmToken,
-            data = dataObj
-        )
+        return relay.sendDataWake(targetFcmToken, dataObj)
     }
 
     suspend fun sendClipboardShare(
@@ -167,7 +174,7 @@ object FcmWakeBackend {
         ciphertext: String,
         capturedAtEpochMs: Long
     ): Boolean {
-        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (!isConfigured()) return false
         if (targetFcmToken.isBlank() || ciphertext.isBlank() || senderPublicKey.isBlank()) return false
         val dataObj = buildJsonObject {
             put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_CLIPBOARD_SHARE)
@@ -179,10 +186,24 @@ object FcmWakeBackend {
             put(FcmWakeProtocol.Keys.CAPTURED_AT, capturedAtEpochMs.toString())
             put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
         }
-        return FcmHttpV1Client.sendDataWake(
-            config = config,
-            targetToken = targetFcmToken,
-            data = dataObj
+        return relay.sendDataWake(targetFcmToken, dataObj)
+    }
+
+    suspend fun sendClipboardAck(
+        targetFcmToken: String,
+        sourceDeviceId: String,
+        capturedAtEpochMs: Long
+    ): Boolean {
+        if (!isConfigured()) return false
+        if (targetFcmToken.isBlank() || sourceDeviceId.isBlank()) return false
+        return relay.sendDataWake(
+            targetFcmToken,
+            buildJsonObject {
+                put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_CLIPBOARD_ACK)
+                put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
+                put(FcmWakeProtocol.KEY_CAPTURED_AT, capturedAtEpochMs.toString())
+                put(FcmWakeProtocol.KEY_EPOCH_MS, TimeUtils.now().toString())
+            }
         )
     }
 
@@ -192,7 +213,7 @@ object FcmWakeBackend {
         senderDeviceName: String,
         pendingPayload: com.fileapex.domain.clipboard.ClipboardSendRequest? = null
     ): Boolean {
-        val config = fcmServiceAccountConfig()?.takeIf { it.isUsable } ?: return false
+        if (!isConfigured()) return false
         if (targetFcmToken.isBlank()) return false
         val dataObj = buildJsonObject {
             put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_CLIPBOARD_OPT_IN_REQUEST)
@@ -208,49 +229,6 @@ object FcmWakeBackend {
                 put(FcmWakeProtocol.Keys.CAPTURED_AT, pendingPayload.capturedAtEpochMs.toString())
             }
         }
-        return FcmHttpV1Client.sendDataWake(
-            config = config,
-            targetToken = targetFcmToken,
-            data = dataObj
-        )
-    }
-}
-
-internal object FcmHttpV1Client {
-    suspend fun sendDataWake(
-        config: FcmServiceAccountConfig,
-        targetToken: String,
-        data: kotlinx.serialization.json.JsonObject
-    ): Boolean {
-        val accessToken = FcmGoogleOAuth.accessToken(config) ?: return false
-        val url = "https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send"
-        val payload = buildJsonObject {
-            put(
-                "message",
-                buildJsonObject {
-                    put("token", targetToken)
-                    put("data", data)
-                    put(
-                        "android",
-                        buildJsonObject {
-                            put("priority", "HIGH")
-                        }
-                    )
-                }
-            )
-        }
-        val response = FileApexServices.httpClient.post(url) {
-            header(HttpHeaders.Authorization, "Bearer $accessToken")
-            contentType(ContentType.Application.Json)
-            setBody(payload.toString())
-        }
-        if (!response.status.isSuccess()) {
-            println(
-                "FcmWakeBackend: v1 send failed (${response.status}) - " +
-                    response.bodyAsText().take(200)
-            )
-            return false
-        }
-        return true
+        return relay.sendDataWake(targetFcmToken, dataObj)
     }
 }

@@ -21,6 +21,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
@@ -52,25 +54,28 @@ internal fun DeviceDetailsDialog(
                 modifier = Modifier.fillMaxWidth().height(320.dp).verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (details.loading) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringRes("device_details_updating"), style = MaterialTheme.typography.labelMedium)
-                    }
-                }
                 details.errorMessage?.let {
                     Text(text = it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                 }
-                DeviceDiagnosticsFormatter.detailRows(snapshot = snapshot, preferences = displayPreferences)
-                    .forEach { (label, value) ->
+                val updatingLabel = stringRes("device_details_updating")
+                DeviceDiagnosticsFormatter.detailFieldRows(snapshot = snapshot, preferences = displayPreferences)
+                    .forEach { row ->
                         Column {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(text = value, style = MaterialTheme.typography.bodyMedium)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = row.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (details.loading && row.field.changesOverTime) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(10.dp).semantics { contentDescription = updatingLabel },
+                                        strokeWidth = 1.5.dp
+                                    )
+                                }
+                            }
+                            Text(text = row.value, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
             }

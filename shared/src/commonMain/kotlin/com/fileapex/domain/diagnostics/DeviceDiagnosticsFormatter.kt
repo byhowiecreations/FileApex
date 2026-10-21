@@ -103,7 +103,12 @@ object DeviceDiagnosticsFormatter {
     fun detailRows(
         snapshot: PeerDeviceDiagnostics,
         preferences: DeviceDetailsDisplayPreferences = DeviceDetailsDisplayPreferences.defaults()
-    ): List<Pair<String, String>> {
+    ): List<Pair<String, String>> = detailFieldRows(snapshot, preferences).map { it.label to it.value }
+
+    fun detailFieldRows(
+        snapshot: PeerDeviceDiagnostics,
+        preferences: DeviceDetailsDisplayPreferences = DeviceDetailsDisplayPreferences.defaults()
+    ): List<DeviceDetailRow> {
         val networkType = snapshot.network.interfaceType.trim()
         val isWifi = networkType.equals("Wi-Fi", ignoreCase = true)
         val isCellular = networkType.equals("Cellular", ignoreCase = true)
@@ -162,13 +167,14 @@ object DeviceDiagnosticsFormatter {
         return preferences.visibleFieldIds()
             .filter { field ->
                 if (com.fileapex.di.FileApexServices.isPlayStoreBuild && field.cellularOnly) return@filter false
+                if (field.wifiOnly && snapshot.platform == MAC_PLATFORM) return@filter false
                 when {
                     field.wifiOnly -> isWifi
                     field.cellularOnly -> isCellular
                     else -> true
                 }
             }
-            .map { field -> com.fileapex.i18n.AppI18n.t("field_${field.name}") to valueFor(field) }
+            .map { field -> DeviceDetailRow(field, com.fileapex.i18n.AppI18n.t("field_${field.name}"), valueFor(field)) }
     }
 
     private fun localizeCharging(raw: String): String {
@@ -212,3 +218,8 @@ object DeviceDiagnosticsFormatter {
         }
     }
 }
+
+/** macOS hides the Wi-Fi name without a location grant and takes seconds to measure the rest, so a Mac never shows Wi-Fi rows. */
+private const val MAC_PLATFORM = "Mac"
+
+data class DeviceDetailRow(val field: DeviceDetailsFieldId, val label: String, val value: String)

@@ -2,6 +2,7 @@ package com.fileapex.platform
 
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.DeviceIdentityDiagnostics
+import com.fileapex.domain.diagnostics.DiagnosticGroup
 import com.fileapex.domain.diagnostics.DisplayDiagnostics
 import com.fileapex.domain.diagnostics.MemoryDiagnostics
 import com.fileapex.domain.diagnostics.NetworkDiagnostics
@@ -21,43 +22,29 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import kotlin.math.roundToInt
 
-private val macCombinedProfilerJson = ThreadLocal<String?>()
-
-actual fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics {
-    if (isMacOs()) {
-        macCombinedProfilerJson.set(
-            readCommandOutput(
-                "system_profiler",
-                "SPAirPortDataType",
-                "SPDisplaysDataType",
-                "-json"
-            )
+actual fun collectPlatformDeviceDiagnostics(groups: Set<DiagnosticGroup>?): PeerDeviceDiagnostics {
+    fun <T> part(group: DiagnosticGroup, empty: T, read: () -> T): T =
+        if (groups == null || group in groups) read() else empty
+    return runCatching {
+        PeerDeviceDiagnostics(
+            collectedAtEpochMs = 0L,
+            platform = "",
+            device = part(DiagnosticGroup.Identity, DeviceIdentityDiagnostics(), ::readDeviceIdentity),
+            processor = part(DiagnosticGroup.Processor, ProcessorDiagnostics(), ::readProcessor),
+            display = part(DiagnosticGroup.Display, DisplayDiagnostics(), ::readDisplay),
+            battery = part(DiagnosticGroup.Battery, BatteryDiagnostics(), ::readBattery),
+            storage = part(DiagnosticGroup.Storage, StorageDiagnostics(), ::readStorage),
+            network = part(DiagnosticGroup.Network, NetworkDiagnostics(), ::readNetwork),
+            uptime = part(DiagnosticGroup.Uptime, UptimeDiagnostics(), ::readUptime),
+            thermal = part(DiagnosticGroup.Thermal, ThermalDiagnostics(), ::readThermal),
+            memory = part(DiagnosticGroup.Memory, MemoryDiagnostics(), ::readMemory)
         )
-    }
-    return try {
-        runCatching {
-            PeerDeviceDiagnostics(
-                collectedAtEpochMs = 0L,
-                platform = "",
-                device = readDeviceIdentity(),
-                processor = readProcessor(),
-                display = readDisplay(),
-                battery = readBattery(),
-                storage = readStorage(),
-                network = readNetwork(),
-                uptime = readUptime(),
-                thermal = readThermal(),
-                memory = readMemory()
-            )
-        }.getOrElse {
-            PeerDeviceDiagnostics(
-                collectedAtEpochMs = 0L,
-                device = readDeviceIdentitySafe(),
-                uptime = readUptimeSafe()
-            )
-        }
-    } finally {
-        macCombinedProfilerJson.remove()
+    }.getOrElse {
+        PeerDeviceDiagnostics(
+            collectedAtEpochMs = 0L,
+            device = readDeviceIdentitySafe(),
+            uptime = readUptimeSafe()
+        )
     }
 }
 
@@ -84,8 +71,6 @@ actual fun collectFastBatteryDiagnostics(): BatteryDiagnostics {
     return runCatching { readBattery() }
         .getOrDefault(BatteryDiagnostics(chargingState = "Not available"))
 }
-
-private fun macProfilerJsonOrEmpty(): String = macCombinedProfilerJson.get().orEmpty()
 
 private fun readDeviceIdentitySafe(): DeviceIdentityDiagnostics {
     return runCatching { readDeviceIdentity() }
@@ -222,9 +207,7 @@ private fun readDisplay(): DisplayDiagnostics {
 }
 
 private fun readMacDisplayViaSystemProfiler(): DisplayDiagnostics? {
-    val output = macProfilerJsonOrEmpty().ifBlank {
-        readCommandOutput("system_profiler", "SPDisplaysDataType", "-json").orEmpty()
-    }
+    val output = readCommandOutput("system_profiler", "SPDisplaysDataType", "-json").orEmpty()
     if (output.isBlank()) return null
     val resolutionLine = Regex(""""_spdisplays_resolution"\s*:\s*"([^"]+)"""")
         .find(output)
@@ -365,172 +348,10 @@ private fun classifyInterfaceType(name: String, displayName: String?): String {
 private fun readWifiNetwork(interfaceName: String): NetworkDiagnostics {
     val osName = System.getProperty("os.name").orEmpty()
     return when {
-        osName.contains("Mac", ignoreCase = true) -> readMacWifiNetwork(interfaceName)
+        osName.contains("Mac", ignoreCase = true) -> NetworkDiagnostics(interfaceType = "Wi-Fi")
         osName.contains("Windows", ignoreCase = true) -> readWindowsWifiNetwork()
         else -> NetworkDiagnostics(interfaceType = "Wi-Fi")
     }
-}
-
-private data class ParsedWifiTelemetry(
-    val ssid: String = "",
-    val signalDbm: Int? = null,
-    val linkSpeedMbps: Int? = null,
-    val frequencyBand: String = "",
-    val channel: Int? = null
-)
-
-private fun readMacWifiNetwork(interfaceName: String): NetworkDiagnostics {
-    val profiler = readMacWifiFromProfilerJson(macProfilerJsonOrEmpty())
-        .takeUnless { it.ssid.isBlank() && it.signalDbm == null }
-        ?: readMacWifiViaSystemProfiler()
-    if (profiler.ssid.isNotBlank()) {
-        return NetworkDiagnostics(
-            interfaceType = "Wi-Fi",
-            ssid = profiler.ssid,
-            signalDbm = profiler.signalDbm,
-            linkSpeedMbps = profiler.linkSpeedMbps,
-            frequencyBand = profiler.frequencyBand.ifBlank { "Unknown" },
-            channel = profiler.channel
-        )
-    }
-    val wifiDevice = readMacWifiDeviceName().ifBlank { interfaceName }
-    val ssidFromNetworkSetup = readMacSsidViaNetworkSetup(wifiDevice)
-    val airport = readMacAirportInfo()
-    val merged = ParsedWifiTelemetry(
-        ssid = listOf(ssidFromNetworkSetup, profiler.ssid, airport.ssid).firstOrNull { it.isNotBlank() }.orEmpty(),
-        signalDbm = profiler.signalDbm ?: airport.signalDbm,
-        linkSpeedMbps = profiler.linkSpeedMbps ?: airport.linkSpeedMbps,
-        frequencyBand = profiler.frequencyBand.takeUnless { it.isBlank() || it == "Unknown" }
-            ?: airport.frequencyBand,
-        channel = profiler.channel ?: airport.channel
-    )
-    return NetworkDiagnostics(
-        interfaceType = "Wi-Fi",
-        ssid = merged.ssid,
-        signalDbm = merged.signalDbm,
-        linkSpeedMbps = merged.linkSpeedMbps,
-        frequencyBand = merged.frequencyBand.ifBlank { "Unknown" },
-        channel = merged.channel
-    )
-}
-
-private fun readMacWifiFromProfilerJson(json: String): ParsedWifiTelemetry {
-    if (json.isBlank()) return ParsedWifiTelemetry()
-    val currentBlock = Regex(""""spairport_current_network_information"\s*:\s*\{([^}]+)\}""")
-        .find(json)
-        ?.groupValues
-        ?.get(1)
-        .orEmpty()
-    if (currentBlock.isBlank()) return ParsedWifiTelemetry()
-    val ssid = Regex(""""_name"\s*:\s*"([^"]+)"""").find(currentBlock)?.groupValues?.get(1)?.trim().orEmpty()
-    val signalDbm = Regex(""""spairport_signal_noise"\s*:\s*"(-?\d+)\s*dBm""")
-        .find(currentBlock)
-        ?.groupValues
-        ?.get(1)
-        ?.toIntOrNull()
-    val linkSpeedMbps = Regex(""""spairport_network_rate"\s*:\s*(\d+)""")
-        .find(currentBlock)
-        ?.groupValues
-        ?.get(1)
-        ?.toIntOrNull()
-    val channel = Regex(""""spairport_network_channel"\s*:\s*"(\d+)""")
-        .find(currentBlock)
-        ?.groupValues
-        ?.get(1)
-        ?.toIntOrNull()
-    val band = when {
-        currentBlock.contains("6GHz", ignoreCase = true) -> "6 GHz"
-        channel == null -> "Unknown"
-        channel in 1..14 -> "2.4 GHz"
-        channel >= 36 -> "5 GHz"
-        else -> "Unknown"
-    }
-    return ParsedWifiTelemetry(
-        ssid = ssid,
-        signalDbm = signalDbm,
-        linkSpeedMbps = linkSpeedMbps,
-        frequencyBand = band,
-        channel = channel
-    )
-}
-
-private fun readMacWifiDeviceName(): String {
-    val output = readCommandOutput("networksetup", "-listallhardwareports").orEmpty()
-    val lines = output.lines()
-    var pendingWifi = false
-    for (line in lines) {
-        val trimmed = line.trim()
-        when {
-            trimmed.startsWith("Hardware Port:", ignoreCase = true) &&
-                trimmed.contains("wi-fi", ignoreCase = true) -> pendingWifi = true
-            pendingWifi && trimmed.startsWith("Device:", ignoreCase = true) -> {
-                return trimmed.substringAfter(':').trim()
-            }
-            trimmed.startsWith("Hardware Port:", ignoreCase = true) -> pendingWifi = false
-        }
-    }
-    return ""
-}
-
-private fun readMacWifiViaSystemProfiler(): ParsedWifiTelemetry {
-    val json = macProfilerJsonOrEmpty()
-    if (json.isNotBlank()) {
-        val fromJson = readMacWifiFromProfilerJson(json)
-        if (fromJson.ssid.isNotBlank() || fromJson.signalDbm != null) {
-            return fromJson
-        }
-    }
-    val output = readCommandOutput("system_profiler", "SPAirPortDataType").orEmpty()
-    if (output.isBlank()) return ParsedWifiTelemetry()
-
-    val currentSection = output.substringAfter("Current Network Information:", "")
-        .substringBefore("Other Local Wi-Fi Networks:")
-        .ifBlank { output }
-
-    val ssid = Regex("""(?:Network Name|SSID):\s*\n\s*(\S.+)$""", RegexOption.MULTILINE)
-        .find(currentSection)
-        ?.groupValues
-        ?.get(1)
-        ?.trim()
-        ?: Regex("""(?:Network Name|SSID):\s*(.+)$""", RegexOption.MULTILINE)
-            .find(currentSection)
-            ?.groupValues
-            ?.get(1)
-            ?.trim()
-        ?: Regex("""Current Network Information:\s*\n\s+([^\n:]+):\s*\n\s+(?:PHY Mode|Channel):""", RegexOption.MULTILINE)
-            .find(output)
-            ?.groupValues
-            ?.get(1)
-            ?.trim()
-        .orEmpty()
-
-    val signalLine = Regex("Signal / Noise:\\s*(-?\\d+)\\s*dBm").find(output)
-    val signalDbm = signalLine?.groupValues?.get(1)?.toIntOrNull()
-
-    val channelLine = Regex("Channel:\\s*(\\d+)").find(currentSection)
-        ?: Regex("Channel:\\s*(\\d+)").find(output)
-    val channel = channelLine?.groupValues?.get(1)?.toIntOrNull()
-
-    val txRate = Regex("Transmit Rate:\\s*(\\d+)").find(currentSection)
-        ?: Regex("Transmit Rate:\\s*(\\d+)").find(output)
-    val linkSpeedMbps = txRate?.groupValues?.get(1)?.toIntOrNull()
-
-    val band = when {
-        currentSection.contains("6GHz", ignoreCase = true) ||
-            output.contains("6GHz", ignoreCase = true) -> "6 GHz"
-        channel == null -> "Unknown"
-        channel in 1..14 -> "2.4 GHz"
-        channel >= 36 -> "5 GHz"
-        else -> "Unknown"
-    }
-
-    return ParsedWifiTelemetry(
-        ssid = ssid,
-        signalDbm = signalDbm,
-        linkSpeedMbps = linkSpeedMbps,
-        frequencyBand = band,
-        channel = channel
-    )
 }
 
 private fun readMacBootEpochMs(): Long? {
@@ -548,45 +369,6 @@ private fun isMacOs(): Boolean =
 
 private fun isWindowsOs(): Boolean =
     System.getProperty("os.name").orEmpty().contains("Windows", ignoreCase = true)
-
-private fun readMacSsidViaNetworkSetup(interfaceName: String): String {
-    val output = readCommandOutput("networksetup", "-getairportnetwork", interfaceName).orEmpty()
-    val prefix = "Current Wi-Fi Network:"
-    return if (output.startsWith(prefix, ignoreCase = true)) {
-        output.removePrefix(prefix).trim()
-    } else {
-        ""
-    }
-}
-
-private fun readMacAirportInfo(): ParsedWifiTelemetry {
-    val output = readCommandOutput(
-        "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport",
-        "-I"
-    ).orEmpty()
-    if (output.isBlank()) return ParsedWifiTelemetry()
-    val values = parseKeyColonValueBlock(output)
-    val ssid = values["SSID"].orEmpty()
-    val rssi = values["agrCtlRSSI"]?.toIntOrNull()
-        ?: values["RSSI"]?.toIntOrNull()
-    val txRate = values["lastTxRate"]?.toIntOrNull()
-        ?: values["maxRate"]?.toIntOrNull()
-    val channelRaw = values["channel"].orEmpty()
-    val channelNumber = channelRaw.substringBefore(',').trim().toIntOrNull()
-    val band = when {
-        channelNumber == null -> "Unknown"
-        channelNumber in 1..14 -> "2.4 GHz"
-        channelNumber >= 36 -> "5 GHz"
-        else -> "Unknown"
-    }
-    return ParsedWifiTelemetry(
-        ssid = ssid,
-        signalDbm = rssi,
-        linkSpeedMbps = txRate,
-        frequencyBand = band,
-        channel = channelNumber
-    )
-}
 
 private fun readWindowsWifiNetwork(): NetworkDiagnostics {
     val output = readCommandOutput("netsh", "wlan", "show", "interfaces").orEmpty()

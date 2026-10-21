@@ -1,5 +1,6 @@
 package com.fileapex.presentation.explorer
 
+import com.fileapex.presentation.TransferDropUri
 import androidx.lifecycle.viewModelScope
 import com.fileapex.data.clipboard.TransferClipboard
 import com.fileapex.di.FileApexServices
@@ -244,24 +245,9 @@ internal class ExplorerMutationActions(
     )
 
     private fun parseDropPayload(payload: String): DropPayload {
-        if (!payload.startsWith("fileapex-transfer://")) {
-            val fileName = payload.substringAfterLast('/')
-            return DropPayload(payload, fileName, 0L, null)
-        }
-        val withoutScheme = payload.removePrefix("fileapex-transfer://")
-        val sourceId = withoutScheme.substringBefore('/')
-        val rest = withoutScheme.substringAfter('/', "")
-        val rawPath = rest.substringBefore('?')
-        val query = rest.substringAfter('?', "")
-        val name = query.substringAfter("name=", "").substringBefore('&').ifBlank {
-            rawPath.substringAfterLast('/')
-        }
-        val size = query.substringAfter("size=", "0").substringBefore('&').toLongOrNull() ?: 0L
-        return if (sourceId == "local") {
-            DropPayload(rawPath, name, size, null)
-        } else {
-            DropPayload(rawPath, name, size, sourceId)
-        }
+        val parsed = TransferDropUri.parse(payload)
+            ?: return DropPayload(payload, payload.substringAfterLast('/'), 0L, null)
+        return DropPayload(parsed.path, parsed.name, parsed.size, parsed.sourceDeviceId.takeUnless { parsed.isLocal })
     }
 
     private fun localPathOfDrop(payload: String): String? {

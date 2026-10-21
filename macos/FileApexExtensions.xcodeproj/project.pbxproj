@@ -14,6 +14,7 @@
 		A30000000000000000000015 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DevicePickerView.swift */; };
 		A30000000000000000000016 /* AppCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppCopy.swift */; };
 		A30000000000000000000017 /* EndpointDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* EndpointDisplay.swift */; };
+		A30000000000000000000018 /* ExtensionAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* ExtensionAttachments.swift */; };
 		A30000000000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* ShareViewController.swift */; };
 		C30000000000000000000001 /* en.xml in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* en.xml */; };
 		C30000000000000000000002 /* es.xml in ShareResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* es.xml */; };
@@ -23,6 +24,7 @@
 		B30000000000000000000012 /* FileApexSendHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* FileApexSendHandoff.swift */; };
 		B30000000000000000000013 /* FileApexBulletinHandoff.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* FileApexBulletinHandoff.swift */; };
 		B30000000000000000000014 /* BulletinShareViewController.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000030 /* BulletinShareViewController.swift */; };
+		B30000000000000000000016 /* ExtensionAttachments.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* ExtensionAttachments.swift */; };
 		B30000000000000000000015 /* AppCopy.swift in BulletinSources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppCopy.swift */; };
 		C30000000000000000000011 /* en.xml in BulletinResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* en.xml */; };
 		C30000000000000000000012 /* es.xml in BulletinResources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* es.xml */; };
@@ -41,6 +43,7 @@
 		A20000000000000000000006 /* FileApexBulletinHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileApexBulletinHandoff.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* EndpointDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointDisplay.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* AppCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCopy.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* ExtensionAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionAttachments.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000022 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
@@ -107,6 +110,7 @@
 				A20000000000000000000006 /* FileApexBulletinHandoff.swift */,
 				A20000000000000000000008 /* EndpointDisplay.swift */,
 				A20000000000000000000007 /* AppCopy.swift */,
+				A20000000000000000000009 /* ExtensionAttachments.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -249,6 +253,7 @@
 				A30000000000000000000015 /* DevicePickerView.swift in Sources */,
 				A30000000000000000000017 /* EndpointDisplay.swift in Sources */,
 				A30000000000000000000016 /* AppCopy.swift in Sources */,
+				A30000000000000000000018 /* ExtensionAttachments.swift in Sources */,
 				A30000000000000000000020 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -262,6 +267,7 @@
 				B30000000000000000000013 /* FileApexBulletinHandoff.swift in BulletinSources */,
 				B30000000000000000000014 /* BulletinShareViewController.swift in BulletinSources */,
 				B30000000000000000000015 /* AppCopy.swift in BulletinSources */,
+				B30000000000000000000016 /* ExtensionAttachments.swift in BulletinSources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

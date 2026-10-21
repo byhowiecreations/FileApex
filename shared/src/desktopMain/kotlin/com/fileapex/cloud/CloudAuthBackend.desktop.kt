@@ -97,6 +97,9 @@ actual object CloudAuthBackend {
         )
     }
 
+    actual suspend fun firebaseIdToken(): String? =
+        if (prefs.getString(KEY_REFRESH_TOKEN, "").isBlank()) null else cancellableCatching { requireIdToken() }.getOrNull()
+
     actual suspend fun signOut() {
         prefs.remove(KEY_ID_TOKEN)
         prefs.remove(KEY_REFRESH_TOKEN)

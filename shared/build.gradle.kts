@@ -183,7 +183,6 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(layout.buildDirectory.dir("generated/fileapexAppVersion/kotlin"))
-            kotlin.srcDir(layout.buildDirectory.dir("generated/fcmCredentials/kotlin"))
         }
 
         val jvmCommon by creating {
@@ -361,80 +360,6 @@ val generateDesktopCloudConfig = tasks.register("generateDesktopCloudConfig") {
 fun escapeKotlinString(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "").replace("\n", "\\n")
 
-fun resolveFirebaseServiceAccountJson(rootDir: java.io.File, explicitPath: String): java.io.File? {
-    if (explicitPath.isNotBlank()) {
-        val configured = rootDir.resolve(explicitPath)
-        if (configured.isFile) return configured
-    }
-    val jsonDir = rootDir.resolve("json")
-    if (jsonDir.isDirectory) {
-        jsonDir.listFiles()
-            ?.firstOrNull { file -> file.isFile && file.name.contains("firebase-adminsdk") && file.name.endsWith(".json") }
-            ?.let { return it }
-    }
-    return rootDir.listFiles()
-        ?.firstOrNull { file -> file.isFile && file.name.contains("firebase-adminsdk") && file.name.endsWith(".json") }
-}
-
-val generateFcmCredentials = tasks.register("generateFcmCredentials") {
-    val outDir = layout.buildDirectory.dir("generated/fcmCredentials/kotlin")
-    val jsonPath = providers.gradleProperty("fileapex.firebase.service.account.json").orElse("")
-    inputs.property("jsonPath", jsonPath)
-    outputs.dir(outDir)
-    doLast {
-        val dir = outDir.get().asFile.resolve("com/fileapex/cloud")
-        dir.mkdirs()
-        val jsonFile = if (fileapexFdroid) {
-            null
-        } else {
-            resolveFirebaseServiceAccountJson(rootProject.projectDir, jsonPath.get())
-        }
-        if (jsonFile == null) {
-            dir.resolve("GeneratedFcmCredentials.kt").writeText(
-                """
-                |package com.fileapex.cloud
-                |
-                |/** Generated at build time, credentials empty when service account JSON is missing. */
-                |internal object GeneratedFcmCredentials {
-                |    const val PROJECT_ID = ""
-                |    const val CLIENT_EMAIL = ""
-                |    const val PRIVATE_KEY_PEM = ""
-                |}
-                |
-                |internal fun GeneratedFcmCredentials.toConfig(): FcmServiceAccountConfig? = null
-                """.trimMargin()
-            )
-            return@doLast
-        }
-        @Suppress("UNCHECKED_CAST")
-        val json = JsonSlurper().parseText(jsonFile.readText()) as Map<String, Any?>
-        val projectId = json["project_id"]?.toString().orEmpty()
-        val clientEmail = json["client_email"]?.toString().orEmpty()
-        val privateKey = json["private_key"]?.toString().orEmpty()
-        dir.resolve("GeneratedFcmCredentials.kt").writeText(
-            """
-            |package com.fileapex.cloud
-            |
-            |/** Generated from local Firebase Admin SDK JSON, never commit this file. */
-            |internal object GeneratedFcmCredentials {
-            |    const val PROJECT_ID = "${escapeKotlinString(projectId)}"
-            |    const val CLIENT_EMAIL = "${escapeKotlinString(clientEmail)}"
-            |    const val PRIVATE_KEY_PEM = "${escapeKotlinString(privateKey)}"
-            |}
-            |
-            |internal fun GeneratedFcmCredentials.toConfig(): FcmServiceAccountConfig? {
-            |    if (PROJECT_ID.isBlank() || CLIENT_EMAIL.isBlank() || PRIVATE_KEY_PEM.isBlank()) return null
-            |    return FcmServiceAccountConfig(
-            |        projectId = PROJECT_ID,
-            |        clientEmail = CLIENT_EMAIL,
-            |        privateKeyPem = PRIVATE_KEY_PEM
-            |    )
-            |}
-            """.trimMargin()
-        )
-    }
-}
-
 val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
     val outDir = layout.buildDirectory.dir("generated/fileapexAppVersion/kotlin")
     val versionFile = rootProject.file("version.md")
@@ -466,11 +391,11 @@ val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
 }
 
 tasks.withType<KotlinCompilationTask<*>>().configureEach {
-    dependsOn(generateFileApexAppVersion, generateFcmCredentials)
+    dependsOn(generateFileApexAppVersion)
 }
 
 tasks.matching { it.name.startsWith("ksp") }.configureEach {
-    dependsOn(generateFileApexAppVersion, generateFcmCredentials)
+    dependsOn(generateFileApexAppVersion)
 }
 
 kotlin.targets.matching { it.name == "desktop" }.configureEach {

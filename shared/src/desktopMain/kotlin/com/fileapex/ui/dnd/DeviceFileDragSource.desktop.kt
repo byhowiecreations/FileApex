@@ -1,5 +1,6 @@
 package com.fileapex.ui.dnd
 
+import com.fileapex.presentation.TransferDropUri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.ui.Modifier
@@ -55,11 +56,12 @@ actual fun Modifier.deviceFileDragSource(
     val safeName = fileName ?: (if (isLocal) localFile!!.name else absolutePath.substringAfterLast('/'))
     val safeSize = if (isLocal) (localFile?.length() ?: 0L) else fileSize
 
-    val encodedUri = if (isLocal) {
-        "fileapex-transfer://local/${localFile!!.absolutePath}?name=${safeName}&size=${safeSize}"
-    } else {
-        "fileapex-transfer://$sourceDeviceId/$absolutePath?name=${safeName}&size=${safeSize}"
-    }
+    val encodedUri = TransferDropUri.build(
+        sourceDeviceId = sourceDeviceId,
+        absolutePath = if (isLocal) localFile!!.absolutePath else absolutePath,
+        name = safeName,
+        size = safeSize
+    )
 
     val transferable = FileApexTransferable(
         localFiles = if (localFile != null) listOf(localFile) else emptyList(),

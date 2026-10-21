@@ -51,8 +51,9 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
             return@get
         }
         val summaryOnly = call.request.queryParameters["detail"] == "summary"
+        val groups = com.fileapex.domain.diagnostics.DiagnosticGroups.decode(call.request.queryParameters["groups"])
         val snapshot = withContext(Dispatchers.IO) {
-            runCatching { if (summaryOnly) collectDeviceSummary() else collectDeviceDiagnostics() }
+            runCatching { if (summaryOnly) collectDeviceSummary() else collectDeviceDiagnostics(groups) }
                 .getOrElse { error ->
                     server.onLog("GET /api/v1/diagnostics collector failed - returning partial snapshot", error)
                     collectDeviceDiagnosticsFallback()

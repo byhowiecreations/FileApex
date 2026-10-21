@@ -14,6 +14,9 @@ interface TailscaleUserspaceEngine {
     fun activeConnections(): Int
     /** Null when the peer list could not be read. An empty tailnet is "[]". */
     fun tailnetPeersJson(): String?
+
+    /** The loopback port of the local TLS front that tailnet connections are forwarded to; 0 stops forwarding. */
+    fun setForwardPort(port: Int)
 }
 
 internal data class TailscaleLoopbackDial(

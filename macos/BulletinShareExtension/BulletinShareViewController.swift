@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 @objc(BulletinShareViewController)
 final class BulletinShareViewController: NSViewController {
-    private var securityScopedURLs: [URL] = []
+    private let attachments = ExtensionAttachmentAccess()
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 120))
@@ -88,31 +88,16 @@ final class BulletinShareViewController: NSViewController {
             UTType.item.identifier,
             UTType.data.identifier
         ]
-        for typeId in typeIds where provider.hasItemConformingToTypeIdentifier(typeId) {
-            if let url = await loadURL(from: provider, typeId: typeId), url.isFileURL {
-                if url.startAccessingSecurityScopedResource() {
-                    securityScopedURLs.append(url)
-                }
-                return url
-            }
-        }
-        return nil
+        return await attachments.url(
+            from: provider,
+            typeIds: typeIds,
+            requireFileURL: true,
+            logPrefix: "FileApex BulletinShareExtension"
+        )
     }
 
     private func loadURL(from provider: NSItemProvider, typeId: String) async -> URL? {
-        await withCheckedContinuation { continuation in
-            provider.loadItem(forTypeIdentifier: typeId, options: nil) { item, _ in
-                if let url = item as? URL {
-                    continuation.resume(returning: url)
-                } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                    continuation.resume(returning: url)
-                } else if let string = item as? String, let url = URL(string: string) {
-                    continuation.resume(returning: url)
-                } else {
-                    continuation.resume(returning: nil)
-                }
-            }
-        }
+        await ExtensionAttachmentAccess.loadURL(from: provider, typeId: typeId, logPrefix: "FileApex BulletinShareExtension")
     }
 
     private func loadString(from provider: NSItemProvider, typeId: String) async -> String? {
@@ -130,17 +115,6 @@ final class BulletinShareViewController: NSViewController {
     }
 
     private func finish(success: Bool) {
-        securityScopedURLs.forEach { $0.stopAccessingSecurityScopedResource() }
-        securityScopedURLs.removeAll()
-        if success {
-            extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
-        } else {
-            let error = NSError(
-                domain: "com.fileapex.BulletinShareExtension",
-                code: NSUserCancelledError,
-                userInfo: [NSLocalizedDescriptionKey: AppCopy.shared.t("cancelled")]
-            )
-            extensionContext?.cancelRequest(withError: error)
-        }
+        attachments.finish(extensionContext, errorDomain: "com.fileapex.BulletinShareExtension", success: success)
     }
 }

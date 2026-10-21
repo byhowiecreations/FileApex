@@ -18,6 +18,8 @@ actual object CloudAuthBackend {
 
     actual suspend fun currentSession(): GoogleAuthSession? = null
 
+    actual suspend fun firebaseIdToken(): String? = null
+
     actual suspend fun signOut() = Unit
 
     actual suspend fun registerDevice(uid: String, record: CloudDeviceRecord) {

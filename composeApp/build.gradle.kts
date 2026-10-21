@@ -99,6 +99,8 @@ if (!fileapexFdroid) {
     apply(plugin = "com.google.gms.google-services") // fdroid:remove
 }
 
+apply(from = "desktop-slim-jars.gradle.kts")
+
 kotlin {
     androidTarget {
         compilerOptions {
@@ -134,6 +136,9 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.kotlinx.coroutines.swing)
+                // Icons, Icons.Sharp and the core icons reached the runtime only through the extended module that desktop-slim-jars replaces.
+                runtimeOnly("org.jetbrains.compose.material:material-icons-core:1.7.3")
+                runtimeOnly(files(tasks.named("slimMaterialIconsJar"), tasks.named("slimIrohJar")))
             }
         }
     }

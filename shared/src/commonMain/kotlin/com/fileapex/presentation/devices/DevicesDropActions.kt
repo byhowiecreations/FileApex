@@ -1,5 +1,6 @@
 package com.fileapex.presentation.devices
 
+import com.fileapex.presentation.TransferDropUri
 import androidx.lifecycle.viewModelScope
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.di.FileApexServices
@@ -38,7 +39,7 @@ internal class DevicesDropActions(
         viewModelScope.launch {
             if (deviceId == LocalIdentity.LOCAL_DEVICE_ID || deviceId == identity.deviceId) {
                 // Entries dragged out of a remote device may land on this device; plain local paths may not.
-                if (absolutePaths.any { it.startsWith("fileapex-transfer://") }) {
+                if (absolutePaths.any { TransferDropUri.isTransferUri(it) }) {
                     handleDroppedRemoteTransfer(LocalIdentity.LOCAL_DEVICE_ID, absolutePaths)
                     return@launch
                 }
@@ -51,7 +52,7 @@ internal class DevicesDropActions(
                 return@launch
             }
 
-            if (absolutePaths.any { it.startsWith("fileapex-transfer://") }) {
+            if (absolutePaths.any { TransferDropUri.isTransferUri(it) }) {
                 handleDroppedRemoteTransfer(deviceId, absolutePaths)
                 return@launch
             }
@@ -118,18 +119,13 @@ internal class DevicesDropActions(
     }
 
     private suspend fun handleDroppedRemoteTransfer(targetDeviceId: String, uriList: List<String>) {
-        val uris = uriList.filter { it.startsWith("fileapex-transfer://") }
+        val uris = uriList.mapNotNull { TransferDropUri.parse(it) }
         if (uris.isEmpty()) return
         for (uri in uris) {
-            val withoutScheme = uri.removePrefix("fileapex-transfer://")
-            val sourceDeviceId = withoutScheme.substringBefore('/')
-            val rest = withoutScheme.substringAfter('/')
-            val rawPath = rest.substringBefore('?')
-            val remotePath = if (rawPath.startsWith('/')) rawPath else "/$rawPath"
-            val query = rest.substringAfter('?', "")
-            val fileName = query.substringAfter("name=", "").substringBefore('&').takeIf { it.isNotBlank() }
-                ?: remotePath.substringAfterLast('/')
-            val fileSize = query.substringAfter("size=", "0").substringBefore('&').toLongOrNull() ?: 0L
+            val sourceDeviceId = uri.sourceDeviceId
+            val remotePath = if (uri.path.startsWith('/')) uri.path else "/${uri.path}"
+            val fileName = uri.name
+            val fileSize = uri.size
 
             if (sourceDeviceId == targetDeviceId) {
                 _uiState.update { it.copy(errorMessage = AppI18n.t("cannot_send_to_self")) }

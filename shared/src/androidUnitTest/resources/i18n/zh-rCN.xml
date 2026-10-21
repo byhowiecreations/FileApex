@@ -122,6 +122,10 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shizuku_connected_unused">Shizuku 已连接。FileApex 未使用它。</string>
     <string name="via_cellular">通过移动网络</string>
     <string name="via_cellular_subtitle">允许通过加密云中继在移动网络上同步。</string>
+    <string name="via_cellular_needs_google">请先关联 Google 账号才能使用。</string>
+    <string name="clipboard_target_not_linked">%1$s 未关联 Google，无法接收云消息。</string>
+    <string name="clipboard_sent_cloud_waiting">已通过云端发送到 %1$s，等待确认…</string>
+    <string name="clipboard_cloud_unconfirmed">已通过云端发送到 %1$s，但尚未收到确认。对方可能已离线或未关联 Google。</string>
     <string name="automatically_send">自动发送</string>
     <string name="automatically_send_subtitle">自动将剪贴板内容发送到下方所选设备</string>
     <string name="share_clipboard_with">将剪贴板共享给：</string>

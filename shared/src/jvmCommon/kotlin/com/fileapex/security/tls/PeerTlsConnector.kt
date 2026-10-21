@@ -57,6 +57,10 @@ object PeerTlsConnector {
         }
         return try {
             socket.connect(InetSocketAddress(host, route.tlsPort), connectTimeoutMs)
+            if (route.preamble.isNotEmpty()) {
+                com.fileapex.tailscale.writeTailscaleDialToken(socket.getOutputStream(), route.preamble)
+                socket.getOutputStream().flush()
+            }
             val ssl = contextFor(route).socketFactory.createSocket(socket, host, route.tlsPort, true) as SSLSocket
             ssl.enabledProtocols = TlsFrontServer.preferredProtocols(ssl.supportedProtocols)
             socket.soTimeout = connectTimeoutMs

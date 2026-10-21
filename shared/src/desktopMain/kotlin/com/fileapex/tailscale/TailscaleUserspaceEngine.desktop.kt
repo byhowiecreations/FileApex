@@ -74,15 +74,22 @@ private class DesktopEmbeddedTsnetEngine : TailscaleUserspaceEngine {
         val lib = DesktopTsnetLibrary.loadOrNull() ?: return null
         return DesktopTsnetLibrary.peers(lib)
     }
+
+    override fun setForwardPort(port: Int) {
+        val lib = DesktopTsnetLibrary.loadOrNull() ?: return
+        runCatching { lib.fileapex_tsnet_set_forward_port(port) }
+    }
 }
 
 internal fun tailscaleLoopbackOrNull(host: String, port: Int): TailscaleLoopbackDial? {
     if (!usesUserspaceDial(host, TailscaleNodeRuntime.state.value.phase)) return null
+    val route = com.fileapex.security.tls.PeerTlsRoutes.lookup(host.trim(), port) ?: return null
     val lib = DesktopTsnetLibrary.loadOrNull() ?: return null
     val localPort = DesktopTsnetLibrary.loopback(lib, host.trim(), port)
     val token = DesktopTsnetLibrary.sessionToken(lib)
     if (localPort <= 0 || token.isEmpty()) return null
-    return TailscaleLoopbackDial(host = "127.0.0.1", port = localPort, token = token)
+    com.fileapex.security.tls.PeerTlsRoutes.viaTailnetPipe(localPort, route, token)
+    return TailscaleLoopbackDial(host = "127.0.0.1", port = localPort, token = "")
 }
 
 internal fun tsnetNativeLibraryLoaded(): Boolean = DesktopTsnetLibrary.loaded()
@@ -347,6 +354,8 @@ private interface FileApexTsnetNative : Library {
     fun fileapex_tsnet_active_conns(): Int
 
     fun fileapex_tsnet_peers(outPeers: Pointer, outPeersLen: Int): Int
+
+    fun fileapex_tsnet_set_forward_port(port: Int)
 }
 
 actual fun embeddedTsnetEngine(): TailscaleUserspaceEngine = DesktopEmbeddedTsnetEngine()

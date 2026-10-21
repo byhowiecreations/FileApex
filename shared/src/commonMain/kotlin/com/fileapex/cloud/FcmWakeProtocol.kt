@@ -12,6 +12,8 @@ object FcmWakeProtocol {
     const val TYPE_DRIVE_RELAY = "drive_relay"
     const val TYPE_CLIPBOARD_SHARE = "clipboard_share"
     const val TYPE_CLIPBOARD_OPT_IN_REQUEST = "clipboard_opt_in_request"
+    /** The receiver tells the sender a pushed clipboard text was applied (sender id and capturedAtEpochMs echoed). */
+    const val TYPE_CLIPBOARD_ACK = "clipboard_ack"
 
     const val KEY_TYPE = "type"
     const val KEY_SOURCE_DEVICE_ID = "sourceDeviceId"
@@ -28,6 +30,8 @@ object FcmWakeProtocol {
     const val KEY_SENDER_PUBLIC_KEY = "senderPublicKey"
     const val KEY_CIPHERTEXT = "ciphertext"
     const val KEY_CAPTURED_AT = "capturedAtEpochMs"
+    /** Ciphertext holding the content fields of a Bulletin Board push (see NotePushCrypto). */
+    const val KEY_SEALED = "sealed"
     const val KEY_SENDER_DEVICE_NAME = "senderDeviceName"
 
     object Keys {

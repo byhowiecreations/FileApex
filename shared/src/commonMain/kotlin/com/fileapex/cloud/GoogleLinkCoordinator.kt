@@ -202,7 +202,7 @@ object GoogleLinkCoordinator {
     private fun CloudDeviceRecord.toFcmTargetOrNull(selfDeviceId: String): FcmWakeTarget? {
         if (deviceId.isBlank() || deviceId == selfDeviceId) return null
         if (fcmToken.isBlank()) return null
-        return FcmWakeTarget(deviceId, fcmToken)
+        return FcmWakeTarget(deviceId, fcmToken, updatedAtEpochMs)
     }
 
     /**
@@ -270,6 +270,7 @@ object GoogleLinkCoordinator {
             FileApexServices.settings.setGoogleAccountEmail("")
             FileApexServices.settings.setGoogleAccountUid("")
             FileApexServices.settings.setGoogleAccountLinkEnabled(false)
+            FileApexServices.settings.setClipboardViaCellularEnabled(false)
             FileApexServices.settings.setGoogleRestorePending(false)
             FileApexServices.settings.setGoogleBackupEmailHint("")
             com.fileapex.cloud.drive.DriveRelayCoordinator.clearGrantOnUnlink()
@@ -379,6 +380,7 @@ object GoogleLinkCoordinator {
         ) {
             println("GoogleLinkCoordinator: linked flag without session or restore key - signing out")
             settings.setGoogleAccountLinkEnabled(false)
+            settings.setClipboardViaCellularEnabled(false)
         }
     }
 

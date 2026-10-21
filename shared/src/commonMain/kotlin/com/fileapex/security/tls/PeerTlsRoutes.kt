@@ -6,13 +6,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.atomic.AtomicReference
 
-/** Where to reach a pinned peer over TLS. A route means plain HTTP to that peer is never used. */
-data class PeerTlsRoute(val deviceId: String, val pins: Set<String>, val tlsPort: Int)
+/**
+ * Where to reach a pinned peer over TLS. A route means plain HTTP to that peer is never used. [preamble] is written
+ * on the raw socket before the handshake: the session token the local tailnet pipe wants first.
+ */
+data class PeerTlsRoute(val deviceId: String, val pins: Set<String>, val tlsPort: Int, val preamble: String = "")
 
 data class PeerTlsEndpoint(val host: String, val httpPort: Int, val route: PeerTlsRoute)
 
 object PeerTlsRoutes {
     private val byEndpoint = AtomicReference<Map<String, PeerTlsRoute>>(emptyMap())
+    private val tailnetPipes = java.util.concurrent.ConcurrentHashMap<Int, PeerTlsRoute>()
+    private val tailnetCandidates = java.util.concurrent.ConcurrentHashMap<String, PeerTlsRoute>()
 
     /** Mac: pushes the table to the native client, which dials peers itself. */
     @Volatile
@@ -25,22 +30,42 @@ object PeerTlsRoutes {
     fun update(devices: List<PairedDeviceEntity>) {
         val map = HashMap<String, PeerTlsRoute>()
         for (device in devices) {
-            if (device.isRemoved || device.tlsPin.isEmpty() || device.tlsPort !in 1..65535) continue
+            if (device.isRemoved || device.tlsPin.isEmpty() || device.port <= 0) continue
+            val pins = setOfNotNull(device.tlsPin, device.tlsPinAlt.ifEmpty { null })
             val ip = device.lastKnownIp.trim()
-            if (ip.isEmpty() || device.port <= 0) continue
-            map[key(ip, device.port)] = PeerTlsRoute(
-                deviceId = device.deviceId,
-                pins = setOfNotNull(device.tlsPin, device.tlsPinAlt.ifEmpty { null }),
-                tlsPort = device.tlsPort
-            )
+            if (ip.isNotEmpty() && device.tlsPort in 1..65535) {
+                map[key(ip, device.port)] = PeerTlsRoute(device.deviceId, pins, device.tlsPort)
+            }
+            // Over the tailnet the peer's TLS front answers on its share port, so a tailnet caller is pinned like a LAN one.
+            val tailnetIp = device.tailnetIpv4.trim()
+            if (tailnetIp.isNotEmpty()) map[key(tailnetIp, device.port)] = PeerTlsRoute(device.deviceId, pins, device.port)
         }
         byEndpoint.set(map)
         onChange?.invoke(snapshot())
     }
 
-    /** A bridge port is a local pipe to the peer, never a TLS endpoint, whatever a stored row says. */
-    fun lookup(host: String, httpPort: Int): PeerTlsRoute? =
-        if (com.fileapex.iroh.irohLoopbackOrNull(host, httpPort) != null) null else byEndpoint.get()[key(host, httpPort)]
+    /**
+     * Lets [device] be tried at a tailnet address it is not recorded at yet: the pinned handshake is what proves the node
+     * there holds the device's key. Null when the device has no pin to prove it with. Close the result when done.
+     */
+    fun tryTailnetAddress(device: PairedDeviceEntity, ipv4: String): AutoCloseable? {
+        if (device.isRemoved || device.tlsPin.isEmpty() || device.port <= 0 || ipv4.isBlank()) return null
+        val key = key(ipv4, device.port)
+        tailnetCandidates[key] = PeerTlsRoute(device.deviceId, setOfNotNull(device.tlsPin, device.tlsPinAlt.ifEmpty { null }), device.port)
+        return AutoCloseable { tailnetCandidates.remove(key) }
+    }
+
+    /** The local pipe on [pipePort] reaches [route]'s peer through the tailnet; TLS runs over it after [token] is written. */
+    fun viaTailnetPipe(pipePort: Int, route: PeerTlsRoute, token: String) {
+        tailnetPipes[pipePort] = route.copy(tlsPort = pipePort, preamble = token)
+    }
+
+    /** An Iroh bridge port is a local pipe to the peer, never a TLS endpoint, whatever a stored row says. */
+    fun lookup(host: String, httpPort: Int): PeerTlsRoute? = when {
+        com.fileapex.iroh.irohLoopbackOrNull(host, httpPort) != null -> null
+        host.trim() == "127.0.0.1" && tailnetPipes.containsKey(httpPort) -> tailnetPipes[httpPort]
+        else -> key(host, httpPort).let { byEndpoint.get()[it] ?: tailnetCandidates[it] }
+    }
 
     fun isPinned(host: String, httpPort: Int): Boolean = lookup(host, httpPort) != null
 

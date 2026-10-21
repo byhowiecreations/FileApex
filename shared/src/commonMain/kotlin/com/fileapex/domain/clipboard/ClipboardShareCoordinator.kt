@@ -93,18 +93,7 @@ object ClipboardShareCoordinator {
                     isDesktop = com.fileapex.domain.peer.PeerPlatform.isDesktop(it.os, it.platform)
                 )
             }
-            val defaultTargetId = ClipboardSharePolicy.resolveAutoDefaultTargetId(
-                selfIsAndroid = currentPlatformLabel() == "Android",
-                peers = peers
-            )
-            if (defaultTargetId != null) {
-                if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET ||
-                    settings.clipboardShareMode.value == ClipboardShareMode.SPECIFIC
-                ) {
-                    settings.setClipboardShareMode(ClipboardShareMode.SPECIFIC)
-                    settings.setClipboardTargetDeviceIds(setOf(defaultTargetId))
-                }
-            }
+            settings.applyAutoDefaultClipboardTarget(currentPlatformLabel() == "Android", peers)
         }
     }
 
@@ -223,7 +212,20 @@ object ClipboardShareCoordinator {
         return com.fileapex.i18n.AppI18n.t("sending_clipboard")
     }
 
-    suspend fun sendToDevice(deviceId: String): ClipboardSendResponse {
+    /** What a manual send did: the response, whether it went through the cloud, and the ack to wait for. */
+    class ClipboardSendOutcome(
+        val response: ClipboardSendResponse,
+        val viaCloud: Boolean,
+        val ack: ClipboardAckTracker.Waiter?
+    )
+
+    private class DeliveryRoute {
+        var viaCloud = false
+    }
+
+    suspend fun sendToDevice(deviceId: String): ClipboardSendResponse = sendToDeviceTracked(deviceId).response
+
+    suspend fun sendToDeviceTracked(deviceId: String): ClipboardSendOutcome {
         val settings = FileApexServices.settings
         if (!settings.clipboardSharingEnabled.value) {
             error(com.fileapex.i18n.AppI18n.t("clipboard_sharing_disabled_settings"))
@@ -233,15 +235,19 @@ object ClipboardShareCoordinator {
         val device = FileApexServices.deviceRepository.getDevice(deviceId)
             ?: error(com.fileapex.i18n.AppI18n.t("device_not_found"))
         val capturedAt = TimeUtils.now()
-        val (delivered, deliveryError) = deliverToDeviceWithDetail(device, text, capturedAt)
+        val ack = ClipboardAckTracker.expect(deviceId, capturedAt)
+        val route = DeliveryRoute()
+        val (delivered, deliveryError) = deliverToDeviceWithDetail(device, text, capturedAt, route)
         if (!delivered) {
+            ack.cancel()
             ClipboardPushDeduper.forget(text)
             val msg = deliveryError?.message ?: com.fileapex.i18n.AppI18n.t("clipboard_send_failed", device.deviceName)
             error(msg)
         }
         ClipboardPushDeduper.remember(text)
+        if (!route.viaCloud) ack.cancel()
         val name = device.deviceName.ifBlank { com.fileapex.i18n.AppI18n.t("paired_device") }
-        return ClipboardSendResponse(status = "ok", recipientDeviceName = name)
+        return ClipboardSendOutcome(ClipboardSendResponse(status = "ok", recipientDeviceName = name), route.viaCloud, ack.takeIf { route.viaCloud })
     }
 
     suspend fun sendPlaintextToDevice(deviceId: String, text: String): ClipboardSendResponse {
@@ -325,6 +331,8 @@ object ClipboardShareCoordinator {
                 ciphertext = ciphertext,
                 capturedAtEpochMs = capturedAt
             )
+        }.onSuccess {
+            FcmWakeCoordinator.dispatchClipboardAck(senderDeviceId, capturedAt)
         }.onFailure { error ->
             println("ClipboardShareCoordinator: FCM clipboard dropped - ${error.message}")
         }
@@ -440,7 +448,8 @@ object ClipboardShareCoordinator {
     private suspend fun deliverToDeviceWithDetail(
         device: PairedDeviceEntity,
         text: String,
-        capturedAtEpochMs: Long
+        capturedAtEpochMs: Long,
+        route: DeliveryRoute = DeliveryRoute()
     ): Pair<Boolean, Throwable?> {
         if (ClipboardSharePolicy.isExpired(capturedAtEpochMs, TimeUtils.now())) {
             return Pair(false, IllegalStateException(com.fileapex.i18n.AppI18n.t("clipboard_expired")))
@@ -536,6 +545,10 @@ object ClipboardShareCoordinator {
         )
         if (!fcmOk) return Pair(false, lastError)
         if (ciphertext.length > ClipboardSharePolicy.FCM_MAX_DATA_CHARS) return Pair(false, lastError)
+        if (!FcmWakeCoordinator.canReceiveCloudMessages(device.deviceId)) {
+            return Pair(false, IllegalStateException(com.fileapex.i18n.AppI18n.t("clipboard_target_not_linked", peerName)))
+        }
+        route.viaCloud = true
         val fcmSent = FcmWakeCoordinator.dispatchClipboardShare(
             targetDeviceId = device.deviceId,
             senderPublicKey = ClipboardE2ee.publicKeyBase64(),

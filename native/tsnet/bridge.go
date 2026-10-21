@@ -136,7 +136,7 @@ func Start(authKey, dir, hostname string, sharePort int) (ip string, err error) 
 		return "", fmt.Errorf("%s", redact(listenErr.Error()))
 	}
 	node.ln = ln
-	go acceptToLocal(ctx, ln, sharePort)
+	go acceptToLocal(ctx, ln)
 	return ip, nil
 }
 
@@ -325,20 +325,34 @@ func Loopback(host string, port int) (int, error) {
 	return ln.Addr().(*net.TCPAddr).Port, nil
 }
 
-func acceptToLocal(ctx context.Context, ln net.Listener, sharePort int) {
+// forwardPort is the loopback port of the local TLS front. Everything accepted on the tailnet is spliced to it, so
+// a tailnet caller is identified by its client certificate exactly like a caller on the LAN. Zero means "not
+// ready": connections are closed rather than forwarded anywhere else.
+var forwardPort atomic.Int32
+
+// SetForwardPort tells the node where the local TLS front listens. It survives Stop and Start.
+func SetForwardPort(port int) {
+	if port <= 0 || port > 65535 {
+		port = 0
+	}
+	forwardPort.Store(int32(port))
+}
+
+func acceptToLocal(ctx context.Context, ln net.Listener) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		if !remoteIsTailnet(conn.RemoteAddr()) {
+		target := int(forwardPort.Load())
+		if target == 0 || !remoteIsTailnet(conn.RemoteAddr()) {
 			_ = conn.Close()
 			continue
 		}
 		go func(inbound net.Conn) {
 			activeConns.Add(1)
 			defer activeConns.Add(-1)
-			upstream, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", sharePort), 5*time.Second)
+			upstream, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", target), 5*time.Second)
 			if err != nil {
 				_ = inbound.Close()
 				return
@@ -538,7 +552,7 @@ func refreshAndListen(ctx context.Context, server *tsnet.Server, node *runningNo
 	}
 	node.ln = ln
 	mu.Unlock()
-	go acceptToLocal(ctx, ln, sharePort)
+	go acceptToLocal(ctx, ln)
 	return true
 }
 

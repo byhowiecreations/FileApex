@@ -109,6 +109,7 @@ object ServerLifecycleManager {
                 .onSuccess { tlsPort ->
                     tlsFront = front
                     LocalTlsInfo.port = tlsPort
+                    com.fileapex.tailscale.TailscaleNodeRuntime.forwardTailnetTo(tlsPort)
                 }
                 .onFailure { error ->
                     onLog("TLS front failed to start, serving HTTP only", error)
@@ -130,6 +131,7 @@ object ServerLifecycleManager {
         val front = tlsFront ?: return
         tlsFront = null
         LocalTlsInfo.port = 0
+        com.fileapex.tailscale.TailscaleNodeRuntime.forwardTailnetTo(0)
         cancellableCatching { front.stop() }.onFailure { error -> onLog("Error while stopping TLS front", error) }
         com.fileapex.security.tls.TlsBridgeRegistry.clear()
     }

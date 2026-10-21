@@ -36,6 +36,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"fileapex.dev/tsnetbridge"
 )
 
 // Pinned mutual TLS for LAN peers. A peer is identified by the SHA-256 of its SubjectPublicKeyInfo.
@@ -458,12 +460,15 @@ func (n *Node) serveTLS() {
 	srv := &http.Server{
 		Handler:           n.guard(n.routes(), true),
 		ReadHeaderTimeout: 30 * time.Second,
+		IdleTimeout:       idleConnectionTimeout,
 		TLSConfig:         t.serverConfig(),
 	}
 	t.mu.Lock()
 	t.server = srv
 	t.port = ln.Addr().(*net.TCPAddr).Port
 	t.mu.Unlock()
+	// The tailnet is a way to reach this TLS port, not a second front: callers are identified by their certificate.
+	tsnetbridge.SetForwardPort(t.port)
 	go func() {
 		if err := srv.Serve(tls.NewListener(ln, t.serverConfig())); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("TLS server stopped: %v", err)
@@ -492,6 +497,7 @@ func (n *Node) shutdownTLS(timeout time.Duration) {
 	if n.tls == nil {
 		return
 	}
+	tsnetbridge.SetForwardPort(0)
 	n.tls.mu.Lock()
 	srv := n.tls.server
 	n.tls.mu.Unlock()

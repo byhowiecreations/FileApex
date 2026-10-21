@@ -72,6 +72,11 @@ func fileapex_tsnet_self_ipv4(out *C.char, outLen C.int) {
 	writeCString(out, outLen, tsnetbridge.SelfIPv4())
 }
 
+//export fileapex_tsnet_set_forward_port
+func fileapex_tsnet_set_forward_port(port C.int) {
+	tsnetbridge.SetForwardPort(int(port))
+}
+
 //export fileapex_tsnet_key_expired
 func fileapex_tsnet_key_expired() C.int {
 	if tsnetbridge.KeyExpired() {

@@ -102,6 +102,32 @@ object FcmWakeCoordinator {
             cancellableCatching {
                 val targets = GoogleLinkCoordinator.linkedPeerFcmTargets(selfId)
                 for (target in targets) {
+                    val contentBytes = content?.encodeToByteArray()?.size ?: 0
+                    val hasDriveFile = !driveFileId.isNullOrBlank()
+                    val hasAttachment = !attachmentName.isNullOrBlank() || attachmentSizeBytes > 0L
+                    val sealedPush = NotePushCrypto.sealForWithinLimit(
+                        target.deviceId,
+                        noteId,
+                        SealedNoteFields(
+                            content = content?.takeIf { it.isNotBlank() && contentBytes <= NotePushCrypto.MAX_SEALED_INLINE_BYTES },
+                            driveFileId = driveFileId?.takeIf { it.isNotBlank() },
+                            checksum = checksum?.takeIf { it.isNotBlank() },
+                            attachmentName = attachmentName?.takeIf { it.isNotBlank() },
+                            attachmentSize = attachmentSizeBytes
+                        )
+                    )
+                    if (sealedPush != null) {
+                        val (sealed, hasContent) = sealedPush
+                        val inline = !hasDriveFile && !hasAttachment && hasContent
+                        FcmWakeBackend.sendSealedNoteWake(
+                            targetFcmToken = target.fcmToken,
+                            sourceDeviceId = selfId,
+                            noteId = noteId,
+                            type = if (inline) FcmWakeProtocol.TYPE_NOTE_INLINE else FcmWakeProtocol.TYPE_NOTE_SYNC,
+                            sealed = sealed
+                        )
+                        continue
+                    }
                     FcmWakeBackend.sendNoteWake(
                         targetFcmToken = target.fcmToken,
                         sourceDeviceId = selfId,
@@ -136,6 +162,7 @@ object FcmWakeCoordinator {
     fun isDriveRelay(type: String?): Boolean = type == FcmWakeProtocol.TYPE_DRIVE_RELAY
 
     fun isClipboardShare(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_SHARE
+    fun isClipboardAck(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_ACK
     fun isClipboardOptInRequest(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_OPT_IN_REQUEST
 
     suspend fun dispatchClipboardShare(
@@ -161,6 +188,31 @@ object FcmWakeCoordinator {
             )
         }.getOrElse { error ->
             println("FcmWakeCoordinator: clipboard FCM failed - ${error.message}")
+            false
+        }
+    }
+
+    /** True when the device has a recent cloud record with a push address, so a cloud message can reach it. */
+    suspend fun canReceiveCloudMessages(targetDeviceId: String): Boolean {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
+        val selfId = loadLocalIdentity().deviceId
+        val target = cancellableCatching {
+            GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(targetDeviceId))
+        }.getOrDefault(emptyList()).firstOrNull { it.deviceId == targetDeviceId } ?: return false
+        return !CloudTargetFreshness.isStale(target.recordUpdatedAtEpochMs, com.fileapex.util.TimeUtils.now())
+    }
+
+    /** Tells the sender of a pushed clipboard text that it was applied here, so it can show a real confirmation. */
+    suspend fun dispatchClipboardAck(senderDeviceId: String, capturedAtEpochMs: Long): Boolean {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return false
+        if (!FcmWakeBackend.isConfigured()) return false
+        val selfId = loadLocalIdentity().deviceId
+        return cancellableCatching {
+            val target = GoogleLinkCoordinator.fcmTargetsForDevices(selfId, listOf(senderDeviceId)).firstOrNull()
+                ?: return false
+            FcmWakeBackend.sendClipboardAck(target.fcmToken, selfId, capturedAtEpochMs)
+        }.getOrElse { error ->
+            println("FcmWakeCoordinator: clipboard ack failed - ${error.message}")
             false
         }
     }
@@ -236,6 +288,25 @@ object FcmWakeCoordinator {
             cancellableCatching {
                 val targets = GoogleLinkCoordinator.linkedPeerFcmTargets(selfId)
                 for (target in targets) {
+                    val sealed = NotePushCrypto.sealFor(
+                        target.deviceId,
+                        noteId,
+                        SealedNoteFields(
+                            driveFileId = driveFileId?.takeIf { it.isNotBlank() },
+                            checksum = checksum?.takeIf { it.isNotBlank() },
+                            attachmentName = attachmentName?.takeIf { it.isNotBlank() }
+                        )
+                    )
+                    if (sealed != null) {
+                        FcmWakeBackend.sendSealedNoteWake(
+                            targetFcmToken = target.fcmToken,
+                            sourceDeviceId = selfId,
+                            noteId = noteId,
+                            type = FcmWakeProtocol.TYPE_NOTE_DELETE,
+                            sealed = sealed
+                        )
+                        continue
+                    }
                     FcmWakeBackend.sendNoteDeleteWake(
                         targetFcmToken = target.fcmToken,
                         sourceDeviceId = selfId,
@@ -254,5 +325,15 @@ object FcmWakeCoordinator {
 
 data class FcmWakeTarget(
     val deviceId: String,
-    val fcmToken: String
+    val fcmToken: String,
+    /** When the device last wrote its cloud record; 0 when unknown. A linked device refreshes it every 10 minutes. */
+    val recordUpdatedAtEpochMs: Long = 0L
 )
+
+/** A cloud record that has not been refreshed for this long belongs to a device that is no longer linked. */
+object CloudTargetFreshness {
+    const val STALE_AFTER_MS = 7L * 24 * 60 * 60 * 1000
+
+    fun isStale(recordUpdatedAtEpochMs: Long, nowEpochMs: Long): Boolean =
+        recordUpdatedAtEpochMs > 0L && nowEpochMs - recordUpdatedAtEpochMs > STALE_AFTER_MS
+}

@@ -12,6 +12,9 @@ expect object CloudAuthBackend {
 
     suspend fun currentSession(): GoogleAuthSession?
 
+    /** A current Firebase Auth ID token for the signed-in user, or null when not signed in. Sent to the FCM relay. */
+    suspend fun firebaseIdToken(): String?
+
     suspend fun signOut()
 
     /**

@@ -214,6 +214,61 @@ class TlsFrontServerTest {
         assertEquals(listOf("TLSv1.3"), TlsFrontServer.preferredProtocols(arrayOf("TLSv1.2", "TLSv1.3")).toList())
         assertEquals(listOf("TLSv1.2"), TlsFrontServer.preferredProtocols(arrayOf("TLSv1.2")).toList())
     }
+    private fun withShortIdleFront(block: () -> Unit) {
+        val short = TlsFrontServer(
+            identity = { serverId },
+            directory = directory,
+            bindHost = "127.0.0.1",
+            preferredPort = 0,
+            bridgePort = bridgePort,
+            log = { _, _ -> },
+            idleTimeoutMs = 400,
+            sweepIntervalMs = 100
+        )
+        val normalPort = tlsPort
+        tlsPort = short.start()
+        try {
+            block()
+        } finally {
+            tlsPort = normalPort
+            short.stop()
+        }
+    }
+
+    @Test
+    fun aSilentConnectionIsClosedAfterTheIdleTimeout() = withShortIdleFront {
+        client(pairedId).use { socket ->
+            socket.soTimeout = 5_000
+            val startedAt = System.nanoTime()
+            val outcome = runCatching { socket.getInputStream().read() }
+            val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+            assertTrue("expected the server to close the idle connection, got $outcome", outcome.isFailure || outcome.getOrThrow() < 0)
+            assertTrue("closed after $elapsedMs ms", elapsedMs in 300..4_000)
+        }
+    }
+
+    @Test
+    fun aUploadWithPausesShorterThanTheIdleTimeoutIsNotCut() = withShortIdleFront {
+        client(pairedId).use { socket ->
+            val out = socket.getOutputStream()
+            val chunk = ByteArray(100) { it.toByte() }
+            out.write("POST /sink HTTP/1.1\r\nHost: x\r\nContent-Length: ${chunk.size * 10}\r\n\r\n".toByteArray())
+            repeat(10) {
+                out.write(chunk)
+                out.flush()
+                Thread.sleep(200)
+            }
+            val response = StringBuilder()
+            val input = socket.getInputStream()
+            val buffer = ByteArray(1024)
+            while (!response.contains("\r\n\r\n") || !response.endsWith("1000")) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                response.append(String(buffer, 0, read, Charsets.ISO_8859_1))
+            }
+            assertEquals("1000", bodyOf(response.toString()))
+        }
+    }
 }
 
 private object TlsBridgeRegistryAccess {

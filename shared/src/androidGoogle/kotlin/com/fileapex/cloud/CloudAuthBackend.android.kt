@@ -36,6 +36,9 @@ actual object CloudAuthBackend {
         )
     }
 
+    actual suspend fun firebaseIdToken(): String? =
+        FirebaseAuth.getInstance().currentUser?.getIdToken(false)?.await()?.token
+
     actual suspend fun signOut() {
         FirebaseAuth.getInstance().signOut()
     }

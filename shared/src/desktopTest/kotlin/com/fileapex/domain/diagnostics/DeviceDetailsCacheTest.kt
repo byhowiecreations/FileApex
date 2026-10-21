@@ -58,4 +58,15 @@ class DeviceDetailsCacheTest {
         assertEquals(emptyList<CachedDeviceDetails>(), DeviceDetailsCache.decode("not json"))
         assertEquals(emptyList<CachedDeviceDetails>(), DeviceDetailsCache.decode(""))
     }
+
+    @Test
+    fun aGroupThePeerWasNotAskedForKeepsItsSavedValues() {
+        val partial = PeerDeviceDiagnostics(collectedAtEpochMs = 300, battery = BatteryDiagnostics(levelPercent = 40))
+        val kept = DeviceDetailsCache.keepUnasked(full, partial, setOf(DiagnosticGroup.Battery))
+        assertEquals(40, kept.battery.levelPercent)
+        assertEquals(100L, kept.storage.totalBytes)
+        assertEquals(8, kept.processor.totalCoreCount)
+        assertSame(partial, DeviceDetailsCache.keepUnasked(full, partial, null))
+        assertSame(partial, DeviceDetailsCache.keepUnasked(null, partial, setOf(DiagnosticGroup.Battery)))
+    }
 }

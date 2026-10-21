@@ -20,9 +20,13 @@ object DeviceDetailsCache {
 
     fun get(deviceId: String): PeerDeviceDiagnostics? = synchronized(lock) { loaded()[deviceId]?.snapshot }
 
-    /** Stores [fresh] merged over what is already known and returns what to show. */
-    fun remember(deviceId: String, fresh: PeerDeviceDiagnostics): PeerDeviceDiagnostics = synchronized(lock) {
-        val merged = merge(loaded()[deviceId]?.snapshot, fresh)
+    /**
+     * Stores [fresh] merged over what is already known and returns what to show. [asked] is the groups the peer was
+     * asked for (null: all); a group it was not asked for keeps its saved values.
+     */
+    fun remember(deviceId: String, fresh: PeerDeviceDiagnostics, asked: Set<DiagnosticGroup>? = null): PeerDeviceDiagnostics = synchronized(lock) {
+        val previous = loaded()[deviceId]?.snapshot
+        val merged = merge(previous, keepUnasked(previous, fresh, asked))
         save(loaded() + (deviceId to CachedDeviceDetails(deviceId, merged)))
         merged
     }
@@ -45,6 +49,22 @@ object DeviceDetailsCache {
     internal fun decode(raw: String): List<CachedDeviceDetails> = runCatching {
         if (raw.isBlank()) emptyList() else json.decodeFromString(ListSerializer(CachedDeviceDetails.serializer()), raw)
     }.getOrDefault(emptyList())
+
+    internal fun keepUnasked(previous: PeerDeviceDiagnostics?, fresh: PeerDeviceDiagnostics, asked: Set<DiagnosticGroup>?): PeerDeviceDiagnostics {
+        if (previous == null || asked == null) return fresh
+        fun <T> pick(group: DiagnosticGroup, new: T, old: T) = if (group in asked) new else old
+        return fresh.copy(
+            device = pick(DiagnosticGroup.Identity, fresh.device, previous.device),
+            processor = pick(DiagnosticGroup.Processor, fresh.processor, previous.processor),
+            display = pick(DiagnosticGroup.Display, fresh.display, previous.display),
+            battery = pick(DiagnosticGroup.Battery, fresh.battery, previous.battery),
+            storage = pick(DiagnosticGroup.Storage, fresh.storage, previous.storage),
+            network = pick(DiagnosticGroup.Network, fresh.network, previous.network),
+            uptime = pick(DiagnosticGroup.Uptime, fresh.uptime, previous.uptime),
+            thermal = pick(DiagnosticGroup.Thermal, fresh.thermal, previous.thermal),
+            memory = pick(DiagnosticGroup.Memory, fresh.memory, previous.memory)
+        )
+    }
 
     internal fun merge(previous: PeerDeviceDiagnostics?, fresh: PeerDeviceDiagnostics): PeerDeviceDiagnostics {
         if (previous == null) return fresh

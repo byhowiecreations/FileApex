@@ -187,6 +187,15 @@ object TailscaleNodeRuntime {
         return runCatching { engine.activeConnections() }.getOrDefault(0)
     }
 
+    /** The native node forgets nothing between starts, but it may not have been loaded when the TLS front came up. */
+    private suspend fun startEngine(authKey: String): TailscaleLinkSnapshot =
+        engine.start(authKey).also { forwardTailnetTo(com.fileapex.security.tls.LocalTlsInfo.port) }
+
+    /** Tailnet connections are handed to the local TLS front on [port], so a tailnet caller proves itself like a LAN one. */
+    fun forwardTailnetTo(port: Int) {
+        runCatching { engine.setForwardPort(port) }
+    }
+
     /**
      * Null when the node is Up but the peer list could not be read.
      * Empty when the node is not Up, without a native call.
@@ -260,7 +269,7 @@ object TailscaleNodeRuntime {
             startedForLogout = true
             holdTailscaleProcess()
             val snapshot = try {
-                engine.start("")
+                startEngine("")
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -312,7 +321,7 @@ object TailscaleNodeRuntime {
                 if (alreadyConnected) starting.copy(detail = "already_connected") else starting
             }
             val snapshot = try {
-                engine.start(if (isTailscaleAuthKey(authKey)) authKey else "")
+                startEngine(if (isTailscaleAuthKey(authKey)) authKey else "")
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {

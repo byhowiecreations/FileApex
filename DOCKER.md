@@ -40,6 +40,8 @@ FileApex daemon supports helpful command-line flags to manage your configuration
 | `--setup` | Interactive Menu | A restart of an already joined node resumes on its own; use this flag to reopen the menu. Launches the full interactive configuration menu with 4 choices: <br>1. Join local cluster (Auto-detect or manual code entry)<br>2. Connect to Tailscale via browser sign-in<br>3. Enter Tailscale pre-auth key<br>4. Reset configuration and setup new |
 | `--tailscale` | Direct Tailscale Setup | Bypasses the main menu and goes directly to Tailscale connection methods (URL browser sign-in or pre-auth key). |
 
+Over the tailnet the node answers only through its TLS port, with the same pinned certificates as on the LAN, so every paired device must run FileApex 0.19.4 or later to reach it that way.
+
 ### Example Usage with Flags
 ```bash
 docker run --name fileapex-daemon --rm -it \

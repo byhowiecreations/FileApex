@@ -8,6 +8,8 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.DeviceDetailsCache
+import com.fileapex.domain.diagnostics.DiagnosticGroup
+import com.fileapex.domain.diagnostics.DiagnosticGroups
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.i18n.AppI18n
 import com.fileapex.presentation.BatteryCheckOverlayState
@@ -24,6 +26,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -84,9 +87,13 @@ internal class DevicesDetailsActions(
                 delay(DETAILS_HINT_DELAY_MS)
                 _uiState.update { it.copy(detailsHint = AppI18n.t("getting_device_details", device.deviceName)) }
             } else null
+            val groups = DiagnosticGroups.toRequest(
+                FileApexServices.settings.deviceDetailsDisplayPreferences.first().visibleFieldIds(),
+                saved
+            )
             cancellableCatching {
                 withContext(Dispatchers.IO) {
-                    DeviceDetailsCache.remember(device.deviceId, fetchDeviceDetailsSnapshot(device, summaryOnly))
+                    DeviceDetailsCache.remember(device.deviceId, fetchDeviceDetailsSnapshot(device, summaryOnly, groups), groups)
                 }
             }.also { _ ->
                 hint?.cancel()
@@ -125,10 +132,14 @@ internal class DevicesDetailsActions(
         return true
     }
 
-    private suspend fun fetchDeviceDetailsSnapshot(device: PairedDeviceEntity, summaryOnly: Boolean): PeerDeviceDiagnostics {
+    private suspend fun fetchDeviceDetailsSnapshot(
+        device: PairedDeviceEntity,
+        summaryOnly: Boolean,
+        groups: Set<DiagnosticGroup>?
+    ): PeerDeviceDiagnostics {
         presence.probeNow(device)?.let { direct ->
             cancellableCatching {
-                FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port, summaryOnly)
+                FileApexServices.client.fetchDeviceDiagnostics(direct.host, direct.port, summaryOnly, groups)
             }.onSuccess { return it }
         }
         return DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId)

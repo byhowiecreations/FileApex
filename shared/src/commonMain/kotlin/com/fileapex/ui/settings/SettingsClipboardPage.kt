@@ -113,12 +113,16 @@ internal fun ClipboardSettingsPage(
                     ListItem(
                         headlineContent = { Text(stringRes("via_cellular"), softWrap = true) },
                         supportingContent = {
-                            Text(stringRes("via_cellular_subtitle"), softWrap = true)
+                            Text(
+                                stringRes(if (state.googleAccountLinkEnabled) "via_cellular_subtitle" else "via_cellular_needs_google"),
+                                softWrap = true
+                            )
                         },
                         trailingContent = {
                             Switch(
-                                checked = state.clipboardViaCellularEnabled,
-                                onCheckedChange = onToggleViaCellular
+                                checked = state.clipboardViaCellularEnabled && state.googleAccountLinkEnabled,
+                                onCheckedChange = onToggleViaCellular,
+                                enabled = state.googleAccountLinkEnabled
                             )
                         }
                     )

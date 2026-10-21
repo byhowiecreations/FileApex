@@ -28,9 +28,6 @@ fileapex.firebase.api.key=
 fileapex.firebase.desktop.api.key=
 fileapex.firebase.application.id=
 
-# Firebase Admin SDK service account JSON (gitignored json/ folder at project root). Private.
-fileapex.firebase.service.account.json=
-
 # Optional per-host JDK override for gradlew (the repo file already has defaults for macOS and Windows).
 # Linux: scripts/build_linux.sh downloads Temurin 21; build the Linux packages with that script,
 # not a distro JDK, or the .deb/.rpm depend on libraries Debian and Fedora do not have.

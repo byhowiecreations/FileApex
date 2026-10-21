@@ -122,6 +122,10 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shizuku_connected_unused">Shizuku está conectado. FileApex no lo está usando.</string>
     <string name="via_cellular">Por datos móviles</string>
     <string name="via_cellular_subtitle">Permite sincronizar por datos móviles con un relé en la nube cifrado.</string>
+    <string name="via_cellular_needs_google">Vincula primero tu cuenta de Google para usar esto.</string>
+    <string name="clipboard_target_not_linked">%1$s no está vinculado a Google, no puede recibir mensajes de la nube.</string>
+    <string name="clipboard_sent_cloud_waiting">Enviado a %1$s a través de la nube, esperando confirmación...</string>
+    <string name="clipboard_cloud_unconfirmed">Enviado a %1$s a través de la nube, pero aún no hay confirmación. Puede estar sin conexión o no vinculado a Google.</string>
     <string name="automatically_send">Enviar automáticamente</string>
     <string name="automatically_send_subtitle">Enviar automáticamente el portapapeles a la selección de abajo</string>
     <string name="share_clipboard_with">Compartir portapapeles con:</string>

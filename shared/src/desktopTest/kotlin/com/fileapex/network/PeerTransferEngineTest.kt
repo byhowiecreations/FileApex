@@ -21,7 +21,7 @@ import org.junit.Test
  * server on loopback. These tests pin what the engine does today so it can move to its own class unchanged.
  */
 class PeerTransferEngineTest {
-    private class Peer(val server: FileApexServer, val port: Int, val root: File)
+    private class Peer(val server: FileApexServer, val bridge: IrohStyleBridge, val port: Int, val root: File)
 
     private val peers = mutableListOf<Peer>()
     private lateinit var local: File
@@ -34,7 +34,7 @@ class PeerTransferEngineTest {
 
     @After
     fun tearDown() {
-        peers.forEach { it.server.stop(); it.root.deleteRecursively() }
+        peers.forEach { it.bridge.close(); it.server.stop(); it.root.deleteRecursively() }
         IrohBridgePorts.clear()
         local.deleteRecursively()
     }
@@ -42,15 +42,18 @@ class PeerTransferEngineTest {
     private fun startPeer(): Peer {
         val root = File(System.getProperty("java.io.tmpdir"), "fileapex-engine-peer-" + System.nanoTime()).also { it.mkdirs() }
         val port = ServerSocket(0).use { it.localPort }
+        val bridgePort = ServerSocket(0, 1, java.net.InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))).use { it.localPort }
         val server = FileApexServer(
             port = port,
+            bridgePort = bridgePort,
             identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Peer", rootPath = root.absolutePath, sharePort = port) },
             isRosterMember = { true }
         ).also { it.start() }
         Thread.sleep(500)
-        // 127.0.0.1 only routes as a bridge port, the same way the Iroh tests reach a local server.
-        IrohBridgePorts.add(port)
-        return Peer(server, port, root).also { peers += it }
+        // The client reaches the server the way an Iroh peer does: plain HTTP to a local bridge port that vouches for the caller.
+        val bridge = IrohStyleBridge(bridgePort, "self-test")
+        IrohBridgePorts.add(bridge.port)
+        return Peer(server, bridge, bridge.port, root).also { peers += it }
     }
 
     private fun payload(size: Int): ByteArray = ByteArray(size) { (it * 31 + it / 7).toByte() }

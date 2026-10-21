@@ -2,9 +2,6 @@ package com.fileapex.network
 
 import com.fileapex.data.identity.LocalIdentity
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.ServerSocket
-import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import org.junit.After
@@ -16,25 +13,25 @@ import org.junit.Test
 
 /** The whole-file SHA-256 contract (Docker daemon must match): a wrong hash is refused and leaves nothing behind. */
 class ServerUploadChecksumTest {
-    private var server: FileApexServer? = null
-    private var port = 0
+    private lateinit var peer: PinnedPeerFixture
     private lateinit var root: File
 
     @Before
     fun start() {
         root = File(System.getProperty("java.io.tmpdir"), "fileapex-checksum-" + System.nanoTime()).also { it.mkdirs() }
-        port = ServerSocket(0).use { it.localPort }
-        server = FileApexServer(
-            port = port,
-            identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = root.absolutePath, sharePort = port) },
-            isRosterMember = { it == "self-test" }
-        ).also { it.start() }
-        Thread.sleep(500)
+        peer = PinnedPeerFixture { port, bridgePort ->
+            FileApexServer(
+                port = port,
+                bridgePort = bridgePort,
+                identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = root.absolutePath, sharePort = port) },
+                isRosterMember = { it == "self-test" }
+            )
+        }.also { it.start() }
     }
 
     @After
     fun stop() {
-        server?.stop()
+        peer.stop()
         root.deleteRecursively()
     }
 
@@ -43,7 +40,7 @@ class ServerUploadChecksumTest {
     private fun upload(name: String, body: String, sha: String?): Pair<Int, String> {
         val target = URLEncoder.encode(File(root, name).absolutePath, "UTF-8")
         val query = "targetPath=$target&from=self-test&totalSize=${body.length}" + (sha?.let { "&sha256=$it" } ?: "")
-        val connection = URL("http://127.0.0.1:$port/api/v1/files/upload?$query").openConnection() as HttpURLConnection
+        val connection = peer.connection("/api/v1/files/upload?$query")
         connection.requestMethod = "POST"
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/octet-stream")

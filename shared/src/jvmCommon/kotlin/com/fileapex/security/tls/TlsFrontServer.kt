@@ -10,6 +10,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLEngine
@@ -44,7 +45,8 @@ class PinningClientTrustManager(private val directory: TlsPeerDirectory) : X509E
 /**
  * TLS listener in front of the Ktor CIO server, which cannot terminate TLS. Each accepted connection is
  * authenticated by client-certificate pin, registered in [TlsBridgeRegistry] under its loopback source
- * port, and piped to [bridgePort] with bounded buffers.
+ * port, and piped to [bridgePort] with bounded buffers. A connection with no traffic in either direction for
+ * [idleTimeoutMs] is closed, so a silent peer cannot hold a socket and a thread forever.
  */
 class TlsFrontServer(
     private val identity: () -> TlsIdentity,
@@ -52,6 +54,8 @@ class TlsFrontServer(
     private val bindHost: String,
     private val preferredPort: Int,
     override val bridgePort: Int,
+    private val idleTimeoutMs: Long = IDLE_TIMEOUT_MS,
+    private val sweepIntervalMs: Long = SWEEP_INTERVAL_MS,
     private val log: (String, Throwable?) -> Unit
 ) : TlsFront {
     private val running = AtomicBoolean(false)
@@ -62,6 +66,8 @@ class TlsFrontServer(
         Thread(runnable, "tls-front-${threadIds.incrementAndGet()}").apply { isDaemon = true }
     }
     private val sessions = java.util.concurrent.ConcurrentHashMap<SSLSocket, BridgedPeer>()
+    private val lastActivity = java.util.concurrent.ConcurrentHashMap<SSLSocket, AtomicLong>()
+    private var sweeper: java.util.concurrent.ScheduledExecutorService? = null
     private var server: SSLServerSocket? = null
 
     override fun start(): Int {
@@ -70,6 +76,9 @@ class TlsFrontServer(
             val socket = createServerSocket()
             server = socket
             pool.execute { acceptLoop(socket) }
+            sweeper = Executors.newSingleThreadScheduledExecutor { runnable ->
+                Thread(runnable, "tls-front-idle").apply { isDaemon = true }
+            }.also { it.scheduleWithFixedDelay(::closeIdle, sweepIntervalMs, sweepIntervalMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
             log("TLS front listening on port ${socket.localPort}, bridge ${bridgePort}", null)
             return socket.localPort
         } catch (e: Exception) {
@@ -81,10 +90,22 @@ class TlsFrontServer(
     override fun stop() {
         if (!running.compareAndSet(true, false)) return
         runCatching { server?.close() }
+        sweeper?.shutdownNow()
         open.toList().forEach { runCatching { it.close() } }
         open.clear()
         pool.shutdownNow()
         log("TLS front stopped", null)
+    }
+
+    private fun closeIdle() {
+        val limitNanos = idleTimeoutMs * 1_000_000L
+        val now = System.nanoTime()
+        for ((socket, last) in lastActivity) {
+            if (now - last.get() > limitNanos) {
+                log("TLS connection closed after ${idleTimeoutMs / 1000} s with no traffic", null)
+                runCatching { socket.close() }
+            }
+        }
     }
 
     /** Closes connections whose device or pin is no longer in the directory (unpaired, re-keyed). */
@@ -167,14 +188,16 @@ class TlsFrontServer(
             val peer = BridgedPeer(deviceId, pin, client.inetAddress.hostAddress.orEmpty().substringBefore('%'))
             TlsBridgeRegistry.register(sourcePort, peer)
             sessions[client] = peer
-            val toServer = pool.submit { pipe(client, up, closeTargetOutputOnly = true) }
-            pipe(up, client, closeTargetOutputOnly = false)
+            val activity = AtomicLong(System.nanoTime()).also { lastActivity[client] = it }
+            val toServer = pool.submit { pipe(client, up, closeTargetOutputOnly = true, activity) }
+            pipe(up, client, closeTargetOutputOnly = false, activity)
             toServer.cancel(true)
         } catch (e: Exception) {
             if (running.get()) log("TLS connection ended: ${e.javaClass.simpleName}", if (e is IOException) null else e)
         } finally {
             if (sourcePort > 0) TlsBridgeRegistry.unregister(sourcePort)
             sessions.remove(client)
+            lastActivity.remove(client)
             runCatching { client.close() }
             runCatching { upstream?.close() }
             open.remove(client)
@@ -183,7 +206,7 @@ class TlsFrontServer(
         }
     }
 
-    private fun pipe(from: Socket, to: Socket, closeTargetOutputOnly: Boolean) {
+    private fun pipe(from: Socket, to: Socket, closeTargetOutputOnly: Boolean, activity: AtomicLong) {
         val buffer = ByteArray(BUFFER_BYTES)
         try {
             val input = from.getInputStream()
@@ -191,7 +214,9 @@ class TlsFrontServer(
             while (true) {
                 val read = input.read(buffer)
                 if (read < 0) break
+                activity.set(System.nanoTime())
                 output.write(buffer, 0, read)
+                activity.set(System.nanoTime())
             }
             if (closeTargetOutputOnly) runCatching { to.shutdownOutput() } else runCatching { to.close() }
         } catch (_: IOException) {
@@ -206,6 +231,8 @@ class TlsFrontServer(
         const val MAX_CONNECTIONS = 64
         const val BACKLOG = 50
         const val HANDSHAKE_TIMEOUT_MS = 10_000
+        const val IDLE_TIMEOUT_MS = 5 * 60_000L
+        const val SWEEP_INTERVAL_MS = 30_000L
         const val BUFFER_BYTES = 64 * 1024
         private val KEY_PASSWORD = "fileapex".toCharArray()
 

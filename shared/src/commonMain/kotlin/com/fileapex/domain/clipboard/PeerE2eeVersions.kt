@@ -15,10 +15,18 @@ object PeerE2eeVersions {
     @Volatile
     private var capable: Set<String> = emptySet()
 
+    @Volatile
+    private var sealedNotes: Set<String> = emptySet()
+
     fun update(devices: List<PairedDeviceEntity>) {
         capable = devices.filter { !it.isRemoved && !it.isDockerNode() && it.clientVersionCode >= MIN_VERSION_CODE }
+            .map { it.deviceId }.toSet()
+        sealedNotes = devices.filter { !it.isRemoved && !it.isDockerNode() && it.clientVersionCode >= com.fileapex.cloud.NotePushCrypto.MIN_VERSION_CODE }
             .map { it.deviceId }.toSet()
     }
 
     fun supportsBoundFormat(peerDeviceId: String): Boolean = peerDeviceId.trim() in capable
+
+    /** Peers on 0.19.5 or later read Bulletin Board pushes whose content is sealed end to end. */
+    fun supportsSealedNotes(peerDeviceId: String): Boolean = peerDeviceId.trim() in sealedNotes
 }

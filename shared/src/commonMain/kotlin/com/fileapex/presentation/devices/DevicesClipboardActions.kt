@@ -1,5 +1,6 @@
 package com.fileapex.presentation.devices
 
+import com.fileapex.domain.clipboard.applyAutoDefaultClipboardTarget
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.di.FileApexServices
@@ -38,15 +39,7 @@ internal class DevicesClipboardActions(
             val isConfigured = settings.clipboardTargetConfigured.value
 
             if (!isConfigured) {
-                val defaultTargetId = ClipboardSharePolicy.resolveAutoDefaultTargetId(selfIsAndroid, peers)
-                if (defaultTargetId != null) {
-                    if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET ||
-                        settings.clipboardShareMode.value == ClipboardShareMode.SPECIFIC
-                    ) {
-                        settings.setClipboardShareMode(ClipboardShareMode.SPECIFIC)
-                        settings.setClipboardTargetDeviceIds(setOf(defaultTargetId))
-                    }
-                }
+                settings.applyAutoDefaultClipboardTarget(selfIsAndroid, peers)
             }
 
             if (ClipboardSharePolicy.shouldPromptTargetConfiguration(isConfigured, selfIsAndroid, peers)) {
@@ -116,11 +109,21 @@ internal class DevicesClipboardActions(
             }
             _uiState.update { it.copy(statusMessage = AppI18n.t("sending_clipboard")) }
             try {
-                val response = com.fileapex.domain.clipboard.ClipboardShareCoordinator.sendToDevice(deviceId)
+                val outcome = com.fileapex.domain.clipboard.ClipboardShareCoordinator.sendToDeviceTracked(deviceId)
+                val response = outcome.response
                 val targetName = if (response.recipientDeviceName.isNotBlank()) response.recipientDeviceName else device.deviceName
+                val confirmed = if (outcome.viaCloud && outcome.ack != null) {
+                    _uiState.update { it.copy(statusMessage = AppI18n.t("clipboard_sent_cloud_waiting", targetName)) }
+                    outcome.ack.await()
+                } else {
+                    true
+                }
                 _uiState.update {
                     it.copy(
-                        statusMessage = AppI18n.t("clipboard_send_success", targetName)
+                        statusMessage = AppI18n.t(
+                            if (confirmed) "clipboard_send_success" else "clipboard_cloud_unconfirmed",
+                            targetName
+                        )
                     )
                 }
             } catch (cancelled: CancellationException) {

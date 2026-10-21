@@ -33,9 +33,9 @@ import com.fileapex.domain.diagnostics.UptimeDiagnostics
 import java.io.File
 import kotlin.math.roundToInt
 
-actual fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics = collectPlatformDeviceDiagnostics()
+actual fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics = collectPlatformDeviceDiagnostics(null)
 
-actual fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics {
+actual fun collectPlatformDeviceDiagnostics(groups: Set<com.fileapex.domain.diagnostics.DiagnosticGroup>?): PeerDeviceDiagnostics {
     val context = androidAppContextOrNull()
     return runCatching {
         PeerDeviceDiagnostics(

@@ -56,7 +56,14 @@ enum class DeviceDetailsFieldId(val label: String) {
     val cellularOnly: Boolean
         get() = this in CELLULAR_ONLY
 
+    /** False for facts that stay the same between answers; those keep their saved value and show no "updating" marker. */
+    val changesOverTime: Boolean
+        get() = this !in FIXED
+
     companion object {
+        private val FIXED = setOf(
+            Platform, Make, Model, Kernel, OsBuild, Processor, CpuArchitecture, CpuHardware, DisplayResolution
+        )
         private val BASIC = listOf(
             Platform, Make, Model, AppVersion, OsBuild, Kernel,
             BatteryLevel, Storage, Memory, CpuArchitecture, CpuHardware

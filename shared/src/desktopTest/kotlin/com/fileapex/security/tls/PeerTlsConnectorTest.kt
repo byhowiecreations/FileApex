@@ -139,4 +139,84 @@ class PeerTlsConnectorTest {
         assertTrue(io === plain)
         io.close()
     }
+
+    /** What the local tailnet pipe does: wants the session token on its first line, then carries bytes to the peer's TLS port. */
+    private fun startTailnetPipe(token: String): Int {
+        val listener = ServerSocket(0, 5, InetAddress.getLoopbackAddress())
+        Thread {
+            while (!listener.isClosed) {
+                val client = runCatching { listener.accept() }.getOrNull() ?: break
+                Thread {
+                    runCatching {
+                        val input = client.getInputStream()
+                        val line = StringBuilder()
+                        while (true) {
+                            val b = input.read()
+                            if (b < 0 || b == '\n'.code) break
+                            line.append(b.toChar())
+                        }
+                        if (line.toString() != token) return@runCatching client.close()
+                        val peer = Socket("127.0.0.1", tlsPort)
+                        val up = Thread { runCatching { input.copyTo(peer.getOutputStream()) } }.also { it.start() }
+                        runCatching { peer.getInputStream().copyTo(client.getOutputStream()) }
+                        up.join(1000)
+                        peer.close()
+                        client.close()
+                    }
+                }.start()
+            }
+        }.also { it.isDaemon = true }.start()
+        return listener.localPort.also { pipeListeners += listener }
+    }
+
+    private val pipeListeners = mutableListOf<ServerSocket>()
+
+    @After
+    fun closePipes() = pipeListeners.forEach { runCatching { it.close() } }
+
+    private fun tailnetRoute(pin: String) = PeerTlsRoute("dev-server", setOf(pin), tlsPort = httpPort)
+
+    @Test
+    fun aPeerOverTheTailnetPipeIsReachedOverPinnedTlsAndIdentifiesTheClient() {
+        val pipePort = startTailnetPipe("session-token")
+        PeerTlsRoutes.viaTailnetPipe(pipePort, tailnetRoute(serverIdentity.pin), "session-token")
+        PeerTlsConnector.connect(Socket(), "127.0.0.1", pipePort, 5000).use { assertEquals("dev-client", get(it).trim().lines().last()) }
+    }
+
+    @Test
+    fun theTailnetPipeFailsClosedOnAWrongServerKey() {
+        val pipePort = startTailnetPipe("session-token")
+        PeerTlsRoutes.viaTailnetPipe(pipePort, tailnetRoute(TlsIdentityFactory.generate().pin), "session-token")
+        val failure = runCatching { PeerTlsConnector.connect(Socket(), "127.0.0.1", pipePort, 5000) }.exceptionOrNull()
+        assertTrue(failure is IOException)
+        assertTrue("dev-server" in PeerTlsStatus.pinMismatch.value)
+    }
+
+    @Test
+    fun aTailnetAddressGetsARouteOnTheSharePort() {
+        PeerTlsRoutes.update(
+            listOf(
+                PairedDeviceEntity(
+                    deviceId = "dev-server", deviceName = "Server", lastKnownIp = "192.168.1.9", port = 8080,
+                    publicKeyHash = "", rootPath = "/", tlsPin = serverIdentity.pin, tlsPort = 8081, tailnetIpv4 = "100.64.0.7"
+                )
+            )
+        )
+        assertEquals(8081, PeerTlsRoutes.lookup("192.168.1.9", 8080)?.tlsPort)
+        assertEquals(8080, PeerTlsRoutes.lookup("100.64.0.7", 8080)?.tlsPort)
+        assertEquals(setOf(serverIdentity.pin), PeerTlsRoutes.lookup("100.64.0.7", 8080)?.pins)
+    }
+
+    @Test
+    fun aDeviceWithNoPinHasNoTailnetRoute() {
+        PeerTlsRoutes.update(
+            listOf(
+                PairedDeviceEntity(
+                    deviceId = "dev-server", deviceName = "Server", lastKnownIp = "192.168.1.9", port = 8080,
+                    publicKeyHash = "", rootPath = "/", tailnetIpv4 = "100.64.0.7"
+                )
+            )
+        )
+        assertEquals(null, PeerTlsRoutes.lookup("100.64.0.7", 8080))
+    }
 }

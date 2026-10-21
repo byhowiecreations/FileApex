@@ -108,15 +108,22 @@ private class AndroidEmbeddedTsnetEngine : TailscaleUserspaceEngine {
         val bridge = AndroidTsnetBridge.loadOrNull() ?: return null
         return bridge.peers()
     }
+
+    override fun setForwardPort(port: Int) {
+        val bridge = AndroidTsnetBridge.loadOrNull() ?: return
+        bridge.setForwardPort(port)
+    }
 }
 
 internal fun tailscaleLoopbackOrNull(host: String, port: Int): TailscaleLoopbackDial? {
     if (!usesUserspaceDial(host, TailscaleNodeRuntime.state.value.phase)) return null
+    val route = com.fileapex.security.tls.PeerTlsRoutes.lookup(host.trim(), port) ?: return null
     val bridge = AndroidTsnetBridge.loadOrNull() ?: return null
     val localPort = bridge.loopback(host.trim(), port)
     val token = bridge.sessionToken()
     if (localPort <= 0 || token.isEmpty()) return null
-    return TailscaleLoopbackDial(host = "127.0.0.1", port = localPort, token = token)
+    com.fileapex.security.tls.PeerTlsRoutes.viaTailnetPipe(localPort, route, token)
+    return TailscaleLoopbackDial(host = "127.0.0.1", port = localPort, token = "")
 }
 
 actual fun tailscaleNodeStateFile(): File = File(tailscaleUserspaceStateDir(), "tailscaled.state")
@@ -425,6 +432,18 @@ private fun Class<*>.activeConnections(): Int {
     } catch (error: Exception) {
         Log.w(TAG, "tsnet number call failed: ${error::class.simpleName}")
         0
+    }
+}
+
+private fun Class<*>.setForwardPort(port: Int) {
+    val method = methods.firstOrNull { it.name == "setForwardPort" && it.parameterTypes.size == 1 } ?: return
+    val portArg: Any = if (method.parameterTypes[0] == java.lang.Long.TYPE) port.toLong() else port
+    try {
+        method.invoke(null, portArg)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        Log.w(TAG, "tsnet forward port call failed: ${error::class.simpleName}")
     }
 }
 

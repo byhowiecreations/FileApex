@@ -176,8 +176,8 @@ class FileApexClient(
         return json.decodeFromString(com.fileapex.iroh.IrohAddressMessage.serializer(), response.body)
     }
 
-    /** [summaryOnly] asks for the quick subset; peers that predate it ignore it and send everything. */
-    suspend fun fetchDeviceDiagnostics(host: String, port: Int, summaryOnly: Boolean = false): PeerDeviceDiagnostics {
+    /** [summaryOnly] asks for the quick subset and [groups] for only those parts; peers that predate either send everything. */
+    suspend fun fetchDeviceDiagnostics(host: String, port: Int, summaryOnly: Boolean = false, groups: Set<com.fileapex.domain.diagnostics.DiagnosticGroup>? = null): PeerDeviceDiagnostics {
         val response = boundGet(
             host = host,
             port = port,
@@ -185,7 +185,7 @@ class FileApexClient(
                 basePath = "/api/v1/diagnostics",
                 host = host,
                 port = port,
-                params = if (summaryOnly) mapOf("detail" to "summary") else emptyMap()
+                params = com.fileapex.domain.diagnostics.DiagnosticGroups.queryParams(summaryOnly, groups)
             ),
             timeoutMs = DIAGNOSTICS_TIMEOUT_MS
         )

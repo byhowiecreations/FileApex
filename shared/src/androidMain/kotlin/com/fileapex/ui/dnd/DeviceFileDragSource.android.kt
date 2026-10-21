@@ -1,5 +1,6 @@
 package com.fileapex.ui.dnd
 
+import com.fileapex.presentation.TransferDropUri
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -23,11 +24,7 @@ actual fun Modifier.deviceFileDragSource(
     val view = LocalView.current
     val safeName = fileName?.ifBlank { null }
         ?: absolutePath.substringAfterLast('/').ifBlank { absolutePath }
-    val payload = if (sourceDeviceId == null) {
-        "fileapex-transfer://local/$absolutePath?name=$safeName&size=$fileSize"
-    } else {
-        "fileapex-transfer://$sourceDeviceId/$absolutePath?name=$safeName&size=$fileSize"
-    }
+    val payload = TransferDropUri.build(sourceDeviceId, absolutePath, safeName, fileSize)
     pointerInput(payload) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)

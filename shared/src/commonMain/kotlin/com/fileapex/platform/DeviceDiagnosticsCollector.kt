@@ -6,17 +6,19 @@ import com.fileapex.update.currentAppVersionCode
 import com.fileapex.update.currentAppVersionName
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
+import com.fileapex.domain.diagnostics.DiagnosticGroup
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.util.TimeUtils
 
-expect fun collectPlatformDeviceDiagnostics(): PeerDeviceDiagnostics
+/** [groups] limits the work to those parts of the snapshot; null measures everything. */
+expect fun collectPlatformDeviceDiagnostics(groups: Set<DiagnosticGroup>?): PeerDeviceDiagnostics
 
 /** Only what a summary view shows (identity, battery, storage, memory, uptime); skips the slow probes. */
 expect fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics
 expect fun collectFastBatteryDiagnostics(): BatteryDiagnostics
 
-fun collectDeviceDiagnostics(): PeerDeviceDiagnostics {
-    return collectPlatformDeviceDiagnostics()
+fun collectDeviceDiagnostics(groups: Set<DiagnosticGroup>? = null): PeerDeviceDiagnostics {
+    return collectPlatformDeviceDiagnostics(groups)
         .copy(
             collectedAtEpochMs = TimeUtils.now(),
             platform = currentPlatformLabel(),

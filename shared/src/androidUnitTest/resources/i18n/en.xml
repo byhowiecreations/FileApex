@@ -128,6 +128,10 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shizuku_connected_unused">Shizuku is connected. FileApex is not using it.</string>
     <string name="via_cellular">Via Cellular</string>
     <string name="via_cellular_subtitle">Allows syncing over cellular using secure cloud relay.</string>
+    <string name="via_cellular_needs_google">Link your Google Account first to use this.</string>
+    <string name="clipboard_target_not_linked">%1$s isn\'t linked to Google, it can\'t receive cloud messages.</string>
+    <string name="clipboard_sent_cloud_waiting">Sent to %1$s through the cloud, waiting for confirmation...</string>
+    <string name="clipboard_cloud_unconfirmed">Sent to %1$s through the cloud, but there is no confirmation yet. It may be offline or not linked to Google.</string>
     <string name="automatically_send">Automatically send</string>
     <string name="automatically_send_subtitle">Automatically send clipboard content to below selection</string>
     <string name="share_clipboard_with">Share clipboard with:</string>

@@ -47,6 +47,7 @@ func (n *Node) serveHTTP() error {
 	srv := &http.Server{
 		Handler:           n.guard(n.routes(), false),
 		ReadHeaderTimeout: 30 * time.Second,
+		IdleTimeout:       idleConnectionTimeout,
 	}
 	n.httpServer = srv
 	go func() {
@@ -635,6 +636,10 @@ func (n *Node) handleDelete(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Deleted %s at the request of %s", resolved, n.peerLabel(sender))
 	writeText(w, http.StatusOK, "ok")
 }
+
+// idleConnectionTimeout closes a keep-alive connection that has sent no request for this long, so a silent
+// peer cannot hold a socket open forever. It does not apply while a request or transfer is running.
+const idleConnectionTimeout = 5 * time.Minute
 
 func (n *Node) pass(w http.ResponseWriter, r *http.Request, kind string) bool {
 	id, mv := requestSender(r)

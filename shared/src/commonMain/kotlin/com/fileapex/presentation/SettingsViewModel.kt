@@ -1,5 +1,6 @@
 package com.fileapex.presentation
 
+import com.fileapex.domain.clipboard.applyAutoDefaultClipboardTarget
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
@@ -478,19 +479,12 @@ class SettingsViewModel : ViewModel() {
                 val isConfigured = settings.clipboardTargetConfigured.value
 
                 if (!isConfigured) {
-                    val defaultTargetId = ClipboardSharePolicy.resolveAutoDefaultTargetId(selfIsAndroid, peers)
-                    if (defaultTargetId != null) {
-                        if (settings.clipboardShareMode.value == ClipboardShareMode.UNSET ||
-                            settings.clipboardShareMode.value == ClipboardShareMode.SPECIFIC
-                        ) {
-                            settings.setClipboardShareMode(ClipboardShareMode.SPECIFIC)
-                            settings.setClipboardTargetDeviceIds(setOf(defaultTargetId))
-                            _uiState.update {
-                                it.copy(
-                                    clipboardShareMode = ClipboardShareMode.SPECIFIC,
-                                    clipboardTargetDeviceIds = setOf(defaultTargetId)
-                                )
-                            }
+                    settings.applyAutoDefaultClipboardTarget(selfIsAndroid, peers)?.let { defaultTargetId ->
+                        _uiState.update {
+                            it.copy(
+                                clipboardShareMode = ClipboardShareMode.SPECIFIC,
+                                clipboardTargetDeviceIds = setOf(defaultTargetId)
+                            )
                         }
                     }
                 }
@@ -557,6 +551,7 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun setClipboardViaCellular(enabled: Boolean) {
+        if (enabled && !settings.googleAccountLinkEnabled.value) return
         settings.setClipboardViaCellularEnabled(enabled)
         _uiState.update { it.copy(clipboardViaCellularEnabled = enabled) }
     }
