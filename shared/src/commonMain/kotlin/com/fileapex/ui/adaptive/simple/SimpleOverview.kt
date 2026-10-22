@@ -77,7 +77,7 @@ internal fun SimpleOverview(
     devicesViewModel: DevicesViewModel,
     rows: List<DeviceListRow>,
     active: DeviceListRow?,
-    onAddDevice: () -> Unit,
+    onAddDevice: () -> Unit, onJoinDevice: () -> Unit,
     onOpenPairedDevice: (String) -> Unit,
     onFilesDropped: (List<String>) -> Unit
 ) {
@@ -121,7 +121,7 @@ internal fun SimpleOverview(
                 )
             }
             if (rows.isEmpty()) {
-                Button(onClick = onAddDevice) { Text(stringRes("add_new_device")) }
+                SimpleSetupButton(onGenerate = onAddDevice, onJoin = onJoinDevice)
             }
         } else {
             Text(
@@ -159,6 +159,7 @@ internal fun SimpleOverview(
                 SimpleNotificationSection(connected)
             }
         }
+        com.fileapex.friends.ui.FriendsEntryCard()
     }
     if (showDropHint) {
         Text(

@@ -55,6 +55,27 @@ type diagMemory struct {
 	UsedBytes      *int64 `json:"usedBytes,omitempty"`
 }
 
+// Set at build time by the Dockerfile from version.md (-ldflags -X); empty in a plain `go build`.
+var (
+	appVersionName string
+	appVersionCode string
+)
+
+type diagApp struct {
+	VersionName string `json:"versionName"`
+	VersionCode int    `json:"versionCode"`
+	Source      string `json:"source"`
+}
+
+// appDiagnostics is what Device Details shows as the app version; blank when the build did not stamp one.
+func appDiagnostics() diagApp {
+	if strings.TrimSpace(appVersionName) == "" {
+		return diagApp{}
+	}
+	code, _ := strconv.Atoi(strings.TrimSpace(appVersionCode))
+	return diagApp{VersionName: strings.TrimSpace(appVersionName), VersionCode: code, Source: "docker"}
+}
+
 type diagSnapshot struct {
 	CollectedAtEpochMs int64         `json:"collectedAtEpochMs"`
 	Platform           string        `json:"platform"`
@@ -66,6 +87,7 @@ type diagSnapshot struct {
 	Uptime             diagUptime    `json:"uptime"`
 	Thermal            diagThermal   `json:"thermal"`
 	Memory             diagMemory    `json:"memory"`
+	App                diagApp       `json:"app"`
 }
 
 func (n *Node) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +138,7 @@ func collectDiagnostics(storagePath string) diagSnapshot {
 		Battery: readPowerSupply("/sys/class/power_supply"),
 		Network: diagNetwork{InterfaceType: "Ethernet"},
 		Thermal: diagThermal{State: "Not available"},
+		App:     appDiagnostics(),
 	}
 	if total, free, ok := diskUsage(storagePath); ok {
 		used := total - free

@@ -205,6 +205,26 @@ interface AppSettings {
     fun irohSecretKeyBase64(): String
     fun setIrohSecretKeyBase64(value: String)
 
+    /** Base64 of the Friends Iroh key (never the main one), or empty before friends are first used. */
+    fun friendsSecretKeyBase64(): String
+    fun setFriendsSecretKeyBase64(value: String)
+
+    /** Friends traffic goes through the relay only, so a friend never sees this device's IP address. */
+    fun friendsHideIp(): Boolean
+    fun setFriendsHideIp(value: Boolean)
+
+    /** Friend keys pinned to the home Devices page, comma separated. */
+    fun friendsPinnedKeys(): String
+    fun setFriendsPinnedKeys(value: String)
+
+    /** Largest file accepted from a friend, in MB; 0 means no limit. */
+    fun friendsMaxFileMb(): Int
+    fun setFriendsMaxFileMb(value: Int)
+
+    /** The "How friends work" explanation is shown once; true after the user continued past it. */
+    fun friendsIntroSeen(): Boolean
+    fun setFriendsIntroSeen(value: Boolean)
+
     /** JSON from [com.fileapex.iroh.IrohPeerBook]. */
     fun irohPeersJson(): String
     fun setIrohPeersJson(value: String)

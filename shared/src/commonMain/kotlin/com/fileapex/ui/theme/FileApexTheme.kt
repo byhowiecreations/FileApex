@@ -130,7 +130,8 @@ private val FluxGlassColorScheme = darkColorScheme(
     onError = Color.White
 )
 
-private val StandardShapes = Shapes()
+/** Dropdown menus use the extra small shape; the 4dp default looked sharp beside the rounded cards. */
+private val StandardShapes = Shapes(extraSmall = RoundedCornerShape(16.dp))
 
 private val CurvedShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),

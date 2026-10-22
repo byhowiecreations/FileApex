@@ -34,6 +34,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -41,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.share.IncomingSharePayload
+import com.fileapex.friends.ui.friendShareItems
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.FileApexBackHandler
 import com.fileapex.presentation.ShareSendViewModel
@@ -48,6 +51,7 @@ import com.fileapex.util.NetworkUtils
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.ui.theme.fileApexTopAppBarColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +67,7 @@ fun ShareSendScreen(
     }
 ) {
     val state by viewModel.uiState.collectAsState()
+    val friendShare = com.fileapex.friends.ui.rememberFriendShare()
 
     LaunchedEffect(payload) {
         viewModel.updatePayload(payload)
@@ -226,6 +231,7 @@ fun ShareSendScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         userScrollEnabled = userScrollEnabled
                     ) {
+                        friendShareItems(friendShare.friends, friendShare.selected, friendShare::toggle)
                         items(
                             items = state.options,
                             key = { it.deviceId }
@@ -268,17 +274,14 @@ fun ShareSendScreen(
                 TransferProgressBlock(modifier = Modifier.padding(bottom = 8.dp))
             }
 
-            Button(
-                onClick = viewModel::send,
-                enabled = state.filesReady &&
-                    !state.isDirectSend &&
-                    state.selectedDeviceIds.isNotEmpty() &&
-                    !state.isSending &&
-                    !state.isPreparing,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringRes("send"))
-            }
+            com.fileapex.friends.ui.ShareSendButton(
+                ready = state.filesReady && !state.isDirectSend && !state.isSending && !state.isPreparing,
+                devicesSelected = state.selectedDeviceIds.isNotEmpty(),
+                share = friendShare,
+                files = { payload.files.map { java.io.File(it.absolutePath) } },
+                sendToDevices = viewModel::send,
+                finishWithoutDevices = { viewModel.cancelCleanup(); onFinished() }
+            )
         }
     }
 }

@@ -20,8 +20,9 @@ data class HostPairingBroadcastState(
  */
 object LanPairingDiscovery {
     private val lock = Any()
-    private var activeCode: String? = null
-    private var lastUsedCode: String? = null
+    private var hosting = false
+    private var activeSecret: String? = null
+    private var failedAttempts = 0
     private var startedAtMs: Long = 0L
     private var hostTimedOut = false
     private var discoveryRefs = 0
@@ -33,12 +34,10 @@ object LanPairingDiscovery {
     private val _discoveredPeers = MutableStateFlow<List<PairingBeacon>>(emptyList())
     val discoveredPeers: StateFlow<List<PairingBeacon>> = _discoveredPeers.asStateFlow()
 
-    fun lastUsedCode(): String? = synchronized(lock) { lastUsedCode }
-
     fun tickHost(): HostPairingBroadcastState {
         var stopTransport = false
         val state = synchronized(lock) {
-            if (activeCode == null) {
+            if (!hosting) {
                 HostPairingBroadcastState(timedOut = hostTimedOut, remainingLabel = "0:00")
             } else {
                 val remaining = (PairingBeacon.HOST_TTL_MS - TimeUtils.millisSince(startedAtMs))
@@ -67,8 +66,9 @@ object LanPairingDiscovery {
         val beacon = beaconFromPayload(payload) ?: return
         synchronized(lock) {
             stopHostLocked(timedOut = false)
-            activeCode = beacon.pairingCode
-            lastUsedCode = beacon.pairingCode
+            hosting = true
+            activeSecret = payload.pairingSecret.ifBlank { null }
+            failedAttempts = 0
             startedAtMs = TimeUtils.now()
             hostTimedOut = false
         }
@@ -88,14 +88,25 @@ object LanPairingDiscovery {
     }
 
     /** True while this device is showing its pairing code (the Add Device screen is open and not timed out). */
-    fun isHostingPairing(): Boolean = synchronized(lock) { activeCode != null && !hostTimedOut }
+    fun isHostingPairing(): Boolean = synchronized(lock) { hosting && !hostTimedOut }
 
-    fun matchesActiveCode(code: String): Boolean {
-        val digits = PairingBeacon.digitsOnly(code)
-        if (digits.length != 6) return false
-        synchronized(lock) {
-            return activeCode != null && !hostTimedOut && digits == activeCode
+    /** The QR secret a joiner must prove it holds, or null when no pairing is open or this one has no QR. */
+    fun passwordFor(): ByteArray? = synchronized(lock) {
+        if (!hosting || hostTimedOut) return null
+        activeSecret?.let { SecurePairingProof.passwordFromSecret(it) }
+    }
+
+    /** A failed proof. The third one burns the code: the host has to open a new pairing. */
+    fun recordFailedAttempt(): Boolean {
+        val burned = synchronized(lock) {
+            failedAttempts++
+            (failedAttempts >= MAX_FAILED_ATTEMPTS).also { if (it) stopHostLocked(timedOut = false) }
         }
+        if (burned) {
+            PairingBeaconTransport.stopBroadcast()
+            _hostState.value = HostPairingBroadcastState(remainingLabel = "0:00")
+        }
+        return burned
     }
 
     fun onHostPairingAccepted() {
@@ -123,15 +134,6 @@ object LanPairingDiscovery {
             synchronized(lock) { seen.clear() }
             _discoveredPeers.value = emptyList()
         }
-    }
-
-    fun matchInput(input: String, peers: List<PairingBeacon> = _discoveredPeers.value): PairingPayload? {
-        val trimmed = input.trim()
-        if (trimmed.isBlank()) return null
-        PairingPayload.parseOrNull(trimmed)?.let { return it }
-        val digits = PairingBeacon.digitsOnly(trimmed)
-        if (digits.length != 6) return null
-        return peers.firstOrNull { it.matchesCode(digits) }?.toPairingPayload()
     }
 
     fun pruneStalePeers() {
@@ -164,26 +166,25 @@ object LanPairingDiscovery {
     }
 
     private fun expireHostLocked() {
-        activeCode = null
+        hosting = false
+        activeSecret = null
         hostTimedOut = true
         startedAtMs = 0L
     }
 
     private fun stopHostLocked(timedOut: Boolean) {
-        activeCode = null
+        hosting = false
+        activeSecret = null
         hostTimedOut = timedOut
         startedAtMs = 0L
     }
 
     private fun beaconFromPayload(payload: PairingPayload): PairingBeacon? {
-        val code = payload.pairingCode.filter { it.isDigit() }
-        if (code.length != 6) return null
         if (payload.deviceId.isBlank() || !NetworkUtils.isUsableLanIpv4(payload.host)) return null
         return PairingBeacon(
             deviceName = payload.deviceName,
             ipAddress = payload.host,
             port = payload.port,
-            pairingCode = code,
             timestamp = TimeUtils.now(),
             deviceId = payload.deviceId,
             pinRequired = payload.pinRequired,
@@ -198,6 +199,8 @@ object LanPairingDiscovery {
         val seconds = totalSec % 60L
         return "$minutes:${seconds.toString().padStart(2, '0')}"
     }
+
+    private const val MAX_FAILED_ATTEMPTS = 3
 
     private data class SeenBeacon(
         val beacon: PairingBeacon,

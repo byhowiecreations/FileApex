@@ -11,6 +11,7 @@ import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.AppLocale
 import com.fileapex.network.routes.registerBulletinRoutes
+import com.fileapex.network.routes.rejectBridgedRequest
 import com.fileapex.network.routes.registerClipboardRoutes
 import com.fileapex.network.routes.registerDiagnosticRoutes
 import com.fileapex.network.routes.registerFileRoutes
@@ -150,18 +151,9 @@ class FileApexServer(
                 intercept(ApplicationCallPipeline.Call) {
                     val path = call.request.local.uri
                     val bridged = bridgedPeer(call)
-                    if (isBridgeConnection(call)) {
-                        val claimed = call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
-                            call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
-                        }
-                        // A request on the bridge port that did not come through the TLS front, or that
-                        // names a different device than its certificate, is never served.
-                        if (bridged == null || (claimed.isNotEmpty() && claimed != bridged.deviceId)) {
-                            onLog("Rejected bridged request: identity mismatch", null)
-                            call.respond(HttpStatusCode.Forbidden, "peer_identity_mismatch")
-                            finish()
-                            return@intercept
-                        }
+                    if (isBridgeConnection(call) && rejectBridgedRequest(call, bridged, path)) {
+                        finish()
+                        return@intercept
                     }
                     if (bridged == null && !isBridgeConnection(call) && TlsTransportPolicy.requiresTls(path)) {
                         val claimed = requesterDeviceId(call)
@@ -312,12 +304,6 @@ class FileApexServer(
         val fromQuery = call.request.queryParameters["pin"].orEmpty().trim()
         if (fromQuery.isNotEmpty()) return fromQuery
         return call.request.headers["X-FileApex-Pin"].orEmpty().trim()
-    }
-
-    internal fun providedPairingCode(call: ApplicationCall): String {
-        val fromQuery = call.request.queryParameters["code"].orEmpty().trim()
-        if (fromQuery.isNotEmpty()) return fromQuery
-        return call.request.headers["X-FileApex-Pairing-Code"].orEmpty().trim()
     }
 
     /**

@@ -46,6 +46,8 @@ object DirectShareShortcutCoordinator {
     }
 
     private const val SHORTCUT_PREFIX = "share-device-"
+    private const val FRIEND_PREFIX = "share-friend-"
+    private const val MAX_FRIEND_SHORTCUTS = 3
     private const val RATE_LIMIT_RETRY_MS = 30_000L
     /** Order-only changes (a peer went on or offline) wait this long since the last publish. */
     private const val REORDER_MIN_INTERVAL_MS = 60_000L
@@ -77,6 +79,12 @@ object DirectShareShortcutCoordinator {
                     old.map { it.deviceId to it.deviceName } == new.map { it.deviceId to it.deviceName }
                 }
                 .collect { peers -> publishShortcuts(peers) }
+        }
+        scope.launch {
+            com.fileapex.friends.FriendsHub.friends
+                .map { list -> list.map { it.friendKey to it.label } }
+                .distinctUntilChanged()
+                .collect { refreshFromPeerDiscovery() }
         }
         // Immediate pass after Application.onCreate once services are up.
         scope.launch {
@@ -119,6 +127,24 @@ object DirectShareShortcutCoordinator {
         if (shortcutId.isNullOrBlank() || shortcutId == BULLETIN_SHORTCUT_ID) return null
         if (!shortcutId.startsWith(SHORTCUT_PREFIX)) return null
         return shortcutId.removePrefix(SHORTCUT_PREFIX).takeIf { it.isNotBlank() }
+    }
+
+    fun friendKeyFromShortcutId(shortcutId: String?): String? =
+        shortcutId?.takeIf { it.startsWith(FRIEND_PREFIX) }?.removePrefix(FRIEND_PREFIX)?.takeIf { it.isNotBlank() }
+
+    private fun buildFriendShortcut(friend: com.fileapex.friends.FriendShareTarget, rank: Int): ShortcutInfoCompat {
+        val person = Person.Builder().setName(friend.label).setKey(FRIEND_PREFIX + friend.key).setBot(false).setImportant(true).build()
+        return ShortcutInfoCompat.Builder(appContext, FRIEND_PREFIX + friend.key)
+            .setShortLabel(friend.label.take(SHORT_LABEL_MAX))
+            .setLongLabel(com.fileapex.i18n.AppI18n.t("send_to_device", friend.label).take(LONG_LABEL_MAX))
+            .setIcon(ShortcutIconRenderer.friend(appContext, friend.label, friend.group))
+            .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
+            .setIntent(Intent(Intent.ACTION_MAIN).setClassName(appContext, MAIN_ACTIVITY_CLASS))
+            .setCategories(setOf(CATEGORY_SHARE_TARGET))
+            .setPerson(person)
+            .setLongLived(true)
+            .setRank(rank)
+            .build()
     }
 
     fun isBulletinShortcut(shortcutId: String?): Boolean = shortcutId == BULLETIN_SHORTCUT_ID
@@ -209,18 +235,20 @@ object DirectShareShortcutCoordinator {
 
         val maxCount = ShortcutManagerCompat.getMaxShortcutCountPerActivity(appContext)
             .coerceAtLeast(1)
-        val peerSlots = (maxCount - 1).coerceAtLeast(0)
+        val friendsToPublish = com.fileapex.friends.FriendsHub.shareTargets(minOf(MAX_FRIEND_SHORTCUTS, (maxCount - 1).coerceAtLeast(0)))
+        val peerSlots = (maxCount - 1 - friendsToPublish.size).coerceAtLeast(0)
         val peersToPublish = rankPeersForShare(peers).take(peerSlots)
+        val friendSignature = friendsToPublish.joinToString(separator = "|") { "${it.key}\u0000${it.label}\u0000${it.group}" }
         val signature = peersToPublish.joinToString(separator = "|") { peer ->
             "${peer.deviceId}\u0000${peer.deviceName}"
-        }
+        } + "#" + friendSignature
         if (signature == lastPublishedSignature) {
             return
         }
         val membership = peersToPublish
             .map { "${it.deviceId}\u0000${it.deviceName}" }
             .sorted()
-            .joinToString(separator = "|")
+            .joinToString(separator = "|") + "#" + friendSignature
         val sinceLastPublishMs = System.currentTimeMillis() - lastPublishedAtMs
         if (membership == lastPublishedMembership && sinceLastPublishMs < REORDER_MIN_INTERVAL_MS) {
             pendingPublishPeers = peers
@@ -228,18 +256,19 @@ object DirectShareShortcutCoordinator {
             return
         }
         val bulletinShortcut = buildBulletinBoardShortcut()
-        val targetIds = peersToPublish.map { shortcutId(it.deviceId) }.toSet() + BULLETIN_SHORTCUT_ID
+        val friendShortcuts = friendsToPublish.mapIndexed { index, friend -> buildFriendShortcut(friend, rank = peersToPublish.size + 1 + index) }
+        val targetIds = peersToPublish.map { shortcutId(it.deviceId) }.toSet() + BULLETIN_SHORTCUT_ID + friendsToPublish.map { FRIEND_PREFIX + it.key }
 
         val staleIds = ShortcutManagerCompat.getDynamicShortcuts(appContext)
             .map { it.id }
-            .filter { it.startsWith(SHORTCUT_PREFIX) && it !in targetIds }
+            .filter { (it.startsWith(SHORTCUT_PREFIX) || it.startsWith(FRIEND_PREFIX)) && it !in targetIds }
         if (staleIds.isNotEmpty()) {
             ShortcutManagerCompat.removeDynamicShortcuts(appContext, staleIds)
         }
 
         if (peersToPublish.isEmpty()) {
             val ok = runCatching {
-                ShortcutManagerCompat.setDynamicShortcuts(appContext, listOf(bulletinShortcut))
+                ShortcutManagerCompat.setDynamicShortcuts(appContext, listOf(bulletinShortcut) + friendShortcuts)
             }.getOrElse { error ->
                 println("DirectShareShortcutCoordinator: setDynamicShortcuts threw - ${error.message}")
                 false
@@ -258,7 +287,7 @@ object DirectShareShortcutCoordinator {
 
         val shortcuts = listOf(bulletinShortcut) + peersToPublish.mapIndexed { index, peer ->
             buildShortcut(peer, rank = index + 1)
-        }
+        } + friendShortcuts
         val ok = runCatching {
             ShortcutManagerCompat.setDynamicShortcuts(appContext, shortcuts)
         }.getOrElse { error ->

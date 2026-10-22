@@ -1,7 +1,7 @@
 package com.fileapex.di
 
 import com.fileapex.data.db.FileApexDatabase
-import com.fileapex.data.bulletin.BulletinBoardDatabase
+import com.fileapex.data.bulletin.BulletinBoardMerge
 import com.fileapex.data.bulletin.BulletinBoardRepository
 import com.fileapex.data.bulletin.BulletinBoardSyncEngine
 import com.fileapex.data.device.DeviceRepository
@@ -44,7 +44,8 @@ object FileApexServices {
     private var database: FileApexDatabase? = null
 
     @Volatile
-    private var bulletinDatabase: BulletinBoardDatabase? = null
+    private var bulletinInitialized = false
+    private var legacyBulletinPath: String? = null
 
     @Volatile
     private var bulletinBoardRepositoryInstance: BulletinBoardRepository? = null
@@ -222,6 +223,7 @@ object FileApexServices {
             runCatching { com.fileapex.tailscale.TailscaleNodeRuntime.attach() }
         }
         com.fileapex.iroh.IrohRuntime.attach()
+        com.fileapex.friends.FriendsHub.attach(database)
         bootstrapScope.launch {
             cancellableCatching { deviceRepository.demoteUnverifiedRows() }
                 .onFailure { error -> println("FileApexServices: unverified roster check skipped - ${error.message}") }
@@ -236,30 +238,35 @@ object FileApexServices {
         markBootstrapComplete()
     }
 
-    fun initBulletinBoard(database: BulletinBoardDatabase) {
-        val existing = bulletinDatabase
-        if (existing != null) {
-            check(existing === database) {
-                "FileApexServices.initBulletinBoard must not replace an active bulletin database"
-            }
-            return
-        }
-        bulletinDatabase = database
+    /**
+     * Starts the Bulletin Board on the merged database. [legacyBulletinPath] is the old
+     * `bulletin_board.db`; its rows are copied in once (see [BulletinBoardMerge]).
+     */
+    fun initBulletinBoard(legacyBulletinPath: String) {
+        val database = checkNotNull(this.database) { "FileApexServices.init must run before initBulletinBoard" }
+        if (bulletinInitialized) return
+        bulletinInitialized = true
+        this.legacyBulletinPath = legacyBulletinPath
         val repository = BulletinBoardRepository(database)
         bulletinBoardRepositoryInstance = repository
         val syncEngine = BulletinBoardSyncEngine(database, repository, bootstrapScope)
         bulletinSyncEngineInstance = syncEngine
-        syncEngine.ensureStarted()
         noteRepository.attachBulletinBoard(repository, syncEngine, bootstrapScope)
-        bootstrapScope.launch {
+        bootstrapScope.launch(Dispatchers.IO) {
             cancellableCatching {
-                val coreDb = this@FileApexServices.database
-                if (coreDb != null) {
-                    repository.migrateFromLegacyNotes(coreDb.noteDao())
+                when (val result = BulletinBoardMerge.run(legacyBulletinPath, database)) {
+                    BulletinBoardMerge.Result.NothingToMerge -> Unit
+                    is BulletinBoardMerge.Result.Merged -> println("FileApexServices: bulletin merge copied $result")
+                    is BulletinBoardMerge.Result.Mismatch ->
+                        println("FileApexServices: bulletin merge stopped, old file kept - $result")
                 }
             }.onFailure { error ->
-                println("FileApexServices: bulletin migration skipped - ${error.message}")
+                println("FileApexServices: bulletin merge skipped - ${error.message}")
             }
+            cancellableCatching { repository.migrateFromLegacyNotes(database.noteDao()) }
+                .onFailure { error -> println("FileApexServices: bulletin migration skipped - ${error.message}") }
+            // The engine starts only after the copy so it never syncs from a half-filled table.
+            syncEngine.ensureStarted()
         }
     }
 
@@ -269,7 +276,7 @@ object FileApexServices {
      */
     fun beginBootstrap(
         createDatabase: () -> FileApexDatabase,
-        createBulletinBoard: () -> BulletinBoardDatabase
+        legacyBulletinPath: String
     ) {
         if (isDatabaseReady()) {
             markBootstrapComplete()
@@ -280,7 +287,7 @@ object FileApexServices {
         bootstrapScope.launch(Dispatchers.IO) {
             runCatching {
                 init(createDatabase())
-                initBulletinBoard(createBulletinBoard())
+                initBulletinBoard(legacyBulletinPath)
             }.onFailure { error ->
                 println("FileApexServices: bootstrap failed - ${error.message}")
                 markBootstrapComplete()
@@ -312,14 +319,13 @@ object FileApexServices {
             cancellableCatching { db.controlDeliveryDao().deleteAll() }
             cancellableCatching { db.pendingTransferDao().deleteAll() }
             cancellableCatching { db.noteDao().deleteAllNotes() }
+            cancellableCatching { db.messageDao().deleteAllMessages() }
+            cancellableCatching { db.tombstoneDao().deleteAllTombstones() }
+            cancellableCatching { db.outboxDao().deleteAllOutbox() }
+            cancellableCatching { db.processedPacketDao().deleteAllPackets() }
             runCatching { db.clearAllTables() }
         }
-        bulletinDatabase?.let { bDb ->
-            cancellableCatching { bDb.messageDao().deleteAllMessages() }
-            cancellableCatching { bDb.tombstoneDao().deleteAllTombstones() }
-            cancellableCatching { bDb.outboxDao().deleteAllOutbox() }
-            cancellableCatching { bDb.processedPacketDao().deleteAllPackets() }
-            runCatching { bDb.clearAllTables() }
-        }
+        // A wipe must not leave the old Bulletin file (or its merge backup) behind to be copied in again.
+        legacyBulletinPath?.let { BulletinBoardMerge.deleteLegacyFiles(it) }
     }
 }

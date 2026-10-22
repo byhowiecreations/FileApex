@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -203,6 +204,24 @@ internal fun KineticScope.KineticHub() {
                     onClick = {
                         addMenuOpen = false
                         onJoinDevice()
+                    }
+                )
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.People,
+                                contentDescription = null,
+                                tint = Color(0xFF00E676),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(text = stringRes("friends_entry"), color = Color.White)
+                        }
+                    },
+                    onClick = {
+                        addMenuOpen = false
+                        com.fileapex.friends.ui.FriendsUi.open()
                     }
                 )
             }

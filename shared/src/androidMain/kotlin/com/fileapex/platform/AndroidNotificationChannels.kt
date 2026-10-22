@@ -29,6 +29,10 @@ object AndroidNotificationChannels {
     const val BATTERY_ALERTS = "fileapex_battery_alerts_v1"
     const val BULLETIN_CRITICAL = BATTERY_ALERTS
     const val DRIVE_RELAY = "fileapex_drive_relay"
+    /** A friend is waiting for the user to accept a file. */
+    const val FRIENDS_INCOMING = "fileapex_friends_incoming"
+    /** Progress of files going to or from a friend. */
+    const val FRIENDS_TRANSFERS = "fileapex_friends_transfers"
     const val FOLDER_BACKUP = "fileapex_folder_backup_progress"
     /** Persistent share-server FGS alert, static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
@@ -147,6 +151,31 @@ object AndroidNotificationChannels {
         ).apply {
             description = com.fileapex.i18n.AppI18n.t("channel_drive_desc")
         }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureFriendsIncomingChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            FRIENDS_INCOMING,
+            com.fileapex.i18n.AppI18n.t("channel_friends_incoming"),
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = com.fileapex.i18n.AppI18n.t("channel_friends_incoming_desc")
+            enableVibration(true)
+        }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureFriendsTransfersChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            FRIENDS_TRANSFERS,
+            com.fileapex.i18n.AppI18n.t("channel_friends_transfers"),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply { description = com.fileapex.i18n.AppI18n.t("channel_friends_transfers_desc") }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)
     }

@@ -48,6 +48,20 @@ object PeerTlsConnector {
         identityStore = storeProvider
     }
 
+    /** This device's client key managers and pin for a handshake that is not tied to a stored route (secure pairing). */
+    internal fun clientIdentityForTest() = clientIdentity()
+
+    internal fun clientIdentity(): Pair<Array<javax.net.ssl.KeyManager>, String> {
+        val identity = identityStore?.invoke()?.getOrCreate() ?: throw IOException("local TLS identity unavailable")
+        val keyStore = KeyStore.getInstance("PKCS12").apply {
+            load(null, null)
+            setKeyEntry("tls", identity.privateKey, KEY_PASSWORD, arrayOf(identity.certificate))
+        }
+        val keyManagers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+            .apply { init(keyStore, KEY_PASSWORD) }.keyManagers
+        return keyManagers to identity.pin
+    }
+
     /** [socket] must be unconnected (it may already be bound). Returns the socket to read and write on. */
     fun connect(socket: Socket, host: String, httpPort: Int, connectTimeoutMs: Int): Socket {
         val route = PeerTlsRoutes.lookup(host, httpPort)

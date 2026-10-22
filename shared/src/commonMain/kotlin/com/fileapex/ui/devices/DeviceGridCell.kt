@@ -307,13 +307,13 @@ internal fun DeviceGridCell(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(stringRes("device_details")) },
+                        text = { Text(deviceMenuText(row, "device_details")) },
                         onClick = {
                             menuOpen = false
                             onDeviceDetails()
                         }
                     )
-                    DropdownMenuItem(
+                    if (!row.isFriend) DropdownMenuItem(
                         text = { Text(stringRes("send_clipboard")) },
                         onClick = {
                             menuOpen = false
@@ -321,7 +321,7 @@ internal fun DeviceGridCell(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(stringRes("remove")) },
+                        text = { Text(deviceMenuText(row, "remove")) },
                         onClick = {
                             menuOpen = false
                             onRemove()

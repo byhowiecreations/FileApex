@@ -10,7 +10,7 @@ class PairingPayloadTlsTest {
 
     private fun payload(tlsPin: String = pin, tlsPort: Int = 8443) = PairingPayloadFactory.create(
         deviceId = "dev-1", deviceName = "Desk", host = "192.168.1.9", port = 8080, rootPath = "/",
-        pairingCode = "123456", tlsPin = tlsPin, tlsPort = tlsPort
+        tlsPin = tlsPin, tlsPort = tlsPort, pairingSecret = "00112233445566778899aabbccddeeff"
     )
 
     @Test
@@ -19,6 +19,14 @@ class PairingPayloadTlsTest {
         assertEquals(pin, parsed.tlsPin)
         assertEquals(8443, parsed.tlsPort)
         assertTrue(parsed.tlsPinTrusted)
+    }
+
+    @Test
+    fun qrCarriesTheSecretAndTheBeaconCarriesNone() {
+        assertEquals("00112233445566778899aabbccddeeff", PairingPayload.parse(payload().toQrText()).pairingSecret)
+        val beacon = PairingBeacon(deviceName = "Desk", ipAddress = "192.168.1.9", port = 8080, timestamp = 1L, deviceId = "dev-1")
+        assertEquals("", beacon.toPairingPayload().pairingSecret)
+        assertFalse(String(PairingBeacon.encodePacket(beacon)).contains("ode"))
     }
 
     @Test
@@ -40,7 +48,7 @@ class PairingPayloadTlsTest {
     @Test
     fun beaconDerivedPayloadIsNeverTrusted() {
         val beacon = PairingBeacon(
-            deviceName = "Desk", ipAddress = "192.168.1.9", port = 8080, pairingCode = "123456",
+            deviceName = "Desk", ipAddress = "192.168.1.9", port = 8080,
             timestamp = 1L, deviceId = "dev-1", tlsPin = pin, tlsPort = 8443
         )
         val fromBeacon = beacon.toPairingPayload()

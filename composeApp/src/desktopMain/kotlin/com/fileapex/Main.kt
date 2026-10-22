@@ -23,7 +23,6 @@ import androidx.compose.ui.window.rememberWindowState
 import java.awt.Desktop
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.createFileApexDatabase
-import com.fileapex.data.bulletin.createBulletinBoardDatabase
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.createAppSettings
@@ -87,7 +86,7 @@ fun main(args: Array<String>) {
         com.fileapex.security.tls.TlsFrontFactory.install { com.fileapex.security.tls.DesktopTlsIdentity.store() }
         FileApexServices.beginBootstrap(
             createDatabase = { createFileApexDatabase() },
-            createBulletinBoard = { createBulletinBoardDatabase() }
+            legacyBulletinPath = com.fileapex.platform.DesktopPlatformPaths.bulletinBoardDatabaseFile().absolutePath
         )
 
         val initialShare = parseCliSharePayload(args)

@@ -252,3 +252,40 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         }
     }
 }
+
+/** The Bulletin Board tables move into this database (copy of their version 3 shapes); rows arrive from bulletin_board.db in [com.fileapex.data.bulletin.BulletinBoardMerge]. */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `messages` (`id` TEXT NOT NULL, `originDeviceId` TEXT NOT NULL, `senderName` TEXT NOT NULL, `content` TEXT NOT NULL, `contentType` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, `isPinned` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `tombstones` (`id` TEXT NOT NULL, `deletedAt` INTEGER NOT NULL, `originDeviceId` TEXT NOT NULL, `remotePurge` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE TABLE IF NOT EXISTS `outbox` (`outboxId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `targetDeviceId` TEXT NOT NULL, `payloadType` INTEGER NOT NULL, `payloadId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `retryCount` INTEGER NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS `processed_packets` (`packetId` TEXT NOT NULL, `processedAt` INTEGER NOT NULL, PRIMARY KEY(`packetId`))"
+        ).forEach { sql ->
+            connection.prepare(sql).use { statement -> statement.step() }
+        }
+    }
+}
+
+/** Friends (0.19.6a): three tables used only by the friends handler. */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `friend_links` (`friendKey` TEXT NOT NULL, `label` TEXT NOT NULL, `groupName` TEXT NOT NULL, `addedAtMs` INTEGER NOT NULL, `folderName` TEXT NOT NULL, `blocked` INTEGER NOT NULL, PRIMARY KEY(`friendKey`))",
+            "CREATE TABLE IF NOT EXISTS `friend_invites` (`inviteId` TEXT NOT NULL, `secretHash` TEXT NOT NULL, `groupName` TEXT NOT NULL, `expiresAtMs` INTEGER NOT NULL, `failedAttempts` INTEGER NOT NULL, `used` INTEGER NOT NULL, PRIMARY KEY(`inviteId`))",
+            "CREATE TABLE IF NOT EXISTS `friend_incoming` (`transferId` TEXT NOT NULL, `friendKey` TEXT NOT NULL, `fileName` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `sha256` TEXT NOT NULL, `state` TEXT NOT NULL, `receivedBytes` INTEGER NOT NULL, `quarantinePath` TEXT NOT NULL, `createdAtMs` INTEGER NOT NULL, PRIMARY KEY(`transferId`))"
+        ).forEach { sql -> connection.prepare(sql).use { it.step() } }
+    }
+}
+
+/** Friends drop Block (Remove is the only way out) and gain a per friend auto-accept flag. Blocked rows are removed. */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `friend_links_new` (`friendKey` TEXT NOT NULL, `label` TEXT NOT NULL, `groupName` TEXT NOT NULL, `addedAtMs` INTEGER NOT NULL, `folderName` TEXT NOT NULL, `autoAccept` INTEGER NOT NULL, PRIMARY KEY(`friendKey`))",
+            "INSERT INTO `friend_links_new` (`friendKey`, `label`, `groupName`, `addedAtMs`, `folderName`, `autoAccept`) SELECT `friendKey`, `label`, `groupName`, `addedAtMs`, `folderName`, 0 FROM `friend_links` WHERE `blocked` = 0",
+            "DROP TABLE `friend_links`",
+            "ALTER TABLE `friend_links_new` RENAME TO `friend_links`"
+        ).forEach { sql -> connection.prepare(sql).use { it.step() } }
+    }
+}

@@ -58,7 +58,7 @@ actual object PairingBeaconTransport {
             sendBeaconOnce(beacon)
             broadcastJob = scope.launch { broadcastLoop() }
             log(
-                "broadcast started code=${beacon.pairingCode} " +
+                "broadcast started " +
                     "host=${beacon.ipAddress}:${beacon.port} " +
                     "via ${PairingBeacon.MULTICAST_ADDRESS}:${PairingBeacon.PORT}"
             )
@@ -155,10 +155,6 @@ actual object PairingBeaconTransport {
                     socket.receive(packet)
                     val raw = String(packet.data, 0, packet.length, Charsets.UTF_8)
                     val beacon = PairingBeacon.parsePacket(raw) ?: continue
-                    log(
-                        "beacon from ${beacon.deviceName} @ ${beacon.ipAddress}:${beacon.port} " +
-                            "code=${beacon.pairingCode}"
-                    )
                     onBeacon(beacon)
                 }
             } catch (_: SocketException) {

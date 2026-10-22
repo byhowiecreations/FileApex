@@ -3,11 +3,6 @@ package com.fileapex.network.routes
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.pairing.LanPairingDiscovery
-import com.fileapex.domain.pairing.PairingCheckCode
-import com.fileapex.domain.pairing.PairingHint
-import com.fileapex.domain.pairing.PairingHints
-import com.fileapex.domain.pairing.PairingConfirmations
-import com.fileapex.domain.pairing.PendingJoin
 import com.fileapex.network.FileApexServer
 import com.fileapex.network.RenameDeviceRequest
 import com.fileapex.network.TransferTransactionJournal
@@ -26,6 +21,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 
 internal fun Route.registerIdentityRoutes(server: FileApexServer) {
+    registerSecurePairingRoute(server)
     get("/api/v1/identity") {
         cancellableCatching {
             server.respondSelfPeerState(call)
@@ -70,112 +66,6 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
         }.onFailure { error ->
             server.onLog("POST /api/v1/auth/verify-pin failed", error)
             call.respond(HttpStatusCode.InternalServerError, "verify_pin_failed")
-        }
-    }
-
-    post("/api/v1/pairing/respond") {
-        cancellableCatching {
-            // The PIN and the 6-digit code are short: slow down anyone who keeps guessing.
-            if (server.pairingThrottle.hitAndCheck(call.request.local.remoteAddress.trim(), com.fileapex.util.TimeUtils.now())) {
-                call.respond(HttpStatusCode.TooManyRequests, "slow_down")
-                return@cancellableCatching
-            }
-            if (!server.isPeerPinAccepted(server.providedPin(call))) {
-                call.respond(HttpStatusCode.Forbidden, "pin_required")
-                return@cancellableCatching
-            }
-            if (!LanPairingDiscovery.matchesActiveCode(server.providedPairingCode(call))) {
-                call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
-                return@cancellableCatching
-            }
-            val body = call.receiveBoundedText()
-            if (body.isBlank()) {
-                call.respond(HttpStatusCode.BadRequest, "Empty pairing payload")
-                return@cancellableCatching
-            }
-            val inboundIp = server.inboundPeerLanIpv4(call)
-            val scanningDevice = runCatching {
-                server.json.decodeFromString(PairedDeviceEntity.serializer(), body)
-            }.getOrElse { decodeError ->
-                server.onLog("Invalid pairing JSON payload", decodeError)
-                call.respond(HttpStatusCode.BadRequest, "Invalid pairing payload")
-                return@cancellableCatching
-            }
-            if (scanningDevice.deviceId.isBlank() || scanningDevice.deviceName.isBlank()) {
-                call.respond(HttpStatusCode.BadRequest, "Missing required device fields")
-                return@cancellableCatching
-            }
-            val localId = server.identityProvider().deviceId
-            if (scanningDevice.deviceId == localId) {
-                call.respond(HttpStatusCode.BadRequest, "Cannot pair with self")
-                return@cancellableCatching
-            }
-            val inboundDevice = if (inboundIp != null) {
-                scanningDevice.copy(lastKnownIp = inboundIp)
-            } else {
-                scanningDevice
-            }
-
-            // Both users confirm: this device's user compares the check code with the joiner's screen and accepts or
-            // declines. Until then nothing about the joiner is stored, including the key it claims.
-            val hostKey = PairingCheckCode.key(com.fileapex.security.tls.LocalTlsInfo.pin, localId)
-            val joinerKey = PairingCheckCode.key(inboundDevice.tlsPin, inboundDevice.deviceId)
-            val checkCode = PairingCheckCode.derive(hostKey, joinerKey, server.providedPairingCode(call))
-            val repository = com.fileapex.di.FileApexServices.deviceRepositoryOrNull()
-            val hint = if (repository == null) PairingHint.None else PairingHints.evaluate(
-                joinerId = inboundDevice.deviceId,
-                joinerName = inboundDevice.deviceName,
-                joinerHash = inboundDevice.hardwareHash,
-                active = repository.listDevices(),
-                removed = repository.removedDevicesWithHardware(inboundDevice.hardwareHash)
-            )
-            val accepted = PairingConfirmations.board.askHost(
-                PendingJoin(inboundDevice.deviceId, inboundDevice.deviceName, checkCode, hint),
-                PairingConfirmations.HOST_CONFIRM_TIMEOUT_MS
-            )
-            when (accepted) {
-                null -> {
-                    call.respond(HttpStatusCode.Conflict, "pairing_busy")
-                    return@cancellableCatching
-                }
-                false -> {
-                    // The code is single-use: a declined or unanswered attempt ends this pairing window.
-                    LanPairingDiscovery.onHostPairingAccepted()
-                    call.respond(HttpStatusCode.Forbidden, "pairing_declined")
-                    return@cancellableCatching
-                }
-                true -> {
-                    // The user saw "same hardware as <old entry>" and accepted: the old entry of that device goes.
-                    if (hint is PairingHint.SameHardware) {
-                        for (oldId in hint.ids) {
-                            cancellableCatching { com.fileapex.di.FileApexServices.peerAdmission.supersede(oldId) }
-                        }
-                    }
-                }
-            }
-
-            // Persist off the request-critical path so Room failures never tear down CIO.
-            withContext(Dispatchers.IO) {
-                server.onPairingRespond(inboundDevice)
-            }
-            server.onLog(
-                "Paired inbound device ${inboundDevice.deviceName} (${inboundDevice.deviceId})",
-                null
-            )
-            call.respond(HttpStatusCode.Created)
-            LanPairingDiscovery.onHostPairingAccepted()
-            server.serverScope.launch {
-                cancellableCatching {
-                    withContext(Dispatchers.IO) {
-                        server.onPairingRespondComplete(inboundDevice)
-                    }
-                }.onFailure { error ->
-                    server.onLog("Post-pairing handshake notification failed", error)
-                }
-            }
-        }.onFailure { error ->
-            server.onLog("POST /api/v1/pairing/respond failed", error)
-            call.respond(HttpStatusCode.InternalServerError, "pairing_respond_failed")
         }
     }
 

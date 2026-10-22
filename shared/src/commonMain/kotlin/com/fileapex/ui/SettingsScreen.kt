@@ -225,6 +225,7 @@ fun SettingsScreen(
             onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
             onOpenTailscale = { page = SettingsPage.Tailscale },
             onOpenIroh = { page = SettingsPage.Iroh },
+            onOpenGroups = { page = SettingsPage.Groups },
             onOpenAbout = { page = SettingsPage.About },
             onToggleGeneralGroup = viewModel::toggleGeneralGroup,
             onShowAdvancedChange = viewModel::setShowAdvancedSettings,
@@ -494,6 +495,7 @@ fun SettingsScreen(
             onBack = goUp
         )
         SettingsPage.Iroh -> IrohSettingsPage(layoutMode, goUp)
+        SettingsPage.Groups -> com.fileapex.friends.ui.GroupsSettingsPage(layoutMode, goUp)
         SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(layoutMode, goUp)
         SettingsPage.About -> AboutSettingsPage(layoutMode, goUp)
     }
@@ -538,6 +540,7 @@ private fun SettingsRootPage(
     onOpenLeaveClusterWipe: () -> Unit = {},
     onOpenTailscale: () -> Unit = {},
     onOpenIroh: () -> Unit = {},
+    onOpenGroups: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
     onToggleGeneralGroup: () -> Unit,
     onShowAdvancedChange: (Boolean) -> Unit,
@@ -624,6 +627,7 @@ private fun SettingsRootPage(
                     googleCloud = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     tailscale = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     iroh = !com.fileapex.di.FileApexServices.isFdroidBuild,
+                    groups = com.fileapex.friends.FriendsHub.available,
                     desktopFileSelection = usesDesktopFileSelection(),
                     deviceNamePage = supportsDeviceNameSettingsPage(),
                     windowsFluent = supportsWindowsFluentDesign(),
@@ -706,6 +710,11 @@ private fun SettingsRootPage(
                                     title = stringRes("iroh_title"),
                                     subtitle = irohRowSubtitle(),
                                     onClick = onOpenIroh
+                                )
+                                SettingsMenuIds.GROUPS -> SettingsNavItem(
+                                    title = stringRes("groups_title"),
+                                    subtitle = com.fileapex.friends.ui.groupsRowSubtitle(),
+                                    onClick = onOpenGroups
                                 )
                                 SettingsMenuIds.THEMES -> SettingsNavItem(
                                     title = stringRes("themes"),

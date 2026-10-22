@@ -76,3 +76,40 @@ func TestReadPowerSupplyReadsBattery(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestAppDiagnosticsFromBuildStamp(t *testing.T) {
+	oldName, oldCode := appVersionName, appVersionCode
+	defer func() { appVersionName, appVersionCode = oldName, oldCode }()
+	appVersionName, appVersionCode = "", ""
+	if got := appDiagnostics(); got != (diagApp{}) {
+		t.Fatalf("unstamped build must report nothing, got %+v", got)
+	}
+	appVersionName, appVersionCode = "0.19.6a", "214"
+	got := appDiagnostics()
+	if got.VersionName != "0.19.6a" || got.VersionCode != 214 || got.Source != "docker" {
+		t.Fatalf("got %+v", got)
+	}
+	if snap := collectDiagnostics(t.TempDir()); snap.App != got {
+		t.Fatalf("snapshot app %+v", snap.App)
+	}
+}
+
+func TestSelfStateKeepsDockerClientVersionAndCarriesTheAppVersion(t *testing.T) {
+	oldName := appVersionName
+	defer func() { appVersionName = oldName }()
+	appVersionName = "0.19.6a"
+	node, err := newNode(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := node.selfState()
+	if state.ClientVersion != "docker" {
+		t.Fatalf("client version must stay docker, got %q", state.ClientVersion)
+	}
+	if state.AppVersion != "0.19.6a" {
+		t.Fatalf("app version %q", state.AppVersion)
+	}
+	if state.AppVersionCode != 0 || state.ClientVersionCode != 0 {
+		t.Fatalf("no real version code may be sent: %d %d", state.AppVersionCode, state.ClientVersionCode)
+	}
+}

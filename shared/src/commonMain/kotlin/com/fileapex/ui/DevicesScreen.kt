@@ -97,7 +97,9 @@ fun DevicesScreen(
     val isInitialLoadComplete by viewModel.isInitialLoadComplete.collectAsState()
     val deviceRows by viewModel.deviceRows.collectAsState()
     val viewMode by FileApexServices.settings.devicesViewMode.collectAsState()
-    val listRows = if (state.deviceOrderEditMode) state.editOrderRows else deviceRows
+    val friendRows = com.fileapex.ui.devices.rememberFriendDeviceRows()
+    val friendActions = com.fileapex.ui.devices.rememberFriendDeviceActions()
+    val listRows = if (state.deviceOrderEditMode) state.editOrderRows else deviceRows + friendRows
     val editMode = state.deviceOrderEditMode
     val snackbarHostState = remember { SnackbarHostState() }
     var addMenuOpen by remember { mutableStateOf(false) }
@@ -203,25 +205,22 @@ fun DevicesScreen(
                     selectedDeviceId = selectedDeviceId,
                     isEditMode = editMode,
                     onOpenDevice = { deviceId ->
-                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                        if (!friendActions.open(deviceId)) viewModel.openDeviceOrExplain(deviceId) { target ->
                             currentOnOpenDevice(target)
                         }
                     },
-                    onRenameDevice = { deviceId, deviceName ->
-                        renameText = deviceName
-                        viewModel.beginRename(deviceId)
-                    },
+                    onRenameDevice = { deviceId, deviceName -> if (!friendActions.rename(deviceId, deviceName)) { renameText = deviceName; viewModel.beginRename(deviceId) } },
                     onDeviceDetails = { deviceId ->
-                        viewModel.requestDeviceDetails(deviceId)
+                        if (!friendActions.details(deviceId)) viewModel.requestDeviceDetails(deviceId)
                     },
                     onSendClipboardDevice = { deviceId ->
-                        viewModel.sendClipboardToDevice(deviceId)
+                        if (!friendActions.isFriend(deviceId)) viewModel.sendClipboardToDevice(deviceId)
                     },
                     onRemoveDevice = { deviceId, deviceName ->
-                        pendingDelete = PendingDelete(deviceId, deviceName)
+                        if (!friendActions.remove(deviceId)) pendingDelete = PendingDelete(deviceId, deviceName)
                     },
                     onFilesDropped = { deviceId, paths ->
-                        viewModel.sendDroppedLocalFiles(deviceId, paths)
+                        if (!friendActions.drop(deviceId, paths)) viewModel.sendDroppedLocalFiles(deviceId, paths)
                     },
                     onSaveDeviceCardPosition = viewModel::saveDeviceCardPosition,
                     onSaveDeviceTilePosition = viewModel::saveDeviceTilePosition,
@@ -235,7 +234,7 @@ fun DevicesScreen(
                     onOpenSettings = onOpenSettings,
                     thisDeviceTarget = viewModel.thisDeviceTarget(),
                     onResolveBrowseTarget = { deviceId, onTargetResolved ->
-                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                        if (!friendActions.open(deviceId)) viewModel.openDeviceOrExplain(deviceId) { target ->
                             onTargetResolved(target)
                         }
                     },
@@ -247,25 +246,22 @@ fun DevicesScreen(
                 KineticSphereDevicesView(
                     deviceRows = listRows,
                     onOpenDevice = { deviceId ->
-                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                        if (!friendActions.open(deviceId)) viewModel.openDeviceOrExplain(deviceId) { target ->
                             currentOnOpenDevice(target)
                         }
                     },
-                    onRenameDevice = { deviceId, deviceName ->
-                        renameText = deviceName
-                        viewModel.beginRename(deviceId)
-                    },
+                    onRenameDevice = { deviceId, deviceName -> if (!friendActions.rename(deviceId, deviceName)) { renameText = deviceName; viewModel.beginRename(deviceId) } },
                     onDeviceDetails = { deviceId ->
-                        viewModel.requestDeviceDetails(deviceId)
+                        if (!friendActions.details(deviceId)) viewModel.requestDeviceDetails(deviceId)
                     },
                     onSendClipboardDevice = { deviceId ->
-                        viewModel.sendClipboardToDevice(deviceId)
+                        if (!friendActions.isFriend(deviceId)) viewModel.sendClipboardToDevice(deviceId)
                     },
                     onRemoveDevice = { deviceId, deviceName ->
-                        pendingDelete = PendingDelete(deviceId, deviceName)
+                        if (!friendActions.remove(deviceId)) pendingDelete = PendingDelete(deviceId, deviceName)
                     },
                     onFilesDropped = { deviceId, paths ->
-                        viewModel.sendDroppedLocalFiles(deviceId, paths)
+                        if (!friendActions.drop(deviceId, paths)) viewModel.sendDroppedLocalFiles(deviceId, paths)
                     },
                     onGenerateQr = onGenerateQr,
                     onJoinDevice = onJoinDevice,
@@ -288,25 +284,22 @@ fun DevicesScreen(
                     selectedDeviceId = selectedDeviceId,
                     onAddDevice = { addMenuOpen = true },
                     onOpenDevice = { deviceId ->
-                        viewModel.openDeviceOrExplain(deviceId) { target ->
+                        if (!friendActions.open(deviceId)) viewModel.openDeviceOrExplain(deviceId) { target ->
                             currentOnOpenDevice(target)
                         }
                     },
-                    onRenameDevice = { deviceId, deviceName ->
-                        renameText = deviceName
-                        viewModel.beginRename(deviceId)
-                    },
+                    onRenameDevice = { deviceId, deviceName -> if (!friendActions.rename(deviceId, deviceName)) { renameText = deviceName; viewModel.beginRename(deviceId) } },
                     onDeviceDetails = { deviceId ->
-                        viewModel.requestDeviceDetails(deviceId)
+                        if (!friendActions.details(deviceId)) viewModel.requestDeviceDetails(deviceId)
                     },
                     onSendClipboardDevice = { deviceId ->
-                        viewModel.sendClipboardToDevice(deviceId)
+                        if (!friendActions.isFriend(deviceId)) viewModel.sendClipboardToDevice(deviceId)
                     },
                     onRemoveDevice = { deviceId, deviceName ->
-                        pendingDelete = PendingDelete(deviceId, deviceName)
+                        if (!friendActions.remove(deviceId)) pendingDelete = PendingDelete(deviceId, deviceName)
                     },
                     onFilesDropped = { deviceId, paths ->
-                        viewModel.sendDroppedLocalFiles(deviceId, paths)
+                        if (!friendActions.drop(deviceId, paths)) viewModel.sendDroppedLocalFiles(deviceId, paths)
                     },
                     onReorder = viewModel::reorderEditDevice,
                     modifier = Modifier

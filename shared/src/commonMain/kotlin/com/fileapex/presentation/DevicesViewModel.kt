@@ -1,5 +1,6 @@
 package com.fileapex.presentation
 
+import com.fileapex.data.db.isDockerNode
 import com.fileapex.presentation.devices.DevicesClipboardActions
 import com.fileapex.presentation.devices.DevicesConnectActions
 import com.fileapex.presentation.devices.DevicesPairingActions
@@ -125,8 +126,9 @@ class DevicesViewModel : ViewModel() {
                         repository.observeDevices(),
                         presence.reachabilityEpochMs,
                         presence.onlineDeviceIds,
-                        presence.onlineSnapshotEpochMs
-                    ) { devices, _, _, _ ->
+                        presence.onlineSnapshotEpochMs,
+                        com.fileapex.domain.peer.PeerAppVersions.versions
+                    ) { devices, _, _, _, dockerVersions ->
                         val selfDeviceId = identity.deviceId
                         devices
                             .distinctBy { it.deviceId }
@@ -140,6 +142,7 @@ class DevicesViewModel : ViewModel() {
                                     deviceName = device.deviceName,
                                     online = presence.isDeviceOnline(device),
                                     appVersion = device.clientVersion.takeIf { it.isNotEmpty() },
+                                    displayVersion = dockerVersions[device.deviceId]?.takeIf { device.isDockerNode() },
                                     appVersionCode = device.clientVersionCode,
                                     lastSeenEpochMs = device.lastSeenEpochMs,
                                     os = device.os,

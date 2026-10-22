@@ -1,5 +1,6 @@
 package com.fileapex.data.bulletin
 
+import com.fileapex.data.db.FileApexDatabase
 import com.fileapex.data.db.NoteDao
 import com.fileapex.data.db.NoteEntity
 import com.fileapex.data.identity.LocalDeviceNameStore
@@ -15,7 +16,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class BulletinBoardRepository(
-    private val database: BulletinBoardDatabase
+    private val database: FileApexDatabase
 ) {
     private val json = Json {
         ignoreUnknownKeys = true

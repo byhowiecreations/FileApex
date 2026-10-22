@@ -35,13 +35,15 @@ internal fun FreestyleScope.FreestyleDeviceMenu(row: DeviceListRow, livePos: Off
                         }
                     }
                     val actionsListState = remember(row.deviceId, freestyleMode, savedMenuOrder) {
-                        mutableStateOf(FreestyleMenuAction.parseOrder(savedMenuOrder))
+                        mutableStateOf(FreestyleMenuAction.parseOrder(savedMenuOrder).filter { !row.isFriend || it != FreestyleMenuAction.CLIPBOARD })
                     }
 
-        when (freestyleMode) {
-            FreestyleLayoutMode.CARDS_HORIZONTAL -> FreestyleHorizontalCardMenu(row, livePos, actionsListState)
-            FreestyleLayoutMode.CARDS_VERTICAL -> FreestyleVerticalCardMenu(row, livePos, actionsListState)
-            FreestyleLayoutMode.TILES -> FreestyleTileMenu(row, livePos, actionsListState)
+        ProvideFriendMenu(row) {
+            when (freestyleMode) {
+                FreestyleLayoutMode.CARDS_HORIZONTAL -> FreestyleHorizontalCardMenu(row, livePos, actionsListState)
+                FreestyleLayoutMode.CARDS_VERTICAL -> FreestyleVerticalCardMenu(row, livePos, actionsListState)
+                FreestyleLayoutMode.TILES -> FreestyleTileMenu(row, livePos, actionsListState)
+            }
         }
     } } } }
 }

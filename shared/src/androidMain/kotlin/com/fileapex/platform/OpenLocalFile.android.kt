@@ -107,6 +107,20 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
 
 actual fun revealInFolder(absolutePath: String) {
     val context = androidAppContextOrNull() ?: return
+    val target = File(absolutePath)
+    val folder = if (target.isDirectory) target else target.parentFile
+    val root = android.os.Environment.getExternalStorageDirectory().absolutePath
+    val folderPath = folder?.absolutePath
+    // The system Files app opens a given folder through its documents URI; the Downloads list is the fallback.
+    if (folderPath != null && folderPath.startsWith("$root/")) {
+        val documentId = "primary:" + folderPath.removePrefix("$root/")
+        val uri = android.provider.DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", documentId)
+        val direct = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "vnd.android.document/directory")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        if (runCatching { context.startActivity(direct) }.isSuccess) return
+    }
     val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }

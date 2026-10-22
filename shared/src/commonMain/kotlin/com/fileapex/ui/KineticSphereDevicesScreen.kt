@@ -28,7 +28,11 @@ import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -63,6 +67,7 @@ import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.kinetic.KineticBatteryChip
+import com.fileapex.ui.kinetic.KineticFriendsChip
 import com.fileapex.ui.kinetic.KineticClipboardChip
 import com.fileapex.ui.kinetic.KineticEffects
 import com.fileapex.ui.kinetic.KineticHub
@@ -153,6 +158,7 @@ fun KineticSphereDevicesView(
         scope.KineticHub()
         scope.KineticClipboardChip()
         scope.KineticBatteryChip()
+        scope.KineticFriendsChip()
         scope.KineticNodes()
     }
 }
@@ -276,7 +282,7 @@ internal fun KineticGlassActionCapsule(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (row.online) stringRes("ready") else stringRes("tap_to_wake"),
+                        text = row.friendGroup ?: if (row.online) stringRes("ready") else stringRes("tap_to_wake"),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                         color = statusColor,
                         maxLines = 2,
@@ -298,17 +304,24 @@ internal fun KineticGlassActionCapsule(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CapsuleActionButton(stringRes("browse"), Icons.Filled.Folder, Color(0xFF00E676), onOpen)
-                CapsuleActionButton(stringRes("clipboard"), Icons.AutoMirrored.Filled.Assignment, Color(0xFF00E5FF), onSendClipboard)
-                CapsuleActionButton(stringRes("rename"), Icons.Filled.Edit, Color(0xFFFFC107), onRename)
+                if (row.isFriend) {
+                    CapsuleActionButton(stringRes("friends_short_send"), Icons.Filled.UploadFile, Color(0xFF00E676), onOpen)
+                    CapsuleActionButton(stringRes("friends_short_accept"), if (row.friendAutoAccept) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, Color(0xFF40C4FF), onInfo)
+                    CapsuleActionButton(stringRes("rename"), Icons.Filled.Edit, Color(0xFFFFC107), onRename)
+                } else {
+                    CapsuleActionButton(stringRes("browse"), Icons.Filled.Folder, Color(0xFF00E676), onOpen)
+                    CapsuleActionButton(stringRes("clipboard"), Icons.AutoMirrored.Filled.Assignment, Color(0xFF00E5FF), onSendClipboard)
+                    CapsuleActionButton(stringRes("rename"), Icons.Filled.Edit, Color(0xFFFFC107), onRename)
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CapsuleActionButton(stringRes("info"), Icons.Filled.Info, Color(0xFF40C4FF), onInfo)
-                CapsuleActionButton(stringRes("remove"), Icons.Filled.Delete, Color(0xFFFF5252), onRemove)
+                if (!row.isFriend) CapsuleActionButton(stringRes("info"), Icons.Filled.Info, Color(0xFF40C4FF), onInfo)
+                if (row.isFriend) CapsuleActionButton(stringRes("friends_short_unpin"), Icons.Filled.PushPin, Color(0xFFFF5252), onRemove)
+                else CapsuleActionButton(stringRes("remove"), Icons.Filled.Delete, Color(0xFFFF5252), onRemove)
             }
         }
     }

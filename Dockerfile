@@ -19,10 +19,13 @@ WORKDIR /app
 
 # Copy the entire native/tsnet folder (which includes go.mod and the daemon subdirectory)
 COPY native/tsnet/ ./
+# The app version (name and code) shown in Device Details comes from version.md
+COPY version.md /app/version.md
 
 # Change into the daemon folder where main.go lives and build
 WORKDIR /app/daemon
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/fileapex-daemon .
+RUN VNAME=$(sed -n 's/^name=//p' /app/version.md | tr -d '\r') && VCODE=$(sed -n 's/^code=//p' /app/version.md | tr -d '\r') && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.appVersionName=${VNAME} -X main.appVersionCode=${VCODE}" -o /app/fileapex-daemon .
 
 # Stage 2: Runtime Image
 FROM alpine:latest

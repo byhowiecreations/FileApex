@@ -15,6 +15,8 @@ data class DeviceListRow(
     val deviceName: String,
     val online: Boolean,
     val appVersion: String?,
+    /** What the card shows as the version when it differs from [appVersion] (a Docker node's real version); never used for logic. */
+    val displayVersion: String? = null,
     val appVersionCode: Int = 0,
     val lastSeenEpochMs: Long = 0L,
     val os: String = "",
@@ -28,13 +30,18 @@ data class DeviceListRow(
     val tilePosX: Float? = null,
     val tilePosY: Float? = null,
     val tileSortOrder: Int = 0,
-    val tileMenuOrder: String = ""
+    val tileMenuOrder: String = "",
+    /** Set only for a pinned friend shown as a row: the group name. A friend row has the id `friend:<key>`. */
+    val friendGroup: String? = null,
+    val friendAutoAccept: Boolean = false
 ) {
     val title: String get() = deviceName
 
-    val subtitle: String get() = peerStatusSubtitle(
+    val isFriend: Boolean get() = friendGroup != null
+
+    val subtitle: String get() = friendGroup ?: peerStatusSubtitle(
         online = online,
-        appVersion = appVersion,
+        appVersion = displayVersion ?: appVersion,
         lastSeenEpochMs = lastSeenEpochMs
     )
 

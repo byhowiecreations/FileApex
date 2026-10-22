@@ -827,6 +827,29 @@ class BaseAppSettings(
         store.putString(KEY_IROH_SECRET_KEY, value.trim())
     }
 
+    override fun friendsSecretKeyBase64(): String = store.getString(KEY_FRIENDS_SECRET_KEY, "")
+
+    override fun setFriendsSecretKeyBase64(value: String) {
+        store.putString(KEY_FRIENDS_SECRET_KEY, value.trim())
+    }
+
+    override fun friendsHideIp(): Boolean = store.getBoolean(KEY_FRIENDS_HIDE_IP, false)
+
+    override fun setFriendsHideIp(value: Boolean) {
+        store.putBoolean(KEY_FRIENDS_HIDE_IP, value)
+    }
+
+    override fun friendsPinnedKeys(): String = store.getString(KEY_FRIENDS_PINNED, "")
+    override fun setFriendsPinnedKeys(value: String) = store.putString(KEY_FRIENDS_PINNED, value)
+    override fun friendsMaxFileMb(): Int = store.getInt(KEY_FRIENDS_MAX_FILE_MB, 100)
+    override fun setFriendsMaxFileMb(value: Int) = store.putInt(KEY_FRIENDS_MAX_FILE_MB, value.coerceAtLeast(0))
+
+    override fun friendsIntroSeen(): Boolean = store.getBoolean(KEY_FRIENDS_INTRO_SEEN, false)
+
+    override fun setFriendsIntroSeen(value: Boolean) {
+        store.putBoolean(KEY_FRIENDS_INTRO_SEEN, value)
+    }
+
     override fun irohPeersJson(): String = store.getString(KEY_IROH_PEERS, "")
 
     override fun setIrohPeersJson(value: String) {
@@ -1405,7 +1428,7 @@ class BaseAppSettings(
         /** Never kept in clear text: [SealingKvStore] seals these with the platform's secret store. */
         val SECRET_KEYS: Set<String> = setOf(
             KEY_CLIPBOARD_PRIVATE_KEY, KEY_DIAGNOSTICS_PRIVATE_KEY, KEY_IROH_SECRET_KEY,
-            KEY_DEVICE_PIN, KEY_TAILSCALE_AUTH_KEY, KEY_IROH_RELAY_TOKEN
+            KEY_DEVICE_PIN, KEY_TAILSCALE_AUTH_KEY, KEY_IROH_RELAY_TOKEN, KEY_FRIENDS_SECRET_KEY
         )
 
         const val KEY_GOOGLE = "google_account_link"
@@ -1526,6 +1549,11 @@ class BaseAppSettings(
         const val KEY_IROH_RELAY_URL = "iroh_relay_url"
         const val KEY_IROH_RELAY_TOKEN = "iroh_relay_token"
         const val KEY_IROH_SECRET_KEY = "iroh_secret_key_b64"
+        const val KEY_FRIENDS_SECRET_KEY = "friends_secret_key_b64"
+        const val KEY_FRIENDS_HIDE_IP = "friends_hide_ip"
+        const val KEY_FRIENDS_MAX_FILE_MB = "friends_max_file_mb"
+        const val KEY_FRIENDS_PINNED = "friends_pinned_keys"
+        const val KEY_FRIENDS_INTRO_SEEN = "friends_intro_seen"
         const val KEY_IROH_PEERS = "iroh_peers_json"
         const val KEY_TAILSCALE_AUTH_KEY = "tailscale_auth_key"
         const val KEY_TAILSCALE_AUTH_KEY_FINGERPRINT = "tailscale_auth_key_fingerprint"

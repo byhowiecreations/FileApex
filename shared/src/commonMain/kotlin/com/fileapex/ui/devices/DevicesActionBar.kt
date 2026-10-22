@@ -188,6 +188,13 @@ internal fun DevicesActionBar(
                                 onJoinDevice()
                             }
                         )
+                        DropdownMenuItem(
+                            text = { Text(stringRes("friends_entry")) },
+                            onClick = {
+                                onAddMenuOpenChange(false)
+                                com.fileapex.friends.ui.FriendsUi.open()
+                            }
+                        )
                     }
                 }
             }
@@ -264,6 +271,13 @@ internal fun DevicesActionBar(
                         onClick = {
                             onAddMenuOpenChange(false)
                             onJoinDevice()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringRes("friends_entry")) },
+                        onClick = {
+                            onAddMenuOpenChange(false)
+                            com.fileapex.friends.ui.FriendsUi.open()
                         }
                     )
                 }

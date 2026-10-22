@@ -72,9 +72,26 @@ internal object ShortcutIconRenderer {
             )
         )
 
+    /** A friend has no device photo: the initial on a colour taken from the group, like the avatar in the app. */
+    fun friend(context: Context, label: String, group: String): IconCompat {
+        val hue = ((group.lowercase().hashCode() and 0x7fffffff) % 360).toFloat()
+        val background = android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.45f, 0.62f))
+        val initial = label.trim().take(1).uppercase().ifEmpty { "?" }
+        return cached(context, "friend-$initial-$hue", background) { canvas, size ->
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = GLYPH
+                textSize = size * 0.5f
+                textAlign = Paint.Align.CENTER
+                isFakeBoldText = true
+            }
+            canvas.drawText(initial, size / 2f, size / 2f - (paint.descent() + paint.ascent()) / 2f, paint)
+        }
+    }
+
     private fun cached(
         context: Context,
         key: String,
+        background: Int = BACKGROUND,
         drawGlyph: (Canvas, Int) -> Unit
     ): IconCompat {
         synchronized(cache) {
@@ -84,7 +101,7 @@ internal object ShortcutIconRenderer {
         val size = (VIEWPORT_DP * density).toInt().coerceAtLeast(108)
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(BACKGROUND)
+        canvas.drawColor(background)
         drawGlyph(canvas, size)
         val icon = IconCompat.createWithAdaptiveBitmap(bitmap)
         synchronized(cache) {

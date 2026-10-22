@@ -37,6 +37,9 @@ interface MessageDao {
     )
     suspend fun pruneUnpinnedOlderThan(cutoff: Long): Int
 
+    @Query("SELECT COUNT(*) FROM messages")
+    suspend fun countAll(): Int
+
     @Query("DELETE FROM messages")
     suspend fun deleteAllMessages()
 }
@@ -63,6 +66,9 @@ interface TombstoneDao {
 
     @Query("SELECT COALESCE(MAX(updatedAt), 0) FROM tombstones")
     suspend fun latestChange(): Long
+
+    @Query("SELECT COUNT(*) FROM tombstones")
+    suspend fun countAll(): Int
 
     @Query("DELETE FROM tombstones")
     suspend fun deleteAllTombstones()
@@ -105,6 +111,9 @@ interface ProcessedPacketDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(packets: List<ProcessedPacketEntity>)
+
+    @Query("SELECT COUNT(*) FROM processed_packets")
+    suspend fun countAll(): Int
 
     @Query("DELETE FROM processed_packets")
     suspend fun deleteAllPackets()
@@ -173,6 +182,32 @@ abstract class BulletinBoardTransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun insertOutboxEntry(entry: OutboxEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun importMessages(rows: List<MessageEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun importTombstones(rows: List<TombstoneEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun importOutbox(rows: List<OutboxEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun importPackets(rows: List<ProcessedPacketEntity>)
+
+    /** One transaction; ids and stamps are kept and rows already present win, so a repeat after an interrupted copy is harmless. */
+    @Transaction
+    open suspend fun importFromLegacyFile(
+        messages: List<MessageEntity>,
+        tombstones: List<TombstoneEntity>,
+        outbox: List<OutboxEntity>,
+        packets: List<ProcessedPacketEntity>
+    ) {
+        importMessages(messages)
+        importTombstones(tombstones)
+        importOutbox(outbox)
+        importPackets(packets)
+    }
 
     @Transaction
     open suspend fun migrateLegacyMessages(messages: List<MessageEntity>) {

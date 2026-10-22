@@ -86,13 +86,14 @@ object DeviceDiagnosticsFormatter {
         return "$arch · $hardware · $cores · $freq"
     }
 
-    /** "0.19.2 (GitHub, build 210)", or a dash from a device too old to report its app version. */
+    /** "0.19.2 (GitHub, build 210)" or "0.19.6a (Docker, build 214)", or a dash from a device too old to report its app version. */
     fun appVersionSummary(app: AppDiagnostics): String {
         if (app.versionName.isBlank()) return "-"
         val source = when (app.source) {
             "play" -> AppI18n.t("app_source_play")
             "fdroid" -> AppI18n.t("app_source_fdroid")
             "github" -> AppI18n.t("app_source_github")
+            "docker" -> "Docker"
             else -> ""
         }
         val build = if (app.versionCode > 0) AppI18n.t("app_build_number", app.versionCode.toString()) else ""

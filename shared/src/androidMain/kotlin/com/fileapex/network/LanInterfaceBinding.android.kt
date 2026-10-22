@@ -74,3 +74,11 @@ actual suspend fun peerHttpGetStreaming(
 ): PeerBoundStreamResult? = AndroidPeerHttpPlatform.getStreaming(
     host, port, pathWithQuery, connectTimeoutMs, readIdleTimeoutMs, onChunk, onStatus
 )
+
+actual suspend fun securePairingQrExchange(request: SecurePairingExchange): SecurePairingOutcome =
+    SecurePairingClient.runQr(request)
+
+actual suspend fun securePairingSasExchange(
+    request: SecurePairingExchange,
+    onCode: suspend (String) -> Boolean
+): SecurePairingOutcome = SecurePairingClient.runSas(request, onCode)

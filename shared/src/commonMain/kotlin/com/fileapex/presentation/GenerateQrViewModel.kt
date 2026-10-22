@@ -96,9 +96,6 @@ class GenerateQrViewModel : ViewModel() {
                     return@withContext null
                 }
                 val live = FileApexServices.localIdentity
-                val freshRandomCode = PairingPayload.generatePairingCode(
-                    exclude = LanPairingDiscovery.lastUsedCode().orEmpty()
-                )
                 PairingPayloadFactory.create(
                     deviceId = live.deviceId,
                     deviceName = live.deviceName,
@@ -106,9 +103,9 @@ class GenerateQrViewModel : ViewModel() {
                     port = live.sharePort,
                     rootPath = live.rootPath,
                     pinRequired = FileApexServices.settings.pinRequiredEnabled.value,
-                    pairingCode = freshRandomCode,
                     tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
-                    tlsPort = com.fileapex.security.tls.LocalTlsInfo.port
+                    tlsPort = com.fileapex.security.tls.LocalTlsInfo.port,
+                    pairingSecret = com.fileapex.domain.pairing.SecurePairingProof.newSecretHex()
                 )
             }
 

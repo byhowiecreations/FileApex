@@ -2,23 +2,18 @@ package main
 
 import "testing"
 
-func TestPairCheckCodeMatchesTheApp(t *testing.T) {
-	// The same vectors are asserted in PairingCheckCodeTest.kt.
-	cases := []struct{ host, joiner, code, want string }{
-		{"aabbcc", "ddeeff", "123456", "862 634"},
-		{"aabbcc", "ddeeff", "123 456", "862 634"},
-		{"ddeeff", "aabbcc", "123456", "463 093"},
-		{"0123456789abcdef", "fedcba9876543210", "000001", "962 314"},
+func TestPairSasMatchesTheApp(t *testing.T) {
+	// The same vectors are asserted in PairingSasTest.kt.
+	cases := []struct{ host, joiner, want string }{
+		{"aabbcc", "ddeeff", "077 390"},
+		{"ddeeff", "aabbcc", "914 018"},
 	}
 	for _, c := range cases {
-		if got := pairCheckCode(c.host, c.joiner, c.code); got != c.want {
-			t.Errorf("pairCheckCode(%q,%q,%q) = %q, want %q", c.host, c.joiner, c.code, got, c.want)
+		if got := pairSasCode(c.host, c.joiner, "host-id", "join-id", "0a1b", "2c3d"); got != c.want {
+			t.Errorf("pairSasCode(%q,%q) = %q, want %q", c.host, c.joiner, got, c.want)
 		}
 	}
-}
-
-func TestCheckKeyFallsBackToTheDeviceID(t *testing.T) {
-	if checkKey(" ABC123 ", "dev") != "abc123" || checkKey("", " dev ") != "dev" {
-		t.Error("pairKey did not follow the app's rule")
+	if got := pairCommit("2c3d", "ddeeff", "join-id"); got != "16d116308cc6901b6ede677d8ec639ab097a9b8d04d709854dc0c163cd370945" {
+		t.Errorf("pairCommit = %q", got)
 	}
 }

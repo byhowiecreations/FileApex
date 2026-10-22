@@ -10,7 +10,20 @@ import androidx.room3.PrimaryKey
 import androidx.room3.Query
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
+import com.fileapex.data.bulletin.BulletinBoardTransactionDao
+import com.fileapex.data.bulletin.MessageDao
+import com.fileapex.data.bulletin.MessageEntity
+import com.fileapex.data.bulletin.OutboxDao
+import com.fileapex.data.bulletin.OutboxEntity
+import com.fileapex.data.bulletin.ProcessedPacketDao
+import com.fileapex.data.bulletin.ProcessedPacketEntity
+import com.fileapex.data.bulletin.TombstoneDao
+import com.fileapex.data.bulletin.TombstoneEntity
 import com.fileapex.data.note.NoteRecord
+import com.fileapex.friends.data.FriendIncomingEntity
+import com.fileapex.friends.data.FriendInviteEntity
+import com.fileapex.friends.data.FriendLinkEntity
+import com.fileapex.friends.data.FriendsDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
@@ -225,9 +238,16 @@ interface NoteDao {
         PendingControlDeliveryEntity::class,
         PendingTransferEntity::class,
         NoteEntity::class,
-        PeerCandidateEntity::class
+        PeerCandidateEntity::class,
+        MessageEntity::class,
+        TombstoneEntity::class,
+        OutboxEntity::class,
+        ProcessedPacketEntity::class,
+        FriendLinkEntity::class,
+        FriendInviteEntity::class,
+        FriendIncomingEntity::class
     ],
-    version = 16
+    version = 19
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {
@@ -236,6 +256,12 @@ abstract class FileApexDatabase : RoomDatabase() {
     abstract fun pendingTransferDao(): PendingTransferDao
     abstract fun noteDao(): NoteDao
     abstract fun peerCandidateDao(): PeerCandidateDao
+    abstract fun messageDao(): MessageDao
+    abstract fun tombstoneDao(): TombstoneDao
+    abstract fun outboxDao(): OutboxDao
+    abstract fun processedPacketDao(): ProcessedPacketDao
+    abstract fun transactionDao(): BulletinBoardTransactionDao
+    abstract fun friendsDao(): FriendsDao
 }
 
 @Suppress("NO_ACTUAL_FOR_EXPECT")

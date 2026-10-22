@@ -4,7 +4,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
@@ -41,6 +43,9 @@ internal enum class FreestyleOptionAction(val key: String, val icon: ImageVector
     FILES("files", Icons.Filled.Folder),
     ADD_DEVICE("add_device", Icons.Filled.QrCode),
     JOIN_DEVICE("join_device", Icons.Filled.Devices),
+    FRIENDS("friends", Icons.Filled.People),
+    /** The Groups tile: listed only once a friend exists. */
+    GROUPS("groups", Icons.Filled.Groups),
     SEND_CLIPBOARD("send_clipboard", Icons.Filled.ContentPaste),
     CHECK_BATTERIES("check_batteries", Icons.Filled.BatteryChargingFull),
     SETTINGS("settings", Icons.Filled.Settings);
@@ -50,6 +55,8 @@ internal enum class FreestyleOptionAction(val key: String, val icon: ImageVector
             FILES,
             ADD_DEVICE,
             JOIN_DEVICE,
+            FRIENDS,
+            GROUPS,
             SEND_CLIPBOARD,
             CHECK_BATTERIES,
             SETTINGS
@@ -74,6 +81,8 @@ internal fun FreestyleOptionAction.label(): String = when (this) {
     FreestyleOptionAction.FILES -> "Files"
     FreestyleOptionAction.ADD_DEVICE -> stringRes("add_new_device")
     FreestyleOptionAction.JOIN_DEVICE -> stringRes("join_device")
+    FreestyleOptionAction.FRIENDS -> stringRes("friends_entry")
+    FreestyleOptionAction.GROUPS -> stringRes("groups_title")
     FreestyleOptionAction.SEND_CLIPBOARD -> stringRes("send_clipboard")
     FreestyleOptionAction.CHECK_BATTERIES -> stringRes("check_batteries")
     FreestyleOptionAction.SETTINGS -> stringRes("settings")

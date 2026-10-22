@@ -261,6 +261,8 @@ private fun PeerHttpPlatform.executeBoundHttp(
                 contentType = contentType,
                 timeoutMs = timeoutMs
             )
+        }.onFailure { error ->
+            println("PeerBoundHttp: $method ${NetworkUtils.lastOctetLabel(host)}:$port via ${NetworkUtils.lastOctetLabel(localIp)} failed - ${error::class.simpleName}: ${error.message} cause=${error.cause}")
         }.getOrNull()
         if (response != null && response.statusCode > 0) {
             return response

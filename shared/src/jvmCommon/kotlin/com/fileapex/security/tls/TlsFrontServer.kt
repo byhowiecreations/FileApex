@@ -19,8 +19,15 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509ExtendedTrustManager
 
-/** Accepts a client certificate only when its public key pin belongs to a paired device. Dates are ignored. */
-class PinningClientTrustManager(private val directory: TlsPeerDirectory) : X509ExtendedTrustManager() {
+/**
+ * Accepts a client certificate only when its public key pin belongs to a paired device. Dates are ignored.
+ * [allowUnpinned] lets a key nobody has paired yet complete the handshake (while this device shows its pairing
+ * screen); [TlsFrontServer] then limits such a connection to the secure pairing route.
+ */
+class PinningClientTrustManager(
+    private val directory: TlsPeerDirectory,
+    private val allowUnpinned: () -> Boolean = { false }
+) : X509ExtendedTrustManager() {
     override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?, socket: Socket?) = verify(chain)
     override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?, engine: SSLEngine?) = verify(chain)
     override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = verify(chain)
@@ -36,7 +43,7 @@ class PinningClientTrustManager(private val directory: TlsPeerDirectory) : X509E
     private fun verify(chain: Array<out X509Certificate>?) {
         val leaf = chain?.firstOrNull() ?: throw CertificateException("no client certificate")
         if (leaf.publicKey.algorithm != "EC") throw CertificateException("unsupported key type")
-        if (directory.deviceIdForPin(TlsPin.of(leaf.publicKey)) == null) {
+        if (directory.deviceIdForPin(TlsPin.of(leaf.publicKey)) == null && !allowUnpinned()) {
             throw CertificateException("client key is not pinned")
         }
     }
@@ -56,6 +63,7 @@ class TlsFrontServer(
     override val bridgePort: Int,
     private val idleTimeoutMs: Long = IDLE_TIMEOUT_MS,
     private val sweepIntervalMs: Long = SWEEP_INTERVAL_MS,
+    private val allowUnpinned: () -> Boolean = { false },
     private val log: (String, Throwable?) -> Unit
 ) : TlsFront {
     private val running = AtomicBoolean(false)
@@ -111,7 +119,7 @@ class TlsFrontServer(
     /** Closes connections whose device or pin is no longer in the directory (unpaired, re-keyed). */
     fun revalidate() {
         for ((socket, peer) in sessions) {
-            if (directory.deviceIdForPin(peer.pin) != peer.deviceId) {
+            if (!peer.pairingOnly && directory.deviceIdForPin(peer.pin) != peer.deviceId) {
                 log("TLS connection dropped: peer ${peer.deviceId} no longer pinned", null)
                 runCatching { socket.close() }
             }
@@ -127,7 +135,7 @@ class TlsFrontServer(
         val keyManagers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
             .apply { init(keyStore, KEY_PASSWORD) }.keyManagers
         val context = SSLContext.getInstance("TLS")
-        context.init(keyManagers, arrayOf<TrustManager>(PinningClientTrustManager(directory)), null)
+        context.init(keyManagers, arrayOf<TrustManager>(PinningClientTrustManager(directory, allowUnpinned)), null)
         val address = InetAddress.getByName(bindHost)
         val factory = context.serverSocketFactory
         val socket = try {
@@ -175,17 +183,19 @@ class TlsFrontServer(
                 return
             }
             val pin = TlsPin.of(leaf.publicKey)
-            val deviceId = directory.deviceIdForPin(pin) ?: run {
+            val known = directory.deviceIdForPin(pin)
+            if (known == null && !allowUnpinned()) {
                 log("TLS client key ${TlsPin.forLog(pin)} is not pinned", null)
                 return
             }
+            val deviceId = known.orEmpty()
             client.soTimeout = 0
             client.tcpNoDelay = true
             client.keepAlive = true
             val up = Socket(BRIDGE_ADDRESS, bridgePort).also { upstream = it; open.add(it) }
             up.tcpNoDelay = true
             sourcePort = up.localPort
-            val peer = BridgedPeer(deviceId, pin, client.inetAddress.hostAddress.orEmpty().substringBefore('%'))
+            val peer = BridgedPeer(deviceId, pin, client.inetAddress.hostAddress.orEmpty().substringBefore('%'), pairingOnly = known == null)
             TlsBridgeRegistry.register(sourcePort, peer)
             sessions[client] = peer
             val activity = AtomicLong(System.nanoTime()).also { lastActivity[client] = it }

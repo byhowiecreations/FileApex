@@ -15,11 +15,11 @@ data class PairingPayload(
     val publicKeyHash: String = "",
     /** When true, the scanner must supply this device's PIN to complete pairing. */
     val pinRequired: Boolean = false,
-    /** Short 6-digit one-time manual entry pairing code. */
-    val pairingCode: String = "",
     /** SPKI SHA-256 hex of the broadcaster's TLS key; delivered in the QR, which is the trusted channel. */
     val tlsPin: String = "",
     val tlsPort: Int = 0,
+    /** 128 random bits (hex) that only the QR carries; never in the beacon. Empty for typed or auto-filled codes. */
+    val pairingSecret: String = "",
     /** True only when [tlsPin] came from a scanned QR code; beacon and JSON pins need user confirmation. */
     @kotlinx.serialization.Transient
     val tlsPinTrusted: Boolean = false
@@ -35,24 +35,12 @@ data class PairingPayload(
         append("&n=").append(encodeQueryValue(deviceName))
         append("&h=").append(encodeQueryValue(host))
         append("&p=").append(port)
-        val activeCode = pairingCode.ifBlank { generatePairingCode() }
-        append("&code=").append(activeCode)
         if (pinRequired) append("&pin=1")
         if (tlsPin.isNotBlank() && tlsPort > 0) {
             append("&tp=").append(tlsPin)
             append("&tport=").append(tlsPort)
         }
-    }
-
-    /** Formats the 6-digit manual pairing code for human display (e.g. "742 - 918"). */
-    fun toShortManualCode(): String {
-        val code = pairingCode.ifBlank { generatePairingCode() }
-        val digits = code.filter { it.isDigit() }
-        return if (digits.length == 6) {
-            "${digits.substring(0, 3)} - ${digits.substring(3, 6)}"
-        } else {
-            code
-        }
+        if (pairingSecret.isNotBlank()) append("&s=").append(pairingSecret)
     }
 
     companion object {
@@ -67,6 +55,7 @@ data class PairingPayload(
             """(?i)(fileapex|apex|omninode):/+/?pair/?\?[^\s]+"""
         )
         private val TLS_PIN_HEX = Regex("[0-9a-f]{64}")
+        private val SECRET_HEX = Regex("[0-9a-f]{32}")
         private val CONTROL_CHARS = Regex("""[\u0000-\u001F\u007F]""")
 
         fun parse(qrText: String): PairingPayload =
@@ -204,10 +193,10 @@ data class PairingPayload(
                 ?: error("Pairing link missing port")
             val version = params["v"]?.toIntOrNull() ?: 1
             val pinRequired = params["pin"] == "1" || params["pin"].equals("true", ignoreCase = true)
-            val code = params["code"] ?: ""
             val tlsPin = params["tp"]?.lowercase()?.takeIf { TLS_PIN_HEX.matches(it) } ?: ""
             val tlsPort = params["tport"]?.toIntOrNull()?.takeIf { it in 1..65535 && tlsPin.isNotEmpty() } ?: 0
 
+            val secret = params["s"]?.lowercase()?.takeIf { SECRET_HEX.matches(it) } ?: ""
             return PairingPayload(
                 v = version,
                 deviceId = deviceId,
@@ -217,20 +206,11 @@ data class PairingPayload(
                 rootPath = "",
                 publicKeyHash = "",
                 pinRequired = pinRequired,
-                pairingCode = code,
                 tlsPin = tlsPin,
                 tlsPort = tlsPort,
+                pairingSecret = secret,
                 tlsPinTrusted = tlsPin.isNotEmpty() && tlsPort > 0
             )
-        }
-
-        fun generatePairingCode(exclude: String = ""): String {
-            val blocked = exclude.filter { it.isDigit() }
-            repeat(32) {
-                val code = kotlin.random.Random.nextInt(100000, 999999).toString()
-                if (code != blocked) return code
-            }
-            return kotlin.random.Random.nextInt(100000, 999999).toString()
         }
 
         private fun parseJson(raw: String): PairingPayload =
@@ -283,11 +263,10 @@ object PairingPayloadFactory {
         rootPath: String,
         publicKeyHash: String = "",
         pinRequired: Boolean = false,
-        pairingCode: String = "",
         tlsPin: String = "",
-        tlsPort: Int = 0
+        tlsPort: Int = 0,
+        pairingSecret: String = ""
     ): PairingPayload {
-        val code = pairingCode.ifBlank { PairingPayload.generatePairingCode() }
         return PairingPayload(
             deviceId = deviceId,
             deviceName = deviceName,
@@ -296,9 +275,9 @@ object PairingPayloadFactory {
             rootPath = rootPath,
             publicKeyHash = publicKeyHash,
             pinRequired = pinRequired,
-            pairingCode = code,
             tlsPin = tlsPin,
-            tlsPort = tlsPort
+            tlsPort = tlsPort,
+            pairingSecret = pairingSecret
         )
     }
 }

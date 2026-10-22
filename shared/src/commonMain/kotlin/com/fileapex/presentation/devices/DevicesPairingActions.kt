@@ -111,19 +111,9 @@ internal class DevicesPairingActions(
         val broadcasterName = verified?.deviceName ?: payload.deviceName
         val broadcasterRoot = verified?.rootPath ?: payload.rootPath
 
-        // Both users confirm: this screen shows the check code and waits for the user to say it matches the other
-        // device's screen. Nothing is stored or sent before that, and the other device asks its own user afterwards.
+        // The pairing code that was scanned, typed or auto-filled is the authorization; there is no second check.
         val hostPin = payload.tlsPin.ifBlank { verified?.tlsPin.orEmpty() }
         val hostPort = if (payload.tlsPort > 0) payload.tlsPort else verified?.tlsPort ?: 0
-        val checkCode = com.fileapex.domain.pairing.PairingCheckCode.derive(
-            hostKey = com.fileapex.domain.pairing.PairingCheckCode.key(hostPin, broadcasterId),
-            joinerKey = com.fileapex.domain.pairing.PairingCheckCode.key(com.fileapex.security.tls.LocalTlsInfo.pin, identity.deviceId),
-            pairingCode = payload.pairingCode
-        )
-        val codeMatches = com.fileapex.domain.pairing.PairingConfirmations.board.askJoiner(
-            com.fileapex.domain.pairing.JoinerCheck(hostName = broadcasterName, checkCode = checkCode)
-        )
-        if (!codeMatches) error(AppI18n.t("pairing_cancelled"))
 
         val broadcasterEntity = PairedDeviceEntity(
             deviceId = broadcasterId,
@@ -133,14 +123,6 @@ internal class DevicesPairingActions(
             publicKeyHash = verified?.publicKeyHash?.ifBlank { payload.publicKeyHash } ?: payload.publicKeyHash,
             rootPath = broadcasterRoot
         )
-        repository.adoptFromPairing(broadcasterEntity)
-        // The check code covered this key, so the user has verified it against the other screen.
-        if (hostPin.isNotEmpty() && hostPort > 0) {
-            repository.recordTlsPin(broadcasterId, hostPin, hostPort)
-        }
-        verified?.let { state ->
-            repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
-        }
 
         val scannerHost = NetworkUtils.preferredLanIpv4()
         if (!NetworkUtils.isUsableLanIpv4(scannerHost)) {
@@ -154,24 +136,52 @@ internal class DevicesPairingActions(
             publicKeyHash = "",
             rootPath = identity.rootPath,
             tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
-            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port,
-            // Only the host sees this, after this user confirmed the code: it lets the host say "same hardware as X".
-            hardwareHash = com.fileapex.platform.HardwareId.local
+            tlsPort = com.fileapex.security.tls.LocalTlsInfo.port
         )
         FileApexServices.pairingCoordinator.awaitShareServerReady()
-        _uiState.update { it.copy(statusMessage = AppI18n.t("pairing_waiting_host", broadcasterName)) }
-        try {
-            FileApexServices.client.postPairingRespond(
-                host = payload.host,
-                port = payload.port,
-                scannerDevice = scannerEntity,
-                pin = pin,
-                pairingCode = payload.pairingCode
-            )
-        } catch (error: Throwable) {
-            // The other user declined, or the request failed: do not keep a device that never accepted us.
-            if (broadcasterId !in preexistingIds) repository.discardUnconfirmedPairing(broadcasterId)
-            throw error
+
+        // One way to pair: TLS to the host, then either the scanned QR secret or the number both users compare.
+        if (hostPort <= 0) {
+            println("DevicesPairingActions: ${broadcasterName} offers no TLS port, so it cannot pair securely")
+            error(AppI18n.t("pairing_handshake_failed", "unsupported"))
+        }
+        val exchange = com.fileapex.network.SecurePairingExchange(
+            host = payload.host,
+            tlsPort = hostPort,
+            hostDeviceId = broadcasterId,
+            scanner = scannerEntity,
+            devicePin = pin.orEmpty().trim(),
+            timeoutMs = 120_000L,
+            qrHostPin = if (payload.tlsPinTrusted) payload.tlsPin else "",
+            qrSecret = payload.pairingSecret
+        )
+        val outcome = if (payload.pairingSecret.isNotBlank()) {
+            com.fileapex.network.securePairingQrExchange(exchange)
+        } else {
+            com.fileapex.network.securePairingSasExchange(exchange) { code ->
+                com.fileapex.domain.pairing.PairingConfirmations.board.askJoiner(
+                    com.fileapex.domain.pairing.JoinerCheck(hostName = broadcasterName, checkCode = code)
+                )
+            }
+        }
+        val provenPin = when (outcome) {
+            is com.fileapex.network.SecurePairingOutcome.Paired -> outcome.hostPin
+            com.fileapex.network.SecurePairingOutcome.Declined -> error(AppI18n.t("pairing_cancelled"))
+            is com.fileapex.network.SecurePairingOutcome.Rejected -> error(securePairingMessage(outcome.code))
+            is com.fileapex.network.SecurePairingOutcome.Unreachable -> {
+                println("DevicesPairingActions: secure pairing unreachable - ${outcome.reason}")
+                error(com.fileapex.network.PeerLanHttpPolicy.unreachableMessage(payload.host, payload.port))
+            }
+            is com.fileapex.network.SecurePairingOutcome.NotVerified -> {
+                println("DevicesPairingActions: secure pairing not verified - ${outcome.reason}")
+                error(AppI18n.t("pairing_handshake_failed", "verification"))
+            }
+        }
+        // Stored only now, with the key the handshake proved.
+        repository.adoptFromPairing(broadcasterEntity)
+        repository.recordTlsPin(broadcasterId, provenPin, hostPort)
+        verified?.let { state ->
+            repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
         }
         if (!pin.isNullOrBlank()) {
             FileApexServices.client.rememberSessionPin(payload.host, payload.port, pin)
@@ -234,6 +244,15 @@ internal class DevicesPairingActions(
             }
         }
     }
+}
+
+private fun securePairingMessage(code: String): String = when {
+    "pin_required" in code -> AppI18n.t("incorrect_pin_pairing")
+    "pairing_declined" in code -> AppI18n.t("pairing_declined")
+    "pairing_busy" in code -> AppI18n.t("pairing_busy")
+    "slow_down" in code -> AppI18n.t("pairing_slow_down")
+    "pairing_code" in code -> AppI18n.t("pairing_code_expired")
+    else -> AppI18n.t("pairing_handshake_failed", code)
 }
 
 internal const val TLS_CONFIRM_WAIT_MS = 10L * 60L * 1000L

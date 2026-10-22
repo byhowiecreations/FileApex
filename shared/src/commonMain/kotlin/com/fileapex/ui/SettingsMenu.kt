@@ -31,6 +31,7 @@ object SettingsMenuIds {
     const val BACKUP_SYNC = "backup_sync"
     const val NOTIFICATIONS = "notifications"
     const val CLIPBOARD = "clipboard"
+    const val GROUPS = "groups"
     const val DEVICE_DETAILS = "device_details"
     const val DESKTOP_LAYOUT = "desktop_layout"
     const val WINDOWS_DESIGN = "windows_design"
@@ -53,6 +54,8 @@ fun settingsMenuEntries(
     googleCloud: Boolean = true,
     tailscale: Boolean = true,
     iroh: Boolean = false,
+    /** Friends and other groups; false where the friends engine is not built in. */
+    groups: Boolean = false,
     /** Windows and Linux can start the app at sign-in; the desktop menu otherwise hides the row. */
     autoLaunchOnDesktop: Boolean = false,
     /** When false, advanced rows are left out unless they are in use (see [inUseAdvancedIds]). */
@@ -81,6 +84,7 @@ fun settingsMenuEntries(
     add(SettingsMenuSection.Appearance, SettingsMenuIds.BULLETIN_BOARD)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.NOTIFICATIONS)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.CLIPBOARD)
+    if (groups) add(SettingsMenuSection.Appearance, SettingsMenuIds.GROUPS)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.DEVICE_DETAILS)
     if (desktopFileSelection) add(SettingsMenuSection.Appearance, SettingsMenuIds.DESKTOP_LAYOUT)
     if (windowsFluent) add(SettingsMenuSection.Appearance, SettingsMenuIds.WINDOWS_DESIGN)

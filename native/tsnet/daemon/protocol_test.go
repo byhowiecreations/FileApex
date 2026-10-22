@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,18 +27,13 @@ func TestFingerprintMatchesKotlin(t *testing.T) {
 }
 
 func TestParseBeacon(t *testing.T) {
-	raw := `FA_PAIR:{"deviceName":"Phone","ipAddress":"192.168.1.20","port":8080,"pairingCode":"522457","timestamp":10,"deviceId":"host-1","pinRequired":false}`
+	raw := `FA_PAIR:{"deviceName":"Phone","ipAddress":"192.168.1.20","port":8080,"timestamp":10,"deviceId":"host-1","pinRequired":false,"tlsPin":"AABB","tlsPort":8081}`
 	beacon, ok := parseBeacon(raw)
 	if !ok {
 		t.Fatal("expected beacon")
 	}
-	if beacon.PairingCode != "522457" || beacon.IPAddress != "192.168.1.20" || beacon.Port != 8080 {
+	if beacon.TLSPin != "aabb" || beacon.TLSPort != 8081 || beacon.IPAddress != "192.168.1.20" || beacon.Port != 8080 {
 		t.Fatalf("beacon = %+v", beacon)
-	}
-	dashed := `{"deviceName":"Phone","ipAddress":"10.0.0.8","port":8080,"pairingCode":"522-457","timestamp":10,"deviceId":"host-1"}`
-	beacon, ok = parseBeacon(dashed)
-	if !ok || beacon.PairingCode != "522457" {
-		t.Fatalf("dashed beacon = %+v ok=%v", beacon, ok)
 	}
 	if _, ok := parseBeacon("FA_PAIR:{}"); ok {
 		t.Fatal("empty beacon was accepted")
@@ -251,31 +248,22 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 	t.Cleanup(func() { node.shutdown(time.Second) })
 	waitForHealth(t, node.listenPort())
 
-	var gotCode string
 	var gotDevice deviceRecord
-	broadcaster := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/identity":
-			_ = json.NewEncoder(w).Encode(nodeState{
-				DeviceID:           "host-1",
-				DeviceName:         "Phone",
-				IPAddress:          "192.168.1.20",
-				Port:               8080,
-				Platform:           "android",
-				OS:                 "android",
-				RootPath:           "/storage/emulated/0",
-				MembershipVersion:  1000,
-				MembershipProtocol: membershipProtocol,
-				PublicKeyHash:      "abc",
-			})
-		case "/api/v1/pairing/respond":
-			gotCode = r.URL.Query().Get("code")
-			if err := json.NewDecoder(r.Body).Decode(&gotDevice); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			w.WriteHeader(http.StatusCreated)
-			go func() {
+	var revealedAndCommitted bool
+	hostTLS, err := newTLSState(t.TempDir(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostLeaf, err := x509.ParseCertificate(hostTLS.identity.cert.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostPin, err := leafPin(hostLeaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startSeed := func() {
+		go func() {
 				time.Sleep(30 * time.Millisecond)
 				removedAt := int64(50)
 				seed := clusterSync{
@@ -330,6 +318,62 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 					resp.Body.Close()
 				}
 			}()
+	}
+	var commit, nonceA string
+	pairingHost := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch r.URL.Path {
+		case "/api/v1/pairing/secure/offer":
+			commit, _ = body["commit"].(string)
+			raw, _ := json.Marshal(body["scannerDevice"])
+			_ = json.Unmarshal(raw, &gotDevice)
+			nonceA = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
+			_ = json.NewEncoder(w).Encode(map[string]string{"sessionId": "s1", "nonceA": nonceA})
+		case "/api/v1/pairing/secure/reveal":
+			nonceB, _ := body["nonceB"].(string)
+			joinerPin := ""
+			if len(r.TLS.PeerCertificates) > 0 {
+				joinerPin, _ = leafPin(r.TLS.PeerCertificates[0])
+			}
+			if commit != pairCommit(nonceB, joinerPin, gotDevice.DeviceID) || joinerPin == "" {
+				http.Error(w, "pairing_code_invalid", http.StatusForbidden)
+				return
+			}
+			revealedAndCommitted = true
+		case "/api/v1/pairing/secure/decide":
+			if approved, _ := body["approved"].(bool); !approved || !revealedAndCommitted {
+				http.Error(w, "pairing_declined", http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			startSeed()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	pairingHost.TLS = &tls.Config{Certificates: []tls.Certificate{hostTLS.identity.cert}, ClientAuth: tls.RequireAnyClientCert, MinVersion: tls.VersionTLS12}
+	pairingHost.StartTLS()
+	defer pairingHost.Close()
+	pairingURL, _ := url.Parse(pairingHost.URL)
+	pairingPort, _ := strconv.Atoi(pairingURL.Port())
+	broadcaster := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/identity":
+			_ = json.NewEncoder(w).Encode(nodeState{
+				DeviceID:           "host-1",
+				DeviceName:         "Phone",
+				IPAddress:          "192.168.1.20",
+				Port:               8080,
+				Platform:           "android",
+				OS:                 "android",
+				RootPath:           "/storage/emulated/0",
+				MembershipVersion:  1000,
+				MembershipProtocol: membershipProtocol,
+				PublicKeyHash:      "abc",
+				TLSPin:             hostPin,
+				TLSPort:            pairingPort,
+			})
 		case "/api/v1/devices":
 			_ = json.NewEncoder(w).Encode([]deviceRecord{
 				{DeviceID: "peer-2", DeviceName: "Laptop", LastKnownIP: "192.168.1.30", Port: 8080, RootPath: "/Users/laptop", ClusterVersion: 4000},
@@ -352,14 +396,13 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 		DeviceName:  "Phone",
 		IPAddress:   hostURL.Hostname(),
 		Port:        port,
-		PairingCode: "123456",
 		DeviceID:    "host-1",
 	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotCode != "123456" {
-		t.Fatalf("code = %q", gotCode)
+	if !revealedAndCommitted {
+		t.Fatal("the host never saw a reveal that matched the commitment")
 	}
 	if gotDevice.DeviceID != node.deviceID() || gotDevice.Platform != "linux" || gotDevice.Port != node.listenPort() {
 		t.Fatalf("pairing body = %+v", gotDevice)

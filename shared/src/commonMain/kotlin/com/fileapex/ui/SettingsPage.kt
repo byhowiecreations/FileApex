@@ -38,6 +38,7 @@ internal enum class SettingsPage(val parent: SettingsPage?) {
     DeviceName(Root),
     Tailscale(Root),
     Iroh(Root),
+    Groups(Root),
     LeaveClusterWipe(Root),
     About(Root)
 }

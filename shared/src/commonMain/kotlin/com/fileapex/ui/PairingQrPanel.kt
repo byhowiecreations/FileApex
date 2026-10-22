@@ -46,7 +46,6 @@ fun PairingQrPanel(
     val painter = rememberQrCodePainter(qrText) {
         errorCorrectionLevel = QrErrorCorrectionLevel.Medium
     }
-    val manualCode = payload.toShortManualCode()
 
     Column(
         modifier = modifier
@@ -77,32 +76,6 @@ fun PairingQrPanel(
                 .background(Color.White)
                 .padding(12.dp)
         )
-        
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            modifier = Modifier.padding(vertical = 4.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = stringRes("manual_pairing_code"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = manualCode,
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-
         if (payload.tlsPin.isNotBlank()) {
             Text(
                 text = "${stringRes("tls_fingerprint_label")}: ${com.fileapex.security.tls.TlsFingerprint.short(payload.tlsPin)}",

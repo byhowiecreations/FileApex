@@ -12,10 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -123,3 +127,62 @@ internal fun KineticScope.KineticBatteryChip() {
 
     } } }
 }
+
+/** The Groups chip under the battery chip; only once a friend exists. */
+@Composable
+internal fun KineticScope.KineticFriendsChip() {
+    with(inputs) { with(frame) { with(live) {
+        if (com.fileapex.friends.ui.rememberFriendsCount() == 0) return@with
+        val belowBattery = deviceRows.isNotEmpty() && onCheckBatteries != null
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        centerX.roundToInt(),
+                        (centerY + hubPx / 2f + 16.dp.toPx() + if (belowBattery) 44.dp.toPx() else 0f).roundToInt()
+                    )
+                }
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    layout(placeable.width, placeable.height) {
+                        placeable.placeRelative(-placeable.width / 2, 0)
+                    }
+                }
+        ) {
+            Surface(
+                onClick = { com.fileapex.friends.ui.FriendsUi.open() },
+                shape = RoundedCornerShape(16.dp),
+                color = when (kineticStyle) {
+                    KineticStyle.JADED_STEEL -> KineticStyleLook.jadedCard
+                    KineticStyle.SPACE -> Color(0xDD0D1C22)
+                },
+                border = when (kineticStyle) {
+                    KineticStyle.JADED_STEEL -> BorderStroke(1.dp, KineticStyleLook.jadedCardEdge)
+                    KineticStyle.SPACE -> BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.50f))
+                },
+                shadowElevation = if (kineticStyle == KineticStyle.JADED_STEEL) 0.dp else 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    androidx.compose.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Filled.People,
+                        contentDescription = null,
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringRes("groups_title"),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp),
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    } } }
+}
+

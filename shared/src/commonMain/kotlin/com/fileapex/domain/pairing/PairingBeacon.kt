@@ -5,14 +5,14 @@ import kotlinx.serialization.json.Json
 
 /**
  * Ephemeral LAN advertisement while a host is on the pairing screen.
- * Wire format matches the UDP multicast JSON (device name, IP, port, 6-digit code).
+ * Wire format matches the UDP multicast JSON (device name, IP, port, TLS key). It carries no secret: the two users
+ * compare a number on both screens, or the joiner scans a QR.
  */
 @Serializable
 data class PairingBeacon(
     val deviceName: String,
     val ipAddress: String,
     val port: Int,
-    val pairingCode: String,
     val timestamp: Long,
     val deviceId: String = "",
     val pinRequired: Boolean = false,
@@ -27,15 +27,9 @@ data class PairingBeacon(
         port = port,
         rootPath = "",
         pinRequired = pinRequired,
-        pairingCode = pairingCode,
         tlsPin = tlsPin,
         tlsPort = tlsPort
     )
-
-    fun matchesCode(input: String): Boolean {
-        val digits = digitsOnly(input)
-        return digits.length == 6 && digits == pairingCode
-    }
 
     companion object {
         const val WIRE_PREFIX = "FA_PAIR:"
@@ -72,8 +66,7 @@ data class PairingBeacon(
 
         private fun PairingBeacon.isWellFormed(): Boolean {
             if (deviceId.isBlank() || deviceName.isBlank()) return false
-            if (ipAddress.isBlank() || port !in 1..65535) return false
-            return pairingCode.length == 6 && pairingCode.all { it.isDigit() }
+            return ipAddress.isNotBlank() && port in 1..65535
         }
     }
 }

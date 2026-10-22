@@ -34,6 +34,9 @@ import com.fileapex.ui.theme.FileApexTealDark
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
+/** Ids of pinned friends shown as device rows. */
+const val FRIEND_ROW_PREFIX = "friend:"
+
 @Composable
 fun DeviceEntryIcon(
     row: DeviceListRow,
@@ -41,6 +44,10 @@ fun DeviceEntryIcon(
     tint: Color = FileApexTealDark,
     iconStyle: ThemeIconStyle = LocalThemeIconStyle.current
 ) {
+    if (row.isFriend) {
+        com.fileapex.friends.ui.FriendGlyph(row.deviceName, row.friendGroup.orEmpty(), row.deviceId.removePrefix(FRIEND_ROW_PREFIX), modifier)
+        return
+    }
     DeviceEntryIcon(
         profile = DeviceIconProfile(
             deviceId = row.deviceId,

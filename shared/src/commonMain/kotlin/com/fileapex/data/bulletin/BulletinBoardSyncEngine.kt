@@ -21,7 +21,7 @@ import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
 
 class BulletinBoardSyncEngine(
-    private val database: BulletinBoardDatabase,
+    private val database: com.fileapex.data.db.FileApexDatabase,
     private val repository: BulletinBoardRepository,
     private val scope: CoroutineScope
 ) {

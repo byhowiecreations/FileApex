@@ -206,15 +206,16 @@ object DesktopAwtTrayCoordinator {
                 FileApexServices.deviceRepository.observeDevices(),
                 FileApexServices.presenceMonitor.reachabilityEpochMs,
                 FileApexServices.presenceMonitor.onlineDeviceIds,
-                FileApexServices.presenceMonitor.onlineSnapshotEpochMs
-            ) { roster, _, _, _ ->
+                FileApexServices.presenceMonitor.onlineSnapshotEpochMs,
+                com.fileapex.friends.FriendsHub.friends
+            ) { roster, _, _, _, _ ->
                 roster.map { device ->
                     DesktopTrayDeviceSnapshot(
                         id = device.deviceId,
                         name = device.deviceName,
                         isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
                     )
-                }
+                } + friendTraySnapshots()
             }.collect { snapshots ->
                 devices = snapshots
                 withContext(Dispatchers.Swing) {
@@ -234,7 +235,7 @@ object DesktopAwtTrayCoordinator {
                     name = device.deviceName,
                     isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
                 )
-            }
+            } + friendTraySnapshots()
             withContext(Dispatchers.Swing) {
                 trayPopover?.updateDevices(devices)
             }
@@ -251,7 +252,7 @@ object DesktopAwtTrayCoordinator {
                         name = device.deviceName,
                         isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
                     )
-                }
+                } + friendTraySnapshots()
             }
             withContext(Dispatchers.Swing) {
                 trayPopover?.toggleOrShow(Point(screenX, screenY), devices)
@@ -266,9 +267,14 @@ object DesktopAwtTrayCoordinator {
         DesktopWindowsDropBox.show(deviceIds, singleName) { ids, paths ->
             scope.launch(Dispatchers.Default) {
                 try {
+                    val realIds = sendTrayFriends(ids, paths)
+                    if (realIds.isEmpty()) {
+                        showBalloon(AppI18n.plural("n_files_sent_short", paths.size, paths.size.toString()))
+                        return@launch
+                    }
                     val outcome = FileApexServices.transferQueue.sendLocalPathsOrQueue(
                         absolutePaths = paths,
-                        deviceIds = ids
+                        deviceIds = realIds
                     )
                     val batch = outcome.batch
                     val message = when {

@@ -586,52 +586,6 @@ class FileApexClient(
         )
     }
 
-    suspend fun postPairingRespond(
-        host: String,
-        port: Int,
-        scannerDevice: PairedDeviceEntity,
-        pin: String? = null,
-        pairingCode: String? = null
-    ) {
-        val params = buildMap {
-            if (!pin.isNullOrBlank()) {
-                put("pin", pin.trim())
-            }
-            val code = pairingCode?.filter { it.isDigit() }.orEmpty()
-            if (code.length == 6) {
-                put("code", code)
-            }
-        }
-        val payload = json.encodeToString(PairedDeviceEntity.serializer(), scannerDevice)
-        val response = boundPost(
-            host = host,
-            port = port,
-            pathWithQuery = queryPath(
-                basePath = "/api/v1/pairing/respond",
-                host = host,
-                port = port,
-                params = params
-            ),
-            body = payload,
-            contentType = "application/json",
-            // The host's user has to compare the check code and accept; the host waits up to its confirm timeout.
-            timeoutMs = PAIRING_CONFIRM_TIMEOUT_MS
-        )
-        if (response.statusCode == 403) {
-            val body = response.body.lowercase()
-            if (body.contains("pairing_declined")) {
-                error(AppI18n.t("pairing_declined"))
-            }
-            if (body.contains("pairing_code")) {
-                error(AppI18n.t("pairing_code_expired"))
-            }
-            error(AppI18n.t("incorrect_pin_pairing"))
-        }
-        if (response.statusCode == 409) error(AppI18n.t("pairing_busy"))
-        if (response.statusCode == 429) error(AppI18n.t("pairing_slow_down"))
-        requireSuccess(response, AppI18n.t("pairing_handshake_failed", response.statusCode.toString()))
-    }
-
     suspend fun postRemoteRename(
         host: String,
         port: Int,
@@ -1105,7 +1059,6 @@ class FileApexClient(
          */
         internal const val TRANSFER_IDLE_TIMEOUT_MS = 2 * 60 * 1000L
         internal const val PEER_REQUEST_TIMEOUT_MS = 15_000L
-        private const val PAIRING_CONFIRM_TIMEOUT_MS = 105_000L
         private const val LIST_REQUEST_TIMEOUT_MS = 4_000L
         private const val LIST_PAGE_SIZE = 2_000
         private const val LIST_MAX_ITEMS = 500_000

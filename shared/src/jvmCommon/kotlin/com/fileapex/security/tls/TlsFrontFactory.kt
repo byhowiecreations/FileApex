@@ -40,6 +40,7 @@ object TlsFrontFactory {
             bindHost = bindHost,
             preferredPort = httpPort + PREFERRED_OFFSET,
             bridgePort = freeLoopbackPort(),
+            allowUnpinned = { com.fileapex.domain.pairing.LanPairingDiscovery.isHostingPairing() },
             log = { message, error ->
                 if (error != null) println("TlsFront: $message :: ${error.message}") else println("TlsFront: $message")
             }

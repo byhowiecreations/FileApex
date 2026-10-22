@@ -330,7 +330,7 @@ func runLocal(ctx context.Context, node *Node, resumed bool) error {
 
 func (n *Node) listenAndJoin(ctx context.Context) error {
 	log.Printf("Listening for a FileApex pairing broadcast on %s:%d.", multicastGroup, beaconPort)
-	log.Printf("This node will not create a QR code or its own pairing code.")
+	log.Printf("This node will not create a QR code. Pairing is confirmed on the other device by comparing a number.")
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -339,7 +339,7 @@ func (n *Node) listenAndJoin(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("Heard pairing code %s from %s at %s:%d", beacon.PairingCode, beacon.DeviceName, beacon.IPAddress, beacon.Port)
+		log.Printf("Heard a pairing broadcast from %s at %s:%d", beacon.DeviceName, beacon.IPAddress, beacon.Port)
 		pin := strings.TrimSpace(os.Getenv("FILEAPEX_PIN"))
 		if beacon.PinRequired && pin == "" {
 			if !stdinIsTerminal() {

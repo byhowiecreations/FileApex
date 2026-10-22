@@ -12,4 +12,4 @@ data class DesktopTrayDeviceSnapshot(
 
 /** Ids the Devices tab is already showing as Ready. */
 fun shareReadyDeviceIds(snapshots: List<DesktopTrayDeviceSnapshot>): List<String> =
-    snapshots.filter { it.isOnline }.map { it.id }
+    snapshots.filter { it.isOnline && !isFriendTrayId(it.id) }.map { it.id }

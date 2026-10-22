@@ -302,6 +302,7 @@ fun App(
         themeIconStyle = themeIconStyle,
         kineticStyle = kineticStyle
     ) {
+        com.fileapex.friends.ui.FriendsHost()
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val widthClass = widthSizeClassFor(maxWidth)
             val desktopLayoutMode = if (usesDesktopFileSelection()) {

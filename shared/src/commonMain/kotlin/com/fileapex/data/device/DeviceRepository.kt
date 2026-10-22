@@ -440,7 +440,7 @@ class DeviceRepository(
                 return false
             }
 
-            val observedAt = if (observedDirectly) TimeUtils.now() else 0L
+            val observedAt = if (observedDirectly) TimeUtils.now().also { com.fileapex.domain.peer.PeerAppVersions.record(state) } else 0L
             val normalized = RosterMerge.normalize(
                 PeerNodeStateMapper.toEntity(state, existing).let { entity ->
                     // A relayed state never supplies presence, and an address from another

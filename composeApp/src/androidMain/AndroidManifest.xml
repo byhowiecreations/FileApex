@@ -115,6 +115,12 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fileapex" android:host="friend" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="apex" android:host="pair" />
             </intent-filter>
             <intent-filter>
@@ -252,6 +258,11 @@
         <!-- The watchdog alarm fires this explicitly from inside the app; nothing outside can reach it. -->
         <receiver
             android:name="com.fileapex.platform.FileApexWatchdogAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Accept and Decline on the incoming-file notification from a friend. Only this app sends these. -->
+        <receiver
+            android:name="com.fileapex.friends.FriendsOfferActionReceiver"
             android:exported="false" />
 
         <provider

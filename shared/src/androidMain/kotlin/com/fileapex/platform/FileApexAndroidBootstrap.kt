@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.createFileApexDatabase
-import com.fileapex.data.bulletin.createBulletinBoardDatabase
 import com.fileapex.data.identity.initAndroidLocalIdentity
 import com.fileapex.data.settings.initAndroidAppSettings
 import com.fileapex.di.FileApexServices
@@ -59,13 +58,14 @@ object FileApexAndroidBootstrap {
             initAndroidNoteReceiveNotifier(appContext)
             initAndroidClipboardOptInNotifier(appContext)
             initAndroidDriveRelayNotifier(appContext)
+            com.fileapex.friends.initAndroidFriendsNotifier(appContext)
             initAndroidBriefToast(appContext)
             initAndroidLocalTrash(appContext)
             initAndroidUpdateAvailableNotifier(appContext)
             if (!FileApexServices.isDatabaseReady()) {
                 FileApexServices.init(createFileApexDatabase(appContext))
             }
-            FileApexServices.initBulletinBoard(createBulletinBoardDatabase(appContext))
+            FileApexServices.initBulletinBoard(appContext.getDatabasePath("bulletin_board.db").absolutePath)
             initAndroidDirectShareShortcuts(appContext)
             ServiceWatchdogScheduler.syncWatchdogEnabledFromSettings(appContext)
             BootLaunchPreference.syncFromSettings()

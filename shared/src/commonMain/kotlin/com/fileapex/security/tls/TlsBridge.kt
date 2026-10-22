@@ -3,7 +3,13 @@ package com.fileapex.security.tls
 import java.util.concurrent.ConcurrentHashMap
 
 /** A peer authenticated by its pinned client certificate on the TLS front. */
-data class BridgedPeer(val deviceId: String, val pin: String, val remoteIp: String)
+data class BridgedPeer(
+    val deviceId: String,
+    val pin: String,
+    val remoteIp: String,
+    /** A client key nobody has paired yet, let in only while this device shows its pairing screen; reaches the secure pairing route alone. */
+    val pairingOnly: Boolean = false
+)
 
 /**
  * The TLS front forwards each connection to the loopback bridge port from a unique local source port.

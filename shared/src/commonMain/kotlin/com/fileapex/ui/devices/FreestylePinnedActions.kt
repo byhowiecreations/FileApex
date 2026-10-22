@@ -45,9 +45,11 @@ import kotlin.math.roundToInt
 @Composable
 internal fun FreestyleScope.FreestylePinnedActions() {
     with(inputs) { with(persisted) { with(geometry) { with(live) {
+        val hasFriendsNow = com.fileapex.friends.ui.rememberFriendsCount() > 0
         // Render Pinned Canvas Action Buttons
         currentPinnedActionsMap.forEach { (actionKey, offsetFraction) ->
             val optAction = FreestyleOptionAction.entries.firstOrNull { it.key == actionKey } ?: return@forEach
+            if (optAction == FreestyleOptionAction.GROUPS && !hasFriendsNow) return@forEach
 
             val minDeviceX = marginPx
             val maxDeviceX = (widthPx - marginPx - deviceButtonSizePx).coerceAtLeast(marginPx)
@@ -100,6 +102,7 @@ internal fun FreestyleScope.FreestylePinnedActions() {
                                     FreestyleOptionAction.FILES -> showFilesWindow = true
                                     FreestyleOptionAction.ADD_DEVICE -> onGenerateQr()
                                     FreestyleOptionAction.JOIN_DEVICE -> onJoinDevice()
+                                    FreestyleOptionAction.FRIENDS, FreestyleOptionAction.GROUPS -> com.fileapex.friends.ui.FriendsUi.open()
                                     FreestyleOptionAction.SEND_CLIPBOARD -> onSendClipboard?.invoke()
                                     FreestyleOptionAction.CHECK_BATTERIES -> onCheckBatteries?.invoke()
                                     FreestyleOptionAction.SETTINGS -> onOpenSettings?.invoke()

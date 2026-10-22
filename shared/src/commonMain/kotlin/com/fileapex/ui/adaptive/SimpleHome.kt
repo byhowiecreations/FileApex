@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -227,7 +228,7 @@ fun SimpleHome(
                 devicesViewModel = devicesViewModel,
                 rows = rows,
                 active = active,
-                onAddDevice = onGenerateQr,
+                onAddDevice = onGenerateQr, onJoinDevice = onJoinDevice,
                 onOpenPairedDevice = { id ->
                     settings.setSimpleActiveDeviceId(id)
                 },
@@ -394,6 +395,7 @@ fun SimpleHome(
                         if (rows.size >= 2) SimpleManagementItem(Icons.Filled.SwapHoriz, stringRes("simple_switch_device")) { popover = null; showSwitchDialog = true }
                         SimpleManagementItem(Icons.Filled.Add, stringRes("add_new_device")) { popover = null; onGenerateQr() }
                         SimpleManagementItem(Icons.Filled.Link, stringRes("join_device")) { popover = null; onJoinDevice() }
+                        SimpleManagementItem(Icons.Filled.People, stringRes("friends_entry")) { popover = null; com.fileapex.friends.ui.FriendsUi.open() }
                         if (active != null) SimpleManagementItem(Icons.Filled.Delete, stringRes("remove"), danger = true) { popover = null; confirmRemove = true }
                     }
                     SimplePopover.More -> {

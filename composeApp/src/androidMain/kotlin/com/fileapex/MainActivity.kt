@@ -389,6 +389,10 @@ class MainActivity : ComponentActivity() {
                 com.fileapex.tailscale.TailscaleNodeRuntime.onBrowserLoginReturned()
                 return
             }
+            if (host == "friend" && scheme == "fileapex") {
+                com.fileapex.friends.ui.FriendsUi.openWithInvite(uri.toString())
+                return
+            }
             if (host == "pair" && scheme in PAIRING_URI_SCHEMES) {
                 val candidates = listOf(
                     pairingTextFromDeepLink(uri),
@@ -435,6 +439,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
             return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            DirectShareShortcutCoordinator.friendKeyFromShortcutId(shareIntent.getStringExtra(DirectShareShortcutCoordinator.EXTRA_SHORTCUT_ID))
+                ?.let { com.fileapex.friends.FriendsHub.preselectShare(it) }
         }
 
         val targetDeviceId = shareIntent.getStringExtra(

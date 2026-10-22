@@ -8,11 +8,13 @@ object PeerNodeProtocols {
     const val CLUSTER_V1 = "fileapex.v1.cluster"
     const val PAIRING_V1 = "fileapex.v1.pairing"
     const val IDENTITY_V1 = "fileapex.v1.identity"
+    const val PAIRING_SECURE_V1 = com.fileapex.domain.pairing.SecurePairingProof.PROTOCOL
 
     val DEFAULT: List<String> = listOf(
         IDENTITY_V1,
         FILES_V1,
         CLUSTER_V1,
-        PAIRING_V1
+        PAIRING_V1,
+        PAIRING_SECURE_V1
     )
 }

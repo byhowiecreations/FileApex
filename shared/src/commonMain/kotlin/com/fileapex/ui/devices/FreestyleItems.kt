@@ -69,6 +69,7 @@ internal fun FreestyleOptionIcon(
                     contentScale = ContentScale.Crop
                 )
                 FreestyleOptionAction.ADD_DEVICE,
+                FreestyleOptionAction.FRIENDS,
                 FreestyleOptionAction.JOIN_DEVICE -> Image(
                     painter = painterResource(Res.drawable.opt_flux_qrcode),
                     contentDescription = action.label(),
@@ -87,6 +88,7 @@ internal fun FreestyleOptionIcon(
                     modifier = modifier.clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
+                FreestyleOptionAction.GROUPS -> Icon(action.icon, action.label(), modifier = modifier, tint = tint)
             }
         }
         ThemeIconStyle.FREESTYLE -> {
@@ -104,6 +106,7 @@ internal fun FreestyleOptionIcon(
                     contentScale = ContentScale.Crop
                 )
                 FreestyleOptionAction.ADD_DEVICE,
+                FreestyleOptionAction.FRIENDS,
                 FreestyleOptionAction.JOIN_DEVICE -> Image(
                     painter = painterResource(Res.drawable.opt_fs_qrcode),
                     contentDescription = action.label(),
@@ -122,6 +125,7 @@ internal fun FreestyleOptionIcon(
                     modifier = modifier.clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
+                FreestyleOptionAction.GROUPS -> Icon(action.icon, action.label(), modifier = modifier, tint = tint)
             }
         }
         ThemeIconStyle.STANDARD -> {
@@ -190,13 +194,13 @@ internal fun FreestyleHorizontalCardItem(
                 )
             }
             Icon(
-                imageVector = action.icon,
+                imageVector = action.menuIcon(),
                 contentDescription = null,
                 tint = if (isEditMode) Color(0xFFFFB300) else Color(0xFF64B5F6),
                 modifier = Modifier.size(17.dp)
             )
             Text(
-                text = action.shortLabel,
+                text = action.menuShortLabel(),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.Medium
@@ -260,14 +264,14 @@ internal fun FreestyleMenuRowItem(
                 Spacer(modifier = Modifier.width(6.dp))
             }
             Icon(
-                imageVector = action.icon,
+                imageVector = action.menuIcon(),
                 contentDescription = null,
                 tint = if (isEditMode) Color(0xFFFFB300) else Color(0xFF64B5F6),
                 modifier = Modifier.size(17.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = stringRes(action.fullLabelRes),
+                text = action.menuFullLabel(),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = if (isEditMode) FontWeight.SemiBold else FontWeight.Medium,
                     fontSize = 12.sp
@@ -331,14 +335,14 @@ internal fun FreestyleTileRingItem(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        imageVector = action.icon,
-                        contentDescription = action.shortLabel,
+                        imageVector = action.menuIcon(),
+                        contentDescription = action.menuShortLabel(),
                         tint = Color(0xFFFFB300),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = action.shortLabel,
+                        text = action.menuShortLabel(),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
@@ -372,14 +376,14 @@ internal fun FreestyleTileRingItem(
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    imageVector = action.icon,
-                    contentDescription = action.shortLabel,
+                    imageVector = action.menuIcon(),
+                    contentDescription = action.menuShortLabel(),
                     tint = Color(0xFF64B5F6),
                     modifier = Modifier.size(17.dp)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = action.shortLabel,
+                    text = action.menuShortLabel(),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 9.sp,
                         fontWeight = FontWeight.SemiBold,

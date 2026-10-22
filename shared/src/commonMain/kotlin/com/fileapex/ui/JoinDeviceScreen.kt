@@ -57,40 +57,20 @@ fun JoinDeviceScreen(
     viewModel: DevicesViewModel = viewModel { DevicesViewModel() }
 ) {
     val state by viewModel.uiState.collectAsState()
-    var codeText by remember { mutableStateOf("") }
-    var codeFromBroadcast by remember { mutableStateOf(false) }
     var qrScanPaused by remember { mutableStateOf(false) }
     var joinAttempt by remember { mutableStateOf(JoinAttemptState.Idle) }
     var joinError by remember { mutableStateOf<String?>(null) }
     var pinText by remember { mutableStateOf("") }
+    var linkText by remember { mutableStateOf("") }
 
     val discoveredPeers = state.discoveredPairingPeers
-    val keypadOnlyEntry = !isDesktopHost()
-    val matchedPayload = remember(codeText, discoveredPeers) {
-        LanPairingDiscovery.matchInput(codeText, discoveredPeers)
-    }
     val working = joinAttempt == JoinAttemptState.Working
-    val statusTitle = when {
-        matchedPayload != null -> stringRes("code_received_from", matchedPayload.deviceName)
-        discoveredPeers.isEmpty() -> stringRes("listening_broadcast")
-        else -> stringRes("enter_six_digit")
-    }
 
     FileApexBackHandler(onBack = onBack, enabled = !working)
 
     DisposableEffect(Unit) {
         viewModel.startPairingDiscovery()
         onDispose { viewModel.stopPairingDiscovery() }
-    }
-
-    LaunchedEffect(discoveredPeers) {
-        if (working) return@LaunchedEffect
-        val peer = discoveredPeers.firstOrNull() ?: return@LaunchedEffect
-        val next = peer.pairingCode
-        if (codeText != next) {
-            codeText = next
-            codeFromBroadcast = true
-        }
     }
 
     LaunchedEffect(state.pairingSucceeded, state.errorMessage, joinAttempt) {
@@ -113,6 +93,11 @@ fun JoinDeviceScreen(
     }
 
     fun handleQrText(raw: String) {
+        if (com.fileapex.friends.FriendInviteLink.parse(raw) != null) {
+            onBack()
+            com.fileapex.friends.ui.FriendsUi.openWithInvite(raw)
+            return
+        }
         val payload = PairingPayload.parseOrNull(raw)
             ?: PairingPayload.parseFirstOrNull(listOf(raw))
         if (payload != null) {
@@ -165,51 +150,34 @@ fun JoinDeviceScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = statusTitle,
+                        text = if (discoveredPeers.isEmpty()) stringRes("listening_broadcast") else stringRes("join_tap_device"),
                         style = MaterialTheme.typography.titleSmall,
-                        color = if (matchedPayload != null) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    discoveredPeers.forEach { peer ->
+                        Button(
+                            onClick = { beginPairing(peer.toPairingPayload()) },
+                            enabled = !working,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("${peer.deviceName}  ${peer.ipAddress}")
                         }
-                    )
+                    }
 
-                    OutlinedTextField(
-                        value = formatPairingCodeDisplay(codeText),
-                        onValueChange = { incoming ->
-                            if (keypadOnlyEntry) return@OutlinedTextField
-                            codeText = incoming.take(240)
-                            codeFromBroadcast = false
-                        },
-                        readOnly = keypadOnlyEntry,
-                        enabled = !working,
-                        label = { Text(stringRes("pairing_code")) },
-                        placeholder = { Text("000000") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = MaterialTheme.typography.headlineSmall.copy(
-                            letterSpacing = 4.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    )
-
-                    if (keypadOnlyEntry) {
-                        PairingNumericKeypad(
-                            onDigit = { digit ->
-                                val digits = PairingBeacon.digitsOnly(codeText)
-                                if (digits.length < 6) {
-                                    codeText = digits + digit
-                                    codeFromBroadcast = false
-                                }
-                            },
-                            onBackspace = {
-                                val digits = PairingBeacon.digitsOnly(codeText)
-                                if (digits.isNotEmpty()) {
-                                    codeText = digits.dropLast(1)
-                                    codeFromBroadcast = false
+                    if (isDesktopHost()) {
+                        OutlinedTextField(
+                            value = linkText,
+                            onValueChange = { incoming ->
+                                linkText = incoming.take(400)
+                                PairingPayload.parseOrNull(incoming)?.let { payload ->
+                                    linkText = ""
+                                    beginPairing(payload)
                                 }
                             },
                             enabled = !working,
+                            label = { Text(stringRes("paste_pairing_link")) },
+                            singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -224,27 +192,13 @@ fun JoinDeviceScreen(
                         )
                     }
 
-                    Button(
-                        onClick = {
-                            val payload = matchedPayload ?: return@Button
-                            beginPairing(payload)
-                        },
-                        enabled = matchedPayload != null && !working,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (working) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp
-                                )
-                                Text(stringRes("pairing"))
-                            }
-                        } else {
-                            Text(stringRes("confirm"))
+                    if (working) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(stringRes("pairing"))
                         }
                     }
                 }
@@ -299,14 +253,5 @@ fun JoinDeviceScreen(
                 }
             }
         )
-    }
-}
-
-private fun formatPairingCodeDisplay(raw: String): String {
-    val digits = PairingBeacon.digitsOnly(raw)
-    return when {
-        digits.isEmpty() -> ""
-        digits.length <= 3 -> digits
-        else -> "${digits.substring(0, 3)} ${digits.substring(3).take(3)}"
     }
 }

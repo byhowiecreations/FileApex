@@ -141,9 +141,10 @@ internal fun rememberFreestyleScope(
             mutableStateOf(FreestyleOptionAction.parseOrder(persistedOptionsMenuOrder))
         }
         var optionsActionsList by optionsActionsListState
-        val visibleOptions = optionsActionsList.filter { !currentPinnedActionsMap.containsKey(it.key) }
+        val hasFriends = com.fileapex.friends.ui.rememberFriendsCount() > 0
+        val visibleOptions = optionsActionsList.filter { !currentPinnedActionsMap.containsKey(it.key) && (hasFriends || it != FreestyleOptionAction.GROUPS) }
 
-        val dropdownWidthDp = if (isEditMode) 200.dp else 160.dp
+        val dropdownWidthDp = if (isEditMode) 200.dp else 200.dp
         val dropdownWidthPx = with(density) { dropdownWidthDp.toPx() }
         val dropdownHeightDp = if (visibleOptions.isEmpty()) 110.dp else (visibleOptions.size * 40 + 24).coerceIn(100, 300).dp
         val dropdownHeightPx = with(density) { dropdownHeightDp.toPx() }
@@ -171,7 +172,7 @@ internal fun rememberFreestyleScope(
             FreestyleLayoutMode.CARDS_VERTICAL -> FileApexServices.settings.freestyleCardVerticalPinnedActions.value
             FreestyleLayoutMode.TILES -> FileApexServices.settings.freestyleTilePinnedActions.value
         }
-        fun visibleOptionsNow(): List<FreestyleOptionAction> = optionsActionsList.filter { !pinnedNow().containsKey(it.key) }
+        fun visibleOptionsNow(): List<FreestyleOptionAction> = optionsActionsList.filter { !pinnedNow().containsKey(it.key) && (hasFriends || it != FreestyleOptionAction.GROUPS) }
 
         val startDragAction = { optIndex: Int ->
             val rowCenterCanvasX = clampedDropdownX + dropdownWidthPx / 2f

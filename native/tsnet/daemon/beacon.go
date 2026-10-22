@@ -23,10 +23,11 @@ type pairingBeacon struct {
 	DeviceName  string `json:"deviceName"`
 	IPAddress   string `json:"ipAddress"`
 	Port        int    `json:"port"`
-	PairingCode string `json:"pairingCode"`
 	Timestamp   int64  `json:"timestamp"`
 	DeviceID    string `json:"deviceId"`
 	PinRequired bool   `json:"pinRequired"`
+	TLSPin      string `json:"tlsPin"`
+	TLSPort     int    `json:"tlsPort"`
 }
 
 func parseBeacon(raw string) (pairingBeacon, bool) {
@@ -45,11 +46,11 @@ func parseBeacon(raw string) (pairingBeacon, bool) {
 	beacon.DeviceID = strings.TrimSpace(beacon.DeviceID)
 	beacon.DeviceName = strings.TrimSpace(beacon.DeviceName)
 	beacon.IPAddress = strings.TrimSpace(beacon.IPAddress)
-	beacon.PairingCode = digitsOnly(beacon.PairingCode)
+	beacon.TLSPin = strings.ToLower(strings.TrimSpace(beacon.TLSPin))
 	if beacon.DeviceID == "" || beacon.DeviceName == "" || beacon.IPAddress == "" {
 		return pairingBeacon{}, false
 	}
-	if beacon.Port < 1 || beacon.Port > 65535 || len(beacon.PairingCode) != 6 {
+	if beacon.Port < 1 || beacon.Port > 65535 {
 		return pairingBeacon{}, false
 	}
 	return beacon, true

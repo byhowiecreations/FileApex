@@ -368,6 +368,7 @@ private fun PairedDevicesBrowseList(
                     onLaunchDemo = { com.fileapex.domain.demo.DemoModeState.launchDemo() }
                 )
             }
+            item(key = "friends_card", contentType = "friends-card") { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { com.fileapex.friends.ui.FriendsEntryCard() } }
         } else {
             itemsIndexed(
                 items = deviceRows,
@@ -395,6 +396,7 @@ private fun PairedDevicesBrowseList(
                     )
                 )
             }
+            item(key = "friends_card", contentType = "friends-card") { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { com.fileapex.friends.ui.FriendsEntryCard() } }
         }
     }
 }
@@ -448,6 +450,7 @@ private fun PairedDevicesGridBrowseList(
                         onLaunchDemo = { com.fileapex.domain.demo.DemoModeState.launchDemo() }
                     )
                 }
+                item(key = "friends_card", span = { GridItemSpan(grid.columnCount) }) { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { com.fileapex.friends.ui.FriendsEntryCard() } }
             } else {
                 itemsIndexed(
                     items = deviceRows,
@@ -467,6 +470,7 @@ private fun PairedDevicesGridBrowseList(
                         onFilesDropped = onFilesDropped
                     )
                 }
+                item(key = "friends_card", span = { GridItemSpan(grid.columnCount) }) { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { com.fileapex.friends.ui.FriendsEntryCard() } }
             }
         }
     }

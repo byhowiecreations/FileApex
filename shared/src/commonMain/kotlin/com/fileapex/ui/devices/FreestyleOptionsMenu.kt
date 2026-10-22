@@ -294,6 +294,7 @@ internal fun FreestyleScope.FreestyleOptionsDropdown() {
                                                     FreestyleOptionAction.FILES -> showFilesWindow = true
                                                     FreestyleOptionAction.ADD_DEVICE -> onGenerateQr()
                                                     FreestyleOptionAction.JOIN_DEVICE -> onJoinDevice()
+                                                    FreestyleOptionAction.FRIENDS, FreestyleOptionAction.GROUPS -> com.fileapex.friends.ui.FriendsUi.open()
                                                     FreestyleOptionAction.SEND_CLIPBOARD -> onSendClipboard?.invoke()
                                                     FreestyleOptionAction.CHECK_BATTERIES -> onCheckBatteries?.invoke()
                                                     FreestyleOptionAction.SETTINGS -> onOpenSettings?.invoke()

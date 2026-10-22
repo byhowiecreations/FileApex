@@ -641,34 +641,21 @@ func (n *Node) handshake(ctx context.Context, beacon pairingBeacon, pin string) 
 	n.drainSeed()
 	n.chooseAutoName(ctx, beacon)
 
-	// Both people confirm a pairing. This node has no screen, so it prints the check code; the host's user compares
-	// it with the code on the host's screen and accepts there. The request below waits for that answer.
-	checkCode := pairCheckCode(checkKey(remote.TLSPin, hostID), checkKey(n.tlsPinValue(), n.deviceID()), beacon.PairingCode)
-	log.Printf("Pairing check code %s. It must be the same on %s's screen. Accept it there, or decline if it differs.", checkCode, host.DeviceName)
-
-	status, respBody, err := n.postPairing(ctx, beacon, pin, n.selfRecord(ip))
+	hostPin := strings.ToLower(strings.TrimSpace(remote.TLSPin))
+	if hostPin == "" {
+		hostPin = strings.ToLower(strings.TrimSpace(beacon.TLSPin))
+	}
+	tlsPort := remote.TLSPort
+	if tlsPort == 0 {
+		tlsPort = beacon.TLSPort
+	}
+	provenPin, err := n.securePair(ctx, beacon, hostID, hostPin, tlsPort, pin, n.selfRecord(ip))
 	if err != nil {
 		n.removePeer(hostID)
 		return err
 	}
-	if status == http.StatusForbidden {
-		n.removePeer(hostID)
-		text := strings.ToLower(string(respBody))
-		if strings.Contains(text, "pairing_declined") {
-			return fmt.Errorf("the other device declined the pairing, or did not answer in time")
-		}
-		if strings.Contains(text, "pairing_code") {
-			return fmt.Errorf("pairing code expired before the handshake finished")
-		}
-		if strings.Contains(text, "pin") {
-			return fmt.Errorf("the other device rejected the PIN")
-		}
-		return fmt.Errorf("pairing refused (%s)", strings.TrimSpace(string(respBody)))
-	}
-	if status < 200 || status > 299 {
-		n.removePeer(hostID)
-		return fmt.Errorf("pairing handshake returned HTTP %d (%s)", status, strings.TrimSpace(string(respBody)))
-	}
+	// The host proved this key through the number its user compared; every later request to it is pinned.
+	n.tls.record(hostID, provenPin, tlsPort)
 	log.Printf("Pairing handshake accepted by %s.", host.DeviceName)
 	// Exchange TLS pins before the host starts pushing the roster, so both sides can switch to TLS.
 	if err := n.announceTLSTo(ctx, host, time.Now()); err != nil && !errors.Is(err, errTLSUnsupported) {
@@ -719,32 +706,6 @@ func (n *Node) fetchIdentity(ctx context.Context, host string, port int) (nodeSt
 		return nodeState{}, err
 	}
 	return state, nil
-}
-
-func (n *Node) postPairing(ctx context.Context, beacon pairingBeacon, pin string, self deviceRecord) (int, []byte, error) {
-	q := url.Values{}
-	n.stampQuery(q)
-	q.Set("code", beacon.PairingCode)
-	if strings.TrimSpace(pin) != "" {
-		q.Set("pin", strings.TrimSpace(pin))
-	}
-	payload, err := json.Marshal(self)
-	if err != nil {
-		return 0, nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL(beacon.IPAddress, beacon.Port, "/api/v1/pairing/respond", q), bytes.NewReader(payload))
-	if err != nil {
-		return 0, nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-FileApex-Device-Id", self.DeviceID)
-	req.Header.Set("X-FileApex-Pairing-Code", beacon.PairingCode)
-	if strings.TrimSpace(pin) != "" {
-		req.Header.Set("X-FileApex-Pin", strings.TrimSpace(pin))
-	}
-	// The host's user compares the check code and accepts, so the answer can take a while.
-	body, status, err := n.do(req, 105*time.Second)
-	return status, body, err
 }
 
 func (n *Node) importDeviceList(ctx context.Context, host string, port int) error {
@@ -1488,6 +1449,7 @@ func (n *Node) selfState() nodeState {
 		IPAddress:          n.advertiseIPLocked(),
 		Port:               n.port,
 		ClientVersion:      "docker",
+		AppVersion:         strings.TrimSpace(appVersionName),
 		Platform:           "linux",
 		OS:                 "linux",
 		DeviceMake:         "FileApex",

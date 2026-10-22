@@ -131,8 +131,11 @@ object DesktopMacTrayCoordinator {
                 window.requestFocus()
             }
         }
-        refreshDeviceSnapshotFromTray()
-        PresenceForegroundRefresh.onAppForegrounded()
+        // This runs inside the native tray callback on the AppKit main thread: anything that can wait stays off it (a stack sample showed it parked in a monitor for seconds, a beach ball).
+        scope.launch {
+            refreshDeviceSnapshotFromTray()
+            PresenceForegroundRefresh.onAppForegrounded()
+        }
     }
 
     private fun refreshDeviceSnapshotFromTray() {
@@ -171,15 +174,16 @@ object DesktopMacTrayCoordinator {
                 FileApexServices.deviceRepository.observeDevices(),
                 FileApexServices.presenceMonitor.reachabilityEpochMs,
                 FileApexServices.presenceMonitor.onlineDeviceIds,
-                FileApexServices.presenceMonitor.onlineSnapshotEpochMs
-            ) { devices, _, _, _ ->
+                FileApexServices.presenceMonitor.onlineSnapshotEpochMs,
+                com.fileapex.friends.FriendsHub.friends
+            ) { devices, _, _, _, _ ->
                 devices.map { device ->
                     DesktopTrayDeviceSnapshot(
                         id = device.deviceId,
                         name = device.deviceName,
                         isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
                     )
-                }
+                } + friendTraySnapshots()
             }.collect { snapshots ->
                 publishShareReadyIds(snapshots)
                 DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
@@ -195,7 +199,7 @@ object DesktopMacTrayCoordinator {
                 name = device.deviceName,
                 isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
             )
-        }
+        } + friendTraySnapshots()
         publishShareReadyIds(snapshots)
         DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
     }
@@ -217,13 +221,19 @@ object DesktopMacTrayCoordinator {
     private fun handleSend(deviceIdsJson: String, filePathsJson: String) {
         if (!DesktopPlatformPaths.isMacOs()) return
         scope.launch {
-            val deviceIds = runCatching {
+            val allIds = runCatching {
                 json.decodeFromString<List<String>>(deviceIdsJson)
             }.getOrDefault(emptyList())
             val filePaths = runCatching {
                 json.decodeFromString<List<String>>(filePathsJson)
             }.getOrDefault(emptyList())
-            if (deviceIds.isEmpty() || filePaths.isEmpty()) return@launch
+            if (allIds.isEmpty() || filePaths.isEmpty()) return@launch
+            val deviceIds = sendTrayFriends(allIds, filePaths)
+            if (deviceIds.isEmpty()) {
+                DesktopMacTrayBridge.showToast(com.fileapex.i18n.AppI18n.plural("n_files_sent_short", filePaths.size, filePaths.size.toString()))
+                DesktopMacTrayBridge.closeDropBox()
+                return@launch
+            }
 
             DesktopMacTrayBridge.beginBackgroundActivity()
             try {

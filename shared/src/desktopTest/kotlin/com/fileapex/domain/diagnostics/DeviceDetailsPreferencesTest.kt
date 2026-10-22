@@ -54,5 +54,6 @@ class DeviceDetailsPreferencesTest {
         assertTrue(summary, summary.startsWith("0.19.2 (") && summary.contains("GitHub") && summary.contains("210"))
         assertTrue(DeviceDiagnosticsFormatter.appVersionSummary(AppDiagnostics("0.19.2", 210, "fdroid")).contains("F-Droid"))
         assertTrue(DeviceDiagnosticsFormatter.appVersionSummary(AppDiagnostics("0.19.2", 210, "play")).contains("Play Store"))
+        assertEquals("0.19.6a (Docker, build 214)", DeviceDiagnosticsFormatter.appVersionSummary(AppDiagnostics("0.19.6a", 214, "docker")))
     }
 }

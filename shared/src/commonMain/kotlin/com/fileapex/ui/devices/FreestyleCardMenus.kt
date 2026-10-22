@@ -47,7 +47,8 @@ internal fun FreestyleScope.FreestyleHorizontalCardMenu(
     with(inputs) { with(persisted) { with(geometry) { with(live) {
         var actionsList by actionsListState
         // Layout 1: Horizontal Card extending horizontally from device button
-        val cardWidthDp = 280.dp
+        // 5 tiles of 50 dp with 3.5 dp between them and 8 dp padding; fewer tiles (a friend has 4) shrink the bar, the gaps stay the same.
+        val cardWidthDp = (16f + actionsList.size * 50f + (actionsList.size - 1).coerceAtLeast(0) * 3.5f).dp
         val cardWidthPx = with(density) { cardWidthDp.toPx() }
         val cardHeightDp = 64.dp
         val cardHeightPx = with(density) { cardHeightDp.toPx() }

@@ -5,7 +5,6 @@ import com.fileapex.cli.dash.CliDashboard
 import com.fileapex.cli.dash.IpcClusterBackend
 import com.fileapex.cli.dash.StandaloneClusterBackend
 import com.fileapex.cli.ipc.CliIpcClient
-import com.fileapex.data.bulletin.createBulletinBoardDatabase
 import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.di.FileApexServices
 import com.fileapex.platform.DesktopJvmStartup
@@ -44,7 +43,7 @@ object CliRunner {
         if (!FileApexServices.isBootstrapComplete) {
             FileApexServices.beginBootstrap(
                 createDatabase = { createFileApexDatabase() },
-                createBulletinBoard = { createBulletinBoardDatabase() }
+                legacyBulletinPath = com.fileapex.platform.DesktopPlatformPaths.bulletinBoardDatabaseFile().absolutePath
             )
             runBlocking {
                 FileApexServices.awaitBootstrap()
