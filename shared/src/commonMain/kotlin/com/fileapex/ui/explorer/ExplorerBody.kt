@@ -127,7 +127,6 @@ internal fun ExplorerScope.ExplorerBody(dropHighlight: ExplorerDropHighlight, op
     } } }
 }
 
-
 @Composable
 internal fun ExplorerScope.ExplorerHeader() {
     with(inputs) { with(frame) { with(live) {
@@ -154,7 +153,8 @@ internal fun ExplorerScope.ExplorerHeader() {
                         state = state,
                         embeddedInCompactShell = true,
                         viewModel = viewModel,
-                        onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
+                        onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null,
+                        onPickFiles = onPickFiles
                     )
                 }
             )
@@ -220,7 +220,6 @@ internal fun ExplorerScope.ExplorerHeader() {
         }
     } } }
 }
-
 
 @Composable
 internal fun ColumnScope.ExplorerPanes(
@@ -307,13 +306,13 @@ internal fun ColumnScope.ExplorerPanes(
                         onNavigateUp = viewModel::navigateUp,
                         onPaneFolderClick = viewModel::onPaneFolderClick,
                         onContentDirectoryClick = viewModel::onContentDirectoryClick,
-                        onFileOpen = viewModel::onFileClick,
+                        onFileOpen = fileTap(onPickFiles != null, viewModel::onFileClick, if (state.isSelectionMode) viewModel::onFileClick else viewModel::onFileLongClick),
                         onFileLongPress = viewModel::onFileLongClick,
                         onPreviewFirstSplitPaneFolder = viewModel::previewFirstSplitPaneFolder,
                         onFileSelectExclusive = viewModel::selectFileExclusive,
                         onFileToggleSelect = viewModel::toggleFileSelectionDesktop,
                         onFileExtendSelect = viewModel::extendFileSelection,
-                        onFileActivate = viewModel::activateFile,
+                        onFileActivate = fileTap(onPickFiles != null, viewModel::activateFile, if (state.isSelectionMode) viewModel::onFileClick else viewModel::onFileLongClick),
                         onCopyItem = viewModel::copyItem,
                         onSendItemToDevice = viewModel::sendItemToDevices,
                         onDownloadItem = viewModel::downloadItem,
@@ -379,7 +378,6 @@ internal fun ColumnScope.ExplorerPanes(
     } } } }
 }
 
-
 @Composable
 internal fun ExplorerScope.ExplorerBodyOverlays() {
     with(inputs) { with(frame) { with(live) {
@@ -433,8 +431,6 @@ internal fun ExplorerScope.ExplorerBodyOverlays() {
     } } }
 }
 
-
-
 @Composable
 internal fun ColumnScope.ExplorerSingleFolderView(notes: ExplorerScope, breadcrumbLabel: String?) {
     with(notes) { with(inputs) { with(frame) { with(live) {
@@ -472,13 +468,13 @@ internal fun ColumnScope.ExplorerSingleFolderView(notes: ExplorerScope, breadcru
             onNavigateUp = viewModel::navigateUp,
             onPaneFolderClick = viewModel::onPaneFolderClick,
             onContentDirectoryClick = viewModel::onContentDirectoryClick,
-            onFileOpen = viewModel::onFileClick,
+            onFileOpen = fileTap(onPickFiles != null, viewModel::onFileClick, if (state.isSelectionMode) viewModel::onFileClick else viewModel::onFileLongClick),
             onFileLongPress = viewModel::onFileLongClick,
             onPreviewFirstSplitPaneFolder = viewModel::previewFirstSplitPaneFolder,
             onFileSelectExclusive = viewModel::selectFileExclusive,
             onFileToggleSelect = viewModel::toggleFileSelectionDesktop,
             onFileExtendSelect = viewModel::extendFileSelection,
-            onFileActivate = viewModel::activateFile,
+            onFileActivate = fileTap(onPickFiles != null, viewModel::activateFile, if (state.isSelectionMode) viewModel::onFileClick else viewModel::onFileLongClick),
             onCopyItem = viewModel::copyItem,
             onSendItemToDevice = viewModel::sendItemToDevices,
             onDownloadItem = viewModel::downloadItem,
@@ -489,4 +485,12 @@ internal fun ColumnScope.ExplorerSingleFolderView(notes: ExplorerScope, breadcru
                 .fillMaxWidth()
         )
     } } } }
+}
+
+private fun fileTap(
+    picking: Boolean,
+    open: (com.fileapex.domain.model.RemoteFileItem) -> Unit,
+    pick: (com.fileapex.domain.model.RemoteFileItem) -> Unit
+): (com.fileapex.domain.model.RemoteFileItem) -> Unit = { item ->
+    if (picking) pick(item) else open(item)
 }

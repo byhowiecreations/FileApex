@@ -53,10 +53,6 @@ class IrohBridge(
         listeners.getOrPut(peerId) { openListener(peerId) }.socket.localPort
     }
 
-    internal suspend fun listenerAddress(peerId: String): InetAddress? = listenersLock.withLock {
-        listeners[peerId]?.socket?.inetAddress
-    }
-
     suspend fun stop() {
         acceptJob?.cancel()
         acceptJob = null
@@ -114,7 +110,6 @@ class IrohBridge(
             inbound.stream.abort()
             return
         }
-        onPeerActive(inbound.peerId)
         if (activeInbound.incrementAndGet() > maxConcurrentStreams) {
             activeInbound.decrementAndGet()
             inbound.stream.abort()
@@ -159,11 +154,13 @@ class IrohBridge(
         val sniffer = HttpExchangeSniffer(
             onStart = { request ->
                 val what = IrohActivity.describe(request)
-                if (what != "presence check") IrohLog.add("$what started ($direction $label)")
+                if (what != IrohActivity.PRESENCE_CHECK) {
+                    IrohLog.add("$what started ($direction $label)")
+                    onPeerActive(peerId)
+                }
             }
         ) {
             answered = true
-            if (requestsFromSocket) onPeerActive(peerId)
             IrohLog.add("${IrohActivity.describe(it)} ($direction $label) after ${(System.nanoTime() - startedAt) / 1_000_000} ms")
         }
         socket.tcpNoDelay = true

@@ -59,3 +59,8 @@ fileapex-daemon
 
 # gradle.properties is tracked and secret-free (a global gitignore may otherwise hide it).
 !/gradle.properties
+
+scripts/build_full.sh
+scripts/play-last-versioncode.txt
+scripts/check_play_bundle.py
+scripts/test_check_play_bundle.py

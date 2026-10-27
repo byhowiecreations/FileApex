@@ -34,6 +34,7 @@ internal fun explorerIconFamily(): ExplorerIconFamily = when (LocalAppTheme.curr
     AppTheme.KINETIC_SPHERE ->
         if (LocalKineticStyle.current == KineticStyle.JADED_STEEL) ExplorerIconFamily.Sharp else ExplorerIconFamily.Rounded
     AppTheme.FREESTYLE -> ExplorerIconFamily.TwoTone
+    AppTheme.CAROUSEL -> ExplorerIconFamily.Rounded
 }
 
 @Composable

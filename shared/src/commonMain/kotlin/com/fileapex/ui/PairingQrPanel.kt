@@ -78,7 +78,7 @@ fun PairingQrPanel(
         )
         if (payload.tlsPin.isNotBlank()) {
             Text(
-                text = "${stringRes("tls_fingerprint_label")}: ${com.fileapex.security.tls.TlsFingerprint.short(payload.tlsPin)}",
+                text = "${stringRes("tls_fingerprint_label")}: ${com.fileapex.security.tls.TlsPinWords.of(payload.tlsPin)} (${com.fileapex.security.tls.TlsFingerprint.short(payload.tlsPin)})",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

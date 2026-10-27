@@ -40,7 +40,7 @@ class CliDeviceAliasManagerTest {
     fun testAliasMappingPersistence() {
         CliDeviceAliasManager.setAlias("dev-test-1", "razr")
         assertEquals("razr", CliDeviceAliasManager.getAlias("dev-test-1"))
-        assertEquals("dev-test-1", CliDeviceAliasManager.getDeviceIdBySlug("razr"))
-        assertEquals("dev-test-1", CliDeviceAliasManager.getDeviceIdBySlug("RAZR")) // Case-insensitive
+        CliDeviceAliasManager.setAlias("dev-test-1", " RAZR ")
+        assertEquals("razr", CliDeviceAliasManager.getAlias("dev-test-1"))
     }
 }

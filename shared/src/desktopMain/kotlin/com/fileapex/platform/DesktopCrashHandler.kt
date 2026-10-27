@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.AddressRedaction
 import com.fileapex.update.FileApexAppVersion
 import java.io.File
 import kotlin.text.Charsets
@@ -51,7 +52,7 @@ object DesktopCrashHandler {
 
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
-        val stackTraceString = sw.toString()
+        val stackTraceString = AddressRedaction.redact(sw.toString())
 
         val timeStampReadable = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
 
@@ -72,7 +73,7 @@ object DesktopCrashHandler {
             appendLine("EXCEPTION DETAILS")
             appendLine("--------------------------------------------------------------------------------")
             appendLine("Exception Class: ${throwable::class.qualifiedName ?: throwable::class.java.name}")
-            appendLine("Message:         ${throwable.message?.let { shortened(it) } ?: "(No exception message)"}")
+            appendLine("Message:         ${throwable.message?.let { shortened(AddressRedaction.redact(it)) } ?: "(No exception message)"}")
             appendLine("--------------------------------------------------------------------------------")
             appendLine("STACK TRACE")
             appendLine("--------------------------------------------------------------------------------")
@@ -81,10 +82,6 @@ object DesktopCrashHandler {
             appendLine("SYSTEM PROPERTIES & ENVIRONMENT")
             appendLine("--------------------------------------------------------------------------------")
             appendLine("skiko.renderApi = ${System.getProperty("skiko.renderApi") ?: "(not set)"}")
-            appendLine("user.home       = ${System.getProperty("user.home")}")
-            appendLine("user.name       = ${System.getProperty("user.name")}")
-            appendLine("user.dir        = ${System.getProperty("user.dir")}")
-            appendLine("desktop.path    = ${desktopDir.absolutePath}")
             appendLine("================================================================================")
         }
 

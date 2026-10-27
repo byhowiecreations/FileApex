@@ -22,13 +22,13 @@ class PeerRouteEntryGuardTest {
 
     @Test
     fun rawRouteLookupIsOnlyUsedInsideThePresenceMonitor() {
-        assertEquals(emptyList<String>(), hits("resolveOutboundEndpoint(").filter { it != "PeerPresenceMonitor.kt" })
+        assertEquals(emptyList<String>(), hits("resolveOutboundEndpoint(").filter { it != "PeerPresenceMonitor.kt" && it != "PeerOutboundRoutes.kt" })
     }
 
     @Test
     fun probeNowIsOnlyUsedByUserStartedActions() {
         val allowed = listOf(
-            "BulletinBoardSyncEngine.kt", "DevicesConnectActions.kt", "DevicesDetailsActions.kt", "DevicesDropActions.kt", "DevicesViewModel.kt", "ExplorerMutationActions.kt", "ExplorerViewModel.kt", "PeerPresenceMonitor.kt",
+            "BulletinBoardSyncEngine.kt", "DevicesConnectActions.kt", "DevicesDetailsActions.kt", "DevicesDropActions.kt", "DevicesViewModel.kt", "ExplorerMutationActions.kt", "ExplorerViewModel.kt", "PeerBatteryFetch.kt", "PeerPresenceMonitor.kt",
             "PhoneLocator.kt", "TransferManager.kt", "TransferQueueCoordinator.kt"
         )
         assertEquals(emptyList<String>(), hits("probeNow(").filter { it !in allowed })

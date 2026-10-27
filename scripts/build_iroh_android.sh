@@ -56,11 +56,15 @@ done
 mkdir -p "$DEST"
 (cd "$work/aar" && zip -q -r -X "$DEST/iroh-android-$OUT_VERSION.aar" .)
 # Only the first <version> (the artifact itself) changes; the iroh dependency stays on $VERSION.
-python3 - "$work/orig.pom" "$DEST/iroh-android-$OUT_VERSION.pom" "$VERSION" "$OUT_VERSION" <<'PY'
+# JNA moves to $JNA_VERSION: 5.15.0 ships a libjnidispatch.so whose RELRO segment crashes 16 KB devices.
+JNA_VERSION="${JNA_VERSION:-5.18.1}"
+python3 - "$work/orig.pom" "$DEST/iroh-android-$OUT_VERSION.pom" "$VERSION" "$OUT_VERSION" "$JNA_VERSION" <<'PY'
+import re
 import sys
-src, dst, old, new = sys.argv[1:5]
+src, dst, old, new, jna = sys.argv[1:6]
 s = open(src).read()
 s = s.replace("<version>%s</version>" % old, "<version>%s</version>" % new, 1)
+s = re.sub(r"(<artifactId>jna</artifactId>\s*<version>)[^<]+(</version>)", r"\g<1>%s\g<2>" % jna, s)
 s = s.replace("<!-- do_not_remove: published-with-gradle-metadata -->", "")
 open(dst, "w").write(s)
 PY

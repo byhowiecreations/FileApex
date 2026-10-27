@@ -456,7 +456,7 @@ object ClipboardShareCoordinator {
         }
         val peerKey = resolvePeerPublicKey(device)
         if (peerKey.isBlank()) {
-            println("ClipboardShareCoordinator: no public key for ${device.deviceName}")
+            println("ClipboardShareCoordinator: no public key for ${device.deviceId}")
             return Pair(false, IllegalStateException(com.fileapex.i18n.AppI18n.t("device_not_found")))
         }
         val identity = loadLocalIdentity()
@@ -479,7 +479,7 @@ object ClipboardShareCoordinator {
 
         suspend fun askPeerToOptIn(host: String, port: Int): Throwable {
             cancellableCatching {
-                FileApexServices.client.requestClipboardOptIn(
+                FileApexServices.client.clipboard.requestClipboardOptIn(
                     host = host,
                     port = port,
                     senderDeviceId = identity.deviceId,
@@ -512,12 +512,12 @@ object ClipboardShareCoordinator {
                 localBindIps = NetworkUtils.lanBindCandidates()
             )
             if (!usable) break
-            val status = cancellableCatching { FileApexServices.client.getClipboardStatus(host, port) }.getOrNull()
+            val status = cancellableCatching { FileApexServices.client.clipboard.getClipboardStatus(host, port) }.getOrNull()
             if (status != null && !status.sharingEnabled) {
                 return Pair(false, askPeerToOptIn(host, port))
             }
             val sent = cancellableCatching {
-                FileApexServices.client.sendClipboard(
+                FileApexServices.client.clipboard.sendClipboard(
                     host = host,
                     port = port,
                     senderDeviceId = identity.deviceId,
@@ -533,7 +533,7 @@ object ClipboardShareCoordinator {
                 return Pair(false, askPeerToOptIn(host, port))
             }
             lastError = error
-            println("ClipboardShareCoordinator: send to ${device.deviceName} failed - ${error?.message}")
+            println("ClipboardShareCoordinator: send to ${device.deviceId} failed - ${com.fileapex.util.AddressRedaction.redact(error?.message.orEmpty())}")
             presence.reportRouteFailure(device, host)
         }
         val settings = FileApexServices.settings

@@ -67,7 +67,8 @@ class ThemeDefaultTextColorRenderTest {
             Triple(AppTheme.FLUX_GLASS, KineticStyle.SPACE, "flux"),
             Triple(AppTheme.KINETIC_SPHERE, KineticStyle.SPACE, "kinetic-space"),
             Triple(AppTheme.KINETIC_SPHERE, KineticStyle.JADED_STEEL, "kinetic-jaded"),
-            Triple(AppTheme.FREESTYLE, KineticStyle.SPACE, "freestyle")
+            Triple(AppTheme.FREESTYLE, KineticStyle.SPACE, "freestyle"),
+            Triple(AppTheme.CAROUSEL, KineticStyle.SPACE, "carousel")
         )
         for ((theme, style, name) in cases) {
             assertTrue("$name text is hard to read", render(theme, style, name) >= 4.5)

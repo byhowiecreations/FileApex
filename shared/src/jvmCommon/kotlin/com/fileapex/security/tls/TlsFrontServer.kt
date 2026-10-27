@@ -99,7 +99,7 @@ class TlsFrontServer(
         if (!running.compareAndSet(true, false)) return
         runCatching { server?.close() }
         sweeper?.shutdownNow()
-        open.toList().forEach { runCatching { it.close() } }
+        closeAll(open)
         open.clear()
         pool.shutdownNow()
         log("TLS front stopped", null)
@@ -244,6 +244,11 @@ class TlsFrontServer(
         const val IDLE_TIMEOUT_MS = 5 * 60_000L
         const val SWEEP_INTERVAL_MS = 30_000L
         const val BUFFER_BYTES = 64 * 1024
+
+        /** Iterates the live set; a snapshot through size and next() fails when a handler removes its socket in between. */
+        fun closeAll(sockets: Collection<Socket>) {
+            for (socket in sockets) runCatching { socket.close() }
+        }
         private val KEY_PASSWORD = "fileapex".toCharArray()
 
         /** TLS 1.3 where the platform has it. Android 8 to 9 only offer 1.2; pin and client auth still apply. */

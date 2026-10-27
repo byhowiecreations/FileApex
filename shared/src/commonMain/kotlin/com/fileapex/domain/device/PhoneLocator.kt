@@ -42,7 +42,7 @@ object PhoneLocator {
             return false
         }
         val status = cancellableCatching {
-            FileApexServices.client.triggerDeviceBeepStatus(endpoint.host, endpoint.port, continuous = true)
+            FileApexServices.client.alerts.triggerDeviceBeepStatus(endpoint.host, endpoint.port, continuous = true)
         }.onFailure { NotificationDebugLog.log("locate failed: ${it::class.simpleName}") }.getOrNull()
         if (status == null) return false
         NotificationDebugLog.log("locate answered $status")
@@ -74,7 +74,7 @@ object PhoneLocator {
         val device = FileApexServices.deviceRepository.getDevice(computerId) ?: return
         val endpoint = FileApexServices.presenceMonitor.probeNow(device) ?: return
         cancellableCatching {
-            FileApexServices.client.reportLocateFound(endpoint.host, endpoint.port)
+            FileApexServices.client.alerts.reportLocateFound(endpoint.host, endpoint.port)
         }.onFailure { println("PhoneLocator: found report failed - ${it::class.simpleName}") }
     }
 
@@ -90,7 +90,7 @@ object PhoneLocator {
             val device = FileApexServices.deviceRepository.getDevice(target.deviceId) ?: return@launch
             val endpoint = FileApexServices.presenceMonitor.probeNow(device) ?: return@launch
             cancellableCatching {
-                FileApexServices.client.stopDeviceBeep(endpoint.host, endpoint.port)
+                FileApexServices.client.alerts.stopDeviceBeep(endpoint.host, endpoint.port)
             }.onFailure { println("PhoneLocator: stop failed - ${it::class.simpleName}") }
         }
     }

@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.AddressRedaction
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -30,7 +31,7 @@ actual object Diagnostics {
     actual fun log(event: String) {
         val now = TimeUtils.now()
         val iso = Instant.ofEpochMilli(now).toString()
-        val entry = "[$iso] $event"
+        val entry = "[$iso] ${AddressRedaction.redact(event)}"
         synchronized(lock) {
             if (logBuffer.size >= MAX_LOG_EVENTS) {
                 logBuffer.removeFirst()

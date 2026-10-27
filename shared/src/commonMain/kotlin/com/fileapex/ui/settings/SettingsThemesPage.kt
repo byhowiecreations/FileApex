@@ -43,6 +43,7 @@ import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.supportedIconStyles
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.SettingsUiState
+import com.fileapex.ui.carousel.rememberCarouselAvailable
 import com.fileapex.ui.adaptive.FileApexPaneSectionHeader
 import com.fileapex.ui.theme.isFileApexCustomGlassTheme
 
@@ -53,6 +54,7 @@ internal fun localizedThemeName(theme: AppTheme): String = when (theme) {
     AppTheme.FLUX_GLASS -> stringRes("theme_flux")
     AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic")
     AppTheme.FREESTYLE -> stringRes("theme_freestyle")
+    AppTheme.CAROUSEL -> stringRes("theme_carousel")
 }
 
 @Composable
@@ -62,6 +64,7 @@ internal fun localizedThemeDescription(theme: AppTheme): String = when (theme) {
     AppTheme.FLUX_GLASS -> stringRes("theme_flux_desc")
     AppTheme.KINETIC_SPHERE -> stringRes("theme_kinetic_desc")
     AppTheme.FREESTYLE -> stringRes("theme_freestyle_desc")
+    AppTheme.CAROUSEL -> stringRes("theme_carousel_desc")
 }
 
 @Composable
@@ -169,9 +172,9 @@ internal fun ThemesSettingsPage(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-
             val isCustomTheme = isFileApexCustomGlassTheme()
-            AppTheme.entries.forEach { theme ->
+            val carouselAvailable = rememberCarouselAvailable()
+            AppTheme.entries.filter { it != AppTheme.CAROUSEL || carouselAvailable || state.appTheme == AppTheme.CAROUSEL }.forEach { theme ->
                 val selected = state.appTheme == theme
                 Surface(
                     modifier = Modifier

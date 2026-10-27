@@ -1,6 +1,5 @@
 package com.fileapex.platform
 
-import android.app.DownloadManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.webkit.MimeTypeMap
@@ -16,42 +15,8 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
 
     val fileName = displayName.ifBlank { file.name }
 
-    if (com.fileapex.update.BulletinApkUpdatePolicy.matchesAutoUpdateApk(fileName)) {
-        val version = com.fileapex.update.BulletinApkUpdatePolicy.extractVersionFromApkName(fileName) ?: "v0.0.0"
-        val sig = com.fileapex.update.BulletinApkUpdatePolicy.buildFileSignature(fileName, file.length(), file.lastModified())
-        com.fileapex.update.PendingUpdateStore.markProcessedFile(sig)
-        val matchingNote = com.fileapex.di.FileApexServices.noteRepository.notes.value.firstOrNull {
-            it.attachmentFileName == fileName || it.attachmentFileName == file.name
-        }
-        val originNoteId = matchingNote?.noteId
-        if (!originNoteId.isNullOrBlank()) {
-            com.fileapex.update.PendingUpdateStore.setLastAttemptedNoteId(originNoteId)
-            com.fileapex.update.PendingUpdateStore.setNoteInstallStatus(originNoteId, "NOT_INSTALLED")
-        }
-        val offer = com.fileapex.update.PendingUpdateOffer(
-            remoteVersion = version,
-            releaseTitle = "FileApex $version",
-            releaseNotes = null,
-            assetName = fileName,
-            assetDownloadUrl = "",
-            assetSizeBytes = file.length(),
-            localFilePath = file.absolutePath,
-            originNoteId = originNoteId
-        )
-        com.fileapex.update.AppUpdateCoordinator.setPendingOffer(offer)
-        notifyAppUpdateAvailable(offer)
-        if (com.fileapex.update.AppUpdateCoordinator.promptForInstallPermissionIfMissing()) return
-        com.fileapex.update.AppUpdateCoordinator.dismissUpdateSheet()
-        runCatching {
-            com.fileapex.update.PlatformUpdateInstaller.installAndRelaunch(
-                localFilePath = file.absolutePath,
-                remoteVersion = version
-            )
-        }.onFailure { error ->
-            println("openLocalFile: FileApex APK install failed - ${error.message}")
-        }
-        return
-    }
+    // Browsing and Send do not install. A received FileApex package installs on the receive path.
+    if (com.fileapex.update.BulletinApkUpdatePolicy.matchesAutoUpdateApk(fileName)) return
 
     val uri = runCatching {
         FileProvider.getUriForFile(
@@ -103,29 +68,6 @@ actual fun openLocalFile(absolutePath: String, displayName: String) {
         val targetName = File(targetPath).name
         BriefToast.show(AppI18n.t("no_handler_saved_to_storage", targetName))
     }
-}
-
-actual fun revealInFolder(absolutePath: String) {
-    val context = androidAppContextOrNull() ?: return
-    val target = File(absolutePath)
-    val folder = if (target.isDirectory) target else target.parentFile
-    val root = android.os.Environment.getExternalStorageDirectory().absolutePath
-    val folderPath = folder?.absolutePath
-    // The system Files app opens a given folder through its documents URI; the Downloads list is the fallback.
-    if (folderPath != null && folderPath.startsWith("$root/")) {
-        val documentId = "primary:" + folderPath.removePrefix("$root/")
-        val uri = android.provider.DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", documentId)
-        val direct = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "vnd.android.document/directory")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        if (runCatching { context.startActivity(direct) }.isSuccess) return
-    }
-    val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    runCatching { context.startActivity(intent) }
-        .onFailure { error -> println("revealInFolder: ${error.message}") }
 }
 
 fun resolveMimeType(fileName: String): String {

@@ -26,4 +26,17 @@ class PeerHttpHeadersTest {
         assertNull(PeerHttpHeaders.membershipVersion(mapOf("x-fileapex-membership-version" to "abc")))
         assertEquals(42L, PeerHttpHeaders.membershipVersion(mapOf("x-fileapex-membership-version" to "42")))
     }
+
+    @Test
+    fun headerLinesFromANativeClientHaveNoStatusLine() {
+        val headers = PeerHttpHeaders.parseLines("Content-Type: text/plain\nX-FileApex-Bulletin-Version: 99\nbroken line\n")
+        assertEquals("text/plain", headers["content-type"])
+        assertEquals(99L, PeerHttpHeaders.bulletinVersion(headers))
+        assertEquals(2, headers.size)
+    }
+
+    @Test
+    fun noHeaderTextGivesNoHeaders() {
+        assertEquals(emptyMap<String, String>(), PeerHttpHeaders.parseLines(""))
+    }
 }

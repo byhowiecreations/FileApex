@@ -904,9 +904,6 @@ func (n *Node) postSyncHeader(ctx context.Context, peer deviceRecord, req cluste
 	}
 	q := url.Values{}
 	n.stampQuery(q)
-	if pin := n.pinFor(peer.DeviceID); pin != "" {
-		q.Set("pin", pin)
-	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL(peer.LastKnownIP, peer.Port, "/api/v1/devices/merge", q), bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, nil, err
@@ -1769,10 +1766,14 @@ func (n *Node) noteRemovalsDigest(ctx context.Context, peer deviceRecord, theirs
 func (n *Node) pullRemovals(ctx context.Context, peer deviceRecord) error {
 	q := url.Values{}
 	n.stampQuery(q)
-	if pin := n.pinFor(peer.DeviceID); pin != "" {
-		q.Set("pin", pin)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, peerURL(peer.LastKnownIP, peer.Port, "/api/v1/devices/removed", q), nil)
+	if err != nil {
+		return err
 	}
-	body, status, err := n.get(ctx, peerURL(peer.LastKnownIP, peer.Port, "/api/v1/devices/removed", q), 5*time.Second)
+	if pin := n.pinFor(peer.DeviceID); pin != "" {
+		req.Header.Set("X-FileApex-Pin", pin)
+	}
+	body, status, err := n.do(req, 5*time.Second)
 	if err != nil {
 		return err
 	}

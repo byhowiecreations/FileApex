@@ -19,6 +19,7 @@ object DesktopPlatformPaths {
     private const val ROSTER_RESOLVED_MARKER = ".roster-resolved"
     private const val EXTENSION_REGISTRAR_STAMP = "extension-registrar.stamp"
     private const val READY_DEVICE_IDS_FILE_NAME = "ready-device-ids.json"
+    private const val LOCAL_API_FILE_NAME = "local-api.json"
     private const val EXTENSION_REGISTRAR_LOG = "extension-registrar.log"
 
     enum class DesktopOs {
@@ -69,6 +70,10 @@ object DesktopPlatformPaths {
     /** Ready device ids for the macOS share sheet. Same flag the Devices tab already shows. */
     fun readyDeviceIdsFile(): File =
         File(applicationSupportDirectory(), READY_DEVICE_IDS_FILE_NAME)
+
+    /** Tells the macOS extensions which 127.0.0.1 port the running app serves them on. Holds only that number. */
+    fun localApiFile(): File =
+        File(applicationSupportDirectory(), LOCAL_API_FILE_NAME)
 
     fun extensionRegistrarLogFile(): File =
         File(applicationSupportDirectory(), EXTENSION_REGISTRAR_LOG)

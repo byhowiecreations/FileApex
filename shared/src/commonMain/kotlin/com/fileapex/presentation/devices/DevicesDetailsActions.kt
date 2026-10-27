@@ -157,17 +157,7 @@ internal class DevicesDetailsActions(
         batteryCache[deviceId] = TimeUtils.now() to battery
     }
 
-    private suspend fun fetchDeviceBattery(device: PairedDeviceEntity): BatteryDiagnostics? {
-        presence.probeNow(device)?.let { direct ->
-            val directResult = cancellableCatching {
-                FileApexServices.client.fetchFastBattery(direct.host, direct.port)
-            }.getOrNull()
-            if (directResult != null) return directResult
-        }
-        return cancellableCatching {
-            DiagnosticsCloudRelay.fetchPeerDiagnostics(device.deviceId).battery
-        }.getOrNull()
-    }
+    private suspend fun fetchDeviceBattery(device: PairedDeviceEntity): BatteryDiagnostics? = PeerBatteryFetch.fetch(device)
 
     fun dismissDeviceDetails() {
         _uiState.update { it.copy(deviceDetails = null) }

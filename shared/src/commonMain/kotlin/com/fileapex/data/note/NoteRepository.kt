@@ -9,7 +9,6 @@ import com.fileapex.data.bulletin.BulletinMessageKind
 import com.fileapex.data.bulletin.BulletinSenderPolicy
 import com.fileapex.data.bulletin.BulletinFileMetadata
 import com.fileapex.data.bulletin.toNoteRecord
-import com.fileapex.data.db.NoteDao
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
@@ -48,9 +47,6 @@ class NoteRepository {
     val notes: StateFlow<List<NoteRecord>> = _notes.asStateFlow()
 
     @Volatile
-    private var legacyDao: NoteDao? = null
-
-    @Volatile
     private var bulletinRepository: BulletinBoardRepository? = null
 
     @Volatile
@@ -66,11 +62,6 @@ class NoteRepository {
 
     @Volatile
     private var appScope: CoroutineScope? = null
-
-    fun attachLegacyDao(noteDao: NoteDao, scope: CoroutineScope) {
-        this.legacyDao = noteDao
-        appScope = scope
-    }
 
     fun attachBulletinBoard(
         repository: BulletinBoardRepository,
@@ -163,8 +154,8 @@ class NoteRepository {
     }
 
     suspend fun setAttachmentPinned(noteId: String, pinned: Boolean) {
-        bulletinRepository?.setPinned(noteId, pinned)
-            ?: setAttachmentPinnedLegacy(noteId, pinned)
+        val flag = (bulletinRepository ?: return setAttachmentPinnedLegacy(noteId, pinned)).setPinned(noteId, pinned)
+        bulletinSyncEngine?.publishFlag(flag)
     }
 
     suspend fun deleteNote(noteId: String) {
@@ -613,10 +604,6 @@ class NoteRepository {
 
     private suspend fun addNoteLegacy(note: NoteRecord): Boolean {
         if (note.noteId in retractedKeys) return false
-        val currentDao = legacyDao
-        if (currentDao != null) {
-            cancellableCatching { currentDao.insertNote(note.toLegacyEntity()) }
-        }
         val added = mutex.withLock {
             val current = _notes.value
             if (current.any { it.noteId == note.noteId }) return@withLock false
@@ -668,7 +655,6 @@ class NoteRepository {
     private suspend fun setAttachmentPinnedLegacy(noteId: String, pinned: Boolean) {
         val current = _notes.value.find { it.noteId == noteId } ?: return
         val updated = current.copy(attachmentPinned = pinned)
-        legacyDao?.insertNote(updated.toLegacyEntity())
         mutex.withLock {
             _notes.value = _notes.value.map { if (it.noteId == noteId) updated else it }
         }
@@ -684,7 +670,6 @@ class NoteRepository {
         attachmentName: String? = null
     ) {
         if (noteId.isNotBlank()) retractedKeys += noteId
-        legacyDao?.deleteNote(noteId)
         mutex.withLock {
             _notes.value = _notes.value.filterNot { it.noteId == noteId }
         }
@@ -712,19 +697,4 @@ class NoteRepository {
         }
         return dest
     }
-
-    private fun NoteRecord.toLegacyEntity() = com.fileapex.data.db.NoteEntity(
-        noteId = noteId,
-        sourceDeviceId = sourceDeviceId,
-        sourceDeviceName = sourceDeviceName,
-        content = content,
-        driveFileId = driveFileId,
-        checksum = checksum,
-        epochMs = epochMs,
-        isMine = isMine,
-        attachmentFileName = attachmentFileName,
-        attachmentSizeBytes = attachmentSizeBytes,
-        attachmentPinned = attachmentPinned,
-        attachmentLocalPath = attachmentLocalPath
-    )
 }

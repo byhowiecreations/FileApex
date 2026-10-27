@@ -23,29 +23,32 @@ class NotificationBroadcastPolicyTest {
         groupSummary: Boolean = false
     ) = NotificationBroadcastPolicy.Candidate(pkg, title, text, ongoing, silent, groupSummary)
 
+    private fun sent(candidate: NotificationBroadcastPolicy.Candidate, config: NotificationBroadcastPolicy.Config) =
+        NotificationBroadcastPolicy.blockedReason(candidate, config) == null
+
     @Test
     fun plainMessageFromAllowedAppIsSent() {
-        assertTrue(NotificationBroadcastPolicy.shouldBroadcast(candidate(), config))
+        assertTrue(sent(candidate(), config))
     }
 
     @Test
     fun nothingIsSentWhileDisabled() {
-        assertFalse(NotificationBroadcastPolicy.shouldBroadcast(candidate(), config.copy(enabled = false)))
+        assertFalse(sent(candidate(), config.copy(enabled = false)))
     }
 
     @Test
     fun appsAreOffUnlessAllowed() {
-        assertFalse(NotificationBroadcastPolicy.shouldBroadcast(candidate(pkg = "com.other"), config))
-        assertFalse(NotificationBroadcastPolicy.shouldBroadcast(candidate(), config.copy(allowedPackages = emptySet())))
+        assertFalse(sent(candidate(pkg = "com.other"), config))
+        assertFalse(sent(candidate(), config.copy(allowedPackages = emptySet())))
     }
 
     @Test
     fun ongoingSilentSummaryAndOwnNotificationsAreSkipped() {
-        assertFalse(NotificationBroadcastPolicy.shouldBroadcast(candidate(ongoing = true), config))
-        assertFalse(NotificationBroadcastPolicy.shouldBroadcast(candidate(silent = true), config))
-        assertFalse(NotificationBroadcastPolicy.shouldBroadcast(candidate(groupSummary = true), config))
+        assertFalse(sent(candidate(ongoing = true), config))
+        assertFalse(sent(candidate(silent = true), config))
+        assertFalse(sent(candidate(groupSummary = true), config))
         assertFalse(
-            NotificationBroadcastPolicy.shouldBroadcast(
+            sent(
                 candidate(pkg = "com.fileapex"),
                 config.copy(allowedPackages = config.allowedPackages + "com.fileapex")
             )
@@ -55,8 +58,8 @@ class NotificationBroadcastPolicyTest {
     @Test
     fun verificationCodesStayOnThePhoneByDefault() {
         val code = candidate(pkg = "com.example.bank", text = "Your verification code is 482913")
-        assertFalse(NotificationBroadcastPolicy.shouldBroadcast(code, config))
-        assertTrue(NotificationBroadcastPolicy.shouldBroadcast(code, config.copy(allowVerificationCodes = true)))
+        assertFalse(sent(code, config))
+        assertTrue(sent(code, config.copy(allowVerificationCodes = true)))
     }
 
     @Test

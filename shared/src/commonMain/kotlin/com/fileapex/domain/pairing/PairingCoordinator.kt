@@ -115,10 +115,9 @@ class PairingCoordinator(
      */
     suspend fun propagatePairingComplete(newlyPaired: PairedDeviceEntity) {
         broadcastPairingCompleteOnce(newlyPaired, preexistingByScanner.remove(newlyPaired.deviceId))
+        com.fileapex.cloud.device.DeviceIdentity.onPaired(newlyPaired.deviceId)
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
-        cancellableCatching {
-            FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(newlyPaired)
-        }
+        cancellableCatching { FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(newlyPaired) }
     }
 
     /**
@@ -126,10 +125,9 @@ class PairingCoordinator(
      */
     suspend fun afterOutboundPair(peer: PairedDeviceEntity, preexistingDeviceIds: Set<String>? = null) {
         broadcastPairingCompleteOnce(peer, preexistingDeviceIds)
+        com.fileapex.cloud.device.DeviceIdentity.onPaired(peer.deviceId)
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
-        cancellableCatching {
-            FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer)
-        }
+        cancellableCatching { FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer) }
     }
 
     /**
@@ -223,6 +221,7 @@ class PairingCoordinator(
      * Leave Cluster & Wipe. Always returns false so the sender sees the removal as not applied.
      */
     suspend fun handleSelfRemoval(record: RemovedDeviceRecord): Boolean {
+        com.fileapex.cloud.device.DeviceIdentity.onKicked()
         println(
             "PairingCoordinator: removal of this device by a peer ignored " +
                 "(v=${record.membershipVersion()}); local data is kept"
@@ -265,7 +264,7 @@ class PairingCoordinator(
             peers.map { peer ->
                 async(Dispatchers.IO) {
                     cancellableCatching {
-                        val returnedRoster = client.postClusterSync(
+                        val returnedRoster = client.cluster.postClusterSync(
                             host = peer.lastKnownIp,
                             port = peer.port,
                             request = ClusterSyncRequest(
@@ -309,7 +308,7 @@ class PairingCoordinator(
         val targetHost = removed.lastKnownIp.trim()
         if (NetworkUtils.isUsableLanIpv4(targetHost)) {
             cancellableCatching {
-                client.postClusterRemove(targetHost, removed.port, removal)
+                client.cluster.postClusterRemove(targetHost, removed.port, removal)
             }.onFailure { error ->
                 println(
                     "PairingCoordinator: direct priority removal notification to " +
@@ -325,7 +324,7 @@ class PairingCoordinator(
                     val peerHost = peer.lastKnownIp.trim()
                     if (!NetworkUtils.isUsableLanIpv4(peerHost)) return@async
                     cancellableCatching {
-                        val returnedRoster = client.postClusterSync(
+                        val returnedRoster = client.cluster.postClusterSync(
                             host = peerHost,
                             port = peer.port,
                             request = ClusterSyncRequest(
@@ -358,7 +357,7 @@ class PairingCoordinator(
                     val peerHost = peer.lastKnownIp.trim()
                     if (!NetworkUtils.isUsableLanIpv4(peerHost)) return@async
                     cancellableCatching {
-                        client.postClusterSync(
+                        client.cluster.postClusterSync(
                             host = peerHost,
                             port = peer.port,
                             request = ClusterSyncRequest(
@@ -396,7 +395,7 @@ class PairingCoordinator(
                     val host = peer.lastKnownIp.trim()
                     if (!NetworkUtils.isUsableLanIpv4(host)) return@async
                     cancellableCatching {
-                        client.postClusterSync(
+                        client.cluster.postClusterSync(
                             host = host,
                             port = peer.port,
                             request = ClusterSyncRequest(
@@ -447,7 +446,7 @@ class PairingCoordinator(
                 delay(ROSTER_IMPORT_RETRY_MS)
             }
             val sealed = cancellableCatching {
-                client.fetchIntroductions(host, port, identityProvider().deviceId)
+                client.cluster.fetchIntroductions(host, port, identityProvider().deviceId)
             }.getOrElse { error ->
                 println(
                     "PairingCoordinator: introductions fetch attempt ${attempt + 1} failed - ${error.message}"
@@ -472,7 +471,7 @@ class PairingCoordinator(
         }
         var staged = 0
         for (peer in askable.shuffled().take(CATCH_UP_PEERS_PER_RUN)) {
-            val sealed = cancellableCatching { client.fetchIntroductions(peer.lastKnownIp, peer.port, me) }
+            val sealed = cancellableCatching { client.cluster.fetchIntroductions(peer.lastKnownIp, peer.port, me) }
                 .onFailure { println("PairingCoordinator: catch-up from ${NetworkUtils.lastOctetLabel(peer.lastKnownIp)} failed (${it::class.simpleName})") }
                 .getOrNull()
                 .orEmpty()
@@ -499,12 +498,9 @@ class PairingCoordinator(
         val updatedNewcomer = repository.getDevice(newlyPaired.deviceId)
             ?: newlyPaired.copy(clusterVersion = pairingVersion, isRemoved = false, removedAt = null)
 
-        // The newcomer was just reached through the pairing handshake. Another row for the same model on
-        // its address is an earlier install of this device and no longer answers for it.
-        for (twin in repository.listDevices().filter { PeerTrustRules.sharesAddressAndModel(updatedNewcomer, it) }) {
-            if (repository.removePermanently(twin.deviceId)) {
-                repository.getDeviceEntry(twin.deviceId)?.let { broadcastDeviceRemoval(it) }
-            }
+        // Another row that carries this device's key is a silent copy. Drop the row; the key stays usable.
+        for (twin in repository.listDevices().filter { PeerTrustRules.samePublicKey(updatedNewcomer, it) }) {
+            repository.deleteSilentCopy(twin.deviceId)
         }
 
         val selfState = selfNodeState().copy(clusterVersion = pairingVersion)
@@ -520,7 +516,7 @@ class PairingCoordinator(
             .filter { preexistingDeviceIds == null || it.deviceId in preexistingDeviceIds }
 
         if (!awaitPairingReady(newlyPaired.deviceId)) {
-            println("PairingCoordinator: ${newlyPaired.deviceName} not ready; the cluster sync is left to the periodic catch-up")
+            println("PairingCoordinator: ${newlyPaired.deviceId} not ready; the cluster sync is left to the periodic catch-up")
             return
         }
 
@@ -532,7 +528,7 @@ class PairingCoordinator(
                     async(Dispatchers.IO) {
                         cancellableCatching {
                             withTimeoutOrNull(3000L) {
-                                val returnedRoster = client.postClusterSync(
+                                val returnedRoster = client.cluster.postClusterSync(
                                     host = peer.lastKnownIp,
                                     port = peer.port,
                                     request = ClusterSyncRequest(
@@ -574,14 +570,14 @@ class PairingCoordinator(
             introductions = admission().sealedIntroductionsFor(updatedNewcomer, existing)
         )
         suspend fun sendSeed(): Boolean = cancellableCatching {
-            val returnedRoster = client.postClusterSync(
+            val returnedRoster = client.cluster.postClusterSync(
                 host = newlyPaired.lastKnownIp,
                 port = newlyPaired.port,
                 request = seed
             )
             reconcileReturnedRoster(returnedRoster)
         }.onFailure { error ->
-            println("PairingCoordinator: failed roster seed to ${newlyPaired.deviceName}: ${error.message}")
+            println("PairingCoordinator: failed roster seed to ${newlyPaired.deviceId}: ${com.fileapex.util.AddressRedaction.redact(error.message.orEmpty())}")
         }.isSuccess
         if (!sendSeed()) {
             forwardScope.launch {

@@ -1,5 +1,6 @@
 package com.fileapex.ui.notes
 
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -35,7 +36,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +62,7 @@ import com.fileapex.data.settings.BulletinBoardStyle
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.BriefToast
+import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.platform.PlatformClipboard
 import com.fileapex.ui.BrandCoolBlue
 import com.fileapex.ui.BulletinBubbleContainer
@@ -90,6 +95,7 @@ internal fun NoteBubbleItem(
     onCloseAnyReveal: () -> Unit,
     onDeleteClick: () -> Unit,
     onLockClick: () -> Unit,
+    checklist: ChecklistActions? = null,
     onOpenAttachment: () -> Unit,
     onHashtagClick: ((String) -> Unit)? = null
 ) {
@@ -130,6 +136,9 @@ internal fun NoteBubbleItem(
     val actionWidthPx = with(density) { (52.dp * actionCount).toPx() }
     val offsetAnim = remember { Animatable(0f) }
     val showActions = revealed || offsetAnim.value < -1f
+    var menuOpen by remember { mutableStateOf(false) }
+    val snackbar = LocalNotesSnackbar.current
+    val desktop = usesDesktopFileSelection()
 
     LaunchedEffect(revealed, actionWidthPx) {
         offsetAnim.animateTo(if (revealed) -actionWidthPx else 0f)
@@ -137,43 +146,22 @@ internal fun NoteBubbleItem(
 
     Box(modifier = Modifier.fillMaxWidth()) {
         if (showActions) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (hasCopyable) {
-                    NoteRevealAction(
-                        icon = Icons.Filled.ContentCopy,
-                        contentDescription = stringRes("copy_to_clipboard"),
-                        containerColor = if (isCustomGlass) Color(0xFF00E5FF) else FileApexTeal,
-                        onClick = {
-                            PlatformClipboard.setSystemClipboardText(copyableText)
-                            BriefToast.show(AppI18n.t("copied_to_clipboard"))
-                            onCloseAnyReveal()
-                        }
-                    )
-                }
-                NoteRevealAction(
-                    icon = if (item.attachmentPinned) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                    contentDescription = if (item.attachmentPinned) {
-                        stringRes("unlock_attachment")
-                    } else {
-                        stringRes("lock_attachment")
-                    },
-                    containerColor = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal,
-                    onClick = onLockClick
-                )
-                NoteRevealAction(
-                    icon = Icons.Filled.DeleteOutline,
-                    contentDescription = stringRes("delete_note"),
-                    containerColor = MaterialTheme.colorScheme.error,
-                    onClick = onDeleteClick
-                )
-            }
+            NoteRevealActions(
+                copyableText = copyableText.takeIf { hasCopyable },
+                locked = item.attachmentPinned,
+                isCustomGlass = isCustomGlass,
+                onCloseAnyReveal = onCloseAnyReveal,
+                onLockClick = onLockClick,
+                onDeleteClick = onDeleteClick,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
+        NoteContextMenu(
+            expanded = menuOpen,
+            actions = NoteMenuActions.forNote(hasCopyable, item.attachmentPinned),
+            onDismiss = { menuOpen = false },
+            onAction = { runNoteMenuAction(it, copyableText, snackbar, onLockClick, onDeleteClick) }
+        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -187,6 +175,7 @@ internal fun NoteBubbleItem(
                     .widthIn(min = 90.dp, max = 380.dp)
                     .wrapContentWidth()
                     .offset { IntOffset(offsetAnim.value.roundToInt(), 0) }
+                    .onRightClick(enabled = desktop && gesturesEnabled) { menuOpen = true }
                     .then(
                         if (gesturesEnabled) {
                             Modifier
@@ -221,57 +210,25 @@ internal fun NoteBubbleItem(
                         .padding(top = if (isPinnedPinStyle) 8.dp else 0.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(
-                            horizontal = if (style == BulletinBoardStyle.TORN_LEDGER) 14.dp else 12.dp,
-                            vertical = if (style == BulletinBoardStyle.TORN_LEDGER) 14.dp else 12.dp
-                        )
-                    ) {
-                    Row(
-                        modifier = if (gesturesEnabled) {
-                            Modifier.combinedClickable(
-                                onClick = {
-                                    if (revealed) {
-                                        onRevealedChange(false)
-                                    } else {
-                                        onCloseAnyReveal()
-                                    }
-                                },
-                                onLongClick = {
-                                    if (hasCopyable) {
-                                        PlatformClipboard.setSystemClipboardText(copyableText)
-                                        BriefToast.show(AppI18n.t("copied_to_clipboard"))
-                                    }
-                                    onRevealedChange(true)
-                                }
+                        modifier = Modifier
+                            .bubbleTaps(gesturesEnabled, revealed, onRevealedChange, onCloseAnyReveal, copyableText.takeIf { hasCopyable }, snackbar)
+                            .padding(
+                                horizontal = if (style == BulletinBoardStyle.TORN_LEDGER) 14.dp else 12.dp,
+                                vertical = if (style == BulletinBoardStyle.TORN_LEDGER) 14.dp else 12.dp
                             )
-                        } else {
-                            Modifier
-                        },
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = if (isMine) stringRes("this_device") else item.sourceDeviceName,
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = effectiveHeaderColor
-                        )
-                        if (!item.driveFileId.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(0x3300E5FF)
-                            ) {
-                                Text(
-                                    text = stringRes("drive_sync"),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                    color = Color(0xFF00E5FF),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
+                    if (!item.driveFileId.isNullOrBlank()) {
+                        Surface(shape = RoundedCornerShape(4.dp), color = Color(0x3300E5FF)) {
+                            Text(
+                                text = stringRes("drive_sync"),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                color = Color(0xFF00E5FF),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
                         }
                     }
-
                     if (!caption.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        if (!item.driveFileId.isNullOrBlank()) Spacer(modifier = Modifier.height(6.dp))
                         NoteLinkText(
                             text = caption,
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp, lineHeight = 19.sp),
@@ -279,6 +236,9 @@ internal fun NoteBubbleItem(
                             linkColor = effectiveHeaderColor,
                             onHashtagClick = onHashtagClick
                         )
+                    }
+                    if (item.contentType == com.fileapex.data.bulletin.BulletinContentType.CHECKLIST) {
+                        ChecklistLines(item.checklist, checklist, effectiveTextColor, effectiveHeaderColor, gesturesEnabled)
                     }
                     if (attachmentName != null) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -340,7 +300,7 @@ internal fun NoteBubbleItem(
                     }
                 }
             }
-            val footerText = footerLabel ?: stamp.timeLabel
+            val footerText = footerLabel ?: "${stamp.timeLabel} (${if (isMine) stringRes("this_device") else item.sourceDeviceName})"
             if (footerText.isNotEmpty() || isDownloadingAttachment) {
                 Row(
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
@@ -374,25 +334,26 @@ internal fun NoteBubbleItem(
 }
 
 @Composable
-private fun NoteRevealAction(
+internal fun NoteRevealAction(
     icon: ImageVector,
     contentDescription: String,
     containerColor: Color,
     onClick: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = containerColor,
-        modifier = Modifier.size(44.dp)
+    // The touch target is the full 52 x 56 cell; the circle drawn in it stays 44 dp.
+    Box(
+        modifier = Modifier.size(width = 52.dp, height = 56.dp).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = Color.White,
-                modifier = Modifier.size(22.dp)
-            )
+        Surface(shape = CircleShape, color = containerColor, modifier = Modifier.size(44.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }

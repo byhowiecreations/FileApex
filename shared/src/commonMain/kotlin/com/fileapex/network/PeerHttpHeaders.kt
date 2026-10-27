@@ -16,9 +16,12 @@ object PeerHttpHeaders {
     fun bulletinVersion(headers: Map<String, String>): Long? =
         headers[BULLETIN_VERSION.lowercase()]?.toLongOrNull()
 
-    fun parse(headerBlock: String): Map<String, String> {
+    fun parse(headerBlock: String): Map<String, String> = parseLines(headerBlock.lineSequence().drop(1).joinToString("\n"))
+
+    /** Header lines without a status line, as the native Mac client returns them. */
+    fun parseLines(text: String): Map<String, String> {
         val headers = HashMap<String, String>()
-        for (line in headerBlock.lineSequence().drop(1)) {
+        for (line in text.lineSequence()) {
             val colon = line.indexOf(':')
             if (colon <= 0) continue
             headers[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()

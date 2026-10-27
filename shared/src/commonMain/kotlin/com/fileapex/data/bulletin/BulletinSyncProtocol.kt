@@ -46,6 +46,27 @@ data class BulletinMessagePayload(
 )
 
 @Serializable
+data class BulletinFlagPayload(
+    val messageId: String,
+    val kind: String,
+    val enabled: Boolean,
+    val stamp: Long,
+    val setBy: String
+)
+
+@Serializable
+data class BulletinChecklistItemPayload(
+    val itemId: String,
+    val messageId: String,
+    val text: String,
+    val done: Boolean,
+    val deleted: Boolean,
+    val position: Long,
+    val stamp: Long,
+    val setBy: String
+)
+
+@Serializable
 data class BulletinTombstonePayload(
     val id: String,
     val deletedAt: Long,

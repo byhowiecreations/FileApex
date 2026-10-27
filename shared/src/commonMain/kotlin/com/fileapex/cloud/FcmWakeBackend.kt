@@ -28,6 +28,18 @@ object FcmWakeBackend {
         )
     }
 
+    suspend fun sendDeviceRemovedWake(targetFcmToken: String, sourceDeviceId: String): Boolean {
+        if (!isConfigured() || targetFcmToken.isBlank()) return false
+        return relay.sendDataWake(
+            targetFcmToken,
+            buildJsonObject {
+                put(FcmWakeProtocol.KEY_TYPE, FcmWakeProtocol.TYPE_DEVICE_REMOVED)
+                put(FcmWakeProtocol.KEY_SOURCE_DEVICE_ID, sourceDeviceId)
+                put(FcmWakeProtocol.KEY_EPOCH_MS, TimeUtils.now().toString())
+            }
+        )
+    }
+
     suspend fun sendDiagnosticsWake(
         targetFcmToken: String,
         sourceDeviceId: String,

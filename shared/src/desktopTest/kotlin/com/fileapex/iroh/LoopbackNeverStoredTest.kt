@@ -26,17 +26,16 @@ class LoopbackNeverStoredTest {
         val devices = mutableMapOf<String, PairedDeviceEntity>()
         val touches = mutableListOf<Pair<String, Int>>()
         val endpointUpdates = mutableListOf<Pair<String, Int>>()
-        override fun getAllDevices(): Flow<List<PairedDeviceEntity>> = emptyFlow()
-        override suspend fun getAllDevicesOnce() = devices.values.filter { !it.isRemoved }
+        override fun getAllDevicesUnordered(): Flow<List<PairedDeviceEntity>> = emptyFlow()
+        override suspend fun getAllDevicesOnceUnordered() = devices.values.filter { !it.isRemoved }
         override suspend fun getDevice(deviceId: String) = devices[deviceId]
         override suspend fun getTombstonedDevices() = devices.values.filter { it.isRemoved }
-        override suspend fun getAllDevicesIncludingTombstones() = devices.values.toList()
+        override suspend fun getAllDevicesIncludingTombstonesUnordered() = devices.values.toList()
         override suspend fun upsertDevice(device: PairedDeviceEntity) { devices[device.deviceId] = device }
         override suspend fun deleteDevice(deviceId: String) { devices.remove(deviceId) }
         override suspend fun deleteAllDevices() = devices.clear()
         override suspend fun insertRemovedDevice(device: RemovedDeviceEntity) {}
         override suspend fun countRemovedById(deviceId: String) = 0
-        override suspend fun countRemovedByPublicKeyHash(publicKeyHash: String) = 0
         override suspend fun clearRemovedDevice(deviceId: String) {}
         override suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String) {}
         override suspend fun getAllRemovedDevices() = emptyList<RemovedDeviceEntity>()
@@ -80,11 +79,11 @@ class LoopbackNeverStoredTest {
 
     @Test
     fun ruleRejectsLoopbackAndUnusableHosts() {
-        for (bad in listOf("127.0.0.1", "127.0.1.1", "::1", "[::1]", "localhost", "0.0.0.0", "", "  ")) {
-            assertFalse("$bad should not be stored", PeerEndpointRules.isStorableHost(bad))
+        for (bad in listOf("127.0.0.1", "127.0.1.1", "::1", "[::1]", "localhost", "0.0.0.0")) {
+            assertTrue("$bad should not be stored", PeerEndpointRules.isLoopbackOrUnspecified(bad))
         }
         for (good in listOf("192.168.1.20", "172.16.16.83", "100.89.23.47", "fe80::1")) {
-            assertTrue("$good should be stored", PeerEndpointRules.isStorableHost(good))
+            assertFalse("$good should be stored", PeerEndpointRules.isLoopbackOrUnspecified(good))
         }
     }
 

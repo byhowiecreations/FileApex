@@ -278,6 +278,30 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
+/**
+ * Drops the pre-Bulletin notes table and the unused control-delivery table.
+ * A leftover note is copied into messages only when the Bulletin Board is still empty, which is the same
+ * rule the old startup copy used. Devices that already moved their notes keep those rows and lose the old table.
+ */
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        val bulletinEmpty = connection.prepare("SELECT COUNT(*) FROM messages").use { count ->
+            count.step() && count.getLong(0) == 0L
+        }
+        if (bulletinEmpty) {
+            connection.prepare(
+                """
+                INSERT INTO messages (id, originDeviceId, senderName, content, contentType, timestamp, isDeleted, isPinned, updatedAt)
+                SELECT noteId, sourceDeviceId, sourceDeviceName, content, 0, epochMs, 0, attachmentPinned, epochMs
+                FROM note_records
+                """.trimIndent()
+            ).use { it.step() }
+        }
+        connection.prepare("DROP TABLE IF EXISTS note_records").use { it.step() }
+        connection.prepare("DROP TABLE IF EXISTS pending_control_deliveries").use { it.step() }
+    }
+}
+
 /** Friends drop Block (Remove is the only way out) and gain a per friend auto-accept flag. Blocked rows are removed. */
 val MIGRATION_18_19 = object : Migration(18, 19) {
     override suspend fun migrate(connection: SQLiteConnection) {
@@ -288,4 +312,34 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
             "ALTER TABLE `friend_links_new` RENAME TO `friend_links`"
         ).forEach { sql -> connection.prepare(sql).use { it.step() } }
     }
+}
+
+/**
+ * Message flags (0.19.8): the Locked state of a message moves into its own table with a change stamp. A message that
+ * was locked stays locked: its flag starts with the stamp of its last change, so a later unlock on any device wins.
+ */
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `message_flags` (`flagId` TEXT NOT NULL, `messageId` TEXT NOT NULL, `kind` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `stamp` INTEGER NOT NULL, `setBy` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`flagId`))",
+            "INSERT OR IGNORE INTO message_flags (flagId, messageId, kind, enabled, stamp, setBy, updatedAt) SELECT 'flag:locked:' || id, id, 'locked', 1, updatedAt, '', updatedAt FROM messages WHERE isPinned = 1"
+        ).forEach { sql -> connection.prepare(sql).use { it.step() } }
+    }
+}
+
+/** Checklist posts (0.19.8): one row per line, so every line is changed and synced on its own. */
+val MIGRATION_21_22 = object : Migration(21, 22) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            "CREATE TABLE IF NOT EXISTS `checklist_items` (`itemId` TEXT NOT NULL, `messageId` TEXT NOT NULL, `text` TEXT NOT NULL, `done` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, `position` INTEGER NOT NULL, `stamp` INTEGER NOT NULL, `setBy` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`itemId`))"
+        ).use { it.step() }
+    }
+}
+
+/**
+ * Sensitive text columns are sealed on disk from this version (see SealedColumns). Nothing changes in the schema; the new
+ * version only makes an older build refuse the file instead of reading sealed text.
+ */
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override suspend fun migrate(connection: SQLiteConnection) = Unit
 }

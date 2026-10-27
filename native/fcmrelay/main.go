@@ -27,6 +27,11 @@ func main() {
 	}
 	client := &http.Client{Timeout: 15 * time.Second}
 	now := time.Now
+	proof, err := newProofKey(now)
+	if err != nil {
+		log.Fatalf("proof key: %v", err)
+	}
+	admin := newAdmin(account, client, now)
 	server := &Server{
 		Verifier: &Verifier{
 			ProjectID: account.ProjectID,
@@ -41,6 +46,7 @@ func main() {
 		},
 		PerUser: newLimiter(envInt("RATE_PER_USER_PER_MIN", 60), envInt("RATE_PER_USER_BURST", 20), now),
 		Global:  newLimiter(envInt("RATE_GLOBAL_PER_MIN", 3000), envInt("RATE_GLOBAL_BURST", 200), now),
+		Devices: &DeviceAdmin{Store: admin, Identity: admin, Tokens: &CustomTokens{Account: account, Now: now}, Proof: proof, Now: now},
 	}
 	address := os.Getenv("LISTEN_ADDR")
 	if address == "" {

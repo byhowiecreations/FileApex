@@ -1,5 +1,6 @@
 package com.fileapex.ui.devices
 
+import com.fileapex.data.settings.traits
 import com.fileapex.ui.BatteryTerminalOverlay
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -177,7 +178,8 @@ internal fun DevicesDialogs(
         )
     }
 
-    state.deviceDetails?.let { details ->
+    val detailsOnCard = com.fileapex.data.settings.LocalAppTheme.current.traits.dockHome
+    state.deviceDetails?.takeUnless { detailsOnCard }?.let { details ->
         DeviceDetailsDialog(
             details = details,
             onDismiss = viewModel::dismissDeviceDetails

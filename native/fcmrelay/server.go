@@ -16,7 +16,7 @@ import (
 var allowedTypes = map[string]bool{
 	"presence_wake": true, "diagnostics_request": true, "note_inline": true, "note_sync": true,
 	"note_delete": true, "retract_message": true, "drive_relay": true, "clipboard_share": true,
-	"clipboard_opt_in_request": true, "clipboard_ack": true,
+	"clipboard_opt_in_request": true, "clipboard_ack": true, "device_removed": true,
 }
 
 const (
@@ -34,6 +34,7 @@ type Server struct {
 	}
 	PerUser *limiter
 	Global  *limiter
+	Devices *DeviceAdmin
 }
 
 type wakeRequest struct {
@@ -45,6 +46,11 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("/v1/wake", s.wake)
+	if s.Devices != nil {
+		mux.HandleFunc("/v1/device/key", s.deviceKey)
+		mux.HandleFunc("/v1/device/enrol", s.enrol)
+		mux.HandleFunc("/v1/device/sync", s.sync)
+	}
 	return mux
 }
 
@@ -58,11 +64,12 @@ func (s *Server) wake(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnauthorized, "missing token")
 		return
 	}
-	uid, err := s.Verifier.Verify(strings.TrimSpace(bearer))
+	sub, err := s.Verifier.Verify(strings.TrimSpace(bearer))
 	if err != nil {
 		fail(w, http.StatusUnauthorized, "invalid token")
 		return
 	}
+	uid, _ := splitCaller(sub)
 	if ok, wait := s.PerUser.allow(uid); !ok {
 		tooMany(w, wait)
 		return

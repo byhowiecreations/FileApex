@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +78,9 @@ internal fun ColumnScope.NotesComposer(notes: NotesScope) {
                         subTextColor
                     }
                 )
+            }
+            IconButton(onClick = { showNewChecklist = true }) {
+                Icon(Icons.Filled.Checklist, contentDescription = stringRes("checklist_new"), tint = subTextColor)
             }
             Surface(
                 modifier = Modifier

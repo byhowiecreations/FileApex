@@ -10,7 +10,6 @@ import com.fileapex.data.db.PendingTransferDao
 import com.fileapex.data.db.PendingTransferEntity
 import com.fileapex.data.db.PendingTransferStatus
 import com.fileapex.data.db.PairedDeviceEntity
-import com.fileapex.data.db.QueuedSourceSnapshot
 import com.fileapex.data.db.QueuedTransferSourceKind
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
@@ -24,8 +23,6 @@ import com.fileapex.util.cancellableCatching
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -39,11 +36,18 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.fileapex.platform.generateDeviceId
+import com.fileapex.domain.transfer.QueuedTransferSources.absolutePathsFromEntity
+import com.fileapex.domain.transfer.QueuedTransferSources.buildDisplayLabel
+import com.fileapex.domain.transfer.QueuedTransferSources.changedSourceName
+import com.fileapex.domain.transfer.QueuedTransferSources.decodeDeviceIds
+import com.fileapex.domain.transfer.QueuedTransferSources.decodeSources
+import com.fileapex.domain.transfer.QueuedTransferSources.fileSummary
+import com.fileapex.domain.transfer.QueuedTransferSources.pathSummary
+import com.fileapex.domain.transfer.QueuedTransferSources.sourceSummaryFromEntity
+import com.fileapex.domain.transfer.QueuedTransferSources.toSnapshot
 
 data class PendingTransferItem(
     val id: String,
@@ -305,7 +309,7 @@ class TransferQueueCoordinator(
             deleteQueueItem(entity)
             return
         }
-        val sources = decodeSources(entity) ?: run {
+        val sources = decodeSources(entity) { healed -> scope.launch { dao.upsert(healed) } } ?: run {
             deleteQueueItem(entity)
             return
         }
@@ -621,165 +625,10 @@ class TransferQueueCoordinator(
         )
     }
 
-    private fun sourceSummaryFromEntity(entity: PendingTransferEntity): String =
-        when (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
-            QueuedTransferSourceKind.LocalRoots -> {
-                val paths = runCatching {
-                    json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
-                }.getOrDefault(emptyList())
-                pathSummary(paths)
-            }
-            QueuedTransferSourceKind.Sources -> {
-                val snapshots = runCatching {
-                    json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
-                }.getOrDefault(emptyList())
-                fileSummary(snapshots.map { it.toSource() })
-            }
-            null -> entity.displayLabel
-        }
-
-    private fun decodeDeviceIds(jsonPayload: String): List<String> =
-        runCatching {
-            json.decodeFromString(ListSerializer(String.serializer()), jsonPayload)
-        }.getOrDefault(emptyList())
-
-    private fun decodeSources(entity: PendingTransferEntity): List<MultiCopySource>? =
-        when (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
-            QueuedTransferSourceKind.LocalRoots -> {
-                val paths = runCatching {
-                    json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
-                }.getOrNull() ?: return null
-                val healed = paths.map { healPathIfMissing(it) }
-                if (healed != paths) {
-                    scope.launch {
-                        dao.upsert(
-                            entity.copy(
-                                sourceJson = json.encodeToString(ListSerializer(String.serializer()), healed),
-                                lastError = null
-                            )
-                        )
-                    }
-                }
-                LocalTransferTree.expandAbsolutePaths(healed).map { it as MultiCopySource }
-            }
-            QueuedTransferSourceKind.Sources -> {
-                val snapshots = runCatching {
-                    json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
-                }.getOrNull() ?: return null
-                val healed = snapshots.map { healSnapshotIfMissing(it) }
-                if (healed != snapshots) {
-                    scope.launch {
-                        dao.upsert(
-                            entity.copy(
-                                sourceJson = json.encodeToString(ListSerializer(QueuedSourceSnapshot.serializer()), healed),
-                                lastError = null
-                            )
-                        )
-                    }
-                }
-                healed.map { it.toSource() }
-            }
-            null -> null
-        }
-
-    /** Name of a queued local file that no longer matches what was queued (size or modified time), or null. */
-    private fun changedSourceName(entity: PendingTransferEntity): String? {
-        if (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull() !=
-            QueuedTransferSourceKind.Sources
-        ) {
-            return null
-        }
-        val snapshots = runCatching {
-            json.decodeFromString(ListSerializer(QueuedSourceSnapshot.serializer()), entity.sourceJson)
-        }.getOrNull() ?: return null
-        return snapshots.firstOrNull { snapshot ->
-            if (!snapshot.remoteHost.isNullOrBlank() || snapshot.modifiedEpochMs <= 0L) return@firstOrNull false
-            val file = java.io.File(snapshot.absolutePath)
-            file.isFile && (file.lastModified() != snapshot.modifiedEpochMs || file.length() != snapshot.sizeBytes)
-        }?.fileName
-    }
-
-    private fun healPathIfMissing(rawPath: String): String {
-        val path = Path(rawPath)
-        if (SystemFileSystem.exists(path)) return rawPath
-        val fileName = rawPath.substringAfterLast('/').substringAfterLast('\\')
-        if (fileName.isBlank()) return rawPath
-        val candidateDirs = listOf(
-            "/storage/emulated/0/Pictures/Screenshots",
-            "/storage/emulated/0/DCIM/Screenshots",
-            "/storage/emulated/0/DCIM/Camera",
-            "/storage/emulated/0/Download",
-            "/storage/emulated/0/Pictures",
-            "/storage/emulated/0/Documents",
-            "/sdcard/Pictures/Screenshots",
-            "/sdcard/Download"
-        )
-        for (dir in candidateDirs) {
-            val candidate = Path("$dir/$fileName")
-            if (SystemFileSystem.exists(candidate)) {
-                return candidate.toString()
-            }
-        }
-        return rawPath
-    }
-
-    private fun healSnapshotIfMissing(snapshot: QueuedSourceSnapshot): QueuedSourceSnapshot {
-        val healedPath = healPathIfMissing(snapshot.absolutePath)
-        if (healedPath != snapshot.absolutePath) {
-            val size = runCatching { SystemFileSystem.metadataOrNull(Path(healedPath))?.size }.getOrNull()
-            return snapshot.copy(
-                absolutePath = healedPath,
-                sizeBytes = size ?: snapshot.sizeBytes
-            )
-        }
-        return snapshot
-    }
-
-    private fun pathSummary(paths: List<String>): String =
-        when (paths.size) {
-            0 -> "Files"
-            1 -> paths.first().substringAfterLast('/').substringAfterLast('\\')
-            else -> "${paths.size} items"
-        }
-
-    private fun fileSummary(sources: List<MultiCopySource>): String =
-        when (sources.size) {
-            0 -> "Files"
-            1 -> sources.first().fileName
-            else -> "${sources.size} files"
-        }
-
-    private fun buildDisplayLabel(sourcePart: String, deviceNames: List<String>): String {
-        val targetPart = when (deviceNames.size) {
-            0 -> "devices"
-            1 -> deviceNames.first()
-            else -> "${deviceNames.size} devices"
-        }
-        return "$sourcePart → $targetPart"
-    }
-
     private suspend fun deleteQueueItem(entity: PendingTransferEntity) {
         ShareStagingCleanup.deleteSessionRootsForPaths(absolutePathsFromEntity(entity))
         dao.deleteById(entity.id)
     }
-
-    private fun absolutePathsFromEntity(entity: PendingTransferEntity): List<String> =
-        when (runCatching { QueuedTransferSourceKind.valueOf(entity.sourceKind) }.getOrNull()) {
-            QueuedTransferSourceKind.LocalRoots -> {
-                runCatching {
-                    json.decodeFromString(ListSerializer(String.serializer()), entity.sourceJson)
-                }.getOrDefault(emptyList())
-            }
-            QueuedTransferSourceKind.Sources -> {
-                runCatching {
-                    json.decodeFromString(
-                        ListSerializer(QueuedSourceSnapshot.serializer()),
-                        entity.sourceJson
-                    )
-                }.getOrDefault(emptyList()).map { it.absolutePath }
-            }
-            null -> emptyList()
-        }
 
     companion object {
         private const val DRAIN_TRIGGER_DEBOUNCE_MS = 750L
@@ -807,42 +656,3 @@ class TransferQueueCoordinator(
     }
 }
 
-private fun MultiCopySource.toSnapshot(): QueuedSourceSnapshot =
-    when (this) {
-        is MultiCopySource.Local -> QueuedSourceSnapshot(
-            fileName = fileName,
-            sizeBytes = sizeBytes,
-            absolutePath = absolutePath,
-            relativeDestPath = relativeDestPath,
-            modifiedEpochMs = java.io.File(absolutePath).lastModified().coerceAtLeast(0L)
-        )
-        is MultiCopySource.Remote -> QueuedSourceSnapshot(
-            fileName = fileName,
-            sizeBytes = sizeBytes,
-            absolutePath = absolutePath,
-            relativeDestPath = relativeDestPath,
-            remoteHost = host,
-            remotePort = port
-        )
-    }
-
-private fun QueuedSourceSnapshot.toSource(): MultiCopySource {
-    val host = remoteHost?.trim().orEmpty()
-    return if (host.isNotEmpty() && remotePort != null) {
-        MultiCopySource.Remote(
-            fileName = fileName,
-            sizeBytes = sizeBytes,
-            absolutePath = absolutePath,
-            host = host,
-            port = remotePort,
-            relativeDestPath = relativeDestPath
-        )
-    } else {
-        MultiCopySource.Local(
-            fileName = fileName,
-            sizeBytes = sizeBytes,
-            absolutePath = absolutePath,
-            relativeDestPath = relativeDestPath
-        )
-    }
-}

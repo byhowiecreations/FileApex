@@ -59,7 +59,8 @@ internal fun ExplorerScope.ExplorerTopBar() {
                         embeddedInCompactShell = false,
                         viewModel = viewModel,
                         hasExternalRefresh = false,
-                        onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null
+                        onOpenTools = if (toolsAvailable) ({ toolsOpen = true }) else null,
+                        onPickFiles = onPickFiles
                     )
                 },
                 colors = if (jadedOrbital) {

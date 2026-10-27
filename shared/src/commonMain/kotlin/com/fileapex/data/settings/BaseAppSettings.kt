@@ -229,18 +229,11 @@ class BaseAppSettings(
     private val appThemeFlow = MutableStateFlow(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
-    private val fluxIconStyleFlow = MutableStateFlow(
-        ThemeIconStyle.fromStorage(store.getString(KEY_THEME_ICON_STYLE_FLUX, ThemeIconStyle.FLUX.name))
-    )
-    private val kineticIconStyleFlow = MutableStateFlow(
-        ThemeIconStyle.fromStorage(store.getString(KEY_THEME_ICON_STYLE_KINETIC, ThemeIconStyle.STANDARD.name))
-    )
-    private val freestyleIconStyleFlow = MutableStateFlow(
-        ThemeIconStyle.fromStorage(store.getString(KEY_THEME_ICON_STYLE_FREESTYLE, ThemeIconStyle.FREESTYLE.name))
-    )
-    private val themeIconStyleFlow = MutableStateFlow(
-        computeActiveThemeIconStyle(AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name)))
-    )
+    private val themeStyles = ThemeStyleStore(store)
+    override val carouselFallbackTheme: StateFlow<AppTheme> = themeStyles.fallbackTheme
+    override val carouselFavoriteDevice: StateFlow<String> = themeStyles.favoriteDevice
+    override fun setCarouselFavoriteDevice(deviceId: String) = themeStyles.setFavoriteDevice(deviceId)
+    private val themeIconStyleFlow = MutableStateFlow(themeStyles.iconStyleFor(appThemeFlow.value))
     override val themeIconStyle: StateFlow<ThemeIconStyle> = themeIconStyleFlow.asStateFlow()
 
     private val kineticStyleFlow = MutableStateFlow(
@@ -248,33 +241,11 @@ class BaseAppSettings(
     )
     override val kineticStyle: StateFlow<KineticStyle> = kineticStyleFlow.asStateFlow()
 
-    private fun computeActiveThemeIconStyle(theme: AppTheme): ThemeIconStyle = when (theme) {
-        AppTheme.SIMPLE, AppTheme.CLEAN -> ThemeIconStyle.STANDARD
-        AppTheme.FLUX_GLASS -> fluxIconStyleFlow.value
-        AppTheme.KINETIC_SPHERE -> kineticIconStyleFlow.value
-        AppTheme.FREESTYLE -> freestyleIconStyleFlow.value
-    }
-
-    override fun themeIconStyleFor(theme: AppTheme): ThemeIconStyle = computeActiveThemeIconStyle(theme)
+    override fun themeIconStyleFor(theme: AppTheme): ThemeIconStyle = themeStyles.iconStyleFor(theme)
 
     override fun setThemeIconStyle(theme: AppTheme, style: ThemeIconStyle) {
-        val validStyle = if (style in theme.supportedIconStyles()) style else theme.defaultIconStyle()
-        when (theme) {
-            AppTheme.SIMPLE, AppTheme.CLEAN -> { /* Simple and Clean always use standard icons */ }
-            AppTheme.FLUX_GLASS -> {
-                store.putString(KEY_THEME_ICON_STYLE_FLUX, validStyle.name)
-                fluxIconStyleFlow.value = validStyle
-            }
-            AppTheme.KINETIC_SPHERE -> {
-                store.putString(KEY_THEME_ICON_STYLE_KINETIC, validStyle.name)
-                kineticIconStyleFlow.value = validStyle
-            }
-            AppTheme.FREESTYLE -> {
-                store.putString(KEY_THEME_ICON_STYLE_FREESTYLE, validStyle.name)
-                freestyleIconStyleFlow.value = validStyle
-            }
-        }
-        themeIconStyleFlow.value = computeActiveThemeIconStyle(appThemeFlow.value)
+        themeStyles.setIconStyle(theme, style)
+        themeIconStyleFlow.value = themeStyles.iconStyleFor(appThemeFlow.value)
     }
 
     override fun setKineticStyle(style: KineticStyle) {
@@ -602,11 +573,11 @@ class BaseAppSettings(
         clipboardShareModeFlow.value = mode
     }
 
-    override fun bulletinDeltaCursor(deviceId: String): Long = store.getLong("bulletin_delta_cursor_$deviceId", 0L)
-
-    override fun setBulletinDeltaCursor(deviceId: String, cursor: Long) {
-        store.putLong("bulletin_delta_cursor_$deviceId", cursor)
-    }
+    private val bulletin = BulletinSettings(store)
+    override fun bulletinDeltaCursor(deviceId: String): Long = bulletin.deltaCursor(deviceId)
+    override fun setBulletinDeltaCursor(deviceId: String, cursor: Long) = bulletin.setDeltaCursor(deviceId, cursor)
+    override val bulletinSeenAtEpochMs: StateFlow<Long> = bulletin.seenAtEpochMs
+    override fun setBulletinSeenAtEpochMs(epochMs: Long) = bulletin.setSeenAt(epochMs)
 
     override fun setClipboardTargetDeviceIds(deviceIds: Set<String>) {
         val encoded = ClipboardSharePolicy.encodeDeviceIdSet(deviceIds)
@@ -713,9 +684,10 @@ class BaseAppSettings(
     }
 
     override fun setAppTheme(theme: AppTheme) {
+        themeStyles.themeChosen(appThemeFlow.value, theme)
         store.putString(KEY_APP_THEME, theme.name)
         appThemeFlow.value = theme
-        themeIconStyleFlow.value = computeActiveThemeIconStyle(theme)
+        themeIconStyleFlow.value = themeStyles.iconStyleFor(theme)
     }
 
     override fun setBulletinBoardStyle(style: BulletinBoardStyle) {
@@ -828,6 +800,17 @@ class BaseAppSettings(
     }
 
     override fun friendsSecretKeyBase64(): String = store.getString(KEY_FRIENDS_SECRET_KEY, "")
+
+    override fun dbFieldKeyBase64(): String = store.getString(KEY_DB_FIELD_KEY, "")
+
+    override fun setDbFieldKeyBase64(value: String) = store.putString(KEY_DB_FIELD_KEY, value.trim())
+
+    override fun clusterRecordKeyJson(): String = store.getString(KEY_CLUSTER_RECORD_KEY, "")
+    override fun setClusterRecordKeyJson(value: String) = store.putString(KEY_CLUSTER_RECORD_KEY, value.trim())
+    override fun kickHandledVersion(): Long = store.getLong(KEY_KICK_HANDLED_VERSION, 0L)
+    override fun setKickHandledVersion(value: Long) = store.putLong(KEY_KICK_HANDLED_VERSION, value)
+
+    override fun dbFieldKeyIsStored(): Boolean = (store as? SealingKvStore)?.isPendingSeal(KEY_DB_FIELD_KEY) != true
 
     override fun setFriendsSecretKeyBase64(value: String) {
         store.putString(KEY_FRIENDS_SECRET_KEY, value.trim())
@@ -1379,10 +1362,8 @@ class BaseAppSettings(
         cellularSendPromptAcknowledgedFlow.value = false
         cellularReceivePromptAcknowledgedFlow.value = false
         appThemeFlow.value = AppTheme.DEFAULT
-        fluxIconStyleFlow.value = ThemeIconStyle.FLUX
-        kineticIconStyleFlow.value = ThemeIconStyle.STANDARD
-        freestyleIconStyleFlow.value = ThemeIconStyle.FREESTYLE
-        themeIconStyleFlow.value = computeActiveThemeIconStyle(AppTheme.DEFAULT)
+        themeStyles.reset()
+        themeIconStyleFlow.value = themeStyles.iconStyleFor(AppTheme.DEFAULT)
         kineticStyleFlow.value = KineticStyle.DEFAULT
         bulletinBoardStyleFlow.value = BulletinBoardStyle.DEFAULT
         kineticSphereCleanModeFlow.value = false
@@ -1428,7 +1409,7 @@ class BaseAppSettings(
         /** Never kept in clear text: [SealingKvStore] seals these with the platform's secret store. */
         val SECRET_KEYS: Set<String> = setOf(
             KEY_CLIPBOARD_PRIVATE_KEY, KEY_DIAGNOSTICS_PRIVATE_KEY, KEY_IROH_SECRET_KEY,
-            KEY_DEVICE_PIN, KEY_TAILSCALE_AUTH_KEY, KEY_IROH_RELAY_TOKEN, KEY_FRIENDS_SECRET_KEY
+            KEY_DEVICE_PIN, KEY_TAILSCALE_AUTH_KEY, KEY_IROH_RELAY_TOKEN, KEY_FRIENDS_SECRET_KEY, KEY_DB_FIELD_KEY, KEY_CLUSTER_RECORD_KEY
         )
 
         const val KEY_GOOGLE = "google_account_link"
@@ -1471,10 +1452,7 @@ class BaseAppSettings(
         const val KEY_SIMPLE_ACTIVE_DEVICE_ID = "simple_active_device_id"
         const val KEY_OTHER_THEMES_HINT_SHOWN = "other_themes_hint_shown"
         const val KEY_THEME_DEFAULT_MIGRATED = "theme_default_migrated"
-        const val KEY_THEME_ICON_STYLE_FLUX = "theme_icon_style_flux"
-        const val KEY_THEME_ICON_STYLE_KINETIC = "theme_icon_style_kinetic"
         const val KEY_KINETIC_STYLE = "kinetic_style"
-        const val KEY_THEME_ICON_STYLE_FREESTYLE = "theme_icon_style_freestyle"
         const val KEY_BULLETIN_BOARD_STYLE = "bulletin_board_style"
         const val KEY_KINETIC_SPHERE_CLEAN_MODE = "kinetic_sphere_clean_mode"
         const val KEY_KINETIC_SPHERE_CONNECTED_LINES = "kinetic_sphere_connected_lines"
@@ -1550,6 +1528,9 @@ class BaseAppSettings(
         const val KEY_IROH_RELAY_TOKEN = "iroh_relay_token"
         const val KEY_IROH_SECRET_KEY = "iroh_secret_key_b64"
         const val KEY_FRIENDS_SECRET_KEY = "friends_secret_key_b64"
+        const val KEY_DB_FIELD_KEY = "db_field_key_b64"
+        const val KEY_CLUSTER_RECORD_KEY = "cluster_record_key_json"
+        const val KEY_KICK_HANDLED_VERSION = "kick_handled_version"
         const val KEY_FRIENDS_HIDE_IP = "friends_hide_ip"
         const val KEY_FRIENDS_MAX_FILE_MB = "friends_max_file_mb"
         const val KEY_FRIENDS_PINNED = "friends_pinned_keys"

@@ -30,19 +30,24 @@ APK_DIR="composeApp/build/outputs/apk/github/release"
 # A stale app bundle would be embedded into again, so start from a clean one.
 rm -rf "$APP_DIR" composeApp/build/compose/tmp/main/runtime
 
-./gradlew :composeApp:assembleGithubRelease embedMacExtensions
+if [ "$NO_APK" = "1" ]; then
+    ./gradlew embedMacExtensions
+else
+    ./gradlew :composeApp:assembleGithubRelease embedMacExtensions
+fi
 
 APK=$(find "$APK_DIR" -name "*.apk" ! -name "*unsigned*" ! -name "*armeabi-v7a*" | head -n 1)
 APK32=$(find "$APK_DIR" -name "*armeabi-v7a*.apk" ! -name "*unsigned*" | head -n 1)
-if [ -z "$APK" ] || [ ! -d "$APP_DIR/FileApex.app" ]; then
+if [ "$NO_APK" = "1" ]; then APK=""; APK32=""; fi
+if { [ -z "$APK" ] && [ "$NO_APK" != "1" ]; } || [ ! -d "$APP_DIR/FileApex.app" ]; then
     echo "Error: expected APK in $APK_DIR and FileApex.app in $APP_DIR"
     exit 1
 fi
 
 mkdir -p current
 rm -rf "current/FileApex.app" "current/FileApex-v${VERSION}.apk" "current/FileApex-v${VERSION}-armeabi-v7a.apk"
-mv "$APK" "current/FileApex-v${VERSION}.apk"
+if [ -n "$APK" ]; then mv "$APK" "current/FileApex-v${VERSION}.apk"; fi
 if [ -n "$APK32" ]; then mv "$APK32" "current/FileApex-v${VERSION}-armeabi-v7a.apk"; fi
 mv "$APP_DIR/FileApex.app" "current/FileApex.app"
 
-echo "Moved current/FileApex-v${VERSION}.apk and current/FileApex.app"
+echo "Moved current/FileApex.app"

@@ -17,12 +17,14 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.friends.FriendsHub
 import com.fileapex.friends.ui.friendFiles
-import com.fileapex.friends.ui.rememberFriendFilePicker
+import com.fileapex.friends.ui.FriendSendSession
+import com.fileapex.friends.ui.FriendSendTarget
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.FRIEND_ROW_PREFIX
@@ -45,16 +47,31 @@ fun rememberFriendDeviceRows(): List<DeviceListRow> {
     }
 }
 
+/** Paired devices first; friends join them only after the paired rows have loaded, so a friend never takes a paired device's place. */
+fun rowsWithFriendsLast(paired: List<DeviceListRow>, friends: List<DeviceListRow>, pairedLoaded: Boolean): List<DeviceListRow> =
+    if (pairedLoaded) paired + friends else paired
+
+/** The friend key behind a friend row id, or null for a paired device. */
+internal fun friendKeyOf(deviceId: String): String? =
+    if (deviceId.startsWith(FRIEND_ROW_PREFIX)) deviceId.removePrefix(FRIEND_ROW_PREFIX).ifEmpty { null } else null
+
 /** What the row's menu does for a friend: Browse sends a file, Details toggles Auto-accept, Remove unpins, Clipboard is absent. */
 class FriendDeviceActions internal constructor(
     private val scope: CoroutineScope,
-    private val pickFor: (String) -> Unit,
+    private val showLocalFiles: () -> Unit,
     private val startRename: (String, String) -> Unit
 ) {
     fun isFriend(deviceId: String) = deviceId.startsWith(FRIEND_ROW_PREFIX)
     private fun key(deviceId: String) = deviceId.removePrefix(FRIEND_ROW_PREFIX)
 
-    fun open(deviceId: String): Boolean = isFriend(deviceId).also { if (it) pickFor(key(deviceId)) }
+    /** Send: shows this device's files in the app's own file screen, as Local Files does, and asks it to pick for the friend. */
+    fun open(deviceId: String): Boolean = isFriend(deviceId).also {
+        if (it) {
+            val friend = FriendsHub.friends.value.firstOrNull { f -> f.friendKey == key(deviceId) }
+            FriendSendSession.begin(FriendSendTarget(key(deviceId), friend?.label.orEmpty()))
+            showLocalFiles()
+        }
+    }
 
     fun rename(deviceId: String, name: String): Boolean = isFriend(deviceId).also { if (it) startRename(key(deviceId), name) }
 
@@ -75,15 +92,10 @@ class FriendDeviceActions internal constructor(
 }
 
 @Composable
-fun rememberFriendDeviceActions(): FriendDeviceActions {
+fun rememberFriendDeviceActions(showLocalFiles: () -> Unit): FriendDeviceActions {
     val scope = rememberCoroutineScope()
-    var sendTo by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<Pair<String, String>?>(null) }
-    val pick = rememberFriendFilePicker { files ->
-        val target = sendTo
-        sendTo = null
-        if (files.isNotEmpty() && target != null) scope.launch { FriendsHub.enqueueSend(target, files) }
-    }
+    val showLocal by rememberUpdatedState(showLocalFiles)
     renaming?.let { (key, current) ->
         var text by remember(key) { mutableStateOf(current) }
         AlertDialog(
@@ -94,7 +106,7 @@ fun rememberFriendDeviceActions(): FriendDeviceActions {
             dismissButton = { TextButton(onClick = { renaming = null }) { Text(stringRes("cancel")) } }
         )
     }
-    return remember(scope) { FriendDeviceActions(scope, { sendTo = it; pick() }, { key, name -> renaming = key to name }) }
+    return remember(scope) { FriendDeviceActions(scope, { showLocal() }, { key, name -> renaming = key to name }) }
 }
 
 /** Set around a menu while it draws a friend row, so the shared menu tiles pick the friend icon and label. */

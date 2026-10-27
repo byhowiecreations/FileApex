@@ -83,9 +83,10 @@ class IrohBridgeTest {
         link: IrohLink,
         serverPort: Int,
         allowed: Set<String>,
-        maxStreams: Int = 64
+        maxStreams: Int = 64,
+        onPeerActive: (String) -> Unit = {}
     ): IrohBridge {
-        val bridge = IrohBridge(link, serverPort, { it in allowed }, scope, maxConcurrentStreams = maxStreams)
+        val bridge = IrohBridge(link, serverPort, { it in allowed }, scope, maxConcurrentStreams = maxStreams, onPeerActive = onPeerActive)
         bridge.start()
         bridges += bridge
         return bridge
@@ -111,6 +112,33 @@ class IrohBridgeTest {
         val reply = withContext(Dispatchers.IO) { request(port, "ping".encodeToByteArray()) }
 
         assertEquals("ok:ping", reply.decodeToString())
+    }
+
+    private fun activeAfterInboundRequest(request: String?): List<String> = runBlocking {
+        val (a, b) = memoryLinkPair()
+        val serverPort = startEchoServer()
+        val active = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val clientSide = bridge(a, serverPort = 1, allowed = setOf("peer-b"))
+        bridge(b, serverPort, allowed = setOf("peer-a"), onPeerActive = { active += it })
+        val port = clientSide.portFor("peer-b")
+        withContext(Dispatchers.IO) { request(port, (request ?: "").encodeToByteArray()) }
+        kotlinx.coroutines.delay(200)
+        active.toList()
+    }
+
+    @Test
+    fun aPresenceCheckFromAPeerDoesNotCountAsUsingTheEndpoint() {
+        assertEquals(emptyList<String>(), activeAfterInboundRequest("GET /api/v1/health HTTP/1.1\r\nHost: x\r\n\r\n"))
+    }
+
+    @Test
+    fun aStreamWithNoRequestDoesNotCountAsUsingTheEndpoint() {
+        assertEquals(emptyList<String>(), activeAfterInboundRequest(null))
+    }
+
+    @Test
+    fun aRealRequestFromAPeerCountsAsUsingTheEndpoint() {
+        assertEquals(listOf("peer-a"), activeAfterInboundRequest("GET /api/v1/files/list HTTP/1.1\r\nHost: x\r\n\r\n").distinct())
     }
 
     @Test
@@ -224,13 +252,11 @@ class IrohBridgeTest {
     fun listenerAcceptsOnlyLoopback() = runBlocking {
         val (a, _) = memoryLinkPair()
         val clientSide = bridge(a, serverPort = 1, allowed = setOf("peer-b"))
-        clientSide.portFor("peer-b")
+        val port = clientSide.portFor("peer-b")
 
-        val address = clientSide.listenerAddress("peer-b")!!
-        assertTrue(address.isLoopbackAddress)
         // The app's HTTP client dials the literal 127.0.0.1, so a listener on ::1 (what some Android
         // versions return for the loopback address) would refuse every request.
-        assertTrue(address.address.contentEquals(byteArrayOf(127, 0, 0, 1)))
+        withContext(Dispatchers.IO) { Socket("127.0.0.1", port).use { assertTrue(it.isConnected) } }
     }
 
     @Test

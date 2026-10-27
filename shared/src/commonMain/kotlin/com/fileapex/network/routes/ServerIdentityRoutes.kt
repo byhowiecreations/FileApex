@@ -5,6 +5,7 @@ import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.pairing.LanPairingDiscovery
 import com.fileapex.network.FileApexServer
 import com.fileapex.network.RenameDeviceRequest
+import com.fileapex.network.respondRenamed
 import com.fileapex.network.TransferTransactionJournal
 import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
@@ -45,7 +46,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
                 )
             }
             server.onLog("Local device renamed to $trimmed via cluster request", null)
-            call.respond(HttpStatusCode.OK)
+            call.respondRenamed(server.json, trimmed)
         }.onFailure { error ->
             server.onLog("POST /api/v1/identity/rename failed", error)
             call.respond(HttpStatusCode.InternalServerError, "rename_failed")

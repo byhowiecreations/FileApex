@@ -109,6 +109,25 @@ private val FluentColorScheme = lightColorScheme(
     onError = Color.White
 )
 
+private val CarouselColorScheme = darkColorScheme(
+    primary = CarouselPalette.accent,
+    onPrimary = CarouselPalette.onAccent,
+    primaryContainer = Color(0xFF3A2A18),
+    onPrimaryContainer = CarouselPalette.accent,
+    secondary = CarouselPalette.accent,
+    onSecondary = CarouselPalette.onAccent,
+    background = Color.Transparent,
+    onBackground = Color(0xFFE8E8E8),
+    surface = Color(0x14FFFFFF),
+    onSurface = Color(0xFFE8E8E8),
+    surfaceVariant = CarouselPalette.cardRaised,
+    onSurfaceVariant = CarouselPalette.textMuted,
+    outline = CarouselPalette.borderStrong,
+    outlineVariant = CarouselPalette.border,
+    error = Color(0xFFFF6B6B),
+    onError = Color(0xFF2A0A0A)
+)
+
 private val FluxGlassColorScheme = darkColorScheme(
     primary = FluxGlassPalette.accent,
     onPrimary = FluxGlassPalette.onPrimary,
@@ -183,6 +202,7 @@ internal fun defaultTextColor(appTheme: AppTheme, kineticStyle: KineticStyle, co
         KineticStyle.JADED_STEEL -> KineticStyleLook.ink
     }
     AppTheme.FREESTYLE -> colorScheme.onSurface
+    AppTheme.CAROUSEL -> colorScheme.onSurface
     AppTheme.CLEAN -> null
 }
 
@@ -198,6 +218,7 @@ fun FileApexTheme(
     val fluent = uiStyle == DesktopUiStyle.WindowsFluent
     val fontFamily = if (fluent) fluentUiFontFamily() else FontFamily.Default
     val colorScheme = when {
+        appTheme == AppTheme.CAROUSEL -> CarouselColorScheme
         appTheme.traits.glassChrome -> FluxGlassColorScheme
         fluent -> FluentColorScheme
         appTheme == AppTheme.SIMPLE -> SimpleColorScheme
@@ -209,7 +230,12 @@ fun FileApexTheme(
         appTheme == AppTheme.SIMPLE || appTheme == AppTheme.CLEAN || appTheme == AppTheme.FLUX_GLASS -> CurvedShapes
         else -> StandardShapes
     }
-    val typography = if (fluent) fluentTypography(fontFamily) else Typography()
+    val macFont = if (appTheme == AppTheme.CAROUSEL) com.fileapex.platform.macSystemFontFamily() else null
+    val typography = when {
+        fluent -> fluentTypography(fontFamily)
+        macFont != null -> fluentTypography(macFont)
+        else -> Typography()
+    }
     val fluentRipple = RippleConfiguration(
         color = Color(0xFF000000),
         rippleAlpha = RippleAlpha(

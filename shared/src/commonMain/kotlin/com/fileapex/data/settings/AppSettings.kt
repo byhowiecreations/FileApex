@@ -8,6 +8,10 @@ import kotlinx.coroutines.flow.StateFlow
 interface AppSettings {
     /** How far this device has pulled the bulletin from [deviceId], on that peer's clock; 0 when never. */
     fun bulletinDeltaCursor(deviceId: String): Long
+
+    /** When this device last looked at the Bulletin Board; 0 until the first start. Local only, never sent to other devices. */
+    val bulletinSeenAtEpochMs: StateFlow<Long>
+    fun setBulletinSeenAtEpochMs(epochMs: Long)
     fun setBulletinDeltaCursor(deviceId: String, cursor: Long)
 
     val googleAccountLinkEnabled: StateFlow<Boolean>
@@ -90,6 +94,13 @@ interface AppSettings {
     val liveTransferCapsuleEnabled: StateFlow<Boolean>
     val liveTransferShowQueueEnabled: StateFlow<Boolean>
     val appTheme: StateFlow<AppTheme>
+
+    /** The theme drawn while a stored Carousel is unavailable (not a Mac, fewer than three paired devices). */
+    val carouselFallbackTheme: StateFlow<AppTheme>
+
+    /** The device starred as the Carousel's starting card; blank when none. */
+    val carouselFavoriteDevice: StateFlow<String>
+    fun setCarouselFavoriteDevice(deviceId: String)
     val themeIconStyle: StateFlow<ThemeIconStyle>
     val kineticStyle: StateFlow<KineticStyle>
     val bulletinBoardStyle: StateFlow<BulletinBoardStyle>
@@ -208,6 +219,17 @@ interface AppSettings {
     /** Base64 of the Friends Iroh key (never the main one), or empty before friends are first used. */
     fun friendsSecretKeyBase64(): String
     fun setFriendsSecretKeyBase64(value: String)
+    /** Key that seals the sensitive database columns; sealed by the platform vault like the other secret keys. */
+    fun dbFieldKeyBase64(): String
+    fun setDbFieldKeyBase64(value: String)
+    /** False while a new key exists only in memory because the platform vault could not seal it yet. */
+    fun dbFieldKeyIsStored(): Boolean
+    /** The key that seals this user's cloud device records, as JSON; sealed by the platform vault. */
+    fun clusterRecordKeyJson(): String
+    fun setClusterRecordKeyJson(value: String)
+    /** The removal stamp this device already signed out of Google for, so a later sign-in on purpose is left alone. */
+    fun kickHandledVersion(): Long
+    fun setKickHandledVersion(value: Long)
 
     /** Friends traffic goes through the relay only, so a friend never sees this device's IP address. */
     fun friendsHideIp(): Boolean

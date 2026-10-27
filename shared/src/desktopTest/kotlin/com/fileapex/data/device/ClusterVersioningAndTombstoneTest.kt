@@ -24,9 +24,9 @@ class ClusterVersioningAndTombstoneTest {
         val devices = mutableMapOf<String, PairedDeviceEntity>()
         val removed = mutableMapOf<String, RemovedDeviceEntity>()
 
-        override fun getAllDevices(): Flow<List<PairedDeviceEntity>> = emptyFlow()
+        override fun getAllDevicesUnordered(): Flow<List<PairedDeviceEntity>> = emptyFlow()
 
-        override suspend fun getAllDevicesOnce(): List<PairedDeviceEntity> =
+        override suspend fun getAllDevicesOnceUnordered(): List<PairedDeviceEntity> =
             devices.values.filter { !it.isRemoved }.toList()
 
         override suspend fun getDevice(deviceId: String): PairedDeviceEntity? =
@@ -35,7 +35,7 @@ class ClusterVersioningAndTombstoneTest {
         override suspend fun getTombstonedDevices(): List<PairedDeviceEntity> =
             devices.values.filter { it.isRemoved }.toList()
 
-        override suspend fun getAllDevicesIncludingTombstones(): List<PairedDeviceEntity> =
+        override suspend fun getAllDevicesIncludingTombstonesUnordered(): List<PairedDeviceEntity> =
             devices.values.toList()
 
         override suspend fun upsertDevice(device: PairedDeviceEntity) {
@@ -56,9 +56,6 @@ class ClusterVersioningAndTombstoneTest {
 
         override suspend fun countRemovedById(deviceId: String): Int =
             if (removed.containsKey(deviceId)) 1 else 0
-
-        override suspend fun countRemovedByPublicKeyHash(publicKeyHash: String): Int =
-            if (removed.values.any { it.publicKeyHash == publicKeyHash && it.publicKeyHash.isNotEmpty() }) 1 else 0
 
         override suspend fun clearRemovedDevice(deviceId: String) {
             removed.remove(deviceId)
@@ -149,7 +146,6 @@ class ClusterVersioningAndTombstoneTest {
         repo.recordTlsPin("dev-tls", pinA, 8443)
 
         repo.upsert(tlsPeer(pin = pinB, port = 9443))
-        repo.upsertReplacingAliases(tlsPeer(pin = pinB, port = 9443).copy(deviceName = "Desk 2"))
         repo.adoptFromRosterIntro(tlsPeer(pin = pinB, port = 9443).copy(clusterVersion = 5000L))
         repo.applyPeerNodeState(
             PeerNodeState(
@@ -175,8 +171,7 @@ class ClusterVersioningAndTombstoneTest {
         assertEquals("", repo.getDevice("dev-tls")!!.tlsPin)
         assertTrue(repo.recordTlsPin("dev-tls", pinA, 8443, alt = pinB))
         assertEquals(pinB, repo.getDevice("dev-tls")!!.tlsPinAlt)
-        assertTrue(repo.clearTlsPin("dev-tls"))
-        assertEquals("", repo.getDevice("dev-tls")!!.tlsPin)
+        assertEquals(pinA, repo.getDevice("dev-tls")!!.tlsPin)
     }
 
     @Test
@@ -414,19 +409,6 @@ class ClusterVersioningAndTombstoneTest {
     }
 
     @Test
-    fun testSelfRemovalRequiresStampNewerThanOwnMembership() = runBlocking {
-        val repo = DeviceRepository(InMemoryDeviceDao())
-        val pairedAt = repo.nextMembershipVersion()
-        repo.recordSelfMembership(pairedAt)
-
-        assertFalse(repo.acceptsSelfRemoval(RemovedDeviceRecord(deviceId = "me")))
-        assertFalse(repo.acceptsSelfRemoval(removal("me", pairedAt - 1)))
-        assertFalse(repo.acceptsSelfRemoval(removal("me", pairedAt)))
-        assertFalse(repo.acceptsSelfRemoval(removal("me", pairedAt + 1).copy(membershipProtocol = 0)))
-        assertTrue(repo.acceptsSelfRemoval(removal("me", pairedAt + 1)))
-    }
-
-    @Test
     fun testClusterClockIsMonotonicAndOutranksObservedStamps() {
         val ahead = TimeUtils.now() + 120_000L
         ClusterClock.observe(ahead)
@@ -537,40 +519,6 @@ class ClusterVersioningAndTombstoneTest {
         publicKey = "key-$id",
         lastSeenTimestamp = TimeUtils.now()
     )
-
-    @Test
-    fun testHandleRevocationByClusterWipesAllPairings() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-
-        repo.adoptFromPairing(
-            PairedDeviceEntity(
-                deviceId = "dev-6",
-                deviceName = "Peer 1",
-                lastKnownIp = "192.168.1.100",
-                port = 49428,
-                publicKeyHash = "hash-1",
-                rootPath = "/"
-            )
-        )
-        repo.adoptFromPairing(
-            PairedDeviceEntity(
-                deviceId = "dev-7",
-                deviceName = "Peer 2",
-                lastKnownIp = "192.168.1.101",
-                port = 49428,
-                publicKeyHash = "hash-2",
-                rootPath = "/"
-            )
-        )
-
-        assertEquals(2, repo.listDevices().size)
-
-        repo.handleRevocationByCluster()
-
-        assertEquals(0, repo.listDevices().size)
-        assertEquals(0, dao.getAllDevicesIncludingTombstones().size)
-    }
 
     @Test
     fun testGossipReconcileRemotePeerCannotResurrectTombstonedDevice() = runBlocking {
@@ -821,6 +769,21 @@ class ClusterVersioningAndTombstoneTest {
 
         assertEquals(CloudSeedOutcome.Applied, repo.applyCloudSeed(peer("nx1", "172.16.16.105"), now, stamped, now))
         assertEquals(now, repo.getDevice("nx1")!!.clusterVersion)
+    }
+
+    @Test
+    fun testCloudSeedWithoutAProtocolListKeepsTheStoredIrohMarker() = runBlocking {
+        val dao = InMemoryDeviceDao()
+        val repo = DeviceRepository(dao)
+        val marker = "[\"fileapex.v1.identity\",\"fileapex.v1.iroh.off\"]"
+        repo.adoptFromPairing(peer("razr", "172.16.16.20"))
+        dao.devices["razr"] = dao.devices.getValue("razr").copy(supportedProtocolsJson = marker)
+
+        repo.applyCloudSeed(peer("razr", "172.16.16.21"), 0L, 0, TimeUtils.now())
+
+        val updated = repo.getDevice("razr")!!
+        assertEquals("172.16.16.21", updated.lastKnownIp)
+        assertEquals(marker, updated.supportedProtocolsJson)
     }
 
     @Test

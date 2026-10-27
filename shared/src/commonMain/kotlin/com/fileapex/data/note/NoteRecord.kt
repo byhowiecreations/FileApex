@@ -18,5 +18,10 @@ data class NoteRecord(
     val attachmentLocalPath: String? = null,
     /** Compressed inline preview for bulletin image messages (not the full file). */
     val attachmentPreviewBase64: String? = null,
-    val contentType: Int = 0
+    val contentType: Int = 0,
+    /** The lines of a checklist post, in order, without the removed ones. */
+    val checklist: List<NoteChecklistItem> = emptyList()
 )
+
+@Serializable
+data class NoteChecklistItem(val id: String, val text: String, val done: Boolean)

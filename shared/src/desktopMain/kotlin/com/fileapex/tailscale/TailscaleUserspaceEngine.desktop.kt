@@ -92,6 +92,7 @@ internal fun tailscaleLoopbackOrNull(host: String, port: Int): TailscaleLoopback
     return TailscaleLoopbackDial(host = "127.0.0.1", port = localPort, token = "")
 }
 
+/** Kept for TailscaleDialPathTest: proves a disabled switch never loads the native library. */
 internal fun tsnetNativeLibraryLoaded(): Boolean = DesktopTsnetLibrary.loaded()
 
 actual fun tailscaleNodeStateFile(): File = File(tailscaleUserspaceStateDir(), "tailscaled.state")

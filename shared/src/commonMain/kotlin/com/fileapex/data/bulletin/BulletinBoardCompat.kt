@@ -17,7 +17,7 @@ fun MessageEntity.toNoteRecord(): NoteRecord {
     var checksum: String? = null
     var driveFileId: String? = null
     var previewBase64: String? = null
-    var pinned = isPinned
+    val pinned = isPinned
 
     if (contentType == BulletinContentType.FILE_METADATA || contentType == BulletinContentType.IMAGE_PREVIEW) {
         val meta = runCatching {
@@ -39,7 +39,6 @@ fun MessageEntity.toNoteRecord(): NoteRecord {
             checksum = meta.sha256
             driveFileId = meta.driveFileId
             previewBase64 = meta.previewBase64
-            pinned = isPinned || meta.previewBase64 != null
         }
     }
 

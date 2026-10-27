@@ -5,6 +5,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.SolidColor
+import com.fileapex.ui.theme.CarouselPalette
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.FreestylePalette
 import com.fileapex.ui.theme.KineticPalette
@@ -17,7 +19,8 @@ enum class AppTheme(val displayName: String, val description: String) {
     CLEAN("Clean", "Clean light surfaces with solid container cards and full-width navigation."),
     FLUX_GLASS("Flux Glass", "Translucent frosted glass cards, deep dark teal-charcoal gradient background, glowing status accents, and floating pill navigation."),
     KINETIC_SPHERE("Kinetic Sphere", "Spatial node-based orbital network layout with interactive central hub and cosmic glass styling."),
-    FREESTYLE("Freestyle", "Modular draggable canvas layout with customizable floating cards and orbital tile rings.");
+    FREESTYLE("Freestyle", "Modular draggable canvas layout with customizable floating cards and orbital tile rings."),
+    CAROUSEL("Carousel", "Endless row of device cards on a dark canvas with a magnifying dock. Mac only, needs three or more paired devices.");
 
     companion object {
         val DEFAULT = SIMPLE
@@ -61,18 +64,7 @@ fun AppTheme.backgroundBrush(): Brush? {
                 FreestylePalette.backgroundBottom
             )
         )
-    }
-}
-
-/**
- * Container background color for cards, panels, and dialog surfaces.
- */
-fun AppTheme.cardContainerColor(defaultColor: Color = Color.White): Color {
-    return when (this) {
-        AppTheme.SIMPLE, AppTheme.CLEAN -> defaultColor
-        AppTheme.FLUX_GLASS -> FluxGlassPalette.cardContainer
-        AppTheme.KINETIC_SPHERE -> KineticPalette.cardContainer
-        AppTheme.FREESTYLE -> FreestylePalette.cardContainer
+        AppTheme.CAROUSEL -> SolidColor(CarouselPalette.background)
     }
 }
 
@@ -85,6 +77,7 @@ fun AppTheme.cardBorder(defaultBorder: BorderStroke): BorderStroke {
         AppTheme.FLUX_GLASS -> BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
         AppTheme.KINETIC_SPHERE -> BorderStroke(1.dp, FluxGlassPalette.cyan.copy(alpha = 0.35f))
         AppTheme.FREESTYLE -> BorderStroke(1.dp, FreestylePalette.cardBorder.copy(alpha = 0.32f))
+        AppTheme.CAROUSEL -> BorderStroke(1.dp, CarouselPalette.border)
     }
 }
 
@@ -113,13 +106,14 @@ fun AppTheme.supportedIconStyles(): List<ThemeIconStyle> = when (this) {
     AppTheme.FLUX_GLASS -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX)
     AppTheme.KINETIC_SPHERE -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX, ThemeIconStyle.FREESTYLE)
     AppTheme.FREESTYLE -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX, ThemeIconStyle.FREESTYLE)
+    AppTheme.CAROUSEL -> listOf(ThemeIconStyle.STANDARD, ThemeIconStyle.FLUX, ThemeIconStyle.FREESTYLE)
 }
 
 fun AppTheme.defaultIconStyle(): ThemeIconStyle = when (this) {
     AppTheme.SIMPLE, AppTheme.CLEAN -> ThemeIconStyle.STANDARD
     AppTheme.FLUX_GLASS -> ThemeIconStyle.FLUX
     AppTheme.KINETIC_SPHERE -> ThemeIconStyle.STANDARD
-    AppTheme.FREESTYLE -> ThemeIconStyle.FREESTYLE
+    AppTheme.FREESTYLE, AppTheme.CAROUSEL -> ThemeIconStyle.FREESTYLE
 }
 
 /**

@@ -41,5 +41,6 @@ internal class NotesFrame(
     val hasSnippets get() = state.hasSnippets
     val hasOtherFiles get() = state.hasOtherFiles
     val hasPinned get() = state.hasPinned
+    val hasTodo get() = state.hasTodo
     val availableTags get() = state.availableTags
 }

@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.util.AddressRedaction
 import com.fileapex.update.FileApexAppVersion
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
@@ -47,7 +48,7 @@ actual object Diagnostics {
                 }
             }
         }
-        result
+        result.map(AddressRedaction::redact)
     }
 
     fun dumpDiagnosticsFile(): java.io.File {

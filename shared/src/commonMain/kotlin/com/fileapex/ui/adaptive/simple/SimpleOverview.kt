@@ -49,6 +49,7 @@ import com.fileapex.domain.notifications.PhoneSettingsPage
 import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.i18n.formatLocalizedDateTime
 import com.fileapex.i18n.stringRes
+import com.fileapex.ui.devices.ReachedByField
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.ui.dnd.deviceFileDropTarget
@@ -189,7 +190,7 @@ private fun SimpleClipboardRow(device: DeviceListRow) {
         val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(entity) ?: return@LaunchedEffect
         do {
             sharingEnabled = cancellableCatching {
-                FileApexServices.client.getClipboardStatus(endpoint.host, endpoint.port).sharingEnabled
+                FileApexServices.client.clipboard.getClipboardStatus(endpoint.host, endpoint.port).sharingEnabled
             }.getOrNull()
             if (sharingEnabled == true || !promptSent) break
             delay(3_000)
@@ -278,13 +279,16 @@ internal fun SimpleInfo(devicesViewModel: DevicesViewModel, active: DeviceListRo
             active == null -> Text(stringRes("simple_no_device_title"))
             details == null || (details.loading && details.snapshot == null) -> CircularProgressIndicator(modifier = Modifier.size(28.dp))
             details.snapshot == null && details.errorMessage != null -> Text(details.errorMessage, color = MaterialTheme.colorScheme.error)
-            details.snapshot != null -> DeviceDiagnosticsFormatter.detailRows(
-                snapshot = details.snapshot,
-                preferences = preferences
-            ).forEach { (label, value) ->
-                Column {
-                    Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(value, style = MaterialTheme.typography.bodyMedium)
+            details.snapshot != null -> {
+                ReachedByField(details.deviceId)
+                DeviceDiagnosticsFormatter.detailRows(
+                    snapshot = details.snapshot,
+                    preferences = preferences
+                ).forEach { (label, value) ->
+                    Column {
+                        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(value, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         }

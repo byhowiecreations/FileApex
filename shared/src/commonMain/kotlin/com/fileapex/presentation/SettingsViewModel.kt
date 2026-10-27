@@ -1,6 +1,11 @@
 package com.fileapex.presentation
 
-import com.fileapex.domain.clipboard.applyAutoDefaultClipboardTarget
+import com.fileapex.presentation.settings.SettingsClipboardActions
+import com.fileapex.presentation.settings.SettingsDeviceNameActions
+import com.fileapex.presentation.settings.SettingsDriveActions
+import com.fileapex.presentation.settings.SettingsGoogleActions
+import com.fileapex.presentation.settings.SettingsStateMirror
+import com.fileapex.presentation.settings.SettingsUpdateActions
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
@@ -8,22 +13,17 @@ import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.PeerDeviceNameLabel
 import com.fileapex.data.identity.DeviceNamePeerLabelsStore
-import com.fileapex.domain.device.DeviceNameCoordinator
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
-import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.UpdateCheckUnit
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
-import com.fileapex.i18n.UserFacingErrors
-import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.domain.clipboard.ClipboardShareMode
-import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.domain.diagnostics.DeviceDetailsFieldId
 import com.fileapex.platform.BootLaunchPreference
@@ -175,6 +175,11 @@ class SettingsViewModel : ViewModel() {
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private val clipboard = SettingsClipboardActions(_uiState, viewModelScope)
+    private val updates = SettingsUpdateActions(_uiState)
+    private val drive = SettingsDriveActions(_uiState, viewModelScope)
+    private val deviceName = SettingsDeviceNameActions(_uiState, viewModelScope)
+    private val google = SettingsGoogleActions(_uiState, viewModelScope)
 
     init {
         viewModelScope.launch {
@@ -197,175 +202,17 @@ class SettingsViewModel : ViewModel() {
         }
         viewModelScope.launch {
             settings.googleAccountLinkEnabled.collect {
-                refreshDeviceNameClusterSync()
+                deviceName.refreshDeviceNameClusterSync()
             }
         }
         viewModelScope.launch {
             FileApexServices.awaitBootstrap()
             FileApexServices.deviceRepository.observeDevices().collect { devices ->
                 _uiState.update { it.copy(clipboardPeers = devices) }
-                refreshDeviceNameClusterSync()
+                deviceName.refreshDeviceNameClusterSync()
             }
         }
-        viewModelScope.launch {
-            settings.clipboardSharingEnabled.collect { enabled ->
-                _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardDisclosureAcknowledged.collect { ack ->
-                _uiState.update { it.copy(clipboardDisclosureAcknowledged = ack) }
-            }
-        }
-        viewModelScope.launch {
-            settings.accessibilityDisclosureAcknowledged.collect { ack ->
-                _uiState.update { it.copy(accessibilityDisclosureAcknowledged = ack) }
-            }
-        }
-        viewModelScope.launch {
-            settings.installPackagesDisclosureAcknowledged.collect { ack ->
-                _uiState.update { it.copy(installPackagesDisclosureAcknowledged = ack) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardShareMode.collect { mode ->
-                _uiState.update { it.copy(clipboardShareMode = mode) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardTargetDeviceIds.collect { ids ->
-                _uiState.update { it.copy(clipboardTargetDeviceIds = ids) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardViaCellularEnabled.collect { enabled ->
-                _uiState.update { it.copy(clipboardViaCellularEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardAccessibilityEnabled.collect { enabled ->
-                _uiState.update { it.copy(clipboardAccessibilityEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardSendNotificationEnabled.collect { enabled ->
-                _uiState.update { it.copy(clipboardSendNotificationEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardShizukuEnabled.collect { enabled ->
-                _uiState.update { it.copy(clipboardShizukuEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.clipboardAutoSendEnabled.collect { enabled ->
-                _uiState.update { it.copy(clipboardAutoSendEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.notesNotificationsEnabled.collect { enabled ->
-                _uiState.update { it.copy(notesNotificationsEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.driveRelayNotificationsEnabled.collect { enabled ->
-                _uiState.update { it.copy(driveRelayNotificationsEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.kineticSphereCleanMode.collect { mode ->
-                _uiState.update { it.copy(kineticSphereCleanMode = mode) }
-            }
-        }
-        viewModelScope.launch {
-            settings.kineticSphereConnectedLinesEnabled.collect { enabled ->
-                _uiState.update { it.copy(kineticSphereConnectedLinesEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.kineticSphereOrbitalRingsEnabled.collect { enabled ->
-                _uiState.update { it.copy(kineticSphereOrbitalRingsEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.kineticSpherePersistentWallpaperEnabled.collect { enabled ->
-                _uiState.update { it.copy(kineticSpherePersistentWallpaperEnabled = enabled) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupGeneralExpanded.collect { expanded ->
-                _uiState.update { it.copy(generalExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupSystemPerformanceExpanded.collect { expanded ->
-                _uiState.update { it.copy(systemPerformanceExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupAppearanceBehaviorExpanded.collect { expanded ->
-                _uiState.update { it.copy(appearanceBehaviorExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupSecurityAccountExpanded.collect { expanded ->
-                _uiState.update { it.copy(securityAccountExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.showAdvancedSettings.collect { show ->
-                _uiState.update { it.copy(showAdvancedSettings = show) }
-            }
-        }
-        viewModelScope.launch {
-            settings.settingsGroupRemoteAccessExpanded.collect { expanded ->
-                _uiState.update { it.copy(remoteAccessExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.tailscaleSetupExpanded.collect { expanded ->
-                _uiState.update { it.copy(tailscaleSetupExpanded = expanded) }
-            }
-        }
-        viewModelScope.launch {
-            settings.bulletinRemoteFilePurgePreference.collect { preference ->
-                _uiState.update {
-                    it.copy(
-                        allowRemoteFileDeletion = preference == BulletinRemoteFilePurgePreference.ENABLED
-                    )
-                }
-            }
-        }
-        viewModelScope.launch {
-            settings.bulletinBoardStyle.collect { style ->
-                _uiState.update { it.copy(bulletinBoardStyle = style) }
-            }
-        }
-        viewModelScope.launch {
-            settings.themeIconStyle.collect { style ->
-                _uiState.update { it.copy(themeIconStyle = style) }
-            }
-        }
-        viewModelScope.launch {
-            settings.kineticStyle.collect { style ->
-                _uiState.update { it.copy(kineticStyle = style) }
-            }
-        }
-        viewModelScope.launch {
-            settings.desktopLayoutMode.collect { mode ->
-                _uiState.update { it.copy(desktopLayoutMode = mode) }
-            }
-        }
-        viewModelScope.launch {
-            settings.desktopUiStyle.collect { style ->
-                _uiState.update { it.copy(desktopUiStyle = style) }
-            }
-        }
-        viewModelScope.launch {
-            settings.appTheme.collect { theme ->
-                _uiState.update { it.copy(appTheme = theme) }
-            }
-        }
+        SettingsStateMirror(_uiState, viewModelScope).start()
     }
 
     fun toggleGeneralGroup() {
@@ -462,154 +309,6 @@ class SettingsViewModel : ViewModel() {
         _uiState.update { it.copy(desktopUiStyle = style) }
     }
 
-    fun setClipboardSharing(enabled: Boolean) {
-        settings.setClipboardSharingEnabled(enabled)
-        _uiState.update { it.copy(clipboardSharingEnabled = enabled) }
-        com.fileapex.platform.ClipboardShareChrome.fire()
-        if (enabled) {
-            viewModelScope.launch {
-                val paired = FileApexServices.deviceRepository.listDevices()
-                val peers = paired.map {
-                    ClipboardSharePolicy.PeerRef(
-                        deviceId = it.deviceId,
-                        isDesktop = com.fileapex.domain.peer.PeerPlatform.isDesktop(it.os, it.platform)
-                    )
-                }
-                val selfIsAndroid = currentPlatformLabel() == "Android"
-                val isConfigured = settings.clipboardTargetConfigured.value
-
-                if (!isConfigured) {
-                    settings.applyAutoDefaultClipboardTarget(selfIsAndroid, peers)?.let { defaultTargetId ->
-                        _uiState.update {
-                            it.copy(
-                                clipboardShareMode = ClipboardShareMode.SPECIFIC,
-                                clipboardTargetDeviceIds = setOf(defaultTargetId)
-                            )
-                        }
-                    }
-                }
-
-                if (com.fileapex.domain.clipboard.ClipboardSharePolicy.shouldPromptTargetConfiguration(isConfigured, selfIsAndroid, peers)) {
-                    _uiState.update {
-                        it.copy(
-                            showClipboardConfigDialog = true,
-                            clipboardConfigPeers = paired
-                        )
-                    }
-                } else {
-                    com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
-                }
-            }
-        }
-    }
-
-    fun dismissClipboardConfigDialog() {
-        _uiState.update { it.copy(showClipboardConfigDialog = false) }
-    }
-
-    fun confirmClipboardConfig(mode: ClipboardShareMode, targetIds: Set<String>) {
-        settings.setClipboardShareMode(mode)
-        settings.setClipboardTargetDeviceIds(targetIds)
-        settings.setClipboardTargetConfigured(true)
-        _uiState.update {
-            it.copy(
-                showClipboardConfigDialog = false,
-                clipboardShareMode = mode,
-                clipboardTargetDeviceIds = targetIds
-            )
-        }
-        com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
-    }
-
-    fun setClipboardDisclosureAcknowledged(acknowledged: Boolean) {
-        settings.setClipboardDisclosureAcknowledged(acknowledged)
-        _uiState.update { it.copy(clipboardDisclosureAcknowledged = acknowledged) }
-    }
-
-    fun setAccessibilityDisclosureAcknowledged(acknowledged: Boolean) {
-        settings.setAccessibilityDisclosureAcknowledged(acknowledged)
-        _uiState.update { it.copy(accessibilityDisclosureAcknowledged = acknowledged) }
-    }
-
-    fun setInstallPackagesDisclosureAcknowledged(acknowledged: Boolean) {
-        settings.setInstallPackagesDisclosureAcknowledged(acknowledged)
-        _uiState.update { it.copy(installPackagesDisclosureAcknowledged = acknowledged) }
-    }
-
-    fun setClipboardShareMode(mode: ClipboardShareMode) {
-        settings.setClipboardShareMode(mode)
-        _uiState.update { it.copy(clipboardShareMode = mode) }
-        com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
-    }
-
-    fun setClipboardTargetDevice(deviceId: String, selected: Boolean) {
-        settings.setClipboardTargetDevice(deviceId, selected)
-        _uiState.update { it.copy(clipboardTargetDeviceIds = settings.clipboardTargetDeviceIds.value) }
-        if (selected) {
-            com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboard()
-        }
-    }
-
-    fun setClipboardViaCellular(enabled: Boolean) {
-        if (enabled && !settings.googleAccountLinkEnabled.value) return
-        settings.setClipboardViaCellularEnabled(enabled)
-        _uiState.update { it.copy(clipboardViaCellularEnabled = enabled) }
-    }
-
-    fun setClipboardAutoSend(enabled: Boolean) {
-        settings.setClipboardAutoSendEnabled(enabled)
-        _uiState.update { it.copy(clipboardAutoSendEnabled = enabled) }
-    }
-
-    fun setClipboardAccessibility(enabled: Boolean) {
-        settings.setClipboardAccessibilityEnabled(enabled)
-        val restricted = enabled &&
-            com.fileapex.platform.ClipboardAccessibilitySettings.isRestrictedSettingsBlocked()
-        _uiState.update {
-            it.copy(
-                clipboardAccessibilityEnabled = enabled,
-                showAccessibilityRestrictedHelp = restricted
-            )
-        }
-        if (enabled && !restricted) {
-            com.fileapex.platform.ClipboardAccessibilitySettings.openSystemPrompt()
-        }
-    }
-
-    fun setClipboardSendNotification(enabled: Boolean) {
-        settings.setClipboardSendNotificationEnabled(enabled)
-        _uiState.update { it.copy(clipboardSendNotificationEnabled = enabled) }
-    }
-
-    fun setClipboardShizuku(enabled: Boolean) {
-        if (enabled) {
-            com.fileapex.platform.ClipboardRuntimeDiagnostics.activateShizuku()
-        } else {
-            settings.setClipboardShizukuEnabled(false)
-        }
-        _uiState.update { it.copy(clipboardShizukuEnabled = enabled) }
-    }
-
-    fun dismissAccessibilityRestrictedHelp() {
-        _uiState.update { it.copy(showAccessibilityRestrictedHelp = false) }
-    }
-
-    fun openAccessibilityAppInfo() {
-        com.fileapex.platform.ClipboardAccessibilitySettings.openAppInfo()
-    }
-
-    fun openAccessibilitySystemSettings() {
-        com.fileapex.platform.ClipboardAccessibilitySettings.openSystemPrompt()
-    }
-
-    fun sendClipboardNow() {
-        viewModelScope.launch {
-            com.fileapex.platform.BriefToast.show(
-                com.fileapex.domain.clipboard.ClipboardShareCoordinator.pushCurrentClipboardNow()
-            )
-        }
-    }
-
     fun setFileTransferNotifications(enabled: Boolean) {
         settings.setFileTransferNotificationsEnabled(enabled)
         if (!enabled) {
@@ -697,116 +396,9 @@ class SettingsViewModel : ViewModel() {
         _uiState.update { it.copy(pinIdleTimeout = timeout) }
     }
 
-    fun setCheckForUpdates(enabled: Boolean) {
-        settings.setCheckForUpdatesEnabled(enabled)
-        _uiState.update { it.copy(checkForUpdatesEnabled = enabled) }
-        if (enabled) {
-            AppUpdateCoordinator.onCheckForUpdatesEnabled()
-        } else {
-            AppUpdateCoordinator.onCheckForUpdatesDisabled()
-        }
-    }
-
-    fun setCheckForUpdatesUnit(unit: UpdateCheckUnit) {
-        val amount = UpdateCheckFrequency.sanitizeAmount(
-            unit,
-            _uiState.value.checkForUpdatesIntervalAmount
-        )
-        settings.setCheckForUpdatesInterval(unit, amount)
-        _uiState.update {
-            it.copy(
-                checkForUpdatesIntervalUnit = unit,
-                checkForUpdatesIntervalAmount = amount,
-                checkForUpdatesAmountText = amount.toString()
-            )
-        }
-        AppUpdateCoordinator.onScheduleChanged()
-    }
-
-    fun setCheckForUpdatesAmountText(raw: String) {
-        val digits = raw.filter { it.isDigit() }.take(2)
-        _uiState.update { it.copy(checkForUpdatesAmountText = digits) }
-        val parsed = digits.toIntOrNull() ?: return
-        val unit = _uiState.value.checkForUpdatesIntervalUnit
-        val amount = UpdateCheckFrequency.sanitizeAmount(unit, parsed)
-        settings.setCheckForUpdatesInterval(unit, amount)
-        _uiState.update {
-            it.copy(
-                checkForUpdatesIntervalAmount = amount,
-                checkForUpdatesAmountText = if (digits.isEmpty()) "" else amount.toString()
-            )
-        }
-        AppUpdateCoordinator.onScheduleChanged()
-    }
-
-    fun setCheckForUpdatesWeekAmount(amount: Int) {
-        val safe = UpdateCheckFrequency.sanitizeAmount(UpdateCheckUnit.Weeks, amount)
-        settings.setCheckForUpdatesInterval(UpdateCheckUnit.Weeks, safe)
-        _uiState.update {
-            it.copy(
-                checkForUpdatesIntervalUnit = UpdateCheckUnit.Weeks,
-                checkForUpdatesIntervalAmount = safe,
-                checkForUpdatesAmountText = safe.toString()
-            )
-        }
-        AppUpdateCoordinator.onScheduleChanged()
-    }
-
     /** Force an immediate update check from repeated Settings version taps. */
     fun onVersionNumberEasterEgg() {
         AppUpdateCoordinator.checkNowManual()
-    }
-
-    /** Credential Manager / desktop OAuth returned a Google ID token. */
-    fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?) {
-        if (idToken.isNullOrBlank()) {
-            _uiState.update {
-                it.copy(googleAccountError = errorMessage ?: AppI18n.t("google_signin_cancelled"))
-            }
-            return
-        }
-        viewModelScope.launch {
-            cancellableCatching {
-                GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, emailHint)
-            }.onSuccess { session ->
-                _uiState.update {
-                    it.copy(
-                        googleAccountLinkEnabled = true,
-                        googleAccountEmail = session.email,
-                        googleAccountError = null
-                    )
-                }
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(googleAccountError = UserFacingErrors.message(error, "google_link_failed"))
-                }
-            }
-        }
-    }
-
-    fun disableGoogleAccountLink() {
-        viewModelScope.launch {
-            cancellableCatching {
-                GoogleLinkCoordinator.unlinkAndSignOut()
-            }.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        googleAccountLinkEnabled = false,
-                        googleAccountEmail = "",
-                        googleAccountError = null
-                    )
-                }
-            }.onFailure { error ->
-                settings.setGoogleAccountLinkEnabled(false)
-                _uiState.update {
-                    it.copy(
-                        googleAccountLinkEnabled = false,
-                        googleAccountEmail = "",
-                        googleAccountError = error.message
-                    )
-                }
-            }
-        }
     }
 
     fun setDeviceDetailsFieldVisible(fieldId: DeviceDetailsFieldId, visible: Boolean) {
@@ -878,121 +470,66 @@ class SettingsViewModel : ViewModel() {
         _uiState.update { it.copy(allowRemoteFileDeletion = enabled) }
     }
 
-    fun setGoogleDriveRelayEnabled(enabled: Boolean) {
-        settings.setGoogleDriveRelayEnabled(enabled)
-        _uiState.update { it.copy(googleDriveRelayEnabled = enabled, googleDriveAuthError = null) }
-        com.fileapex.cloud.drive.DriveRelayCoordinator.applySchedulerFromSettings()
-        if (enabled) {
-            settings.setCellularReceivePromptAcknowledged(true)
-            settings.setCellularSendPromptAcknowledged(true)
-            if (com.fileapex.cloud.drive.GoogleDriveAuth.hasGrant()) {
-                com.fileapex.platform.DriveRelayNotifier.onDriveEnabledAndGranted()
-            }
-        }
-    }
+    fun setClipboardSharing(enabled: Boolean) = clipboard.setClipboardSharing(enabled)
 
-    fun setDriveRelayMaxMb(limit: DriveRelayMaxMb) {
-        settings.setDriveRelayMaxMb(limit)
-        _uiState.update { it.copy(driveRelayMaxMb = limit) }
-    }
+    fun dismissClipboardConfigDialog() = clipboard.dismissClipboardConfigDialog()
 
-    fun setDriveRelayEncryptionEnabled(enabled: Boolean) {
-        settings.setDriveRelayEncryptionEnabled(enabled)
-        _uiState.update { it.copy(driveRelayEncryptionEnabled = enabled) }
-    }
+    fun confirmClipboardConfig(mode: ClipboardShareMode, targetIds: Set<String>) = clipboard.confirmClipboardConfig(mode, targetIds)
 
-    fun setDrivePurgeAfter72Hours(enabled: Boolean) {
-        settings.setDrivePurgeAfter72Hours(enabled)
-        _uiState.update { it.copy(drivePurgeAfter72Hours = enabled) }
-    }
+    fun setClipboardDisclosureAcknowledged(acknowledged: Boolean) = clipboard.setClipboardDisclosureAcknowledged(acknowledged)
 
-    fun purgeDriveRelayNow() {
-        if (_uiState.value.drivePurgeNowBusy) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(drivePurgeNowBusy = true, drivePurgeNowMessage = null) }
-            cancellableCatching { com.fileapex.cloud.drive.DriveRelayCoordinator.purgeRelayNow() }
-                .onSuccess { deleted ->
-                    _uiState.update {
-                        it.copy(
-                            drivePurgeNowBusy = false,
-                            drivePurgeNowMessage = AppI18n.t("deleted_relay_files", deleted)
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            drivePurgeNowBusy = false,
-                            drivePurgeNowMessage = AppI18n.t("could_not_delete_relay")
-                        )
-                    }
-                    println("SettingsViewModel: Drive purge failed - ${error.message}")
-                }
-        }
-    }
+    fun setAccessibilityDisclosureAcknowledged(acknowledged: Boolean) = clipboard.setAccessibilityDisclosureAcknowledged(acknowledged)
 
-    fun onGoogleDriveAuthResult(granted: Boolean, errorMessage: String?) {
-        if (granted) {
-            setGoogleDriveRelayEnabled(true)
-        } else {
-            settings.setGoogleDriveRelayEnabled(false)
-            _uiState.update {
-                it.copy(
-                    googleDriveRelayEnabled = false,
-                    googleDriveAuthError = errorMessage
-                )
-            }
-        }
-    }
+    fun setInstallPackagesDisclosureAcknowledged(acknowledged: Boolean) = clipboard.setInstallPackagesDisclosureAcknowledged(acknowledged)
 
-    fun setDeviceNameDraft(value: String) {
-        val filtered = buildString {
-            for (ch in value) {
-                if (ch.isLetterOrDigit() || ch == ' ' || ch == '-') append(ch)
-            }
-        }
-        _uiState.update { it.copy(deviceNameDraft = filtered, deviceNameError = null) }
-    }
+    fun setClipboardShareMode(mode: ClipboardShareMode) = clipboard.setClipboardShareMode(mode)
 
-    fun saveDeviceName() {
-        val draft = _uiState.value.deviceNameDraft.trim()
-        DeviceNameCoordinator.validate(draft)?.let { message ->
-            _uiState.update { it.copy(deviceNameError = message) }
-            return
-        }
-        _uiState.update {
-            it.copy(deviceNameSaveBusy = true, deviceNameError = null, deviceNameStatus = null)
-        }
-        viewModelScope.launch {
-            cancellableCatching {
-                DeviceNameCoordinator.saveLocalBroadcastName(draft)
-            }.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        deviceNameSaveBusy = false,
-                        deviceNameStatus = AppI18n.t("device_name_saved", draft),
-                        deviceNameError = null
-                    )
-                }
-                refreshDeviceNameClusterSync()
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        deviceNameSaveBusy = false,
-                        deviceNameError = UserFacingErrors.message(error, "rename_failed")
-                    )
-                }
-            }
-        }
-    }
+    fun setClipboardTargetDevice(deviceId: String, selected: Boolean) = clipboard.setClipboardTargetDevice(deviceId, selected)
 
-    private fun refreshDeviceNameClusterSync() {
-        if (!settings.googleAccountLinkEnabled.value) {
-            _uiState.update { it.copy(deviceNameClusterSync = "") }
-            return
-        }
-        val selfId = loadLocalIdentity().deviceId
-        val cluster = GoogleLinkCoordinator.cloudRecordFor(selfId)?.deviceName.orEmpty().trim()
-        _uiState.update { it.copy(deviceNameClusterSync = cluster) }
-    }
+    fun setClipboardViaCellular(enabled: Boolean) = clipboard.setClipboardViaCellular(enabled)
+
+    fun setClipboardAutoSend(enabled: Boolean) = clipboard.setClipboardAutoSend(enabled)
+
+    fun setClipboardAccessibility(enabled: Boolean) = clipboard.setClipboardAccessibility(enabled)
+
+    fun setClipboardSendNotification(enabled: Boolean) = clipboard.setClipboardSendNotification(enabled)
+
+    fun setClipboardShizuku(enabled: Boolean) = clipboard.setClipboardShizuku(enabled)
+
+    fun dismissAccessibilityRestrictedHelp() = clipboard.dismissAccessibilityRestrictedHelp()
+
+    fun openAccessibilityAppInfo() = clipboard.openAccessibilityAppInfo()
+
+    fun openAccessibilitySystemSettings() = clipboard.openAccessibilitySystemSettings()
+
+    fun sendClipboardNow() = clipboard.sendClipboardNow()
+
+    fun setCheckForUpdates(enabled: Boolean) = updates.setCheckForUpdates(enabled)
+
+    fun setCheckForUpdatesUnit(unit: UpdateCheckUnit) = updates.setCheckForUpdatesUnit(unit)
+
+    fun setCheckForUpdatesAmountText(raw: String) = updates.setCheckForUpdatesAmountText(raw)
+
+    fun setCheckForUpdatesWeekAmount(amount: Int) = updates.setCheckForUpdatesWeekAmount(amount)
+
+    fun setGoogleDriveRelayEnabled(enabled: Boolean) = drive.setGoogleDriveRelayEnabled(enabled)
+
+    fun setDriveRelayMaxMb(limit: DriveRelayMaxMb) = drive.setDriveRelayMaxMb(limit)
+
+    fun setDriveRelayEncryptionEnabled(enabled: Boolean) = drive.setDriveRelayEncryptionEnabled(enabled)
+
+    fun setDrivePurgeAfter72Hours(enabled: Boolean) = drive.setDrivePurgeAfter72Hours(enabled)
+
+    fun purgeDriveRelayNow() = drive.purgeDriveRelayNow()
+
+    fun onGoogleDriveAuthResult(granted: Boolean, errorMessage: String?) = drive.onGoogleDriveAuthResult(granted, errorMessage)
+
+    fun setDeviceNameDraft(value: String) = deviceName.setDeviceNameDraft(value)
+
+    fun saveDeviceName() = deviceName.saveDeviceName()
+
+    /** Credential Manager / desktop OAuth returned a Google ID token. */
+    fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?) = google.onGoogleIdToken(idToken, emailHint, errorMessage)
+
+    fun disableGoogleAccountLink() = google.disableGoogleAccountLink()
 }

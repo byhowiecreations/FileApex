@@ -460,8 +460,8 @@ class ExplorerViewModel(
         return false
     }
 
-    fun toggleViewMode() {
-        settings.setExplorerViewMode(_uiState.value.viewMode.cycled())
+    fun toggleViewMode(includeSplit: Boolean = true) {
+        settings.setExplorerViewMode(_uiState.value.viewMode.next(includeSplit))
     }
 
     fun refresh() {

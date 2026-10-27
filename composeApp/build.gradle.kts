@@ -206,6 +206,7 @@ android {
             buildConfigField("boolean", "IS_PLAY_STORE", "true")
             buildConfigField("boolean", "IS_FDROID", "false")
             buildConfigField("String", "BUILD_CHANNEL", "\"Play\"")
+            proguardFile("proguard-play-logs.pro")
         }
         create("fdroid") {
             dimension = "distribution"

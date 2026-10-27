@@ -129,11 +129,22 @@ func (n *Node) handleIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := n.selfState()
-	// Only a peer that presented its pinned TLS certificate learns where the shared folder is.
+	// Only a peer that presented its pinned TLS certificate learns the hardware and the shared folder.
 	if r.TLS == nil {
-		state.RootPath = "/"
+		state = strangerIdentity(state)
 	}
 	writeJSON(w, http.StatusOK, state)
+}
+
+func strangerIdentity(state nodeState) nodeState {
+	state.IPAddress = ""
+	state.LastKnownIP = ""
+	state.Platform = ""
+	state.OS = ""
+	state.DeviceMake = ""
+	state.DeviceModel = ""
+	state.RootPath = "/"
+	return state
 }
 
 func (n *Node) handleDevices(w http.ResponseWriter, r *http.Request) {

@@ -29,5 +29,6 @@ internal class ExplorerInputs(
     val showTopBar: Boolean,
     val filterBarLeading: (@Composable (modifier: Modifier, compact: Boolean) -> Unit)? = null,
     val onDropBoxFiles: ((List<String>) -> Unit)? = null,
+    val onPickFiles: ((List<String>) -> Unit)? = null,
     val viewModel: ExplorerViewModel
 )

@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
+import com.fileapex.friends.ui.FriendSendTarget
 import com.fileapex.presentation.BrowseTarget
 
 internal class FreestyleLive {
@@ -15,6 +16,7 @@ internal class FreestyleLive {
     var browsingTarget by mutableStateOf<BrowseTarget?>(null)
     var isResolvingBrowse by mutableStateOf(false)
     var resolvingDeviceName by mutableStateOf<String?>(null)
+    var sendingToFriend by mutableStateOf<FriendSendTarget?>(null)
     var showTutorialDialog by mutableStateOf(false)
     var windowWidthDp by mutableStateOf(400.dp)
     var windowHeightDp by mutableStateOf(480.dp)

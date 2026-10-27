@@ -45,62 +45,16 @@ import com.fileapex.presentation.NotesListRow
 import com.fileapex.ui.ExplorerEntryIcons
 import com.fileapex.ui.NOTES_SENDING_LABEL
 import com.fileapex.ui.rectIn
+import androidx.compose.ui.geometry.Rect
 import com.fileapex.ui.theme.FileApexTeal
 import kotlinx.coroutines.launch
 
 @Composable
 internal fun ColumnScope.NotesListSection(notes: NotesScope) {
+    val notesSnackbar = LocalNotesSnackbar.current
     with(notes) { with(frame) { with(live) {
         if (visualRows.isEmpty() && !holdingTransportSlot) {
-            val isFilteredEmpty = activeFilter != BulletinFilter.All && displayNotes.isNotEmpty()
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = if (isFilteredEmpty) Icons.Filled.FilterList else Icons.AutoMirrored.Filled.Note,
-                        contentDescription = null,
-                        tint = if (isCustomGlass) Color(0xFF00E676).copy(alpha = 0.6f) else FileApexTeal.copy(alpha = 0.6f),
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    val emptyMsg = if (isFilteredEmpty) {
-                        when (activeFilter) {
-                            BulletinFilter.Links -> stringRes("no_filtered_links")
-                            BulletinFilter.Images -> stringRes("no_filtered_images")
-                            BulletinFilter.Documents -> stringRes("no_filtered_documents")
-                            BulletinFilter.Snippets -> stringRes("no_filtered_snippets")
-                            BulletinFilter.Files -> stringRes("no_filtered_files")
-                            BulletinFilter.Pinned -> stringRes("no_filtered_pinned")
-                            is BulletinFilter.Tag -> AppI18n.t("no_filtered_tag", (activeFilter as BulletinFilter.Tag).tag)
-                            BulletinFilter.All -> stringRes("no_filtered_notes")
-                        }
-                    } else {
-                        stringRes("no_notes_yet")
-                    }
-                    Text(
-                        text = emptyMsg,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = textColor
-                    )
-                    if (isFilteredEmpty) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { viewModel.setFilter(BulletinFilter.All) }) {
-                            Text(stringRes("filter_all"), color = if (isCustomGlass) Color(0xFF00E676) else FileApexTeal)
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = stringRes("notes_empty_hint"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = subTextColor
-                        )
-                    }
-                }
-            }
+            NotesEmptyState(Modifier.weight(1f))
         } else {
             LazyColumn(
                 state = listState,
@@ -164,9 +118,11 @@ internal fun ColumnScope.NotesListSection(notes: NotesScope) {
                     when (row) {
                         is NotesListRow.DayHeader -> "day-${row.dayKey}"
                         is NotesListRow.Bubble -> row.note.noteId
+                        NotesListRow.NewDivider -> "new-divider"
                     }
                 }) { row ->
                     when (row) {
+                        NotesListRow.NewDivider -> NewPostsDivider(isCustomGlass)
                         is NotesListRow.DayHeader -> {
                             Box(
                                 modifier = Modifier
@@ -196,7 +152,12 @@ internal fun ColumnScope.NotesListSection(notes: NotesScope) {
                                 thumbnail = bubbleThumbs[row.note.noteId],
                                 isDownloadingAttachment = row.note.noteId in downloadingAttachmentIds,
                                 style = bulletinBoardStyle,
-                                onBubblePositioned = {},
+                                onBubblePositioned = { coords ->
+                                    overlayCoords?.let { overlay ->
+                                        val bubble = coords.rectIn(overlay)
+                                        bubbleRects[row.note.noteId] = Rect(bubble.left, bubble.top, listRect?.right ?: bubble.right, bubble.bottom)
+                                    }
+                                },
                                 onRevealedChange = { open ->
                                     revealedNoteId = if (open) row.note.noteId else null
                                 },
@@ -204,11 +165,16 @@ internal fun ColumnScope.NotesListSection(notes: NotesScope) {
                                 onDeleteClick = {
                                     revealedNoteId = null
                                     if (row.note.attachmentPinned) {
-                                        BriefToast.show(AppI18n.t("note_locked_unlock_first"))
+                                        notesSnackbar.say(AppI18n.t("note_locked_unlock_first"))
                                     } else {
                                         noteToDelete = row.note
                                     }
                                 },
+                                checklist = ChecklistActions(
+                                    toggle = viewModel::setChecklistItemDone,
+                                    remove = viewModel::removeChecklistItem,
+                                    add = { viewModel.addChecklistItem(row.note.noteId, it) }
+                                ),
                                 onLockClick = {
                                     revealedNoteId = null
                                     viewModel.setAttachmentPinned(
@@ -228,7 +194,7 @@ internal fun ColumnScope.NotesListSection(notes: NotesScope) {
                                             row.note.noteId !in downloadingAttachmentIds &&
                                             FileApexServices.noteRepository.attachmentNeedsDownload(row.note)
                                         ) {
-                                            BriefToast.show(AppI18n.t("could_not_download_attachment"))
+                                            notesSnackbar.say(AppI18n.t("could_not_download_attachment"))
                                         }
                                     }
                                 },

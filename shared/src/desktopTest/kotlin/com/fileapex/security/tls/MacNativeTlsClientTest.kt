@@ -33,6 +33,11 @@ class MacNativeTlsClientTest {
             method: String, url: String, contentType: String?, body: Pointer?, bodyLen: Int, timeoutMs: Int,
             outStatus: IntByReference, outBody: PointerByReference, outBodyLen: IntByReference
         ): Int
+        fun fileapex_lan_http_execute_headers(
+            method: String, url: String, contentType: String?, body: Pointer?, bodyLen: Int, timeoutMs: Int,
+            outStatus: IntByReference, outBody: PointerByReference, outBodyLen: IntByReference,
+            outHeaders: PointerByReference, outHeadersLen: IntByReference
+        ): Int
         fun fileapex_lan_http_free(ptr: Pointer?)
         fun fileapex_lan_tls_take_mismatch(host: String, port: Int, out: Pointer, outLen: Int): Int
     }
@@ -60,6 +65,10 @@ class MacNativeTlsClientTest {
             connector { port = bridgePort; host = "127.0.0.1" }
         }) {
             routing {
+                get("/hdr") {
+                    call.response.headers.append("X-FileApex-Bulletin-Version", "1792900000000")
+                    call.respondText("hdr")
+                }
                 get("/who") {
                     val peer = TlsBridgeRegistry.lookup(call.request.local.remotePort)
                     call.respondText("peer=${peer?.deviceId}")
@@ -135,5 +144,26 @@ class MacNativeTlsClientTest {
         val plain = get()
         assertEquals(200, plain?.first)
         assertTrue(plain?.second?.contains("peer=null") == true)
+    }
+
+    @Test
+    fun nativeClientReturnsTheResponseHeadersOverTls() {
+        assertEquals(0, loadIdentity(clientIdentity))
+        assertEquals(0, lib.fileapex_lan_tls_set_routes(routes(serverIdentity.pin)))
+        val status = IntByReference()
+        val body = PointerByReference()
+        val len = IntByReference()
+        val headers = PointerByReference()
+        val headersLen = IntByReference()
+        val rc = lib.fileapex_lan_http_execute_headers(
+            "GET", "http://127.0.0.1:$httpPort/hdr", null, null, 0, 8000, status, body, len, headers, headersLen
+        )
+        assertEquals(0, rc)
+        assertEquals(200, status.value)
+        val text = headers.value?.getByteArray(0, headersLen.value)?.toString(Charsets.UTF_8).orEmpty()
+        lib.fileapex_lan_http_free(headers.value)
+        lib.fileapex_lan_http_free(body.value)
+        val parsed = com.fileapex.network.PeerHttpHeaders.parseLines(text)
+        assertEquals(1792900000000L, com.fileapex.network.PeerHttpHeaders.bulletinVersion(parsed))
     }
 }

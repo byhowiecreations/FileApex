@@ -5,7 +5,14 @@ import java.io.IOException
 import java.nio.ByteBuffer
 
 /** What a sender announces before any file byte moves. Nothing else about the sender's device is ever sent. */
-data class FriendOffer(val transferId: String, val sizeBytes: Long, val fileName: String, val chunkBytes: Int = FriendsWire.DATA_CHUNK)
+data class FriendOffer(
+    val transferId: String,
+    val sizeBytes: Long,
+    val fileName: String,
+    val chunkBytes: Int = FriendsWire.DATA_CHUNK,
+    /** Set when the receiver already said yes to a whole batch this file belongs to; empty for a file offered on its own. */
+    val batchId: String = ""
+)
 
 /** Framing for the friends stream: 4-byte length, hard cap, so a hostile peer cannot make us allocate. */
 object FriendsWire {
@@ -19,7 +26,7 @@ object FriendsWire {
     /** The sender stopped on purpose: the receiver removes its part file. */
     const val TAG_CANCEL = 2
     const val HASH_BYTES = 32
-    private val ID = Regex("[0-9a-f]{32}")
+    val ID = Regex("[0-9a-f]{32}")
 
     suspend fun readExact(stream: IrohStream, n: Int): ByteArray {
         val out = ByteArray(n)
@@ -43,15 +50,20 @@ object FriendsWire {
         return readExact(stream, len)
     }
 
-    fun encodeOffer(o: FriendOffer): ByteArray = "v2\n${o.transferId}\n${o.sizeBytes}\n${o.chunkBytes}\n${o.fileName}".encodeToByteArray()
+    fun encodeOffer(o: FriendOffer): ByteArray =
+        if (o.batchId.isEmpty()) "v2\n${o.transferId}\n${o.sizeBytes}\n${o.chunkBytes}\n${o.fileName}".encodeToByteArray()
+        else "v3\n${o.transferId}\n${o.sizeBytes}\n${o.chunkBytes}\n${o.batchId}\n${o.fileName}".encodeToByteArray()
 
     /** Null for anything malformed; the caller drops the stream. */
     fun decodeOffer(bytes: ByteArray): FriendOffer? {
-        val p = bytes.decodeToString().split("\n", limit = 5)
-        if (p.size != 5 || p[0] != "v2" || !ID.matches(p[1])) return null
+        val p = bytes.decodeToString().split("\n", limit = 6)
+        val batched = p.firstOrNull() == "v3"
+        if (p.size != (if (batched) 6 else 5) || (p[0] != "v2" && !batched) || !ID.matches(p[1])) return null
         val size = p[2].toLongOrNull()?.takeIf { it >= 0 } ?: return null
         val chunk = p[3].toIntOrNull()?.takeIf { it in MIN_DATA_CHUNK..MAX_DATA_CHUNK } ?: return null
-        return FriendOffer(p[1], size, p[4], chunk)
+        if (!batched) return FriendOffer(p[1], size, p[4], chunk)
+        if (!ID.matches(p[4])) return null
+        return FriendOffer(p[1], size, p[5], chunk, p[4])
     }
 
     /** Receiver reply: 0 = refuse, 1 = accept and send from this offset. */

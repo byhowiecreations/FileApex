@@ -16,9 +16,11 @@ actual object CloudAuthBackend {
 
     actual suspend fun signInWithGoogleIdToken(idToken: String): GoogleAuthSession = cloudUnavailable()
 
+    actual suspend fun adoptDeviceToken(customToken: String): Unit = cloudUnavailable()
+
     actual suspend fun currentSession(): GoogleAuthSession? = null
 
-    actual suspend fun firebaseIdToken(): String? = null
+    actual suspend fun firebaseIdToken(forceRefresh: Boolean): String? = null
 
     actual suspend fun signOut() = Unit
 
@@ -34,7 +36,8 @@ actual object CloudAuthBackend {
         uid: String,
         deviceId: String,
         deviceName: String,
-        updatedAtEpochMs: Long
+        updatedAtEpochMs: Long,
+        sealed: Map<String, String>
     ) {
         cloudUnavailable()
     }

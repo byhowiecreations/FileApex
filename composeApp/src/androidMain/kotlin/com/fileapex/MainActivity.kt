@@ -311,6 +311,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         com.fileapex.domain.presence.PresenceForegroundRefresh.onAppBackgrounded()
+        // The share-server foreground service keeps this process out of the states that deliver UI_HIDDEN.
+        if (!isChangingConfigurations) com.fileapex.platform.MemoryTrim.release()
         super.onStop()
     }
 
@@ -373,6 +375,10 @@ class MainActivity : ComponentActivity() {
         intent?.getStringExtra(com.fileapex.platform.EXTRA_OPEN_SETTINGS_PAGE)?.let { page ->
             pendingOpenSettingsPage = page
             intent.removeExtra(com.fileapex.platform.EXTRA_OPEN_SETTINGS_PAGE)
+        }
+        intent?.getStringExtra(com.fileapex.friends.EXTRA_OPEN_LOCAL_FOLDER)?.trim()?.takeIf { it.isNotEmpty() }?.let { folder ->
+            com.fileapex.presentation.LocalExplorerNavigation.showFolder(folder)
+            intent.removeExtra(com.fileapex.friends.EXTRA_OPEN_LOCAL_FOLDER)
         }
         val openNoteId = intent?.getStringExtra(com.fileapex.platform.EXTRA_OPEN_NOTE_ID)
             ?.trim()

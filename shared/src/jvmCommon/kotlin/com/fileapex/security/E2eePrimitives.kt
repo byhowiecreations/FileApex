@@ -19,15 +19,23 @@ internal object E2eePrimitives {
         val prk = hmacSha256(if (salt.isEmpty()) ByteArray(32) else salt, ikm)
         val okm = ByteArray(length)
         var t = ByteArray(0)
-        var offset = 0
-        var counter = 1
-        while (offset < length) {
-            val input = t + info + byteArrayOf(counter.toByte())
-            t = hmacSha256(prk, input)
-            val copyLen = minOf(t.size, length - offset)
-            System.arraycopy(t, 0, okm, offset, copyLen)
-            offset += copyLen
-            counter++
+        try {
+            var offset = 0
+            var counter = 1
+            while (offset < length) {
+                val input = t + info + byteArrayOf(counter.toByte())
+                val next = hmacSha256(prk, input)
+                input.wipe()
+                t.wipe()
+                t = next
+                val copyLen = minOf(t.size, length - offset)
+                System.arraycopy(t, 0, okm, offset, copyLen)
+                offset += copyLen
+                counter++
+            }
+        } finally {
+            t.wipe()
+            prk.wipe()
         }
         return okm
     }

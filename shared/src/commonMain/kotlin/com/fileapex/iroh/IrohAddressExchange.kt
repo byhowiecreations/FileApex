@@ -147,8 +147,6 @@ class IrohPeerBook private constructor(private val entries: Map<String, String>)
         return IrohPeerBook(entries + (deviceId to address))
     }
 
-    fun keepOnly(deviceIds: Set<String>): IrohPeerBook = IrohPeerBook(entries.filterKeys { it in deviceIds })
-
     fun toJson(): String = json.encodeToString(serializer, entries)
 
     companion object {

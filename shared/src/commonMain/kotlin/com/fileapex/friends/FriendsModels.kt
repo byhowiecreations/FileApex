@@ -7,4 +7,4 @@ data class FriendShareTarget(val key: String, val label: String, val group: Stri
 /** A file a friend sent that is now complete in the friend's folder. */
 data class FriendReceivedFile(val friendLabel: String, val fileName: String, val path: String)
 
-data class PendingFriendOffer(val id: String, val friendLabel: String, val fileName: String, val sizeBytes: Long, val offeredAtMs: Long = 0L, val friendKey: String = "")
+data class PendingFriendOffer(val id: String, val friendLabel: String, val fileName: String, val sizeBytes: Long, val offeredAtMs: Long = 0L, val friendKey: String = "", val fileCount: Int = 1)

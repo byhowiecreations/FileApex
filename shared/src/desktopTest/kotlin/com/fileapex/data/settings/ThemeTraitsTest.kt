@@ -10,7 +10,7 @@ class ThemeTraitsTest {
     fun traitsMatchOriginalThemeSets() {
         for (t in AppTheme.entries) {
             assertEquals(
-                t == AppTheme.FLUX_GLASS || t == AppTheme.KINETIC_SPHERE || t == AppTheme.FREESTYLE,
+                t == AppTheme.FLUX_GLASS || t == AppTheme.KINETIC_SPHERE || t == AppTheme.FREESTYLE || t == AppTheme.CAROUSEL,
                 t.traits.glassChrome,
             )
             assertEquals(
@@ -22,7 +22,7 @@ class ThemeTraitsTest {
                 t.traits.reorderAccent,
             )
             assertEquals(
-                t == AppTheme.KINETIC_SPHERE || t == AppTheme.FREESTYLE,
+                t == AppTheme.KINETIC_SPHERE || t == AppTheme.FREESTYLE || t == AppTheme.CAROUSEL,
                 t.traits.spatialHome,
             )
             assertEquals(
@@ -32,6 +32,7 @@ class ThemeTraitsTest {
             assertEquals(t == AppTheme.FLUX_GLASS, t.traits.fluxSurfaces)
             assertEquals(t == AppTheme.KINETIC_SPHERE, t.traits.orbitalHome)
             assertEquals(t == AppTheme.FREESTYLE, t.traits.canvasHome)
+            assertEquals(t == AppTheme.CAROUSEL, t.traits.dockHome)
             assertSame(t.traits, t.traits)
         }
     }

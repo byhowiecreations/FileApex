@@ -1,6 +1,7 @@
 package com.fileapex.cloud.diagnostics
 
 import com.fileapex.security.E2eePrimitives.hkdfSha256
+import com.fileapex.security.wipe
 import com.fileapex.security.E2eePrimitives.x25519SharedSecret
 import java.security.SecureRandom
 import java.util.Base64
@@ -57,9 +58,13 @@ object DiagnosticsCrypto {
         val key = deriveAesKey(localPrivateKey, peerPublicKey, googleUid)
         val iv = ByteArray(GCM_IV_BYTES).also(secureRandom::nextBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
-        aad?.let(cipher::updateAAD)
-        val encrypted = cipher.doFinal(plaintext)
+        val encrypted = try {
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+            aad?.let(cipher::updateAAD)
+            cipher.doFinal(plaintext)
+        } finally {
+            key.wipe()
+        }
         val payload = ByteArray(iv.size + encrypted.size)
         System.arraycopy(iv, 0, payload, 0, iv.size)
         System.arraycopy(encrypted, 0, payload, iv.size, encrypted.size)
@@ -79,9 +84,13 @@ object DiagnosticsCrypto {
         val ciphertext = payload.copyOfRange(GCM_IV_BYTES, payload.size)
         val key = deriveAesKey(localPrivateKey, peerPublicKey, googleUid)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
-        aad?.let(cipher::updateAAD)
-        return cipher.doFinal(ciphertext)
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+            aad?.let(cipher::updateAAD)
+            return cipher.doFinal(ciphertext)
+        } finally {
+            key.wipe()
+        }
     }
 
     private const val BOUND_PREFIX = "v2."
@@ -119,11 +128,15 @@ object DiagnosticsCrypto {
         googleUid: String
     ): ByteArray {
         val shared = x25519SharedSecret(localPrivateKey, peerPublicKey)
-        return hkdfSha256(
-            ikm = shared,
-            salt = googleUid.trim().encodeToByteArray(),
-            info = HKDF_INFO.encodeToByteArray(),
-            length = 32
-        )
+        try {
+            return hkdfSha256(
+                ikm = shared,
+                salt = googleUid.trim().encodeToByteArray(),
+                info = HKDF_INFO.encodeToByteArray(),
+                length = 32
+            )
+        } finally {
+            shared.wipe()
+        }
     }
 }

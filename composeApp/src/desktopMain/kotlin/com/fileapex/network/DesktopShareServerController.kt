@@ -1,7 +1,5 @@
 package com.fileapex.network
 
-import com.fileapex.domain.presence.PresenceBackgroundWake
-import com.fileapex.domain.presence.PresenceForegroundRefresh
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,10 +65,6 @@ object DesktopShareServerController {
     private fun ensureWakeListener() {
         if (wakeReceiver != null) return
         wakeReceiver = UdpWakeReceiver(
-            onWakeAccepted = {
-                PresenceBackgroundWake.onRemoteWakeSignal(sourceDeviceId = null)
-                PresenceForegroundRefresh.onAppForegrounded()
-            },
             onSignedWake = { bytes, host -> WakeHelloReceiver.handle(bytes, host) },
             onLog = { message -> println("DesktopShareServer: $message") }
         ).also { it.start() }

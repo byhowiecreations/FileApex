@@ -2,12 +2,14 @@ package com.fileapex.cloud
 
 import com.fileapex.util.cancellableCatching
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import com.fileapex.cloud.diagnostics.DiagnosticsRelaySession
 import com.fileapex.cloud.diagnostics.DiagnosticsRelayStatus
+import com.fileapex.di.FileApexServices
 import com.fileapex.shared.BuildConfig
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -29,6 +31,15 @@ actual object CloudAuthBackend {
 
     actual suspend fun currentSession(): GoogleAuthSession? {
         val user = FirebaseAuth.getInstance().currentUser ?: return null
+        // A per-device user has no email and a composite uid; the Google account's uid rides in the `owner` claim.
+        val owner = user.getIdToken(false).await()?.claims?.get("owner") as? String
+        if (owner != null) {
+            return GoogleAuthSession(
+                firebaseUid = owner,
+                email = FileApexServices.settings.googleAccountEmail.value,
+                displayName = ""
+            )
+        }
         return GoogleAuthSession(
             firebaseUid = user.uid,
             email = user.email.orEmpty(),
@@ -36,8 +47,19 @@ actual object CloudAuthBackend {
         )
     }
 
-    actual suspend fun firebaseIdToken(): String? =
-        FirebaseAuth.getInstance().currentUser?.getIdToken(false)?.await()?.token
+    actual suspend fun adoptDeviceToken(customToken: String) {
+        FirebaseAuth.getInstance().signInWithCustomToken(customToken).await()
+    }
+
+    actual suspend fun firebaseIdToken(forceRefresh: Boolean): String? = try {
+        FirebaseAuth.getInstance().currentUser?.getIdToken(forceRefresh)?.await()?.token
+    } catch (error: FirebaseAuthInvalidUserException) {
+        // A roster device removed this device's Firebase user through the relay.
+        if (error.errorCode == "ERROR_USER_DISABLED") com.fileapex.domain.pairing.KickedByPeer.onFirebaseUserDisabled()
+        null
+    } catch (error: com.google.firebase.FirebaseException) {
+        if (forceRefresh) null else throw error
+    }
 
     actual suspend fun signOut() {
         FirebaseAuth.getInstance().signOut()
@@ -58,7 +80,7 @@ actual object CloudAuthBackend {
             "hardwareFingerprint" to record.hardwareFingerprint,
             "membershipVersion" to record.membershipVersion,
             "membershipProtocol" to record.membershipProtocol
-        )
+        ) + record.sealed
         deviceDoc(uid, record.deviceId)
             .set(data, SetOptions.merge())
             .await()
@@ -78,7 +100,7 @@ actual object CloudAuthBackend {
             "hardwareFingerprint" to presence.hardwareFingerprint,
             "membershipVersion" to presence.membershipVersion,
             "membershipProtocol" to presence.membershipProtocol
-        )
+        ) + presence.sealed
         val ref = deviceDoc(uid, presence.deviceId)
         cancellableCatching {
             ref.update(fields).await()
@@ -93,12 +115,13 @@ actual object CloudAuthBackend {
         uid: String,
         deviceId: String,
         deviceName: String,
-        updatedAtEpochMs: Long
+        updatedAtEpochMs: Long,
+        sealed: Map<String, String>
     ) {
         val fields = mapOf(
             "deviceName" to deviceName,
             "updatedAtEpochMs" to updatedAtEpochMs
-        )
+        ) + sealed
         val ref = deviceDoc(uid, deviceId)
         cancellableCatching {
             ref.update(fields).await()

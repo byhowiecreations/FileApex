@@ -19,6 +19,42 @@ data class MessageEntity(
     val updatedAt: Long = 0L
 )
 
+/**
+ * A change-able fact about a message, kept beside the message so the message itself never has to be rewritten.
+ * [stamp] is when the person made the change, on their device's clock; the newest stamp wins on every device
+ * (see [BulletinFlags]). [updatedAt] is only this device's store time, the key peers use to pull what changed.
+ */
+@Entity(tableName = "message_flags")
+@Serializable
+data class MessageFlagEntity(
+    @PrimaryKey val flagId: String,
+    val messageId: String,
+    val kind: String,
+    val enabled: Boolean,
+    val stamp: Long,
+    val setBy: String,
+    val updatedAt: Long = 0L
+)
+
+/**
+ * One line of a checklist post. Every line changes on its own: [stamp] is when it was last changed on the changing
+ * device's clock and the newest stamp wins on every device. A removed line stays as [deleted] so the removal travels.
+ */
+@Entity(tableName = "checklist_items")
+@Serializable
+data class ChecklistItemEntity(
+    @PrimaryKey val itemId: String,
+    val messageId: String,
+    val text: String,
+    val done: Boolean,
+    val deleted: Boolean,
+    /** Order inside the list: the time the line was added. */
+    val position: Long,
+    val stamp: Long,
+    val setBy: String,
+    val updatedAt: Long = 0L
+)
+
 @Entity(tableName = "tombstones")
 @Serializable
 data class TombstoneEntity(

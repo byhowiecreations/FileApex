@@ -6,7 +6,6 @@ object FluxGlassPalette {
     val backgroundTop = Color(0xFF0D1D22)
     val backgroundMid = Color(0xFF070B0E)
     val backgroundBottom = Color(0xFF05080A)
-    val cardContainer = Color(0x880D1F29)
     val accent = Color(0xFF00E676)
     val accentSoft = Color(0x3300E676)
     val accentFill = Color(0x4400E676)
@@ -36,15 +35,25 @@ object KineticPalette {
     val backgroundTop = Color(0xFF030914)
     val backgroundMid = Color(0xFF071220)
     val backgroundBottom = Color(0xFF02050B)
-    val cardContainer = Color(0x99091824)
     val notesBackground = Color(0xFF030B14)
     val notesCard = Color(0xFF12202E)
+}
+
+object CarouselPalette {
+    val background = Color(0xFF0A0A0A)
+    val card = Color(0xFF141414)
+    val cardRaised = Color(0xFF1B1B1B)
+    val border = Color(0xFF262626)
+    val borderStrong = Color(0xFF333333)
+    val textMuted = Color(0xFF8A8A8A)
+    val accent = Color(0xFFF0B987)
+    val onAccent = Color(0xFF2A1A0A)
+    val ready = Color(0xFF4CC27A)
 }
 
 object FreestylePalette {
     val backgroundTop = Color(0xFF09131F)
     val backgroundMid = Color(0xFF060B12)
     val backgroundBottom = Color(0xFF04070B)
-    val cardContainer = Color(0x990E1D2D)
     val cardBorder = Color(0xFF64B5F6)
 }

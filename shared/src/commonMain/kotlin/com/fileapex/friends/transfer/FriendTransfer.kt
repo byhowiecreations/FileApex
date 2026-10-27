@@ -92,14 +92,14 @@ class FriendsTransferBoard(
 /** Files waiting to be sent, first in first out. The hub keeps one active send per friend and takes the next from here. */
 class FriendsSendQueue {
     /** [owned] marks a private copy the queue made for a share; it is deleted when the transfer ends or is dropped. */
-    data class Item(val id: String, val friendKey: String, val file: File, val owned: Boolean = false)
+    data class Item(val id: String, val friendKey: String, val file: File, val owned: Boolean = false, val batch: FriendSendBatch? = null)
 
     private val items = ArrayDeque<Item>()
 
     @Synchronized fun add(item: Item) { items.addLast(item) }
 
-    @Synchronized fun take(friendKey: String): Item? {
-        val at = items.indexOfFirst { it.friendKey == friendKey }
+    @Synchronized fun take(friendKey: String, skipLarge: Boolean = false, largeBytes: Long = Long.MAX_VALUE): Item? {
+        val at = items.indexOfFirst { it.friendKey == friendKey && !(skipLarge && it.file.length() >= largeBytes) }
         return if (at < 0) null else items.removeAt(at)
     }
 

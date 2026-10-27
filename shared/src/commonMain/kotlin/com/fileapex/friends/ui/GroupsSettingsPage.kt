@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -49,6 +48,7 @@ import com.fileapex.friends.data.FriendLinkEntity
 import com.fileapex.ui.settings.SettingsPageShell
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.SettingsScreenLayoutMode
+import com.fileapex.ui.theme.settingsCardColors
 import com.fileapex.ui.theme.settingsCardShape
 import kotlinx.coroutines.launch
 
@@ -75,13 +75,13 @@ fun GroupsSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack: () -> Unit)
             modifier = contentModifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Card(Modifier.fillMaxWidth(), shape = shape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
+            Card(Modifier.fillMaxWidth(), shape = shape, colors = settingsCardColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringRes("groups_about"), style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = { FriendsUi.open() }) { Text(stringRes("groups_open_friends")) }
                 }
             }
-            Card(Modifier.fillMaxWidth(), shape = shape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
+            Card(Modifier.fillMaxWidth(), shape = shape, colors = settingsCardColors()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(stringRes("friends_hide_ip"), fontWeight = FontWeight.Medium)
@@ -94,7 +94,7 @@ fun GroupsSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack: () -> Unit)
                     })
                 }
             }
-            Card(Modifier.fillMaxWidth(), shape = shape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
+            Card(Modifier.fillMaxWidth(), shape = shape, colors = settingsCardColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringRes("groups_max_file_title"), fontWeight = FontWeight.Medium)
                     Text(stringRes("groups_max_file_desc"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -105,14 +105,14 @@ fun GroupsSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack: () -> Unit)
                                 selected = maxMb == mb,
                                 onClick = { maxMb = mb; FileApexServices.settings.setFriendsMaxFileMb(mb) },
                                 label = { Text(if (mb == 0) stringRes("groups_max_file_unlimited") else "$mb MB") },
-                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
+                                colors = FilterChipDefaults.filterChipColors(labelColor = MaterialTheme.colorScheme.onSurface, selectedContainerColor = MaterialTheme.colorScheme.primary, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
                             )
                         }
                     }
                 }
             }
             if (friends.isNotEmpty()) {
-                Card(Modifier.fillMaxWidth(), shape = shape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
+                Card(Modifier.fillMaxWidth(), shape = shape, colors = settingsCardColors()) {
                     Column(Modifier.padding(16.dp)) {
                         Text(stringRes("groups_auto_accept_hint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))

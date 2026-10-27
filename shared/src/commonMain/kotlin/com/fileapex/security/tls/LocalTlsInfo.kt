@@ -7,4 +7,8 @@ object LocalTlsInfo {
 
     @Volatile
     var port: Int = 0
+
+    /** [TlsRotationProof] as JSON while this device recently replaced its key; blank otherwise. */
+    @Volatile
+    var rotation: String = ""
 }

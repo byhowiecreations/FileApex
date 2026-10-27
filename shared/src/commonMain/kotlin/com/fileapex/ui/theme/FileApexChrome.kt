@@ -33,10 +33,6 @@ fun isFileApexFluentUi(): Boolean =
     LocalFileApexUiStyle.current == DesktopUiStyle.WindowsFluent
 
 @Composable
-fun isFileApexFluxGlass(): Boolean =
-    LocalAppTheme.current.traits.fluxSurfaces
-
-@Composable
 fun isFileApexKineticSphere(): Boolean =
     LocalAppTheme.current.traits.orbitalHome
 
@@ -75,6 +71,7 @@ fun isFileApexJadedSteel(): Boolean =
  */
 @Composable
 fun fileApexHeaderActionTint(onChromeBar: Boolean = false): Color = when {
+    LocalAppTheme.current == com.fileapex.data.settings.AppTheme.CAROUSEL -> Color(0xFFE8E8E8)
     isFileApexJadedSteel() -> KineticStyleLook.steel
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
     isFileApexCleanCurved() -> Color.White

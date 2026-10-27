@@ -64,8 +64,7 @@ object DesktopWindowBoundsStore {
         val height = prefs.getInt("$KEY_HEIGHT.$themeKey", 0)
         if (width <= 0 || height <= 0) return null
         val screen = DesktopScreenGeometry.primaryTopLeft()
-        if (width < DesktopWindowBoundsValidator.MIN_WIDTH_PX || height < DesktopWindowBoundsValidator.MIN_HEIGHT_PX) return null
-        if (width > screen.width || height > screen.height) return null
+        if (!DesktopWindowBoundsValidator.sizeUsable(width, height, screen.width, screen.height, DesktopUiMetrics.scaleFactor())) return null
         return DpSize(DesktopUiMetrics.pixelsToDp(width), DesktopUiMetrics.pixelsToDp(height))
     }
 
@@ -123,6 +122,14 @@ object DesktopWindowBoundsValidator {
     const val MIN_HEIGHT_PX = 400
     private const val MIN_VISIBLE_WIDTH_PX = 120
     private const val MIN_VISIBLE_HEIGHT_PX = 48
+
+    /**
+     * [widthPx] and [heightPx] are stored scaled by [scale]; AWT reports the screen in unscaled units, so the
+     * size is brought back to those units before it is compared with the screen.
+     */
+    fun sizeUsable(widthPx: Int, heightPx: Int, screenWidth: Int, screenHeight: Int, scale: Float): Boolean =
+        widthPx >= MIN_WIDTH_PX && heightPx >= MIN_HEIGHT_PX &&
+            widthPx / scale <= screenWidth && heightPx / scale <= screenHeight
 
     fun isOnScreen(bounds: DesktopWindowBounds): Boolean {
         if (bounds.width < MIN_WIDTH_PX || bounds.height < MIN_HEIGHT_PX) return false

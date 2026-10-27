@@ -8,7 +8,7 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.security.SecureRandom
 
-/** What goes out on UDP 8888: the signed hello for each paired peer, then the plain wake for builds that predate it. */
+/** What goes out on UDP 8888: one signed hello per paired peer. There is no unsigned wake any more. */
 object WakeHelloOutbox {
     @Volatile
     private var recipients: List<WakeRecipient> = emptyList()
@@ -22,20 +22,17 @@ object WakeHelloOutbox {
 
     fun recipientCount(): Int = recipients.size
 
-    fun payloads(): List<ByteArray> {
-        val signed = runCatching {
-            val identity = loadLocalIdentity()
-            WakeHello.build(
-                identity.deviceId,
-                identity.sharePort,
-                recipients,
-                TimeUtils.now(),
-                ByteArray(8).also { random.nextBytes(it) },
-                ClipboardPairAuthenticator
-            )
-        }.getOrDefault(emptyList())
-        return signed + WakeProtocol.PAYLOAD.encodeToByteArray()
-    }
+    fun payloads(): List<ByteArray> = runCatching {
+        val identity = loadLocalIdentity()
+        WakeHello.build(
+            identity.deviceId,
+            identity.sharePort,
+            recipients,
+            TimeUtils.now(),
+            ByteArray(8).also { random.nextBytes(it) },
+            ClipboardPairAuthenticator
+        )
+    }.getOrDefault(emptyList())
 
     /** One signed packet to a single peer, used to acknowledge a hello. */
     fun sendAck(to: PairedDeviceEntity, host: String) {

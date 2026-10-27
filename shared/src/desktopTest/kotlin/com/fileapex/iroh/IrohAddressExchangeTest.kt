@@ -121,14 +121,8 @@ class IrohAddressExchangeTest {
     }
 
     @Test
-    fun peerBookIgnoresBrokenJsonAndDropsRemovedDevices() {
+    fun peerBookIgnoresBrokenJson() {
         assertEquals(0, IrohPeerBook.parse("{not json").size)
-        val book = IrohPeerBook.empty().with("A", addressA).with("C", addressB)
-
-        val pruned = book.keepOnly(setOf("A"))
-
-        assertNotNull(pruned.address("A"))
-        assertNull(pruned.address("C"))
     }
 
     @Test

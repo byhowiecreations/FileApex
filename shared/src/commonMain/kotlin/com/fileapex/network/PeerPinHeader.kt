@@ -4,7 +4,7 @@ import io.ktor.http.decodeURLQueryComponent
 
 /**
  * The session PIN is built into the request path by [FileApexClient.queryPath]; the raw request writers move it into
- * the `X-FileApex-Pin` header so it is never part of a URL. The server still reads a `pin=` query from older peers.
+ * the `X-FileApex-Pin` header so it is never part of a URL. The server reads the header only.
  */
 internal object PeerPinHeader {
     const val NAME = "X-FileApex-Pin"

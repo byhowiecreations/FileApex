@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,9 +38,12 @@ internal fun NotesScope.NotesBody(modifier: Modifier) {
                 onFilesDropped = { paths -> handleDroppedPaths(paths, lastDropRootOffset) }
             )
             .onGloballyPositioned { overlayCoords = it }
+            .closeSwipeOnOutsidePress(revealedNoteId != null, { revealedNoteId?.let { bubbleRects[it] } }) { revealedNoteId = null }
     ) {
+    val snackbar = LocalNotesSnackbar.current
     Scaffold(
         containerColor = backgroundColor,
+        snackbarHost = { snackbar?.let { SnackbarHost(it.host) } },
         topBar = {
             NotesTopBar()
         }

@@ -395,7 +395,7 @@ object CliClusterEngine {
         }
 
         return@withContext cancellableCatching {
-            val text = FileApexServices.client.pullRemoteClipboard(host, port)
+            val text = FileApexServices.client.clipboard.pullRemoteClipboard(host, port)
             if (text != null) {
                 PlatformClipboard.setSystemClipboardText(text)
                 CliIpcPacket.DashClipPullResult(text)

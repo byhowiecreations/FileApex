@@ -39,7 +39,9 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -150,9 +152,9 @@ fun FriendsHost() {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringRes("friends_offer_from", offer.friendLabel))
-                    Text(stringRes("friends_offer_file", offer.fileName))
+                    Text(if (offer.fileCount > 1) offer.fileName else stringRes("friends_offer_file", offer.fileName))
                     Text(stringRes("friends_offer_size", formatSize(offer.sizeBytes)))
-                    Text(stringRes("friends_offer_type", fileTypeLabel(offer.fileName)))
+                    if (offer.fileCount == 1) Text(stringRes("friends_offer_type", fileTypeLabel(offer.fileName)))
                     if (offer.offeredAtMs > 0L) Text(stringRes("friends_offer_time", formatLocalizedDateTime(offer.offeredAtMs, TimeUtils.DEFAULT_ZONE_ID)))
                     Spacer(Modifier.height(4.dp))
                     Text(stringRes("friends_offer_note"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -355,7 +357,14 @@ private fun EnterPane(prefill: String, onDone: () -> Unit) {
     var added by remember { mutableStateOf<String?>(null) }
     val genericError = stringRes("friends_error_generic")
     OutlinedTextField(link, { link = it }, label = { Text(stringRes("friends_paste_invite")) }, maxLines = 2, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(pin, { pin = it.filter(Char::isDigit).take(6) }, label = { Text(stringRes("friends_pin")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        pin,
+        { pin = it.filter(Char::isDigit).take(6) },
+        label = { Text(stringRes("friends_pin")) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth()
+    )
     OutlinedTextField(myName, { myName = it.take(40) }, label = { Text(stringRes("friends_your_name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     added?.let { Text(stringRes("friends_added", it), color = MaterialTheme.colorScheme.primary) }

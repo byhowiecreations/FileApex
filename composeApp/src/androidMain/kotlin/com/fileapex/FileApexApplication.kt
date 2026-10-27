@@ -28,6 +28,14 @@ class FileApexApplication : Application() {
         }
         FileApexAndroidBootstrap.ensureInitialized(this)
         com.fileapex.platform.Diagnostics.log("Application initialized (channel=${BuildConfig.BUILD_CHANNEL}, play=${BuildConfig.IS_PLAY_STORE})")
+        com.fileapex.platform.ProcessExitLogger.record(this)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW && isUserStorageUnlocked(this)) {
+            com.fileapex.platform.MemoryTrim.release()
+        }
     }
 
     private companion object {

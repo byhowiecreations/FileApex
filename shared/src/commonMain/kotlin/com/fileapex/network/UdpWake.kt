@@ -1,9 +1,7 @@
 package com.fileapex.network
 
 /**
- * Sends [WakeProtocol.PAYLOAD] as a UDP broadcast so sleeping Android peers
+ * Sends the signed wake hellos ([WakeHelloOutbox]) as a UDP broadcast so sleeping Android peers
  * can start their local share server.
  */
 expect fun sendWakeBroadcast()
-
-expect fun sendWakeToHost(host: String)

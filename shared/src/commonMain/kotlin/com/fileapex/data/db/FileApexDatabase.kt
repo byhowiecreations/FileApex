@@ -11,7 +11,11 @@ import androidx.room3.Query
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
 import com.fileapex.data.bulletin.BulletinBoardTransactionDao
+import com.fileapex.data.bulletin.ChecklistItemDao
+import com.fileapex.data.bulletin.ChecklistItemEntity
 import com.fileapex.data.bulletin.MessageDao
+import com.fileapex.data.bulletin.MessageFlagDao
+import com.fileapex.data.bulletin.MessageFlagEntity
 import com.fileapex.data.bulletin.MessageEntity
 import com.fileapex.data.bulletin.OutboxDao
 import com.fileapex.data.bulletin.OutboxEntity
@@ -19,12 +23,12 @@ import com.fileapex.data.bulletin.ProcessedPacketDao
 import com.fileapex.data.bulletin.ProcessedPacketEntity
 import com.fileapex.data.bulletin.TombstoneDao
 import com.fileapex.data.bulletin.TombstoneEntity
-import com.fileapex.data.note.NoteRecord
 import com.fileapex.friends.data.FriendIncomingEntity
 import com.fileapex.friends.data.FriendInviteEntity
 import com.fileapex.friends.data.FriendLinkEntity
 import com.fileapex.friends.data.FriendsDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 
 @Entity(tableName = "removed_devices")
@@ -84,45 +88,13 @@ data class PairedDeviceEntity(
     val hardwareHash: String = ""
 )
 
-@Entity(tableName = "note_records")
-@Serializable
-data class NoteEntity(
-    @PrimaryKey val noteId: String,
-    val sourceDeviceId: String,
-    val sourceDeviceName: String,
-    val content: String,
-    val driveFileId: String? = null,
-    val checksum: String? = null,
-    val epochMs: Long,
-    val isMine: Boolean,
-    val attachmentFileName: String? = null,
-    val attachmentSizeBytes: Long = 0L,
-    val attachmentPinned: Boolean = false,
-    val attachmentLocalPath: String? = null
-)
-
-fun NoteRecord.toEntity(): NoteEntity = NoteEntity(
-    noteId = noteId,
-    sourceDeviceId = sourceDeviceId,
-    sourceDeviceName = sourceDeviceName,
-    content = content,
-    driveFileId = driveFileId,
-    checksum = checksum,
-    epochMs = epochMs,
-    isMine = isMine,
-    attachmentFileName = attachmentFileName,
-    attachmentSizeBytes = attachmentSizeBytes,
-    attachmentPinned = attachmentPinned,
-    attachmentLocalPath = attachmentLocalPath
-)
-
 @Dao
 interface DeviceDao {
-    @Query("SELECT * FROM paired_devices WHERE isRemoved = 0 ORDER BY deviceName COLLATE NOCASE ASC")
-    fun getAllDevices(): Flow<List<PairedDeviceEntity>>
+    @Query("SELECT * FROM paired_devices WHERE isRemoved = 0 ORDER BY deviceId ASC")
+    fun getAllDevicesUnordered(): Flow<List<PairedDeviceEntity>>
 
-    @Query("SELECT * FROM paired_devices WHERE isRemoved = 0 ORDER BY deviceName COLLATE NOCASE ASC")
-    suspend fun getAllDevicesOnce(): List<PairedDeviceEntity>
+    @Query("SELECT * FROM paired_devices WHERE isRemoved = 0 ORDER BY deviceId ASC")
+    suspend fun getAllDevicesOnceUnordered(): List<PairedDeviceEntity>
 
     @Query("SELECT * FROM paired_devices WHERE deviceId = :deviceId LIMIT 1")
     suspend fun getDevice(deviceId: String): PairedDeviceEntity?
@@ -130,8 +102,8 @@ interface DeviceDao {
     @Query("SELECT * FROM paired_devices WHERE isRemoved = 1")
     suspend fun getTombstonedDevices(): List<PairedDeviceEntity>
 
-    @Query("SELECT * FROM paired_devices ORDER BY deviceName COLLATE NOCASE ASC")
-    suspend fun getAllDevicesIncludingTombstones(): List<PairedDeviceEntity>
+    @Query("SELECT * FROM paired_devices ORDER BY deviceId ASC")
+    suspend fun getAllDevicesIncludingTombstonesUnordered(): List<PairedDeviceEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDevice(device: PairedDeviceEntity)
@@ -185,12 +157,6 @@ interface DeviceDao {
     @Query("SELECT COUNT(*) FROM removed_devices WHERE deviceId = :deviceId")
     suspend fun countRemovedById(deviceId: String): Int
 
-    @Query(
-        "SELECT COUNT(*) FROM removed_devices " +
-            "WHERE publicKeyHash = :publicKeyHash AND publicKeyHash != ''"
-    )
-    suspend fun countRemovedByPublicKeyHash(publicKeyHash: String): Int
-
     @Query("DELETE FROM removed_devices WHERE deviceId = :deviceId")
     suspend fun clearRemovedDevice(deviceId: String)
 
@@ -207,60 +173,47 @@ interface DeviceDao {
     suspend fun deleteAllRemovedDevices()
 }
 
-@Dao
-interface ControlDeliveryDao {
+/** The name is sealed on disk, so these lists are ordered here (case-insensitively, by name, then id) and not by SQL. */
+private val byDeviceName = compareBy<PairedDeviceEntity, String>(String.CASE_INSENSITIVE_ORDER) { it.deviceName }.thenBy { it.deviceId }
 
-    @Query("DELETE FROM pending_control_deliveries")
-    suspend fun deleteAll()
-}
+fun DeviceDao.getAllDevices(): Flow<List<PairedDeviceEntity>> =
+    getAllDevicesUnordered().map { list -> list.sortedWith(byDeviceName) }
 
-@Dao
-interface NoteDao {
+suspend fun DeviceDao.getAllDevicesOnce(): List<PairedDeviceEntity> = getAllDevicesOnceUnordered().sortedWith(byDeviceName)
 
-    @Query("SELECT * FROM note_records ORDER BY epochMs ASC")
-    suspend fun getAllNotesOnce(): List<NoteEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertNote(note: NoteEntity)
-
-    @Query("DELETE FROM note_records WHERE noteId = :noteId")
-    suspend fun deleteNote(noteId: String)
-
-    @Query("DELETE FROM note_records")
-    suspend fun deleteAllNotes()
-
-}
+suspend fun DeviceDao.getAllDevicesIncludingTombstones(): List<PairedDeviceEntity> =
+    getAllDevicesIncludingTombstonesUnordered().sortedWith(byDeviceName)
 
 @Database(
     entities = [
         PairedDeviceEntity::class,
         RemovedDeviceEntity::class,
-        PendingControlDeliveryEntity::class,
         PendingTransferEntity::class,
-        NoteEntity::class,
         PeerCandidateEntity::class,
         MessageEntity::class,
         TombstoneEntity::class,
         OutboxEntity::class,
         ProcessedPacketEntity::class,
+        MessageFlagEntity::class,
+        ChecklistItemEntity::class,
         FriendLinkEntity::class,
         FriendInviteEntity::class,
         FriendIncomingEntity::class
     ],
-    version = 19
+    version = 23
 )
 @ConstructedBy(FileApexDatabaseConstructor::class)
 abstract class FileApexDatabase : RoomDatabase() {
     abstract fun deviceDao(): DeviceDao
-    abstract fun controlDeliveryDao(): ControlDeliveryDao
     abstract fun pendingTransferDao(): PendingTransferDao
-    abstract fun noteDao(): NoteDao
     abstract fun peerCandidateDao(): PeerCandidateDao
     abstract fun messageDao(): MessageDao
     abstract fun tombstoneDao(): TombstoneDao
     abstract fun outboxDao(): OutboxDao
     abstract fun processedPacketDao(): ProcessedPacketDao
     abstract fun transactionDao(): BulletinBoardTransactionDao
+    abstract fun messageFlagDao(): MessageFlagDao
+    abstract fun checklistItemDao(): ChecklistItemDao
     abstract fun friendsDao(): FriendsDao
 }
 

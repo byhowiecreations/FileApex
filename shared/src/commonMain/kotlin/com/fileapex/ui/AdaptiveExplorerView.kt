@@ -173,7 +173,7 @@ fun AdaptiveExplorerView(
                             ),
                             shape = paneShape
                         )
-                } else if (LocalAppTheme.current == AppTheme.SIMPLE) {
+                } else if (LocalAppTheme.current.let { it == AppTheme.SIMPLE || it == AppTheme.CAROUSEL }) {
                     // Same inset, rounded pane as Jaded Steel; the colors stay Simple's own.
                     val paneShape = RoundedCornerShape(20.dp)
                     Modifier

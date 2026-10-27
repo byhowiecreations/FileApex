@@ -9,6 +9,8 @@ import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -60,6 +62,20 @@ class TlsPinAnnouncer(
 
     @Synchronized fun ensureStarted() {
         current = this
+        PeerTlsStatus.resolver = { prompt, done ->
+            scope.launch {
+                val settled = try {
+                    resolveKeyChange(prompt)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    println("TlsPinAnnouncer: key change check failed - ${e::class.simpleName}")
+                    false
+                }
+                done(settled)
+            }
+        }
+        PeerTlsStatus.onUserConfirmed = { prompt -> withContext(Dispatchers.IO) { vouchForConfirmation(prompt) } }
         if (job?.isActive == true) return
         job = scope.launch {
             while (isActive) {
@@ -147,21 +163,83 @@ class TlsPinAnnouncer(
     }
 
     private suspend fun announce(device: PairedDeviceEntity): Long {
+        val result = exchange(device)
+        return when (result.outcome) {
+            TlsAnnouncementOutcome.Recorded,
+            TlsAnnouncementOutcome.Unchanged,
+            TlsAnnouncementOutcome.Rotated -> DONE_MS
+            null -> result.retryMs
+            else -> RETRY_MS
+        }
+    }
+
+    private class Exchange(val outcome: TlsAnnouncementOutcome?, val retryMs: Long = RETRY_MS)
+
+    /** Sends this device's key to [device] and applies the key it answers with; no outcome when no answer came. */
+    private suspend fun exchange(device: PairedDeviceEntity): Exchange {
         val localId = loadLocalIdentity().deviceId
-        val announcement = TlsPinAnnouncements.build(localId, device, now()) ?: return RETRY_MS
+        val announcement = TlsPinAnnouncements.build(localId, device, now()) ?: return Exchange(null)
         return try {
-            val reply = client.announceTlsPin(device.lastKnownIp, device.port, announcement) ?: return OLD_PEER_MS
-            when (TlsPinAnnouncements.accept(repository, reply, localId, now())) {
-                TlsAnnouncementOutcome.Recorded,
-                TlsAnnouncementOutcome.Unchanged -> DONE_MS
-                else -> RETRY_MS
-            }
+            val reply = client.announceTlsPin(device.lastKnownIp, device.port, announcement)
+                ?: return Exchange(null, OLD_PEER_MS)
+            Exchange(TlsPinAnnouncements.accept(repository, reply, localId, now()))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             // 404 from a build without TLS looks like any other failure; back off hard on it.
             println("TlsPinAnnouncer: announce to ${device.deviceId} failed - ${e::class.simpleName}")
-            if (e.message.orEmpty().contains("404")) OLD_PEER_MS else RETRY_MS
+            Exchange(null, if (e.message.orEmpty().contains("404")) OLD_PEER_MS else RETRY_MS)
+        }
+    }
+
+    /**
+     * A paired peer presented a key other than the stored one. In this order: another device of the cluster already
+     * confirmed it; the peer's pairing key vouches for its key; the peer proves with its OLD key that it is the same
+     * device. True when nothing is left to ask the user.
+     */
+    internal suspend fun resolveKeyChange(prompt: TlsPinPrompt): Boolean {
+        val observed = prompt.pin.lowercase()
+        val id = prompt.deviceId
+        val device = repository.getDevice(id)
+        if (device == null || device.isRemoved || device.tlsPin.equals(observed, ignoreCase = true)) return true
+        if (TlsVouches.voucherFor(id, observed, now()) != null) return adopt(id, observed, prompt.port)
+        val reachable = NetworkUtils.isUsableLanIpv4(device.lastKnownIp) && device.port > 0
+        if (device.publicKey.isNotBlank() && reachable) {
+            when (exchange(device).outcome) {
+                // The peer says, authenticated, which key is its own. If that is not the one that answered us, whoever
+                // answered is not the peer: the connection stays refused and there is nothing for the user to trust.
+                TlsAnnouncementOutcome.Rotated, TlsAnnouncementOutcome.Recorded, TlsAnnouncementOutcome.Unchanged -> return true
+                else -> Unit
+            }
+        }
+        if (reachable) {
+            val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
+            val pins = setOfNotNull(device.tlsPin, device.tlsPinAlt.ifEmpty { null })
+            if (state != null && state.deviceId.trim() == id &&
+                TlsRotation.verify(TlsRotation.decode(state.tlsRotation), pins, observed, now())
+            ) {
+                return adopt(id, observed, prompt.port)
+            }
+        }
+        return false
+    }
+
+    private suspend fun adopt(deviceId: String, pin: String, port: Int): Boolean {
+        repository.recordTlsPin(deviceId, pin, port)
+        PeerTlsStatus.dismiss(deviceId)
+        return true
+    }
+
+    /** The user trusted a changed key here: the other online devices of the cluster learn it and need not ask. */
+    internal suspend fun vouchForConfirmation(prompt: TlsPinPrompt) {
+        val localId = loadLocalIdentity().deviceId
+        val online = onlineDeviceIds()
+        for (recipient in repository.listDevices()) {
+            if (recipient.isRemoved || recipient.deviceId == prompt.deviceId || recipient.deviceId == localId) continue
+            if (recipient.deviceId !in online || !NetworkUtils.isUsableLanIpv4(recipient.lastKnownIp) || recipient.port <= 0) continue
+            val vouch = TlsPinAnnouncements.buildVouch(localId, recipient, prompt.deviceId, prompt.pin, prompt.port, now()) ?: continue
+            cancellableCatching { client.announceTlsPin(recipient.lastKnownIp, recipient.port, vouch) }
+                .onFailure { if (it is CancellationException) throw it }
         }
     }
 

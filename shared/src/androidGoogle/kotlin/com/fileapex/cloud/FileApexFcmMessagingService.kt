@@ -55,6 +55,7 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
         when {
             FcmWakeCoordinator.isPresenceWake(type) -> handlePresenceWake(data)
             FcmWakeCoordinator.isDiagnosticsWake(type) -> handleDiagnosticsWake(data)
+            FcmWakeCoordinator.isDeviceRemoved(type) -> com.fileapex.cloud.device.DeviceIdentity.onKicked()
             FcmWakeCoordinator.isNoteInline(type) -> {
                 val content = data[FcmWakeProtocol.Keys.CONTENT]
                     ?: data[FcmWakeProtocol.KEY_CONTENT].orEmpty()

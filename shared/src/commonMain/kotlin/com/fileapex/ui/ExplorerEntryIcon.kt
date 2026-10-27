@@ -1,5 +1,8 @@
 package com.fileapex.ui
 
+import com.fileapex.ui.theme.CarouselPalette
+import com.fileapex.data.settings.LocalAppTheme
+import com.fileapex.data.settings.AppTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AudioFile
@@ -88,7 +91,7 @@ fun ExplorerEntryIcon(
 ) {
     val vector = ExplorerEntryIcons.iconFor(item)
     val tint = when {
-        item.isDirectory && tintFolder -> folderColor ?: FileApexTeal
+        item.isDirectory && tintFolder -> folderColor ?: if (LocalAppTheme.current == AppTheme.CAROUSEL) CarouselPalette.accent else FileApexTeal
         item.isDirectory -> MaterialTheme.colorScheme.primary
         else -> fileColor ?: MaterialTheme.colorScheme.primary
     }

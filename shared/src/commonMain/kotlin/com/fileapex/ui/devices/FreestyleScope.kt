@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.di.FileApexServices
+import com.fileapex.friends.ui.FriendSendTarget
+import com.fileapex.ui.FRIEND_ROW_PREFIX
 
 /**
  * Everything a Freestyle section draws from: the view's inputs, the saved layout, the canvas geometry, the live state,
@@ -54,8 +56,19 @@ internal class FreestyleScope(
     var liveOptionsPos by liveOptionsPosState
     var optionsActionsList by optionsActionsListState
 
-    /** Opens the file window on a device, resolving its browse target first. */
+    /** Opens the file window on a paired device. A friend has no folder here: the window lists this device's files to pick from. */
     fun handleBrowseDevice(deviceId: String, deviceName: String) {
+        friendKeyOf(deviceId)?.let { key ->
+            val local = inputs.thisDeviceTarget
+            if (local == null) {
+                inputs.onOpenDevice(deviceId)
+            } else {
+                live.sendingToFriend = FriendSendTarget(key, deviceName)
+                live.browsingTarget = local
+                live.showFilesWindow = true
+            }
+            return
+        }
         live.showFilesWindow = true
         live.isResolvingBrowse = true
         live.resolvingDeviceName = deviceName
@@ -257,4 +270,18 @@ internal fun rememberFreestyleScope(
             endDragAction
         )
     } } } }
+}
+
+/** A pinned friend is a person to send to, not a remote folder to open. */
+internal fun browsesRemoteFolder(deviceId: String): Boolean = !deviceId.startsWith(FRIEND_ROW_PREFIX)
+
+/** Drag limit for a panel. A panel wider than the canvas stays at [edge] instead of throwing. */
+internal fun clampPanelOffset(position: Float, edge: Float, farEdge: Float): Float =
+    position.coerceIn(edge, farEdge.coerceAtLeast(edge))
+
+/** Shrinks a panel so it fits in [roomPx], and never asks for less than the room allows. */
+internal fun fittedPanelPx(requestedPx: Float, roomPx: Float, minPx: Float): Float {
+    val room = roomPx.coerceAtLeast(1f)
+    val min = minPx.coerceAtMost(room)
+    return requestedPx.coerceIn(min, room)
 }

@@ -83,6 +83,30 @@ class FilePreviewManager(
             val path = Path(absolutePath)
             check(SystemFileSystem.exists(path)) { "Missing local file: $absolutePath" }
             val maxInt = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            val size = SystemFileSystem.metadataOrNull(path)?.size ?: 0L
+            if (size > maxInt) error(AppI18n.t("file_too_large_preview"))
+            val result = if (size > 0L) readKnownSize(path, size.toInt()) else readUnknownSize(path, maxInt)
+            if (result.isEmpty()) {
+                error(AppI18n.t("preview_unknown_size"))
+            }
+            return result
+        }
+
+        /** One allocation of the file's own size; a file that grew meanwhile is cut at that size, one that shrank is trimmed. */
+        private fun readKnownSize(path: Path, size: Int): ByteArray {
+            val buffer = ByteArray(size)
+            var filled = 0
+            SystemFileSystem.source(path).buffered().use { input ->
+                while (filled < size) {
+                    val read = input.readAtMostTo(buffer, filled, size)
+                    if (read < 0) break
+                    filled += read
+                }
+            }
+            return if (filled == size) buffer else buffer.copyOf(filled)
+        }
+
+        private fun readUnknownSize(path: Path, maxInt: Int): ByteArray {
             val parts = ArrayList<ByteArray>()
             var total = 0
             SystemFileSystem.source(path).buffered().use { input ->
@@ -96,9 +120,6 @@ class FilePreviewManager(
                     parts.add(buffer.copyOf(read))
                     total += read
                 }
-            }
-            if (total == 0) {
-                error(AppI18n.t("preview_unknown_size"))
             }
             val result = ByteArray(total)
             var offset = 0

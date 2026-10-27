@@ -1,6 +1,5 @@
 package com.fileapex.friends
 
-import android.app.DownloadManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -26,18 +25,23 @@ fun initAndroidFriendsNotifier(context: Context) {
     friendsNotifierContext = context.applicationContext
 }
 
-private const val ACTION_ACCEPT = "com.fileapex.friends.ACCEPT"
-private const val ACTION_DECLINE = "com.fileapex.friends.DECLINE"
-private const val ACTION_ACCEPT_ALWAYS = "com.fileapex.friends.ACCEPT_ALWAYS"
-private const val EXTRA_OFFER_ID = "com.fileapex.friends.OFFER_ID"
+const val EXTRA_OPEN_LOCAL_FOLDER = "com.fileapex.extra.OPEN_LOCAL_FOLDER"
+internal const val FRIENDS_ACTION_ACCEPT = "com.fileapex.friends.ACCEPT"
+internal const val FRIENDS_ACTION_DECLINE = "com.fileapex.friends.DECLINE"
+internal const val FRIENDS_ACTION_ACCEPT_ALWAYS = "com.fileapex.friends.ACCEPT_ALWAYS"
+internal const val FRIENDS_EXTRA_OFFER_ID = "com.fileapex.friends.OFFER_ID"
 /** The receiver in [FriendsHub] gives up after two minutes, so the notification goes away with it. */
 private const val OFFER_TIMEOUT_MS = 120_000L
 private const val NOTIFICATION_TAG = "friends_offer"
-private const val ACTION_CANCEL_TRANSFER = "com.fileapex.friends.CANCEL_TRANSFER"
-private const val EXTRA_TRANSFER_ID = "com.fileapex.friends.TRANSFER_ID"
+internal const val FRIENDS_ACTION_CANCEL_TRANSFER = "com.fileapex.friends.CANCEL_TRANSFER"
+internal const val FRIENDS_EXTRA_TRANSFER_ID = "com.fileapex.friends.TRANSFER_ID"
 private const val TRANSFER_TAG = "friends_transfer"
 private const val TRANSFER_REDRAW_MS = 1_000L
 private val lastTransferPost = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, FriendTransferStatus>>()
+
+/** Names the receiver: it is not exported and has no intent filter, so an intent with only an action reaches nothing. */
+internal fun friendsActionIntent(context: Context, action: String, extraKey: String, extraValue: String): Intent =
+    Intent(action).setClass(context, FriendsOfferActionReceiver::class.java).putExtra(extraKey, extraValue)
 
 private fun transferNotificationId(transferId: String) = 4500 + (transferId.hashCode() and 0xFFF)
 
@@ -60,7 +64,7 @@ actual object FriendsNotifier {
         val openPending = open?.let { PendingIntent.getActivity(context, id, it, flags()) }
         fun action(name: String, code: Int) = PendingIntent.getBroadcast(
             context, id * 4 + code,
-            Intent(name).setPackage(context.packageName).putExtra(EXTRA_OFFER_ID, offer.id),
+            friendsActionIntent(context, name, FRIENDS_EXTRA_OFFER_ID, offer.id),
             flags()
         )
         val body = AppI18n.t("friends_offer_body", offer.fileName, formatSize(offer.sizeBytes))
@@ -71,9 +75,9 @@ actual object FriendsNotifier {
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(openPending)
-            .addAction(0, AppI18n.t("friends_accept"), action(ACTION_ACCEPT, 0))
-            .addAction(0, AppI18n.t("friends_decline"), action(ACTION_DECLINE, 1))
-            .addAction(0, AppI18n.t("friends_accept_always"), action(ACTION_ACCEPT_ALWAYS, 2))
+            .addAction(0, AppI18n.t("friends_accept"), action(FRIENDS_ACTION_ACCEPT, 0))
+            .addAction(0, AppI18n.t("friends_decline"), action(FRIENDS_ACTION_DECLINE, 1))
+            .addAction(0, AppI18n.t("friends_accept_always"), action(FRIENDS_ACTION_ACCEPT_ALWAYS, 2))
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
@@ -103,7 +107,7 @@ actual object FriendsNotifier {
         val percent = (transfer.fraction * 100).toInt()
         val cancel = PendingIntent.getBroadcast(
             context, id,
-            Intent(ACTION_CANCEL_TRANSFER).setPackage(context.packageName).putExtra(EXTRA_TRANSFER_ID, transfer.id),
+            friendsActionIntent(context, FRIENDS_ACTION_CANCEL_TRANSFER, FRIENDS_EXTRA_TRANSFER_ID, transfer.id),
             flags()
         )
         val steady = transfer.status == FriendTransferStatus.ACTIVE && transfer.totalBytes > 0
@@ -140,29 +144,26 @@ actual object FriendsNotifier {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         }
-        val root = android.os.Environment.getExternalStorageDirectory().absolutePath
         val folder = target.parentFile?.absolutePath.orEmpty()
-        val location = if (folder.startsWith("$root/")) {
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(
-                    android.provider.DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:" + folder.removePrefix("$root/")),
-                    "vnd.android.document/directory"
-                )
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val openFolder = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(EXTRA_OPEN_LOCAL_FOLDER, folder)
             }
-        } else Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val locationPending = PendingIntent.getActivity(context, id * 2, location, flags())
+        val locationPending = openFolder?.let { PendingIntent.getActivity(context, id * 2, it, flags()) }
         val builder = NotificationCompat.Builder(context, AndroidNotificationChannels.TRANSFER_RECEIVE)
             .setSmallIcon(AndroidNotificationChannels.smallIcon)
             .setLargeIcon(BitmapFactory.decodeResource(context.resources, AndroidNotificationChannels.largeIcon))
             .setContentTitle(AppI18n.t("friends_received_title", file.friendLabel))
             .setContentText(file.fileName)
             .setStyle(NotificationCompat.BigTextStyle().bigText(file.fileName))
-            .setContentIntent(locationPending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        locationPending?.let {
+            builder.setContentIntent(it)
+            builder.addAction(0, AppI18n.t("friends_open_location"), it)
+        }
         view?.let { builder.addAction(0, AppI18n.t("friends_view"), PendingIntent.getActivity(context, id * 2 + 1, it, flags())) }
-        builder.addAction(0, AppI18n.t("friends_open_location"), locationPending)
         runCatching { manager.notify(id, builder.build()) }
             .onFailure { println("FriendsNotifier: received notify failed :: ${it.message}") }
     }
@@ -176,12 +177,12 @@ actual object FriendsNotifier {
 /** Accept and Decline buttons of the notification; the offer lives in this process, so the hub answers it directly. */
 class FriendsOfferActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == ACTION_CANCEL_TRANSFER) {
-            intent.getStringExtra(EXTRA_TRANSFER_ID)?.let { FriendsHub.cancel(it) }
+        if (intent.action == FRIENDS_ACTION_CANCEL_TRANSFER) {
+            intent.getStringExtra(FRIENDS_EXTRA_TRANSFER_ID)?.let { FriendsHub.cancel(it) }
             return
         }
-        val offerId = intent.getStringExtra(EXTRA_OFFER_ID) ?: return
-        FriendsHub.decide(offerId, intent.action != ACTION_DECLINE, intent.action == ACTION_ACCEPT_ALWAYS)
+        val offerId = intent.getStringExtra(FRIENDS_EXTRA_OFFER_ID) ?: return
+        FriendsHub.decide(offerId, intent.action != FRIENDS_ACTION_DECLINE, intent.action == FRIENDS_ACTION_ACCEPT_ALWAYS)
         runCatching { NotificationManagerCompat.from(context).cancel(NOTIFICATION_TAG, notificationId(offerId)) }
     }
 }

@@ -91,6 +91,9 @@ object FileApexServices {
 
     fun bulletinSyncEngineOrNull(): BulletinBoardSyncEngine? = bulletinSyncEngineInstance
 
+    private val bulletinUnreadHolder = kotlinx.coroutines.flow.MutableStateFlow<com.fileapex.data.bulletin.BulletinUnreadTracker?>(null)
+    val bulletinUnread: kotlinx.coroutines.flow.StateFlow<com.fileapex.data.bulletin.BulletinUnreadTracker?> = bulletinUnreadHolder
+
     /** Outbound Multi Copy orchestration, single entry for UI and extension handoff. */
     val transferManager: TransferManager by lazy {
         TransferManager(
@@ -185,10 +188,11 @@ object FileApexServices {
             membershipStore = SettingsMembershipStore { settings },
             candidates = com.fileapex.data.db.RoomPeerCandidateStore(database.peerCandidateDao())
         )
-        client.onRevocationDetected = { host ->
+        client.onRevocationDetected = { host, revokedAt ->
             com.fileapex.session.DeviceSessionManager.clearAllSessions()
             presenceMonitor.refreshOnlineSnapshot()
             RevokedByPeerNotice.onRevoked(host, deviceRepository.listDevices())
+            com.fileapex.domain.pairing.KickedByPeer.onRevoked(host, revokedAt, deviceRepository.listDevices())
         }
         client.membershipVersionProvider = { deviceRepository.selfMembershipVersion() }
         // Routes must exist before the first request, or a pinned peer could be reached over HTTP.
@@ -204,6 +208,7 @@ object FileApexServices {
             onlineDeviceIds = { presenceMonitor.onlineDeviceIds.value },
             scope = bootstrapScope
         ).ensureStarted()
+        com.fileapex.cloud.seal.CloudRecordResealer.start(bootstrapScope)
         bootstrapScope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(ROSTER_CATCH_UP_FIRST_MS)
             while (true) {
@@ -214,7 +219,6 @@ object FileApexServices {
         }
         LocalDeviceNameStore.ensureLoaded()
         DeviceNamePeerLabelsStore.ensureLoaded()
-        noteRepository.attachLegacyDao(database.noteDao(), bootstrapScope)
         presenceMonitor.ensureOnlineSnapshotWatcher()
         presenceMonitor.ensureLanPollLoop()
         transferQueue.ensureDrainWatcher()
@@ -252,6 +256,7 @@ object FileApexServices {
         val syncEngine = BulletinBoardSyncEngine(database, repository, bootstrapScope)
         bulletinSyncEngineInstance = syncEngine
         noteRepository.attachBulletinBoard(repository, syncEngine, bootstrapScope)
+        bulletinUnreadHolder.value = com.fileapex.data.bulletin.BulletinUnreadTracker(settings, repository, bootstrapScope)
         bootstrapScope.launch(Dispatchers.IO) {
             cancellableCatching {
                 when (val result = BulletinBoardMerge.run(legacyBulletinPath, database)) {
@@ -263,8 +268,6 @@ object FileApexServices {
             }.onFailure { error ->
                 println("FileApexServices: bulletin merge skipped - ${error.message}")
             }
-            cancellableCatching { repository.migrateFromLegacyNotes(database.noteDao()) }
-                .onFailure { error -> println("FileApexServices: bulletin migration skipped - ${error.message}") }
             // The engine starts only after the copy so it never syncs from a half-filled table.
             syncEngine.ensureStarted()
         }
@@ -316,11 +319,11 @@ object FileApexServices {
         database?.let { db ->
             cancellableCatching { db.deviceDao().deleteAllDevices() }
             cancellableCatching { db.deviceDao().deleteAllRemovedDevices() }
-            cancellableCatching { db.controlDeliveryDao().deleteAll() }
             cancellableCatching { db.pendingTransferDao().deleteAll() }
-            cancellableCatching { db.noteDao().deleteAllNotes() }
             cancellableCatching { db.messageDao().deleteAllMessages() }
             cancellableCatching { db.tombstoneDao().deleteAllTombstones() }
+            cancellableCatching { db.messageFlagDao().deleteAllFlags() }
+            cancellableCatching { db.checklistItemDao().deleteAllItems() }
             cancellableCatching { db.outboxDao().deleteAllOutbox() }
             cancellableCatching { db.processedPacketDao().deleteAllPackets() }
             runCatching { db.clearAllTables() }

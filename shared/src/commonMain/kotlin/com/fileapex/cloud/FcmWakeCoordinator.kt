@@ -163,6 +163,7 @@ object FcmWakeCoordinator {
 
     fun isClipboardShare(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_SHARE
     fun isClipboardAck(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_ACK
+    fun isDeviceRemoved(type: String?): Boolean = type == FcmWakeProtocol.TYPE_DEVICE_REMOVED
     fun isClipboardOptInRequest(type: String?): Boolean = type == FcmWakeProtocol.TYPE_CLIPBOARD_OPT_IN_REQUEST
 
     suspend fun dispatchClipboardShare(

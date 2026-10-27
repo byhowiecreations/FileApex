@@ -282,7 +282,7 @@ internal fun KineticGlassActionCapsule(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = row.friendGroup ?: if (row.online) stringRes("ready") else stringRes("tap_to_wake"),
+                        text = row.friendGroup ?: if (row.online) DeviceListRow.localizedOnlineLabel(row.reachedBy) else stringRes("tap_to_wake"),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                         color = statusColor,
                         maxLines = 2,

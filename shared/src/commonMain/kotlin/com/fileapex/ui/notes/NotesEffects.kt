@@ -11,6 +11,8 @@ import com.fileapex.ui.loadNotesAttachmentBitmap
 import com.fileapex.ui.loadNotesInlinePreviewBitmap
 import com.fileapex.ui.notesAttachmentIsImage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import com.fileapex.di.FileApexServices
 
 @Composable
 internal fun NotesScope.NotesEffects() {
@@ -47,6 +49,7 @@ internal fun NotesScope.NotesEffects() {
     }
 
     LaunchedEffect(displayNotes) {
+        FileApexServices.bulletinUnread.value?.markSeen(com.fileapex.data.bulletin.BulletinUnread.latestStamp(FileApexServices.bulletinBoardRepository.messages.first()))
         val liveIds = displayNotes.map { it.noteId }.toSet()
         val staleIds = bubbleThumbs.keys.filter { it !in liveIds }
         staleIds.forEach { bubbleThumbs.remove(it) }

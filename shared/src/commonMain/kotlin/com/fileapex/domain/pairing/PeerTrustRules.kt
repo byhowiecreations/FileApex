@@ -12,24 +12,18 @@ object PeerTrustRules {
     fun answersOnClusterClock(protocol: Int, version: Long): Boolean =
         protocol >= ClusterClock.MEMBERSHIP_PROTOCOL && (version == 0L || ClusterClock.isAcceptable(version))
 
-    /** Same hardware model on the same address under another id: one of the two is an outdated copy. */
-    fun sharesAddressAndModel(a: PairedDeviceEntity, b: PairedDeviceEntity): Boolean {
+    /** The same key under another id: one row is a copy of the other. Address and model are not used. */
+    fun samePublicKey(a: PairedDeviceEntity, b: PairedDeviceEntity): Boolean {
         if (a.deviceId == b.deviceId) return false
-        val ipA = a.lastKnownIp.trim()
-        if (ipA.isEmpty() || ipA != b.lastKnownIp.trim()) return false
-        val modelA = modelKey(a)
-        return modelA.isNotEmpty() && modelA == modelKey(b)
+        val hashA = a.publicKeyHash.trim()
+        if (hashA.isNotEmpty() && hashA == b.publicKeyHash.trim()) return true
+        val keyA = a.publicKey.trim()
+        return keyA.isNotEmpty() && keyA == b.publicKey.trim()
     }
 
-    /** Only a device this one verified, and that has no twin on its address, may be introduced. */
+    /** Only a device this one verified, and that is not a second row of the same key, may be introduced. */
     fun mayIntroduce(row: PairedDeviceEntity, roster: List<PairedDeviceEntity>): Boolean =
         reachedDirectly(row) &&
             row.clusterVersion > 0L && ClusterClock.isAcceptable(row.clusterVersion) &&
-            roster.none { other -> !other.isRemoved && sharesAddressAndModel(row, other) }
-
-    private fun modelKey(row: PairedDeviceEntity): String {
-        val make = row.deviceMake.trim().lowercase()
-        val model = row.deviceModel.trim().lowercase()
-        return if (make.isEmpty() || model.isEmpty()) "" else "$make|$model"
-    }
+            roster.none { other -> !other.isRemoved && samePublicKey(row, other) }
 }

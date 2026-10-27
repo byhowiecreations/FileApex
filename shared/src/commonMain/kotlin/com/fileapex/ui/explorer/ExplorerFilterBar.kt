@@ -79,13 +79,22 @@ internal fun ExplorerTopBarActions(
     embeddedInCompactShell: Boolean,
     viewModel: ExplorerViewModel,
     hasExternalRefresh: Boolean = false,
-    onOpenTools: (() -> Unit)? = null
+    onOpenTools: (() -> Unit)? = null,
+    onPickFiles: ((List<String>) -> Unit)? = null
 ) {
     val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
     when {
         state.isSelectionMode -> {
-            if (state.isRemoteTarget) {
+            if (onPickFiles != null) {
+                val chosen = viewModel.selectedItems().filter { !it.isDirectory }.map { it.absolutePath }
+                TextButton(enabled = chosen.isNotEmpty(), onClick = { onPickFiles(chosen) }) {
+                    Text(
+                        stringRes("send"),
+                        color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified
+                    )
+                }
+            } else if (state.isRemoteTarget) {
                 TextButton(
                     onClick = viewModel::downloadSelected,
                     enabled = state.canDownloadSelection && !state.isDownloading
@@ -124,12 +133,13 @@ internal fun ExplorerTopBarActions(
                 )
             }
             if (embeddedInCompactShell) {
+                val splitAllowed = onPickFiles == null
                 ExplorerViewModeToggle(
                     viewMode = state.viewMode,
-                    onToggle = viewModel::toggleViewMode,
-                    includeSplit = true
+                    onToggle = { viewModel.toggleViewMode(splitAllowed) },
+                    includeSplit = splitAllowed
                 )
-                if (isDesktopHost()) {
+                if (isDesktopHost() && splitAllowed) {
                     DesktopLayoutToggle()
                 }
             }
@@ -310,7 +320,7 @@ internal fun ExplorerFilterBar(
     ) {
         val jadedField = LocalAppTheme.current.traits.orbitalHome &&
             LocalKineticStyle.current == KineticStyle.JADED_STEEL
-        val curvedField = LocalAppTheme.current.let { it == AppTheme.SIMPLE || it == AppTheme.CLEAN || it == AppTheme.FLUX_GLASS } && !isFileApexFluentUi()
+        val curvedField = LocalAppTheme.current.let { it == AppTheme.SIMPLE || it == AppTheme.CLEAN || it == AppTheme.FLUX_GLASS || it == AppTheme.CAROUSEL } && !isFileApexFluentUi()
         if (leading != null) {
             SlidingFilterWithLeading(
                 query = query,

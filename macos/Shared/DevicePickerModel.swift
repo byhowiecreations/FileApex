@@ -39,11 +39,15 @@ public final class DevicePickerModel: ObservableObject {
     }
 
     public func reload() {
+        Task { await load() }
+    }
+
+    private func load() async {
         AppCopy.shared.loadFromDisk()
         isLoading = true
         errorMessage = nil
         do {
-            devices = try PairedDeviceStore.loadDevices()
+            devices = try await PairedDeviceStore.loadDevices()
             let fileCount = preStagedPaths?.count ?? fileURLs.count
             if devices.isEmpty {
                 statusMessage = AppCopy.shared.t("no_paired_open_fileapex")

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.fileapex.i18n.stringRes
 import com.fileapex.security.tls.TlsFingerprint
 import com.fileapex.security.tls.TlsPinPrompt
+import com.fileapex.security.tls.TlsPinWords
 import com.fileapex.security.tls.TlsPromptKind
 
 /** Asks the user to compare a peer's key fingerprint with the one shown on that peer. */
@@ -46,17 +47,24 @@ fun TlsPinPromptDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(16.dp))
+                if (changed) {
+                    Text(
+                        text = TlsPinWords.of(prompt.pin),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
                 Text(
                     text = TlsFingerprint.short(prompt.pin),
                     style = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = if (changed) 16.sp else 24.sp,
+                        fontWeight = if (changed) FontWeight.Normal else FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
                 )
             }
         },
-        confirmButton = { Button(onClick = onTrust) { Text(stringRes("tls_pin_trust")) } },
-        dismissButton = { TextButton(onClick = onNotNow) { Text(stringRes("tls_pin_not_now")) } }
+        confirmButton = { Button(onClick = onTrust) { Text(stringRes(if (changed) "tls_pin_changed_trust" else "tls_pin_trust")) } },
+        dismissButton = { TextButton(onClick = onNotNow) { Text(stringRes(if (changed) "tls_pin_changed_decline" else "tls_pin_not_now")) } }
     )
 }

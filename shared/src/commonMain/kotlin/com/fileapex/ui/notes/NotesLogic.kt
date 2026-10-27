@@ -1,5 +1,6 @@
 package com.fileapex.ui.notes
 
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -70,6 +71,14 @@ internal suspend fun NotesScope.scrollNotesToLatest() {
     with(frame) { with(live) {
         if (!focusNoteId.isNullOrBlank()) return
         if (visualRows.isEmpty() && !holdingTransportSlot) return
+        val divider = visualRows.indexOfFirst { it is com.fileapex.presentation.NotesListRow.NewDivider }
+        // Once per visit, to the oldest post that was unread on opening; later arrivals are newer than that spot.
+        if (divider >= 0 && !jumpedToNew) {
+            jumpedToNew = true
+            listState.scrollToItem(divider + if (holdingTransportSlot) 1 else 0)
+            listState.scrollBy(-listState.layoutInfo.viewportSize.height * 0.85f)
+            return
+        }
         listState.scrollToItem(0)
     } }
 }

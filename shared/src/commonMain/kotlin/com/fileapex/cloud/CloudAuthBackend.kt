@@ -12,8 +12,14 @@ expect object CloudAuthBackend {
 
     suspend fun currentSession(): GoogleAuthSession?
 
-    /** A current Firebase Auth ID token for the signed-in user, or null when not signed in. Sent to the FCM relay. */
-    suspend fun firebaseIdToken(): String?
+    /** A current Firebase Auth ID token for the signed-in user, or null when not signed in. Sent to the FCM relay. [forceRefresh] asks Firebase for a new one, which is how a disabled device user is found out. */
+    suspend fun firebaseIdToken(forceRefresh: Boolean = false): String?
+
+    /**
+     * Swaps the Google session for this device's own Firebase user (a custom token from the relay's enrol call).
+     * The session keeps reporting the Google account's uid, because every Firestore path is under it.
+     */
+    suspend fun adoptDeviceToken(customToken: String)
 
     suspend fun signOut()
 
@@ -31,7 +37,7 @@ expect object CloudAuthBackend {
     /**
      * Partial field update for display name only, caller must be an explicit user rename action.
      */
-    suspend fun patchDeviceName(uid: String, deviceId: String, deviceName: String, updatedAtEpochMs: Long)
+    suspend fun patchDeviceName(uid: String, deviceId: String, deviceName: String, updatedAtEpochMs: Long, sealed: Map<String, String> = emptyMap())
 
     suspend fun deleteDevice(uid: String, deviceId: String)
 

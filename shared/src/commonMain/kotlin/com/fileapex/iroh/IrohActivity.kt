@@ -5,6 +5,8 @@ package com.fileapex.iroh
  * Iroh log. Only the path decides it, so nothing about the content (file names, text) ever reaches the log.
  */
 object IrohActivity {
+    const val PRESENCE_CHECK = "presence check"
+
     /** [sniffed] looks like `GET /api/v1/files/list -> 200`. Unknown paths are returned unchanged. */
     fun describe(sniffed: String): String {
         val request = sniffed.substringBefore(" -> ")
@@ -17,7 +19,7 @@ object IrohActivity {
     fun labelFor(path: String): String? {
         val p = path.removePrefix("/api/v1")
         return when {
-            p == "/health" || p.startsWith("/presence/") -> "presence check"
+            p == "/health" || p.startsWith("/presence/") -> PRESENCE_CHECK
             p == "/identity" || p == "/diagnostics" || p == "/battery" || p == "/devices" || p == "/tls/pin" ||
                 p.startsWith("/identity/") -> "device info"
             p.startsWith("/cluster/") || p == "/devices/merge" -> "device list sync"

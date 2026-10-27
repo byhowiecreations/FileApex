@@ -10,6 +10,4 @@ object PeerEndpointRules {
         val value = host.trim().removePrefix("[").removeSuffix("]").lowercase()
         return value == "localhost" || value == "::1" || value == "0.0.0.0" || value.startsWith("127.")
     }
-
-    fun isStorableHost(host: String): Boolean = host.isNotBlank() && !isLoopbackOrUnspecified(host)
 }

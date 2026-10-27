@@ -94,7 +94,7 @@ class WakeHelloTest {
     fun garbageAndTruncatedPacketsParseToNull() {
         val good = hello().single()
 
-        assertNull(WakeHello.parse("WAKE_FILEAPEX".encodeToByteArray()))
+        assertNull(WakeHello.parse(PLAIN_WAKE))
         assertNull(WakeHello.parse(ByteArray(0)))
         assertNull(WakeHello.parse(good.copyOf(good.size - 1)))
         assertNull(WakeHello.parse(good.copyOf(10)))
@@ -135,7 +135,7 @@ class WakeHelloTest {
     @Test
     fun theLegacyWakeStringIsNotAHello() {
         assertNotNull(WakeHello.parse(hello().single()))
-        assertFalse(WakeHello.looksSigned(WakeProtocol.PAYLOAD.encodeToByteArray()))
+        assertFalse(WakeHello.looksSigned(PLAIN_WAKE))
         assertTrue(WakeHello.looksSigned(hello().single()))
     }
 
@@ -164,5 +164,18 @@ class WakeHelloTest {
     @Test
     fun theResendComesAfterTheReceiversPerSenderGap() {
         assertTrue(com.fileapex.domain.presence.LanPresenceTiming.HELLO_RESEND_MS > WakeHelloGate.MIN_GAP_MS)
+    }
+
+    @Test
+    fun thePlainWakeStringIsNeverSentAndNeverCountsAsSigned() {
+        WakeHelloOutbox.setRoster(emptyList())
+        assertTrue(WakeHelloOutbox.payloads().none { it.contentEquals(PLAIN_WAKE) })
+        assertFalse(WakeHello.looksSigned(PLAIN_WAKE))
+        assertNull(WakeHello.parse(PLAIN_WAKE))
+    }
+
+    private companion object {
+        /** The unsigned wake of builds before 0.19.0; removed in 0.19.8, so a receiver must drop it. */
+        val PLAIN_WAKE = "WAKE_FILEAPEX".encodeToByteArray()
     }
 }

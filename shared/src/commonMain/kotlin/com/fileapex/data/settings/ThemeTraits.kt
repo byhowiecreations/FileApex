@@ -14,6 +14,8 @@ data class ThemeTraits(
     val fluxSurfaces: Boolean,
     val orbitalHome: Boolean,
     val canvasHome: Boolean,
+    /** Navigation is a floating dock instead of a rail or bottom bar. */
+    val dockHome: Boolean = false,
     val shapeStyle: ThemeShapeStyle = ThemeShapeStyle.RoundedSquare,
     val surfaceAlpha: Float = 0.16f,
     val borderWidthDp: Float = 1f,
@@ -69,6 +71,18 @@ private val freestyleTraits = ThemeTraits(
     canvasHome = true,
 )
 
+private val carouselTraits = ThemeTraits(
+    glassChrome = true,
+    glassNotesSurfaces = false,
+    reorderAccent = false,
+    spatialHome = true,
+    desktopHoverPopOver = false,
+    fluxSurfaces = false,
+    orbitalHome = false,
+    canvasHome = false,
+    dockHome = true,
+)
+
 val AppTheme.traits: ThemeTraits
     get() = when (this) {
         AppTheme.SIMPLE -> simpleTraits
@@ -76,4 +90,5 @@ val AppTheme.traits: ThemeTraits
         AppTheme.FLUX_GLASS -> fluxGlassTraits
         AppTheme.KINETIC_SPHERE -> kineticSphereTraits
         AppTheme.FREESTYLE -> freestyleTraits
+        AppTheme.CAROUSEL -> carouselTraits
     }

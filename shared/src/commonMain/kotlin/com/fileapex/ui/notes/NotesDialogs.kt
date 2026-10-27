@@ -134,6 +134,7 @@ internal fun NotesScope.NotesAttachDialogs() {
 
 @Composable
 internal fun NotesScope.NotesDeleteDialogs() {
+    val notesSnackbar = LocalNotesSnackbar.current
     with(frame) { with(live) {
         val targetToDelete = noteToDelete
         if (targetToDelete != null) {
@@ -152,7 +153,7 @@ internal fun NotesScope.NotesDeleteDialogs() {
                             val target = targetToDelete
                             noteToDelete = null
                             if (target.attachmentPinned) {
-                                BriefToast.show(AppI18n.t("note_locked_unlock_first"))
+                                notesSnackbar.say(AppI18n.t("note_locked_unlock_first"))
                                 return@TextButton
                             }
                             if (target.hasBulletinBinaryAttachment()) {
@@ -172,7 +173,7 @@ internal fun NotesScope.NotesDeleteDialogs() {
                                 val target = targetToDelete
                                 noteToDelete = null
                                 if (target.attachmentPinned) {
-                                    BriefToast.show(AppI18n.t("note_locked_unlock_first"))
+                                    notesSnackbar.say(AppI18n.t("note_locked_unlock_first"))
                                     return@TextButton
                                 }
                                 viewModel.deleteNoteLocally(target.noteId)

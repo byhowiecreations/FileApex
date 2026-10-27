@@ -126,9 +126,9 @@ class DevicesViewModel : ViewModel() {
                         repository.observeDevices(),
                         presence.reachabilityEpochMs,
                         presence.onlineDeviceIds,
-                        presence.onlineSnapshotEpochMs,
+                        combine(presence.onlineSnapshotEpochMs, presence.reachedVia) { _, via -> via },
                         com.fileapex.domain.peer.PeerAppVersions.versions
-                    ) { devices, _, _, _, dockerVersions ->
+                    ) { devices, _, _, reachedVia, dockerVersions ->
                         val selfDeviceId = identity.deviceId
                         devices
                             .distinctBy { it.deviceId }
@@ -156,7 +156,8 @@ class DevicesViewModel : ViewModel() {
                                     tilePosX = device.tilePosX,
                                     tilePosY = device.tilePosY,
                                     tileSortOrder = device.tileSortOrder,
-                                    tileMenuOrder = device.tileMenuOrder
+                                    tileMenuOrder = device.tileMenuOrder,
+                                    reachedBy = reachedVia[device.deviceId]
                                 )
                             }
                     },

@@ -37,12 +37,13 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.DesktopUiStyle
+import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.ThemeIconStyle
 import com.fileapex.data.settings.backgroundBrush
 import com.fileapex.data.settings.cardBorder
-import com.fileapex.data.settings.cardContainerColor
 import com.fileapex.data.settings.defaultIconStyle
 import com.fileapex.data.settings.supportedIconStyles
+import com.fileapex.data.settings.traits
 import com.fileapex.presentation.DeviceHardwareProfile
 import com.fileapex.presentation.DeviceIconProfile
 import com.fileapex.presentation.ExplorerViewMode
@@ -69,7 +70,7 @@ class ThemeBaselineTest {
     private val diffDir = File(requireNotNull(System.getProperty("fileapex.themeDiffDir")))
     private val recording = System.getProperty("fileapex.recordThemeGoldens") == "true"
 
-    private val baselineThemes = AppTheme.entries.filter { it != AppTheme.SIMPLE }
+    private val baselineThemes = AppTheme.entries.filter { it != AppTheme.SIMPLE && it != AppTheme.CAROUSEL }
 
     private val combos: List<Pair<AppTheme, DesktopUiStyle>> =
         baselineThemes.flatMap { theme -> DesktopUiStyle.entries.map { theme to it } }
@@ -287,6 +288,17 @@ private fun sampleProfile(name: String, platform: String, make: String, model: S
     deviceName = name,
     hardware = DeviceHardwareProfile(platform = platform, deviceMake = make, deviceModel = model)
 )
+
+private fun AppTheme.cardContainerColor(defaultColor: Color = Color.White): Color = when (this) {
+    AppTheme.SIMPLE, AppTheme.CLEAN -> defaultColor
+    AppTheme.FLUX_GLASS -> Color(0x880D1F29)
+    AppTheme.KINETIC_SPHERE -> Color(0x99091824)
+    AppTheme.FREESTYLE -> Color(0x990E1D2D)
+    AppTheme.CAROUSEL -> Color(0xFF141414)
+}
+
+@Composable
+private fun isFileApexFluxGlass(): Boolean = LocalAppTheme.current.traits.fluxSurfaces
 
 private fun Color.hex(): String = "#%08X".format(toArgb())
 

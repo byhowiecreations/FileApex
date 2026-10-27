@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.network.PeerHttpHeaders
 import com.sun.jna.Callback
 import com.sun.jna.Library
 import com.sun.jna.Memory
@@ -116,15 +117,7 @@ object DesktopMacTrayBridge {
             if (lib.fileapex_lan_tls_take_mismatch(host, port, buffer, 128) != 0) return
             val pin = buffer.getString(0).lowercase()
             if (pin.length != 64) return
-            com.fileapex.security.tls.PeerTlsStatus.reportPinMismatch(route.deviceId)
-            com.fileapex.security.tls.PeerTlsStatus.requestConfirmation(
-                com.fileapex.security.tls.TlsPinPrompt(
-                    route.deviceId,
-                    com.fileapex.security.tls.TlsPromptKind.KEY_CHANGED,
-                    pin,
-                    route.tlsPort
-                )
-            )
+            com.fileapex.security.tls.PeerTlsStatus.keyChangeObserved(route.deviceId, pin, route.tlsPort)
         }
     }
 
@@ -186,11 +179,13 @@ object DesktopMacTrayBridge {
         val status = IntByReference()
         val bodyPtr = PointerByReference()
         val bodyLen = IntByReference()
+        val headersPtr = PointerByReference()
+        val headersLen = IntByReference()
         val bodyMem = body?.takeIf { it.isNotEmpty() }?.let { bytes ->
             Memory(bytes.size.toLong()).also { memory -> memory.write(0, bytes, 0, bytes.size) }
         }
         val rc = runCatching {
-            lib.fileapex_lan_http_execute(
+            lib.fileapex_lan_http_execute_headers(
                 method,
                 url,
                 contentType,
@@ -199,7 +194,9 @@ object DesktopMacTrayBridge {
                 timeoutMs.coerceIn(250L, 600_000L).toInt(),
                 status,
                 bodyPtr,
-                bodyLen
+                bodyLen,
+                headersPtr,
+                headersLen
             )
         }.getOrElse { error ->
             println("DesktopMacLanHttp: $method $url failed - ${error.message}")
@@ -209,7 +206,7 @@ object DesktopMacTrayBridge {
             reportNativeTlsMismatch(url)
             return null
         }
-        return readNativeHttp(lib, status, bodyPtr, bodyLen)
+        return readNativeHttp(lib, status, bodyPtr, bodyLen, headersPtr, headersLen)
     }
 
     fun lanHttpUploadFile(
@@ -299,24 +296,25 @@ object DesktopMacTrayBridge {
         lib: FileApexTrayNative,
         status: IntByReference,
         bodyPtr: PointerByReference,
-        bodyLen: IntByReference
+        bodyLen: IntByReference,
+        headersPtr: PointerByReference? = null,
+        headersLen: IntByReference? = null
     ): PeerBoundHttpResponse? {
         val code = status.value
         if (code <= 0) return null
-        val pointer = bodyPtr.value
-        val length = bodyLen.value.coerceAtLeast(0)
-        val text = try {
-            if (pointer == null || length <= 0) {
-                ""
-            } else {
-                String(pointer.getByteArray(0, length), Charsets.UTF_8).trim()
-            }
+        val text = takeNativeText(lib, bodyPtr, bodyLen).trim()
+        val headers = if (headersPtr != null && headersLen != null) PeerHttpHeaders.parseLines(takeNativeText(lib, headersPtr, headersLen)) else emptyMap()
+        return PeerBoundHttpResponse(statusCode = code, body = text, headers = headers)
+    }
+
+    private fun takeNativeText(lib: FileApexTrayNative, ptr: PointerByReference, len: IntByReference): String {
+        val pointer = ptr.value
+        return try {
+            val length = len.value.coerceAtLeast(0)
+            if (pointer == null || length <= 0) "" else String(pointer.getByteArray(0, length), Charsets.UTF_8)
         } finally {
-            if (pointer != null) {
-                runCatching { lib.fileapex_lan_http_free(pointer) }
-            }
+            if (pointer != null) runCatching { lib.fileapex_lan_http_free(pointer) }
         }
-        return PeerBoundHttpResponse(statusCode = code, body = text)
     }
 
     fun registerCallbacks(
@@ -594,16 +592,10 @@ object DesktopMacTrayBridge {
         fun fileapex_lan_tls_set_routes(json: String): Int
         fun fileapex_lan_tls_take_mismatch(host: String, port: Int, out: Pointer, outLen: Int): Int
         fun fileapex_lan_tls_set_identity(p12: Pointer, p12Len: Int, password: String): Int
-        fun fileapex_lan_http_execute(
-            method: String,
-            url: String,
-            contentType: String?,
-            body: Pointer?,
-            bodyLen: Int,
-            timeoutMs: Int,
-            outStatus: IntByReference,
-            outBody: PointerByReference,
-            outBodyLen: IntByReference
+        fun fileapex_lan_http_execute_headers(
+            method: String, url: String, contentType: String?, body: Pointer?, bodyLen: Int, timeoutMs: Int,
+            outStatus: IntByReference, outBody: PointerByReference, outBodyLen: IntByReference,
+            outHeaders: PointerByReference, outHeadersLen: IntByReference
         ): Int
         fun fileapex_lan_http_upload_file(
             url: String,

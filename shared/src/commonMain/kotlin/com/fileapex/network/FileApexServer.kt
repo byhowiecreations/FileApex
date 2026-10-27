@@ -212,6 +212,7 @@ class FileApexServer(
                             }
                             if (isRevoked) {
                                 call.response.headers.append("X-FileApex-Status", "revoked")
+                                call.response.headers.append("X-FileApex-Revoked-At", FileApexServices.deviceRepository.revokedVersion(from).toString())
                                 call.respond(HttpStatusCode.Unauthorized, "revoked")
                                 finish()
                                 return@intercept
@@ -300,11 +301,7 @@ class FileApexServer(
         return PathUtils.isConfinedOnDisk(absolutePath, root) && java.io.File(absolutePath).canonicalPath != java.io.File(root).canonicalPath
     }
 
-    internal fun providedPin(call: ApplicationCall): String {
-        val fromQuery = call.request.queryParameters["pin"].orEmpty().trim()
-        if (fromQuery.isNotEmpty()) return fromQuery
-        return call.request.headers["X-FileApex-Pin"].orEmpty().trim()
-    }
+    internal fun providedPin(call: ApplicationCall): String = call.request.headers[PeerPinHeader.NAME].orEmpty().trim()
 
     /**
      * TCP source IP is the route we can actually reply on, overwrite advertised lastKnownIp.

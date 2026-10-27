@@ -1,39 +1,42 @@
 package com.fileapex.data.bulletin
 
 import com.fileapex.data.db.FileApexDatabase
-import com.fileapex.data.db.NoteDao
-import com.fileapex.data.db.NoteEntity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.loadLocalIdentity
+import com.fileapex.data.note.NoteChecklistItem
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.util.sha256HexFile
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 class BulletinBoardRepository(
     private val database: FileApexDatabase
 ) {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
+    private val json = BulletinFileContent.json
 
     private val pendingRetractByKind = mutableMapOf<String, BulletinRetractByKindPayload>()
 
     private val messageDao = database.messageDao()
     private val tombstoneDao = database.tombstoneDao()
+    private val flagDao = database.messageFlagDao()
+    private val checklistDao = database.checklistItemDao()
     private val outboxDao = database.outboxDao()
     private val transactionDao = database.transactionDao()
 
     val messages: Flow<List<MessageEntity>> = messageDao.observeActive()
 
-    fun observeAsNotes(): Flow<List<NoteRecord>> = messages.map { rows ->
-        rows.map { it.toNoteRecord() }
+    fun observeAsNotes(): Flow<List<NoteRecord>> = combine(messages, checklistDao.observeActive()) { rows, items ->
+        val byList = items.groupBy { it.messageId }
+        rows.map { row ->
+            val note = row.toNoteRecord()
+            if (row.contentType != BulletinContentType.CHECKLIST) note
+            else note.copy(checklist = byList[row.id].orEmpty().map { NoteChecklistItem(it.itemId, it.text, it.done) })
+        }
     }
 
     suspend fun getMessage(id: String): MessageEntity? = messageDao.getById(id)
@@ -89,13 +92,6 @@ class BulletinBoardRepository(
 
     suspend fun isTombstoned(id: String): Boolean = tombstoneDao.countById(id) > 0
 
-    suspend fun migrateFromLegacyNotes(noteDao: NoteDao) {
-        if (messageDao.getActiveOnce().isNotEmpty()) return
-        val legacy = noteDao.getAllNotesOnce()
-        if (legacy.isEmpty()) return
-        transactionDao.migrateLegacyMessages(legacy.map { it.toMessageEntity() })
-    }
-
     suspend fun ingestLocalText(content: String, link: Boolean = false): MessageEntity {
         val identity = loadLocalIdentity()
         val selfName = LocalDeviceNameStore.current().ifBlank { identity.deviceName }
@@ -113,6 +109,53 @@ class BulletinBoardRepository(
         messageDao.upsert(message.copy(updatedAt = BulletinStampClock.next()))
         return message
     }
+
+    /** A new checklist post with its first lines; returns what must be sent to the other devices. */
+    suspend fun ingestLocalChecklist(title: String, lines: List<String>): Pair<MessageEntity, List<ChecklistItemEntity>> = withContext(Dispatchers.IO) {
+        val identity = loadLocalIdentity()
+        val now = TimeUtils.now()
+        val message = MessageEntity(
+            id = "msg-" + now + "-" + (1000..9999).random(),
+            originDeviceId = identity.deviceId,
+            senderName = LocalDeviceNameStore.current().ifBlank { identity.deviceName },
+            content = title.trim(),
+            contentType = BulletinContentType.CHECKLIST,
+            timestamp = now
+        )
+        messageDao.upsert(message.copy(updatedAt = BulletinStampClock.next()))
+        val items = lines.map(BulletinChecklist::cleanText).filter { it.isNotEmpty() }.take(BulletinChecklist.MAX_ITEMS)
+            .mapIndexed { index, text -> newChecklistItem(message.id, text, now + index, identity.deviceId) }
+        items.forEach { transactionDao.applyChecklistItem(it, BulletinStampClock.next()) }
+        message to items
+    }
+
+    suspend fun addChecklistItem(messageId: String, text: String): ChecklistItemEntity? = withContext(Dispatchers.IO) {
+        val clean = BulletinChecklist.cleanText(text)
+        if (clean.isEmpty() || checklistDao.countActive(messageId) >= BulletinChecklist.MAX_ITEMS) return@withContext null
+        val item = newChecklistItem(messageId, clean, TimeUtils.now(), loadLocalIdentity().deviceId)
+        transactionDao.applyChecklistItem(item, BulletinStampClock.next())
+        item
+    }
+
+    suspend fun setChecklistItemDone(itemId: String, done: Boolean): ChecklistItemEntity? =
+        changeChecklistItem(itemId) { it.copy(done = done) }
+
+    suspend fun removeChecklistItem(itemId: String): ChecklistItemEntity? =
+        changeChecklistItem(itemId) { it.copy(deleted = true) }
+
+    private suspend fun changeChecklistItem(itemId: String, change: (ChecklistItemEntity) -> ChecklistItemEntity): ChecklistItemEntity? =
+        withContext(Dispatchers.IO) {
+            val existing = checklistDao.get(itemId) ?: return@withContext null
+            val changed = BulletinChecklist.localChange(existing, change(existing), loadLocalIdentity().deviceId, TimeUtils.now())
+            transactionDao.applyChecklistItem(changed, BulletinStampClock.next())
+            changed
+        }
+
+    private fun newChecklistItem(messageId: String, text: String, position: Long, setBy: String) = ChecklistItemEntity(
+        itemId = "item-" + position + "-" + (1000..9999).random(),
+        messageId = messageId, text = text, done = false, deleted = false,
+        position = position, stamp = BulletinStampClock.next(), setBy = setBy
+    )
 
     suspend fun ingestLocalFile(
         absolutePath: String,
@@ -169,7 +212,7 @@ class BulletinBoardRepository(
     suspend fun upsertFromSync(payload: BulletinMessagePayload): Boolean {
         if (tombstoneDao.countById(payload.id) > 0) return false
         val existing = messageDao.getById(payload.id)
-        val pinned = if (existing?.isPinned == true) true else payload.isPinned
+        val locked = flagDao.get(BulletinFlags.id(payload.id, BulletinFlags.LOCKED))?.enabled ?: existing?.isPinned ?: false
         val incoming = MessageEntity(
             id = payload.id,
             originDeviceId = payload.originDeviceId,
@@ -178,7 +221,7 @@ class BulletinBoardRepository(
             contentType = payload.contentType,
             timestamp = payload.timestamp,
             isDeleted = false,
-            isPinned = pinned
+            isPinned = locked
         )
         BulletinChange.messageToStore(existing, incoming, BulletinStampClock.next())?.let { messageDao.upsert(it) }
         return true
@@ -219,8 +262,15 @@ class BulletinBoardRepository(
         )
     }
 
-    suspend fun setPinned(id: String, pinned: Boolean) {
-        messageDao.setPinned(id, pinned, BulletinStampClock.next())
+    /** Locks or unlocks a message for the whole cluster; returns the flag to send to the other devices. */
+    suspend fun setPinned(id: String, pinned: Boolean): MessageFlagEntity = setFlag(id, BulletinFlags.LOCKED, pinned)
+
+    /** Changes one of the cluster-wide marks of a post (locked, task, done); returns the flag to send to the other devices. */
+    suspend fun setFlag(id: String, kind: String, enabled: Boolean): MessageFlagEntity = withContext(Dispatchers.IO) {
+        val existing = flagDao.get(BulletinFlags.id(id, kind))
+        val flag = BulletinFlags.localChange(existing, id, kind, enabled, loadLocalIdentity().deviceId, TimeUtils.now())
+        transactionDao.applyFlag(flag, BulletinStampClock.next())
+        flag
     }
 
     suspend fun enqueueOutboxForAllPeers(payloadType: Int, payloadId: String, peerIds: List<String>) {
@@ -306,50 +356,8 @@ class BulletinBoardRepository(
         return rebuildContent(content, meta.copy(localPath = null))
     }
 
-    private fun extractMetadataJson(content: String): String {
-        val marker = "\n{"
-        val idx = content.indexOf(marker)
-        return if (idx >= 0) content.substring(idx + 1) else content
-    }
+    private fun extractMetadataJson(content: String): String = BulletinFileContent.metadataJson(content)
 
-    private fun rebuildContent(captionAndJson: String, meta: BulletinFileMetadata): String {
-        val marker = "\n{"
-        val idx = captionAndJson.indexOf(marker)
-        val caption = if (idx >= 0) captionAndJson.substring(0, idx).trim() else ""
-        val encoded = json.encodeToString(meta)
-        return if (caption.isBlank()) encoded else "$caption\n$encoded"
-    }
-}
-
-private fun NoteEntity.toMessageEntity(): MessageEntity {
-    val contentType = when {
-        !attachmentFileName.isNullOrBlank() && !attachmentLocalPath.isNullOrBlank() ->
-            BulletinContentType.FILE_METADATA
-        else -> BulletinContentType.TEXT
-    }
-    val content = if (contentType == BulletinContentType.FILE_METADATA) {
-        val meta = BulletinFileMetadata(
-            fileName = attachmentFileName.orEmpty(),
-            sizeBytes = attachmentSizeBytes,
-            sha256 = checksum.orEmpty(),
-            originNode = sourceDeviceId,
-            localPath = attachmentLocalPath,
-            driveFileId = driveFileId
-        )
-        val json = Json { encodeDefaults = true }
-        val body = json.encodeToString(meta)
-        if (content.isBlank()) body else "${content.trim()}\n$body"
-    } else {
-        content
-    }
-    return MessageEntity(
-        id = noteId,
-        originDeviceId = sourceDeviceId,
-        senderName = sourceDeviceName,
-        content = content,
-        contentType = contentType,
-        timestamp = epochMs,
-        isDeleted = false,
-        isPinned = attachmentPinned
-    )
+    private fun rebuildContent(captionAndJson: String, meta: BulletinFileMetadata): String =
+        BulletinFileContent.rebuild(captionAndJson, meta)
 }

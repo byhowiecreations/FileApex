@@ -116,9 +116,9 @@ class PeerAdmissionTest {
     @Test
     fun aCandidateIsNotListedAndKeepsItsFirstDeadline() = runBlocking {
         assertTrue(stage(entity("x")))
-        val first = repo.getCandidate("x")!!
+        val first = store.get("x")!!
         assertFalse(stage(entity("x", ip = "192.168.1.51")))
-        val second = repo.getCandidate("x")!!
+        val second = store.get("x")!!
         assertEquals(first.expiresAtEpochMs, second.expiresAtEpochMs)
         assertEquals(CANDIDATE_TTL_MS, 2L * 60 * 60 * 1000)
         assertTrue(repo.listDevices().isEmpty())
@@ -128,7 +128,7 @@ class PeerAdmissionTest {
     fun anExpiredCandidateIsDroppedAndNotStagedAgainRightAway() = runBlocking {
         store.put(PeerCandidate(entity("old"), "introducer", CandidateOrigin.INTRODUCED, 1L, 2L))
         assertEquals(1, repo.expireCandidates())
-        assertNull(repo.getCandidate("old"))
+        assertNull(store.get("old"))
         assertFalse(stage(entity("old")))
     }
 
@@ -174,7 +174,7 @@ class PeerAdmissionTest {
     fun aCandidateStaysPendingWhileItIsUnreachable() = runBlocking {
         stage(entity("away"))
         assertEquals(0, admission.verifyPending())
-        val kept = repo.getCandidate("away")!!
+        val kept = store.get("away")!!
         assertEquals(1, kept.attempts)
         assertTrue(repo.listDevices().isEmpty())
     }
@@ -185,7 +185,7 @@ class PeerAdmissionTest {
         network["192.168.1.50"] = answer("spoof", key = "attackers-key")
         admission.verifyPending()
         assertNull(repo.getDevice("spoof"))
-        assertNull(repo.getCandidate("spoof"))
+        assertNull(store.get("spoof"))
     }
 
     @Test
@@ -201,7 +201,7 @@ class PeerAdmissionTest {
         stage(entity(id, key = ""))
         repo.dropCandidate(id)
         // Second attempt after the drop: the id is remembered as refused, so nothing is staged.
-        assertNull(repo.getCandidate(id))
+        assertNull(store.get(id))
     }
 
     @Test
@@ -213,30 +213,30 @@ class PeerAdmissionTest {
     }
 
     @Test
-    fun aReinstalledPhoneReplacesItsOutdatedCopyOnTheSameAddress() = runBlocking {
-        repo.adoptFromPairing(entity("old-install", lastSeen = 10L, model = "MTN-NX1"))
-        stage(entity("new-install"))
-        network["192.168.1.50"] = answer("new-install")
-        // The address now answers only as the new install, so the old row no longer answers as itself.
+    fun aSecondRowOfTheSameKeyReplacesTheCopyThatNoLongerAnswers() = runBlocking {
+        repo.adoptFromPairing(entity("old-install", lastSeen = 10L).copy(publicKeyHash = "same", publicKey = "same-key"))
+        stage(entity("new-install").copy(publicKeyHash = "same", publicKey = "same-key"))
+        network["192.168.1.50"] = answer("new-install", key = "same-key", hash = "same")
         assertEquals(1, admission.verifyPending())
         assertNotNull(repo.getDevice("new-install"))
         assertNull(repo.listDevices().firstOrNull { it.deviceId == "old-install" })
-        assertEquals("old-install", superseded.single().deviceId)
+        assertTrue(superseded.isEmpty())
     }
 
     @Test
-    fun aPeerWhoseTwinStillAnswersAsItselfIsNotAdded() = runBlocking {
-        // Same address and model, different port: both can be reached, so only one can be the real device.
-        repo.adoptFromPairing(entity("twin", lastSeen = 10L).copy(port = 8081))
-        stage(entity("impostor"))
+    fun aSecondRowIsRefusedWhileTheOriginalKeyStillAnswers() = runBlocking {
+        repo.adoptFromPairing(entity("twin", lastSeen = 10L).copy(port = 8081, publicKeyHash = "same", publicKey = "same-key"))
+        stage(entity("copy").copy(publicKeyHash = "same", publicKey = "same-key"))
         val byPort = PeerAdmission(
             repository = repo, client = FileApexClient(),
             identityProvider = { LocalIdentity("me", "Me", "/") },
-            fetchState = PeerStateFetcher { _, port -> if (port == 8081) answer("twin") else answer("impostor") },
+            fetchState = PeerStateFetcher { _, port ->
+                if (port == 8081) answer("twin", key = "same-key", hash = "same") else answer("copy", key = "same-key", hash = "same")
+            },
             discover = { null }
         )
         assertEquals(0, byPort.verifyPending())
-        assertNull(repo.getDevice("impostor"))
+        assertNull(repo.getDevice("copy"))
         assertNotNull(repo.getDevice("twin"))
         assertTrue(superseded.isEmpty())
     }
@@ -248,7 +248,7 @@ class PeerAdmissionTest {
         repo.adoptFromPairing(entity("ghost", lastSeen = 0L))
         assertTrue(repo.recordEndpointMismatch("ghost", "192.168.1.50", "real"))
         assertTrue(repo.listDevices().isEmpty())
-        assertNotNull(repo.getCandidate("ghost"))
+        assertNotNull(store.get("ghost"))
     }
 
     @Test
@@ -256,7 +256,7 @@ class PeerAdmissionTest {
         repo.adoptFromPairing(entity("moved", lastSeen = 5L))
         assertTrue(repo.recordEndpointMismatch("moved", "192.168.1.50", "someone"))
         assertEquals("", repo.getDevice("moved")!!.lastKnownIp)
-        assertNull(repo.getCandidate("moved"))
+        assertNull(store.get("moved"))
     }
 
     @Test
@@ -276,10 +276,12 @@ class PeerAdmissionTest {
     fun onlyDevicesReachedDirectlyAndWithoutATwinMayBeIntroduced() {
         val seen = entity("seen", ip = "192.168.1.60", lastSeen = 5L)
         val hearsay = entity("hearsay", ip = "192.168.1.61", lastSeen = 0L)
-        val twinA = entity("twin-a", ip = "192.168.1.62", lastSeen = 5L)
-        val twinB = entity("twin-b", ip = "192.168.1.62", lastSeen = 5L)
-        val roster = listOf(seen, hearsay, twinA, twinB)
+        val twinA = entity("twin-a", ip = "192.168.1.62", lastSeen = 5L).copy(publicKeyHash = "same", publicKey = "same-key")
+        val twinB = entity("twin-b", ip = "192.168.1.70", lastSeen = 5L).copy(publicKeyHash = "same", publicKey = "same-key")
+        val neighbor = entity("neighbor", ip = "192.168.1.62", lastSeen = 5L)
+        val roster = listOf(seen, hearsay, twinA, twinB, neighbor)
         assertTrue(PeerTrustRules.mayIntroduce(seen, roster))
+        assertTrue(PeerTrustRules.mayIntroduce(neighbor, roster))
         assertFalse(PeerTrustRules.mayIntroduce(hearsay, roster))
         assertFalse(PeerTrustRules.mayIntroduce(twinA, roster))
         assertFalse(PeerTrustRules.mayIntroduce(seen.copy(clusterVersion = 0L), roster))

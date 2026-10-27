@@ -46,4 +46,8 @@ internal class NotesLive {
     val dropQueue = mutableStateListOf<PickedLocalFile>()
     val bubbleThumbs = mutableStateMapOf<String, ImageBitmap?>()
     var filterMenuExpanded by mutableStateOf(false)
+    var showNewChecklist by mutableStateOf(false)
+    /** Where each bubble row last sat, so the open swipe's area is known even if nothing moved after it opened. */
+    val bubbleRects = HashMap<String, Rect>()
+    var jumpedToNew by mutableStateOf(false)
 }

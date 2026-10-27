@@ -3,6 +3,7 @@ package com.fileapex.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 
 /**
  * Manifest + dynamic receiver for [Intent.ACTION_BATTERY_LOW], [Intent.ACTION_POWER_CONNECTED],
@@ -11,6 +12,7 @@ import android.content.Intent
 class BatteryBulletinReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
+        Log.i(TAG, "received ${action.substringAfterLast('.')}")
         val appContext = context.applicationContext
         when (action) {
             Intent.ACTION_BATTERY_LOW -> {
@@ -30,5 +32,9 @@ class BatteryBulletinReceiver : BroadcastReceiver() {
                 BatteryBulletinCoordinator.onUnplugged(appContext) { pending.finish() }
             }
         }
+    }
+
+    private companion object {
+        private const val TAG = "BatteryBulletinReceiver"
     }
 }

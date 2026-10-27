@@ -14,6 +14,10 @@ object BulletinApkUpdatePolicy {
         return APK_NAME_REGEX.matches(fileName.trim())
     }
 
+    /** Install only after another FileApex device sent this package. Browsing and Send never do. */
+    fun installsWhenOpening(fileName: String?, receivedFromPeer: Boolean): Boolean =
+        receivedFromPeer && matchesAutoUpdateApk(fileName)
+
     fun extractVersionFromApkName(fileName: String?): String? {
         if (fileName.isNullOrBlank()) return null
         val trimmed = fileName.trim()

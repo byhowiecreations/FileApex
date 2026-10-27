@@ -1,8 +1,6 @@
 package com.fileapex.ui.adaptive
 
-import com.fileapex.ui.tools.ToolsHeaderButton
-import com.fileapex.ui.theme.fileApexTileTint
-import com.fileapex.ui.theme.isFileApexTiledChrome
+import com.fileapex.ui.carousel.carouselPanel
 import com.fileapex.ui.explorerIcon
 import com.fileapex.ui.ExplorerIcon
 import com.fileapex.i18n.stringRes
@@ -23,13 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import com.fileapex.ui.FileApexIcons
-import com.fileapex.ui.theme.KineticStyleLook
 import com.fileapex.data.settings.FreestyleLayoutMode
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
@@ -37,10 +32,8 @@ import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Dp
@@ -48,13 +41,10 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import com.fileapex.domain.transfer.TransferActivityGuard
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.border
@@ -66,7 +56,6 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -98,7 +87,6 @@ import com.fileapex.platform.OnboardingPermissionStep
 import com.fileapex.ui.devicesNavLabel
 import com.fileapex.ui.isMainHomeScreen
 import com.fileapex.ui.theme.FileApexTeal
-import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.fileApexChromeBottomEdge
 import com.fileapex.ui.theme.fileApexChromeContainerColor
 import com.fileapex.ui.theme.fileApexFloatingChrome
@@ -112,20 +100,11 @@ import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
 import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import com.fileapex.ui.theme.fileApexNavigationRailItemColors
 
-import com.fileapex.data.settings.LocalAppTheme
-import com.fileapex.data.settings.traits
-import com.fileapex.platform.horizontalResizePointerIcon
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.ui.DesktopLayoutToggle
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.input.pointer.pointerHoverIcon
-import androidx.compose.ui.input.pointer.pointerInput
 
 /**
  * Medium / Expanded home: teal navigation rail + list-detail (devices | explorer).
@@ -193,50 +172,7 @@ fun AdaptiveWideHome(
     }
 
     val deviceOrderHeaderActions: @Composable RowScope.() -> Unit = {
-        val currentTheme = LocalAppTheme.current
-        val isGlass = currentTheme.traits.reorderAccent
-        val editTint = if (isGlass) FluxGlassPalette.accent else fileApexChromeContentColor()
-        if (editMode) {
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                TextButton(
-                    onClick = devicesViewModel::revertDeviceOrderInEditMode,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(stringRes("revert"), color = editTint, fontWeight = FontWeight.SemiBold)
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                TextButton(
-                    onClick = devicesViewModel::saveDeviceOrderAndExitEditMode,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(stringRes("done"), color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
-                }
-            }
-        } else if (deviceRows.isNotEmpty()) {
-            if (isFileApexTiledChrome()) {
-                Box(
-                    modifier = Modifier.size(40.dp).clickable(onClick = devicesViewModel::enterDeviceOrderEditMode),
-                    contentAlignment = Alignment.Center
-                ) {
-                    JadedRaisedTile(tileSize = 28.dp) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = stringRes("reorder_devices"),
-                            tint = fileApexTileTint(),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            } else {
-                IconButton(onClick = devicesViewModel::enterDeviceOrderEditMode) {
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = stringRes("reorder_devices"),
-                        tint = editTint
-                    )
-                }
-            }
-        }
+        if (!LocalAppTheme.current.traits.dockHome) DeviceOrderHeaderActions(devicesViewModel, editMode, deviceRows)
     }
 
     CompositionLocalProvider(LocalShowsTransferBanner provides true) {
@@ -256,9 +192,9 @@ fun AdaptiveWideHome(
             explorerHeaderCommands = if (explorerChromeVisible) explorerHeaderCommands else null,
             deviceOrderHeaderActions = deviceOrderHeaderActions
         )
-        val isFreestyle = LocalAppTheme.current.traits.canvasHome
+        val noRail = LocalAppTheme.current.traits.let { it.canvasHome || it.dockHome }
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (!isFreestyle) {
+            if (!noRail) {
                 FileApexNavigationRail(
                     selected = selectedTab,
                     onMainHomeScreen = isMainHomeScreen(
@@ -289,14 +225,14 @@ fun AdaptiveWideHome(
                     Surface(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
-                        color = if (jadedSettings) Color.Transparent else MaterialTheme.colorScheme.surface
+                            .fillMaxHeight().carouselPanel(),
+                        color = if (jadedSettings || LocalAppTheme.current.traits.dockHome) Color.Transparent else MaterialTheme.colorScheme.surface
                     ) {
                         SettingsScreen(
                             appVersionName = appVersionName,
                             onBack = { onSelectTab(HomeTab.Devices) },
                             // Rail is top-level nav; on Freestyle without rail, show back button.
-                            showRootBackNavigation = isFreestyle,
+                            showRootBackNavigation = noRail,
                             layoutMode = SettingsScreenLayoutMode.ListPane,
                             backgroundPersistence = backgroundPersistence,
                             onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
@@ -341,7 +277,7 @@ fun AdaptiveWideHome(
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxHeight(),
+                                .fillMaxHeight().carouselPanel(),
                             color = if (isSpatialTheme) Color.Transparent else MaterialTheme.colorScheme.surface
                         ) {
                             FileExplorerScreen(
@@ -353,120 +289,36 @@ fun AdaptiveWideHome(
                             )
                         }
                     } else {
-                        val splitFraction by FileApexServices.settings.desktopSplitFraction.collectAsState()
-                        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                            val totalWidthPx = constraints.maxWidth.toFloat()
-                            var isDraggingDivider by remember { mutableStateOf(false) }
-                            val dividerInteraction = remember { MutableInteractionSource() }
-                            val isHovered by dividerInteraction.collectIsHoveredAsState()
-
-                            Row(modifier = Modifier.fillMaxSize()) {
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(splitFraction)
-                                        .fillMaxHeight(),
-                                    color = MaterialTheme.colorScheme.surface
-                                ) {
-                                    DevicesScreen(
-                                        onOpenDevice = onSelectDevice,
-                                        onOpenLocalFiles = onOpenLocalFiles,
-                                        onGenerateQr = onGenerateQr,
-                                        onJoinDevice = onJoinDevice,
-                                        onOpenSettings = { onSelectTab(HomeTab.Settings) },
-                                        onExitApp = onExitApp,
-                                        onOpenNotes = { onOpenNotes?.invoke() },
-                                        onOpenTransferQueue = onOpenTransferQueue,
-                                        viewModel = devicesViewModel,
-                                        layoutMode = DevicesScreenLayoutMode.ListPane,
-                                        selectedDeviceId = selectedDeviceId
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .width(10.dp)
-                                        .fillMaxHeight()
-                                        .hoverable(dividerInteraction)
-                                        .pointerHoverIcon(horizontalResizePointerIcon())
-                                        .pointerInput(totalWidthPx) {
-                                            detectHorizontalDragGestures(
-                                                onDragStart = { isDraggingDivider = true },
-                                                onDragEnd = {
-                                                    isDraggingDivider = false
-                                                    FileApexServices.settings.setDesktopSplitFraction(FileApexServices.settings.desktopSplitFraction.value)
-                                                },
-                                                onDragCancel = {
-                                                    isDraggingDivider = false
-                                                    FileApexServices.settings.setDesktopSplitFraction(FileApexServices.settings.desktopSplitFraction.value)
-                                                }
-                                            ) { change, dragAmount ->
-                                                change.consume()
-                                                if (totalWidthPx > 0f) {
-                                                    val current = FileApexServices.settings.desktopSplitFraction.value
-                                                    val deltaFraction = dragAmount / totalWidthPx
-                                                    FileApexServices.settings.setDesktopSplitFraction(current + deltaFraction, persist = false)
-                                                }
-                                            }
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    VerticalDivider(
-                                        thickness = if (isHovered || isDraggingDivider) 2.dp else 1.dp,
-                                        color = if (isHovered || isDraggingDivider) FileApexTeal else MaterialTheme.colorScheme.outlineVariant
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f - splitFraction)
-                                        .fillMaxHeight()
-                                ) {
-                                    val detailTarget = selectedTarget
-                                    if (detailTarget == null) {
-                                        DetailEmptyState()
-                                    } else {
-                                        FileExplorerScreen(
-                                            target = detailTarget,
-                                            onBack = onClearDetail,
-                                            layoutExpanded = true,
-                                            onRegisterRefresh = onRegisterRefresh,
-                                            onRegisterHeaderCommands = onRegisterHeaderCommands
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        DevicesSplitPane(
+                            onSelectDevice = onSelectDevice,
+                            onOpenLocalFiles = onOpenLocalFiles,
+                            onGenerateQr = onGenerateQr,
+                            onJoinDevice = onJoinDevice,
+                            onSelectTab = onSelectTab,
+                            onExitApp = onExitApp,
+                            onOpenNotes = onOpenNotes,
+                            onOpenTransferQueue = onOpenTransferQueue,
+                            devicesViewModel = devicesViewModel,
+                            selectedDeviceId = selectedDeviceId,
+                            selectedTarget = selectedTarget,
+                            onClearDetail = onClearDetail,
+                            onRegisterRefresh = onRegisterRefresh,
+                            onRegisterHeaderCommands = onRegisterHeaderCommands
+                        )
                     }
                 }
                 HomeTab.Files -> {
-                    val jadedFiles = LocalAppTheme.current.traits.orbitalHome &&
-                        LocalKineticStyle.current == KineticStyle.JADED_STEEL
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        color = if (jadedFiles) Color.Transparent else MaterialTheme.colorScheme.surface
-                    ) {
-                        val localTarget = (selectedTarget as? BrowseTarget.Local)
-                            ?: devicesViewModel.thisDeviceTarget()
-                        FileExplorerScreen(
-                            target = localTarget,
-                            layoutExpanded = true,
-                            onBack = {
-                                onClearDetail()
-                                onSelectTab(HomeTab.Devices)
-                            },
-                            titleOverride = com.fileapex.i18n.AppI18n.t("local_files"),
-                            onRegisterRefresh = onRegisterRefresh,
-                            onRegisterHeaderCommands = onRegisterHeaderCommands,
-                            secondaryTarget = secondaryTarget,
-                            readyDevices = readyDevices,
-                            onSelectSecondaryLocal = splitSession::selectLocal,
-                            onSelectSecondaryDevice = { deviceId ->
-                                devicesViewModel.openDeviceOrExplain(deviceId) { opened ->
-                                    splitSession.select(opened)
-                                }
-                            }
-                        )
-                    }
+                    WideFilesPane(
+                        selectedTarget = selectedTarget,
+                        devicesViewModel = devicesViewModel,
+                        onClearDetail = onClearDetail,
+                        onSelectTab = onSelectTab,
+                        onRegisterRefresh = onRegisterRefresh,
+                        onRegisterHeaderCommands = onRegisterHeaderCommands,
+                        secondaryTarget = secondaryTarget,
+                        readyDevices = readyDevices,
+                        splitSession = splitSession
+                    )
                 }
             }
         }
@@ -493,7 +345,7 @@ private fun WideTopBar(
 ) {
     val isKineticSphere = LocalAppTheme.current.traits.orbitalHome
     val jadedHeader = isKineticSphere && LocalKineticStyle.current == KineticStyle.JADED_STEEL
-    val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail && !isKineticSphere
+    val showDevicesViewToggle = selectedTab == HomeTab.Devices && !hasActiveDetail && !isKineticSphere && !LocalAppTheme.current.traits.dockHome
     val showExplorerViewToggle = selectedTab == HomeTab.Files ||
         (selectedTab == HomeTab.Devices && hasActiveDetail)
     val headerShape = RoundedCornerShape(20.dp)
@@ -560,48 +412,18 @@ private fun WideTopBar(
                 },
                 color = fileApexChromeContentColor()
             )
-            if (!jadedHeader && selectedTab == HomeTab.Devices && !hasActiveDetail) {
+            if (!jadedHeader && LocalAppTheme.current !in HEADER_WITHOUT_PAIRED_TITLE && selectedTab == HomeTab.Devices && !hasActiveDetail) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = stringRes("paired_devices_title"),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = fileApexChromeContentColor().copy(alpha = 0.85f),
-                    softWrap = true,
-                    maxLines = 2
+                    softWrap = true, maxLines = 2
                 )
             }
+            if (onOpenNotes != null) HeaderAlertTicker(onOpenNotes, Modifier.weight(1f, fill = false))
         }
-        val liveStats by TransferActivityGuard.statsFlow.collectAsState()
-        if (liveStats.isActive) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(FileApexTeal.copy(alpha = 0.20f))
-                    .clickable(onClick = onOpenTransferQueue)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(
-                    progress = { liveStats.progress },
-                    modifier = Modifier.size(12.dp),
-                    color = FileApexTeal,
-                    strokeWidth = 2.dp
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                val rateText = buildList {
-                    if (liveStats.speedFormatted.isNotBlank()) add(liveStats.speedFormatted)
-                    if (liveStats.etaFormatted.isNotBlank()) add(liveStats.etaFormatted)
-                    val percent = (liveStats.progress * 100).toInt().coerceIn(0, 100)
-                    add("$percent%")
-                }.joinToString(" • ")
-                Text(
-                    text = if (rateText.isNotBlank()) rateText else stringRes("sending"),
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = fileApexChromeContentColor()
-                )
-            }
-            Spacer(modifier = Modifier.width(6.dp))
-        }
+        TransferStatsPill(onOpenTransferQueue)
         val currentTheme = LocalAppTheme.current
         val headerIconTint = fileApexHeaderActionTint(onChromeBar = true)
         QueuedFilesButton(
@@ -609,7 +431,7 @@ private fun WideTopBar(
             iconTint = headerIconTint
         )
         val isDevicesTab = selectedTab == HomeTab.Devices && !hasActiveDetail
-        if (onOpenNotes != null && isDevicesTab) {
+        if (onOpenNotes != null && isDevicesTab && !currentTheme.traits.dockHome) {
             val noteIconKind = if (currentTheme.traits.glassChrome) NoteIconKind.GREEN else NoteIconKind.WHITE
             NoteHeaderButton(onOpenNotes = onOpenNotes, viewMode = devicesViewMode, iconKind = noteIconKind, modifier = Modifier.size(40.dp))
         }
@@ -651,7 +473,7 @@ private fun WideTopBar(
                     )
                 }
             }
-            if (isDesktopHost()) {
+            if (isDesktopHost() && !LocalAppTheme.current.traits.dockHome) {
                 DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
             }
             if (showDevicesViewToggle) {
@@ -659,39 +481,7 @@ private fun WideTopBar(
             }
         } else if (showExplorerViewToggle) {
             explorerHeaderCommands?.let { commands ->
-                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                    TextButton(
-                        onClick = commands.onSelect,
-                        modifier = Modifier.height(40.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                    ) {
-                        Text(
-                            text = stringRes("select"),
-                            color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    commands.onOpenTools?.let { onOpenTools ->
-                        ToolsHeaderButton(
-                            onClick = onOpenTools,
-                            tint = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
-                    commands.onPaste?.let { onPaste ->
-                        TextButton(
-                            onClick = onPaste,
-                            modifier = Modifier.height(40.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                        ) {
-                            Text(
-                                text = stringRes("paste"),
-                                color = if (jadedHeader) KineticStyleLook.steel else fileApexChromeContentColor(),
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
+                ExplorerHeaderCommandButtons(commands, jadedHeader)
             }
             ExplorerViewModeToggle(
                 viewMode = explorerViewMode,
@@ -700,55 +490,11 @@ private fun WideTopBar(
                 iconTint = headerIconTint,
                 modifier = Modifier.size(40.dp)
             )
-            if (isDesktopHost()) {
+            if (isDesktopHost() && !LocalAppTheme.current.traits.dockHome) {
                 DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
             }
             if (onRefreshExplorer != null) {
-                if (isFileApexTiledChrome()) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clickable(enabled = !isExplorerRefreshing, onClick = onRefreshExplorer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        JadedRaisedTile(tileSize = 28.dp) {
-                            if (isExplorerRefreshing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = fileApexTileTint()
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = explorerIcon(ExplorerIcon.Refresh),
-                                    contentDescription = stringRes("refresh"),
-                                    tint = fileApexTileTint(),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    IconButton(
-                        onClick = onRefreshExplorer,
-                        enabled = !isExplorerRefreshing,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        if (isExplorerRefreshing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = explorerIcon(ExplorerIcon.Refresh),
-                                contentDescription = stringRes("refresh"),
-                                tint = headerIconTint,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-                }
+                RefreshExplorerButton(onRefreshExplorer, isExplorerRefreshing, headerIconTint)
             }
         }
         FileApexPowerButton(onClick = onExitClick)
@@ -912,7 +658,7 @@ internal fun RailItem(
 }
 
 @Composable
-private fun DetailEmptyState() {
+internal fun DetailEmptyState() {
     Column(
         modifier = Modifier
             .fillMaxSize()

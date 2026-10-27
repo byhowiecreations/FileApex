@@ -1,5 +1,6 @@
 package com.fileapex.domain.transfer
 
+import com.fileapex.util.copyOfLive
 import com.fileapex.util.TimeUtils
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -262,8 +263,8 @@ object TransferActivityGuard {
      * A blocked write does not see cancellation until its socket is closed.
      */
     fun cancelActiveTransfers(removeFromDrive: Boolean = false): Boolean {
-        val jobs = cancelableJobs.keys.toList()
-        val sockets = transferSockets.keys.toList()
+        val jobs = cancelableJobs.keys.copyOfLive()
+        val sockets = transferSockets.keys.copyOfLive()
         if (jobs.isEmpty() && sockets.isEmpty()) return false
         removeFromDriveRequested = removeFromDrive
         cancelRequested = true
@@ -355,7 +356,7 @@ object TransferActivityGuard {
     }
 
     private fun publishLocked(now: Long) {
-        val active = streams.values.toList()
+        val active = streams.values.copyOfLive()
         val activeSent = active.sumOf { it.sentBytes }
         val activeTotal = active.sumOf { it.totalBytes }
         val finished = batchFinishedBytes.get()

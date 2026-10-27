@@ -1,5 +1,6 @@
 package com.fileapex.friends.transfer
 
+import com.fileapex.domain.transfer.core.PiecePlan
 import com.fileapex.iroh.IrohStream
 import java.io.File
 import java.io.IOException
@@ -56,14 +57,15 @@ class FriendsReceiver(
         }
         val part = File(quarantine, partName(friendKey, offer.transferId))
         // Only whole verified pieces count, so a partial file resumes at the last piece boundary.
-        var offset = if (part.exists() && part.length() <= offer.sizeBytes) part.length() / offer.chunkBytes * offer.chunkBytes else 0L
+        val plan = PiecePlan(offer.sizeBytes, offer.chunkBytes)
+        var offset = if (part.exists()) plan.resumeOffset(part.length()) else 0L
         if (offset == 0L) part.delete()
         FriendsWire.writeFrame(stream, FriendsWire.encodeReply(true, offset))
         onEvent(FriendReceiveEvent.Started(offer, offset, part.name))
         try {
             RandomAccessFile(part, "rw").use { raf ->
                 raf.setLength(offset)
-                val piece = ByteArray(minOf(offer.chunkBytes.toLong(), maxOf(offer.sizeBytes, 1L)).toInt())
+                val piece = ByteArray(plan.bufferBytes)
                 while (offset < offer.sizeBytes) {
                     when (FriendsWire.readExact(stream, 1)[0].toInt()) {
                         FriendsWire.TAG_CANCEL -> { part.delete(); return FriendReceiveResult.CanceledBySender }
@@ -71,7 +73,7 @@ class FriendsReceiver(
                         else -> return FriendReceiveResult.Malformed
                     }
                     val expected = FriendsWire.readExact(stream, FriendsWire.HASH_BYTES)
-                    val length = minOf(offer.chunkBytes.toLong(), offer.sizeBytes - offset).toInt()
+                    val length = plan.lengthAt(offset)
                     var got = 0
                     while (got < length) {
                         val bytes = stream.read(minOf(FriendsWire.CHUNK, length - got)) ?: return FriendReceiveResult.Interrupted
@@ -155,19 +157,21 @@ object FriendsSender {
         transferId: String,
         onPhase: (FriendSendPhase) -> Unit = {},
         shouldCancel: () -> Boolean = { false },
+        batchId: String = "",
         onProgress: (Long) -> Unit = {}
     ): FriendSendResult {
         try {
-            val offer = FriendOffer(transferId, file.length(), file.name)
+            val offer = FriendOffer(transferId, file.length(), file.name, batchId = batchId)
             onPhase(FriendSendPhase.Waiting)
             FriendsWire.writeFrame(stream, FriendsWire.encodeOffer(offer))
             val (accepted, offset) = FriendsWire.decodeReply(FriendsWire.readFrame(stream)) ?: return FriendSendResult.Failed
             if (!accepted) return FriendSendResult.Refused
-            if (offset < 0 || offset > offer.sizeBytes || offset % offer.chunkBytes != 0L) return FriendSendResult.Failed
+            val plan = PiecePlan(offer.sizeBytes, offer.chunkBytes)
+            if (!plan.isValidOffset(offset)) return FriendSendResult.Failed
             onPhase(FriendSendPhase.Sending(offset))
             RandomAccessFile(file, "r").use { raf ->
                 raf.seek(offset)
-                val piece = ByteArray(minOf(offer.chunkBytes.toLong(), maxOf(offer.sizeBytes, 1L)).toInt())
+                val piece = ByteArray(plan.bufferBytes)
                 var sent = offset
                 while (sent < offer.sizeBytes) {
                     if (shouldCancel()) {
@@ -175,7 +179,7 @@ object FriendsSender {
                         stream.finish()
                         return FriendSendResult.Canceled
                     }
-                    val length = minOf(offer.chunkBytes.toLong(), offer.sizeBytes - sent).toInt()
+                    val length = plan.lengthAt(sent)
                     raf.readFully(piece, 0, length)
                     val digest = MessageDigest.getInstance("SHA-256").also { it.update(piece, 0, length) }.digest()
                     stream.write(byteArrayOf(FriendsWire.TAG_CHUNK.toByte()) + digest)

@@ -3,7 +3,6 @@ package com.fileapex.network
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.SocketException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -12,18 +11,15 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 
 /**
  * Blocking UDP wake listener (no [DatagramSocket.available] polling).
  * Socket close unblocks [DatagramSocket.receive] for clean shutdown.
  */
 class UdpWakeReceiver(
-    private val onWakeAccepted: suspend () -> Unit,
     private val onSignedWake: (ByteArray, String) -> Unit = { _, _ -> },
     private val onLog: (String) -> Unit = {}
 ) {
-    private val processMutex = Mutex()
     private var supervisor = SupervisorJob()
     private var scope = CoroutineScope(Dispatchers.IO + supervisor)
     private var listenJob: Job? = null
@@ -67,26 +63,9 @@ class UdpWakeReceiver(
                         continue
                     }
                     val bytes = packet.data.copyOf(packet.length)
-                    if (WakeHello.looksSigned(bytes)) {
-                        val toUs = WakeHelloReceiver.addressedToThisDevice(bytes)
-                        if (toUs) {
-                            WakeSignalGate.noteSigned()
-                            onSignedWake(bytes, packet.address?.hostAddress.orEmpty())
-                        }
-                        continue
-                    }
-                    val payload = String(bytes, Charsets.UTF_8)
-                    if (payload != WakeProtocol.PAYLOAD) continue
-                    if (!WakeSignalGate.tryAccept()) continue
-                    if (!processMutex.tryLock()) continue
-                    try {
-                        onWakeAccepted()
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Throwable) {
-                        onLog("Wake processing failed: ${error.message}")
-                    } finally {
-                        processMutex.unlock()
+                    // Only a signed hello counts; any other datagram, the old plain wake string included, is dropped.
+                    if (WakeHello.looksSigned(bytes) && WakeHelloReceiver.addressedToThisDevice(bytes)) {
+                        onSignedWake(bytes, packet.address?.hostAddress.orEmpty())
                     }
                 }
             } catch (_: SocketException) {

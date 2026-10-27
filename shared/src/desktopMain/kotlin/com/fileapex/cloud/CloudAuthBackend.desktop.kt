@@ -1,6 +1,7 @@
 package com.fileapex.cloud
 
 import com.fileapex.cloud.diagnostics.DiagnosticsRelaySession
+import com.fileapex.cloud.seal.CloudRecordSeal
 import com.fileapex.cloud.diagnostics.DiagnosticsRelayStatus
 import com.fileapex.di.FileApexServices
 import com.fileapex.network.FileApexHttpClientFactory
@@ -85,6 +86,11 @@ actual object CloudAuthBackend {
         )
     }
 
+    actual suspend fun adoptDeviceToken(customToken: String) {
+        val (idToken, refresh) = DesktopDeviceSignIn.exchange(client, firebaseApiKey(), customToken)
+        refreshMutex.withLock { prefs.putString(KEY_ID_TOKEN, idToken); prefs.putString(KEY_REFRESH_TOKEN, refresh); runCatching { firebaseNode.flush() } }
+    }
+
     actual suspend fun currentSession(): GoogleAuthSession? {
         val uid = prefs.getString(KEY_UID, "")
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, "")
@@ -97,8 +103,8 @@ actual object CloudAuthBackend {
         )
     }
 
-    actual suspend fun firebaseIdToken(): String? =
-        if (prefs.getString(KEY_REFRESH_TOKEN, "").isBlank()) null else cancellableCatching { requireIdToken() }.getOrNull()
+    actual suspend fun firebaseIdToken(forceRefresh: Boolean): String? =
+        if (prefs.getString(KEY_REFRESH_TOKEN, "").isBlank()) null else cancellableCatching { requireIdToken(forceRefresh) }.getOrNull()
 
     actual suspend fun signOut() {
         prefs.remove(KEY_ID_TOKEN)
@@ -127,7 +133,8 @@ actual object CloudAuthBackend {
             updatedAtEpochMs = record.updatedAtEpochMs,
             hardwareFingerprint = record.hardwareFingerprint,
             membershipVersion = record.membershipVersion,
-            membershipProtocol = record.membershipProtocol
+            membershipProtocol = record.membershipProtocol,
+            sealed = record.sealed
         )
         patchOrCreateDocument(
             token = token,
@@ -148,7 +155,7 @@ actual object CloudAuthBackend {
                 "hardwareFingerprint",
                 "membershipVersion",
                 "membershipProtocol"
-            )
+            ) + record.sealed.keys
         )
     }
 
@@ -165,32 +172,16 @@ actual object CloudAuthBackend {
                     put("deviceId", buildJsonObject { put("stringValue", presence.deviceId) })
                     put("lastKnownIp", buildJsonObject { put("stringValue", presence.lastKnownIp) })
                     put("port", buildJsonObject { put("integerValue", presence.port.toString()) })
-                    put(
-                        "publicKeyHash",
-                        buildJsonObject { put("stringValue", presence.publicKeyHash) }
-                    )
+                    put("publicKeyHash", buildJsonObject { put("stringValue", presence.publicKeyHash) })
                     put("rootPath", buildJsonObject { put("stringValue", presence.rootPath) })
                     put("platform", buildJsonObject { put("stringValue", presence.platform) })
                     put("clientVersion", buildJsonObject { put("stringValue", presence.clientVersion) })
-                    put(
-                        "clientVersionCode",
-                        buildJsonObject { put("integerValue", presence.clientVersionCode.toString()) }
-                    )
-                    put(
-                        "updatedAtEpochMs",
-                        buildJsonObject {
-                            put("integerValue", presence.updatedAtEpochMs.toString())
-                        }
-                    )
+                    put("clientVersionCode", buildJsonObject { put("integerValue", presence.clientVersionCode.toString()) })
+                    put("updatedAtEpochMs", buildJsonObject { put("integerValue", presence.updatedAtEpochMs.toString()) })
                     put("hardwareFingerprint", encodeHardwareFingerprintToFirestore(presence.hardwareFingerprint))
-                    put(
-                        "membershipVersion",
-                        buildJsonObject { put("integerValue", presence.membershipVersion.toString()) }
-                    )
-                    put(
-                        "membershipProtocol",
-                        buildJsonObject { put("integerValue", presence.membershipProtocol.toString()) }
-                    )
+                    put("membershipVersion", buildJsonObject { put("integerValue", presence.membershipVersion.toString()) })
+                    put("membershipProtocol", buildJsonObject { put("integerValue", presence.membershipProtocol.toString()) })
+                    presence.sealed.forEach { (field, value) -> put(field, buildJsonObject { put("stringValue", value) }) }
                 }
             )
         }
@@ -212,7 +203,7 @@ actual object CloudAuthBackend {
                 "hardwareFingerprint",
                 "membershipVersion",
                 "membershipProtocol"
-            )
+            ) + presence.sealed.keys
         )
     }
 
@@ -220,7 +211,8 @@ actual object CloudAuthBackend {
         uid: String,
         deviceId: String,
         deviceName: String,
-        updatedAtEpochMs: Long
+        updatedAtEpochMs: Long,
+        sealed: Map<String, String>
     ) {
         val token = requireIdToken()
         val project = firebaseProjectId()
@@ -232,10 +224,8 @@ actual object CloudAuthBackend {
                 "fields",
                 buildJsonObject {
                     put("deviceName", buildJsonObject { put("stringValue", deviceName) })
-                    put(
-                        "updatedAtEpochMs",
-                        buildJsonObject { put("integerValue", updatedAtEpochMs.toString()) }
-                    )
+                    put("updatedAtEpochMs", buildJsonObject { put("integerValue", updatedAtEpochMs.toString()) })
+                    sealed.forEach { (field, value) -> put(field, buildJsonObject { put("stringValue", value) }) }
                 }
             )
         }
@@ -244,7 +234,7 @@ actual object CloudAuthBackend {
             parent = parent,
             documentId = deviceId,
             body = body,
-            fieldPaths = listOf("deviceName", "updatedAtEpochMs")
+            fieldPaths = listOf("deviceName", "updatedAtEpochMs") + sealed.keys
         )
     }
 
@@ -652,7 +642,8 @@ actual object CloudAuthBackend {
         updatedAtEpochMs: Long,
         hardwareFingerprint: Map<String, String>,
         membershipVersion: Long,
-        membershipProtocol: Int
+        membershipProtocol: Int,
+        sealed: Map<String, String>
     ): JsonObject = buildJsonObject {
         put(
             "fields",
@@ -676,12 +667,13 @@ actual object CloudAuthBackend {
                 put("hardwareFingerprint", encodeHardwareFingerprintToFirestore(hardwareFingerprint))
                 put("membershipVersion", buildJsonObject { put("integerValue", membershipVersion.toString()) })
                 put("membershipProtocol", buildJsonObject { put("integerValue", membershipProtocol.toString()) })
+                sealed.forEach { (field, value) -> put(field, buildJsonObject { put("stringValue", value) }) }
             }
         )
     }
 
-    private suspend fun requireIdToken(): String {
-        refreshIdTokenIfNeeded()
+    private suspend fun requireIdToken(force: Boolean = false): String {
+        refreshIdTokenIfNeeded(force)
         return prefs.getString(KEY_ID_TOKEN, "").ifBlank { error("Not signed in to Firebase") }
     }
 
@@ -692,12 +684,12 @@ actual object CloudAuthBackend {
      * [REFRESH_SKEW_MS] of expiry (previously every request, i.e. every 12 s poll, hit securetoken).
      * A transient refresh failure keeps using a still-valid cached token instead of dropping it.
      */
-    private suspend fun refreshIdTokenIfNeeded() = refreshMutex.withLock {
+    private suspend fun refreshIdTokenIfNeeded(force: Boolean = false) = refreshMutex.withLock {
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, "")
         if (refresh.isBlank()) return@withLock
         val cached = prefs.getString(KEY_ID_TOKEN, "")
         val expiresAt = jwtExpiryMs(cached)
-        if (cached.isNotBlank() && expiresAt - System.currentTimeMillis() > REFRESH_SKEW_MS) return@withLock
+        if (!force && cached.isNotBlank() && expiresAt - System.currentTimeMillis() > REFRESH_SKEW_MS) return@withLock
         val apiKey = firebaseApiKey()
         val response = runCatching {
             client.post("https://securetoken.googleapis.com/v1/token?key=$apiKey") {
@@ -710,6 +702,7 @@ actual object CloudAuthBackend {
         }
         if (!response.status.isSuccess()) {
             val detail = response.bodyAsText().take(200)
+            if (detail.contains("USER_DISABLED")) com.fileapex.domain.pairing.KickedByPeer.onFirebaseUserDisabled()
             val transient = response.status.value >= 500 || response.status.value == 429
             if (transient && cached.isNotBlank() && expiresAt - System.currentTimeMillis() > 30_000L) return@withLock
             prefs.remove(KEY_ID_TOKEN)
@@ -826,6 +819,7 @@ actual object CloudAuthBackend {
             put("hardwareFingerprint", parseHardwareFingerprintFromFirestore(fields))
             put("membershipVersion", integerField(fields, "membershipVersion"))
             put("membershipProtocol", integerField(fields, "membershipProtocol")?.toInt())
+            listOf(CloudRecordSeal.FIELD_NAME, CloudRecordSeal.FIELD_NET).forEach { put(it, stringField(fields, it)) }
         }
         return CloudDeviceRecordParsing.fromFirestoreMap(data, documentId)
     }
@@ -850,7 +844,8 @@ actual object CloudAuthBackend {
     private const val KEY_UID = "uid"
     private const val KEY_EMAIL = "email"
     private const val KEY_DISPLAY_NAME = "display_name"
-    private const val POLL_MS = 60_000L
+    /** Each poll reads every device record of the account; a foreground or network refresh reads them at once, so this is only the fallback. */
+    private const val POLL_MS = 5 * 60_000L
     private const val REFRESH_SKEW_MS = 5 * 60 * 1000L
 }
 

@@ -14,6 +14,8 @@ object FcmWakeProtocol {
     const val TYPE_CLIPBOARD_OPT_IN_REQUEST = "clipboard_opt_in_request"
     /** The receiver tells the sender a pushed clipboard text was applied (sender id and capturedAtEpochMs echoed). */
     const val TYPE_CLIPBOARD_ACK = "clipboard_ack"
+    /** A roster device removed the receiver through the relay: the receiver checks its Firebase session at once. */
+    const val TYPE_DEVICE_REMOVED = "device_removed"
 
     const val KEY_TYPE = "type"
     const val KEY_SOURCE_DEVICE_ID = "sourceDeviceId"

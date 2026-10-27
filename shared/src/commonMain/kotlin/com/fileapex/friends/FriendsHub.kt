@@ -4,23 +4,13 @@ import com.fileapex.data.db.FileApexDatabase
 import com.fileapex.data.settings.BaseAppSettings
 import com.fileapex.data.settings.SecretAvailability
 import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.friends.data.FriendIncomingEntity
 import com.fileapex.friends.data.FriendInviteEntity
 import com.fileapex.friends.data.FriendLinkEntity
 import com.fileapex.friends.data.FriendsDao
-import com.fileapex.friends.transfer.FriendOffer
-import com.fileapex.friends.transfer.FriendReceiveResult
-import com.fileapex.friends.transfer.FriendReceiveEvent
-import com.fileapex.friends.transfer.FriendSendPhase
-import com.fileapex.friends.transfer.FriendSendResult
-import com.fileapex.friends.transfer.FriendTransfer
-import com.fileapex.friends.transfer.FriendTransferDirection
-import com.fileapex.friends.transfer.FriendTransferStatus
-import com.fileapex.friends.transfer.FriendsSendQueue
-import com.fileapex.friends.transfer.FriendsTransferBoard
-import com.fileapex.friends.transfer.FriendsReceiver
-import com.fileapex.friends.transfer.FriendsSender
-import com.fileapex.friends.transfer.FriendsWire
+import com.fileapex.friends.data.byLabel
+import com.fileapex.friends.transfer.*
 import com.fileapex.iroh.IrohStream
 import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.util.TimeUtils
@@ -31,26 +21,9 @@ import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.*
 
 /**
  * The only door to Friends. It owns the friends endpoint (own key, own ALPN), the allowlist, pairing by invite plus PIN,
@@ -72,8 +45,8 @@ object FriendsHub {
     private val receivedInternal = MutableSharedFlow<FriendReceivedFile>(extraBufferCapacity = 8)
     private val board = FriendsTransferBoard(scope, onChange = { FriendsNotifier.transferChanged(it) })
     private val sendQueue = FriendsSendQueue()
-    private val workerLock = Any()
-    private val workers = HashMap<String, Job>()
+    private val batchGrants = FriendBatchGrants()
+    private val lanes = FriendSendLanes(sendQueue)
     private val sendJobs = ConcurrentHashMap<String, Job>()
     private val receiveJobs = ConcurrentHashMap<String, Job>()
     private val streams = ConcurrentHashMap<String, IrohStream>()
@@ -126,14 +99,14 @@ object FriendsHub {
         if (dao != null) return
         dao = database.friendsDao()
         pinnedInternal.value = FileApexServices.settings.friendsPinnedKeys().split(',').filter { it.isNotBlank() }.toSet()
-        scope.launch { dao?.observeLinks()?.collect { friendsInternal.value = it } }
-        scope.launch { runCatching { if (links().isNotEmpty()) ensureEndpoint() } }
+        scope.launch { dao?.observeLinks()?.byLabel()?.collect { friendsInternal.value = it } }
+        scope.launch { com.fileapex.util.cancellableCatching { startAfterPairedFirst(links().isNotEmpty(), FileApexServices.presenceMonitor.onlineSnapshotEpochMs) { ensureEndpoint() } } }
         scope.launch(Dispatchers.IO) { runCatching { purgeOldParts() } }
     }
 
     private fun db(): FriendsDao = checkNotNull(dao) { "FriendsHub.attach must run first" }
 
-    fun observeFriends() = db().observeLinks()
+    fun observeFriends() = db().observeLinks().byLabel()
 
     private suspend fun links() = db().observeLinks().first()
 
@@ -189,6 +162,8 @@ object FriendsHub {
                 try { handlePair(inbound.peerId, stream) } finally { unknownInFlight.decrementAndGet() }
             }
             kind == KIND_FILE && link != null -> receive(link, stream)
+            kind == KIND_BATCH && link != null ->
+                FriendBatchReceiver(batchGrants, { askBatch(link, it) }, { friendDir(link.folderName).also { it.mkdirs() }.usableSpace }).handle(link.friendKey, stream)
             else -> stream.abort()
         }
     }
@@ -286,6 +261,7 @@ object FriendsHub {
     suspend fun remove(friendKey: String) {
         val link = db().link(friendKey) ?: return
         friendDir(link.folderName).listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() }
+        batchGrants.revoke(friendKey)
         db().removeIncomingOf(friendKey)
         db().removeLink(friendKey)
     }
@@ -359,11 +335,21 @@ object FriendsHub {
     }
 
     private suspend fun ask(link: FriendLinkEntity, offer: FriendOffer): Boolean {
+        if (db().link(link.friendKey)?.autoAccept == true || batchGrants.allows(link.friendKey, offer)) return true
+        return askUser(link, link.friendKey.take(8) + offer.transferId, FriendsWire.safeName(offer.fileName), offer.sizeBytes, 1)
+    }
+
+    /** One question for a whole batch; a yes opens a grant for the announced files only. */
+    private suspend fun askBatch(link: FriendLinkEntity, batch: FriendBatch): Boolean {
         if (db().link(link.friendKey)?.autoAccept == true) return true
-        val id = link.friendKey.take(8) + offer.transferId
+        val names = batch.firstNames.joinToString(", ") + if (batch.count > batch.firstNames.size) ", \u2026" else ""
+        return askUser(link, link.friendKey.take(8) + batch.id, AppI18n.t("friends_batch_summary", batch.count, names), batch.totalBytes, batch.count)
+    }
+
+    private suspend fun askUser(link: FriendLinkEntity, id: String, name: String, sizeBytes: Long, fileCount: Int): Boolean {
         val decision = CompletableDeferred<Boolean>()
         deciders[id] = decision
-        val pending = PendingFriendOffer(id, link.label, FriendsWire.safeName(offer.fileName), offer.sizeBytes, TimeUtils.now(), link.friendKey)
+        val pending = PendingFriendOffer(id, link.label, name, sizeBytes, TimeUtils.now(), link.friendKey, fileCount)
         pendingInternal.update { it + pending }
         FriendsNotifier.offerPending(pending)
         try { return decision.await() } finally {
@@ -385,26 +371,26 @@ object FriendsHub {
 
     // ---- sending ----
 
-    /** Adds the files to the friend's queue; they go one after another, the first one right away. */
+    /** Adds the files to the friend's queue; up to four go at once, one large file at a time, the first right away. */
     suspend fun enqueueSend(friendKey: String, files: List<File>, owned: Boolean = false) {
         val link = db().link(friendKey) ?: return
+        val batch = if (files.size > 1) FriendSendBatch(FriendBatch(sha256Hex(SecureRandom().generateSeed(16)).take(32), files.size, files.sumOf { it.length() }, files.take(FriendsBatchWire.MAX_NAMES).map { it.name })) { openKind(friendKey, KIND_BATCH) } else null
         files.forEach { file ->
             val id = "s" + SecureRandom().nextLong().toString(16)
             board.put(FriendTransfer(id, friendKey, link.label, FriendTransferDirection.SEND, file.name, file.length(), 0L, FriendTransferStatus.QUEUED))
-            sendQueue.add(FriendsSendQueue.Item(id, friendKey, file, owned))
+            sendQueue.add(FriendsSendQueue.Item(id, friendKey, file, owned, batch))
         }
-        synchronized(workerLock) {
-            if (workers[friendKey]?.isActive != true) workers[friendKey] = scope.launch { runSendWorker(friendKey) }
-        }
+        repeat(lanes.lanesToStart(friendKey)) { scope.launch { runSendWorker(friendKey) } }
     }
 
     private suspend fun runSendWorker(friendKey: String) {
         while (true) {
-            val item = synchronized(workerLock) { sendQueue.take(friendKey) ?: run { workers.remove(friendKey); null } } ?: return
+            val item = lanes.next(friendKey) ?: return
             val job = scope.launch { sendOne(item) }
             sendJobs[item.id] = job
             job.join()
             sendJobs.remove(item.id)
+            lanes.finished(friendKey, item)
         }
     }
 
@@ -423,6 +409,12 @@ object FriendsHub {
         if (sendJobs[transferId] == null) streams[transferId]?.abort()
     }
 
+    private suspend fun openKind(friendKey: String, kind: Int): IrohStream {
+        val s = ensureEndpoint().open(friendKey, null)
+        try { s.write(byteArrayOf(kind.toByte())) } catch (e: IOException) { s.abort(); throw e }
+        return s
+    }
+
     private suspend fun sendOne(item: FriendsSendQueue.Item) {
         val id = item.id
         var stream: IrohStream? = null
@@ -430,6 +422,7 @@ object FriendsHub {
         try {
             val link = db().link(item.friendKey) ?: return end(FriendTransferStatus.FAILED)
             board.status(id, FriendTransferStatus.CONNECTING)
+            val batchId = item.batch?.let { it.id() ?: return end(FriendTransferStatus.REFUSED) } ?: ""
             val opened = ensureEndpoint().open(link.friendKey, null)
             stream = opened
             streams[id] = opened
@@ -446,7 +439,8 @@ object FriendsHub {
                         FriendSendPhase.Verifying -> board.status(id, FriendTransferStatus.VERIFYING)
                     }
                 },
-                shouldCancel = { id in userCanceled }
+                shouldCancel = { id in userCanceled },
+                batchId = batchId
             ) { board.progress(id, it) }
             end(when (result) { FriendSendResult.Done -> FriendTransferStatus.DONE; FriendSendResult.Refused -> FriendTransferStatus.REFUSED; FriendSendResult.Failed -> FriendTransferStatus.FAILED; FriendSendResult.Canceled -> FriendTransferStatus.CANCELED })
         } catch (e: CancellationException) {
@@ -491,6 +485,7 @@ object FriendsHub {
 
     private const val KIND_PAIR = 1
     private const val KIND_FILE = 2
+    private const val KIND_BATCH = 3
     private const val MAX_UNKNOWN = 4
     private const val FINISHED_KEEP_MS = 60_000L
     private const val SENDER_CANCEL_GRACE_MS = 2_000L

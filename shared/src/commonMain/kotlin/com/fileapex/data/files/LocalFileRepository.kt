@@ -5,7 +5,7 @@ import com.fileapex.platform.fastScanDirectory
 import com.fileapex.util.TimeUtils
 import kotlinx.io.files.Path
 
-class LocalFileRepository {
+class LocalFileRepository : com.fileapex.platform.Trimmable {
     private data class CachedListing(
         val timestampEpochMs: Long,
         val listing: DirectoryListing
@@ -13,6 +13,12 @@ class LocalFileRepository {
 
     private val cache = mutableMapOf<String, CachedListing>()
     private val cacheLock = Any()
+
+    init {
+        com.fileapex.platform.MemoryTrim.register(this)
+    }
+
+    override fun trimMemory() = invalidateCache()
 
     fun listDirectory(absolutePath: String, bypassCache: Boolean = false): Result<DirectoryListing> {
         return runCatching {

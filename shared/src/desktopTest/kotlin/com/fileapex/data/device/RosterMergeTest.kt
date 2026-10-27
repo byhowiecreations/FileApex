@@ -146,4 +146,12 @@ class RosterMergeTest {
         assertEquals(0, RosterMerge.firstPositive(0, -1))
         assertEquals("abc", RosterMerge.normalizeName("  AbC "))
     }
+
+    @Test
+    fun aRowWithAnUnknownProtocolListDoesNotEraseAKnownOne() {
+        val known = device("a").copy(supportedProtocolsJson = "[\"fileapex.v1.identity\",\"fileapex.v1.iroh.off\"]")
+        val unknown = device("a").copy(supportedProtocolsJson = "[]")
+        assertEquals(known.supportedProtocolsJson, RosterMerge.preferRicher(known, unknown).supportedProtocolsJson)
+        assertEquals(known.supportedProtocolsJson, RosterMerge.preferRicher(unknown, known).supportedProtocolsJson)
+    }
 }

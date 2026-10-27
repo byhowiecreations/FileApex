@@ -55,6 +55,10 @@ internal object RosterMerge {
         return false
     }
 
+    /** The first protocol list that says something; `[]` and blank mean a row that never learned the peer's list. */
+    internal fun knownProtocols(vararg candidates: String?): String =
+        candidates.firstOrNull { !it.isNullOrBlank() && it.trim() != "[]" } ?: candidates.firstOrNull().orEmpty().ifBlank { "[]" }
+
     internal fun preferRicher(
         existing: PairedDeviceEntity?,
         incoming: PairedDeviceEntity
@@ -106,9 +110,11 @@ internal object RosterMerge {
             os = firstNonBlank(incoming.os, primary.os, secondary.os),
             deviceMake = firstNonBlank(incoming.deviceMake, primary.deviceMake, secondary.deviceMake),
             deviceModel = firstNonBlank(incoming.deviceModel, primary.deviceModel, secondary.deviceModel),
-            supportedProtocolsJson = incoming.supportedProtocolsJson.ifBlank {
-                primary.supportedProtocolsJson.ifBlank { secondary.supportedProtocolsJson }
-            },
+            supportedProtocolsJson = knownProtocols(
+                incoming.supportedProtocolsJson,
+                primary.supportedProtocolsJson,
+                secondary.supportedProtocolsJson
+            ),
             lastSeenEpochMs = maxOf(
                 incoming.lastSeenEpochMs,
                 primary.lastSeenEpochMs,

@@ -61,11 +61,6 @@ object CliDeviceAliasManager {
         return load().deviceIdToSlug[deviceId]
     }
 
-    @Synchronized
-    fun getDeviceIdBySlug(slug: String): String? {
-        return load().slugToDeviceId[slug.trim().lowercase()]
-    }
-
     /**
      * Returns the effective slug for a device:
      * User-defined alias if set, otherwise auto-generated slug from device name/model.

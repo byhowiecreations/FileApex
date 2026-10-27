@@ -1,7 +1,7 @@
 package com.fileapex.ui
 
-import androidx.compose.material3.Switch
-import androidx.compose.material3.ListItem
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -15,31 +15,21 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Accessibility
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -51,12 +41,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -70,7 +58,6 @@ import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.data.settings.DesktopLayoutMode
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.data.settings.LocalAppTheme
-import com.fileapex.data.settings.UpdateCheckFrequency
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
@@ -86,47 +73,12 @@ import com.fileapex.presentation.SettingsUiState
 import com.fileapex.presentation.SettingsViewModel
 import com.fileapex.tailscale.TailscaleNodeRuntime
 import com.fileapex.ui.dialogs.ClipboardTargetConfigDialog
-import com.fileapex.ui.settings.AboutSettingsPage
 import com.fileapex.ui.settings.SettingsAdvancedAndAboutRows
 import com.fileapex.ui.settings.rememberAdvancedSettingsInUse
-import com.fileapex.ui.settings.AutoLaunchOnRebootSettingsPage
-import com.fileapex.ui.settings.BackgroundPersistenceSettingsPage
-import com.fileapex.ui.settings.BackupSyncSettingsPage
-import com.fileapex.ui.settings.BroadcastNotificationsSettingsPage
-import com.fileapex.ui.settings.BulletinBoardHubPage
-import com.fileapex.ui.settings.BulletinBoardStylesSettingsPage
-import com.fileapex.ui.settings.CheckForUpdatesSettingsPage
-import com.fileapex.ui.settings.ClipboardAccessibilityPage
-import com.fileapex.ui.settings.ClipboardDiagnosticsSettingsPage
-import com.fileapex.ui.settings.ClipboardSettingsPage
-import com.fileapex.ui.settings.ClipboardShareTargetsPage
-import com.fileapex.ui.settings.DesktopLayoutSettingsPage
-import com.fileapex.ui.settings.DeviceDetailsSettingsPage
-import com.fileapex.ui.settings.DeviceNameSettingsPage
-import com.fileapex.ui.settings.DisclosureScreen
-import com.fileapex.ui.settings.FileTransferNotificationsSettingsPage
-import com.fileapex.ui.settings.GoogleAccountSettingsPage
-import com.fileapex.ui.settings.IrohSettingsPage
-import com.fileapex.ui.settings.LanguageSettingsPage
 import com.fileapex.ui.settings.LocalSettingsExitAction
 import com.fileapex.ui.settings.LocalSettingsHomeAction
-import com.fileapex.ui.settings.NotificationsSettingsPage
-import com.fileapex.ui.settings.OnboardingPermissionsSettingsPage
-import com.fileapex.ui.settings.PinRequiredSettingsPage
-import com.fileapex.ui.settings.RemoteFileDeletionSettingsPage
-import com.fileapex.ui.settings.SettingsNavItem
 import com.fileapex.ui.settings.SettingsPageShell
-import com.fileapex.ui.settings.TailscaleSettingsPage
-import com.fileapex.ui.settings.ThemesSettingsPage
-import com.fileapex.ui.settings.WindowsDesignSettingsPage
-import com.fileapex.ui.settings.backupSummary
 import com.fileapex.ui.settings.clipboardShareTargetsSubtitle
-import com.fileapex.ui.settings.googleAccountSubtitle
-import com.fileapex.ui.settings.irohRowSubtitle
-import com.fileapex.ui.settings.localizedBulletinBoardStyleName
-import com.fileapex.ui.settings.localizedPinIdle
-import com.fileapex.ui.settings.localizedThemeName
-import com.fileapex.ui.settings.tailscaleRowSubtitle
 import com.fileapex.util.TimeUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -196,309 +148,39 @@ fun SettingsScreen(
         onBack()
     }
 
+    val settingsPages = SettingsPageScope(
+        state = state,
+        updateStatus = updateStatus,
+        googleLinkStatus = googleLinkStatus,
+        viewModel = viewModel,
+        pageState = navigation.page,
+        layoutMode = layoutMode,
+        onBack = onBack,
+        goUp = goUp,
+        appVersionName = appVersionName,
+        showRootBackNavigation = showRootBackNavigation,
+        backgroundPersistence = backgroundPersistence,
+        exactAlarmWarningActive = exactAlarmWarningActive,
+        onOpenTransferQueue = onOpenTransferQueue,
+        onboardingSteps = onboardingSteps,
+        deniedOnboardingStepIds = deniedOnboardingStepIds,
+        onGrantOnboardingStep = onGrantOnboardingStep,
+        onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+        onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
+        onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
+        onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
+        onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+        onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+        onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled
+    )
+
     CompositionLocalProvider(
         LocalSettingsHomeAction provides handleGoHome,
         LocalSettingsExitAction provides onExitApp
     ) {
-        when (page) {
-        SettingsPage.Root -> SettingsRootPage(
-            appVersionName = appVersionName,
-            state = state,
-            onBack = onBack,
-            showBackNavigation = showRootBackNavigation,
-            layoutMode = layoutMode,
-            onOpenCheckForUpdates = { page = SettingsPage.CheckForUpdates },
-            onOpenPinRequired = { page = SettingsPage.PinRequired },
-            onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
-            onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
-            onOpenDeviceName = { page = SettingsPage.DeviceName },
-            onOpenLanguage = { page = SettingsPage.Language },
-            onOpenNotifications = { page = SettingsPage.Notifications },
-            onOpenThemes = { page = SettingsPage.Themes },
-            onOpenBulletinBoard = { page = SettingsPage.BulletinBoard },
-            onOpenBackupSync = { page = SettingsPage.BackupSync },
-            onOpenClipboard = { page = SettingsPage.Clipboard },
-            onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
-            onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
-            onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
-            onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
-            onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
-            onOpenTailscale = { page = SettingsPage.Tailscale },
-            onOpenIroh = { page = SettingsPage.Iroh },
-            onOpenGroups = { page = SettingsPage.Groups },
-            onOpenAbout = { page = SettingsPage.About },
-            onToggleGeneralGroup = viewModel::toggleGeneralGroup,
-            onShowAdvancedChange = viewModel::setShowAdvancedSettings,
-            onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
-            onToggleAppearanceBehaviorGroup = viewModel::toggleAppearanceBehaviorGroup,
-            onToggleSecurityAccountGroup = viewModel::toggleSecurityAccountGroup,
-            onToggleRemoteAccessGroup = viewModel::toggleRemoteAccessGroup,
-            onVersionNumberEasterEgg = viewModel::onVersionNumberEasterEgg,
-            backgroundPersistence = backgroundPersistence,
-            exactAlarmWarningActive = exactAlarmWarningActive,
-            onOpenTransferQueue = onOpenTransferQueue,
-            onboardingSteps = onboardingSteps,
-            onOpenOnboardingPermissions = { page = SettingsPage.OnboardingPermissions }
-        )
-        SettingsPage.OnboardingPermissions -> OnboardingPermissionsSettingsPage(
-            onboardingSteps = onboardingSteps,
-            deniedOnboardingStepIds = deniedOnboardingStepIds,
-            onGrantOnboardingStep = onGrantOnboardingStep,
-            layoutMode = layoutMode,
-            onBack = goUp
-        )
-        SettingsPage.Notifications -> NotificationsSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onToggleFileTransferNotifications = viewModel::setFileTransferNotifications,
-            onToggleNotesNotifications = viewModel::setNotesNotifications,
-            onToggleDriveRelayNotifications = viewModel::setDriveRelayNotifications,
-            onToggleLiveTransferCapsule = viewModel::setLiveTransferCapsule,
-            onOpenBroadcastNotifications = { page = SettingsPage.BroadcastNotifications }
-        )
-        SettingsPage.BroadcastNotifications -> BroadcastNotificationsSettingsPage(
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onOpenAppDetailsSettings = onOpenAppDetailsSettings
-        )
-        SettingsPage.CheckForUpdates -> {
-            if (com.fileapex.di.FileApexServices.managedByStore) {
-                page = SettingsPage.Root
-            } else {
-                val isAndroid = currentPlatformLabel() == "Android"
-                if (isAndroid && !state.installPackagesDisclosureAcknowledged) {
-                    DisclosureScreen(
-                        title = stringRes("install_packages_disclosure_title"),
-                        icon = Icons.Filled.SystemUpdate,
-                        whatText = stringRes("install_packages_disclosure_what"),
-                        whyText = stringRes("install_packages_disclosure_why"),
-                        layoutMode = layoutMode,
-                        onBack = goUp,
-                        onAgree = { viewModel.setInstallPackagesDisclosureAcknowledged(true) }
-                    )
-                } else {
-                    CheckForUpdatesSettingsPage(
-                        state = state,
-                        updateStatus = updateStatus,
-                        layoutMode = layoutMode,
-                        onBack = goUp,
-                        onToggle = viewModel::setCheckForUpdates,
-                        onUnitSelected = viewModel::setCheckForUpdatesUnit,
-                        onAmountTextChange = viewModel::setCheckForUpdatesAmountText,
-                        onWeekAmountSelected = viewModel::setCheckForUpdatesWeekAmount
-                    )
-                }
-            }
-        }
-        SettingsPage.PinRequired -> PinRequiredSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onToggle = viewModel::setPinRequired,
-            onPinChange = viewModel::setDevicePin,
-            onIdleTimeoutSelected = viewModel::setPinIdleTimeout
-        )
-        SettingsPage.BackgroundPersistence -> BackgroundPersistenceSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onEnableServiceWatchdog = viewModel::setEnableServiceWatchdog,
-            backgroundPersistence = backgroundPersistence,
-            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-            onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
-            onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-            onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
-            exactAlarmWarningActive = exactAlarmWarningActive,
-            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-            onOpenAppDetailsSettings = onOpenAppDetailsSettings
-        )
-        SettingsPage.AutoLaunchOnReboot -> AutoLaunchOnRebootSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onToggle = viewModel::setAutoLaunchOnReboot
-        )
-        SettingsPage.FileTransferNotifications -> FileTransferNotificationsSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onToggle = viewModel::setFileTransferNotifications
-        )
-
-        SettingsPage.Themes -> ThemesSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onSelectTheme = viewModel::setAppTheme,
-            onSelectThemeIconStyle = { viewModel.setThemeIconStyle(state.appTheme, it) },
-            onSelectKineticStyle = viewModel::setKineticStyle,
-            onToggleConnectedLines = viewModel::setKineticSphereConnectedLinesEnabled,
-            onToggleOrbitalRings = viewModel::setKineticSphereOrbitalRingsEnabled,
-            onTogglePersistentWallpaper = viewModel::setKineticSpherePersistentWallpaperEnabled
-        )
-
-        SettingsPage.BulletinBoard -> BulletinBoardHubPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onOpenStyles = { page = SettingsPage.BulletinBoardStyles },
-            onOpenRemoteDeletion = { page = SettingsPage.RemoteFileDeletion }
-        )
-
-        SettingsPage.BackupSync -> BackupSyncSettingsPage(
-            layoutMode = layoutMode,
-            onBack = goUp
-        )
-
-        SettingsPage.BulletinBoardStyles -> BulletinBoardStylesSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onSelectStyle = viewModel::setBulletinBoardStyle
-        )
-
-        SettingsPage.Clipboard -> {
-            if (!state.clipboardDisclosureAcknowledged) {
-                DisclosureScreen(
-                    title = stringRes("clipboard_disclosure_title"),
-                    icon = Icons.Filled.ContentPaste,
-                    whatText = stringRes("clipboard_disclosure_what"),
-                    whyText = stringRes("clipboard_disclosure_why"),
-                    layoutMode = layoutMode,
-                    onBack = goUp,
-                    onAgree = { viewModel.setClipboardDisclosureAcknowledged(true) }
-                )
-            } else {
-                ClipboardSettingsPage(
-                    state = state,
-                    layoutMode = layoutMode,
-                    onBack = goUp,
-                    onToggle = viewModel::setClipboardSharing,
-                    onToggleViaCellular = viewModel::setClipboardViaCellular,
-                    onToggleSendNotification = viewModel::setClipboardSendNotification,
-                    onToggleAutoSend = viewModel::setClipboardAutoSend,
-                    onOpenAccessibility = { page = SettingsPage.ClipboardAccessibility },
-                    onOpenShareTargets = { page = SettingsPage.ClipboardShareTargets },
-                    onOpenDiagnostics = { page = SettingsPage.ClipboardDiagnostics }
-                )
-            }
-        }
-        SettingsPage.ClipboardAccessibility -> {
-            if (com.fileapex.di.FileApexServices.isPlayStoreBuild) {
-                page = SettingsPage.Clipboard
-            } else if (!state.accessibilityDisclosureAcknowledged) {
-                DisclosureScreen(
-                    title = stringRes("accessibility_disclosure_title"),
-                    icon = Icons.Filled.Accessibility,
-                    whatText = stringRes("accessibility_disclosure_what"),
-                    whyText = stringRes("accessibility_disclosure_why"),
-                    layoutMode = layoutMode,
-                    onBack = goUp,
-                    onAgree = { viewModel.setAccessibilityDisclosureAcknowledged(true) }
-                )
-            } else {
-                ClipboardAccessibilityPage(
-                    state = state,
-                    layoutMode = layoutMode,
-                    onBack = goUp,
-                    onToggleAccessibility = viewModel::setClipboardAccessibility,
-                    onToggleShizuku = viewModel::setClipboardShizuku,
-                    onDismissRestrictedHelp = viewModel::dismissAccessibilityRestrictedHelp,
-                    onOpenAppInfo = viewModel::openAccessibilityAppInfo,
-                    onOpenAccessibilitySettings = viewModel::openAccessibilitySystemSettings
-                )
-            }
-        }
-        SettingsPage.ClipboardShareTargets -> ClipboardShareTargetsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onShareModeChange = viewModel::setClipboardShareMode,
-            onTogglePeer = viewModel::setClipboardTargetDevice
-        )
-        SettingsPage.ClipboardDiagnostics -> ClipboardDiagnosticsSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onOpenAccessibility = viewModel::openAccessibilitySystemSettings,
-            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-            onOpenAppInfo = viewModel::openAccessibilityAppInfo
-        )
-        SettingsPage.DeviceDetails -> DeviceDetailsSettingsPage(
-            preferences = state.deviceDetailsDisplayPreferences,
-            allowOverCellular = state.deviceDetailsAllowOverCellular,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-            onAllowOverCellularChange = viewModel::setDeviceDetailsAllowOverCellular,
-            onFieldVisibleChange = viewModel::setDeviceDetailsFieldVisible,
-            onReorderFields = viewModel::reorderDeviceDetailsFields,
-            onReset = viewModel::resetDeviceDetailsDisplayPreferences
-        )
-        SettingsPage.GoogleAccount -> GoogleAccountSettingsPage(
-            state = state,
-            linkStatus = googleLinkStatus,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onDisable = viewModel::disableGoogleAccountLink,
-            onIdToken = viewModel::onGoogleIdToken,
-            onCellularChange = viewModel::setCellularEnabled,
-            onDriveRelayChange = viewModel::setGoogleDriveRelayEnabled,
-            onDriveRelayMaxMbSelected = viewModel::setDriveRelayMaxMb,
-            onDriveAuthResult = viewModel::onGoogleDriveAuthResult,
-            onEncryptionChange = viewModel::setDriveRelayEncryptionEnabled,
-            onPurgeChange = viewModel::setDrivePurgeAfter72Hours,
-            onPurgeNow = viewModel::purgeDriveRelayNow
-        )
-        SettingsPage.RemoteFileDeletion -> RemoteFileDeletionSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onAllowRemoteFileDeletionChange = viewModel::setAllowRemoteFileDeletion
-        )
-        SettingsPage.DesktopLayout -> DesktopLayoutSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onExpanded = { expanded ->
-                viewModel.setDesktopLayoutMode(
-                    if (expanded) DesktopLayoutMode.Expanded else DesktopLayoutMode.Compact
-                )
-            }
-        )
-        SettingsPage.WindowsDesign -> WindowsDesignSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onFluent = { enabled ->
-                viewModel.setDesktopUiStyle(
-                    if (enabled) DesktopUiStyle.WindowsFluent else DesktopUiStyle.Standard
-                )
-            }
-        )
-        SettingsPage.Language -> LanguageSettingsPage(
-            layoutMode = layoutMode,
-            onBack = goUp
-        )
-        SettingsPage.DeviceName -> DeviceNameSettingsPage(
-            state = state,
-            layoutMode = layoutMode,
-            onBack = goUp,
-            onDraftChange = viewModel::setDeviceNameDraft,
-            onSave = viewModel::saveDeviceName
-        )
-        SettingsPage.Tailscale -> TailscaleSettingsPage(
-            layoutMode = layoutMode,
-            setupExpanded = state.tailscaleSetupExpanded,
-            onSetupExpandedChange = viewModel::setTailscaleSetupExpanded,
-            onBack = goUp
-        )
-        SettingsPage.Iroh -> IrohSettingsPage(layoutMode, goUp)
-        SettingsPage.Groups -> com.fileapex.friends.ui.GroupsSettingsPage(layoutMode, goUp)
-        SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(layoutMode, goUp)
-        SettingsPage.About -> AboutSettingsPage(layoutMode, goUp)
-    }
+        settingsPages.PagesGeneral()
+        settingsPages.PagesClipboard()
+        settingsPages.PagesDevice()
     }
 
     if (state.showClipboardConfigDialog) {
@@ -516,7 +198,7 @@ fun SettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsRootPage(
+internal fun SettingsRootPage(
     appVersionName: String,
     state: SettingsUiState,
     onBack: () -> Unit,
@@ -560,6 +242,31 @@ private fun SettingsRootPage(
     val versionTapInteraction = remember { MutableInteractionSource() }
     var showFeedbackDialog by remember { mutableStateOf(false) }
 
+    val inputs = SettingsRootInputs(
+        state = state,
+        backgroundPersistence = backgroundPersistence,
+        exactAlarmWarningActive = exactAlarmWarningActive,
+        onOpenCheckForUpdates = onOpenCheckForUpdates,
+        onOpenPinRequired = onOpenPinRequired,
+        onOpenBackgroundPersistence = onOpenBackgroundPersistence,
+        onOpenAutoLaunchOnReboot = onOpenAutoLaunchOnReboot,
+        onOpenDeviceName = onOpenDeviceName,
+        onOpenLanguage = onOpenLanguage,
+        onOpenNotifications = onOpenNotifications,
+        onOpenThemes = onOpenThemes,
+        onOpenBulletinBoard = onOpenBulletinBoard,
+        onOpenBackupSync = onOpenBackupSync,
+        onOpenClipboard = onOpenClipboard,
+        onOpenDeviceDetails = onOpenDeviceDetails,
+        onOpenGoogleAccount = onOpenGoogleAccount,
+        onOpenDesktopLayout = onOpenDesktopLayout,
+        onOpenWindowsDesign = onOpenWindowsDesign,
+        onOpenLeaveClusterWipe = onOpenLeaveClusterWipe,
+        onOpenTailscale = onOpenTailscale,
+        onOpenIroh = onOpenIroh,
+        onOpenGroups = onOpenGroups
+    )
+
     SettingsPageShell(
         title = stringRes("settings"),
         layoutMode = layoutMode,
@@ -575,51 +282,7 @@ private fun SettingsRootPage(
             ) {
                 val ungrantedSteps = onboardingSteps.filter { !it.granted }
                 if (ungrantedSteps.isNotEmpty()) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .clickable(onClick = onOpenOnboardingPermissions),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringRes("onboarding_permissions_title"),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = stringRes("onboarding_permissions_desc"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
+                    OnboardingPermissionsCard(onOpenOnboardingPermissions)
                 }
                 val tailscale by TailscaleNodeRuntime.state.collectAsState()
                 val menuEntries = settingsMenuEntries(
@@ -659,139 +322,7 @@ private fun SettingsRootPage(
                         onToggle = onToggle
                     ) {
                         rows.forEach { entry ->
-                            when (entry.id) {
-                                SettingsMenuIds.DEVICE_NAME -> SettingsNavItem(
-                                    title = stringRes("device_name"),
-                                    subtitle = state.deviceNameBroadcasting.ifBlank { stringRes("paired_device") },
-                                    onClick = onOpenDeviceName
-                                )
-                                SettingsMenuIds.LANGUAGE -> SettingsNavItem(
-                                    title = stringRes("language"),
-                                    subtitle = AppI18n.languageRowLabel(AppI18n.locale),
-                                    onClick = onOpenLanguage
-                                )
-                                SettingsMenuIds.CHECK_FOR_UPDATES -> SettingsNavItem(
-                                    title = stringRes("check_for_updates"),
-                                    subtitle = if (state.checkForUpdatesEnabled) {
-                                        UpdateCheckFrequency.label(
-                                            state.checkForUpdatesIntervalUnit,
-                                            state.checkForUpdatesIntervalAmount
-                                        )
-                                    } else {
-                                        stringRes("off")
-                                    },
-                                    onClick = onOpenCheckForUpdates
-                                )
-                                SettingsMenuIds.REPORT_ISSUE -> SettingsNavItem(
-                                    title = stringRes("report_issue_feedback"),
-                                    subtitle = stringRes("report_issue_feedback_desc"),
-                                    onClick = { showFeedbackDialog = true }
-                                )
-                                SettingsMenuIds.BACKGROUND_PERSISTENCE -> SettingsNavItem(
-                                    title = stringRes("background_persistence"),
-                                    subtitle = backgroundPersistenceSubtitle(
-                                        watchdogEnabled = state.enableServiceWatchdog,
-                                        backgroundPersistence = backgroundPersistence,
-                                        exactAlarmWarningActive = exactAlarmWarningActive
-                                    ),
-                                    onClick = onOpenBackgroundPersistence
-                                )
-                                SettingsMenuIds.AUTO_LAUNCH -> SettingsNavItem(
-                                    title = stringRes(if (com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()) "auto_launch_on_signin" else "auto_launch_on_reboot"),
-                                    subtitle = if (state.autoLaunchOnReboot) stringRes("on") else stringRes("off"),
-                                    onClick = onOpenAutoLaunchOnReboot
-                                )
-                                SettingsMenuIds.TAILSCALE -> SettingsNavItem(
-                                    title = stringRes("tailscale_overlay"),
-                                    subtitle = tailscaleRowSubtitle(tailscale),
-                                    onClick = onOpenTailscale
-                                )
-                                SettingsMenuIds.IROH -> SettingsNavItem(
-                                    title = stringRes("iroh_title"),
-                                    subtitle = irohRowSubtitle(),
-                                    onClick = onOpenIroh
-                                )
-                                SettingsMenuIds.GROUPS -> SettingsNavItem(
-                                    title = stringRes("groups_title"),
-                                    subtitle = com.fileapex.friends.ui.groupsRowSubtitle(),
-                                    onClick = onOpenGroups
-                                )
-                                SettingsMenuIds.THEMES -> SettingsNavItem(
-                                    title = stringRes("themes"),
-                                    subtitle = localizedThemeName(state.appTheme),
-                                    onClick = onOpenThemes
-                                )
-                                SettingsMenuIds.BULLETIN_BOARD -> SettingsNavItem(
-                                    title = stringRes("bulletin_board"),
-                                    subtitle = localizedBulletinBoardStyleName(state.bulletinBoardStyle),
-                                    onClick = onOpenBulletinBoard
-                                )
-                                SettingsMenuIds.BACKUP_SYNC -> SettingsNavItem(
-                                    title = stringRes("backup_sync"),
-                                    subtitle = backupSummary(),
-                                    onClick = onOpenBackupSync
-                                )
-                                SettingsMenuIds.NOTIFICATIONS -> SettingsNavItem(
-                                    title = stringRes("notifications"),
-                                    subtitle = if (
-                                        state.notesNotificationsEnabled ||
-                                        state.driveRelayNotificationsEnabled ||
-                                        state.fileTransferNotificationsEnabled ||
-                                        state.liveTransferCapsuleEnabled
-                                    ) stringRes("on") else stringRes("off"),
-                                    onClick = onOpenNotifications
-                                )
-                                SettingsMenuIds.CLIPBOARD -> SettingsNavItem(
-                                    title = stringRes("clipboard"),
-                                    subtitle = clipboardSettingsSubtitle(state),
-                                    onClick = onOpenClipboard
-                                )
-                                SettingsMenuIds.DEVICE_DETAILS -> SettingsNavItem(
-                                    title = stringRes("device_details"),
-                                    subtitle = stringRes("peer_telemetry_fields"),
-                                    onClick = onOpenDeviceDetails
-                                )
-                                SettingsMenuIds.DESKTOP_LAYOUT -> SettingsNavItem(
-                                    title = stringRes("desktop_layout"),
-                                    subtitle = localizedDesktopLayout(state.desktopLayoutMode),
-                                    onClick = onOpenDesktopLayout
-                                )
-                                SettingsMenuIds.WINDOWS_DESIGN -> SettingsNavItem(
-                                    title = stringRes("windows_design"),
-                                    subtitle = localizedDesktopUiStyle(state.desktopUiStyle),
-                                    onClick = onOpenWindowsDesign
-                                )
-                                SettingsMenuIds.PIN_REQUIRED -> SettingsNavItem(
-                                    title = stringRes("pin_required"),
-                                    subtitle = AppI18n.t(
-                                        "pin_subtitle",
-                                        if (state.pinRequiredEnabled) AppI18n.t("on") else AppI18n.t("off"),
-                                        localizedPinIdle(state.pinIdleTimeout)
-                                    ),
-                                    onClick = onOpenPinRequired
-                                )
-                                SettingsMenuIds.DRIVE_RELAY -> SettingsNavItem(
-                                    title = stringRes("drive_relay"),
-                                    subtitle = when {
-                                        !state.googleAccountLinkEnabled -> stringRes("google_unlinked")
-                                        state.googleDriveRelayEnabled -> stringRes("on")
-                                        else -> stringRes("off")
-                                    },
-                                    onClick = onOpenGoogleAccount
-                                )
-                                SettingsMenuIds.GOOGLE_ACCOUNT -> SettingsNavItem(
-                                    title = stringRes("google_account"),
-                                    subtitle = googleAccountSubtitle(state),
-                                    onClick = onOpenGoogleAccount
-                                )
-                                SettingsMenuIds.LEAVE_CLUSTER -> SettingsNavItem(
-                                    title = stringRes("leave_cluster_wipe_title"),
-                                    subtitle = stringRes("leave_cluster_wipe_desc"),
-                                    isDestructive = true,
-                                    leadingIcon = Icons.Filled.Warning,
-                                    onClick = onOpenLeaveClusterWipe
-                                )
-                            }
+                            inputs.MenuRow(entry, tailscale) { showFeedbackDialog = true }
                         }
                     }
                 }
@@ -839,58 +370,61 @@ private fun SettingsRootPage(
             )
         }
 
-        if (showFeedbackDialog) {
-            AlertDialog(
-                onDismissRequest = { showFeedbackDialog = false },
-                modifier = Modifier.widthIn(max = 440.dp),
-                title = {
-                    Text(
-                        text = stringRes("report_issue_feedback"),
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FeedbackOptionCard(
-                            icon = Icons.Default.Email,
-                            title = stringRes("feedback_option_email"),
-                            subtitle = stringRes("feedback_option_email_desc"),
-                            onClick = {
-                                showFeedbackDialog = false
-                                Diagnostics.sendFeedbackEmail()
-                            }
-                        )
-                        FeedbackOptionCard(
-                            icon = Icons.Default.Feedback,
-                            title = stringRes("feedback_option_form"),
-                            subtitle = stringRes("feedback_option_form_desc"),
-                            onClick = {
-                                showFeedbackDialog = false
-                                Diagnostics.openAnonymousFeedbackForm()
-                            }
-                        )
-                        FeedbackOptionCard(
-                            icon = Icons.Default.OpenInBrowser,
-                            title = stringRes("feedback_option_github"),
-                            subtitle = stringRes("feedback_option_github_desc"),
-                            onClick = {
-                                showFeedbackDialog = false
-                                Diagnostics.openGitHubIssuesTracker()
-                            }
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showFeedbackDialog = false }) {
-                        Text(stringRes("cancel"))
-                    }
-                }
-            )
-        }
+        if (showFeedbackDialog) FeedbackDialog { showFeedbackDialog = false }
     }
+}
+
+@Composable
+private fun FeedbackDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.widthIn(max = 440.dp),
+        title = {
+            Text(
+                text = stringRes("report_issue_feedback"),
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FeedbackOptionCard(
+                    icon = Icons.Default.Email,
+                    title = stringRes("feedback_option_email"),
+                    subtitle = stringRes("feedback_option_email_desc"),
+                    onClick = {
+                        onDismiss()
+                        Diagnostics.sendFeedbackEmail()
+                    }
+                )
+                FeedbackOptionCard(
+                    icon = Icons.Default.Feedback,
+                    title = stringRes("feedback_option_form"),
+                    subtitle = stringRes("feedback_option_form_desc"),
+                    onClick = {
+                        onDismiss()
+                        Diagnostics.openAnonymousFeedbackForm()
+                    }
+                )
+                FeedbackOptionCard(
+                    icon = Icons.Default.OpenInBrowser,
+                    title = stringRes("feedback_option_github"),
+                    subtitle = stringRes("feedback_option_github_desc"),
+                    onClick = {
+                        onDismiss()
+                        Diagnostics.openGitHubIssuesTracker()
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringRes("cancel"))
+            }
+        }
+    )
 }
 
 @Composable
@@ -933,7 +467,7 @@ private fun FeedbackOptionCard(
     }
 }
 
-private fun backgroundPersistenceSubtitle(
+internal fun backgroundPersistenceSubtitle(
     watchdogEnabled: Boolean,
     backgroundPersistence: BackgroundPersistenceUiState,
     exactAlarmWarningActive: Boolean
@@ -958,7 +492,7 @@ private fun backgroundPersistenceSubtitle(
     }
 }
 
-private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
+internal fun clipboardSettingsSubtitle(state: SettingsUiState): String {
     if (!state.clipboardSharingEnabled) return AppI18n.t("off")
     val mode = clipboardShareTargetsSubtitle(state)
     val extras = buildList {
@@ -975,13 +509,13 @@ private fun clipboardSettingsSubtitle(state: SettingsUiState): String {
 }
 
 @Composable
-private fun localizedDesktopLayout(mode: DesktopLayoutMode): String = when (mode) {
+internal fun localizedDesktopLayout(mode: DesktopLayoutMode): String = when (mode) {
     DesktopLayoutMode.Compact -> stringRes("layout_compact")
     DesktopLayoutMode.Expanded -> stringRes("layout_expanded")
 }
 
 @Composable
-private fun localizedDesktopUiStyle(style: DesktopUiStyle): String = when (style) {
+internal fun localizedDesktopUiStyle(style: DesktopUiStyle): String = when (style) {
     DesktopUiStyle.Standard -> stringRes("windows_standard")
     DesktopUiStyle.WindowsFluent -> stringRes("windows_fluent")
 }

@@ -186,6 +186,7 @@ object DesktopMacTrayCoordinator {
                 } + friendTraySnapshots()
             }.collect { snapshots ->
                 publishShareReadyIds(snapshots)
+        publishLocalApi()
                 DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
             }
         }
@@ -202,6 +203,20 @@ object DesktopMacTrayCoordinator {
         } + friendTraySnapshots()
         publishShareReadyIds(snapshots)
         DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
+    }
+
+    private fun publishLocalApi() {
+        val file = DesktopPlatformPaths.localApiFile()
+        val payload = LocalApiInfo.payload(com.fileapex.data.identity.LocalIdentity.DEFAULT_SHARE_PORT)
+        runCatching {
+            if (file.isFile && file.readText() == payload) return
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            tmp.writeText(payload)
+            if (!tmp.renameTo(file)) {
+                file.writeText(payload)
+                tmp.delete()
+            }
+        }
     }
 
     private fun publishShareReadyIds(snapshots: List<DesktopTrayDeviceSnapshot>) {

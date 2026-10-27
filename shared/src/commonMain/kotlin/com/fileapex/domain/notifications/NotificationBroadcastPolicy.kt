@@ -168,8 +168,6 @@ object NotificationBroadcastPolicy {
         val ownPackage: String
     )
 
-    fun shouldBroadcast(candidate: Candidate, config: Config): Boolean = blockedReason(candidate, config) == null
-
     fun blockedReason(candidate: Candidate, config: Config): String? = when {
         !config.enabled -> "disabled"
         candidate.packageName == config.ownPackage -> "own app"

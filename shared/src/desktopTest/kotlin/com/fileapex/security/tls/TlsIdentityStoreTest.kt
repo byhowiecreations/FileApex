@@ -118,4 +118,16 @@ class TlsIdentityStoreTest {
         assertFalse(TlsPin.matches(pin, TlsIdentityFactory.generate().pin))
         assertEquals(8, TlsPin.forLog(pin).length)
     }
+
+    @Test
+    fun replacingTheKeyLeavesAProofSignedByTheOldKey() {
+        val store = TlsIdentityStore(dir(), emptyList())
+        val old = store.getOrCreate()
+        assertEquals(null, store.currentRotationProof(old))
+        val fresh = store.regenerate()
+        assertNotEquals(old.pin, fresh.pin)
+        val proof = TlsIdentityStore(dir(), emptyList()).currentRotationProof(fresh)
+        assertTrue(TlsRotation.verify(proof, setOf(old.pin), fresh.pin, System.currentTimeMillis()))
+        assertEquals(null, store.currentRotationProof(old))
+    }
 }

@@ -8,9 +8,3 @@ public enum EndpointDisplay {
         return "\(cleaned):\(port)"
     }
 }
-
-public extension PairedDevice {
-    var endpointDisplayLabel: String {
-        EndpointDisplay.format(ip: lastKnownIp, port: port)
-    }
-}

@@ -1,6 +1,7 @@
 package com.fileapex.domain.clipboard
 
 import com.fileapex.security.E2eePrimitives.hkdfSha256
+import com.fileapex.security.wipe
 import com.fileapex.security.E2eePrimitives.hmacSha256
 import com.fileapex.security.E2eePrimitives.x25519SharedSecret
 import java.security.SecureRandom
@@ -59,9 +60,13 @@ object ClipboardCrypto {
         val key = deriveAesKey(localPrivateKey, peerPublicKey, salt)
         val iv = ByteArray(GCM_IV_BYTES).also(secureRandom::nextBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
-        aad?.let(cipher::updateAAD)
-        val encrypted = cipher.doFinal(plaintext)
+        val encrypted = try {
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+            aad?.let(cipher::updateAAD)
+            cipher.doFinal(plaintext)
+        } finally {
+            key.wipe()
+        }
         val payload = ByteArray(iv.size + encrypted.size)
         System.arraycopy(iv, 0, payload, 0, iv.size)
         System.arraycopy(encrypted, 0, payload, iv.size, encrypted.size)
@@ -81,16 +86,28 @@ object ClipboardCrypto {
         val ciphertext = payload.copyOfRange(GCM_IV_BYTES, payload.size)
         val key = deriveAesKey(localPrivateKey, peerPublicKey, salt)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
-        aad?.let(cipher::updateAAD)
-        return cipher.doFinal(ciphertext)
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+            aad?.let(cipher::updateAAD)
+            return cipher.doFinal(ciphertext)
+        } finally {
+            key.wipe()
+        }
     }
 
     /** HMAC-SHA256 of [data] under a key derived for wake hellos only, never the clipboard encryption key. */
     fun authenticate(data: ByteArray, localPrivateKey: ByteArray, peerPublicKey: ByteArray, salt: String): ByteArray {
         val shared = x25519SharedSecret(localPrivateKey, peerPublicKey)
-        val key = hkdfSha256(shared, salt.encodeToByteArray(), HELLO_HKDF_INFO.encodeToByteArray(), 32)
-        return hmacSha256(key, data)
+        try {
+            val key = hkdfSha256(shared, salt.encodeToByteArray(), HELLO_HKDF_INFO.encodeToByteArray(), 32)
+            try {
+                return hmacSha256(key, data)
+            } finally {
+                key.wipe()
+            }
+        } finally {
+            shared.wipe()
+        }
     }
 
     fun pairSalt(deviceIdA: String, deviceIdB: String): String {
@@ -103,11 +120,15 @@ object ClipboardCrypto {
         salt: String
     ): ByteArray {
         val shared = x25519SharedSecret(localPrivateKey, peerPublicKey)
-        return hkdfSha256(
-            ikm = shared,
-            salt = salt.encodeToByteArray(),
-            info = HKDF_INFO.encodeToByteArray(),
-            length = 32
-        )
+        try {
+            return hkdfSha256(
+                ikm = shared,
+                salt = salt.encodeToByteArray(),
+                info = HKDF_INFO.encodeToByteArray(),
+                length = 32
+            )
+        } finally {
+            shared.wipe()
+        }
     }
 }

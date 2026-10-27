@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 class BrowserCoordinator(
     private val target: BrowseTarget,
     private val transfer: FileTransferService
-) {
+) : com.fileapex.platform.Trimmable {
     val browseRoot: String = PathUtils.normalize(target.rootPath)
     val isRemote: Boolean = target is BrowseTarget.Remote
     private val remotePinRequired: Boolean =
@@ -34,6 +34,12 @@ class BrowserCoordinator(
     private data class CachedBrowse(val timestamp: Long, val listing: BrowseListing)
     private val browseCache = LinkedHashMap<String, CachedBrowse>(16, 0.75f, true)
     private val cacheLock = Any()
+
+    init {
+        com.fileapex.platform.MemoryTrim.register(this)
+    }
+
+    override fun trimMemory() = invalidateCache()
 
     suspend fun listAt(path: String, forceRefresh: Boolean = false): BrowseListing {
         ensureBrowseAccess()

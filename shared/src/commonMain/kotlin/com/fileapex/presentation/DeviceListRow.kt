@@ -2,6 +2,7 @@ package com.fileapex.presentation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import com.fileapex.domain.presence.RouteKind
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.LocalAppLocale
 import com.fileapex.util.TimeUtils
@@ -33,7 +34,9 @@ data class DeviceListRow(
     val tileMenuOrder: String = "",
     /** Set only for a pinned friend shown as a row: the group name. A friend row has the id `friend:<key>`. */
     val friendGroup: String? = null,
-    val friendAutoAccept: Boolean = false
+    val friendAutoAccept: Boolean = false,
+    /** The route the last contact used; only meaningful while [online]. */
+    val reachedBy: RouteKind? = null
 ) {
     val title: String get() = deviceName
 
@@ -42,7 +45,8 @@ data class DeviceListRow(
     val subtitle: String get() = friendGroup ?: peerStatusSubtitle(
         online = online,
         appVersion = displayVersion ?: appVersion,
-        lastSeenEpochMs = lastSeenEpochMs
+        lastSeenEpochMs = lastSeenEpochMs,
+        reachedBy = reachedBy
     )
 
     companion object {
@@ -60,9 +64,10 @@ data class DeviceListRow(
         fun peerStatusSubtitle(
             online: Boolean,
             appVersion: String?,
-            lastSeenEpochMs: Long = 0L
+            lastSeenEpochMs: Long = 0L,
+            reachedBy: RouteKind? = null
         ): String {
-            val status = if (online) AppI18n.t("ready") else AppI18n.t("tap_to_wake")
+            val status = if (online) onlineLabel(reachedBy) else AppI18n.t("tap_to_wake")
             val version = appVersion?.trim()?.takeIf { it.isNotEmpty() }
             val versionLabel = version?.let { versionText -> "v$versionText" }
             if (online) {
@@ -78,6 +83,28 @@ data class DeviceListRow(
             } else {
                 prefix
             }
+        }
+
+        /** The short online status: the route name, or "Ready" before any route is known. */
+        fun onlineLabel(reachedBy: RouteKind?): String = when (reachedBy) {
+            RouteKind.Lan -> AppI18n.t("reach_lan")
+            RouteKind.Tailnet -> AppI18n.t("reach_tailscale")
+            RouteKind.Iroh -> AppI18n.t("reach_iroh")
+            null -> AppI18n.t("ready")
+        }
+
+        /** The long form for Device Details; [irohPath] is `direct` or `relay` while an Iroh connection is open. */
+        fun reachedByDetail(reachedBy: RouteKind, irohPath: String?): String = when (reachedBy) {
+            RouteKind.Lan -> AppI18n.t("reached_lan_direct")
+            RouteKind.Tailnet -> AppI18n.t("reached_tailscale")
+            RouteKind.Iroh ->
+                if (irohPath == "relay") AppI18n.t("reached_iroh_relay") else AppI18n.t("reached_iroh_direct")
+        }
+
+        @Composable
+        fun localizedOnlineLabel(reachedBy: RouteKind?): String {
+            LocalAppLocale.current
+            return onlineLabel(reachedBy)
         }
 
         @Composable

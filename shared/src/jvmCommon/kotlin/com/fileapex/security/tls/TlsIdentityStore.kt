@@ -26,6 +26,14 @@ class TlsIdentityStore(
     private val clock: () -> Long = System::currentTimeMillis
 ) {
     private val file get() = File(directory, FILE_NAME)
+
+    /** The proof written by the last [regenerate] while it is younger than [TlsRotation.MAX_AGE_MS] and names the current key. */
+    @Synchronized
+    fun currentRotationProof(identity: TlsIdentity): TlsRotationProof? {
+        val proof = runCatching { TlsRotation.decode(File(directory, ROTATION_FILE).readText()) }.getOrNull() ?: return null
+        val fresh = clock() - proof.issuedAtEpochMs <= TlsRotation.MAX_AGE_MS
+        return proof.takeIf { fresh && it.newPin.equals(identity.pin, ignoreCase = true) }
+    }
     private var cached: TlsIdentity? = null
 
     @Synchronized
@@ -45,8 +53,15 @@ class TlsIdentityStore(
     /** Explicit recovery for a lost key. The pin changes; peers must re-confirm. */
     @Synchronized
     fun regenerate(): TlsIdentity {
+        val previous = cached ?: runCatching { if (file.isFile) load() else null }.getOrNull()
         val identity = TlsIdentityFactory.generate(clock())
         save(identity)
+        // Peers that pinned the old key accept the new one when it is signed by the old key; kept for 90 days.
+        previous?.let { old ->
+            val proof = TlsRotation.sign(old.privateKey, old.certificate.publicKey, identity.pin, clock())
+            runCatching { File(directory, ROTATION_FILE).writeText(TlsRotation.encode(proof)) }
+                .onFailure { println("TlsIdentity: rotation proof not saved - ${it::class.simpleName}") }
+        }
         cached = identity
         println("TlsIdentity: regenerated, pin ${TlsPin.forLog(identity.pin)}")
         return identity
@@ -128,6 +143,7 @@ class TlsIdentityStore(
 
     private companion object {
         const val FILE_NAME = "tls_identity.v1"
+        const val ROTATION_FILE = "tls_rotation.v1"
         const val MAX_PART = 16 * 1024
     }
 }

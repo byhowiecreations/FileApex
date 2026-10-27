@@ -332,7 +332,7 @@ class CliCommandHandler(
         val direct = device.lastKnownIp.takeIf { it.isNotBlank() }
         if (direct != null && device.port > 0) {
             val success = cancellableCatching {
-                FileApexServices.client.triggerDeviceBeep(direct, device.port)
+                FileApexServices.client.alerts.triggerDeviceBeep(direct, device.port)
             }.getOrDefault(false)
 
             if (success) {
@@ -351,7 +351,7 @@ class CliCommandHandler(
 
         if (direct != null && device.port > 0) {
             val sent = cancellableCatching {
-                FileApexServices.client.sendDirectAlert(direct, device.port, selfName, message)
+                FileApexServices.client.alerts.sendDirectAlert(direct, device.port, selfName, message)
             }.getOrDefault(false)
 
             if (sent) {
@@ -431,7 +431,7 @@ class CliCommandHandler(
                 }
 
                 cancellableCatching {
-                    val content = FileApexServices.client.pullRemoteClipboard(direct, device.port)
+                    val content = FileApexServices.client.clipboard.pullRemoteClipboard(direct, device.port)
                     if (content != null) {
                         PlatformClipboard.setSystemClipboardText(content)
                         out("Retrieved clipboard content from ${device.deviceName} (${content.length} chars).")

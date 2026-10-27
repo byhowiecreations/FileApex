@@ -359,13 +359,13 @@ object IrohRuntime {
     }
 
     /**
-     * The peer was heard from over Iroh: it has Iroh, so a "no Iroh" or failed exchange no longer applies, and
-     * its traffic counts as activity for the optional rest mode.
+     * The peer was heard from over Iroh: it has Iroh, so a "no Iroh" or failed exchange no longer applies. Only
+     * [serving] contact (a real request either way) keeps the endpoint up in rest mode; presence checks must not.
      */
-    private fun noteContact(deviceId: String) {
+    private fun noteContact(deviceId: String, serving: Boolean = false) {
         val now = TimeUtils.now()
         contactOkAt[deviceId] = now
-        servedViaIroh[deviceId] = now
+        if (serving) servedViaIroh[deviceId] = now
         exchangeOutcomes.update { current ->
             val outcome = current[deviceId]
             if (outcome == null || outcome == IrohExchangePolicy.OK) current else current + (deviceId to IrohExchangePolicy.OK)
@@ -373,7 +373,7 @@ object IrohRuntime {
     }
 
     private fun peerEndpointActive(endpointId: String) {
-        peerBook().deviceIdFor(endpointId)?.let(::noteContact)
+        peerBook().deviceIdFor(endpointId)?.let { noteContact(it, serving = true) }
     }
 
     /** Our address changed (new network or home relay): tell every online peer that has Iroh, at most every 30 s. */

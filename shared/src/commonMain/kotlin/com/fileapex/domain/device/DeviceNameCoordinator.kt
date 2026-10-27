@@ -7,6 +7,7 @@ import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
+import com.fileapex.network.RenameOutcome
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 
@@ -53,26 +54,29 @@ object DeviceNameCoordinator {
         FileApexServices.pairingCoordinator.broadcastSelfIdentity(FileApexServices.presenceMonitor.onlineDeviceIds.value)
     }
 
-    suspend fun renamePeerDevice(deviceId: String, newName: String) {
+    suspend fun renamePeerDevice(deviceId: String, newName: String): RenameOutcome {
         val trimmed = newName.trim()
         validate(trimmed)?.let { error(it) }
         val peer = FileApexServices.deviceRepository.getDevice(deviceId)
             ?: error(AppI18n.t("device_not_found"))
         val self = loadLocalIdentity()
         val selfLabel = LocalDeviceNameStore.current().ifBlank { self.deviceName }
-        cancellableCatching {
-            FileApexServices.client.postRemoteRename(
+        val outcome = cancellableCatching {
+            FileApexServices.client.cluster.postRemoteRename(
                 host = peer.lastKnownIp,
                 port = peer.port,
                 newName = trimmed,
                 renamedByDeviceId = self.deviceId,
                 renamedByDeviceName = selfLabel
             )
-        }
-        FileApexServices.deviceRepository.rename(deviceId, trimmed)
+        }.getOrDefault(RenameOutcome.NotDelivered)
+        // The device's own answer decides the label; an older build or an unreachable one keeps what was typed.
+        val label = (outcome as? RenameOutcome.Confirmed)?.name ?: trimmed
+        FileApexServices.deviceRepository.rename(deviceId, label)
         cancellableCatching {
-            GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, trimmed)
+            GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, label)
         }
         FileApexServices.presenceMonitor.refreshOnlineSnapshot()
+        return outcome
     }
 }

@@ -48,6 +48,9 @@ class SealingKvStore(
     private val opened = ConcurrentHashMap<String, String>()
     private val pendingSeal = ConcurrentHashMap.newKeySet<String>()
 
+    /** True while [key] was set but could not be sealed yet, so it exists in memory only. */
+    fun isPendingSeal(key: String): Boolean = key in pendingSeal
+
     override fun contains(key: String): Boolean = inner.contains(key)
     override fun getBoolean(key: String, default: Boolean): Boolean = inner.getBoolean(key, default)
     override fun putBoolean(key: String, value: Boolean) = inner.putBoolean(key, value)

@@ -63,9 +63,10 @@ internal class DevicesRenameRemoveActions(
                         )
                     }
                 } else {
-                    com.fileapex.domain.device.DeviceNameCoordinator.renamePeerDevice(deviceId, trimmed)
+                    val outcome = com.fileapex.domain.device.DeviceNameCoordinator.renamePeerDevice(deviceId, trimmed)
+                    val key = if (outcome == com.fileapex.network.RenameOutcome.NotDelivered) "rename_not_delivered" else "renamed_synced"
                     _uiState.update {
-                        it.copy(statusMessage = AppI18n.t("renamed_synced", trimmed))
+                        it.copy(statusMessage = AppI18n.t(key, (outcome as? com.fileapex.network.RenameOutcome.Confirmed)?.name ?: trimmed))
                     }
                 }
             }.onFailure { error ->
@@ -101,6 +102,7 @@ internal class DevicesRenameRemoveActions(
                 purgeDirectShareTarget(deviceId)
                 FileApexServices.pairingCoordinator.broadcastDeviceRemoval(device)
                 GoogleLinkCoordinator.publishRemovedPeer(deviceId)
+                com.fileapex.cloud.seal.ClusterRecordKeys.rotate()
                 presence.refreshOnlineSnapshot()
             }.fold(
                 onSuccess = {

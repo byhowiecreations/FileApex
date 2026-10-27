@@ -50,7 +50,7 @@ object BulletinLegacyRelay {
                 val port = route.port
                 if (host.isBlank() || port <= 0) return@launch
                 cancellableCatching {
-                    FileApexServices.client.postNoteDelete(
+                    FileApexServices.client.bulletin.postNoteDelete(
                         host = host,
                         port = port,
                         noteId = messageId,
@@ -77,9 +77,9 @@ object BulletinLegacyRelay {
             val port = route.port
             if (host.isBlank() || port <= 0) return@launch
             cancellableCatching {
-                FileApexServices.client.postNote(host, port, record)
+                FileApexServices.client.bulletin.postNote(host, port, record)
                 if (lanAttach) {
-                    FileApexServices.client.uploadNoteAttachment(
+                    FileApexServices.client.bulletin.uploadNoteAttachment(
                         host = host,
                         port = port,
                         noteId = record.noteId,

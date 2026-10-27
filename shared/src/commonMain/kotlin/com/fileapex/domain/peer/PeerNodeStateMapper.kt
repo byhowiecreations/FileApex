@@ -55,24 +55,43 @@ object PeerNodeStateMapper {
             membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL,
             tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
             tlsPort = com.fileapex.security.tls.LocalTlsInfo.port,
+            tlsRotation = com.fileapex.security.tls.LocalTlsInfo.rotation,
             hardwareHash = com.fileapex.platform.HardwareId.local
         )
     }
 
-    /** What an unauthenticated caller of `/identity` gets: no filesystem location. */
-    fun forStranger(state: PeerNodeState): PeerNodeState = state.copy(rootPath = "/", hardwareHash = "")
+    /** What an unauthenticated caller of `/identity` gets: reachability and pairing only. */
+    fun forStranger(state: PeerNodeState): PeerNodeState = state.copy(
+        ipAddress = "",
+        lastKnownIp = "",
+        platform = "",
+        os = "",
+        deviceMake = "",
+        deviceModel = "",
+        rootPath = "/",
+        hardwareHash = ""
+    )
 
     fun toEntity(state: PeerNodeState, existing: PairedDeviceEntity? = null): PairedDeviceEntity {
         val deviceId = state.deviceId.trim()
         require(deviceId.isNotEmpty()) { "PeerNodeState.deviceId cannot be empty" }
-        val make = state.deviceMake.trim().ifBlank { existing?.deviceMake.orEmpty() }
-        val model = state.deviceModel.trim().ifBlank { existing?.deviceModel.orEmpty() }
-        val name = DeviceDisplayNames.merge(
-            existingName = existing?.deviceName.orEmpty(),
-            incomingName = state.deviceName,
-            make = make,
-            model = model
-        )
+        val incomingMake = state.deviceMake.trim()
+        val incomingModel = state.deviceModel.trim()
+        val make = incomingMake.ifBlank { existing?.deviceMake.orEmpty() }
+        val model = incomingModel.ifBlank { existing?.deviceModel.orEmpty() }
+        val keptName = existing?.deviceName?.trim().orEmpty()
+        val name = if (existing != null && incomingMake.isEmpty() && incomingModel.isEmpty() &&
+            keptName.isNotEmpty() && !DeviceDisplayNames.isPlaceholder(keptName)
+        ) {
+            keptName
+        } else {
+            DeviceDisplayNames.merge(
+                existingName = existing?.deviceName.orEmpty(),
+                incomingName = state.deviceName,
+                make = make,
+                model = model
+            )
+        }
         val incomingVersion = state.clusterVersion
         val existingVersion = existing?.clusterVersion ?: 0L
         val version = if (incomingVersion > 0L) incomingVersion else existingVersion

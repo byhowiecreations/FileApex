@@ -1,30 +1,14 @@
 import Foundation
-import SQLite3
 
-/// One paired peer row from Room's `paired_devices` table.
+/// One paired device the share sheet can send to. The running FileApex app owns the database and tells us only this.
 public struct PairedDevice: Identifiable, Hashable, Sendable {
     public var id: String { deviceId }
     public let deviceId: String
     public let deviceName: String
-    public let lastKnownIp: String
-    public let port: Int
-    public let publicKeyHash: String
-    public let rootPath: String
 
-    public init(
-        deviceId: String,
-        deviceName: String,
-        lastKnownIp: String,
-        port: Int,
-        publicKeyHash: String,
-        rootPath: String
-    ) {
+    public init(deviceId: String, deviceName: String) {
         self.deviceId = deviceId
         self.deviceName = deviceName
-        self.lastKnownIp = lastKnownIp
-        self.port = port
-        self.publicKeyHash = publicKeyHash
-        self.rootPath = rootPath
     }
 }
 
@@ -48,75 +32,60 @@ public enum ShareRoster {
     }
 }
 
-/// Read-only access to `~/Library/Application Support/com.fileapex/fileapex.db`.
-/// Removed peers stay in `paired_devices` (`isRemoved = 1`) so the cluster can reject them.
+/// Asks the running FileApex app for its devices over 127.0.0.1. The extension never opens the database or holds a key.
 public enum PairedDeviceStore {
-    public static func loadDevices() throws -> [PairedDevice] {
-        // Always the host app DB, never a Containers/... path.
-        let path = FileApexPaths.databaseURL.path
-        NSLog("FileApex PairedDeviceStore reading \(path)")
-        guard FileManager.default.fileExists(atPath: path) else {
-            NSLog("FileApex PairedDeviceStore: missing DB at \(path)")
-            return []
-        }
-
-        var db: OpaquePointer?
-        let openFlags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
-        guard sqlite3_open_v2(path, &db, openFlags, nil) == SQLITE_OK, let db else {
-            throw StoreError.openFailed(String(cString: sqlite3_errmsg(db)))
-        }
-        defer { sqlite3_close(db) }
-
-        let sql = """
-            SELECT deviceId, deviceName, lastKnownIp, port, publicKeyHash, rootPath
-            FROM paired_devices
-            WHERE isRemoved = 0
-            ORDER BY deviceName COLLATE NOCASE ASC
-            """
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-            throw StoreError.prepareFailed(String(cString: sqlite3_errmsg(db)))
-        }
-        defer { sqlite3_finalize(statement) }
-
-        let ready = ShareRoster.loadReadyDeviceIds()
-        var devices: [PairedDevice] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            let deviceId = columnText(statement, 0)
-            guard ShareRoster.isListed(
-                isRemoved: false,
-                deviceId: deviceId,
-                readyDeviceIds: ready
-            ) else { continue }
-            devices.append(
-                PairedDevice(
-                    deviceId: deviceId,
-                    deviceName: columnText(statement, 1),
-                    lastKnownIp: columnText(statement, 2),
-                    port: Int(sqlite3_column_int(statement, 3)),
-                    publicKeyHash: columnText(statement, 4),
-                    rootPath: columnText(statement, 5)
-                )
-            )
-        }
-        return devices
+    private struct Row: Decodable {
+        let deviceId: String
+        let deviceName: String
     }
 
-    private static func columnText(_ statement: OpaquePointer, _ index: Int32) -> String {
-        guard let cString = sqlite3_column_text(statement, index) else { return "" }
-        return String(cString: cString)
+    private struct LocalApi: Decodable {
+        let port: Int
+    }
+
+    public static func loadDevices() async throws -> [PairedDevice] {
+        guard let port = localApiPort(),
+              let url = URL(string: "http://127.0.0.1:\(port)/api/v1/web/devices") else {
+            throw StoreError.appNotReachable
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw StoreError.appNotReachable
+        }
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let rows = try? JSONDecoder().decode([Row].self, from: data) else {
+            throw StoreError.badAnswer
+        }
+        let ready = ShareRoster.loadReadyDeviceIds()
+        return rows
+            .filter { ShareRoster.isListed(isRemoved: false, deviceId: $0.deviceId, readyDeviceIds: ready) }
+            .map { PairedDevice(deviceId: $0.deviceId, deviceName: $0.deviceName) }
+            .sorted { $0.deviceName.localizedCaseInsensitiveCompare($1.deviceName) == .orderedAscending }
+    }
+
+    private static func localApiPort() -> Int? {
+        guard let data = try? Data(contentsOf: FileApexPaths.localApiURL),
+              let info = try? JSONDecoder().decode(LocalApi.self, from: data),
+              (1...65535).contains(info.port) else { return nil }
+        return info.port
     }
 
     public enum StoreError: LocalizedError {
-        case openFailed(String)
-        case prepareFailed(String)
+        case appNotReachable
+        case badAnswer
 
         public var errorDescription: String? {
             switch self {
-            case .openFailed(let message):
-                return "Could not open fileapex.db: \(message)"
-            case .prepareFailed(let message):
-                return "Could not query paired_devices: \(message)"
+            case .appNotReachable:
+                return "Could not reach FileApex. Open the app and try again."
+            case .badAnswer:
+                return "FileApex did not return its devices."
             }
         }
     }

@@ -2,22 +2,15 @@ package com.fileapex.cli.ipc
 
 import com.fileapex.cli.dash.CliClusterEngine
 import com.fileapex.cli.commands.CliCommandHandler
-import com.fileapex.domain.share.IncomingShareFile
-import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.util.cancellableCatching
 import java.io.BufferedReader
-import java.io.File
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -26,9 +19,6 @@ object CliIpcDaemon {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
     private var serverSocket: ServerSocket? = null
-
-    private val _incomingCliShares = MutableSharedFlow<IncomingSharePayload>(extraBufferCapacity = 16)
-    val incomingCliShares: SharedFlow<IncomingSharePayload> = _incomingCliShares.asSharedFlow()
 
     fun start() {
         if (serverSocket != null) return
@@ -103,28 +93,6 @@ object CliIpcDaemon {
                 val exitCode = handler.execute(request.args, request.cwd)
                 val exitPacket = CliIpcPacket.Exit(exitCode)
                 writer.println(json.encodeToString<CliIpcPacket>(exitPacket))
-            } else {
-                // Legacy file paths handoff
-                val paths = buildList {
-                    if (firstLine.isNotBlank() && File(firstLine).exists()) add(firstLine)
-                    while (reader.ready()) {
-                        val line = reader.readLine() ?: break
-                        if (line.isNotBlank() && File(line).exists()) add(line)
-                    }
-                }
-                if (paths.isNotEmpty()) {
-                    val files = paths.map { path ->
-                        val f = File(path)
-                        IncomingShareFile(
-                            fileName = f.name,
-                            absolutePath = f.absolutePath,
-                            sizeBytes = if (f.isFile) f.length() else 0L
-                        )
-                    }
-                    _incomingCliShares.tryEmit(
-                        IncomingSharePayload(sessionId = UUID.randomUUID().toString(), files = files)
-                    )
-                }
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.fileapex.cloud
 
+import com.fileapex.cloud.seal.CloudRecordSeal
+
 object CloudDeviceRecordParsing {
     fun fromFirestoreMap(data: Map<String, Any?>, documentId: String): CloudDeviceRecord {
         val id = data["deviceId"]?.toString()?.trim().orEmpty().ifBlank { documentId }
@@ -35,7 +37,9 @@ object CloudDeviceRecordParsing {
                 ?: 0L,
             membershipProtocol = (data["membershipProtocol"] as? Number)?.toInt()
                 ?: data["membershipProtocol"]?.toString()?.toIntOrNull()
-                ?: 0
-        )
+                ?: 0,
+            sealed = listOf(CloudRecordSeal.FIELD_NAME, CloudRecordSeal.FIELD_NET)
+                .mapNotNull { field -> data[field]?.toString()?.takeIf { it.isNotBlank() }?.let { field to it } }.toMap()
+        ).let(CloudRecordSeal::open)
     }
 }

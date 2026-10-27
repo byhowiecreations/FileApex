@@ -5,7 +5,6 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
-import com.fileapex.domain.presence.PresenceBackgroundWake
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.tailscale.TailscaleNodeRuntime
 import com.fileapex.platform.BatteryBulletinCoordinator
@@ -201,10 +200,6 @@ class FileShareServerService : Service() {
     private fun startWakeListener() {
         if (wakeReceiver != null) return
         val receiver = UdpWakeReceiver(
-            onWakeAccepted = {
-                ServerLifecycleManager.ensureRunning(androidLog)
-                PresenceBackgroundWake.onRemoteWakeSignal(sourceDeviceId = null)
-            },
             onSignedWake = { bytes, host ->
                 WakeHelloReceiver.handle(bytes, host) { ServerLifecycleManager.ensureRunning(androidLog) }
             },

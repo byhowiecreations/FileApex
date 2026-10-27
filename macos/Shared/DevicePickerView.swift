@@ -47,13 +47,8 @@ public struct DevicePickerView: View {
                                         ? Color.accentColor
                                         : Color.secondary
                                     )
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(device.deviceName)
-                                        .foregroundStyle(.primary)
-                                    Text(verbatim: device.endpointDisplayLabel)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
+                                Text(device.deviceName)
+                                    .foregroundStyle(.primary)
                                 Spacer()
                             }
                             .contentShape(Rectangle())

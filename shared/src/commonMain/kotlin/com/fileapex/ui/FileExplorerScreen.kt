@@ -8,6 +8,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -18,7 +25,12 @@ import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.traits
+import com.fileapex.friends.FriendsHub
+import com.fileapex.friends.ui.FriendSendSession
+import com.fileapex.friends.ui.FriendSendTarget
+import com.fileapex.friends.ui.friendFiles
 import com.fileapex.i18n.stringRes
+import kotlinx.coroutines.launch
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
 import com.fileapex.presentation.ExplorerViewModel
@@ -62,31 +74,50 @@ fun FileExplorerScreen(
     showTopBar: Boolean = true,
     filterBarLeading: (@Composable (modifier: Modifier, compact: Boolean) -> Unit)? = null,
     onDropBoxFiles: ((List<String>) -> Unit)? = null,
+    onPickFiles: ((List<String>) -> Unit)? = null,
     viewModel: ExplorerViewModel = viewModel(key = viewModelKey) { ExplorerViewModel(target) }
 ) {
+    // A friend's Send shows this device's files here; the first screen for them claims the request and becomes a picker.
+    val sendRequest by FriendSendSession.pending.collectAsState()
+    var friendSend by remember(target.deviceId) { mutableStateOf<FriendSendTarget?>(null) }
+    val canPick = target is BrowseTarget.Local && onPickFiles == null && viewModelKey == target.deviceId
+    LaunchedEffect(sendRequest, canPick) {
+        val request = sendRequest
+        if (canPick && request != null) {
+            friendSend = request
+            FriendSendSession.clear()
+        }
+    }
+    val sendScope = rememberCoroutineScope()
+    val picking = friendSend
     val explorer = rememberExplorerScope(
         ExplorerInputs(
             target = target,
             onBack = onBack,
-            titleOverride = titleOverride,
+            titleOverride = picking?.let { "${stringRes("friends_send_file")}: ${it.name}" } ?: titleOverride,
             embeddedInCompactShell = embeddedInCompactShell,
             onOpenTransferQueue = onOpenTransferQueue,
             onRegisterRefresh = onRegisterRefresh,
             onRegisterHeaderCommands = onRegisterHeaderCommands,
             onExitApp = onExitApp,
             paneId = paneId,
-            hostSplit = hostSplit,
+            hostSplit = hostSplit && picking == null,
             layoutExpanded = layoutExpanded,
             paneLabel = paneLabel,
             secondaryTarget = secondaryTarget,
             readyDevices = readyDevices,
             onSelectSecondaryLocal = onSelectSecondaryLocal,
             onSelectSecondaryDevice = onSelectSecondaryDevice,
-            viewModelKey = viewModelKey,
+            viewModelKey = if (picking != null) "friend-file-pick" else viewModelKey,
             showTopBar = showTopBar,
             filterBarLeading = filterBarLeading,
             onDropBoxFiles = onDropBoxFiles,
-            viewModel = viewModel
+            onPickFiles = if (picking == null) onPickFiles else { paths ->
+                friendFiles(paths).takeIf { it.isNotEmpty() }?.let { files -> sendScope.launch { FriendsHub.enqueueSend(picking.key, files) } }
+                friendSend = null
+                onBack()
+            },
+            viewModel = if (picking != null) viewModel(key = "friend-file-pick") { ExplorerViewModel(target) } else viewModel
         )
     )
     explorer.ExplorerEffects()

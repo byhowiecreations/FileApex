@@ -175,13 +175,15 @@ private fun UsageCard(scan: StorageScan, onClick: () -> Unit) {
                 Text(
                     stringRes("storage_used_of", formatHostFileSize(usage.usedBytes), formatHostFileSize(usage.totalBytes)),
                     color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false
                 )
                 Text(
                     stringRes("storage_percent_used", (usage.fraction * 100).toInt()),
                     color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 14.sp
+                    fontSize = 13.sp
                 )
             }
         }

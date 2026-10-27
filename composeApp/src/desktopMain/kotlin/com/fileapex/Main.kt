@@ -65,6 +65,9 @@ import com.fileapex.domain.share.IncomingSharePayload
 import java.io.File
 import java.util.UUID
 
+/** The window size is remembered per theme; Carousel's key is versioned so a new default takes effect once. */
+private fun sizeKey(theme: AppTheme): String = if (theme == AppTheme.CAROUSEL) "CAROUSEL_2" else theme.name
+
 private val DesktopWindowCompactWidth = 440.dp
 private val DesktopWindowExpandedWidth = 1200.dp
 private val DesktopWindowMinHeight = 560.dp
@@ -218,8 +221,14 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         // Each theme keeps its own window size; switching themes restores the size last used with that theme.
         LaunchedEffect(appTheme) {
             val theme = appTheme ?: return@LaunchedEffect
-            sizedTheme?.let { DesktopWindowBoundsStore.persistSize(it.name, windowState.size) }
-            DesktopWindowBoundsStore.loadSize(theme.name)?.let { windowState.size = it }
+            sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), windowState.size) }
+            val remembered = DesktopWindowBoundsStore.loadSize(sizeKey(theme))
+            if (remembered != null) {
+                windowState.size = remembered
+            } else if (theme == AppTheme.CAROUSEL) {
+                // Wide 16:9 the first time (the saved key is versioned so a changed default applies once); the size left behind is already saved under the previous theme.
+                windowState.size = DpSize(1024.dp, 576.dp)
+            }
             sizedTheme = theme
         }
 
@@ -243,7 +252,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 .collect { (size, position, minimized) ->
                     if (!minimized) {
                         DesktopWindowBoundsStore.persist(size, position)
-                        sizedTheme?.let { DesktopWindowBoundsStore.persistSize(it.name, size) }
+                        sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), size) }
                     }
                 }
         }
@@ -252,7 +261,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             DesktopLifecycleLog.log("shutdownDesktop")
             if (!windowState.isMinimized) {
                 DesktopWindowBoundsStore.persist(windowState.size, windowState.position)
-                sizedTheme?.let { DesktopWindowBoundsStore.persistSize(it.name, windowState.size) }
+                sizedTheme?.let { DesktopWindowBoundsStore.persistSize(sizeKey(it), windowState.size) }
             }
             com.fileapex.cloud.DesktopAuthCoordinator.cancelPending()
             DesktopShareServerController.shutdownForQuit()

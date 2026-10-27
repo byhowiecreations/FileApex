@@ -15,6 +15,8 @@ enum class ExplorerViewMode {
         Split -> List
     }
 
+    fun next(includeSplit: Boolean): ExplorerViewMode = if (includeSplit) cycled() else toggled()
+
     /** Local Files cycles list, grid, then two navigators. */
     fun cycled(): ExplorerViewMode = when (this) {
         List -> Grid

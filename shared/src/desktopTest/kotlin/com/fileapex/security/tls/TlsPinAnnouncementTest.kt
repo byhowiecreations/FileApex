@@ -1,5 +1,7 @@
 package com.fileapex.security.tls
 
+import com.fileapex.cloud.seal.ClusterRecordKey
+import com.fileapex.cloud.seal.ClusterRecordKeys
 import com.fileapex.data.db.DeviceDao
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.RemovedDeviceEntity
@@ -18,17 +20,16 @@ import org.junit.Test
 class TlsPinAnnouncementTest {
     private class MemoryDao : DeviceDao {
         val devices = mutableMapOf<String, PairedDeviceEntity>()
-        override fun getAllDevices(): Flow<List<PairedDeviceEntity>> = emptyFlow()
-        override suspend fun getAllDevicesOnce() = devices.values.filter { !it.isRemoved }
+        override fun getAllDevicesUnordered(): Flow<List<PairedDeviceEntity>> = emptyFlow()
+        override suspend fun getAllDevicesOnceUnordered() = devices.values.filter { !it.isRemoved }
         override suspend fun getDevice(deviceId: String) = devices[deviceId]
         override suspend fun getTombstonedDevices() = devices.values.filter { it.isRemoved }
-        override suspend fun getAllDevicesIncludingTombstones() = devices.values.toList()
+        override suspend fun getAllDevicesIncludingTombstonesUnordered() = devices.values.toList()
         override suspend fun upsertDevice(device: PairedDeviceEntity) { devices[device.deviceId] = device }
         override suspend fun deleteDevice(deviceId: String) { devices.remove(deviceId) }
         override suspend fun deleteAllDevices() = devices.clear()
         override suspend fun insertRemovedDevice(device: RemovedDeviceEntity) {}
         override suspend fun countRemovedById(deviceId: String) = 0
-        override suspend fun countRemovedByPublicKeyHash(publicKeyHash: String) = 0
         override suspend fun clearRemovedDevice(deviceId: String) {}
         override suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String) {}
         override suspend fun getAllRemovedDevices() = emptyList<RemovedDeviceEntity>()
@@ -76,6 +77,8 @@ class TlsPinAnnouncementTest {
         LocalTlsInfo.pin = pinA
         LocalTlsInfo.port = 8443
         PeerTlsStatus.prompts.value.forEach { PeerTlsStatus.dismiss(it.deviceId) }
+        TlsPinAnnouncements.forgetSeenForTests()
+        TlsVouches.clear()
     }
 
     @After
@@ -121,17 +124,75 @@ class TlsPinAnnouncementTest {
     }
 
     @Test
-    fun differentPinForAPinnedPeerWaitsForTheUser() = runBlocking {
+    fun differentPinFromAPeerWhosePairingKeyVouchesReplacesTheOldOneWithoutAsking() = runBlocking {
         repo.adoptFromPairing(peer())
         repo.recordTlsPin("peer", pinA, 9443)
-        assertEquals(TlsAnnouncementOutcome.NeedsConfirmation, accept(fromPeer(pinB)))
-        assertEquals(pinA, repo.getDevice("peer")!!.tlsPin)
-        val prompt = PeerTlsStatus.prompts.value.single()
-        assertEquals(TlsPromptKind.KEY_CHANGED, prompt.kind)
-        assertEquals(pinB, prompt.pin)
-        TlsPinAnnouncements.confirm(repo, prompt)
+        assertEquals(TlsAnnouncementOutcome.Rotated, accept(fromPeer(pinB)))
         assertEquals(pinB, repo.getDevice("peer")!!.tlsPin)
         assertTrue(PeerTlsStatus.prompts.value.isEmpty())
+    }
+
+    @Test
+    fun anOlderCopyOfAnAnnouncementCannotBringBackARetiredKey() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        assertEquals(TlsAnnouncementOutcome.Rotated, accept(fromPeer(pinB, issuedAt = now)))
+        assertEquals(TlsAnnouncementOutcome.Invalid, accept(fromPeer(pinA, issuedAt = now - 60_000)))
+        assertEquals(pinB, repo.getDevice("peer")!!.tlsPin)
+    }
+
+    private fun vouchFrom(voucher: String, subject: String, pin: String, key: String): TlsPinAnnouncement {
+        val payload = """{"pin":"$pin","tlsPort":9443,"issuedAtEpochMs":$now,"subjectDeviceId":"$subject"}"""
+        return TlsPinAnnouncement(voucher, key, FakeCrypto(key).encrypt(payload.encodeToByteArray(), voucher, "me", "my-key"))
+    }
+
+    private fun other() = peer().copy(deviceId = "other", deviceName = "Other", publicKey = "other-key", publicKeyHash = "h2")
+
+    @Test
+    fun aVouchFromAnotherClusterDeviceChangesNothingUntilThePeerShowsThatKey() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        repo.adoptFromPairing(other())
+        val outcome = runBlocking { TlsPinAnnouncements.accept(repo, vouchFrom("other", "peer", pinB, "other-key"), "me", now, FakeCrypto("my-key")) }
+        assertEquals(TlsAnnouncementOutcome.Vouched, outcome)
+        assertEquals(pinA, repo.getDevice("peer")!!.tlsPin)
+        assertEquals("other", TlsVouches.voucherFor("peer", pinB, now))
+        assertNull(TlsVouches.voucherFor("peer", pinA, now))
+    }
+
+    @Test
+    fun aVouchSettlesAKeyChangeThatIsAlreadyWaitingForTheUser() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        repo.adoptFromPairing(other())
+        PeerTlsStatus.requestConfirmation(TlsPinPrompt("peer", TlsPromptKind.KEY_CHANGED, pinB, 9443))
+        runBlocking { TlsPinAnnouncements.accept(repo, vouchFrom("other", "peer", pinB, "other-key"), "me", now, FakeCrypto("my-key")) }
+        assertEquals(pinB, repo.getDevice("peer")!!.tlsPin)
+        assertTrue(PeerTlsStatus.prompts.value.isEmpty())
+    }
+
+    @Test
+    fun aVouchAboutAnUnknownOrRemovedDeviceIsRefusedAndNeverAboutTheVoucherItself() = runBlocking {
+        repo.adoptFromPairing(other())
+        val unknown = runBlocking { TlsPinAnnouncements.accept(repo, vouchFrom("other", "ghost", pinB, "other-key"), "me", now, FakeCrypto("my-key")) }
+        assertEquals(TlsAnnouncementOutcome.UnknownPeer, unknown)
+        val self = runBlocking { TlsPinAnnouncements.accept(repo, vouchFrom("other", "other", pinB, "other-key"), "me", now, FakeCrypto("my-key")) }
+        assertEquals(TlsAnnouncementOutcome.UnknownPeer, self)
+    }
+
+    @Test
+    fun userConfirmationTellsTheClusterHook() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        var told: TlsPinPrompt? = null
+        PeerTlsStatus.onUserConfirmed = { told = it }
+        try {
+            TlsPinAnnouncements.confirm(repo, TlsPinPrompt("peer", TlsPromptKind.KEY_CHANGED, pinB, 9443))
+        } finally {
+            PeerTlsStatus.onUserConfirmed = null
+        }
+        assertEquals(pinB, told?.pin)
+        assertEquals(pinB, repo.getDevice("peer")!!.tlsPin)
     }
 
     @Test
@@ -179,5 +240,41 @@ class TlsPinAnnouncementTest {
         val tomb = dao.devices["peer"]
         assertEquals("", tomb?.tlsPin.orEmpty())
         assertEquals("", tomb?.tlsPinAlt.orEmpty())
+    }
+
+    @Test
+    fun theClusterKeyTravelsInAnAuthenticatedAnnouncementAndIsAdopted() = runBlocking {
+        var stored = ""
+        ClusterRecordKeys.read = { stored }
+        ClusterRecordKeys.write = { stored = it }
+        ClusterRecordKeys.forgetForTests()
+        try {
+            repo.adoptFromPairing(peer())
+            val theirs = ClusterRecordKey.generate(3)
+            val payload = """{"pin":"$pinB","tlsPort":9443,"issuedAtEpochMs":$now,"clusterKey":${kotlinx.serialization.json.JsonPrimitive(theirs.toJson())}}"""
+            val sealed = FakeCrypto("peer-key").encrypt(payload.encodeToByteArray(), "peer", "me", "my-key")
+            accept(TlsPinAnnouncement("peer", "peer-key", sealed))
+            assertEquals(theirs.id, ClusterRecordKeys.current()!!.id)
+        } finally {
+            ClusterRecordKeys.forgetForTests()
+        }
+    }
+
+    @Test
+    fun aClusterKeyFromAnUnauthenticatedSenderIsIgnored() = runBlocking {
+        var stored = ""
+        ClusterRecordKeys.read = { stored }
+        ClusterRecordKeys.write = { stored = it }
+        ClusterRecordKeys.forgetForTests()
+        try {
+            repo.adoptFromPairing(peer(key = "peer-key"))
+            val theirs = ClusterRecordKey.generate(3)
+            val payload = """{"pin":"$pinB","tlsPort":9443,"issuedAtEpochMs":$now,"clusterKey":${kotlinx.serialization.json.JsonPrimitive(theirs.toJson())}}"""
+            val sealed = FakeCrypto("attacker-key").encrypt(payload.encodeToByteArray(), "peer", "me", "my-key")
+            accept(TlsPinAnnouncement("peer", "attacker-key", sealed))
+            assertNull(ClusterRecordKeys.current())
+        } finally {
+            ClusterRecordKeys.forgetForTests()
+        }
     }
 }

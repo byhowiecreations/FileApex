@@ -8,12 +8,18 @@ object BulletinContentType {
     const val IMAGE_PREVIEW = 2
     const val FILE_METADATA = 3
     const val BATTERY_LOW = 4
+    /** A checklist: the content is its title, the lines live in `checklist_items`. */
+    const val CHECKLIST = 5
 }
 
 object BulletinPayloadType {
     const val MESSAGE = 0
     const val TOMBSTONE = 1
     const val RETRACT_BY_KIND = 3
+    /** A flag change (Locked). Builds before 0.19.8 ignore the type and never acknowledge it. */
+    const val FLAG = 4
+    /** One line of a checklist; ignored by builds before 0.19.8. */
+    const val CHECKLIST_ITEM = 5
 }
 
 object BulletinBoardPolicy {

@@ -27,7 +27,9 @@ data class CloudDeviceRecord(
     val hardwareFingerprint: Map<String, String> = emptyMap(),
     /** Publisher's own [com.fileapex.domain.peer.ClusterClock] membership stamp; 0 on older builds. */
     val membershipVersion: Long = 0L,
-    val membershipProtocol: Int = 0
+    val membershipProtocol: Int = 0,
+    /** Name and address sealed with the cluster key (see CloudRecordSeal); empty when this device has no key. */
+    val sealed: Map<String, String> = emptyMap()
 )
 
 /**
@@ -46,7 +48,8 @@ data class CloudDevicePresence(
     val updatedAtEpochMs: Long,
     val hardwareFingerprint: Map<String, String> = emptyMap(),
     val membershipVersion: Long = 0L,
-    val membershipProtocol: Int = 0
+    val membershipProtocol: Int = 0,
+    val sealed: Map<String, String> = emptyMap()
 )
 
 data class GoogleAuthSession(

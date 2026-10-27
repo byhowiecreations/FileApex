@@ -179,22 +179,13 @@ internal fun NotesScope.NotesTopBar() {
                             }
                         )
                     }
-                    if (hasPinned) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringRes("filter_pinned"),
-                                    fontWeight = if (activeFilter == BulletinFilter.Pinned) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            trailingIcon = if (activeFilter == BulletinFilter.Pinned) {
-                                { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
-                            } else null,
-                            onClick = {
-                                viewModel.setFilter(BulletinFilter.Pinned)
-                                filterMenuExpanded = false
-                            }
-                        )
+                    if (hasPinned) FilterMenuItem("filter_pinned", activeFilter == BulletinFilter.Pinned, checkTint) {
+                        viewModel.setFilter(BulletinFilter.Pinned)
+                        filterMenuExpanded = false
+                    }
+                    if (hasTodo) FilterMenuItem("filter_todo", activeFilter == BulletinFilter.Todo, checkTint) {
+                        viewModel.setFilter(BulletinFilter.Todo)
+                        filterMenuExpanded = false
                     }
                     if (availableTags.isNotEmpty()) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -222,4 +213,15 @@ internal fun NotesScope.NotesTopBar() {
             }
         }
     } }
+}
+
+@Composable
+private fun FilterMenuItem(labelKey: String, selected: Boolean, checkTint: Color, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(text = stringRes(labelKey), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
+        trailingIcon = if (selected) {
+            { Icon(Icons.Filled.Check, contentDescription = null, tint = checkTint) }
+        } else null,
+        onClick = onClick
+    )
 }

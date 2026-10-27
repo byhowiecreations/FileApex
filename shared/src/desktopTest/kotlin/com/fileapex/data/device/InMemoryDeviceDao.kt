@@ -10,18 +10,16 @@ class InMemoryDeviceDao : DeviceDao {
     val devices = mutableMapOf<String, PairedDeviceEntity>()
     val removed = mutableMapOf<String, RemovedDeviceEntity>()
 
-    override fun getAllDevices(): Flow<List<PairedDeviceEntity>> = emptyFlow()
-    override suspend fun getAllDevicesOnce() = devices.values.filter { !it.isRemoved }.toList()
+    override fun getAllDevicesUnordered(): Flow<List<PairedDeviceEntity>> = emptyFlow()
+    override suspend fun getAllDevicesOnceUnordered() = devices.values.filter { !it.isRemoved }.toList()
     override suspend fun getDevice(deviceId: String) = devices[deviceId]
     override suspend fun getTombstonedDevices() = devices.values.filter { it.isRemoved }.toList()
-    override suspend fun getAllDevicesIncludingTombstones() = devices.values.toList()
+    override suspend fun getAllDevicesIncludingTombstonesUnordered() = devices.values.toList()
     override suspend fun upsertDevice(device: PairedDeviceEntity) { devices[device.deviceId] = device }
     override suspend fun deleteDevice(deviceId: String) { devices.remove(deviceId) }
     override suspend fun deleteAllDevices() = devices.clear()
     override suspend fun insertRemovedDevice(device: RemovedDeviceEntity) { removed[device.deviceId] = device }
     override suspend fun countRemovedById(deviceId: String) = if (removed.containsKey(deviceId)) 1 else 0
-    override suspend fun countRemovedByPublicKeyHash(publicKeyHash: String) =
-        if (removed.values.any { it.publicKeyHash == publicKeyHash && publicKeyHash.isNotEmpty() }) 1 else 0
     override suspend fun clearRemovedDevice(deviceId: String) { removed.remove(deviceId) }
     override suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String) {
         removed.values.removeAll { it.publicKeyHash == publicKeyHash }

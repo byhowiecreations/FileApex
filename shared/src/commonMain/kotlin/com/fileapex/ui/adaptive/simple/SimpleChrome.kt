@@ -226,7 +226,7 @@ internal fun SimpleTopBar(
                 tint = tint
             )
         }
-        Spacer(modifier = Modifier.weight(1f))
+        Box(modifier = Modifier.weight(1f)) { onOpenNotes?.let { com.fileapex.ui.adaptive.HeaderAlertTicker(it) } }
         val liveStats by TransferActivityGuard.statsFlow.collectAsState()
         if (liveStats.isActive) {
             Row(

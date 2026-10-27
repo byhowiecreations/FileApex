@@ -2,5 +2,7 @@ package com.fileapex.platform
 
 expect fun openLocalFile(absolutePath: String, displayName: String = "")
 
-/** Shows [absolutePath] selected in the system file manager (Android: the Downloads app). */
-expect fun revealInFolder(absolutePath: String)
+/** Opens the folder that holds [absolutePath] in this app's own file screen. */
+fun revealInFolder(absolutePath: String) {
+    com.fileapex.presentation.LocalExplorerNavigation.showFile(absolutePath)
+}

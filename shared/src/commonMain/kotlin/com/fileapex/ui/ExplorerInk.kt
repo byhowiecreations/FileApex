@@ -11,6 +11,7 @@ import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.traits
+import com.fileapex.ui.theme.CarouselPalette
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.KineticStyleLook
@@ -55,6 +56,25 @@ internal fun explorerInk(): ExplorerInk {
             gridCorner = 16.dp,
             selectionBar = KineticStyleLook.jadedSelectionBar,
             jadedGlyphs = true,
+            styledKinetic = true
+        )
+    }
+    if (theme == AppTheme.CAROUSEL) {
+        return ExplorerInk(
+            title = Color(0xFFE8E8E8),
+            muted = CarouselPalette.textMuted,
+            accent = CarouselPalette.accent,
+            folderTint = CarouselPalette.accent,
+            paneSelected = CarouselPalette.accent.copy(alpha = 0.12f),
+            listSelected = CarouselPalette.accent.copy(alpha = 0.10f),
+            listIdle = Color.Transparent,
+            divider = Color.White.copy(alpha = 0.10f),
+            paneBackground = Color.White.copy(alpha = 0.05f),
+            gridFill = { selected -> if (selected) CarouselPalette.accent.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.07f) },
+            gridBorder = { selected -> BorderStroke(1.dp, if (selected) CarouselPalette.accent else Color.White.copy(alpha = 0.16f)) },
+            gridCorner = 20.dp,
+            selectionBar = null,
+            jadedGlyphs = false,
             styledKinetic = true
         )
     }

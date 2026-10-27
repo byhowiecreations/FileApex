@@ -9,6 +9,13 @@ import org.junit.Test
 class BulletinApkUpdatePolicyTest {
 
     @Test
+    fun browsingOrPickingAPackageDoesNotInstallIt() {
+        assertFalse(BulletinApkUpdatePolicy.installsWhenOpening("FileApex-v0.19.7.apk", receivedFromPeer = false))
+        assertTrue(BulletinApkUpdatePolicy.installsWhenOpening("FileApex-v0.19.7.apk", receivedFromPeer = true))
+        assertFalse(BulletinApkUpdatePolicy.installsWhenOpening("notes.txt", receivedFromPeer = true))
+    }
+
+    @Test
     fun matchesValidFileApexApkPattern() {
         assertTrue(BulletinApkUpdatePolicy.matchesAutoUpdateApk("FileApex-v0.9.8a.apk"))
         assertTrue(BulletinApkUpdatePolicy.matchesAutoUpdateApk("FileApex-v1.0.0.apk"))

@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -50,12 +51,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.fileapex.data.settings.LocalThemeIconStyle
+import com.fileapex.friends.FriendsHub
+import com.fileapex.friends.ui.friendFiles
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.deviceIconFillsOrb
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun FreestyleScope.FreestyleFilesWindow() {
@@ -66,14 +70,17 @@ internal fun FreestyleScope.FreestyleFilesWindow() {
             val minHeightDp = 340.dp
             val maxWidthDp = (maxWidth - 32.dp).coerceAtLeast(minWidthDp)
             val maxHeightDp = (maxHeight - 32.dp).coerceAtLeast(minHeightDp)
-
-            val currentWindowWidthPx = with(density) { windowWidthDp.toPx() }
-            val currentWindowHeightPx = with(density) { windowHeightDp.toPx() }
+            val roomWidthPx = (widthPx - marginPx * 2f).coerceAtLeast(1f)
+            val roomHeightPx = (heightPx - topMarginPx - bottomMarginPx).coerceAtLeast(1f)
+            val fittedWidthPx = fittedPanelPx(with(density) { windowWidthDp.toPx() }, roomWidthPx, with(density) { minWidthDp.toPx() })
+            val fittedHeightPx = fittedPanelPx(with(density) { windowHeightDp.toPx() }, roomHeightPx, with(density) { minHeightDp.toPx() })
+            val fittedWidthDp = with(density) { fittedWidthPx.toDp() }
+            val fittedHeightDp = with(density) { fittedHeightPx.toDp() }
 
             Surface(
                 modifier = Modifier
                     .offset { IntOffset(windowOffsetPx.x.roundToInt(), windowOffsetPx.y.roundToInt()) }
-                    .size(width = windowWidthDp, height = windowHeightDp)
+                    .size(width = fittedWidthDp, height = fittedHeightDp)
                     .zIndex(150f)
                     .shadow(24.dp, RoundedCornerShape(18.dp))
                     .border(BorderStroke(1.5.dp, Color(0xFF64B5F6).copy(alpha = 0.85f)), RoundedCornerShape(18.dp)),
@@ -82,7 +89,7 @@ internal fun FreestyleScope.FreestyleFilesWindow() {
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        FreestyleFilesWindowTitleBar(currentWindowWidthPx, currentWindowHeightPx)
+                        FreestyleFilesWindowTitleBar(fittedWidthPx, fittedHeightPx)
 
                         FreestyleFilesWindowBody(this@FreestyleFilesWindow)
                     }
@@ -129,10 +136,16 @@ internal fun FreestyleScope.FreestyleFilesWindowTitleBar(currentWindowWidthPx: F
                 .pointerInput(widthPx, heightPx, currentWindowWidthPx, currentWindowHeightPx) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val nextX = (windowOffsetPx.x + dragAmount.x)
-                            .coerceIn(marginPx, widthPx - marginPx - currentWindowWidthPx)
-                        val nextY = (windowOffsetPx.y + dragAmount.y)
-                            .coerceIn(topMarginPx, heightPx - bottomMarginPx - currentWindowHeightPx)
+                        val nextX = clampPanelOffset(
+                            windowOffsetPx.x + dragAmount.x,
+                            marginPx,
+                            widthPx - marginPx - currentWindowWidthPx
+                        )
+                        val nextY = clampPanelOffset(
+                            windowOffsetPx.y + dragAmount.y,
+                            topMarginPx,
+                            heightPx - bottomMarginPx - currentWindowHeightPx
+                        )
                         windowOffsetPx = Offset(nextX, nextY)
                     }
                 }
@@ -141,7 +154,7 @@ internal fun FreestyleScope.FreestyleFilesWindowTitleBar(currentWindowWidthPx: F
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (browsingTarget != null || isResolvingBrowse) {
+                if (sendingToFriend == null && (browsingTarget != null || isResolvingBrowse)) {
                     IconButton(
                         onClick = {
                             browsingTarget = null
@@ -167,7 +180,9 @@ internal fun FreestyleScope.FreestyleFilesWindowTitleBar(currentWindowWidthPx: F
                     Spacer(modifier = Modifier.width(8.dp))
                 }
 
-                val title = if (isResolvingBrowse) {
+                val title = if (sendingToFriend != null) {
+                    "${stringRes("friends_send_file")}: ${sendingToFriend?.name}"
+                } else if (isResolvingBrowse) {
                     "Connecting to ${resolvingDeviceName ?: "Device"}..."
                 } else if (browsingTarget != null) {
                     if (browsingTarget is BrowseTarget.Local) stringRes("local_files")
@@ -197,6 +212,7 @@ internal fun FreestyleScope.FreestyleFilesWindowTitleBar(currentWindowWidthPx: F
                         showFilesWindow = false
                         browsingTarget = null
                         isResolvingBrowse = false
+                        sendingToFriend = null
                     },
                     modifier = Modifier.size(28.dp)
                 ) {
@@ -244,14 +260,7 @@ internal fun ColumnScope.FreestyleFilesWindowBody(scope: FreestyleScope) {
                 }
             }
         } else if (browsingTarget != null) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                FileExplorerScreen(
-                    target = browsingTarget!!,
-                    onBack = { browsingTarget = null },
-                    embeddedInCompactShell = true,
-                    titleOverride = if (browsingTarget is BrowseTarget.Local) stringRes("local_files") else null
-                )
-            }
+            FreestyleWindowExplorer(scope)
         } else {
             Column(
                 modifier = Modifier
@@ -324,7 +333,8 @@ internal fun ColumnScope.FreestyleFilesWindowBody(scope: FreestyleScope) {
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                if (deviceRows.isEmpty()) {
+                val remoteRows = deviceRows.filter { browsesRemoteFolder(it.deviceId) }
+                if (remoteRows.isEmpty()) {
                     Text(
                         text = "No paired remote devices found",
                         style = MaterialTheme.typography.bodySmall,
@@ -336,7 +346,7 @@ internal fun ColumnScope.FreestyleFilesWindowBody(scope: FreestyleScope) {
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        deviceRows.forEach { row ->
+                        remoteRows.forEach { row ->
                             val statusColor = if (row.online) Color(0xFF00E676) else Color(0xFFFFB300)
                             Surface(
                                 modifier = Modifier
@@ -402,4 +412,33 @@ internal fun ColumnScope.FreestyleFilesWindowBody(scope: FreestyleScope) {
             }
         }
     } } } } }
+}
+
+/** The file screen inside the window: a remote or local folder to browse, or this device's files to pick for a friend. */
+@Composable
+private fun ColumnScope.FreestyleWindowExplorer(scope: FreestyleScope) {
+    with(scope) { with(live) {
+            val friend = sendingToFriend
+            val sendScope = rememberCoroutineScope()
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                FileExplorerScreen(
+                    target = browsingTarget!!,
+                    onBack = { browsingTarget = null; sendingToFriend = null; showFilesWindow = false },
+                    embeddedInCompactShell = true,
+                    titleOverride = if (browsingTarget is BrowseTarget.Local) stringRes("local_files") else null,
+                    hostSplit = friend == null,
+                    viewModelKey = if (friend == null) browsingTarget!!.deviceId else "friend-file-pick",
+                    onPickFiles = friend?.let { target ->
+                        { paths ->
+                            friendFiles(paths).takeIf { it.isNotEmpty() }?.let { files ->
+                                sendScope.launch { FriendsHub.enqueueSend(target.key, files) }
+                            }
+                            sendingToFriend = null
+                            browsingTarget = null
+                            showFilesWindow = false
+                        }
+                    }
+                )
+            }
+    } }
 }

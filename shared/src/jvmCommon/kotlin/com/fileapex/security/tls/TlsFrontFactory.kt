@@ -30,6 +30,7 @@ object TlsFrontFactory {
             return null
         }
         LocalTlsInfo.pin = identity.pin
+        LocalTlsInfo.rotation = store.currentRotationProof(identity)?.let(TlsRotation::encode).orEmpty()
         val repository = FileApexServices.deviceRepository
         val directory = RosterTlsPeerDirectory { runBlocking { repository.listDevices() } }
         directory.refresh()

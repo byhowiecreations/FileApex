@@ -109,7 +109,7 @@ object GoogleLinkCoordinator {
         if (uid.isBlank()) return
         cancellableCatching {
             val next = buildSelfPresence()
-            CloudAuthBackend.patchDevicePresence(uid, next)
+            CloudAuthBackend.patchDevicePresence(uid, com.fileapex.cloud.seal.CloudRecordSeal.outgoing(next))
             lastPublishedPresence = next
         }.onFailure { error ->
             println("GoogleLinkCoordinator: scheduled heartbeat failed - ${error.message}")
@@ -291,10 +291,9 @@ object GoogleLinkCoordinator {
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
         val cloudId = resolveCloudDeviceId(deviceId)
+        com.fileapex.cloud.device.DeviceIdentity.announceRemoval(cloudId)
         cancellableCatching { CloudAuthBackend.deleteDevice(uid, cloudId) }
-            .onFailure { error ->
-                println("GoogleLinkCoordinator: cloud remove failed - ${error.message}")
-            }
+            .onFailure { error -> println("GoogleLinkCoordinator: cloud remove failed - ${error.message}") }
     }
 
     /**
@@ -309,13 +308,12 @@ object GoogleLinkCoordinator {
         val trimmed = newName.trim()
         require(trimmed.isNotEmpty()) { AppI18n.t("device_name_empty") }
         val cloudDeviceId = resolveCloudDeviceId(deviceId)
+        val (plainName, sealedName) = com.fileapex.cloud.seal.CloudRecordSeal.forRename(cloudDeviceId, trimmed)
         CloudAuthBackend.patchDeviceName(
             uid = uid,
-            deviceId = cloudDeviceId,
-            deviceName = trimmed,
-            updatedAtEpochMs = TimestampDiagnostics.mutatingNow(
-                "GoogleLinkCoordinator.publishUserRenamedDevice.updatedAtEpochMs"
-            )
+            deviceId = cloudDeviceId, deviceName = plainName,
+            updatedAtEpochMs = TimestampDiagnostics.mutatingNow("GoogleLinkCoordinator.publishUserRenamedDevice.updatedAtEpochMs"),
+            sealed = sealedName
         )
     }
 
@@ -442,6 +440,7 @@ object GoogleLinkCoordinator {
             }.onFailure { error ->
                 println("GoogleLinkCoordinator: clipboard key publish failed - ${error.message}")
             }
+            if (isSessionLive(epoch)) com.fileapex.cloud.device.DeviceIdentity.ensureEnrolled()
         }
 
         scope.launch {
@@ -534,7 +533,7 @@ object GoogleLinkCoordinator {
                 val isStale = record.updatedAtEpochMs > 0L && record.updatedAtEpochMs < staleCutoffMs
                 val keepForLocalRoster = record.deviceId in locallyPairedIds
                 if (isStale && record.deviceId != selfId && !keepForLocalRoster) {
-                    println("GoogleLinkCoordinator: Pruning 14-day stale device doc ${record.deviceId} (${record.deviceName})")
+                    println("GoogleLinkCoordinator: Pruning 14-day stale device doc ${record.deviceId}")
                     CloudAuthBackend.deleteDevice(uid, record.deviceId)
                 } else {
                     activeRecords.add(record)
@@ -572,7 +571,7 @@ object GoogleLinkCoordinator {
                 }.filter { it.deviceId != bestMatch.deviceId }
 
                 for (duplicate in duplicates) {
-                    println("GoogleLinkCoordinator: Deleting duplicate document ${duplicate.deviceId} (${duplicate.deviceName})")
+                    println("GoogleLinkCoordinator: Deleting duplicate document ${duplicate.deviceId}")
                     CloudAuthBackend.deleteDevice(uid, duplicate.deviceId)
                 }
 
@@ -584,7 +583,7 @@ object GoogleLinkCoordinator {
                 val consolidatedRecord = buildSelfRecord().copy(
                     deviceName = bestMatch.deviceName.ifBlank { selfName }
                 )
-                CloudAuthBackend.registerDevice(uid, consolidatedRecord)
+                CloudAuthBackend.registerDevice(uid, com.fileapex.cloud.seal.CloudRecordSeal.outgoing(consolidatedRecord))
                 lastPublishedPresence = buildSelfPresence().copy(
                     updatedAtEpochMs = consolidatedRecord.updatedAtEpochMs
                 )
@@ -621,7 +620,7 @@ object GoogleLinkCoordinator {
 
     private suspend fun registerSelf(uid: String) {
         val record = buildSelfRecord()
-        CloudAuthBackend.registerDevice(uid, record)
+        CloudAuthBackend.registerDevice(uid, com.fileapex.cloud.seal.CloudRecordSeal.outgoing(record))
         lastPublishedPresence = buildSelfPresence().copy(
             updatedAtEpochMs = record.updatedAtEpochMs
         )
@@ -635,7 +634,7 @@ object GoogleLinkCoordinator {
             // No LAN/identity change, skip Firestore write so listeners (and UIs) stay quiet.
             return
         }
-        CloudAuthBackend.patchDevicePresence(uid, next)
+        CloudAuthBackend.patchDevicePresence(uid, com.fileapex.cloud.seal.CloudRecordSeal.outgoing(next))
         lastPublishedPresence = next
     }
 

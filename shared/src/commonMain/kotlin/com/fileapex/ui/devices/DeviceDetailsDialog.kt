@@ -27,17 +27,17 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import com.fileapex.domain.diagnostics.DeviceDiagnosticsFormatter
+import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.i18n.stringRes
+import com.fileapex.iroh.IrohRuntime
 import com.fileapex.presentation.DeviceDetailsState
+import com.fileapex.presentation.DeviceListRow
 
 @Composable
 internal fun DeviceDetailsDialog(
     details: DeviceDetailsState,
     onDismiss: () -> Unit
 ) {
-    val displayPreferences by FileApexServices.settings.deviceDetailsDisplayPreferences
-        .collectAsState(DeviceDetailsDisplayPreferences.defaults())
-
     // Nothing saved and still loading: a message said so and the dialog waits for the answer.
     if (details.loading && details.snapshot == null) return
     AlertDialog(
@@ -49,39 +49,68 @@ internal fun DeviceDetailsDialog(
                 Text(text = details.errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
                 return@AlertDialog
             }
-            val scrollState = rememberScrollState()
-            Column(
-                modifier = Modifier.fillMaxWidth().height(320.dp).verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                details.errorMessage?.let {
-                    Text(text = it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
-                }
-                val updatingLabel = stringRes("device_details_updating")
-                DeviceDiagnosticsFormatter.detailFieldRows(snapshot = snapshot, preferences = displayPreferences)
-                    .forEach { row ->
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = row.label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (details.loading && row.field.changesOverTime) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(10.dp).semantics { contentDescription = updatingLabel },
-                                        strokeWidth = 1.5.dp
-                                    )
-                                }
-                            }
-                            Text(text = row.value, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-            }
+            DeviceDetailsRows(details, snapshot, Modifier.fillMaxWidth().height(320.dp))
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text(stringRes("close")) }
         }
     )
+}
+
+/** The "Reached by" row shared by the Device Details dialog and the Simple theme's Info page. */
+@Composable
+internal fun ReachedByField(deviceId: String) {
+    val reachedVia by FileApexServices.presenceMonitor.reachedVia.collectAsState()
+    val kind = reachedVia[deviceId]
+    Column {
+        Text(
+            text = stringRes("reached_by"),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = kind?.let { DeviceListRow.reachedByDetail(it, IrohRuntime.livePath(deviceId)) }
+                ?: stringRes("reached_unknown"),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+/** The scrollable detail rows, shared by the dialog and the Carousel card back. */
+@Composable
+internal fun DeviceDetailsRows(details: DeviceDetailsState, snapshot: PeerDeviceDiagnostics, modifier: Modifier, bottomInset: androidx.compose.ui.unit.Dp = 0.dp) {
+    val displayPreferences by FileApexServices.settings.deviceDetailsDisplayPreferences
+        .collectAsState(DeviceDetailsDisplayPreferences.defaults())
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = modifier.verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        details.errorMessage?.let {
+            Text(text = it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+        }
+        val updatingLabel = stringRes("device_details_updating")
+        ReachedByField(details.deviceId)
+        DeviceDiagnosticsFormatter.detailFieldRows(snapshot = snapshot, preferences = displayPreferences)
+            .forEach { row ->
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = row.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (details.loading && row.field.changesOverTime) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(10.dp).semantics { contentDescription = updatingLabel },
+                                strokeWidth = 1.5.dp
+                            )
+                        }
+                    }
+                    Text(text = row.value, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        if (bottomInset > 0.dp) Spacer(modifier = Modifier.height(bottomInset))
+    }
 }

@@ -492,8 +492,13 @@ func TestHandshakeRosterAndPairedUpload(t *testing.T) {
 	if err := json.NewDecoder(idResp.Body).Decode(&state); err != nil {
 		t.Fatal(err)
 	}
-	if state.MembershipVersion != 5000 || state.Platform != "linux" {
+	// Plain HTTP carries no pinned certificate, so the reply is the stranger view: membership, but no platform.
+	if state.MembershipVersion != 5000 || state.Platform != "" {
 		t.Fatalf("identity = %+v", state)
+	}
+	// What a peer that presented its pinned certificate learns.
+	if own := node.selfState(); own.Platform != "linux" || own.MembershipVersion != 5000 {
+		t.Fatalf("own identity = %+v", own)
 	}
 }
 
@@ -716,5 +721,15 @@ func TestIdentityDoesNotTellAStrangerWhereTheFolderIs(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if strings.Contains(string(body), node.inboxDir()) || strings.Contains(string(body), "downloadsPath") {
 		t.Fatalf("identity leaked the folder: %s", body)
+	}
+	var seen nodeState
+	if err := json.Unmarshal(body, &seen); err != nil {
+		t.Fatal(err)
+	}
+	if seen.DeviceMake != "" || seen.DeviceModel != "" || seen.Platform != "" || seen.OS != "" || seen.IPAddress != "" {
+		t.Fatalf("identity told a stranger about the device: %+v", seen)
+	}
+	if seen.DeviceID == "" || seen.PublicKey == "" || seen.TLSPin == "" {
+		t.Fatalf("identity dropped what pairing needs: %+v", seen)
 	}
 }

@@ -77,6 +77,9 @@ import com.fileapex.presentation.TransferQueueViewModel
 import com.fileapex.ui.OnboardingScreen
 import com.fileapex.ui.UpdateAvailableSheet
 import com.fileapex.ui.adaptive.AdaptiveWideHome
+import com.fileapex.ui.carousel.CarouselDock
+import com.fileapex.ui.carousel.DockItem
+import com.fileapex.ui.carousel.carouselUnflipOnOutsidePress
 import com.fileapex.ui.adaptive.CompactPrimaryShell
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.ui.adaptive.SimpleDestination
@@ -275,7 +278,13 @@ fun App(
         }
     }
     val desktopUiStyle by desktopUiStyleFlow.collectAsState()
-    val appTheme by FileApexServices.settings.appTheme.collectAsState()
+    val storedTheme by FileApexServices.settings.appTheme.collectAsState()
+    val carouselFallback by FileApexServices.settings.carouselFallbackTheme.collectAsState()
+    val appTheme = com.fileapex.data.settings.CarouselGate.effective(
+        storedTheme,
+        com.fileapex.ui.carousel.rememberCarouselAvailable(),
+        carouselFallback
+    )
     val themeIconStyle by FileApexServices.settings.themeIconStyle.collectAsState()
     val kineticStyle by FileApexServices.settings.kineticStyle.collectAsState()
     val windowsFluent = desktopUiStyle == DesktopUiStyle.WindowsFluent
@@ -310,7 +319,7 @@ fun App(
             } else {
                 null
             }
-            val isWide = when (desktopLayoutMode) {
+            val isWide = appTheme.traits.dockHome || when (desktopLayoutMode) {
                 DesktopLayoutMode.Compact -> false
                 DesktopLayoutMode.Expanded -> true
                 null -> widthClass.isWide
@@ -371,8 +380,11 @@ fun App(
                 if (showKineticWallpaper) {
                     KineticSphereWallpaperBackground(modifier = Modifier.fillMaxSize())
                 }
+                if (!shareOverlay && appTheme == AppTheme.CAROUSEL) {
+                    com.fileapex.ui.carousel.CarouselBackground(hazeState = jadedHazeState)
+                }
 
-                ProvideJadedHaze(if (!shareOverlay && jadedSteel) jadedHazeState else null) {
+                ProvideJadedHaze(if (!shareOverlay && (jadedSteel || appTheme == AppTheme.CAROUSEL)) jadedHazeState else null) {
                 Surface(
                     modifier = Modifier
                         .fillMaxSize()
@@ -440,7 +452,18 @@ fun App(
                     }
                 } else {
                     val localFilesTarget = remember { devicesViewModel.thisDeviceTarget() }
-                    viewModel(key = localFilesTarget.deviceId) { ExplorerViewModel(localFilesTarget) }
+                    val localExplorer = viewModel(key = localFilesTarget.deviceId) { ExplorerViewModel(localFilesTarget) }
+                    LaunchedEffect(Unit) {
+                        com.fileapex.presentation.LocalExplorerNavigation.folder.collect { path ->
+                            if (path.isNullOrBlank()) return@collect
+                            route = AppRoute.Explorer(localFilesTarget)
+                            wideSelectedTarget = localFilesTarget
+                            wideHomeTab = HomeTab.Files
+                            simpleDestination = SimpleDestination.LocalFiles
+                            localExplorer.openPath(path)
+                            com.fileapex.presentation.LocalExplorerNavigation.clear(path)
+                        }
+                    }
                     LaunchedEffect(Unit) {
                         if (!usesDesktopFileSelection()) {
                             onStartShareServer()
@@ -449,285 +472,329 @@ fun App(
                     com.fileapex.ui.UpdateCheckPromptHost()
 
                     // Overlay routes stay full-screen on every size class.
-                    when (val overlay = route) {
-                        AppRoute.GenerateQr -> GenerateQrScreen(onBack = onNavigateHome)
-                        AppRoute.Join -> JoinDeviceScreen(
-                            onBack = onNavigateHome,
-                            viewModel = devicesViewModel
-                        )
-                        is AppRoute.ShareSend -> Unit
-                        AppRoute.TransferQueue -> TransferQueueScreen(
-                            onBack = onNavigateHome,
-                            viewModel = transferQueueViewModel
-                        )
-                        AppRoute.Notes -> NotesScreen(
-                            onBack = onNavigateHome,
-                            focusNoteId = pendingOpenNoteId,
-                            onFocusNoteConsumed = onOpenNoteRequestConsumed
-                        )
-                        else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                            val widthClass = widthSizeClassFor(maxWidth)
-                            val desktopLayoutMode = if (usesDesktopFileSelection()) {
-                                FileApexServices.settings.desktopLayoutMode.collectAsState().value
-                            } else {
-                                null
-                            }
-                            val isWide = when (desktopLayoutMode) {
-                                DesktopLayoutMode.Compact -> false
-                                DesktopLayoutMode.Expanded -> true
-                                null -> widthClass.isWide
-                            }
+                    val hasDock = appTheme.traits.dockHome
+                    val bulletinTracker by FileApexServices.bulletinUnread.collectAsState()
+                    val dockUnread by remember(bulletinTracker) { bulletinTracker?.unread ?: MutableStateFlow(0) }.collectAsState()
+                    Box(modifier = Modifier.fillMaxSize().then(if (hasDock) Modifier.carouselUnflipOnOutsidePress() else Modifier)) {
+                    Box(modifier = Modifier.fillMaxSize().padding(bottom = if (hasDock) 84.dp else 0.dp)) {
+                        when (val overlay = route) {
+                            AppRoute.GenerateQr -> GenerateQrScreen(onBack = onNavigateHome)
+                            AppRoute.Join -> JoinDeviceScreen(
+                                onBack = onNavigateHome,
+                                viewModel = devicesViewModel
+                            )
+                            is AppRoute.ShareSend -> Unit
+                            AppRoute.TransferQueue -> TransferQueueScreen(
+                                onBack = onNavigateHome,
+                                viewModel = transferQueueViewModel
+                            )
+                            AppRoute.Notes -> NotesScreen(
+                                onBack = onNavigateHome,
+                                focusNoteId = pendingOpenNoteId,
+                                onFocusNoteConsumed = onOpenNoteRequestConsumed
+                            )
+                            else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val widthClass = widthSizeClassFor(maxWidth)
+                                val desktopLayoutMode = if (usesDesktopFileSelection()) {
+                                    FileApexServices.settings.desktopLayoutMode.collectAsState().value
+                                } else {
+                                    null
+                                }
+                                val isWide = appTheme.traits.dockHome || when (desktopLayoutMode) {
+                                    DesktopLayoutMode.Compact -> false
+                                    DesktopLayoutMode.Expanded -> true
+                                    null -> widthClass.isWide
+                                }
 
-                            if (appTheme == AppTheme.SIMPLE) {
-                                // Overlay routes return to Devices; anything that asked for a browser or Settings maps onto Simple's own screens.
-                                LaunchedEffect(route) {
-                                    when (val requested = route) {
-                                        is AppRoute.Explorer -> {
-                                            val target = requested.target
-                                            if (target is BrowseTarget.Local) {
-                                                simpleDestination = SimpleDestination.LocalFiles
+                                if (appTheme == AppTheme.SIMPLE) {
+                                    // Overlay routes return to Devices; anything that asked for a browser or Settings maps onto Simple's own screens.
+                                    LaunchedEffect(route) {
+                                        when (val requested = route) {
+                                            is AppRoute.Explorer -> {
+                                                val target = requested.target
+                                                if (target is BrowseTarget.Local) {
+                                                    simpleDestination = SimpleDestination.LocalFiles
+                                                } else {
+                                                    FileApexServices.settings.setSimpleActiveDeviceId(target.deviceId)
+                                                    simpleDestination = SimpleDestination.Browse
+                                                }
+                                                route = AppRoute.Devices
+                                            }
+                                            AppRoute.Settings -> {
+                                                simpleDestination = SimpleDestination.Settings
+                                                route = AppRoute.Devices
+                                            }
+                                            else -> Unit
+                                        }
+                                    }
+                                    SimpleHome(
+                                        destination = simpleDestination,
+                                        onDestinationChange = { simpleDestination = it },
+                                        isWide = isWide,
+                                        devicesViewModel = devicesViewModel,
+                                        hasStoragePermission = hasStoragePermission,
+                                        onRequestStoragePermission = onRequestStoragePermission,
+                                        onGenerateQr = {
+                                            onStartShareServer()
+                                            route = AppRoute.GenerateQr
+                                        },
+                                        onJoinDevice = {
+                                            onStartShareServer()
+                                            route = AppRoute.Join
+                                        },
+                                        onExitApp = exitFileApex,
+                                        onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                        onOpenNotes = { route = AppRoute.Notes },
+                                        settingsDeepLink = settingsDeepLink,
+                                        onSettingsDeepLinkChange = { settingsDeepLink = it },
+                                        settingsContent = { deepLink, onDeepLinkConsumed ->
+                                            SettingsScreen(
+                                                appVersionName = appVersionName,
+                                                onBack = { simpleDestination = SimpleDestination.Home },
+                                                showRootBackNavigation = false,
+                                                layoutMode = SettingsScreenLayoutMode.ListPane,
+                                                backgroundPersistence = backgroundPersistence,
+                                                onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                                onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
+                                                onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
+                                                onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
+                                                exactAlarmWarningActive = exactAlarmWarningActive,
+                                                onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                                                onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                                onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
+                                                onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                                onboardingSteps = onboardingSteps,
+                                                deniedOnboardingStepIds = deniedOnboardingStepIds,
+                                                onGrantOnboardingStep = onGrantOnboardingStep,
+                                                onExitApp = exitFileApex,
+                                                deepLink = deepLink,
+                                                onDeepLinkConsumed = onDeepLinkConsumed
+                                            )
+                                        }
+                                    )
+                                } else {
+                                SideEffect {
+                                    if (isWide) tabWhileWide = wideHomeTab
+                                }
+                                val compactRoute = if (!isWide && previouslyWide) {
+                                    when (tabWhileWide) {
+                                        HomeTab.Settings -> AppRoute.Settings
+                                        HomeTab.Files -> AppRoute.Explorer(
+                                            (wideSelectedTarget as? BrowseTarget.Local)
+                                                ?: devicesViewModel.thisDeviceTarget()
+                                        )
+                                        HomeTab.Devices -> wideSelectedTarget?.let { AppRoute.Explorer(it) }
+                                            ?: AppRoute.Devices
+                                    }
+                                } else {
+                                    route
+                                }
+                                val routeTarget = (route as? AppRoute.Explorer)?.target
+                                val wideTab = when {
+                                    route is AppRoute.Settings -> HomeTab.Settings
+                                    routeTarget is BrowseTarget.Local -> HomeTab.Files
+                                    routeTarget != null -> HomeTab.Devices
+                                    else -> wideHomeTab
+                                }
+                                val wideTarget = when {
+                                    routeTarget != null -> routeTarget
+                                    wideTab != HomeTab.Files && wideSelectedTarget is BrowseTarget.Local -> null
+                                    else -> wideSelectedTarget
+                                }
+
+                                // Fold / unfold synchronization with the selected detail target.
+                                // previouslyWide is updated before route writes so a restart of this
+                                // effect cannot treat the new route as another collapse.
+                                val splitSession = viewModel { ExplorerSplitSession() }
+
+                                LaunchedEffect(isWide, wideSelectedTarget, route) {
+                                    val wasWide = previouslyWide
+                                    previouslyWide = isWide
+                                    when {
+                                        !isWide && wasWide -> {
+                                            val next = when (tabWhileWide) {
+                                                HomeTab.Settings -> AppRoute.Settings
+                                                HomeTab.Files -> AppRoute.Explorer(
+                                                    (wideSelectedTarget as? BrowseTarget.Local)
+                                                        ?: devicesViewModel.thisDeviceTarget()
+                                                )
+                                                HomeTab.Devices -> wideSelectedTarget?.let { AppRoute.Explorer(it) }
+                                                    ?: AppRoute.Devices
+                                            }
+                                            if (route != next) route = next
+                                        }
+                                        isWide && route is AppRoute.Explorer -> {
+                                            val explorerRoute = route as AppRoute.Explorer
+                                            wideSelectedTarget = explorerRoute.target
+                                            wideHomeTab = if (explorerRoute.target is BrowseTarget.Local) {
+                                                HomeTab.Files
                                             } else {
-                                                FileApexServices.settings.setSimpleActiveDeviceId(target.deviceId)
-                                                simpleDestination = SimpleDestination.Browse
+                                                HomeTab.Devices
                                             }
                                             route = AppRoute.Devices
                                         }
-                                        AppRoute.Settings -> {
-                                            simpleDestination = SimpleDestination.Settings
+                                        isWide && route is AppRoute.Settings -> {
+                                            wideHomeTab = HomeTab.Settings
                                             route = AppRoute.Devices
                                         }
-                                        else -> Unit
+                                        isWide && wideHomeTab != HomeTab.Files &&
+                                            wideSelectedTarget is BrowseTarget.Local -> {
+                                            wideSelectedTarget = null
+                                        }
                                     }
                                 }
-                                SimpleHome(
-                                    destination = simpleDestination,
-                                    onDestinationChange = { simpleDestination = it },
-                                    isWide = isWide,
-                                    devicesViewModel = devicesViewModel,
-                                    hasStoragePermission = hasStoragePermission,
-                                    onRequestStoragePermission = onRequestStoragePermission,
-                                    onGenerateQr = {
-                                        onStartShareServer()
-                                        route = AppRoute.GenerateQr
-                                    },
-                                    onJoinDevice = {
-                                        onStartShareServer()
-                                        route = AppRoute.Join
-                                    },
-                                    onExitApp = exitFileApex,
-                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                    onOpenNotes = { route = AppRoute.Notes },
-                                    settingsDeepLink = settingsDeepLink,
-                                    onSettingsDeepLinkChange = { settingsDeepLink = it },
-                                    settingsContent = { deepLink, onDeepLinkConsumed ->
-                                        SettingsScreen(
-                                            appVersionName = appVersionName,
-                                            onBack = { simpleDestination = SimpleDestination.Home },
-                                            showRootBackNavigation = false,
-                                            layoutMode = SettingsScreenLayoutMode.ListPane,
-                                            backgroundPersistence = backgroundPersistence,
-                                            onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-                                            onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
-                                            onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-                                            onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
-                                            exactAlarmWarningActive = exactAlarmWarningActive,
-                                            onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                                            onOpenAppDetailsSettings = onOpenAppDetailsSettings,
-                                            onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                                            onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                            onboardingSteps = onboardingSteps,
-                                            deniedOnboardingStepIds = deniedOnboardingStepIds,
-                                            onGrantOnboardingStep = onGrantOnboardingStep,
-                                            onExitApp = exitFileApex,
-                                            deepLink = deepLink,
-                                            onDeepLinkConsumed = onDeepLinkConsumed
-                                        )
-                                    }
-                                )
-                            } else {
-                            SideEffect {
-                                if (isWide) tabWhileWide = wideHomeTab
-                            }
-                            val compactRoute = if (!isWide && previouslyWide) {
-                                when (tabWhileWide) {
-                                    HomeTab.Settings -> AppRoute.Settings
-                                    HomeTab.Files -> AppRoute.Explorer(
-                                        (wideSelectedTarget as? BrowseTarget.Local)
-                                            ?: devicesViewModel.thisDeviceTarget()
-                                    )
-                                    HomeTab.Devices -> wideSelectedTarget?.let { AppRoute.Explorer(it) }
-                                        ?: AppRoute.Devices
-                                }
-                            } else {
-                                route
-                            }
-                            val routeTarget = (route as? AppRoute.Explorer)?.target
-                            val wideTab = when {
-                                route is AppRoute.Settings -> HomeTab.Settings
-                                routeTarget is BrowseTarget.Local -> HomeTab.Files
-                                routeTarget != null -> HomeTab.Devices
-                                else -> wideHomeTab
-                            }
-                            val wideTarget = when {
-                                routeTarget != null -> routeTarget
-                                wideTab != HomeTab.Files && wideSelectedTarget is BrowseTarget.Local -> null
-                                else -> wideSelectedTarget
-                            }
 
-                            // Fold / unfold synchronization with the selected detail target.
-                            // previouslyWide is updated before route writes so a restart of this
-                            // effect cannot treat the new route as another collapse.
-                            val splitSession = viewModel { ExplorerSplitSession() }
-
-                            LaunchedEffect(isWide, wideSelectedTarget, route) {
-                                val wasWide = previouslyWide
-                                previouslyWide = isWide
-                                when {
-                                    !isWide && wasWide -> {
-                                        val next = when (tabWhileWide) {
-                                            HomeTab.Settings -> AppRoute.Settings
-                                            HomeTab.Files -> AppRoute.Explorer(
-                                                (wideSelectedTarget as? BrowseTarget.Local)
-                                                    ?: devicesViewModel.thisDeviceTarget()
+                                if (isWide) {
+                                    AdaptiveWideHome(
+                                        selectedTab = wideTab,
+                                        onSelectTab = { wideHomeTab = it },
+                                        selectedTarget = wideTarget,
+                                        selectedDeviceId = wideTarget?.deviceId,
+                                        onSelectDevice = { target ->
+                                            wideSelectedTarget = target
+                                            wideHomeTab = HomeTab.Devices
+                                        },
+                                        onOpenLocalFiles = {
+                                            if (!hasStoragePermission) {
+                                                 onRequestStoragePermission()
+                                            } else {
+                                                 wideSelectedTarget = devicesViewModel.thisDeviceTarget()
+                                                 wideHomeTab = HomeTab.Files
+                                            }
+                                        },
+                                        devicesViewMode = devicesViewMode,
+                                        onToggleDevicesViewMode = {
+                                            FileApexServices.settings.setDevicesViewMode(
+                                                devicesViewMode.toggled()
                                             )
-                                            HomeTab.Devices -> wideSelectedTarget?.let { AppRoute.Explorer(it) }
-                                                ?: AppRoute.Devices
-                                        }
-                                        if (route != next) route = next
-                                    }
-                                    isWide && route is AppRoute.Explorer -> {
-                                        val explorerRoute = route as AppRoute.Explorer
-                                        wideSelectedTarget = explorerRoute.target
-                                        wideHomeTab = if (explorerRoute.target is BrowseTarget.Local) {
-                                            HomeTab.Files
-                                        } else {
-                                            HomeTab.Devices
-                                        }
-                                        route = AppRoute.Devices
-                                    }
-                                    isWide && route is AppRoute.Settings -> {
-                                        wideHomeTab = HomeTab.Settings
-                                        route = AppRoute.Devices
-                                    }
-                                    isWide && wideHomeTab != HomeTab.Files &&
-                                        wideSelectedTarget is BrowseTarget.Local -> {
-                                        wideSelectedTarget = null
-                                    }
+                                        },
+                                        explorerViewMode = explorerViewMode,
+                                        onToggleExplorerViewMode = {
+                                            FileApexServices.settings.setExplorerViewMode(
+                                                explorerViewMode.cycled()
+                                            )
+                                        },
+                                        onGenerateQr = {
+                                            onStartShareServer()
+                                            route = AppRoute.GenerateQr
+                                        },
+                                        onJoinDevice = {
+                                            onStartShareServer()
+                                            route = AppRoute.Join
+                                        },
+                                        onExitApp = exitFileApex,
+                                        onClearDetail = {
+                                            wideSelectedTarget?.deviceId?.let {
+                                                DeviceSessionManager.clearSession(it)
+                                            }
+                                            wideSelectedTarget = null
+                                            wideHomeTab = HomeTab.Devices
+                                        },
+                                        appVersionName = appVersionName,
+                                        devicesViewModel = devicesViewModel,
+                                        splitSession = splitSession,
+                                        backgroundPersistence = backgroundPersistence,
+                                        onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                        onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
+                                        onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
+                                        onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
+                                        exactAlarmWarningActive = exactAlarmWarningActive,
+                                        onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                                        onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                        onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
+                                        onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                        onOpenNotes = { route = AppRoute.Notes },
+                                        onboardingSteps = onboardingSteps,
+                                        deniedOnboardingStepIds = deniedOnboardingStepIds,
+                                        onGrantOnboardingStep = onGrantOnboardingStep,
+                                        settingsDeepLink = settingsDeepLink,
+                                        onSettingsDeepLinkConsumed = { settingsDeepLink = null }
+                                    )
+                                } else {
+                                    CompactHomeContent(
+                                        route = compactRoute,
+                                        devicesViewModel = devicesViewModel,
+                                        splitSession = splitSession,
+                                        appVersionName = appVersionName,
+                                        onOpenDevice = { route = AppRoute.Explorer(it) },
+                                        onOpenLocalFiles = {
+                                            if (!hasStoragePermission) {
+                                                onRequestStoragePermission()
+                                            } else {
+                                                route = AppRoute.Explorer(devicesViewModel.thisDeviceTarget())
+                                            }
+                                        },
+                                        onGenerateQr = {
+                                            onStartShareServer()
+                                            route = AppRoute.GenerateQr
+                                        },
+                                        onJoinDevice = {
+                                            onStartShareServer()
+                                            route = AppRoute.Join
+                                        },
+                                        onOpenSettings = { route = AppRoute.Settings },
+                                        onNavigateHome = onNavigateHome,
+                                        onExitApp = exitFileApex,
+                                        backgroundPersistence = backgroundPersistence,
+                                        onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
+                                        onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
+                                        onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
+                                        onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
+                                        exactAlarmWarningActive = exactAlarmWarningActive,
+                                        onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                                        onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+                                        onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
+                                        onOpenTransferQueue = { route = AppRoute.TransferQueue },
+                                        onOpenNotes = { route = AppRoute.Notes },
+                                        onboardingSteps = onboardingSteps,
+                                        deniedOnboardingStepIds = deniedOnboardingStepIds,
+                                        onGrantOnboardingStep = onGrantOnboardingStep,
+                                        settingsDeepLink = settingsDeepLink,
+                                        onSettingsDeepLinkConsumed = { settingsDeepLink = null }
+                                    )
                                 }
+                                }
+                                KineticDropFxLayer()
                             }
-
-                            if (isWide) {
-                                AdaptiveWideHome(
-                                    selectedTab = wideTab,
-                                    onSelectTab = { wideHomeTab = it },
-                                    selectedTarget = wideTarget,
-                                    selectedDeviceId = wideTarget?.deviceId,
-                                    onSelectDevice = { target ->
-                                        wideSelectedTarget = target
-                                        wideHomeTab = HomeTab.Devices
-                                    },
-                                    onOpenLocalFiles = {
-                                        if (!hasStoragePermission) {
-                                             onRequestStoragePermission()
-                                        } else {
-                                             wideSelectedTarget = devicesViewModel.thisDeviceTarget()
-                                             wideHomeTab = HomeTab.Files
-                                        }
-                                    },
-                                    devicesViewMode = devicesViewMode,
-                                    onToggleDevicesViewMode = {
-                                        FileApexServices.settings.setDevicesViewMode(
-                                            devicesViewMode.toggled()
-                                        )
-                                    },
-                                    explorerViewMode = explorerViewMode,
-                                    onToggleExplorerViewMode = {
-                                        FileApexServices.settings.setExplorerViewMode(
-                                            explorerViewMode.cycled()
-                                        )
-                                    },
-                                    onGenerateQr = {
-                                        onStartShareServer()
-                                        route = AppRoute.GenerateQr
-                                    },
-                                    onJoinDevice = {
-                                        onStartShareServer()
-                                        route = AppRoute.Join
-                                    },
-                                    onExitApp = exitFileApex,
-                                    onClearDetail = {
-                                        wideSelectedTarget?.deviceId?.let {
-                                            DeviceSessionManager.clearSession(it)
-                                        }
-                                        wideSelectedTarget = null
-                                        wideHomeTab = HomeTab.Devices
-                                    },
-                                    appVersionName = appVersionName,
-                                    devicesViewModel = devicesViewModel,
-                                    splitSession = splitSession,
-                                    backgroundPersistence = backgroundPersistence,
-                                    onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-                                    onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
-                                    onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-                                    onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
-                                    exactAlarmWarningActive = exactAlarmWarningActive,
-                                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings,
-                                    onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                    onOpenNotes = { route = AppRoute.Notes },
-                                    onboardingSteps = onboardingSteps,
-                                    deniedOnboardingStepIds = deniedOnboardingStepIds,
-                                    onGrantOnboardingStep = onGrantOnboardingStep,
-                                    settingsDeepLink = settingsDeepLink,
-                                    onSettingsDeepLinkConsumed = { settingsDeepLink = null }
-                                )
-                            } else {
-                                CompactHomeContent(
-                                    route = compactRoute,
-                                    devicesViewModel = devicesViewModel,
-                                    splitSession = splitSession,
-                                    appVersionName = appVersionName,
-                                    onOpenDevice = { route = AppRoute.Explorer(it) },
-                                    onOpenLocalFiles = {
-                                        if (!hasStoragePermission) {
-                                            onRequestStoragePermission()
-                                        } else {
-                                            route = AppRoute.Explorer(devicesViewModel.thisDeviceTarget())
-                                        }
-                                    },
-                                    onGenerateQr = {
-                                        onStartShareServer()
-                                        route = AppRoute.GenerateQr
-                                    },
-                                    onJoinDevice = {
-                                        onStartShareServer()
-                                        route = AppRoute.Join
-                                    },
-                                    onOpenSettings = { route = AppRoute.Settings },
-                                    onNavigateHome = onNavigateHome,
-                                    onExitApp = exitFileApex,
-                                    backgroundPersistence = backgroundPersistence,
-                                    onRequestBatteryUnrestricted = onRequestBatteryUnrestricted,
-                                    onOpenBackgroundPersistenceSettings = onOpenBackgroundPersistenceSettings,
-                                    onOpenUnusedAppRestrictionsSettings = onOpenUnusedAppRestrictionsSettings,
-                                    onOpenAppBatteryUsageSettings = onOpenAppBatteryUsageSettings,
-                                    exactAlarmWarningActive = exactAlarmWarningActive,
-                                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                                    onOpenAppDetailsSettings = onOpenAppDetailsSettings,
-                                    onBeforeAllowOverCellularEnabled = onBeforeAllowOverCellularEnabled,
-                                    onOpenTransferQueue = { route = AppRoute.TransferQueue },
-                                    onOpenNotes = { route = AppRoute.Notes },
-                                    onboardingSteps = onboardingSteps,
-                                    deniedOnboardingStepIds = deniedOnboardingStepIds,
-                                    onGrantOnboardingStep = onGrantOnboardingStep,
-                                    settingsDeepLink = settingsDeepLink,
-                                    onSettingsDeepLinkConsumed = { settingsDeepLink = null }
-                                )
-                            }
-                            }
-                            KineticDropFxLayer()
                         }
+                    }
+                    if (hasDock) {
+                        CarouselDock(
+                            selected = when {
+                                route is AppRoute.Notes -> DockItem.Bulletin
+                                route is AppRoute.GenerateQr || route is AppRoute.Join || route is AppRoute.TransferQueue -> null
+                                wideHomeTab == HomeTab.Files -> DockItem.LocalFiles
+                                wideHomeTab == HomeTab.Settings -> DockItem.Settings
+                                else -> DockItem.Home
+                            },
+                            unreadCount = dockUnread,
+                            onHome = onNavigateHome,
+                            onLocalFiles = {
+                                route = AppRoute.Devices
+                                if (!hasStoragePermission) {
+                                    onRequestStoragePermission()
+                                } else {
+                                    wideSelectedTarget = devicesViewModel.thisDeviceTarget()
+                                    wideHomeTab = HomeTab.Files
+                                }
+                            },
+                            onBulletin = { route = AppRoute.Notes },
+                            onGenerateQr = {
+                                onStartShareServer()
+                                route = AppRoute.GenerateQr
+                            },
+                            onJoinDevice = {
+                                onStartShareServer()
+                                route = AppRoute.Join
+                            },
+                            onFriends = { com.fileapex.friends.ui.FriendsUi.open() },
+                            onSettings = {
+                                route = AppRoute.Devices
+                                wideHomeTab = HomeTab.Settings
+                            },
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                        )
+                    }
                     }
                 }
             }

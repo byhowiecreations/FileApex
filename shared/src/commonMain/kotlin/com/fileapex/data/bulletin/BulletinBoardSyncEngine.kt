@@ -1,6 +1,7 @@
 package com.fileapex.data.bulletin
 
 import com.fileapex.cloud.FcmWakeCoordinator
+import com.fileapex.util.AddressRedaction
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
@@ -34,6 +35,9 @@ class BulletinBoardSyncEngine(
     private val peerBackoff = BulletinPeerBackoff()
     private val messageDao = database.messageDao()
     private val tombstoneDao = database.tombstoneDao()
+    private val flagDao = database.messageFlagDao()
+    private val checklistDao = database.checklistItemDao()
+    private val items = BulletinSyncItems(repository)
     private val outboxDao = database.outboxDao()
     private val processedPacketDao = database.processedPacketDao()
     private val transactionDao = database.transactionDao()
@@ -79,49 +83,17 @@ class BulletinBoardSyncEngine(
 
     /** Latest change in this board on this device's clock; sent on every health answer. */
     suspend fun latestChange(): Long =
-        maxOf(messageDao.latestChange(), tombstoneDao.latestChange()).also { BulletinStampClock.shared.observe(it) }
+        maxOf(messageDao.latestChange(), tombstoneDao.latestChange(), flagDao.latestChange(), checklistDao.latestChange()).also { BulletinStampClock.shared.observe(it) }
 
     /** One page of what changed since [since] (everything when it is 0, stale or from before a reset). */
     suspend fun buildDelta(since: Long, nowMs: Long = TimeUtils.now()): BulletinDeltaResponse {
         val latest = latestChange()
         val snapshot = BulletinDelta.isSnapshot(since, latest, nowMs)
         val from = if (snapshot) 0L else since
-        val changes = messageDao.getChangedSince(from).map { message ->
-            BulletinDelta.Change(
-                message.updatedAt,
-                BulletinSyncItem(
-                    payloadType = BulletinPayloadType.MESSAGE,
-                    payloadId = message.id,
-                    body = json.encodeToString(
-                        BulletinMessagePayload(
-                            id = message.id,
-                            originDeviceId = message.originDeviceId,
-                            senderName = message.senderName,
-                            content = repository.stripRemoteLocalPath(message.content, message.contentType),
-                            contentType = message.contentType,
-                            timestamp = message.timestamp,
-                            isPinned = message.isPinned
-                        )
-                    )
-                )
-            )
-        } + tombstoneDao.getChangedSince(from).map { tombstone ->
-            BulletinDelta.Change(
-                tombstone.updatedAt,
-                BulletinSyncItem(
-                    payloadType = BulletinPayloadType.TOMBSTONE,
-                    payloadId = tombstone.id,
-                    body = json.encodeToString(
-                        BulletinTombstonePayload(
-                            id = tombstone.id,
-                            deletedAt = tombstone.deletedAt,
-                            originDeviceId = tombstone.originDeviceId,
-                            remotePurge = tombstone.remotePurge
-                        )
-                    )
-                )
-            )
-        }
+        val changes = messageDao.getChangedSince(from).map { BulletinDelta.Change(it.updatedAt, items.message(it)) } +
+            tombstoneDao.getChangedSince(from).map { BulletinDelta.Change(it.updatedAt, items.tombstone(it)) } +
+            flagDao.getChangedSince(from).map { BulletinDelta.Change(it.updatedAt, items.flag(it)) } +
+            checklistDao.getChangedSince(from).map { BulletinDelta.Change(it.updatedAt, items.checklistItem(it)) }
         val page = BulletinDelta.page(changes, from)
         // A finished pull is complete up to the latest change seen before the rows were read.
         val cursor = if (page.more) page.cursor else maxOf(page.cursor, latest)
@@ -150,7 +122,7 @@ class BulletinBoardSyncEngine(
         lastPullAttemptMs[peer.deviceId] = now
         pullRunner.launch(peer.deviceId) {
             cancellableCatching { pullFrom(peer) }
-                .onFailure { println("BulletinBoardSyncEngine: delta pull from ${peer.deviceName} failed - ${it.message}") }
+                .onFailure { println("BulletinBoardSyncEngine: delta pull from ${peer.deviceId} failed - ${AddressRedaction.redact(it.message.orEmpty())}") }
         }
     }
 
@@ -158,7 +130,7 @@ class BulletinBoardSyncEngine(
         val route = FileApexServices.presenceMonitor.endpointIfOnline(peer, RouteUse.Bulk) ?: return
         var cursor = FileApexServices.settings.bulletinDeltaCursor(peer.deviceId)
         repeat(MAX_DELTA_PAGES) {
-            val response = FileApexServices.client.fetchBulletinDelta(route.host, route.port, cursor)
+            val response = FileApexServices.client.bulletin.fetchBulletinDelta(route.host, route.port, cursor)
             processIncomingBatch(response.batch)
             cursor = response.cursor
             FileApexServices.settings.setBulletinDeltaCursor(peer.deviceId, cursor)
@@ -206,6 +178,25 @@ class BulletinBoardSyncEngine(
         BulletinLegacyRelay.dispatchTombstone(messageId, legacyPeers, snapshot)
     }
 
+    /** A new or changed checklist line goes out like a flag does. */
+    suspend fun publishChecklistItem(item: ChecklistItemEntity) = publishToNewPeers(BulletinPayloadType.CHECKLIST_ITEM, item.itemId)
+
+    /** A lock or unlock goes to every device that understands flags at once; devices that are away pull it later. */
+    suspend fun publishFlag(flag: MessageFlagEntity) = publishToNewPeers(BulletinPayloadType.FLAG, flag.flagId)
+
+    private suspend fun publishToNewPeers(payloadType: Int, payloadId: String) {
+        val selfId = loadLocalIdentity().deviceId
+        val peers = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty().filter {
+            it.deviceId != selfId && BulletinBoardPolicy.takesPartInBulletin(it) && it.supportsBulletinSync() &&
+                BulletinFlags.supportedBy(it.clientVersionCode) && shouldQueueFor(it)
+        }
+        if (peers.isEmpty()) return println("BulletinBoardSyncEngine: no device is sent type $payloadType now")
+        repository.enqueueOutboxForAllPeers(payloadType, payloadId, peers.map { it.deviceId })
+        peers.forEach { peerBackoff.reset(it.deviceId) }
+        requestDrain()
+        FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
+    }
+
     suspend fun publishRetractByKind(originDeviceId: String, contentType: Int, deletedAt: Long) {
         val peers = FileApexServices.deviceRepositoryOrNull()?.listDevices().orEmpty()
         val selfId = loadLocalIdentity().deviceId
@@ -234,27 +225,14 @@ class BulletinBoardSyncEngine(
         if (peer.deviceId.isBlank() || peer.deviceId == selfId) return
         if (!BulletinBoardPolicy.takesPartInBulletin(peer)) return
         if (!peer.supportsBulletinSync()) return
-        val activeMessages = messageDao.getActiveOnce()
-        val recentCutoff = TimeUtils.now() - 7 * 24 * 60 * 60 * 1000L
-        val recentTombstones = tombstoneDao.getRecentOnce(recentCutoff)
-        val outboxEntries = mutableListOf<OutboxEntity>()
-        val now = TimeUtils.now()
-        for (msg in activeMessages) {
-            outboxEntries += OutboxEntity(
-                targetDeviceId = peer.deviceId,
-                payloadType = BulletinPayloadType.MESSAGE,
-                payloadId = msg.id,
-                createdAt = now
-            )
-        }
-        for (ts in recentTombstones) {
-            outboxEntries += OutboxEntity(
-                targetDeviceId = peer.deviceId,
-                payloadType = BulletinPayloadType.TOMBSTONE,
-                payloadId = ts.id,
-                createdAt = now
-            )
-        }
+        val outboxEntries = BulletinPairingResend.entries(
+            peer = peer,
+            messageIds = messageDao.getActiveOnce().map { it.id },
+            tombstoneIds = tombstoneDao.getRecentOnce(TimeUtils.now() - 7 * 24 * 60 * 60 * 1000L).map { it.id },
+            flagIds = flagDao.getAll().map { it.flagId },
+            checklistItemIds = checklistDao.getAll().map { it.itemId },
+            now = TimeUtils.now()
+        )
         if (outboxEntries.isNotEmpty()) {
             transactionDao.insertOutboxEntries(outboxEntries)
             peerBackoff.reset(peer.deviceId)
@@ -286,6 +264,8 @@ class BulletinBoardSyncEngine(
         val accepted = mutableListOf<String>()
         val incomingMessages = mutableListOf<MessageEntity>()
         val incomingTombstones = mutableListOf<TombstoneEntity>()
+        val incomingFlags = mutableListOf<MessageFlagEntity>()
+        val incomingItems = mutableListOf<ChecklistItemEntity>()
         val remotePurgeMessageIds = mutableListOf<String>()
         val kindRetractedMessageIds = mutableListOf<String>()
         for (item in batch.items) {
@@ -323,6 +303,14 @@ class BulletinBoardSyncEngine(
                     }
                     accepted += item.payloadId
                 }
+                BulletinPayloadType.CHECKLIST_ITEM -> {
+                    incomingItems += BulletinChecklist.fromPayload(json.decodeFromString<BulletinChecklistItemPayload>(item.body))
+                    accepted += item.payloadId
+                }
+                BulletinPayloadType.FLAG -> {
+                    incomingFlags += BulletinFlags.fromPayload(json.decodeFromString<BulletinFlagPayload>(item.body))
+                    accepted += item.payloadId
+                }
                 BulletinPayloadType.RETRACT_BY_KIND -> {
                     val payload = json.decodeFromString<BulletinRetractByKindPayload>(item.body)
                     kindRetractedMessageIds += repository.applyRetractByKind(
@@ -342,7 +330,9 @@ class BulletinBoardSyncEngine(
             packet = ProcessedPacketEntity(
                 packetId = batch.packetId,
                 processedAt = TimeUtils.now()
-            )
+            ),
+            flags = incomingFlags,
+            checklistItems = incomingItems
         )
         for (messageId in remotePurgeMessageIds.distinct()) {
             val msg = repository.getMessage(messageId)
@@ -389,7 +379,7 @@ class BulletinBoardSyncEngine(
         if (host.isBlank() || port <= 0) return null
         ServerLifecycleManager.ensureRunning()
         return cancellableCatching {
-            FileApexServices.client.downloadBulletinFile(
+            FileApexServices.client.bulletin.downloadBulletinFile(
                 host = host,
                 port = port,
                 messageId = messageId,
@@ -397,9 +387,8 @@ class BulletinBoardSyncEngine(
                 expectedSha256 = meta.sha256,
                 expectedSizeBytes = meta.sizeBytes
             )
-        }.getOrNull()?.also { localPath ->
-            repository.bindLocalPath(messageId, localPath)
-        }
+        }.onFailure { println("BulletinBoardSyncEngine: file pull from ${origin.deviceId} failed - ${AddressRedaction.redact(it.message.orEmpty())}") }
+            .getOrNull()?.also { localPath -> repository.bindLocalPath(messageId, localPath) }
     }
 
     private fun requestDrain() {
@@ -473,7 +462,7 @@ class BulletinBoardSyncEngine(
             return
         }
         cancellableCatching {
-            val ack = FileApexServices.client.postBulletinSyncBatch(job.host, job.port, job.batch)
+            val ack = FileApexServices.client.bulletin.postBulletinSyncBatch(job.host, job.port, job.batch)
             processIncomingAck(ack)
             peerBackoff.onSuccess(job.deviceId)
             for (entry in job.entries) {
@@ -518,39 +507,10 @@ class BulletinBoardSyncEngine(
         val self = loadLocalIdentity()
         val items = entries.mapNotNull { entry ->
             when (entry.payloadType) {
-                BulletinPayloadType.MESSAGE -> {
-                    val message = messageDao.getById(entry.payloadId) ?: return@mapNotNull null
-                    BulletinSyncItem(
-                        payloadType = BulletinPayloadType.MESSAGE,
-                        payloadId = entry.payloadId,
-                        body = json.encodeToString(
-                            BulletinMessagePayload(
-                                id = message.id,
-                                originDeviceId = message.originDeviceId,
-                                senderName = message.senderName,
-                                content = repository.stripRemoteLocalPath(message.content, message.contentType),
-                                contentType = message.contentType,
-                                timestamp = message.timestamp,
-                                isPinned = message.isPinned
-                            )
-                        )
-                    )
-                }
-                BulletinPayloadType.TOMBSTONE -> {
-                    val tombstone = tombstoneDao.getById(entry.payloadId) ?: return@mapNotNull null
-                    BulletinSyncItem(
-                        payloadType = BulletinPayloadType.TOMBSTONE,
-                        payloadId = entry.payloadId,
-                        body = json.encodeToString(
-                            BulletinTombstonePayload(
-                                id = tombstone.id,
-                                deletedAt = tombstone.deletedAt,
-                                originDeviceId = tombstone.originDeviceId,
-                                remotePurge = tombstone.remotePurge
-                            )
-                        )
-                    )
-                }
+                BulletinPayloadType.MESSAGE -> messageDao.getById(entry.payloadId)?.let(items::message)
+                BulletinPayloadType.TOMBSTONE -> tombstoneDao.getById(entry.payloadId)?.let(items::tombstone)
+                BulletinPayloadType.FLAG -> flagDao.get(entry.payloadId)?.let(items::flag)
+                BulletinPayloadType.CHECKLIST_ITEM -> checklistDao.get(entry.payloadId)?.let(items::checklistItem)
                 BulletinPayloadType.RETRACT_BY_KIND -> {
                     val payload = repository.pendingRetractByKind(entry.payloadId)
                         ?: BulletinMessageKind.decodeRetractPayloadId(entry.payloadId)?.let { (originDeviceId, contentType) ->

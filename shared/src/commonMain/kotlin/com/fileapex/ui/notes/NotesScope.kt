@@ -23,16 +23,20 @@ import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
-import com.fileapex.platform.rememberDownloadsFilePicker
+import com.fileapex.friends.ui.rememberFriendFilePicker
+import com.fileapex.platform.PickedLocalFile
 import com.fileapex.platform.rememberGoogleDriveAuthLauncher
 import com.fileapex.platform.rememberGoogleSignInLauncher
 import com.fileapex.presentation.NotesListRow
+import com.fileapex.presentation.NotesNewDivider
 import com.fileapex.presentation.NotesViewModel
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.KineticPalette
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal class NotesScope(val frame: NotesFrame, val live: NotesLive)
 
@@ -50,14 +54,17 @@ internal fun rememberNotesScope(
     val isCustomGlass = currentTheme.traits.glassNotesSurfaces
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    // What was unread when this screen opened; the divider goes away with the screen, so it never outlives a visit.
+    val unreadIds by rememberUnreadOnEntry()
     val visualRows = with(live) {
-    val visualRows = remember(state.visualRows, transport?.assemblingNoteId, transport?.settled) {
+    val visualRows = remember(state.visualRows, transport?.assemblingNoteId, transport?.settled, unreadIds) {
         val hideId = transport?.takeIf { it.settled != true }?.assemblingNoteId
-        if (hideId.isNullOrBlank()) {
+        val shown = if (hideId.isNullOrBlank()) {
             state.visualRows
         } else {
             state.visualRows.filterNot { row -> row is NotesListRow.Bubble && row.note.noteId == hideId }
         }
+        NotesNewDivider.insert(shown, unreadIds)
     }
         visualRows
     }
@@ -124,8 +131,7 @@ private fun rememberNotesLaunchers(
         }
     }
 
-    val pickAttachment = rememberDownloadsFilePicker { picked ->
-        if (picked == null) return@rememberDownloadsFilePicker
+    fun decideAttachment(picked: PickedLocalFile) {
         when (val decision = DriveRelayPolicy.evaluateNotesAttachment(picked.sizeBytes)) {
             NotesAttachmentDecision.AllowLan,
             NotesAttachmentDecision.AllowRelay -> holder[0]!!.acceptPickedAttachment(picked)
@@ -146,6 +152,20 @@ private fun rememberNotesLaunchers(
             is NotesAttachmentDecision.TooLargeForLan -> {
                 attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
                     "Notes attachment limit. Choose a smaller file."
+            }
+        }
+    }
+
+    // The app's own file screen, not the system picker. One file goes through the size checks and a caption;
+    // several are sent one after the other like a drop.
+    val pickAttachment = rememberFriendFilePicker(titleKey = "post_to_bulletin_board", viewModelKey = "bulletin-file-pick") { files ->
+        scope.launch {
+            val single = files.singleOrNull()
+            if (single != null) {
+                val picked = withContext(Dispatchers.IO) { PickedLocalFile(single.name, single.length(), single.absolutePath) }
+                decideAttachment(picked)
+            } else if (files.isNotEmpty()) {
+                holder[0]!!.handleDroppedPaths(files.map { it.absolutePath }, null)
             }
         }
     }

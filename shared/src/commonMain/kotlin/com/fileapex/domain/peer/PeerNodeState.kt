@@ -50,6 +50,8 @@ data class PeerNodeState(
     /** Claimed SPKI SHA-256 hex of this device's TLS key. Never trusted unless it matches a stored pin. */
     val tlsPin: String = "",
     val tlsPort: Int = 0,
+    /** [com.fileapex.security.tls.TlsRotationProof] as JSON while this device recently replaced its TLS key. */
+    val tlsRotation: String = "",
     /** Salted hash of this device's OS machine id. Sent to paired devices only; a stranger's reply leaves it blank. */
     val hardwareHash: String = ""
 ) {

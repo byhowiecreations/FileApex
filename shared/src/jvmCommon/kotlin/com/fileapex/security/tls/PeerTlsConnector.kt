@@ -79,17 +79,13 @@ object PeerTlsConnector {
             ssl.enabledProtocols = TlsFrontServer.preferredProtocols(ssl.supportedProtocols)
             socket.soTimeout = connectTimeoutMs
             ssl.startHandshake()
-            PeerTlsStatus.reportHealthy(route.deviceId)
             ssl
         } catch (e: Exception) {
             runCatching { socket.close() }
             val mismatch = e.findCause<PeerPinMismatchException>()
             if (mismatch != null) {
-                PeerTlsStatus.reportPinMismatch(route.deviceId)
                 if (mismatch.observedPin.isNotEmpty()) {
-                    PeerTlsStatus.requestConfirmation(
-                        TlsPinPrompt(route.deviceId, TlsPromptKind.KEY_CHANGED, mismatch.observedPin, route.tlsPort)
-                    )
+                    PeerTlsStatus.keyChangeObserved(route.deviceId, mismatch.observedPin, route.tlsPort)
                 }
                 println("PeerTls: pin mismatch for ${route.deviceId}, expected ${route.pins.joinToString { TlsPin.forLog(it) }}")
             }

@@ -105,7 +105,7 @@ object ClusterResetManager {
                         if (!NetworkUtils.isUsableLanIpv4(host)) return@async
                         withTimeoutOrNull(2000L) {
                             cancellableCatching {
-                                FileApexServices.client.postClusterRemove(
+                                FileApexServices.client.cluster.postClusterRemove(
                                     host = host,
                                     port = peer.port,
                                     record = removal

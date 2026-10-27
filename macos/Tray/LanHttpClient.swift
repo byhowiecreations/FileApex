@@ -19,7 +19,7 @@ enum LanHttpClient {
         contentType: String?,
         body: Data?,
         timeoutMs: Int
-    ) -> (status: Int, body: Data)? {
+    ) -> (status: Int, body: Data, headers: [String: String])? {
         guard let target = Target(urlString: urlString) else {
             log("bad url \(urlString)")
             return nil
@@ -163,7 +163,7 @@ enum LanHttpClient {
     private static var transferConnections: [ObjectIdentifier: NWConnection] = [:]
     private static var warmedAt: [String: Date] = [:]
 
-    private static func pooledExecute(target: Target, request: Data, timeoutMs: Int) -> (status: Int, body: Data)? {
+    private static func pooledExecute(target: Target, request: Data, timeoutMs: Int) -> (status: Int, body: Data, headers: [String: String])? {
         let key = "\(target.host):\(target.port)"
         sweepSockets()
         if let existing = takeSocket(key) {
@@ -173,7 +173,7 @@ enum LanHttpClient {
                 } else {
                     existing.connection.cancel()
                 }
-                return (hit.status, hit.body)
+                return (hit.status, hit.body, hit.headers)
             }
             existing.connection.cancel()
         }
@@ -186,7 +186,7 @@ enum LanHttpClient {
             } else {
                 opened.connection.cancel()
             }
-            return (hit.status, hit.body)
+            return (hit.status, hit.body, hit.headers)
         }
         opened.connection.cancel()
         return nil
@@ -296,12 +296,12 @@ enum LanHttpClient {
         request: Data,
         timeoutMs: Int,
         fresh: Bool
-    ) -> (status: Int, body: Data, keep: Bool)? {
+    ) -> (status: Int, body: Data, keep: Bool, headers: [String: String])? {
         let lock = DispatchSemaphore(value: 0)
         let stateLock = NSLock()
-        var result: (Int, Data, Bool)?
+        var result: (Int, Data, Bool, [String: String])?
         var finished = false
-        func finish(_ value: (Int, Data, Bool)?) {
+        func finish(_ value: (Int, Data, Bool, [String: String])?) {
             stateLock.lock()
             let first = !finished
             if first {
@@ -321,7 +321,7 @@ enum LanHttpClient {
                     if let parsed = HttpResponseParser.parseFramed(socket.pending) {
                     let keep = parsed.keepAlive
                     socket.pending = Data(socket.pending.dropFirst(parsed.consumed))
-                    finish((parsed.status, parsed.body, keep))
+                    finish((parsed.status, parsed.body, keep, parsed.headers))
                     return
                 }
                 socket.connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { content, _, isComplete, error in
@@ -335,7 +335,7 @@ enum LanHttpClient {
                     if let parsed = HttpResponseParser.parseFramed(socket.pending) {
                         let keep = parsed.keepAlive && !isComplete
                         socket.pending = Data(socket.pending.dropFirst(parsed.consumed))
-                        finish((parsed.status, parsed.body, keep))
+                        finish((parsed.status, parsed.body, keep, parsed.headers))
                         return
                     }
                     if isComplete {
@@ -986,7 +986,7 @@ enum LanHttpClient {
 }
 
 private enum HttpResponseParser {
-    static func parseFramed(_ data: Data) -> (status: Int, body: Data, consumed: Int, keepAlive: Bool)? {
+    static func parseFramed(_ data: Data) -> (status: Int, body: Data, consumed: Int, keepAlive: Bool, headers: [String: String])? {
         let separator = Data("\r\n\r\n".utf8)
         guard let range = data.range(of: separator) else { return nil }
         let headerBytes = data.subdata(in: 0..<range.lowerBound)
@@ -1008,11 +1008,11 @@ private enum HttpResponseParser {
         if headers["transfer-encoding"]?.lowercased().contains("chunked") == true {
             guard let decoded = decodeChunked(body) else { return nil }
             guard let used = chunkedByteCount(body) else { return nil }
-            return (status, decoded, headerCount + used, keepAlive)
+            return (status, decoded, headerCount + used, keepAlive, headers)
         }
         guard let length = headers["content-length"].flatMap({ Int($0) }) else { return nil }
         if body.count < length { return nil }
-        return (status, Data(body.prefix(length)), headerCount + length, keepAlive)
+        return (status, Data(body.prefix(length)), headerCount + length, keepAlive, headers)
     }
 
     private static func chunkedByteCount(_ data: Data) -> Int? {
@@ -1147,6 +1147,42 @@ public func fileapex_lan_http_execute(
         return -1
     }
     writeHttpResult(result.status, result.body, outStatus, outBody, outBodyLen)
+    return 0
+}
+
+@_cdecl("fileapex_lan_http_execute_headers")
+public func fileapex_lan_http_execute_headers(
+    method: UnsafePointer<CChar>?,
+    url: UnsafePointer<CChar>?,
+    contentType: UnsafePointer<CChar>?,
+    body: UnsafePointer<UInt8>?,
+    bodyLen: Int32,
+    timeoutMs: Int32,
+    outStatus: UnsafeMutablePointer<Int32>?,
+    outBody: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
+    outBodyLen: UnsafeMutablePointer<Int32>?,
+    outHeaders: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
+    outHeadersLen: UnsafeMutablePointer<Int32>?
+) -> Int32 {
+    guard let method, let url else { return -1 }
+    let bodyData: Data?
+    if let body, bodyLen > 0 {
+        bodyData = Data(bytes: body, count: Int(bodyLen))
+    } else {
+        bodyData = nil
+    }
+    guard let result = LanHttpClient.execute(
+        method: String(cString: method),
+        urlString: String(cString: url),
+        contentType: contentType.map { String(cString: $0) },
+        body: bodyData,
+        timeoutMs: Int(timeoutMs)
+    ) else {
+        return -1
+    }
+    writeHttpResult(result.status, result.body, outStatus, outBody, outBodyLen)
+    let headerText = result.headers.map { "\($0.key): \($0.value)" }.joined(separator: "\n")
+    writeHttpResult(result.status, Data(headerText.utf8), nil, outHeaders, outHeadersLen)
     return 0
 }
 

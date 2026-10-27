@@ -7,6 +7,7 @@ import androidx.room3.OnConflictStrategy
 import androidx.room3.PrimaryKey
 import androidx.room3.Query
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /** A person on this device's friends allowlist. Per device, never synced; the key is the friends Iroh key, not a cluster key. */
 @Entity(tableName = "friend_links")
@@ -51,7 +52,7 @@ data class FriendIncomingEntity(
 /** Reachable only from the friends handler; the structure guard test fails if any other package names it. */
 @Dao
 interface FriendsDao {
-    @Query("SELECT * FROM friend_links ORDER BY label COLLATE NOCASE ASC")
+    @Query("SELECT * FROM friend_links ORDER BY addedAtMs ASC, friendKey ASC")
     fun observeLinks(): Flow<List<FriendLinkEntity>>
 
     @Query("SELECT * FROM friend_links WHERE friendKey = :key")
@@ -87,3 +88,7 @@ interface FriendsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putIncoming(row: FriendIncomingEntity)
 }
+
+/** The label is sealed on disk, so the list is ordered here and not by SQL. */
+fun Flow<List<FriendLinkEntity>>.byLabel(): Flow<List<FriendLinkEntity>> =
+    map { list -> list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label }) }

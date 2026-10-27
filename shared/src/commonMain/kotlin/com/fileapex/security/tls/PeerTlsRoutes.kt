@@ -88,22 +88,39 @@ object TlsFingerprint {
 }
 
 /**
- * Devices whose TLS handshake failed a pin check, and the confirmations the user owes.
+ * The confirmations the user owes after a TLS handshake failed a pin check.
  * A prompt only ever records a pin when the user accepts it.
  */
 object PeerTlsStatus {
-    private val mismatched = MutableStateFlow<Set<String>>(emptySet())
-    val pinMismatch: StateFlow<Set<String>> = mismatched.asStateFlow()
-
     private val pending = MutableStateFlow<List<TlsPinPrompt>>(emptyList())
     val prompts: StateFlow<List<TlsPinPrompt>> = pending.asStateFlow()
 
-    fun reportPinMismatch(deviceId: String) {
-        mismatched.value = mismatched.value + deviceId
-    }
+    /** Set by [TlsPinAnnouncer]: tries to settle a changed key without the user, then calls back with whether it did. */
+    @Volatile
+    var resolver: ((TlsPinPrompt, (Boolean) -> Unit) -> Unit)? = null
 
-    fun reportHealthy(deviceId: String) {
-        if (deviceId in mismatched.value) mismatched.value = mismatched.value - deviceId
+    /** Set by [TlsPinAnnouncer]: runs after the user trusted a changed key, to tell the other cluster devices. */
+    @Volatile
+    var onUserConfirmed: (suspend (TlsPinPrompt) -> Unit)? = null
+
+    private val resolving = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * A paired peer showed a key other than the stored one. It is settled silently when a vouch, a rotation proof or the
+     * peer's pairing key allows; the user is asked only when none of them does.
+     */
+    fun keyChangeObserved(deviceId: String, observedPin: String, port: Int) {
+        val prompt = TlsPinPrompt(deviceId, TlsPromptKind.KEY_CHANGED, observedPin, port)
+        val settle = resolver
+        if (settle == null) {
+            requestConfirmation(prompt)
+            return
+        }
+        if (!resolving.add("$deviceId|$observedPin")) return
+        settle(prompt) { settled ->
+            resolving.remove("$deviceId|$observedPin")
+            if (!settled) requestConfirmation(prompt)
+        }
     }
 
     /** One prompt per device; a newer offer replaces an older one. */

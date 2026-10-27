@@ -71,7 +71,7 @@ class PeerTlsConnectorTest {
         front.stop()
         http.stop(0, 0)
         PeerTlsRoutes.update(emptyList())
-        PeerTlsStatus.reportHealthy("dev-server")
+        PeerTlsStatus.dismiss("dev-server")
     }
 
     private fun route(pin: String) = PeerTlsRoutes.update(
@@ -99,11 +99,11 @@ class PeerTlsConnectorTest {
     }
 
     @Test
-    fun wrongServerKeyFailsClosedAndFlagsThePeer() {
+    fun wrongServerKeyFailsClosed() {
         route(TlsIdentityFactory.generate().pin)
         val failure = runCatching { PeerTlsConnector.connect(Socket(), "127.0.0.1", httpPort, 5000) }.exceptionOrNull()
         assertTrue(failure is IOException)
-        assertTrue("dev-server" in PeerTlsStatus.pinMismatch.value)
+        assertEquals(serverIdentity.pin, PeerTlsStatus.prompts.value.single { it.deviceId == "dev-server" }.pin)
     }
 
     @Test
@@ -118,7 +118,6 @@ class PeerTlsConnectorTest {
             )
         )
         PeerTlsConnector.connect(Socket(), "127.0.0.1", httpPort, 5000).use { assertTrue(get(it).contains("dev-client")) }
-        assertFalse("dev-server" in PeerTlsStatus.pinMismatch.value)
     }
 
     @Test
@@ -189,7 +188,7 @@ class PeerTlsConnectorTest {
         PeerTlsRoutes.viaTailnetPipe(pipePort, tailnetRoute(TlsIdentityFactory.generate().pin), "session-token")
         val failure = runCatching { PeerTlsConnector.connect(Socket(), "127.0.0.1", pipePort, 5000) }.exceptionOrNull()
         assertTrue(failure is IOException)
-        assertTrue("dev-server" in PeerTlsStatus.pinMismatch.value)
+        assertEquals(serverIdentity.pin, PeerTlsStatus.prompts.value.single { it.deviceId == "dev-server" }.pin)
     }
 
     @Test

@@ -59,7 +59,7 @@ object NotificationBroadcaster {
             sentAtEpochMs = TimeUtils.now()
         )
         return cancellableCatching {
-            FileApexServices.client.postNotificationEvent(endpoint.host, endpoint.port, request)
+            FileApexServices.client.notifications.postNotificationEvent(endpoint.host, endpoint.port, request)
         }.onFailure { println("NotificationBroadcaster: delivery failed - ${it::class.simpleName}") }.isSuccess
     }
 
@@ -96,7 +96,7 @@ object NotificationBroadcaster {
             sentAtEpochMs = TimeUtils.now()
         )
         return cancellableCatching {
-            FileApexServices.client.postNotificationCommand(endpoint.host, endpoint.port, request)
+            FileApexServices.client.notifications.postNotificationCommand(endpoint.host, endpoint.port, request)
         }.onFailure { println("NotificationBroadcaster: command failed - ${it::class.simpleName}") }.isSuccess
     }
 
@@ -109,7 +109,7 @@ object NotificationBroadcaster {
             page = page
         )
         return cancellableCatching {
-            FileApexServices.client.postPhoneSettingsPrompt(endpoint.host, endpoint.port, request)
+            FileApexServices.client.notifications.postPhoneSettingsPrompt(endpoint.host, endpoint.port, request)
         }.onFailure { println("NotificationBroadcaster: prompt failed - ${it::class.simpleName}") }.isSuccess
     }
 
@@ -121,7 +121,7 @@ object NotificationBroadcaster {
     suspend fun checkPhone(device: PairedDeviceEntity): PhoneNotificationState {
         val endpoint = FileApexServices.presenceMonitor.endpointIfOnline(device) ?: return PhoneNotificationState.Unreachable
         val status = try {
-            FileApexServices.client.getNotificationSyncStatus(endpoint.host, endpoint.port)
+            FileApexServices.client.notifications.getNotificationSyncStatus(endpoint.host, endpoint.port)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -139,7 +139,7 @@ object NotificationBroadcaster {
         if (peerKey.isBlank()) return
         val identity = loadLocalIdentity()
         cancellableCatching {
-            val response = FileApexServices.client.postNotificationSnapshot(
+            val response = FileApexServices.client.notifications.postNotificationSnapshot(
                 host,
                 port,
                 NotificationSnapshotRequest(identity.deviceId, ClipboardE2ee.publicKeyBase64())

@@ -28,12 +28,16 @@ sealed interface BulletinFilter {
     data object Snippets : BulletinFilter
     data object Files : BulletinFilter
     data object Pinned : BulletinFilter
+    data object Todo : BulletinFilter
     data class Tag(val tag: String) : BulletinFilter
 }
 
 sealed class NotesListRow {
     data class DayHeader(val dayKey: String, val label: String) : NotesListRow()
     data class Bubble(val note: NoteRecord) : NotesListRow()
+
+    /** "New" line above the oldest post that arrived since the last visit; only while the Bulletin Board stays open. */
+    data object NewDivider : NotesListRow()
 }
 
 private val BULLETIN_IMAGE_EXTENSIONS = setOf(
@@ -88,6 +92,7 @@ data class NotesUiState(
     val hasSnippets: Boolean = false,
     val hasOtherFiles: Boolean = false,
     val hasPinned: Boolean = false,
+    val hasTodo: Boolean = false,
     val availableTags: List<String> = emptyList()
 )
 
@@ -114,6 +119,7 @@ class NotesViewModel(
         val hasSnippets = sortedNotes.any { isBulletinSnippet(it) }
         val hasOtherFiles = sortedNotes.any { isBulletinOtherFile(it.attachmentFileName) }
         val hasPinned = sortedNotes.any { it.attachmentPinned }
+        val hasTodo = sortedNotes.any { it.contentType == com.fileapex.data.bulletin.BulletinContentType.CHECKLIST }
         val tags = sortedNotes.flatMap { extractBulletinHashtags(it.content) }.distinct().sorted()
 
         val validFilter = when (filter) {
@@ -124,6 +130,7 @@ class NotesViewModel(
             BulletinFilter.Snippets -> if (hasSnippets) filter else BulletinFilter.All
             BulletinFilter.Files -> if (hasOtherFiles) filter else BulletinFilter.All
             BulletinFilter.Pinned -> if (hasPinned) filter else BulletinFilter.All
+            BulletinFilter.Todo -> if (hasTodo) filter else BulletinFilter.All
             is BulletinFilter.Tag -> if (filter.tag in tags) filter else BulletinFilter.All
         }
 
@@ -135,6 +142,7 @@ class NotesViewModel(
             BulletinFilter.Snippets -> sortedNotes.filter { isBulletinSnippet(it) }
             BulletinFilter.Files -> sortedNotes.filter { isBulletinOtherFile(it.attachmentFileName) }
             BulletinFilter.Pinned -> sortedNotes.filter { it.attachmentPinned }
+            BulletinFilter.Todo -> sortedNotes.filter { it.contentType == com.fileapex.data.bulletin.BulletinContentType.CHECKLIST }
             is BulletinFilter.Tag -> {
                 val target = validFilter.tag.lowercase()
                 sortedNotes.filter { target in extractBulletinHashtags(it.content) }
@@ -154,6 +162,7 @@ class NotesViewModel(
             hasSnippets = hasSnippets,
             hasOtherFiles = hasOtherFiles,
             hasPinned = hasPinned,
+            hasTodo = hasTodo,
             availableTags = tags
         )
     }.stateIn(
@@ -184,6 +193,22 @@ class NotesViewModel(
         scope.launch {
             FileApexServices.noteRepository.deleteNoteFromAllDevices(noteId, remotePurge)
         }
+    }
+
+    fun createChecklist(title: String, lines: List<String>) {
+        scope.launch { com.fileapex.data.bulletin.BulletinChecklists.create(title, lines) }
+    }
+
+    fun addChecklistItem(noteId: String, text: String) {
+        scope.launch { com.fileapex.data.bulletin.BulletinChecklists.add(noteId, text) }
+    }
+
+    fun setChecklistItemDone(itemId: String, done: Boolean) {
+        scope.launch { com.fileapex.data.bulletin.BulletinChecklists.setDone(itemId, done) }
+    }
+
+    fun removeChecklistItem(itemId: String) {
+        scope.launch { com.fileapex.data.bulletin.BulletinChecklists.remove(itemId) }
     }
 
     fun setAttachmentPinned(noteId: String, pinned: Boolean) {

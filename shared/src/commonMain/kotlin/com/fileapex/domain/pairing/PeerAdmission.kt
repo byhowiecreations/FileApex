@@ -184,13 +184,11 @@ class PeerAdmission(
         val host = live.second
         val state = live.first
         val roster = repository.listDevices()
-        val twin = roster.firstOrNull { PeerTrustRules.sharesAddressAndModel(it, state.asEntity(host)) }
+        val twin = roster.firstOrNull { PeerTrustRules.samePublicKey(it, state.asEntity(host)) }
         if (twin != null) {
-            if (answersAs(twin)) return CandidateVerdict.Rejected("address held by ${twin.deviceId}")
-            // The twin no longer answers as itself: it is the outdated copy of this device.
-            if (repository.removePermanently(twin.deviceId)) {
-                repository.getDeviceEntry(twin.deviceId)?.let { onSuperseded(it) }
-            }
+            if (answersAs(twin)) return CandidateVerdict.Rejected("key held by ${twin.deviceId}")
+            // The other row of this key is silent. Drop that row only; the key itself stays usable.
+            repository.deleteSilentCopy(twin.deviceId)
         }
 
         if (!repository.promoteCandidate(candidate, state)) {

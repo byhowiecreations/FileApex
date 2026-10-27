@@ -250,9 +250,9 @@ internal fun CleanupPage(
             Text(stringRes("storage_older_than"), style = MaterialTheme.typography.labelLarge)
             ageChoices.forEach { (value, key) ->
                 if (value == days) {
-                    Button(onClick = { days = value }) { Text(stringRes(key)) }
+                    Button(onClick = { days = value }) { Text(stringRes(key), maxLines = 1, softWrap = false) }
                 } else {
-                    OutlinedButton(onClick = { days = value }) { Text(stringRes(key)) }
+                    OutlinedButton(onClick = { days = value }) { Text(stringRes(key), maxLines = 1, softWrap = false) }
                 }
             }
         }

@@ -3,6 +3,14 @@ package com.fileapex.ui
 import com.fileapex.ui.theme.fileApexTileTint
 import com.fileapex.ui.theme.isFileApexTiledChrome
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -39,7 +47,34 @@ fun NoteHeaderButton(
         else -> NoteIconKind.WHITE
     }
     val painter = rememberNoteIconPainter(resolvedIconKind)
+    val unread by com.fileapex.ui.notes.rememberBulletinUnreadCount()
 
+    Box(modifier = Modifier, contentAlignment = Alignment.TopEnd) {
+    NoteHeaderIcon(onOpenNotes, painter, modifier)
+    if (unread > 0) UnreadBadge(unread, modifier = Modifier.padding(top = 4.dp, end = 4.dp))
+    }
+}
+
+@Composable
+private fun UnreadBadge(count: Int, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+            .background(Color(0xFFE53935), CircleShape)
+            .padding(horizontal = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = if (count > 9) "9+" else count.toString(),
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun NoteHeaderIcon(onOpenNotes: () -> Unit, painter: androidx.compose.ui.graphics.painter.Painter, modifier: Modifier) {
     if (isFileApexTiledChrome()) {
         Box(
             modifier = modifier

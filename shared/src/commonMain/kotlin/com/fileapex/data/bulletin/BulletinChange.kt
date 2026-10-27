@@ -8,8 +8,9 @@ package com.fileapex.data.bulletin
 object BulletinChange {
     /** The row to write, or null when [existing] already holds the same message. */
     fun messageToStore(existing: MessageEntity?, incoming: MessageEntity, nowMs: Long): MessageEntity? {
-        if (existing != null && existing.copy(updatedAt = 0L) == incoming.copy(updatedAt = 0L)) return null
-        return incoming.copy(updatedAt = nowMs)
+        val merged = incoming.copy(content = BulletinFileContent.keepStoredPath(existing, incoming))
+        if (existing != null && existing.copy(updatedAt = 0L) == merged.copy(updatedAt = 0L)) return null
+        return merged.copy(updatedAt = nowMs)
     }
 
     /** The tombstone to write, or null when it is already stored. */

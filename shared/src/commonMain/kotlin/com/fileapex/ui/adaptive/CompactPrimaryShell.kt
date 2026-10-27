@@ -538,7 +538,7 @@ fun FileApexPowerButton(
     modifier: Modifier = Modifier
 ) {
     val jaded = isFileApexJadedSteel()
-    val accent = if (jaded) KineticStyleLook.steel else Color(0xFF00E676)
+    val accent = if (jaded) KineticStyleLook.steel else if (LocalAppTheme.current == com.fileapex.data.settings.AppTheme.CAROUSEL) com.fileapex.ui.theme.CarouselPalette.accent else Color(0xFF00E676)
     if (jaded) {
         Box(
             modifier = modifier
