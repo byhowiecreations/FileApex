@@ -14,9 +14,7 @@ plugins {
 /** Git index paths that must stay 100755 so macOS/Linux can run ./gradlew and embed scripts. */
 val gitExecutableScriptPaths = listOf(
     "gradlew",
-    "scripts/build_complete.sh",
-    "scripts/build_intel.sh",
-    "scripts/build_silicon.sh",
+    "scripts/build-fileapex.sh",
     "scripts/ensure-git-executable-bits.sh",
     "macos/scripts/build_extensions.sh",
     "macos/scripts/build_tray_bridge.sh",

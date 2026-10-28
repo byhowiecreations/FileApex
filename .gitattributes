@@ -28,3 +28,5 @@ gradlew text eol=lf
 *.jar binary
 *.dylib binary
 *.so binary
+notice/notice.json -text
+notice/notices.src.json -text

@@ -356,7 +356,9 @@ private fun ThemeSample(theme: AppTheme) {
                     IconButton(onClick = {}) {
                         Icon(Icons.Default.ViewModule, contentDescription = null, tint = fileApexHeaderActionTint())
                     }
-                    NoteHeaderButton(onOpenNotes = {}, viewMode = ExplorerViewMode.List)
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        com.fileapex.ui.notice.LocalNoticeSource provides kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+                    ) { NoteHeaderButton(onOpenNotes = {}, viewMode = ExplorerViewMode.List) }
                 },
                 modifier = Modifier.fileApexChromeBottomEdge()
             )

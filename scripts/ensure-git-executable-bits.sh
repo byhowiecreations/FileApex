@@ -9,10 +9,8 @@ cd "$ROOT"
 
 EXECUTABLE_PATHS=(
   gradlew
-  scripts/build_complete.sh
-  scripts/build_intel.sh
-  scripts/build_silicon.sh
   scripts/build_linux.sh
+  scripts/build-fileapex.sh
   macos/scripts/build_extensions.sh
   macos/scripts/build_tray_bridge.sh
   macos/scripts/embed_extensions.sh

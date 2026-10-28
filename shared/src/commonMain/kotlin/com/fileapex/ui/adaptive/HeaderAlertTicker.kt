@@ -10,6 +10,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import com.fileapex.ui.notice.noticeAccent
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -28,6 +32,7 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.devices.PeerBatteryFetch
 import com.fileapex.ui.notes.rememberBatteryLowAlerts
+import com.fileapex.notice.NoticeIndicators
 import com.fileapex.ui.notes.rememberBulletinUnreadCount
 import com.fileapex.ui.theme.fileApexChromeContentColor
 import com.fileapex.util.TimeUtils
@@ -40,7 +45,9 @@ fun HeaderAlertTicker(onOpenNotes: () -> Unit, modifier: Modifier = Modifier) {
     if (!usesDesktopFileSelection()) return
     val unread by rememberBulletinUnreadCount()
     val low by rememberBatteryLowAlerts()
-    val alerts = remember(unread, low.size) { HeaderAlerts.active(unread, low.size) }
+    val notices by com.fileapex.ui.notice.rememberVisibleNotices()
+    val critical = NoticeIndicators.showsAlert(notices)
+    val alerts = remember(unread, low.size, critical) { HeaderAlerts.active(unread, low.size, critical) }
     var step by remember { mutableIntStateOf(0) }
     var batteryDialog by remember { mutableStateOf(false) }
     LaunchedEffect(alerts.size) {
@@ -51,11 +58,12 @@ fun HeaderAlertTicker(onOpenNotes: () -> Unit, modifier: Modifier = Modifier) {
     }
     when (val alert = HeaderAlerts.at(alerts, step)) {
         is HeaderAlert.NewMessages -> AlertLine(
-            stringRes(if (alert.count == 1) "alert_new_message_one" else "alert_new_messages", alert.count), modifier, onOpenNotes
+            stringRes(if (alert.count == 1) "alert_new_message_one" else "alert_new_messages", alert.count), modifier, onClick = onOpenNotes
         )
         is HeaderAlert.BatteryLow -> AlertLine(
             stringRes(if (alert.count == 1) "alert_battery_low_one" else "alert_battery_low", alert.count), modifier
         ) { batteryDialog = true }
+        HeaderAlert.CriticalNotice -> AlertLine(stringRes("alert_critical_notice"), modifier, noticeAccent(), FontWeight.Bold, onOpenNotes)
         null -> Unit
     }
     if (batteryDialog && low.isNotEmpty()) BatteryLowDialog(low) { batteryDialog = false }
@@ -63,11 +71,17 @@ fun HeaderAlertTicker(onOpenNotes: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun AlertLine(text: String, modifier: Modifier, onClick: () -> Unit) {
+private fun AlertLine(
+    text: String,
+    modifier: Modifier,
+    color: Color = fileApexChromeContentColor(),
+    weight: FontWeight? = null,
+    onClick: () -> Unit
+) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = fileApexChromeContentColor(),
+        style = MaterialTheme.typography.titleSmall.let { if (weight != null) it.copy(fontWeight = weight) else it },
+        color = color,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.clickable(onClick = onClick).padding(horizontal = 12.dp)

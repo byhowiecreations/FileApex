@@ -29,6 +29,8 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 
 **Shizuku (Android, non-Play builds only, opt-in):** If you already use the separate Shizuku app and authorize FileApex inside it, FileApex can read the clipboard while it is in the background through Shizuku. It is off by default, used only to read the clipboard for Clipboard Sharing, and handled exactly like other clipboard content. FileApex does not install or start Shizuku. **This feature is not included in Google Play builds.**
 
+**Critical Notifications (all builds):** After telling you about it once, FileApex can read a small public file from the FileApex GitHub page that lists notices about major bugs or updates that break features. The file is signed, and FileApex shows only the notices that apply to your version, platform and the features you use. The request carries no device, account, version or other identifier; GitHub sees your IP address, as with any download. The setting is on by default, is explained the first time you use it, and can be turned off at any time in Settings, after which FileApex never makes this request. Notices appear only inside your Bulletin Board on your own device and are never sent to other devices.
+
 **App updates (Android and desktop, non-Play builds):** When update checks are on, FileApex asks the GitHub Releases API for the latest public version, downloads the update file from GitHub, and on Android hands it to the system installer, which asks you to confirm. FileApex checks that the file is a valid Android package, and Android only installs an update that carries the same package name and signing key as the installed app. No device or personal identifiers are sent. An update shared by one of your paired devices through the Bulletin Board is offered the same way. Google Play builds update only through Google Play and do not include this.
 
 **Notifications you choose to share.** If you turn on Broadcast Notifications, FileApex on your phone reads the notifications of the apps you selected and sends the sender or chat name, the title, the recent message text and whether the notification can be replied to, to the one paired device you chose. Everything travels end to end encrypted between your two devices and never through a FileApex server. The receiving device keeps this only in memory while the app runs; it is not written to disk, not logged and not backed up, and it is gone when the app exits. Nothing is read from apps you did not select, and verification codes are skipped unless you turn them on.
@@ -49,8 +51,9 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 | Google Drive API (Google) | Optional file relay & attachment storage | Files stored in your own `FileApex Relay` Drive folder |
 | Google Sign-In / OAuth (Google) | Account authentication | OAuth tokens tied to your paired devices |
 | GitHub Releases API | Update checks | Public release tag lookup only, no identifiers sent |
+| GitHub (raw file) | Critical Notifications | One public file, `notice/notice.json`, fetched without any identifier; GitHub sees your IP address as for any download |
 
-If you never sign in with Google or enable cloud relay, none of these are contacted, and FileApex runs entirely offline on your local network, with the sole exception of the GitHub update checker, which is contacted if you manually trigger a version check.
+If you never sign in with Google or enable cloud relay, none of these are contacted, and FileApex runs entirely offline on your local network, with the exception of the GitHub update checker, which is contacted if you manually trigger a version check, and the Critical Notifications check described below, which you can turn off in Settings.
 
 ## Permissions
 

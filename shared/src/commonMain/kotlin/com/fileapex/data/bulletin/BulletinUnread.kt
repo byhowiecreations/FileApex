@@ -10,6 +10,7 @@ data class BatteryLowAlert(
 sealed interface HeaderAlert {
     data class NewMessages(val count: Int) : HeaderAlert
     data class BatteryLow(val count: Int) : HeaderAlert
+    data object CriticalNotice : HeaderAlert
 }
 
 object BulletinUnread {
@@ -44,7 +45,8 @@ object BulletinUnread {
 }
 
 object HeaderAlerts {
-    fun active(unread: Int, batteryLow: Int): List<HeaderAlert> = buildList {
+    fun active(unread: Int, batteryLow: Int, criticalNotice: Boolean = false): List<HeaderAlert> = buildList {
+        if (criticalNotice) add(HeaderAlert.CriticalNotice)
         if (unread > 0) add(HeaderAlert.NewMessages(unread))
         if (batteryLow > 0) add(HeaderAlert.BatteryLow(batteryLow))
     }

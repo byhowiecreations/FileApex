@@ -1465,5 +1465,20 @@ Tap Central Hub (+) to Pair</string>
     <string name="friends_invite_message">Join me on FileApex. Open FileApex, tap Connect with friends, then Enter an invite, paste this link and type the PIN I tell you: %1$s</string>
     <string name="friends_copy_message">Copy invite message</string>
     <string name="friends_link_copied">Copied. Paste it into a message to your friend.</string>
+    <string name="notice_settings_title">Critical Notifications</string>
+    <string name="notice_settings_summary">Check the FileApex GitHub page for notices about major bugs or updates that break features (never promotions or feature announcements). Nothing about you or your devices is sent.</string>
+    <string name="notice_consent_title">Critical Notifications</string>
+    <string name="notice_consent_body">FileApex checks the FileApex GitHub page for notices about major bugs or updates that break features (never promotions or feature announcements). Nothing about you or your devices is sent. You can turn this off in Settings.</string>
+    <string name="notice_consent_keep">Keep on</string>
+    <string name="notice_consent_off">Turn off</string>
+    <string name="notice_entry_label">Notice</string>
+    <string name="notice_required_label">Update required</string>
+    <string name="notice_open">Read</string>
+    <string name="notice_dismiss">Dismiss</string>
+    <string name="notice_open_link">Open page</string>
+    <string name="notice_more">%1$d more notices</string>
+    <string name="alert_critical_notice">Critical notice in Bulletin Board</string>
+    <string name="notice_alert_description">Critical notice</string>
+    <string name="notice_update">Update</string>
 </resources>
 

@@ -88,6 +88,7 @@ object FileApexAndroidBootstrap {
     private fun launchDeferredStartup() {
         deferredScope.launch {
             runStartupStep("update") { AppUpdateCoordinator.onAppLaunch() }
+            runStartupStep("notices") { com.fileapex.notice.NoticeCoordinator.onAppLaunch() }
             runStartupStep("google link") { GoogleLinkCoordinator.onAppLaunch() }
             runStartupStep("fcm") { com.fileapex.cloud.FcmTokenRegistrar.start() }
             runStartupStep("drive relay") { com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch() }

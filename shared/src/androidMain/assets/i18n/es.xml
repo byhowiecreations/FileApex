@@ -1465,5 +1465,20 @@ Toca el hub central (+) para emparejar</string>
     <string name="friends_invite_message">Únete a mí en FileApex. Abre FileApex, toca Conectar con amigos, luego Introducir una invitación, pega este enlace y escribe el PIN que te diga: %1$s</string>
     <string name="friends_copy_message">Copiar mensaje de invitación</string>
     <string name="friends_link_copied">Copiado. Pégalo en un mensaje a tu amigo.</string>
+    <string name="notice_settings_title">Avisos críticos</string>
+    <string name="notice_settings_summary">Consulta la página de GitHub de FileApex para ver avisos sobre errores graves o actualizaciones que dejan funciones sin uso (nunca promociones ni anuncios de funciones). No se envía nada sobre ti ni tus dispositivos.</string>
+    <string name="notice_consent_title">Avisos críticos</string>
+    <string name="notice_consent_body">FileApex consulta la página de GitHub de FileApex para ver avisos sobre errores graves o actualizaciones que dejan funciones sin uso (nunca promociones ni anuncios de funciones). No se envía nada sobre ti ni tus dispositivos. Puedes desactivarlo en Ajustes.</string>
+    <string name="notice_consent_keep">Mantener activado</string>
+    <string name="notice_consent_off">Desactivar</string>
+    <string name="notice_entry_label">Aviso</string>
+    <string name="notice_required_label">Actualización necesaria</string>
+    <string name="notice_open">Leer</string>
+    <string name="notice_dismiss">Descartar</string>
+    <string name="notice_open_link">Abrir página</string>
+    <string name="notice_more">%1$d avisos más</string>
+    <string name="alert_critical_notice">Aviso crítico en el Tablón</string>
+    <string name="notice_alert_description">Aviso crítico</string>
+    <string name="notice_update">Actualizar</string>
 </resources>
 

@@ -398,7 +398,7 @@ class SettingsViewModel : ViewModel() {
 
     /** Force an immediate update check from repeated Settings version taps. */
     fun onVersionNumberEasterEgg() {
-        AppUpdateCoordinator.checkNowManual()
+        AppUpdateCoordinator.checkNowManual().also { com.fileapex.notice.NoticeCoordinator.checkNow() }
     }
 
     fun setDeviceDetailsFieldVisible(fieldId: DeviceDetailsFieldId, visible: Boolean) {

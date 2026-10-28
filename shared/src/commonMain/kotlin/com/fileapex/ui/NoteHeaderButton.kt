@@ -13,6 +13,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
+import com.fileapex.ui.notice.noticeAccent
+import com.fileapex.notice.NoticeIndicators
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -48,15 +54,29 @@ fun NoteHeaderButton(
     }
     val painter = rememberNoteIconPainter(resolvedIconKind)
     val unread by com.fileapex.ui.notes.rememberBulletinUnreadCount()
+    val notices by com.fileapex.ui.notice.rememberVisibleNotices()
+    val alertDescription = stringRes("notice_alert_description")
+    val total = unread + NoticeIndicators.plainCount(notices)
+    val alert = NoticeIndicators.showsAlert(notices)
 
-    Box(modifier = Modifier, contentAlignment = Alignment.TopEnd) {
-    NoteHeaderIcon(onOpenNotes, painter, modifier)
-    if (unread > 0) UnreadBadge(unread, modifier = Modifier.padding(top = 4.dp, end = 4.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (alert) {
+            Icon(
+                imageVector = Icons.Filled.Warning,
+                contentDescription = alertDescription,
+                tint = noticeAccent(),
+                modifier = Modifier.size(26.dp).clickable(onClick = onOpenNotes)
+            )
+        }
+        Box(modifier = Modifier, contentAlignment = Alignment.TopEnd) {
+            NoteHeaderIcon(onOpenNotes, painter, modifier)
+            if (total > 0) UnreadBadge(if (total > 9) "9+" else total.toString(), Modifier.padding(top = 4.dp, end = 4.dp))
+        }
     }
 }
 
 @Composable
-private fun UnreadBadge(count: Int, modifier: Modifier = Modifier) {
+private fun UnreadBadge(label: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
@@ -65,7 +85,7 @@ private fun UnreadBadge(count: Int, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = if (count > 9) "9+" else count.toString(),
+            text = label,
             color = Color.White,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold

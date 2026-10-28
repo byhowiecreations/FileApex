@@ -30,6 +30,7 @@ object PresenceForegroundRefresh {
         com.fileapex.platform.ClipboardAccessibilityHealth.refresh()
         // Cloud registry after local UI path, Firestore upserts were stacking Room writers.
         GoogleLinkCoordinator.refreshCloudRegistry()
+        com.fileapex.notice.NoticeCoordinator.onForeground()
     }
 
     fun onAppBackgrounded() {

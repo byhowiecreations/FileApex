@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
+import com.fileapex.notice.NoticeCoordinator
 import com.fileapex.platform.supportsDevicePopups
 import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.SettingsUiState
@@ -48,6 +49,16 @@ internal fun NotificationsSettingsPage(
                 .verticalScroll(rememberScrollState())
         ) {
             FileApexPaneSectionHeader(title = stringRes("notifications"))
+
+            val noticesOn by FileApexServices.settings.noticeSettings.enabled.collectAsState()
+            ListItem(
+                headlineContent = { Text(stringRes("notice_settings_title"), softWrap = true) },
+                supportingContent = { Text(stringRes("notice_settings_summary"), softWrap = true) },
+                trailingContent = {
+                    Switch(checked = noticesOn, onCheckedChange = NoticeCoordinator::setEnabledByUser)
+                }
+            )
+            HorizontalDivider()
 
             ListItem(
                 headlineContent = { Text(stringRes("bulletin_board"), softWrap = true) },

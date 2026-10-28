@@ -64,3 +64,9 @@ scripts/build_full.sh
 scripts/play-last-versioncode.txt
 scripts/check_play_bundle.py
 scripts/test_check_play_bundle.py
+
+# Notice file is tracked even though a global *.json ignore may exist
+!/notice/
+!/notice/notice.json
+/notice/notices.src.json
+scripts/hosts.local.env

@@ -64,6 +64,7 @@ class SettingsMenuTest {
         )
         val ids = entries.map { it.id }
         assertFalse(ids.contains(SettingsMenuIds.CHECK_FOR_UPDATES))
+        assertTrue("Notifications is where Critical Notifications lives, so it must stay on Play", ids.contains(SettingsMenuIds.NOTIFICATIONS))
         assertFalse(ids.contains(SettingsMenuIds.AUTO_LAUNCH))
         assertFalse(ids.contains(SettingsMenuIds.DEVICE_NAME))
         assertTrue(ids.contains(SettingsMenuIds.DESKTOP_LAYOUT))

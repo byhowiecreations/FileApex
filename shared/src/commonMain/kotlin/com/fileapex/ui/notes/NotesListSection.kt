@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 internal fun ColumnScope.NotesListSection(notes: NotesScope) {
     val notesSnackbar = LocalNotesSnackbar.current
     with(notes) { with(frame) { with(live) {
+        com.fileapex.ui.notice.NoticeStrip()
         if (visualRows.isEmpty() && !holdingTransportSlot) {
             NotesEmptyState(Modifier.weight(1f))
         } else {

@@ -6,6 +6,9 @@ import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
 import kotlinx.coroutines.flow.StateFlow
 
 interface AppSettings {
+    /** Critical Notifications: the setting, the explanation flag and what was fetched. */
+    val noticeSettings: com.fileapex.notice.NoticeSettingsStore
+
     /** How far this device has pulled the bulletin from [deviceId], on that peer's clock; 0 when never. */
     fun bulletinDeltaCursor(deviceId: String): Long
 

@@ -54,6 +54,10 @@ class BulletinUnreadTest {
         assertEquals(emptyList<HeaderAlert>(), HeaderAlerts.active(unread = 0, batteryLow = 0))
         assertEquals(listOf(HeaderAlert.NewMessages(3)), HeaderAlerts.active(unread = 3, batteryLow = 0))
         assertEquals(
+            listOf(HeaderAlert.CriticalNotice, HeaderAlert.NewMessages(3)),
+            HeaderAlerts.active(unread = 3, batteryLow = 0, criticalNotice = true)
+        )
+        assertEquals(
             listOf(HeaderAlert.NewMessages(1), HeaderAlert.BatteryLow(2)),
             HeaderAlerts.active(unread = 1, batteryLow = 2)
         )

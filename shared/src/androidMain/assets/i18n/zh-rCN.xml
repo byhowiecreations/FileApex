@@ -1450,5 +1450,20 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="friends_invite_message">在 FileApex 上加入我。打开 FileApex，点“与朋友连接”，再点“输入邀请”，粘贴此链接并输入我告诉你的 PIN：%1$s</string>
     <string name="friends_copy_message">复制邀请消息</string>
     <string name="friends_link_copied">已复制。请粘贴到发给朋友的消息中。</string>
+    <string name="notice_settings_title">重要通知</string>
+    <string name="notice_settings_summary">查看 FileApex 的 GitHub 页面，获取有关严重错误或会导致功能失效的更新的通知（绝不用于推广或功能公告）。不会发送任何关于您或您设备的信息。</string>
+    <string name="notice_consent_title">重要通知</string>
+    <string name="notice_consent_body">FileApex 会查看 FileApex 的 GitHub 页面，获取有关严重错误或会导致功能失效的更新的通知（绝不用于推广或功能公告）。不会发送任何关于您或您设备的信息。您可以在设置中关闭此功能。</string>
+    <string name="notice_consent_keep">保持开启</string>
+    <string name="notice_consent_off">关闭</string>
+    <string name="notice_entry_label">通知</string>
+    <string name="notice_required_label">需要更新</string>
+    <string name="notice_open">阅读</string>
+    <string name="notice_dismiss">忽略</string>
+    <string name="notice_open_link">打开页面</string>
+    <string name="notice_more">还有 %1$d 条通知</string>
+    <string name="alert_critical_notice">公告板中有重要通知</string>
+    <string name="notice_alert_description">重要通知</string>
+    <string name="notice_update">更新</string>
 </resources>
 

@@ -470,11 +470,15 @@ fun App(
                         }
                     }
                     com.fileapex.ui.UpdateCheckPromptHost()
+                    com.fileapex.ui.notice.CriticalNoticeConsentHost()
 
                     // Overlay routes stay full-screen on every size class.
                     val hasDock = appTheme.traits.dockHome
                     val bulletinTracker by FileApexServices.bulletinUnread.collectAsState()
-                    val dockUnread by remember(bulletinTracker) { bulletinTracker?.unread ?: MutableStateFlow(0) }.collectAsState()
+                    val dockMessages by remember(bulletinTracker) { bulletinTracker?.unread ?: MutableStateFlow(0) }.collectAsState()
+                    val dockNotices by com.fileapex.notice.NoticeCoordinator.notices.collectAsState()
+                    val dockUnread = dockMessages + com.fileapex.notice.NoticeIndicators.plainCount(dockNotices) +
+                        if (com.fileapex.notice.NoticeIndicators.showsAlert(dockNotices)) 1 else 0
                     Box(modifier = Modifier.fillMaxSize().then(if (hasDock) Modifier.carouselUnflipOnOutsidePress() else Modifier)) {
                     Box(modifier = Modifier.fillMaxSize().padding(bottom = if (hasDock) 84.dp else 0.dp)) {
                         when (val overlay = route) {

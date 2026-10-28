@@ -362,16 +362,44 @@ val generateDesktopCloudConfig = tasks.register("generateDesktopCloudConfig") {
 fun escapeKotlinString(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "").replace("\n", "\\n")
 
+/**
+ * Test builds only: `-Pfileapex.notice.url=...` (or the same key in ~/.gradle/gradle.properties) points the app at a
+ * test notice file. Tasks that ship refuse to run while it is set.
+ */
+val fileapexNoticeUrlOverride: String? = providers.gradleProperty("fileapex.notice.url").orNull?.trim()?.takeIf { it.isNotEmpty() }
+
+gradle.taskGraph.whenReady {
+    val shipping = setOf("bundlePlayRelease", "shipPlayRelease", "packageBothDmg", "copyAllBuilds", "copyCompleteBuilds")
+    val shipTask = allTasks.firstOrNull { it.name in shipping }
+    if (fileapexNoticeUrlOverride != null && shipTask != null) {
+        throw GradleException("fileapex.notice.url is set, but ${shipTask.name} ships a build. Remove the property so the app reads the official notice file.")
+    }
+}
+
 val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
     val outDir = layout.buildDirectory.dir("generated/fileapexAppVersion/kotlin")
     val versionFile = rootProject.file("version.md")
     val versionName = fileapexVersionName
     val versionCode = fileapexVersionCode
+    val noticeUrl = fileapexNoticeUrlOverride.orEmpty()
     inputs.file(versionFile)
     inputs.property("versionName", versionName)
     inputs.property("versionCode", versionCode)
+    inputs.property("noticeUrl", noticeUrl)
     outputs.dir(outDir)
     doLast {
+        val noticeDir = outDir.get().asFile.resolve("com/fileapex/notice")
+        noticeDir.mkdirs()
+        noticeDir.resolve("GeneratedNoticeConfig.kt").writeText(
+            """
+            |package com.fileapex.notice
+            |
+            |/** Generated, do not edit. A non-empty URL is a test build reading notices from another file. */
+            |internal object GeneratedNoticeConfig {
+            |    const val NOTICE_URL = "${escapeKotlinString(noticeUrl)}"
+            |}
+            """.trimMargin()
+        )
         val dir = outDir.get().asFile.resolve("com/fileapex/update")
         dir.mkdirs()
         dir.resolve("GeneratedAppVersion.kt").writeText(
@@ -394,6 +422,17 @@ val generateFileApexAppVersion = tasks.register("generateFileApexAppVersion") {
 
 tasks.withType<KotlinCompilationTask<*>>().configureEach {
     dependsOn(generateFileApexAppVersion)
+}
+
+/** Posting a notice: see docs/notice-tools/README.md and docs/notice-tools/sign_notice.sh. The tool lives in the desktop test sources and ships in no build. */
+tasks.register<JavaExec>("signNotice") {
+    group = "notice"
+    description = "Generates keys, signs notice/notice.json or verifies a signed file (pass --args)."
+    val testCompilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+    dependsOn(testCompilation.compileTaskProvider)
+    classpath(testCompilation.output.allOutputs, testCompilation.runtimeDependencyFiles)
+    mainClass.set("com.fileapex.notice.tool.NoticeSignerMainKt")
+    workingDir = rootProject.projectDir
 }
 
 tasks.matching { it.name.startsWith("ksp") }.configureEach {

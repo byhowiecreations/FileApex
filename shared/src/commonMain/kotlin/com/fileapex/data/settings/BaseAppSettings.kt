@@ -230,6 +230,7 @@ class BaseAppSettings(
         AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
     )
     private val themeStyles = ThemeStyleStore(store)
+    override val noticeSettings = com.fileapex.notice.NoticeSettingsStore(store)
     override val carouselFallbackTheme: StateFlow<AppTheme> = themeStyles.fallbackTheme
     override val carouselFavoriteDevice: StateFlow<String> = themeStyles.favoriteDevice
     override fun setCarouselFavoriteDevice(deviceId: String) = themeStyles.setFavoriteDevice(deviceId)
@@ -1287,6 +1288,7 @@ class BaseAppSettings(
 
     override fun resetToDefaults() {
         store.clear()
+        noticeSettings.reload()
         google.value = false
         googleEmail.value = ""
         googleUid.value = ""
