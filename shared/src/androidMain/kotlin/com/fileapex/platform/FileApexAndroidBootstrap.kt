@@ -87,6 +87,12 @@ object FileApexAndroidBootstrap {
 
     private fun launchDeferredStartup() {
         deferredScope.launch {
+            runStartupStep("firebase gate") {
+                val context = com.fileapex.data.settings.androidAppContextOrNull() ?: return@runStartupStep
+                deferredScope.launch {
+                    FileApexServices.settings.googleAccountLinkEnabled.collect { com.fileapex.cloud.FirebaseGate.onLinkChanged(context, it) }
+                }
+            }
             runStartupStep("update") { AppUpdateCoordinator.onAppLaunch() }
             runStartupStep("notices") { com.fileapex.notice.NoticeCoordinator.onAppLaunch() }
             runStartupStep("google link") { GoogleLinkCoordinator.onAppLaunch() }

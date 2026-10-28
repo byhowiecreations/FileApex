@@ -186,6 +186,22 @@ class TlsFrontServerTest {
         }
     }
 
+    private fun connectionThreads() = Thread.getAllStackTraces().keys.count { it.name.startsWith("tls-front-") && it.name != "tls-front-idle" }
+
+    @Test
+    fun connectionThreadsGoAwayShortlyAfterTheirConnectionsClose() {
+        val resting = connectionThreads()
+        repeat(6) {
+            client(pairedId).use { socket ->
+                roundTrip(socket, "GET /who HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+            }
+        }
+        assertTrue("connections should have used threads", connectionThreads() > resting)
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (connectionThreads() > resting && System.nanoTime() < deadline) Thread.sleep(200)
+        assertEquals("idle connection threads must expire, not linger", resting, connectionThreads())
+    }
+
     @Test
     fun registryEntryIsRemovedWhenTheConnectionCloses() {
         client(pairedId).use { socket ->

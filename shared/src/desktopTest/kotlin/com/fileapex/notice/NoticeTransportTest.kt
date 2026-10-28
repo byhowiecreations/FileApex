@@ -8,8 +8,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.net.InetSocketAddress
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.api.createClientPlugin
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 
 class NoticeTransportTest {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -119,5 +128,59 @@ class NoticeTransportTest {
         assertFalse(policy.allows("https://user:pw@raw.githubusercontent.com/x"))
         assertFalse(policy.allows("not a url"))
         assertNull(null)
+    }
+
+    private fun quickClient() = HttpClient(CIO) {
+        followRedirects = false
+        install(HttpTimeout) { connectTimeoutMillis = 500; requestTimeoutMillis = 500; socketTimeoutMillis = 500 }
+    }
+
+    @Test
+    fun aHostThatDoesNotResolveFailsQuietly() {
+        val policy = NoticeUrlPolicy("no-such-host.invalid", httpsOnly = false)
+        assertEquals(NoticeHttpResponse.Failed, runBlocking { KtorNoticeTransport(policy, quickClient()).get("http://no-such-host.invalid/n", null) })
+    }
+
+    @Test
+    fun aServerThatNeverAnswersFailsQuietlyAfterTheTimeout() {
+        route("/n") { Thread.sleep(3_000) }
+        val response = runBlocking { KtorNoticeTransport(NoticeUrlPolicy("127.0.0.1", httpsOnly = false), quickClient()).get("$base/n", null) }
+        assertEquals(NoticeHttpResponse.Failed, response)
+    }
+
+    @Test
+    fun aPlainServerBehindAnHttpsAddressFailsTheHandshakeQuietly() {
+        route("/n") { it.reply(200, "x".encodeToByteArray()) }
+        val policy = NoticeUrlPolicy("127.0.0.1", httpsOnly = true)
+        val response = runBlocking { KtorNoticeTransport(policy, quickClient()).get("https://127.0.0.1:${server.address.port}/n", null) }
+        assertEquals(NoticeHttpResponse.Failed, response)
+    }
+
+    @Test
+    fun cancellingTheCallerStopsTheRequestInsteadOfReportingAFailure() {
+        route("/n") { Thread.sleep(3_000) }
+        runBlocking {
+            val job = async(Dispatchers.IO) { KtorNoticeTransport(NoticeUrlPolicy("127.0.0.1", httpsOnly = false)).get("$base/n", null) }
+            delay(300)
+            job.cancel()
+            try {
+                job.await()
+                fail("a cancelled request must not return a result")
+            } catch (_: CancellationException) {
+            }
+        }
+    }
+
+    @Test
+    fun aProgrammingErrorIsNotMaskedAsAnOfflineFailure() {
+        val boom = createClientPlugin("boom") { onRequest { _, _ -> throw IllegalStateException("bug") } }
+        val client = HttpClient(CIO) { install(boom) }
+        route("/n") { it.reply(200, "x".encodeToByteArray()) }
+        try {
+            runBlocking { KtorNoticeTransport(NoticeUrlPolicy("127.0.0.1", httpsOnly = false), client).get("$base/n", null) }
+            fail("an IllegalStateException from the client is a bug and must reach the caller")
+        } catch (e: IllegalStateException) {
+            assertEquals("bug", e.message)
+        }
     }
 }

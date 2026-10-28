@@ -107,7 +107,7 @@ internal object PeerLanDiscovery {
     ): PeerNodeState? = coroutineScope {
         hosts.map { host ->
             async(Dispatchers.IO) {
-                probeIdentityMatch(host, port, peer, client)
+                LanSweepGate.shared.probe { probeIdentityMatch(host, port, peer, client) }
             }
         }.awaitAll().firstOrNull { it != null }
     }

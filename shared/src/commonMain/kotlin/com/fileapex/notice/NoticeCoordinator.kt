@@ -25,7 +25,7 @@ object NoticeCoordinator {
     private val mutex = Mutex()
 
     private val store: NoticeSettingsStore get() = FileApexServices.settings.noticeSettings
-    private val transport by lazy { KtorNoticeTransport(NoticeUrlPolicy.forUrl(noticeUrl())) }
+    private val transport by lazy { createNoticeTransport(NoticeUrlPolicy.forUrl(noticeUrl())) }
 
     fun noticeUrl(): String = GeneratedNoticeConfig.NOTICE_URL.ifBlank { NoticeSync.OFFICIAL_URL }
 

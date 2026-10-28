@@ -23,6 +23,12 @@
     </queries>
 
     <application>
+        <!-- Firebase starts through FirebaseGate, only for installs that use the Google link. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+
         <service
             android:name="com.fileapex.cloud.FileApexFcmMessagingService"
             android:exported="false">

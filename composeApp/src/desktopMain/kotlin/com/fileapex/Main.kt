@@ -74,6 +74,7 @@ private val DesktopWindowMinHeight = 560.dp
 private val DesktopWindowMaxHeight = 900.dp
 
 fun main(args: Array<String>) {
+    com.fileapex.platform.ThreadTuning.apply()
     DesktopCrashHandler.install()
     // The CLI dials pinned peers too, so the client identity must exist before either path starts.
     com.fileapex.security.tls.PeerTlsConnector.configure { com.fileapex.security.tls.DesktopTlsIdentity.store() }

@@ -125,6 +125,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
+            implementation(libs.androidx.work.runtime)
             val tsnetAar = rootProject.file("native/tsnet/build/tsnetbridge.aar")
             // The F-Droid build cannot ship a prebuilt binary, so it runs without Tailscale.
             if (tsnetAar.isFile && !fileapexFdroid) {
@@ -501,6 +502,11 @@ compose.desktop {
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
             "-Djava.awt.headless=false",
+            // Heap ceiling of 2 GB on big machines and 25 percent of RAM on small ones, a 128 MB first heap, and a
+            // collector with 3 helper threads instead of 12. A 300 000 file folder listing needs about 100 MB.
+            "-XX:MaxRAM=8g",
+            "-XX:ParallelGCThreads=2",
+            "-XX:ConcGCThreads=1",
         )
         if (isMacHost()) {
             jvmArgs += listOf(

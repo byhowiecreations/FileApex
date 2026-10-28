@@ -36,14 +36,14 @@ class NoticeRepoGuardTest {
     @Test
     fun noticeCodeNeverTouchesTheBulletinMessageStore() {
         val forbidden = Regex("BulletinBoardRepository|BulletinBoardSyncEngine|MessageEntity|bulletinBoardRepository|bulletinSyncEngine|outbox", RegexOption.IGNORE_CASE)
-        val files = sources("shared/src/commonMain/kotlin/com/fileapex/notice", "shared/src/commonMain/kotlin/com/fileapex/ui/notice")
+        val files = sources("shared/src/commonMain/kotlin/com/fileapex/notice", "shared/src/jvmCommon/kotlin/com/fileapex/notice", "shared/src/commonMain/kotlin/com/fileapex/ui/notice")
         assertTrue(files.isNotEmpty())
         files.forEach { assertFalse("${it.name} must stay out of the message store", forbidden.containsMatchIn(it.readText())) }
     }
 
     @Test
     fun noticeCodeSendsNoIdentifyingHeaderOrParameter() {
-        val text = File(root, "shared/src/commonMain/kotlin/com/fileapex/notice/NoticeTransport.kt").readText()
+        val text = File(root, "shared/src/jvmCommon/kotlin/com/fileapex/notice/KtorNoticeTransport.kt").readText()
         assertFalse(Regex("UserAgent|currentAppVersionName|deviceId|selfId|header\\((?!HttpHeaders\\.IfNoneMatch)").containsMatchIn(text))
     }
 

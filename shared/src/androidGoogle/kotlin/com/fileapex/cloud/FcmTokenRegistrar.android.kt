@@ -2,7 +2,6 @@ package com.fileapex.cloud
 
 import android.util.Log
 import com.fileapex.util.cancellableCatching
-import com.google.firebase.messaging.FirebaseMessaging
 import com.fileapex.di.FileApexServices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +27,7 @@ actual object FcmTokenRegistrar {
 
     private suspend fun publishCurrentToken() {
         cancellableCatching {
-            val token = FirebaseMessaging.getInstance().token.await()
+            val token = FirebaseGate.messaging().token.await()
             if (token.isNotBlank()) publishToken(token)
         }.onFailure { error ->
             Log.e(TAG, "FCM token fetch failed - ${error.message}")

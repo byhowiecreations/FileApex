@@ -70,7 +70,11 @@ class TlsFrontServer(
     private val slots = Semaphore(MAX_CONNECTIONS)
     private val open = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Socket, Boolean>())
     private val threadIds = AtomicInteger()
-    private val pool = Executors.newCachedThreadPool { runnable ->
+    /** Same behavior as a cached pool, but an idle thread leaves after [WORKER_KEEP_ALIVE_SECONDS] instead of 60 s. */
+    private val pool = java.util.concurrent.ThreadPoolExecutor(
+        0, Int.MAX_VALUE, WORKER_KEEP_ALIVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS,
+        java.util.concurrent.SynchronousQueue()
+    ) { runnable ->
         Thread(runnable, "tls-front-${threadIds.incrementAndGet()}").apply { isDaemon = true }
     }
     private val sessions = java.util.concurrent.ConcurrentHashMap<SSLSocket, BridgedPeer>()
@@ -239,6 +243,7 @@ class TlsFrontServer(
         /** The bridge connector listens on 127.0.0.1; Android's getLoopbackAddress() can return ::1. */
         val BRIDGE_ADDRESS: InetAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
         const val MAX_CONNECTIONS = 64
+        const val WORKER_KEEP_ALIVE_SECONDS = 3L
         const val BACKLOG = 50
         const val HANDSHAKE_TIMEOUT_MS = 10_000
         const val IDLE_TIMEOUT_MS = 5 * 60_000L

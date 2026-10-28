@@ -2,13 +2,23 @@ package com.fileapex
 
 import android.app.Application
 import android.util.Log
+import androidx.work.Configuration
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.ShareServerForegroundNotification
 import com.fileapex.platform.isUserStorageUnlocked
 
-class FileApexApplication : Application() {
+class FileApexApplication : Application(), Configuration.Provider {
+    // First, before any property below can start the coroutine pool (it reads the keep-alive setting once).
+    init {
+        com.fileapex.platform.ThreadTuning.apply()
+    }
+
+    /** WorkManager starts the first time something schedules or cancels work, not at launch. */
+    override val workManagerConfiguration: Configuration by lazy { Configuration.Builder().build() }
+
     override fun onCreate() {
         super.onCreate()
+        com.fileapex.cloud.FirebaseGate.initIfLinkedAtLaunch(this)
         com.fileapex.di.FileApexServices.isPlayStoreBuild = BuildConfig.IS_PLAY_STORE
         com.fileapex.di.FileApexServices.isFdroidBuild = BuildConfig.IS_FDROID
         com.fileapex.di.FileApexServices.buildChannel = BuildConfig.BUILD_CHANNEL

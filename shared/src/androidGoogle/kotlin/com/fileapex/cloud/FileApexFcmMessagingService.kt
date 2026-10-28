@@ -24,6 +24,7 @@ class FileApexFcmMessagingService : FirebaseMessagingService() {
     private val serviceScope = CoroutineScope(Dispatchers.Default)
 
     override fun onCreate() {
+        FirebaseGate.ensure(applicationContext)
         super.onCreate()
         if (FileApexAndroidBootstrap.ensureInitialized(applicationContext)) {
             BatteryBulletinCoordinator.onProcessStartFromWake(applicationContext)

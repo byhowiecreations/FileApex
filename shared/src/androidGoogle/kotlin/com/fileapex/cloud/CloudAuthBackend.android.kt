@@ -20,7 +20,7 @@ actual object CloudAuthBackend {
 
     actual suspend fun signInWithGoogleIdToken(idToken: String): GoogleAuthSession {
         val credential = GoogleAuthProvider.getCredential(idToken, null)
-        val result = FirebaseAuth.getInstance().signInWithCredential(credential).await()
+        val result = FirebaseGate.auth().signInWithCredential(credential).await()
         val user = result.user ?: error("Firebase Auth returned no user")
         return GoogleAuthSession(
             firebaseUid = user.uid,
@@ -30,7 +30,8 @@ actual object CloudAuthBackend {
     }
 
     actual suspend fun currentSession(): GoogleAuthSession? {
-        val user = FirebaseAuth.getInstance().currentUser ?: return null
+        if (FirebaseGate.skipSessionCheck()) return null
+        val user = FirebaseGate.auth().currentUser ?: return null
         // A per-device user has no email and a composite uid; the Google account's uid rides in the `owner` claim.
         val owner = user.getIdToken(false).await()?.claims?.get("owner") as? String
         if (owner != null) {
@@ -48,11 +49,11 @@ actual object CloudAuthBackend {
     }
 
     actual suspend fun adoptDeviceToken(customToken: String) {
-        FirebaseAuth.getInstance().signInWithCustomToken(customToken).await()
+        FirebaseGate.auth().signInWithCustomToken(customToken).await()
     }
 
     actual suspend fun firebaseIdToken(forceRefresh: Boolean): String? = try {
-        FirebaseAuth.getInstance().currentUser?.getIdToken(forceRefresh)?.await()?.token
+        FirebaseGate.auth().currentUser?.getIdToken(forceRefresh)?.await()?.token
     } catch (error: FirebaseAuthInvalidUserException) {
         // A roster device removed this device's Firebase user through the relay.
         if (error.errorCode == "ERROR_USER_DISABLED") com.fileapex.domain.pairing.KickedByPeer.onFirebaseUserDisabled()
@@ -62,7 +63,7 @@ actual object CloudAuthBackend {
     }
 
     actual suspend fun signOut() {
-        FirebaseAuth.getInstance().signOut()
+        FirebaseGate.auth().signOut()
     }
 
     actual suspend fun registerDevice(uid: String, record: CloudDeviceRecord) {
@@ -219,7 +220,7 @@ actual object CloudAuthBackend {
     }
 
     actual suspend fun fetchAllUserDevices(uid: String): List<CloudDeviceRecord> {
-        val snapshot = FirebaseFirestore.getInstance()
+        val snapshot = FirebaseGate.firestore()
             .collection("users").document(uid)
             .collection("devices")
             .get().await()
@@ -238,7 +239,7 @@ actual object CloudAuthBackend {
     ): CloudRegistryHandle {
         val idle = CompletableDeferred<Unit>()
         val state = ListenerState()
-        val registration = FirebaseFirestore.getInstance()
+        val registration = FirebaseGate.firestore()
             .collection("users").document(uid)
             .collection("diagnosticsRelay")
             .whereEqualTo("responderDeviceId", responderDeviceId)
@@ -261,7 +262,7 @@ actual object CloudAuthBackend {
     }
 
     private fun relayDoc(uid: String, sessionId: String) =
-        FirebaseFirestore.getInstance()
+        FirebaseGate.firestore()
             .collection("users").document(uid)
             .collection("diagnosticsRelay").document(sessionId)
 
@@ -284,7 +285,7 @@ actual object CloudAuthBackend {
     }
 
     private fun deviceDoc(uid: String, deviceId: String) =
-        FirebaseFirestore.getInstance()
+        FirebaseGate.firestore()
             .collection("users").document(uid)
             .collection("devices").document(deviceId)
 
@@ -295,7 +296,7 @@ actual object CloudAuthBackend {
     ): CloudRegistryHandle {
         val idle = CompletableDeferred<Unit>()
         val state = ListenerState()
-        val registration = FirebaseFirestore.getInstance()
+        val registration = FirebaseGate.firestore()
             .collection("users").document(uid)
             .collection("devices")
             .addSnapshotListener { snapshot, error ->
@@ -326,7 +327,7 @@ actual object CloudAuthBackend {
 actual fun googleWebClientId(): String = BuildConfig.GOOGLE_WEB_CLIENT_ID
 
 actual fun firebaseApiKey(): String =
-    com.google.firebase.FirebaseApp.getInstance().options.apiKey.orEmpty()
+    FirebaseGate.options().apiKey.orEmpty()
 
 actual fun firebaseProjectId(): String =
-    com.google.firebase.FirebaseApp.getInstance().options.projectId.orEmpty()
+    FirebaseGate.options().projectId.orEmpty()

@@ -32,6 +32,7 @@ actual fun backupStateDirectory(): String {
 }
 
 actual object BackupScheduler {
+    private const val FEATURE = "backup"
     private const val PERIODIC = "fileapex_folder_backup"
     private const val ONE_SHOT = "fileapex_folder_backup_now"
     private const val FIRST_RUN_DELAY_MINUTES = 15L
@@ -43,11 +44,16 @@ actual object BackupScheduler {
 
     actual fun apply(config: BackupConfig) {
         val context = androidAppContextOrNull() ?: return
-        val manager = WorkManager.getInstance(context)
+        val memory = AndroidWorkState.memory(context)
         if (!config.isRunnable) {
-            manager.cancelUniqueWork(PERIODIC)
+            if (memory.cancelNeeded(FEATURE)) {
+                WorkManager.getInstance(context).cancelUniqueWork(PERIODIC)
+                memory.markIdle(FEATURE)
+            }
             return
         }
+        memory.markScheduled(FEATURE)
+        val manager = WorkManager.getInstance(context)
         val request = PeriodicWorkRequestBuilder<BackupWorker>(config.intervalHours.toLong(), TimeUnit.HOURS)
             .setConstraints(constraints(config))
             // Leaves time to finish setup (more folders, another destination) before the first run;
@@ -61,6 +67,7 @@ actual object BackupScheduler {
     actual fun runNow(config: BackupConfig) {
         val context = androidAppContextOrNull() ?: return
         if (!config.isRunnable) return
+        AndroidWorkState.memory(context).markScheduled(FEATURE)
         val request = OneTimeWorkRequestBuilder<BackupWorker>()
             .setConstraints(constraints(config))
             .build()
