@@ -1,3 +1,3 @@
-name=0.19.9b
-code=224
+name=0.19.9c-hotfix
+code=226
 extension_version=1.0.8

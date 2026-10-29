@@ -49,7 +49,7 @@ private class RedactingOutputStream(private val target: PrintStream) : OutputStr
 
     private fun emit() {
         if (line.size() == 0) return
-        val text = line.toString(Charsets.UTF_8)
+        val text = line.toString(Charsets.UTF_8.name())
         line.reset()
         target.write(LogRedactor.redact(text).toByteArray(Charsets.UTF_8))
         target.flush()

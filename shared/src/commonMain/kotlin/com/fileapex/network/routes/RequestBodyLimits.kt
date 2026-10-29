@@ -27,5 +27,5 @@ internal suspend fun ApplicationCall.receiveBoundedText(limit: Long = TEXT_BODY_
         if (total > limit) throw RequestBodyTooLargeException(limit)
         out.write(buffer, 0, read)
     }
-    return out.toString(Charsets.UTF_8)
+    return out.toString(Charsets.UTF_8.name())
 }
