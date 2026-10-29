@@ -4,7 +4,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.clipboard.ClipboardCopySignals
 import com.fileapex.domain.clipboard.ClipboardSharePolicy

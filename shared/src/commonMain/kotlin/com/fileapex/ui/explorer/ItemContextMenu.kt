@@ -1,5 +1,7 @@
 package com.fileapex.ui.explorer
 
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,6 +56,7 @@ internal fun ItemContextMenu(
     item: RemoteFileItem? = null,
     onOpen: () -> Unit = {},
     onSelect: () -> Unit = {},
+    anchor: ContextMenuAnchor? = null,
 ) {
     val mutations = LocalExplorerMutations.current
     var infoOpen by remember { mutableStateOf(false) }
@@ -76,9 +79,11 @@ internal fun ItemContextMenu(
     }
     val favorites by FileApexServices.settings.explorerFavorites.collectAsState()
     val local = item != null && !isRemoteTarget && mutations != null
+    val menuOffset = anchor?.menuOffsetPx()?.let { with(LocalDensity.current) { DpOffset(it.x.toDp(), it.y.toDp()) } } ?: DpOffset.Zero
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
+        offset = menuOffset,
         shape = menuShape
     ) {
         if (item != null) {
@@ -185,18 +190,7 @@ internal fun ItemContextMenu(
         }
     }
     if (remoteDeleteOpen && item != null && mutations != null) {
-        AlertDialog(
-            onDismissRequest = { remoteDeleteOpen = false },
-            title = { Text(stringRes("remote_delete_confirm_title")) },
-            text = { Text(stringRes("remote_delete_confirm_body", item.name)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    remoteDeleteOpen = false
-                    mutations.delete(item)
-                }) { Text(stringRes("delete"), color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { remoteDeleteOpen = false }) { Text(stringRes("cancel")) } }
-        )
+        RemoteDeleteConfirm(item.name, onDismiss = { remoteDeleteOpen = false }, onConfirm = { remoteDeleteOpen = false; mutations.delete(item) })
     }
     if (moveOpen && item != null && mutations != null) {
         FolderPickerDialog(

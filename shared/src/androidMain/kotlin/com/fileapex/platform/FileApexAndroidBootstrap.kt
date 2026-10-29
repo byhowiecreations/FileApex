@@ -1,7 +1,7 @@
 package com.fileapex.platform
 
 import android.content.Context
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.db.createFileApexDatabase
 import com.fileapex.data.identity.initAndroidLocalIdentity

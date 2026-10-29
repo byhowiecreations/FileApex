@@ -3,7 +3,7 @@ package com.fileapex.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.fileapex.platform.log.Log
 
 /**
  * The AlarmManager watchdog tick. Not exported, so only this app's own alarm can fire it; the boot and unlock

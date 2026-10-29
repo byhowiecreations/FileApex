@@ -39,4 +39,11 @@ class PeerHttpHeadersTest {
     fun noHeaderTextGivesNoHeaders() {
         assertEquals(emptyMap<String, String>(), PeerHttpHeaders.parseLines(""))
     }
+
+    @Test
+    fun theClusterDigestIsReadByLowerCaseName() {
+        val headers = PeerHttpHeaders.parse("HTTP/1.1 200 OK\nX-FileApex-Cluster-Digest: 00112233aabbccdd\n")
+        assertEquals("00112233aabbccdd", PeerHttpHeaders.clusterDigest(headers))
+        assertEquals(null, PeerHttpHeaders.clusterDigest(emptyMap()))
+    }
 }

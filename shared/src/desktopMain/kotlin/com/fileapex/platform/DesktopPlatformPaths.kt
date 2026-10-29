@@ -14,11 +14,9 @@ object DesktopPlatformPaths {
     const val BUNDLE_ID = "com.fileapex"
     const val DATABASE_FILE_NAME = "fileapex.db"
     const val BULLETIN_BOARD_DATABASE_FILE_NAME = "bulletin_board.db"
-    private const val SEND_JOBS_DIR_NAME = "send-jobs"
     private const val IDENTITY_FILE_NAME = "identity.properties"
     private const val ROSTER_RESOLVED_MARKER = ".roster-resolved"
     private const val EXTENSION_REGISTRAR_STAMP = "extension-registrar.stamp"
-    private const val READY_DEVICE_IDS_FILE_NAME = "ready-device-ids.json"
     private const val LOCAL_API_FILE_NAME = "local-api.json"
     private const val EXTENSION_REGISTRAR_LOG = "extension-registrar.log"
 
@@ -58,20 +56,13 @@ object DesktopPlatformPaths {
     fun rosterResolvedMarkerFile(): File =
         File(applicationSupportDirectory(), ROSTER_RESOLVED_MARKER)
 
-    fun sendJobsDirectory(): File =
-        ensureDirectory(File(applicationSupportDirectory(), SEND_JOBS_DIR_NAME))
-
     fun identityPropertiesFile(): File =
         File(applicationSupportDirectory(), IDENTITY_FILE_NAME)
 
     fun extensionRegistrarStampFile(): File =
         File(applicationSupportDirectory(), EXTENSION_REGISTRAR_STAMP)
 
-    /** Ready device ids for the macOS share sheet. Same flag the Devices tab already shows. */
-    fun readyDeviceIdsFile(): File =
-        File(applicationSupportDirectory(), READY_DEVICE_IDS_FILE_NAME)
-
-    /** Tells the macOS extensions which 127.0.0.1 port the running app serves them on. Holds only that number. */
+    /** Tells the macOS extensions which 127.0.0.1 port the running app serves them on, and the token for its local routes. Owner-only. */
     fun localApiFile(): File =
         File(applicationSupportDirectory(), LOCAL_API_FILE_NAME)
 

@@ -47,6 +47,7 @@ internal interface StoredEndpointHost {
     suspend fun markReachable(deviceId: String)
     fun onBulletinVersion(peer: PairedDeviceEntity, version: Long)
     fun pullRemovals(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String)
+    fun reconcileCluster(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String)
     suspend fun touchLastSeenEpoch(deviceId: String)
     suspend fun touchLastSeen(deviceId: String, host: String, port: Int)
     suspend fun fetchNodeState(host: String, port: Int, timeoutMs: Long): PeerNodeState
@@ -84,7 +85,8 @@ internal class StoredEndpointProbe(
             if (reached) {
                 host.markReachable(peer.deviceId)
                 probe.bulletinVersion?.let { host.onBulletinVersion(peer, it) }
-                probe.removals?.let { theirs -> host.pullRemovals(peer, endpoint, theirs) }
+                val digest = probe.clusterDigest
+                if (digest != null) host.reconcileCluster(peer, endpoint, digest) else probe.removals?.let { theirs -> host.pullRemovals(peer, endpoint, theirs) }
                 if (endpoint.tailnet) {
                     host.touchLastSeenEpoch(peer.deviceId)
                 } else {

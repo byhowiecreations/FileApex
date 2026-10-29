@@ -469,16 +469,16 @@ class PairingCoordinator(
             !peer.isRemoved && peer.deviceId != me && peer.deviceId in onlineDeviceIds &&
                 NetworkUtils.isUsableLanIpv4(peer.lastKnownIp) && peer.port > 0
         }
-        var staged = 0
-        for (peer in askable.shuffled().take(CATCH_UP_PEERS_PER_RUN)) {
-            val sealed = cancellableCatching { client.cluster.fetchIntroductions(peer.lastKnownIp, peer.port, me) }
-                .onFailure { println("PairingCoordinator: catch-up from ${NetworkUtils.lastOctetLabel(peer.lastKnownIp)} failed (${it::class.simpleName})") }
-                .getOrNull()
-                .orEmpty()
-            if (sealed.isEmpty()) continue
-            staged += admission().acceptIntroductions(sealed.take(MAX_INTRODUCTIONS))
-        }
-        return staged
+        return askable.shuffled().take(CATCH_UP_PEERS_PER_RUN).sumOf { catchUpFromPeer(it, me) }
+    }
+
+    /** One peer's introductions; also asked for when that peer's cluster digest differs from ours. */
+    suspend fun catchUpFromPeer(peer: PairedDeviceEntity, me: String = identityProvider().deviceId): Int {
+        if (peer.isRemoved || !NetworkUtils.isUsableLanIpv4(peer.lastKnownIp) || peer.port <= 0) return 0
+        val sealed = cancellableCatching { client.cluster.fetchIntroductions(peer.lastKnownIp, peer.port, me) }
+            .onFailure { println("PairingCoordinator: catch-up from ${NetworkUtils.lastOctetLabel(peer.lastKnownIp)} failed (${it::class.simpleName})") }
+            .getOrNull().orEmpty()
+        return if (sealed.isEmpty()) 0 else admission().acceptIntroductions(sealed.take(MAX_INTRODUCTIONS))
     }
 
     /**

@@ -580,7 +580,10 @@ class PeerPresenceMonitor(
             FileApexServices.bulletinSyncEngine.onPeerBulletinVersion(peer, version)
         }
         override fun pullRemovals(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String) {
-            scope.launch { removals.pull(peer, endpoint, theirs) }
+            scope.launch { pullers.removals.pull(peer, endpoint, theirs) }
+        }
+        override fun reconcileCluster(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String) {
+            scope.launch { pullers.cluster.pull(peer, endpoint, theirs) }
         }
         override suspend fun touchLastSeenEpoch(deviceId: String) {
             mutex.withLock { repository.touchPeerLastSeenEpoch(deviceId) }
@@ -629,13 +632,7 @@ class PeerPresenceMonitor(
         }
     })
 
-    private val removals = RemovalPuller(
-        ourFingerprint = { repository.removalFingerprint() },
-        localDeviceId = { com.fileapex.data.identity.loadLocalIdentity().deviceId },
-        fetchRemoved = { host, port -> client.cluster.fetchRemovedDevices(host, port) },
-        merge = { request, senderId -> FileApexServices.pairingCoordinator.mergeIncoming(request, authenticatedSenderId = senderId) },
-        onSelfRecord = { peer, record -> com.fileapex.domain.pairing.KickedByPeer.onTombstone(peer, record, repository.selfMembershipVersion()) }
-    )
+    private val pullers = RemovalPullers(repository, client)
 
     private suspend fun markReachable(vararg deviceIds: String, epochMs: Long = TimeUtils.now(), overLan: Boolean = true, via: RouteKind? = null) {
         book.record(deviceIds, epochMs, via ?: if (overLan) RouteKind.Lan else null)

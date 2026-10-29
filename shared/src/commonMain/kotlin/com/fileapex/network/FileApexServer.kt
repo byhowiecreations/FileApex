@@ -16,6 +16,7 @@ import com.fileapex.network.routes.registerClipboardRoutes
 import com.fileapex.network.routes.registerDiagnosticRoutes
 import com.fileapex.network.routes.registerFileRoutes
 import com.fileapex.network.routes.registerIdentityRoutes
+import com.fileapex.network.routes.registerLocalExtensionRoutes
 import com.fileapex.network.routes.registerIrohRoutes
 import com.fileapex.network.routes.registerNotificationRoutes
 import com.fileapex.network.routes.registerPresenceRoutes
@@ -74,8 +75,12 @@ class FileApexServer(
     internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
     /** Fingerprint of this node's removal records, sent to a proven peer on health and merge answers (RemovalFingerprint). */
     internal val removalFingerprint: suspend () -> String = { com.fileapex.domain.pairing.RemovalFingerprint.NONE },
+    /** Digest of this node's roster and removal records, sent beside the fingerprint (ClusterDigest). */
+    internal val clusterDigest: suspend () -> String = { com.fileapex.domain.pairing.ClusterDigest.NONE },
     /** The removal records inside the fingerprint window, for a peer whose fingerprint differs. */
     internal val removalRecords: suspend () -> List<com.fileapex.domain.pairing.RemovedDeviceRecord> = { emptyList() },
+    /** What the macOS Finder extensions ask of this app over 127.0.0.1; null where there are none. */
+    internal val localExtension: LocalExtensionApi? = null,
     internal val onListIntroductions: suspend (recipientId: String) -> List<com.fileapex.security.SealedIntroduction> = { emptyList() },
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
         if (error != null) {
@@ -232,6 +237,7 @@ class FileApexServer(
                     registerDiagnosticRoutes(this@FileApexServer)
                     registerNotificationRoutes(this@FileApexServer)
                     registerTlsRoutes(this@FileApexServer)
+                    registerLocalExtensionRoutes(this@FileApexServer)
                     registerPresenceRoutes(this@FileApexServer)
                 }
             }.start(wait = false)
@@ -391,17 +397,6 @@ class FileApexServer(
         val host = sanitizeInboundIpv4(raw) ?: return null
         if (isSplicedLoopbackOrigin(host)) return null
         return host.takeIf { NetworkUtils.isPrivateLanPeerHost(it) }
-    }
-
-    private fun sanitizeInboundIpv4(raw: String): String? {
-        var value = raw.trim().removePrefix("/").substringBefore('%')
-        if (value.startsWith("::ffff:", ignoreCase = true)) {
-            value = value.substringAfter("::ffff:")
-        }
-        if (value.count { it == ':' } == 1 && value.contains('.')) {
-            value = value.substringBefore(':')
-        }
-        return value.takeIf { it.isNotEmpty() }
     }
 
     /**

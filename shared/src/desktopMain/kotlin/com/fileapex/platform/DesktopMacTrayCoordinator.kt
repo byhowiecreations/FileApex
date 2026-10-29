@@ -185,8 +185,7 @@ object DesktopMacTrayCoordinator {
                     )
                 } + friendTraySnapshots()
             }.collect { snapshots ->
-                publishShareReadyIds(snapshots)
-        publishLocalApi()
+                publishLocalApi()
                 DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
             }
         }
@@ -201,36 +200,11 @@ object DesktopMacTrayCoordinator {
                 isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
             )
         } + friendTraySnapshots()
-        publishShareReadyIds(snapshots)
         DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
     }
 
     private fun publishLocalApi() {
-        val file = DesktopPlatformPaths.localApiFile()
-        val payload = LocalApiInfo.payload(com.fileapex.data.identity.LocalIdentity.DEFAULT_SHARE_PORT)
-        runCatching {
-            if (file.isFile && file.readText() == payload) return
-            val tmp = File(file.parentFile, "${file.name}.tmp")
-            tmp.writeText(payload)
-            if (!tmp.renameTo(file)) {
-                file.writeText(payload)
-                tmp.delete()
-            }
-        }
-    }
-
-    private fun publishShareReadyIds(snapshots: List<DesktopTrayDeviceSnapshot>) {
-        val file = DesktopPlatformPaths.readyDeviceIdsFile()
-        val payload = json.encodeToString(shareReadyDeviceIds(snapshots))
-        runCatching {
-            if (file.isFile && file.readText() == payload) return
-            val tmp = File(file.parentFile, "${file.name}.tmp")
-            tmp.writeText(payload)
-            if (!tmp.renameTo(file)) {
-                file.writeText(payload)
-                tmp.delete()
-            }
-        }
+        runCatching { LocalApiFile.publish(LocalApiInfo.payload(com.fileapex.data.identity.LocalIdentity.DEFAULT_SHARE_PORT)) }
     }
 
     private fun handleSend(deviceIdsJson: String, filePathsJson: String) {

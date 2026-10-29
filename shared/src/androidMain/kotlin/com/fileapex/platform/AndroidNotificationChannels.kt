@@ -4,7 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.shared.R
 
 object AndroidNotificationChannels {

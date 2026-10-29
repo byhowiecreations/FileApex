@@ -7,7 +7,6 @@ public enum FileApexPaths {
     public static let mainBundleId = "com.fileapex"
     public static let shareExtensionBundleId = "com.fileapex.ShareExtension"
     public static let databaseFileName = "fileapex.db"
-    public static let readyDeviceIdsFileName = "ready-device-ids.json"
     public static let localApiFileName = "local-api.json"
 
     /// Real user home from the passwd database, never the App Extension container home.
@@ -39,12 +38,7 @@ public enum FileApexPaths {
         return url
     }
 
-    /// Device ids the running app has already marked Ready. Written beside `fileapex.db`.
-    public static var readyDeviceIdsURL: URL {
-        databaseURL.deletingLastPathComponent().appendingPathComponent(readyDeviceIdsFileName)
-    }
-
-    /// Where the running app says which 127.0.0.1 port serves the extensions. Holds only a port number.
+    /// Where the running app says which 127.0.0.1 port serves the extensions. Holds the port and the token for the local routes.
     public static var localApiURL: URL {
         databaseURL.deletingLastPathComponent().appendingPathComponent(localApiFileName)
     }

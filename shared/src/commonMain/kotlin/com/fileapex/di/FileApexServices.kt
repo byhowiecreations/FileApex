@@ -188,11 +188,14 @@ object FileApexServices {
             membershipStore = SettingsMembershipStore { settings },
             candidates = com.fileapex.data.db.RoomPeerCandidateStore(database.peerCandidateDao())
         )
-        client.onRevocationDetected = { host, revokedAt ->
+        client.onRevocationDetected = { host, port, revokedAt ->
             com.fileapex.session.DeviceSessionManager.clearAllSessions()
             presenceMonitor.refreshOnlineSnapshot()
             RevokedByPeerNotice.onRevoked(host, deviceRepository.listDevices())
-            com.fileapex.domain.pairing.KickedByPeer.onRevoked(host, revokedAt, deviceRepository.listDevices())
+            val roster = deviceRepository.listDevices()
+            val peerId = com.fileapex.security.tls.PeerTlsRoutes.lookup(host, port)?.deviceId
+                ?: roster.firstOrNull { it.lastKnownIp.trim() == host.trim() }?.deviceId
+            com.fileapex.domain.pairing.KickedByPeer.onRevoked(peerId, revokedAt, roster)
         }
         client.membershipVersionProvider = { deviceRepository.selfMembershipVersion() }
         // Routes must exist before the first request, or a pinned peer could be reached over HTTP.

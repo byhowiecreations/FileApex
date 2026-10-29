@@ -52,15 +52,15 @@ class KickedByPeerTest {
 
     @Test
     fun oneSightingIsNotEnough() {
-        KickedByPeer.onRevoked("192.168.1.10", 500L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("a", 500L, roster, nowMs = 1_000L)
         settle()
         assertEquals(0, signOuts)
     }
 
     @Test
     fun twoDifferentPeersConfirmTheRemoval() {
-        KickedByPeer.onRevoked("192.168.1.10", 510L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.11", 510L, roster, nowMs = 1_500L)
+        KickedByPeer.onRevoked("a", 510L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("b", 510L, roster, nowMs = 1_500L)
         settle()
         assertEquals(1, signOuts)
         assertEquals(510L, handled)
@@ -68,35 +68,51 @@ class KickedByPeerTest {
 
     @Test
     fun onePeerTwiceFarEnoughApartConfirms() {
-        KickedByPeer.onRevoked("192.168.1.10", 520L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.10", 520L, roster, nowMs = 1_000L + KickEvidence.CONFIRM_GAP_MS)
+        KickedByPeer.onRevoked("a", 520L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("a", 520L, roster, nowMs = 1_000L + KickEvidence.CONFIRM_GAP_MS)
         settle()
         assertEquals(1, signOuts)
     }
 
     @Test
     fun anAnswerFromAPeerWithoutAPinOrAStrangerOrARemovedPeerCountsForNothing() {
-        KickedByPeer.onRevoked("192.168.1.12", 530L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.13", 530L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("10.9.9.9", 530L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.12", 530L, roster, nowMs = 1_000L + KickEvidence.CONFIRM_GAP_MS)
+        KickedByPeer.onRevoked("c", 530L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("d", 530L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("stranger", 530L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("c", 530L, roster, nowMs = 1_000L + KickEvidence.CONFIRM_GAP_MS)
+        settle()
+        assertEquals(0, signOuts)
+    }
+
+    @Test
+    fun aPeerReachedOverTheTailnetCountsEvenWhenItsLanAddressDiffers() {
+        KickedByPeer.onRevoked("a", 535L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("b", 535L, roster, nowMs = 1_000L)
+        settle()
+        assertEquals(1, signOuts)
+    }
+
+    @Test
+    fun anAnswerThatCouldNotBeTiedToAPeerCountsForNothing() {
+        KickedByPeer.onRevoked(null, 536L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked(null, 536L, roster, nowMs = 1_000L + KickEvidence.CONFIRM_GAP_MS)
         settle()
         assertEquals(0, signOuts)
     }
 
     @Test
     fun anAnswerWithoutAStampDoesNothing() {
-        KickedByPeer.onRevoked("192.168.1.10", 0L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.11", 0L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("a", 0L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("b", 0L, roster, nowMs = 1_000L)
         settle()
         assertEquals(0, signOuts)
     }
 
     @Test
     fun aStampIsActedOnOnlyOnce() {
-        KickedByPeer.onRevoked("192.168.1.10", 540L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.11", 540L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.10", 540L, roster, nowMs = 9_000_000L)
+        KickedByPeer.onRevoked("a", 540L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("b", 540L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("a", 540L, roster, nowMs = 9_000_000L)
         settle()
         assertEquals(1, signOuts)
     }
@@ -104,8 +120,8 @@ class KickedByPeerTest {
     @Test
     fun aDeviceNotLinkedToGoogleOnlyRecordsTheStamp() {
         linked = false
-        KickedByPeer.onRevoked("192.168.1.10", 550L, roster, nowMs = 1_000L)
-        KickedByPeer.onRevoked("192.168.1.11", 550L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("a", 550L, roster, nowMs = 1_000L)
+        KickedByPeer.onRevoked("b", 550L, roster, nowMs = 1_000L)
         settle()
         assertEquals(0, signOuts)
         assertEquals(550L, handled)

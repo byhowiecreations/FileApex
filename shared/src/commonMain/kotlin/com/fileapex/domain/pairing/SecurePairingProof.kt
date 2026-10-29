@@ -44,6 +44,17 @@ object SecurePairingProof {
         hostPin: String, joinerPin: String, hostId: String, joinerId: String
     ): String {
         val key = hmac(SALT.encodeToByteArray(), password)
+        try {
+            return macWith(key, role, nonceA, nonceB, hostPin, joinerPin, hostId, joinerId)
+        } finally {
+            key.fill(0)
+        }
+    }
+
+    private fun macWith(
+        key: ByteArray, role: String, nonceA: String, nonceB: String,
+        hostPin: String, joinerPin: String, hostId: String, joinerId: String
+    ): String {
         val fields = listOf(role, nonceA, nonceB, hostPin.lowercase(), joinerPin.lowercase(), hostId, joinerId)
         // Length-prefixed so no two different field lists produce the same bytes.
         val message = fields.joinToString("") { "${it.length}:$it;" }

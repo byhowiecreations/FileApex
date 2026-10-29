@@ -14,7 +14,7 @@ object DesktopJvmStartup {
         if (DesktopPlatformPaths.isMacOs()) {
             DesktopMacTrayBridge.preload()
         }
-        DesktopSendHandoff.installOpenUriHandler()
+        DesktopUriHandler.installOpenUriHandler()
     }
 
     /** X11 names the window after the main class, so the launcher's StartupWMClass never matches. Needs --add-opens for sun.awt.X11. */

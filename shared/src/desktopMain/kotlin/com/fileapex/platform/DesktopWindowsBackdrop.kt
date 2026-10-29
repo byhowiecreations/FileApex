@@ -127,6 +127,8 @@ object DesktopWindowsConsole {
                     java.nio.charset.StandardCharsets.UTF_8
                 )
             )
+            // The reattach above replaced System.out and System.err, so the redacting streams go on again.
+            com.fileapex.util.LogRedaction.install()
             enableVirtualTerminal(k32)
         }
     }

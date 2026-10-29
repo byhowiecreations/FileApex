@@ -24,6 +24,7 @@ class StoredEndpointProbeTest {
         override suspend fun markReachable(deviceId: String) { log += "reach:$deviceId" }
         override fun onBulletinVersion(peer: PairedDeviceEntity, version: Long) { log += "bulletin:$version" }
         override fun pullRemovals(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String) { log += "removals:$theirs" }
+        override fun reconcileCluster(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String) { log += "cluster:$theirs" }
         override suspend fun touchLastSeenEpoch(deviceId: String) { log += "epoch" }
         override suspend fun touchLastSeen(deviceId: String, host: String, port: Int) { log += "seen:$host" }
         override suspend fun fetchNodeState(host: String, port: Int, timeoutMs: Long): PeerNodeState {
@@ -86,5 +87,21 @@ class StoredEndpointProbeTest {
         now += 1_000L
         assertFalse(claims.claim(peer(), 5L))
         assertTrue(claims.claim(peer(), 6L))
+    }
+
+    @Test
+    fun aClusterDigestReplacesTheRemovalFingerprintWhenBothArrive() = runBlocking {
+        val host = Host(FileApexClient.HealthProbe(reached = true, respondedAs = "P", removals = "fp", clusterDigest = "dg"))
+        StoredEndpointProbe(host, NodeStateClaims()).tryStoredEndpoint(peer(), 1, 1L, 100L, fetchNodeState = false)
+        assertTrue("cluster:dg" in host.log)
+        assertFalse(host.log.any { it.startsWith("removals") })
+    }
+
+    @Test
+    fun withoutADigestTheRemovalFingerprintStillWorks() = runBlocking {
+        val host = Host(FileApexClient.HealthProbe(reached = true, respondedAs = "P", removals = "fp"))
+        StoredEndpointProbe(host, NodeStateClaims()).tryStoredEndpoint(peer(), 1, 1L, 100L, fetchNodeState = false)
+        assertTrue("removals:fp" in host.log)
+        assertFalse(host.log.any { it.startsWith("cluster") })
     }
 }

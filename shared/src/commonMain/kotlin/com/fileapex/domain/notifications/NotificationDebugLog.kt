@@ -27,7 +27,7 @@ internal object NotificationDebugLog {
         val target = file ?: return
         runCatching {
             val stamp = SimpleDateFormat("HH:mm:ss.SSS").format(Date())
-            target.appendText("$stamp $message\n")
+            target.appendText("$stamp ${com.fileapex.util.LogRedactor.redact(message)}\n")
         }
     }
 

@@ -5,7 +5,7 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.platform.androidApplicationContextOrNull
 import com.fileapex.tailscale.holdTailscaleProcess
 import com.fileapex.util.cancellableCatching

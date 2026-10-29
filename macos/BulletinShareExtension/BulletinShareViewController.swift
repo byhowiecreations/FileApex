@@ -31,7 +31,7 @@ final class BulletinShareViewController: NSViewController {
             return
         }
         do {
-            try FileApexBulletinHandoff.submit(sharedText: payload.text, fileURLs: payload.fileURLs)
+            try await FileApexBulletinHandoff.submit(sharedText: payload.text, fileURLs: payload.fileURLs)
             await MainActor.run { finish(success: true) }
         } catch {
             NSLog("FileApex BulletinShareExtension: \(error.localizedDescription)")

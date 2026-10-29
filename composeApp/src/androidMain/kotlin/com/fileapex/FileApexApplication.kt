@@ -1,7 +1,7 @@
 package com.fileapex
 
 import android.app.Application
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.work.Configuration
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.ShareServerForegroundNotification
@@ -11,6 +11,7 @@ class FileApexApplication : Application(), Configuration.Provider {
     // First, before any property below can start the coroutine pool (it reads the keep-alive setting once).
     init {
         com.fileapex.platform.ThreadTuning.apply()
+        com.fileapex.util.LogRedaction.install()
     }
 
     /** WorkManager starts the first time something schedules or cancels work, not at launch. */

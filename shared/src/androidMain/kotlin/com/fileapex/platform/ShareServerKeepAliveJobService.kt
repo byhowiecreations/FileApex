@@ -2,7 +2,7 @@ package com.fileapex.platform
 
 import android.app.job.JobParameters
 import android.app.job.JobService
-import android.util.Log
+import com.fileapex.platform.log.Log
 
 /**
  * Scheduled only during the 25%→15% battery step-down. Reads BatteryManager and posts if

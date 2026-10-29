@@ -11,22 +11,11 @@ public final class DevicePickerModel: ObservableObject {
     @Published public var isSending: Bool = false
     @Published public var isLoading: Bool = false
 
-    /// Original / already-staged file URLs shown for status text.
+    /// The files the user picked, read by the main app where they are.
     public let fileURLs: [URL]
 
-    /// When set, files were copied into Application Support before the picker opened
-    /// so the main-app TransferManager can stream real bytes.
-    private let preStagedJobId: String?
-    private let preStagedPaths: [String]?
-
-    public init(
-        fileURLs: [URL],
-        preStagedJobId: String? = nil,
-        preStagedPaths: [String]? = nil
-    ) {
+    public init(fileURLs: [URL]) {
         self.fileURLs = fileURLs
-        self.preStagedJobId = preStagedJobId
-        self.preStagedPaths = preStagedPaths
     }
 
     public var selectedDevices: [PairedDevice] {
@@ -34,8 +23,7 @@ public final class DevicePickerModel: ObservableObject {
     }
 
     public var canSend: Bool {
-        let hasFiles = !(preStagedPaths?.isEmpty ?? true) || !fileURLs.isEmpty
-        return !selectedIds.isEmpty && hasFiles && !isSending
+        !selectedIds.isEmpty && !fileURLs.isEmpty && !isSending
     }
 
     public func reload() {
@@ -48,7 +36,7 @@ public final class DevicePickerModel: ObservableObject {
         errorMessage = nil
         do {
             devices = try await PairedDeviceStore.loadDevices()
-            let fileCount = preStagedPaths?.count ?? fileURLs.count
+            let fileCount = fileURLs.count
             if devices.isEmpty {
                 statusMessage = AppCopy.shared.t("no_paired_open_fileapex")
             } else {
@@ -77,14 +65,10 @@ public final class DevicePickerModel: ObservableObject {
         statusMessage = AppCopy.shared.t("handing_off_to_fileapex")
         do {
             let deviceIds = selectedDevices.map(\.deviceId)
-            let finished = try await FileApexSendHandoff.submitSend(
-                sourceURLs: fileURLs,
-                deviceIds: deviceIds,
-                preStagedJobId: preStagedJobId,
-                preStagedPaths: preStagedPaths
-            )
-            statusMessage = finished.message
-                ?? AppCopy.shared.plural("sent_to_n_devices", count: deviceIds.count, "\(deviceIds.count)")
+            let finished = try await FileApexSendHandoff.submitSend(sourceURLs: fileURLs, deviceIds: deviceIds)
+            statusMessage = finished.message.isEmpty
+                ? AppCopy.shared.plural("sent_to_n_devices", count: deviceIds.count, "\(deviceIds.count)")
+                : finished.message
             isSending = false
             return true
         } catch {

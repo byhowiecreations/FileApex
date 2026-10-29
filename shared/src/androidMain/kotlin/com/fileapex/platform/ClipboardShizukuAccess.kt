@@ -5,7 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Process
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.annotation.RequiresApi
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.domain.clipboard.ClipboardCopySignals

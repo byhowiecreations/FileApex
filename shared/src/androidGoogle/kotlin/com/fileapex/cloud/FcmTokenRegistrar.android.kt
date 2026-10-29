@@ -1,6 +1,6 @@
 package com.fileapex.cloud
 
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.util.cancellableCatching
 import com.fileapex.di.FileApexServices
 import kotlinx.coroutines.CoroutineScope

@@ -53,6 +53,27 @@ class CloudRecordSealTest {
     }
 
     @Test
+    fun aDeviceDeletedFromTheRegistryNoLongerKeepsThePlainFieldsWritten() {
+        CloudRecordSeal.noteVersion("old", CloudRecordSeal.MIN_VERSION_CODE - 1)
+        assertTrue(CloudRecordSeal.plainStillNeeded())
+        CloudRecordSeal.replaceVersions(listOf(record()))
+        assertFalse(CloudRecordSeal.plainStillNeeded())
+        assertEquals("", CloudRecordSeal.outgoing(record()).deviceName)
+    }
+
+    @Test
+    fun aSnapshotStillHoldingAnOldBuildKeepsThePlainFieldsWritten() {
+        CloudRecordSeal.replaceVersions(listOf(record(), record(CloudRecordSeal.MIN_VERSION_CODE - 1).copy(deviceId = "old")))
+        assertTrue(CloudRecordSeal.plainStillNeeded())
+    }
+
+    @Test
+    fun anEmptySnapshotKeepsThePlainFieldsWritten() {
+        CloudRecordSeal.replaceVersions(emptyList())
+        assertTrue(CloudRecordSeal.plainStillNeeded())
+    }
+
+    @Test
     fun whenEveryDeviceCanReadSealedFieldsThePlainOnesGoEmpty() {
         CloudRecordSeal.noteVersion("dev-1", CloudRecordSeal.MIN_VERSION_CODE)
         val out = CloudRecordSeal.outgoing(record())

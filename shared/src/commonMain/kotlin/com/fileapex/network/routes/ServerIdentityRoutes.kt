@@ -166,9 +166,7 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
             }
             // The sender reads this to learn whether it missed a removal; a peer that proved who it is gets it.
             if (server.authenticatedPeerId(call) != null) {
-                runCatching { server.removalFingerprint() }.getOrNull()?.let { value ->
-                    call.response.headers.append(com.fileapex.network.PeerHttpHeaders.REMOVALS, value)
-                }
+                call.appendClusterHeaders(server)
             }
             call.respondText(
                 text = server.json.encodeToString(

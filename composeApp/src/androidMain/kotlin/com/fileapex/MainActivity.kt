@@ -49,7 +49,7 @@ import com.fileapex.platform.ServiceWatchdog
 import com.fileapex.platform.ServiceWatchdogScheduler
 import com.fileapex.platform.ShareServerPendingStart
 import com.fileapex.platform.ShareServerRestartCoordinator
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.withAppLocale

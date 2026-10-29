@@ -19,6 +19,7 @@ class RemovalPullerTest {
         var fetches = 0
         val merged = mutableListOf<Pair<ClusterSyncRequest, String>>()
         val selfRecords = mutableListOf<RemovedDeviceRecord>()
+        val afterReads = mutableListOf<String>()
         val puller = RemovalPuller(
             ourFingerprint = { "ours" },
             localDeviceId = { "ME" },
@@ -28,7 +29,8 @@ class RemovalPullerTest {
                 records
             },
             merge = { request, sender -> merged += request to sender },
-            onSelfRecord = { _, record -> selfRecords += record }
+            onSelfRecord = { _, record -> selfRecords += record },
+            afterRead = { afterReads += it.deviceId }
         )
     }
 
@@ -61,5 +63,16 @@ class RemovalPullerTest {
         rig.puller.pull(peer, endpoint, "theirs")
         assertEquals(2, rig.fetches)
         assertTrue(rig.merged.isNotEmpty())
+    }
+
+    @Test
+    fun theFollowUpRunsOncePerDistinctFingerprintAndNotAfterAFailedRead() = runBlocking {
+        val rig = Rig(listOf(RemovedDeviceRecord("X", removedAt = 7L)))
+        rig.puller.pull(peer, endpoint, "theirs")
+        rig.puller.pull(peer, endpoint, "theirs")
+        assertEquals(listOf("P"), rig.afterReads)
+        val failing = Rig(listOf(RemovedDeviceRecord("X")), fail = true)
+        failing.puller.pull(peer, endpoint, "theirs")
+        assertTrue(failing.afterReads.isEmpty())
     }
 }

@@ -2,11 +2,11 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Share Extension host, stages attachments then presents the device picker.
+/// Share Extension host: resolves the picked files, then presents the device picker.
 ///
 /// Triggered from Finder (right-click → Share → FileApex) or the system Share sheet.
-/// Never streams bytes itself: stages into Application Support, then
-/// [FileApexSendHandoff.submitSend] opens the main app’s TransferManager.
+/// Never streams bytes itself and copies nothing: [FileApexSendHandoff.submitSend] names the files and the main app’s
+/// TransferManager reads them where they are.
 @objc(ShareViewController)
 final class ShareViewController: NSViewController {
     private var hosting: NSHostingController<DevicePickerView>?
@@ -32,27 +32,8 @@ final class ShareViewController: NSViewController {
             return
         }
 
-        let jobId = UUID().uuidString
-        let stagedPaths: [String]
-        do {
-            // Copy while Share still holds security-scoped grants so the main app
-            // receives real file bytes (avoids 0-byte transfers).
-            stagedPaths = try FileApexSendHandoff.stageFiles(urls, jobId: jobId)
-            NSLog("FileApex ShareExtension: staged \(stagedPaths.count) file(s) for job \(jobId)")
-        } catch {
-            await MainActor.run {
-                self.presentStagingFailure(error.localizedDescription)
-            }
-            return
-        }
-
         await MainActor.run {
-            let stagedURLs = stagedPaths.map { URL(fileURLWithPath: $0) }
-            let model = DevicePickerModel(
-                fileURLs: stagedURLs,
-                preStagedJobId: jobId,
-                preStagedPaths: stagedPaths
-            )
+            let model = DevicePickerModel(fileURLs: FileApexSendHandoff.regularFileURLs(from: urls))
             let root = DevicePickerView(model: model, title: AppCopy.shared.t("share_with_fileapex")) { [weak self] success in
                 self?.finish(success: success)
             }

@@ -24,6 +24,7 @@ class ServerRemovalFingerprintTest {
                 identityProvider = { LocalIdentity(deviceId = "self-test", deviceName = "Test", rootPath = System.getProperty("java.io.tmpdir"), sharePort = port) },
                 isRosterMember = { it == "self-test" },
                 removalFingerprint = { "9bc86a65f2da0fbb" },
+                clusterDigest = { "00112233aabbccdd" },
                 removalRecords = { listOf(RemovedDeviceRecord(deviceId = "gone-1", clusterVersion = 5L, membershipProtocol = 2)) }
             )
         }.also { it.start() }
@@ -57,6 +58,26 @@ class ServerRemovalFingerprintTest {
         val (code, headers) = call("GET", "/api/v1/health?from=self-test")
         assertEquals(200, code)
         assertEquals("9bc86a65f2da0fbb", headers[PeerHttpHeaders.REMOVALS.lowercase()])
+    }
+
+    @Test
+    fun healthCarriesTheClusterDigestBesideTheFingerprint() {
+        val (_, headers) = call("GET", "/api/v1/health?from=self-test")
+        assertEquals("00112233aabbccdd", headers[PeerHttpHeaders.CLUSTER_DIGEST.lowercase()])
+        assertEquals("9bc86a65f2da0fbb", headers[PeerHttpHeaders.REMOVALS.lowercase()])
+    }
+
+    @Test
+    fun theAnswerToAMergeCarriesTheClusterDigest() {
+        val (_, headers) = call("POST", "/api/v1/devices/merge?from=self-test", "{\"eventKind\":\"SELF_METADATA\"}")
+        assertEquals("00112233aabbccdd", headers[PeerHttpHeaders.CLUSTER_DIGEST.lowercase()])
+    }
+
+    @Test
+    fun theClusterDigestIsHiddenFromAStranger() {
+        tunnel = false
+        val (_, headers) = call("GET", "/api/v1/health", anonymous = true)
+        assertNull(headers[PeerHttpHeaders.CLUSTER_DIGEST.lowercase()])
     }
 
     @Test

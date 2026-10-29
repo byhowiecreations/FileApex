@@ -1,7 +1,7 @@
 package com.fileapex.cloud
 
 import android.content.Context
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions

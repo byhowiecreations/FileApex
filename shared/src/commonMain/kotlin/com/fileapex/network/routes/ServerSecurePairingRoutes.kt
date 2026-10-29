@@ -13,6 +13,7 @@ import com.fileapex.domain.pairing.SecurePairingSessions
 import com.fileapex.domain.pairing.SecurePairRequest
 import com.fileapex.domain.pairing.SecurePairResponse
 import com.fileapex.domain.pairing.SecurePairingProof
+import com.fileapex.security.useAndWipe
 import com.fileapex.network.FileApexServer
 import com.fileapex.security.tls.BridgedPeer
 import com.fileapex.util.cancellableCatching
@@ -71,24 +72,26 @@ internal fun Route.registerSecurePairingRoute(server: FileApexServer) {
                 call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
                 return@cancellableCatching
             }
-            val hostPin = com.fileapex.security.tls.LocalTlsInfo.pin
-            val expected = SecurePairingProof.macA(password, request.nonceA, hostPin, peer.pin, localId, joiner.deviceId)
-            if (!SecurePairingProof.equal(expected, request.macA)) {
-                // Wrong secret, or someone swapped a TLS key on the way. Three of these burn the pairing.
-                server.onLog("Secure pairing proof failed", null)
-                LanPairingDiscovery.recordFailedAttempt()
-                call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
-                return@cancellableCatching
+            password.useAndWipe {
+                val hostPin = com.fileapex.security.tls.LocalTlsInfo.pin
+                val expected = SecurePairingProof.macA(password, request.nonceA, hostPin, peer.pin, localId, joiner.deviceId)
+                if (!SecurePairingProof.equal(expected, request.macA)) {
+                    // Wrong secret, or someone swapped a TLS key on the way. Three of these burn the pairing.
+                    server.onLog("Secure pairing proof failed", null)
+                    LanPairingDiscovery.recordFailedAttempt()
+                    call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
+                    return@cancellableCatching
+                }
+                val nonceB = SecurePairingProof.newNonceHex()
+                val macB = SecurePairingProof.macB(password, request.nonceA, nonceB, hostPin, peer.pin, localId, joiner.deviceId)
+                val inbound = server.storeJoiner(joiner, peer.pin, call)
+                call.respondText(
+                    server.json.encodeToString(SecurePairResponse.serializer(), SecurePairResponse(nonceB, macB)),
+                    ContentType.Application.Json,
+                    HttpStatusCode.Created
+                )
+                server.finishHostPairing(inbound)
             }
-            val nonceB = SecurePairingProof.newNonceHex()
-            val macB = SecurePairingProof.macB(password, request.nonceA, nonceB, hostPin, peer.pin, localId, joiner.deviceId)
-            val inbound = server.storeJoiner(joiner, peer.pin, call)
-            call.respondText(
-                server.json.encodeToString(SecurePairResponse.serializer(), SecurePairResponse(nonceB, macB)),
-                ContentType.Application.Json,
-                HttpStatusCode.Created
-            )
-            server.finishHostPairing(inbound)
         }.onFailure { error -> server.failSecure(call, SECURE_PAIRING_QR_PATH, error) }
     }
 

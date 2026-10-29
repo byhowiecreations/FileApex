@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.util.Log
+import com.fileapex.platform.log.Log
 
 /**
  * Dynamic receiver for screen-on, user-present, and power/connectivity transitions.

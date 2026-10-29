@@ -71,6 +71,7 @@ internal fun ExplorerGridCell(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val menuAnchor = remember { ContextMenuAnchor() }
     val ink = explorerInk()
     val interactionModifier = if (desktopSelection) {
         Modifier.desktopItemClicks(
@@ -98,46 +99,11 @@ internal fun ExplorerGridCell(
     } else Modifier
 
     val jadedShape = RoundedCornerShape(16.dp)
-    val cardChrome = if (ink.jadedGlyphs) {
-        val haze = LocalJadedHazeState.current
-        Modifier
-            .aspectRatio(1f)
-            .clip(jadedShape)
-            .then(
-                if (haze != null) {
-                    Modifier.hazeEffect(
-                        state = haze,
-                        style = HazeStyle(
-                            backgroundColor = Color.Transparent,
-                            tints = listOf(HazeTint(Color.White.copy(alpha = 0.10f))),
-                            blurRadius = 24.dp,
-                            noiseFactor = 0.04f
-                        )
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .background(
-                Brush.verticalGradient(
-                    0f to Color.White.copy(alpha = 0.16f),
-                    1f to Color.White.copy(alpha = 0.05f)
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    0f to Color.White.copy(alpha = 0.22f),
-                    1f to Color.White.copy(alpha = 0.10f)
-                ),
-                shape = jadedShape
-            )
-    } else {
-        Modifier
-    }
+    val cardChrome = if (ink.jadedGlyphs) jadedCardChrome(jadedShape) else Modifier
     val cellHot = item.isDirectory && dropTargetHot(item.absolutePath)
     Box(
         modifier = Modifier
+            .trackContextMenuAnchor(menuAnchor)
             .then(
                 if (item.isDirectory) {
                     Modifier.reportDropSpot(key = "grid:${item.absolutePath}", destinationPath = item.absolutePath)
@@ -288,7 +254,45 @@ internal fun ExplorerGridCell(
             onDownload = onDownload,
             item = item,
             onOpen = onActivate,
-            onSelect = onLongClick
+            onSelect = onLongClick,
+            anchor = menuAnchor
         )
     }
+}
+
+@Composable
+private fun jadedCardChrome(jadedShape: androidx.compose.ui.graphics.Shape): Modifier {
+    val haze = LocalJadedHazeState.current
+    return Modifier
+        .aspectRatio(1f)
+        .clip(jadedShape)
+        .then(
+            if (haze != null) {
+                Modifier.hazeEffect(
+                    state = haze,
+                    style = HazeStyle(
+                        backgroundColor = Color.Transparent,
+                        tints = listOf(HazeTint(Color.White.copy(alpha = 0.10f))),
+                        blurRadius = 24.dp,
+                        noiseFactor = 0.04f
+                    )
+                )
+            } else {
+                Modifier
+            }
+        )
+        .background(
+            Brush.verticalGradient(
+                0f to Color.White.copy(alpha = 0.16f),
+                1f to Color.White.copy(alpha = 0.05f)
+            )
+        )
+        .border(
+            width = 1.dp,
+            brush = Brush.verticalGradient(
+                0f to Color.White.copy(alpha = 0.22f),
+                1f to Color.White.copy(alpha = 0.10f)
+            ),
+            shape = jadedShape
+        )
 }

@@ -3,7 +3,7 @@ package com.fileapex.platform
 import android.content.Context
 import android.content.IntentFilter
 import android.os.BatteryManager
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.core.content.ContextCompat
 import com.fileapex.data.bulletin.BulletinContentType
 import com.fileapex.data.identity.loadLocalIdentity

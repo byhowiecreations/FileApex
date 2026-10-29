@@ -3,7 +3,7 @@ package com.fileapex.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.fileapex.platform.log.Log
 
 /**
  * AlarmManager / boot heartbeat, restarts [FileShareServerService] only (never the UI).

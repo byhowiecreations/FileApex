@@ -116,6 +116,7 @@ func (n *Node) handleHealth(w http.ResponseWriter, r *http.Request) {
 	// Only a peer that presented its pinned TLS certificate sees the removal fingerprint.
 	if r.TLS != nil {
 		w.Header().Set(removalsHeader, n.removalsDigest())
+		w.Header().Set(clusterDigestHeader, n.clusterDigest())
 	}
 	writeText(w, http.StatusOK, "ok")
 }
@@ -218,6 +219,7 @@ func (n *Node) handleMerge(w http.ResponseWriter, r *http.Request) {
 	// The sender compares this with its own removal fingerprint; only a peer that presented its pinned certificate sees it.
 	if r.TLS != nil {
 		w.Header().Set(removalsHeader, n.removalsDigest())
+		w.Header().Set(clusterDigestHeader, n.clusterDigest())
 	}
 	writeJSON(w, http.StatusOK, n.publishedRoster())
 }

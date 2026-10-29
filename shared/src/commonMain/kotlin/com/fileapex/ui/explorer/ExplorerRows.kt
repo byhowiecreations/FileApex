@@ -84,6 +84,7 @@ internal fun PaneDirectoryRow(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val menuAnchor = remember { ContextMenuAnchor() }
     val ink = explorerInk()
     val rowModifier = explorerItemRowModifier(
         desktopSelection = desktopSelection,
@@ -99,6 +100,7 @@ internal fun PaneDirectoryRow(
     val folderHot = dropTargetHot(dir.absolutePath)
     Box(
         modifier = Modifier
+            .trackContextMenuAnchor(menuAnchor)
             .fillMaxWidth()
             .reportDropSpot(key = "pane:${dir.absolutePath}", destinationPath = dir.absolutePath)
             .dropDestinationFrame(folderHot)
@@ -180,7 +182,8 @@ internal fun PaneDirectoryRow(
             onDownload = onDownload,
             item = dir,
             onOpen = onActivate,
-            onSelect = onLongClick
+            onSelect = onLongClick,
+            anchor = menuAnchor
         )
     }
     HorizontalDivider(color = if (ink.jadedGlyphs) Color.White.copy(alpha = 0.08f) else ink.divider)
@@ -208,6 +211,7 @@ internal fun DirectoryListRow(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val menuAnchor = remember { ContextMenuAnchor() }
     val ink = explorerInk()
     val rowModifier = explorerItemRowModifier(
         desktopSelection = desktopSelection,
@@ -232,6 +236,7 @@ internal fun DirectoryListRow(
     val folderHot = dropTargetHot(dir.absolutePath)
     Box(
         modifier = Modifier
+            .trackContextMenuAnchor(menuAnchor)
             .fillMaxWidth()
             .reportDropSpot(key = "dir:${dir.absolutePath}", destinationPath = dir.absolutePath)
             .then(dragModifier)
@@ -300,7 +305,8 @@ internal fun DirectoryListRow(
             onDownload = onDownload,
             item = dir,
             onOpen = onActivate,
-            onSelect = onLongClick
+            onSelect = onLongClick,
+            anchor = menuAnchor
         )
     }
     HorizontalDivider(color = ink.divider)
@@ -326,6 +332,7 @@ internal fun FileListRow(
     onDownload: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val menuAnchor = remember { ContextMenuAnchor() }
     val ink = explorerInk()
     val rowModifier = explorerItemRowModifier(
         desktopSelection = desktopSelection,
@@ -349,6 +356,7 @@ internal fun FileListRow(
 
     Box(
         modifier = Modifier
+            .trackContextMenuAnchor(menuAnchor)
             .fillMaxWidth()
             .then(dragModifier)
     ) {
@@ -397,7 +405,8 @@ internal fun FileListRow(
             onDownload = onDownload,
             item = file,
             onOpen = onActivate,
-            onSelect = onLongClick
+            onSelect = onLongClick,
+            anchor = menuAnchor
         )
     }
     HorizontalDivider(color = ink.divider)

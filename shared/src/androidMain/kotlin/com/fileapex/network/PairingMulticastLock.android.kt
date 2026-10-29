@@ -2,7 +2,7 @@ package com.fileapex.network
 
 import android.content.Context
 import android.net.wifi.WifiManager
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.platform.androidApplicationContextOrNull
 
 private const val TAG = "FileApexPairing"

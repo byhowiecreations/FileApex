@@ -42,8 +42,6 @@ import com.fileapex.platform.DesktopTraySupport
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.platform.DesktopWindowBoundsStore
 import com.fileapex.platform.MacOsExtensionRegistrar
-import com.fileapex.platform.DesktopSendHandoff
-import com.fileapex.platform.DesktopBulletinHandoff
 import com.fileapex.platform.DesktopWindowsBackdrop
 import com.fileapex.ui.devices.DeviceCardSlotHeight
 import com.fileapex.ui.devices.DeviceListToAddGap
@@ -75,6 +73,7 @@ private val DesktopWindowMaxHeight = 900.dp
 
 fun main(args: Array<String>) {
     com.fileapex.platform.ThreadTuning.apply()
+    com.fileapex.util.LogRedaction.install()
     DesktopCrashHandler.install()
     // The CLI dials pinned peers too, so the client identity must exist before either path starts.
     com.fileapex.security.tls.PeerTlsConnector.configure { com.fileapex.security.tls.DesktopTlsIdentity.store() }
@@ -154,8 +153,7 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 com.fileapex.notice.NoticeCoordinator.onAppLaunch()
                 GoogleLinkCoordinator.onAppLaunch()
                 com.fileapex.cloud.drive.DriveRelayCoordinator.onAppLaunch()
-                DesktopSendHandoff.startJobProcessor()
-                DesktopBulletinHandoff.startJobProcessor()
+                com.fileapex.platform.LegacyHandoffCleanup.run()
             }
         }
 

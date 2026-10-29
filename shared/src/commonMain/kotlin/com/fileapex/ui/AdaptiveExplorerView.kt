@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -402,25 +403,15 @@ internal fun Modifier.androidPressThenRelease(
     .pointerInput(onClick, onLongPressRelease) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            val start = down.position
-            val slop = viewConfiguration.touchSlop
-            val deadline = System.nanoTime() + viewConfiguration.longPressTimeoutMillis * 1_000_000L
-            var held = true
-            while (System.nanoTime() < deadline) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                if (!change.pressed) {
-                    held = false
-                    break
-                }
-                if ((change.position - start).getDistance() > slop) return@awaitEachGesture
-            }
-            if (!held) return@awaitEachGesture
+            // Moving past the slop before the hold is over is a scroll; a motionless hold sends no events at all, so
+            // the timeout has to be awaited, not polled.
+            awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+            val tolerance = viewConfiguration.touchSlop * RELEASE_TOLERANCE_FACTOR
             var dragged = false
             while (true) {
                 val event = awaitPointerEvent()
                 val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                if ((change.position - start).getDistance() > slop) dragged = true
+                if ((change.position - down.position).getDistance() > tolerance) dragged = true
                 if (!change.pressed) {
                     if (!dragged) {
                         change.consume()
@@ -431,6 +422,9 @@ internal fun Modifier.androidPressThenRelease(
             }
         }
     }
+
+/** A finger that rolls while it holds still opens the menu on release; only a real drag cancels it. */
+private const val RELEASE_TOLERANCE_FACTOR = 6f
 
 internal fun Modifier.desktopItemClicks(
     isSelectionMode: Boolean,

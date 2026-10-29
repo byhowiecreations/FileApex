@@ -11,6 +11,11 @@ object PeerHttpHeaders {
     /** Fingerprint of the removal records a node holds, on its health answer to a proven peer (see RemovalFingerprint). */
     const val REMOVALS = "X-FileApex-Removals"
 
+    /** One digest over the roster and the removal records (see ClusterDigest); sent beside [REMOVALS] for one release. */
+    const val CLUSTER_DIGEST = "X-FileApex-Cluster-Digest"
+
+    fun clusterDigest(headers: Map<String, String>): String? = headers[CLUSTER_DIGEST.lowercase()]
+
     fun removals(headers: Map<String, String>): String? = headers[REMOVALS.lowercase()]
 
     fun bulletinVersion(headers: Map<String, String>): Long? =

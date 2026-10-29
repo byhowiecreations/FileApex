@@ -693,6 +693,7 @@ object GoogleLinkCoordinator {
         selfId: String,
         epoch: Long
     ) {
+        com.fileapex.cloud.seal.CloudRecordSeal.replaceVersions(records)
         val superseded = applyMutex.withLock {
             if (!isSessionLive(epoch)) return
             val repo = FileApexServices.deviceRepositoryOrNull() ?: return

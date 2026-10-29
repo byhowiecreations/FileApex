@@ -2,7 +2,7 @@ package com.fileapex.cloud
 
 import android.content.Context
 import android.os.Build
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CreateRestoreCredentialRequest
 import androidx.credentials.CredentialManager

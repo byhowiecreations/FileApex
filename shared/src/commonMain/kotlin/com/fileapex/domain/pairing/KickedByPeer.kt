@@ -49,9 +49,13 @@ object KickedByPeer {
     internal var dropClusterKey: () -> Unit = { ClusterRecordKeys.forget() }
     internal var announce: () -> Unit = { BriefToast.show(AppI18n.t("removed_signed_out_google")) }
 
-    /** [revokedAt] is 0 when the answer carried no stamp (a route that does not read headers): nothing is done then. */
-    fun onRevoked(host: String, revokedAt: Long, roster: List<PairedDeviceEntity>, nowMs: Long = TimeUtils.now()) {
-        val peer = roster.firstOrNull { !it.isRemoved && it.tlsPin.isNotEmpty() && it.lastKnownIp.trim() == host.trim() } ?: return
+    /**
+     * [peerId] is the pinned peer the answer came from, whatever route it was reached by, or null when the route
+     * could not be tied to one. [revokedAt] is 0 when the answer carried no stamp (a route that does not read
+     * headers): nothing is done then.
+     */
+    fun onRevoked(peerId: String?, revokedAt: Long, roster: List<PairedDeviceEntity>, nowMs: Long = TimeUtils.now()) {
+        val peer = roster.firstOrNull { !it.isRemoved && it.tlsPin.isNotEmpty() && it.deviceId == peerId } ?: return
         sighting(peer, revokedAt, nowMs)
     }
 

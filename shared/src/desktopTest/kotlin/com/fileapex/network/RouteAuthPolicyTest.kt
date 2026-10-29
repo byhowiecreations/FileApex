@@ -12,7 +12,7 @@ class RouteAuthPolicyTest {
             setOf("/", "/share", "/api/v1/health", "/api/v1/identity", "/api/v1/tls/pin"),
             RouteAuthPolicy.OPEN_EXACT
         )
-        assertEquals(listOf("/api/v1/pairing", "/api/v1/auth", "/api/v1/web"), RouteAuthPolicy.OPEN_PREFIXES)
+        assertEquals(listOf("/api/v1/pairing", "/api/v1/auth", "/api/v1/web", "/api/v1/local"), RouteAuthPolicy.OPEN_PREFIXES)
     }
 
     @Test
@@ -54,5 +54,13 @@ class RouteAuthPolicyTest {
     fun aTrailingSlashDoesNotChangeTheDecision() {
         assertEquals(RouteAccess.Peer, RouteAuthPolicy.accessFor("/api/v1/files/list/"))
         assertEquals(RouteAccess.Open, RouteAuthPolicy.accessFor("/api/v1/health/"))
+    }
+
+    @Test
+    fun theLocalExtensionRoutesAreOpenToThePeerGateAndGuardThemselves() {
+        listOf("/api/v1/local/devices", "/api/v1/local/send", "/api/v1/local/bulletin").forEach {
+            assertEquals(RouteAccess.Open, RouteAuthPolicy.accessFor(it))
+        }
+        assertEquals(RouteAccess.Peer, RouteAuthPolicy.accessFor("/api/v1/localhost"))
     }
 }

@@ -1,6 +1,7 @@
 package com.fileapex.domain.reset
 
 import com.fileapex.platform.DesktopPlatformPaths
+import com.fileapex.platform.LegacyHandoffCleanup
 import com.fileapex.util.cancellableCatching
 import java.util.prefs.Preferences
 
@@ -27,7 +28,7 @@ actual object ClusterResetPlatform {
             cancellableCatching { Preferences.userRoot().node(name).also { it.clear(); it.flush() } }
         }
         runCatching {
-            DesktopPlatformPaths.sendJobsDirectory().deleteRecursively()
+            LegacyHandoffCleanup.run()
             // The roster backup would be read back into an empty roster at the next start.
             val backup = DesktopPlatformPaths.databasePreV3BackupFile()
             listOf("", "-wal", "-shm").forEach { suffix ->

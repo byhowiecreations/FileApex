@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
 import android.os.Build
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.fileapex.MainActivity

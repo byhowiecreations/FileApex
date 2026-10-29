@@ -125,6 +125,12 @@ object ClusterResetManager {
         runCatching { FileApexServices.settings.setClipboardPrivateKeyBase64("") }
         runCatching { FileApexServices.settings.setDiagnosticsPrivateKeyBase64("") }
         ClusterResetPlatform.eraseKeystoreAndSecureStorage()
+        forgetHeldKeys()
+    }
+
+    /** The cluster key is also cached in memory; a platform that keeps running after the wipe must not keep using it. */
+    internal fun forgetHeldKeys() {
+        runCatching { com.fileapex.cloud.seal.ClusterRecordKeys.forget() }
     }
 
     private suspend fun purgeDatabases() {

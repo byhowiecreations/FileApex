@@ -1,5 +1,6 @@
 package com.fileapex.cloud.drive
 
+import com.fileapex.security.useAndWipe
 import com.fileapex.cloud.FcmWakeCoordinator
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.data.note.NoteRecord
@@ -251,23 +252,20 @@ object DriveRelayCoordinator {
                     var encryptedTemp: java.io.File? = null
                     if (encrypt) {
                         val job = currentCoroutineContext()[Job]
-                        val fileKey = DriveRelayCrypto.newKey()
                         val temp = java.io.File.createTempFile("fileapex-relay-", ".fxe")
                         encryptedTemp = temp
-                        val sealed = withContext(Dispatchers.IO) {
-                            DriveRelayCrypto.encryptFile(
-                                java.io.File(source.absolutePath),
-                                temp,
-                                fileKey
-                            ) { job?.ensureActive() }
-                        }
-                        encryption = DriveEntryEncryption(
-                            plainSizeBytes = sealed.plainSizeBytes,
-                            plainSha256 = sealed.plainSha256,
-                            wrappedKeys = targetKeys.mapValues { (id, publicKey) ->
-                                ClipboardE2ee.encrypt(fileKey, selfId, id, publicKey)
+                        encryption = DriveRelayCrypto.newKey().useAndWipe { fileKey ->
+                            val sealed = withContext(Dispatchers.IO) {
+                                DriveRelayCrypto.encryptFile(java.io.File(source.absolutePath), temp, fileKey) { job?.ensureActive() }
                             }
-                        )
+                            DriveEntryEncryption(
+                                plainSizeBytes = sealed.plainSizeBytes,
+                                plainSha256 = sealed.plainSha256,
+                                wrappedKeys = targetKeys.mapValues { (id, publicKey) ->
+                                    ClipboardE2ee.encrypt(fileKey, selfId, id, publicKey)
+                                }
+                            )
+                        }
                         uploadPath = temp.absolutePath
                         remoteName = "${TimeUtils.now()}-${generateDeviceId().take(8)}.fxe"
                     }
@@ -592,12 +590,13 @@ object DriveRelayCoordinator {
             val senderKey = FileApexServices.deviceRepository.getDevice(entry.sourceDeviceId)
                 ?.publicKey?.takeIf { it.isNotBlank() }
                 ?: error("sender key is not known yet")
-            val fileKey = ClipboardE2ee.decrypt(wrapped, selfId, entry.sourceDeviceId, senderKey)
-            val result = DriveRelayCrypto.decryptFile(
-                java.io.File(cipherPath),
-                java.io.File(plainPath),
-                fileKey
-            ) { job?.ensureActive() }
+            val result = ClipboardE2ee.decrypt(wrapped, selfId, entry.sourceDeviceId, senderKey).useAndWipe { fileKey ->
+                DriveRelayCrypto.decryptFile(
+                    java.io.File(cipherPath),
+                    java.io.File(plainPath),
+                    fileKey
+                ) { job?.ensureActive() }
+            }
             check(result.plainSizeBytes == encryption.plainSizeBytes) { "decrypted size does not match" }
             check(result.plainSha256.equals(encryption.plainSha256, ignoreCase = true)) {
                 "decrypted checksum does not match"

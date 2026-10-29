@@ -1,6 +1,6 @@
 package com.fileapex.cloud
 
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay

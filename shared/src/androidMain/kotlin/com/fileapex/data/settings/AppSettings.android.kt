@@ -2,7 +2,7 @@ package com.fileapex.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
+import com.fileapex.platform.log.Log
 
 private class AndroidSettingsKvStore(
     private val prefs: SharedPreferences,

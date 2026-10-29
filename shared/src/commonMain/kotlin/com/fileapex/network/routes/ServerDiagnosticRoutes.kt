@@ -35,9 +35,7 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
             runCatching { com.fileapex.di.FileApexServices.deviceRepository.selfMembershipVersion().toString() }.getOrNull()?.let { version ->
                 call.response.headers.append(com.fileapex.network.PeerHttpHeaders.MEMBERSHIP_VERSION, version)
             }
-            runCatching { server.removalFingerprint() }.getOrNull()?.let { value ->
-                call.response.headers.append(com.fileapex.network.PeerHttpHeaders.REMOVALS, value)
-            }
+            call.appendClusterHeaders(server)
             runCatching { com.fileapex.di.FileApexServices.bulletinSyncEngine.latestChange() }.getOrNull()?.let { version ->
                 call.response.headers.append(com.fileapex.network.PeerHttpHeaders.BULLETIN_VERSION, version.toString())
             }

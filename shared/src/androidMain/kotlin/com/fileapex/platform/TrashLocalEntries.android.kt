@@ -9,7 +9,6 @@ import android.provider.MediaStore
 import com.fileapex.i18n.AppI18n
 import java.io.File
 import java.io.IOException
-import java.net.URLConnection
 
 internal var trashContext: Context? = null
 internal var trashPrompt: ((IntentSender) -> Unit)? = null
@@ -58,12 +57,11 @@ actual fun trashLocalEntries(absolutePaths: List<String>): Boolean {
 }
 
 private fun mediaStoreUri(context: Context, file: File): Uri? {
-    val mime = URLConnection.guessContentTypeFromName(file.name)?.lowercase().orEmpty()
-    val collection = when {
-        mime.startsWith("image/") -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        mime.startsWith("video/") -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        mime.startsWith("audio/") -> MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        else -> return null
+    val collection = when (mediaKindOfName(file.name)) {
+        MediaKind.IMAGE -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        MediaKind.VIDEO -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        MediaKind.AUDIO -> MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        null -> return null
     }
     val projection = arrayOf(MediaStore.MediaColumns._ID)
     val selection = MediaStore.MediaColumns.DATA + "=?"

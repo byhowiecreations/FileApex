@@ -28,6 +28,11 @@ object DriveRelayCrypto {
 
     class Result(val plainSizeBytes: Long, val plainSha256: String)
 
+    /** Test hook: sees every buffer that holds plain text, so a test can check it is zeroed afterwards. */
+    internal var bufferSink: ((ByteArray) -> Unit)? = null
+
+    private fun tracked(buffer: ByteArray): ByteArray = buffer.also { bufferSink?.invoke(it) }
+
     fun newKey(): ByteArray = ByteArray(32).also { SecureRandom().nextBytes(it) }
 
     fun encryptFile(source: File, dest: File, key: ByteArray, checkCancelled: () -> Unit = {}): Result {
@@ -38,23 +43,28 @@ object DriveRelayCrypto {
         source.inputStream().buffered().use { input ->
             dest.outputStream().buffered().use { output ->
                 output.write(header)
-                var current = ByteArray(CHUNK_BYTES)
-                var currentLen = fill(input, current)
-                var next = ByteArray(CHUNK_BYTES)
-                var counter = 0
-                while (true) {
-                    checkCancelled()
-                    val nextLen = if (currentLen == CHUNK_BYTES) fill(input, next) else 0
-                    val last = nextLen == 0
-                    digest.update(current, 0, currentLen)
-                    plainSize += currentLen
-                    output.write(seal(Cipher.ENCRYPT_MODE, key, prefix, counter, last, header, current, currentLen))
-                    if (last) break
-                    counter += 1
-                    val swap = current
-                    current = next
-                    next = swap
-                    currentLen = nextLen
+                var current = tracked(ByteArray(CHUNK_BYTES))
+                var next = tracked(ByteArray(CHUNK_BYTES))
+                try {
+                    var currentLen = fill(input, current)
+                    var counter = 0
+                    while (true) {
+                        checkCancelled()
+                        val nextLen = if (currentLen == CHUNK_BYTES) fill(input, next) else 0
+                        val last = nextLen == 0
+                        digest.update(current, 0, currentLen)
+                        plainSize += currentLen
+                        output.write(seal(Cipher.ENCRYPT_MODE, key, prefix, counter, last, header, current, currentLen))
+                        if (last) break
+                        counter += 1
+                        val swap = current
+                        current = next
+                        next = swap
+                        currentLen = nextLen
+                    }
+                } finally {
+                    current.fill(0)
+                    next.fill(0)
                 }
             }
         }
@@ -74,26 +84,35 @@ object DriveRelayCrypto {
             if (chunk !in 1..MAX_CHUNK_BYTES) throw IOException("unsupported chunk size")
             val prefix = ByteArray(PREFIX_BYTES).also { buffer.get(it) }
             dest.outputStream().buffered().use { output ->
-                var current = ByteArray(chunk + TAG_BYTES)
-                var currentLen = fill(input, current)
-                if (currentLen < TAG_BYTES) throw EOFException("encrypted file is truncated")
-                var next = ByteArray(chunk + TAG_BYTES)
-                var counter = 0
-                while (true) {
-                    checkCancelled()
-                    val nextLen = if (currentLen == chunk + TAG_BYTES) fill(input, next) else 0
-                    val last = nextLen == 0
-                    val plain = seal(Cipher.DECRYPT_MODE, key, prefix, counter, last, header, current, currentLen)
-                    digest.update(plain)
-                    plainSize += plain.size
-                    output.write(plain)
-                    if (last) break
-                    if (nextLen < TAG_BYTES) throw EOFException("encrypted file is truncated")
-                    counter += 1
-                    val swap = current
-                    current = next
-                    next = swap
-                    currentLen = nextLen
+                var current = tracked(ByteArray(chunk + TAG_BYTES))
+                var next = tracked(ByteArray(chunk + TAG_BYTES))
+                try {
+                    var currentLen = fill(input, current)
+                    if (currentLen < TAG_BYTES) throw EOFException("encrypted file is truncated")
+                    var counter = 0
+                    while (true) {
+                        checkCancelled()
+                        val nextLen = if (currentLen == chunk + TAG_BYTES) fill(input, next) else 0
+                        val last = nextLen == 0
+                        val plain = tracked(seal(Cipher.DECRYPT_MODE, key, prefix, counter, last, header, current, currentLen))
+                        try {
+                            digest.update(plain)
+                            plainSize += plain.size
+                            output.write(plain)
+                        } finally {
+                            plain.fill(0)
+                        }
+                        if (last) break
+                        if (nextLen < TAG_BYTES) throw EOFException("encrypted file is truncated")
+                        counter += 1
+                        val swap = current
+                        current = next
+                        next = swap
+                        currentLen = nextLen
+                    }
+                } finally {
+                    current.fill(0)
+                    next.fill(0)
                 }
             }
         }

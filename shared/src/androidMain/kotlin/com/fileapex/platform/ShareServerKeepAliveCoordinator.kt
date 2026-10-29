@@ -9,7 +9,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.core.content.ContextCompat
 import com.fileapex.domain.presence.LanTransitionFilter
 import com.fileapex.util.cancellableCatching

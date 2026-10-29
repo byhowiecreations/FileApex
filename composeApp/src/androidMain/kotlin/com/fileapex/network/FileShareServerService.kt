@@ -4,7 +4,7 @@ import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.fileapex.platform.log.Log
 import com.fileapex.domain.transfer.TransferActivityGuard
 import com.fileapex.tailscale.TailscaleNodeRuntime
 import com.fileapex.platform.BatteryBulletinCoordinator

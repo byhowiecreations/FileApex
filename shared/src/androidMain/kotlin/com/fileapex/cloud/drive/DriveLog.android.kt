@@ -1,6 +1,6 @@
 package com.fileapex.cloud.drive
 
-import android.util.Log
+import com.fileapex.platform.log.Log
 
 private const val TAG = "DriveRelay"
 

@@ -8,7 +8,7 @@ import android.net.Network
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.browser.customtabs.CustomTabsIntent
 import java.lang.ref.WeakReference
 import com.fileapex.data.identity.LocalIdentity
@@ -58,7 +58,7 @@ private class AndroidEmbeddedTsnetEngine : TailscaleUserspaceEngine {
             )
             if (!started.ok) {
                 val detail = started.error.ifBlank { "start_failed" }.take(180)
-                android.util.Log.e("FileApexTsnet", detail)
+                com.fileapex.platform.log.Log.e("FileApexTsnet", detail)
                 return@withContext tailscaleStartFailure(detail)
             }
             snapshotFromBackend(started.backend, started.keyExpired, started.ip)
@@ -67,7 +67,7 @@ private class AndroidEmbeddedTsnetEngine : TailscaleUserspaceEngine {
             throw error
         } catch (error: Throwable) {
             val detail = error.message?.take(180) ?: "start_failed"
-            android.util.Log.e("FileApexTsnet", detail)
+            com.fileapex.platform.log.Log.e("FileApexTsnet", detail)
             tailscaleStartFailure(detail)
         }
     }

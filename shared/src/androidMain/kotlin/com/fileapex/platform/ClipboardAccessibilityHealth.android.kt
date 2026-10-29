@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.fileapex.platform.log.Log
 import android.view.accessibility.AccessibilityManager
 import com.fileapex.data.settings.androidAppContextOrNull
 import com.fileapex.di.FileApexServices

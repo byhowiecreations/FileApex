@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+private const val DIGEST_CACHE_MS = 30_000L
+
 /**
  * Identifies this node so "This device" never appears again as a paired peer.
  */
@@ -158,6 +160,25 @@ class DeviceRepository(
 
     /** The fingerprint of [windowedRemovals], kept for 30 seconds so a busy health route does not read the database each time. */
     suspend fun removalFingerprint(): String = tombstones.removalFingerprint()
+
+    @Volatile
+    private var digestCache: Pair<Long, String>? = null
+
+    /** The digest of this node's roster and removal records (see ClusterDigest), kept for 30 seconds like the fingerprint. */
+    suspend fun clusterDigest(): String {
+        val now = com.fileapex.util.TimeUtils.now()
+        digestCache?.takeIf { now - it.first < DIGEST_CACHE_MS }?.let { return it.second }
+        val value = com.fileapex.domain.pairing.ClusterDigest.of(
+            com.fileapex.domain.pairing.ClusterDigest.rows(
+                selfId = localDeviceProvider().deviceId,
+                selfStamp = selfMembershipVersion(),
+                roster = listDevices(),
+                removals = windowedRemovals()
+            )
+        )
+        digestCache = now to value
+        return value
+    }
 
 
     /** Removed rows (tombstones) that carry this hardware hash. */

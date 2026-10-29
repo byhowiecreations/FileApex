@@ -27,7 +27,7 @@ object DesktopLifecycleLog {
             } else {
                 ""
             }
-            file.appendText("${Instant.now()}$elapsed $message\n")
+            file.appendText("${Instant.now()}$elapsed ${com.fileapex.util.LogRedactor.redact(message)}\n")
         }
     }
 }

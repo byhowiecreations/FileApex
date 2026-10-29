@@ -21,6 +21,13 @@ object CloudRecordSeal {
 
     fun noteVersion(deviceId: String, versionCode: Int) { versions[deviceId] = versionCode }
 
+    /** A full registry snapshot: a device missing from it no longer counts, so a dead device cannot keep plain fields on. */
+    fun replaceVersions(records: List<CloudDeviceRecord>) {
+        val latest = records.associate { it.deviceId to it.clientVersionCode }
+        versions.keys.retainAll(latest.keys)
+        versions.putAll(latest)
+    }
+
     internal fun forgetVersionsForTests() = versions.clear()
 
     /** True until every device seen in the cloud runs a build that reads the sealed fields. */

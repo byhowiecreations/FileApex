@@ -1,5 +1,6 @@
 package com.fileapex.platform
 
+import com.fileapex.data.seal.SealedText
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
@@ -195,7 +196,7 @@ private fun promptForMedia(
 ): Boolean {
     val uris = ids.filter { it.startsWith(MEDIA_PREFIX) }
         .mapNotNull { it.removePrefix(MEDIA_PREFIX).toLongOrNull() }
-        .map { ContentUris.withAppendedId(filesCollection(), it) }
+        .map(::mediaUriFor)
     if (uris.isEmpty()) return false
     if (Build.VERSION.SDK_INT < 30) return false
     val launch = trashPrompt ?: error(AppI18n.t("trash_failed"))
@@ -203,27 +204,54 @@ private fun promptForMedia(
     return true
 }
 
+/**
+ * A trash or delete request wants the item through its own media collection: asking through the general files
+ * collection fails with "All requested items must be Media items" for items some devices keep in their own trash folder.
+ */
+private fun mediaUriFor(id: Long): Uri {
+    val resolver = trashContext?.contentResolver ?: return ContentUris.withAppendedId(filesCollection(), id)
+    val args = Bundle().apply {
+        putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+        putString(ContentResolver.QUERY_ARG_SQL_SELECTION, MediaStore.MediaColumns._ID + "=?")
+        putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(id.toString()))
+    }
+    val mime = resolver.query(filesCollection(), arrayOf(MediaStore.MediaColumns.MIME_TYPE), args, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    }
+    val collection = when (mediaKindOf(mime)) {
+        MediaKind.IMAGE -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        MediaKind.VIDEO -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        MediaKind.AUDIO -> MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        null -> filesCollection()
+    }
+    return ContentUris.withAppendedId(collection, id)
+}
+
+private const val TRASH_PURPOSE = "trash-index"
+
 private fun indexFile(root: File) = File(root, TRASH_INDEX_NAME)
 
 /** name -> (original path, trashed-at millis). */
 private fun readTrashIndex(root: File): Map<String, Pair<String, Long>> {
-    val file = indexFile(root)
-    if (!file.isFile) return emptyMap()
-    return file.readLines().mapNotNull { line ->
+    return SealedText.readFile(indexFile(root), TRASH_PURPOSE).lines().mapNotNull { line ->
         val parts = line.split('\t')
         if (parts.size < 3) null else parts[0] to (parts[1] to (parts[2].toLongOrNull() ?: 0L))
     }.toMap()
 }
 
 internal fun recordTrashOrigin(root: File, trashedName: String, originalPath: String) {
-    runCatching { indexFile(root).appendText("$trashedName\t$originalPath\t${System.currentTimeMillis()}\n") }
+    runCatching {
+        val file = indexFile(root)
+        SealedText.writeFile(file, TRASH_PURPOSE, SealedText.readFile(file, TRASH_PURPOSE) + "$trashedName\t$originalPath\t${System.currentTimeMillis()}\n")
+    }
 }
 
 private fun removeTrashOrigin(root: File, trashedName: String) {
     runCatching {
         val file = indexFile(root)
         if (!file.isFile) return
-        file.writeText(file.readLines().filterNot { it.substringBefore('\t') == trashedName }.joinToString("") { "$it\n" })
+        val kept = SealedText.readFile(file, TRASH_PURPOSE).lines().filter { it.isNotEmpty() && it.substringBefore('\t') != trashedName }
+        SealedText.writeFile(file, TRASH_PURPOSE, kept.joinToString("") { "$it\n" })
     }
 }
 

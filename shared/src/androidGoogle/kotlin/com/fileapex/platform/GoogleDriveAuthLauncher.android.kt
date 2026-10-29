@@ -1,7 +1,7 @@
 package com.fileapex.platform
 
 import android.app.Activity
-import android.util.Log
+import com.fileapex.platform.log.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts

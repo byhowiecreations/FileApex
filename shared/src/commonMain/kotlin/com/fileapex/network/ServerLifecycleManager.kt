@@ -87,6 +87,8 @@ object ServerLifecycleManager {
                     .map { it.copy(hardwareHash = "") }
             },
             removalFingerprint = { FileApexServices.deviceRepository.removalFingerprint() },
+            localExtension = platformLocalExtensionApi(),
+            clusterDigest = { FileApexServices.deviceRepository.clusterDigest() },
             removalRecords = { FileApexServices.deviceRepository.windowedRemovals() },
             onListIntroductions = { recipientId ->
                 val recipient = FileApexServices.deviceRepository.getDevice(recipientId)

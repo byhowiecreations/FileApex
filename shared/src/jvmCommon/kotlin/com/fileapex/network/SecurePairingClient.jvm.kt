@@ -8,6 +8,7 @@ import com.fileapex.domain.pairing.SasRevealRequest
 import com.fileapex.domain.pairing.SecurePairRequest
 import com.fileapex.domain.pairing.SecurePairResponse
 import com.fileapex.domain.pairing.SecurePairingProof
+import com.fileapex.security.useAndWipe
 import com.fileapex.network.routes.SECURE_PAIRING_DECIDE_PATH
 import com.fileapex.network.routes.SECURE_PAIRING_OFFER_PATH
 import com.fileapex.network.routes.SECURE_PAIRING_QR_PATH
@@ -122,24 +123,26 @@ internal object SecurePairingClient {
     ): SecurePairingOutcome = withContext(Dispatchers.IO) {
         val password = SecurePairingProof.passwordFromSecret(request.qrSecret)
             ?: return@withContext SecurePairingOutcome.NotVerified("pairing secret is malformed")
-        guarded {
-            val localPin = PeerTlsConnector.clientIdentity().second
-            val (ssl, hostPin) = connect(request, request.qrHostPin, bindIps)
-            val nonceA = SecurePairingProof.newNonceHex()
-            val scanner = request.scanner.copy(tlsPin = localPin)
-            val macA = SecurePairingProof.macA(password, nonceA, hostPin, localPin, request.hostDeviceId, scanner.deviceId)
-            val reply = post(
-                ssl, request, SECURE_PAIRING_QR_PATH,
-                encode(SecurePairRequest.serializer(), SecurePairRequest(nonceA, macA, scanner, request.devicePin))
-            )
-            if (reply.status != 201) return@guarded rejected(reply)
-            val answer = runCatching { json.decodeFromString(SecurePairResponse.serializer(), reply.body) }.getOrNull()
-                ?: return@guarded SecurePairingOutcome.NotVerified("host reply was not understood")
-            val expected = SecurePairingProof.macB(password, nonceA, answer.nonceB, hostPin, localPin, request.hostDeviceId, scanner.deviceId)
-            if (!SecurePairingProof.equal(expected, answer.macB)) {
-                return@guarded SecurePairingOutcome.NotVerified("host did not prove the pairing secret")
+        password.useAndWipe {
+            guarded {
+                val localPin = PeerTlsConnector.clientIdentity().second
+                val (ssl, hostPin) = connect(request, request.qrHostPin, bindIps)
+                val nonceA = SecurePairingProof.newNonceHex()
+                val scanner = request.scanner.copy(tlsPin = localPin)
+                val macA = SecurePairingProof.macA(password, nonceA, hostPin, localPin, request.hostDeviceId, scanner.deviceId)
+                val reply = post(
+                    ssl, request, SECURE_PAIRING_QR_PATH,
+                    encode(SecurePairRequest.serializer(), SecurePairRequest(nonceA, macA, scanner, request.devicePin))
+                )
+                if (reply.status != 201) return@guarded rejected(reply)
+                val answer = runCatching { json.decodeFromString(SecurePairResponse.serializer(), reply.body) }.getOrNull()
+                    ?: return@guarded SecurePairingOutcome.NotVerified("host reply was not understood")
+                val expected = SecurePairingProof.macB(password, nonceA, answer.nonceB, hostPin, localPin, request.hostDeviceId, scanner.deviceId)
+                if (!SecurePairingProof.equal(expected, answer.macB)) {
+                    return@guarded SecurePairingOutcome.NotVerified("host did not prove the pairing secret")
+                }
+                SecurePairingOutcome.Paired(hostPin)
             }
-            SecurePairingOutcome.Paired(hostPin)
         }
     }
 

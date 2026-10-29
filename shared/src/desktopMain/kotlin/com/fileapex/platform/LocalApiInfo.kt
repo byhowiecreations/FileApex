@@ -1,6 +1,8 @@
 package com.fileapex.platform
 
-/** What the macOS extensions read to find the running app: the port, nothing else. */
+import com.fileapex.network.LocalApiToken
+
+/** What the macOS extensions read to find the running app: its port and the token for its local routes. */
 object LocalApiInfo {
-    fun payload(port: Int): String = """{"port":$port}"""
+    fun payload(port: Int, token: String = LocalApiToken.current): String = """{"port":$port,"token":"$token"}"""
 }

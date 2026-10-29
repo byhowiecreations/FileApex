@@ -15,7 +15,7 @@ import javax.crypto.spec.SecretKeySpec
 class FieldSealer(key: ByteArray) {
     init { require(key.size == KEY_BYTES) { "field key must be 32 bytes" } }
 
-    private val secretKey = SecretKeySpec(key.copyOf(), "AES")
+    private val secretKey = SecretKeySpec(key, "AES")
     private val random = SecureRandom()
 
     fun isSealed(stored: String): Boolean = stored.startsWith(PREFIX)

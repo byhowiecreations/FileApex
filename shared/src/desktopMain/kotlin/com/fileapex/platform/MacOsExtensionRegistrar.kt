@@ -100,8 +100,18 @@ object MacOsExtensionRegistrar {
         val useShare = runCapture(Pluginkit, "-e", "use", "-i", ShareExtensionId)
         val useBulletin = runCapture(Pluginkit, "-e", "use", "-i", BulletinShareExtensionId)
         val ignoreFinder = runCapture(Pluginkit, "-e", "ignore", "-i", DeprecatedFinderSyncId)
-        val listedShare = isPluginkitListed(ShareExtensionId)
-        val listedBulletin = isPluginkitListed(BulletinShareExtensionId)
+        // pluginkit lists a new registration a moment after `-a` returns; look for a few seconds before giving up.
+        var listedShare = ExtensionListing.awaitListed({ isPluginkitListed(ShareExtensionId) })
+        var listedBulletin = ExtensionListing.awaitListed({ isPluginkitListed(BulletinShareExtensionId) })
+        if (!listedShare || !listedBulletin) {
+            log("not listed after the first add (share=$listedShare bulletin=$listedBulletin); adding again")
+            runCapture(Pluginkit, "-a", share.absolutePath)
+            runCapture(Pluginkit, "-a", bulletin.absolutePath)
+            runCapture(Pluginkit, "-e", "use", "-i", ShareExtensionId)
+            runCapture(Pluginkit, "-e", "use", "-i", BulletinShareExtensionId)
+            listedShare = ExtensionListing.awaitListed({ isPluginkitListed(ShareExtensionId) })
+            listedBulletin = ExtensionListing.awaitListed({ isPluginkitListed(BulletinShareExtensionId) })
+        }
         log(
             "registered Share + Bulletin from $ApplicationsAppPath " +
                 "(addShare=$addShare addBulletin=$addBulletin " +
@@ -197,7 +207,7 @@ object MacOsExtensionRegistrar {
         try {
             DesktopPlatformPaths.applicationSupportDirectory()
             DesktopPlatformPaths.extensionRegistrarLogFile()
-                .appendText("${Instant.ofEpochMilli(TimeUtils.now())} $line\n")
+                .appendText("${Instant.ofEpochMilli(TimeUtils.now())} ${com.fileapex.util.LogRedactor.redact(line)}\n")
         } catch (error: Exception) {
             println("MacOsExtensionRegistrar: log file write failed - ${error::class.simpleName}")
         }

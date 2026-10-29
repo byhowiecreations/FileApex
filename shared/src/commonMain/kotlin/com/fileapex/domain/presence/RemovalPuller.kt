@@ -13,7 +13,9 @@ internal class RemovalPuller(
     private val localDeviceId: () -> String,
     private val fetchRemoved: suspend (host: String, port: Int) -> List<RemovedDeviceRecord>,
     private val merge: suspend (ClusterSyncRequest, authenticatedSenderId: String) -> Unit,
-    private val onSelfRecord: (PairedDeviceEntity, RemovedDeviceRecord) -> Unit
+    private val onSelfRecord: (PairedDeviceEntity, RemovedDeviceRecord) -> Unit,
+    /** Runs after a successful read, for work that belongs to the same difference (the cluster digest asks for introductions). */
+    private val afterRead: suspend (PairedDeviceEntity) -> Unit = {}
 ) {
     private val ledger = RemovalPullLedger()
 
@@ -41,6 +43,7 @@ internal class RemovalPuller(
                     peer.deviceId
                 )
             }
+            afterRead(peer)
         }.onFailure { error ->
             ledger.forget(peer.deviceId)
             println("PeerPresenceMonitor: removal read from ${peer.deviceId} failed: ${AddressRedaction.redact(error.message.orEmpty())}")

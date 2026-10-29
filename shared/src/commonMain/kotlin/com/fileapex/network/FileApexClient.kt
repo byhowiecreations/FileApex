@@ -22,7 +22,7 @@ class FileApexClient(
     internal val json: Json = FileApexHttpClientFactory.defaultJson,
     internal val localDeviceId: () -> String = { loadLocalIdentity().deviceId }
 ) {
-    var onRevocationDetected: (suspend (host: String, revokedAt: Long) -> Unit)? = null
+    var onRevocationDetected: (suspend (host: String, port: Int, revokedAt: Long) -> Unit)? = null
     /** This node's membership stamp, sent as `mv` for the peer's revocation gate. */
     var membershipVersionProvider: (() -> Long)? = null
 
@@ -247,7 +247,8 @@ class FileApexClient(
         val respondedAs: String? = null,
         val membershipVersion: Long? = null,
         val bulletinVersion: Long? = null,
-        val removals: String? = null
+        val removals: String? = null,
+        val clusterDigest: String? = null
     )
 
     suspend fun probeHealth(
@@ -260,10 +261,11 @@ class FileApexClient(
         // The phone applies this only when the poll reached it over TLS from a paired computer.
         val healthPath = if (companion == null) "/api/v1/health" else "/api/v1/health?companion=${if (companion) 1 else 0}"
         val health = peerHttpGet(host, port, withSenderQuery(healthPath), timeoutMs) ?: return HealthProbe(false)
-        checkRevocation(host, health)
+        checkRevocation(host, port, health)
         if (health.statusCode in 200..299) return HealthProbe(
             true, health.body.respondedAsId(), PeerHttpHeaders.membershipVersion(health.headers),
-            PeerHttpHeaders.bulletinVersion(health.headers), PeerHttpHeaders.removals(health.headers)
+            PeerHttpHeaders.bulletinVersion(health.headers), PeerHttpHeaders.removals(health.headers),
+            PeerHttpHeaders.clusterDigest(health.headers)
         )
         return HealthProbe(false)
     }
@@ -321,10 +323,10 @@ class FileApexClient(
         requireSuccess(response, "Create directory failed (${response.statusCode}): $remotePath")
     }
 
-    private suspend fun checkRevocation(host: String, response: PeerBoundHttpResponse) {
+    private suspend fun checkRevocation(host: String, port: Int, response: PeerBoundHttpResponse) {
         if (response.statusCode == 401 && response.body.contains("revoked", ignoreCase = true)) {
             try {
-                onRevocationDetected?.invoke(host, response.headers["x-fileapex-revoked-at"]?.trim()?.toLongOrNull() ?: 0L)
+                onRevocationDetected?.invoke(host, port, response.headers["x-fileapex-revoked-at"]?.trim()?.toLongOrNull() ?: 0L)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -342,7 +344,7 @@ class FileApexClient(
         PeerLanHttpPolicy.ensureRoute(host)
         val response = peerHttpGet(host, port, withSenderQuery(withCompanion(pathWithQuery, host, port)), timeoutMs)
             ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
-        checkRevocation(host, response)
+        checkRevocation(host, port, response)
         return response
     }
 
@@ -363,7 +365,7 @@ class FileApexClient(
             contentType = contentType,
             timeoutMs = timeoutMs
         ) ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
-        checkRevocation(host, response)
+        checkRevocation(host, port, response)
         return response
     }
 

@@ -7,7 +7,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.util.Log
+import com.fileapex.platform.log.Log
 
 /**
  * Holds a [WifiManager.WifiLock] for the lifetime of the share server FGS so the Wi-Fi radio
