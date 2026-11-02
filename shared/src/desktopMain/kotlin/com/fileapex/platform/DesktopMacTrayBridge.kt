@@ -91,6 +91,13 @@ object DesktopMacTrayBridge {
      * peer table on every roster change. Without the identity it refuses to talk to a pinned peer.
      */
     private fun installLanTls(lib: FileApexTrayNative) {
+        pushLanTlsIdentity(lib)
+        com.fileapex.security.tls.TlsIdentityRenewal.afterRenewal += { pushLanTlsIdentity(lib) }
+        com.fileapex.security.tls.PeerTlsRoutes.onChange = { pushLanTlsRoutes(lib, it) }
+        pushLanTlsRoutes(lib, com.fileapex.security.tls.PeerTlsRoutes.snapshot())
+    }
+
+    private fun pushLanTlsIdentity(lib: FileApexTrayNative) {
         runCatching {
             val identity = com.fileapex.security.tls.DesktopTlsIdentity.store().getOrCreate()
             val password = java.util.UUID.randomUUID().toString()
@@ -101,8 +108,6 @@ object DesktopMacTrayBridge {
         }.onFailure { error ->
             println("DesktopMacTrayBridge: native TLS identity unavailable :: ${error.message}")
         }
-        com.fileapex.security.tls.PeerTlsRoutes.onChange = { pushLanTlsRoutes(lib, it) }
-        pushLanTlsRoutes(lib, com.fileapex.security.tls.PeerTlsRoutes.snapshot())
     }
 
     /** The native client refused a pinned peer; if it saw a different key, ask the user about it. */
@@ -521,7 +526,7 @@ object DesktopMacTrayBridge {
         }
     }
 
-    private fun resolveDylib(): File? {
+    internal fun resolveDylib(): File? {
         val fromBundle = resolveRunningAppBundle()?.let { bundle ->
             File(bundle, "Contents/Frameworks/libFileApexTray.dylib").takeIf { it.isFile }
         }

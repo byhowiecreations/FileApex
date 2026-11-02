@@ -92,6 +92,7 @@ class FileShareServerService : Service() {
         val timeoutStop = ServiceWatchdogState.consumeTimeoutStop(this)
         val watchdogEnabled = ServiceWatchdogScheduler.isWatchdogEnabled(this)
         val workStillActive = TransferActivityGuard.isTransferActive() ||
+            com.fileapex.friends.FriendsHub.hasActiveWork ||
             TailscaleNodeRuntime.activeTailnetConnections() > 0
         val retainRecoveryJob = watchdogEnabled && !cleanStop
         ShareServerKeepAliveCoordinator.onForegroundServiceInactive(
@@ -136,6 +137,7 @@ class FileShareServerService : Service() {
      */
     private fun runBackgroundHousekeeping() {
         ensureServerRunning()
+        com.fileapex.friends.FriendsHub.maintainListener(com.fileapex.di.FileApexServices.presenceMonitor.onlineSnapshotEpochMs)
         recordServiceHeartbeat()
         if (wakeReceiver == null) {
             startWakeListener()

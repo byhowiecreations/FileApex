@@ -1,5 +1,7 @@
 package com.fileapex.network
 
+import com.fileapex.domain.presence.PeerRefusals
+import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.tailscale.TailscaleLoopbackDial
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.cancellableCatching
@@ -64,6 +66,7 @@ internal suspend fun PeerHttpPlatform.get(
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
     val loop = loopbackDial(host, port)
+    if (loop == null && PlainHttpGuard.blocks(host, port, path)) return@withContext null
     if (loop != null) {
         return@withContext runCatching {
             executeBoundHttpOnLocalIp(
@@ -92,6 +95,7 @@ internal suspend fun PeerHttpPlatform.post(
     timeoutMs: Long
 ): PeerBoundHttpResponse? = withContext(Dispatchers.IO) {
     val loop = loopbackDial(host, port)
+    if (loop == null && PlainHttpGuard.blocks(host, port, path)) return@withContext null
     if (loop != null) {
         return@withContext runCatching {
             executeBoundHttpOnLocalIp(
@@ -127,6 +131,7 @@ internal suspend fun PeerHttpPlatform.uploadFromChannel(
         }
     }
     val loop = loopbackDial(host, port)
+    if (loop == null && PlainHttpGuard.blocks(host, port, pathWithQuery)) return@withContext null
     if (loop != null) {
         return@withContext cancellableCatching {
             executeBoundUploadOnLocalIp(
@@ -164,6 +169,7 @@ internal suspend fun PeerHttpPlatform.uploadFromFile(
     onProgress: ((sentBytes: Long, totalBytes: Long) -> Unit)?
 ): PeerBoundHttpResponse? = withContext(TransferRuntime.outbound) {
     val loop = loopbackDial(host, port)
+    if (loop == null && PlainHttpGuard.blocks(host, port, pathWithQuery)) return@withContext null
     val native = if (loop == null) nativeStack() else null
     if (native != null) {
         return@withContext native.uploadFromFile(
@@ -217,6 +223,7 @@ internal suspend fun PeerHttpPlatform.getStreaming(
     onStatus: ((Int) -> Unit)?
 ): PeerBoundStreamResult? = withContext(TransferRuntime.outbound) {
     val loop = loopbackDial(host, port)
+    if (loop == null && PlainHttpGuard.blocks(host, port, pathWithQuery)) return@withContext null
     if (loop != null) {
         return@withContext cancellableCatching {
             executeBoundGetStreamingOnLocalIp(
@@ -263,8 +270,10 @@ private fun PeerHttpPlatform.executeBoundHttp(
             )
         }.onFailure { error ->
             println("PeerBoundHttp: $method ${NetworkUtils.lastOctetLabel(host)}:$port via ${NetworkUtils.lastOctetLabel(localIp)} failed - ${error::class.simpleName}: ${error.message} cause=${error.cause}")
+            if (UserFacingErrors.isPeerRefusal(error)) PeerRefusals.onRefusedHost(host, port)
         }.getOrNull()
         if (response != null && response.statusCode > 0) {
+            PeerRefusals.onAnswer(host, port, response.statusCode, response.body)
             return response
         }
         if (!NetworkUtils.shouldTryNextBindCandidate(localIp, host)) break

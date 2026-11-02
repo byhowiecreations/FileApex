@@ -5,6 +5,7 @@ import com.fileapex.cloud.seal.ClusterRecordKeys
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.domain.clipboard.ClipboardE2ee
+import com.fileapex.membership.memberCanCommandMembership
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -36,6 +37,8 @@ enum class TlsAnnouncementOutcome {
     Unchanged,
     /** A paired peer announced a different key and its pairing key vouched for it: replaced without asking. */
     Rotated,
+    /** The sender is on the roster but cannot order membership (a leftover `legacy:` admit, an old build). */
+    NoAuthority,
     /** Another device of the cluster confirmed a peer's new key; kept until that peer shows the key. */
     Vouched,
     UnknownPeer,
@@ -115,7 +118,8 @@ object TlsPinAnnouncements {
         announcement: TlsPinAnnouncement,
         localDeviceId: String,
         nowMs: Long,
-        crypto: PairCrypto = ClipboardPairCrypto
+        crypto: PairCrypto = ClipboardPairCrypto,
+        senderMayCommand: suspend (String) -> Boolean = { senderMayCommandMembership(it) }
     ): TlsAnnouncementOutcome {
         val device = repository.getDevice(announcement.senderDeviceId) ?: return TlsAnnouncementOutcome.UnknownPeer
         if (device.isRemoved) return TlsAnnouncementOutcome.UnknownPeer
@@ -139,9 +143,23 @@ object TlsPinAnnouncements {
         // An older copy of an announcement must not undo a newer one (a replay of a retired key).
         val seen = lastIssued.merge("${device.deviceId}|${payload.subjectDeviceId}", payload.issuedAtEpochMs, ::maxOf)
         if (payload.issuedAtEpochMs < (seen ?: 0L)) return TlsAnnouncementOutcome.Invalid
-        if (payload.subjectDeviceId.isBlank()) ClusterRecordKey.fromJson(payload.clusterKey)?.let(ClusterRecordKeys::adopt)
-        if (payload.subjectDeviceId.isNotBlank()) return acceptVouch(repository, device, payload.subjectDeviceId, pin, payload.tlsPort, nowMs)
+        val mayCommand = senderMayCommand(device.deviceId)
+        if (payload.subjectDeviceId.isBlank() && mayCommand) {
+            ClusterRecordKey.fromJson(payload.clusterKey)?.let(ClusterRecordKeys::adopt)
+        }
+        if (payload.subjectDeviceId.isNotBlank()) {
+            if (!mayCommand) return TlsAnnouncementOutcome.NoAuthority
+            return acceptVouch(repository, device, payload.subjectDeviceId, pin, payload.tlsPort, nowMs)
+        }
+        if (device.tlsPin.isNotEmpty() && device.tlsPin != pin && !mayCommand) return TlsAnnouncementOutcome.NoAuthority
         return applyAuthenticatedPin(repository, device, pin, payload.tlsPort)
+    }
+
+    /** No chain yet: pairing still works. A leftover `legacy:` member cannot rotate a pin or hand over the cluster key. */
+    internal suspend fun senderMayCommandMembership(deviceId: String): Boolean {
+        val state = com.fileapex.di.FileApexServices.membershipHub?.chainLog?.view()?.state ?: return true
+        if (state.seq == 0L) return true
+        return state.memberCanCommandMembership(deviceId)
     }
 
     private suspend fun acceptVouch(
@@ -192,7 +210,7 @@ object TlsPinAnnouncements {
 
     /** The user agreed. The other devices of the cluster are told, so they do not have to ask. */
     suspend fun confirm(repository: DeviceRepository, prompt: TlsPinPrompt) {
-        repository.recordTlsPin(prompt.deviceId, prompt.pin, prompt.port)
+        repository.recordTlsPin(prompt.deviceId, prompt.pin, prompt.port, userConfirmed = true)
         PeerTlsStatus.dismiss(prompt.deviceId)
         PeerTlsStatus.onUserConfirmed?.invoke(prompt)
     }

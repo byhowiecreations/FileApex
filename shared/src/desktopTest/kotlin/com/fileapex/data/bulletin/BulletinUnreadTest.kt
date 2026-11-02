@@ -71,4 +71,19 @@ class BulletinUnreadTest {
         assertEquals(two[0], HeaderAlerts.at(two, 2))
         assertEquals(null, HeaderAlerts.at(emptyList(), 5))
     }
+
+    @Test
+    fun aJumpNoteSaysHowOldTheMarkerIsHowManyRowsChangedJustNowAndHowManyAreOthers() {
+        val minute = 60_000L
+        val now = 100 * minute
+        val rows = listOf(
+            row("a", stamp = now - 2 * minute),
+            row("b", stamp = now - 90 * minute),
+            row("mine", from = "me", stamp = now - minute)
+        )
+        assertEquals(
+            "unread=1 rows=3 markerAgeMin=40 newestChangeAgeMin=1 fromOthers=2 changedLast5Min=2",
+            BulletinUnread.jumpNote(rows, "me", seenAt = now - 40 * minute, now = now)
+        )
+    }
 }

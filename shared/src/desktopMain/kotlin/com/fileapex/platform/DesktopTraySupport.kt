@@ -28,6 +28,7 @@ object DesktopTraySupport {
             DesktopPlatformPaths.isWindows() ->
                 DesktopAwtTrayCoordinator.attachMainWindow(window, onShowWindow, onHideWindow, onQuit)
         }
+        com.fileapex.friends.installDesktopFriendsNotifications(onShowWindow)
     }
 
     /** Hides the main window without quitting (menu-bar tray / dock stay alive). */
@@ -54,6 +55,7 @@ object DesktopTraySupport {
 
     /** Removes AWT tray icons before JVM exit (Windows). macOS native tray needs no teardown. */
     fun dispose() {
+        com.fileapex.friends.disposeDesktopFriendsNotifications()
         if (DesktopPlatformPaths.isWindows()) {
             DesktopAwtTrayCoordinator.dispose()
         }

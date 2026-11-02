@@ -125,8 +125,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="grant_access">Conceder acceso</string>
     <string name="grant_file_access">Conceder acceso a archivos</string>
     <string name="add_new_device">Añadir nuevo dispositivo</string>
-    <string name="join_device">Unirse a un dispositivo</string>
-    <string name="generate_qr">Generar código QR</string>
+    <string name="join_device">Unirse a otro dispositivo</string>
+    <string name="generate_qr">Añadir un dispositivo a este</string>
     <string name="send_clipboard">Enviar portapapeles</string>
     <string name="check_batteries">Comprobar baterías</string>
     <string name="check_battery">Comprobar batería</string>
@@ -414,7 +414,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="pin_idle_immediate">Inmediato</string>
     <string name="pin_idle_10m">10 minutos</string>
     <string name="home">Inicio</string>
-    <string name="no_paired_devices_hint">Aún no hay dispositivos emparejados. Toca Añadir dispositivo para generar un QR o unirte a un dispositivo.</string>
+    <string name="no_paired_devices_hint">Aún no hay dispositivos emparejados. Toca Añadir dispositivo para añadir un dispositivo a este o unirte a otro dispositivo.</string>
 <string name="watchdog_desc">Activa el supervisor en segundo plano para reiniciar automáticamente el servidor de archivos de FileApex si la gestión agresiva de batería del fabricante lo cierra. El despertar UDP de pares solo funciona mientras la notificación del servidor esté activa.</string>
     <string name="background_restricted_desc">Android está impidiendo que FileApex se ejecute en segundo plano. Toca para abrir el uso de batería de la app y elige Sin restricciones o Permitir siempre.</string>
     <string name="background_restricted_desc_steps">Android está impidiendo que FileApex se ejecute en segundo plano. Toca para abrir los ajustes del sistema y elige: %1$s</string>
@@ -510,7 +510,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="error_select_files">Selecciona al menos un archivo para enviar</string>
     <string name="error_send_failed">Enviar a falló en todos los destinos</string>
     <string name="send_to_finished_errors">Enviar a terminó con %1$s error(es)</string>
-    <string name="qr_intro">Muestra este código en un dispositivo. En el otro, escanéalo con la cámara y toca Abrir FileApex, o usa Añadir dispositivo → Unirse a dispositivo y toca este dispositivo. Si no escaneas, ambas pantallas muestran el mismo número: confirma que coinciden.</string>
+    <string name="qr_intro">Muestra este código en el dispositivo que conserva sus dispositivos. En el otro, escanéalo con la cámara y toca Abrir FileApex, o usa Añadir dispositivo → Unirse a otro dispositivo y toca este dispositivo. Si no escaneas, ambas pantallas muestran el mismo número: confirma que coinciden. El otro dispositivo se une a este; si ya tiene dispositivos emparejados, los deja y adopta los de este.</string>
     <string name="paired_with">Emparejado con %1$s.</string>
     <string name="starting_share_server">Iniciando servidor de compartir… el emparejamiento funcionará cuando esté listo.</string>
     <string name="qr_timeout">Ningún dispositivo confirmó a tiempo. Toca Reintentar para un nuevo código QR y difusión local.</string>
@@ -700,7 +700,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="oem_transsion_autostart">Activa FileApex en Phone Master Gestión de inicio automático y exclúyelo de las restricciones de Battery Lab.</string>
     <string name="pair_with_this_node">Emparejar con este nodo</string>
     <string name="manual_pairing_code">CÓDIGO DE EMPAREJAMIENTO MANUAL</string>
-    <string name="scan_qr_pairing_hint">Escanea el QR con la cámara o FileApex, o elige Unirse a dispositivo en el otro dispositivo y toca este.</string>
+    <string name="scan_qr_pairing_hint">Escanea el QR con la cámara o FileApex, o elige Unirse a otro dispositivo en el otro dispositivo y toca este.</string>
     <string name="no_lan_ipv4">No se encontró una dirección IPv4 LAN. Conéctate a Wi‑Fi y reintenta.</string>
     <string name="pairing_scan_own_qr">Escaneaste el código QR de este mismo dispositivo</string>
     <string name="pairing_failed">Error de emparejamiento</string>
@@ -711,6 +711,8 @@ Toca el hub central (+) para emparejar</string>
     <string name="incorrect_pin">PIN incorrecto</string>
     <string name="incorrect_pin_pairing">PIN incorrecto: emparejamiento rechazado</string>
     <string name="pairing_code_expired">El código de emparejamiento caducó o es incorrecto. Pide al otro dispositivo que pulse Reintentar.</string>
+    <string name="pairing_update_this_device">Este dispositivo usa una versión anterior de FileApex. Actualízalo y vuelve a emparejar.</string>
+    <string name="pairing_update_other_device">El otro dispositivo usa una versión anterior de FileApex. Actualízalo allí primero y vuelve a emparejar.</string>
     <string name="pairing_handshake_failed">Fallo en el emparejamiento (%1$s)</string>
     <string name="pairing_not_fileapex">No es un código de emparejamiento de FileApex: escanea con Cámara y pulsa Abrir FileApex, o usa Escanear QR dentro de FileApex. El escáner vio: %1$s</string>
     <string name="live_qr_android_only">La cámara QR en vivo está disponible en Android</string>
@@ -1026,6 +1028,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="back_to_settings">Volver a Configuración</string>
     <string name="peer_revoked_this_device">%1$s ya no reconoce este dispositivo: vuelve a emparejarlo para unirte</string>
     <string name="removed_signed_out_google">Este dispositivo fue eliminado del clúster y se cerró su sesión de Google en FileApex. Vuelve a emparejarlo para unirte.</string>
+    <string name="removed_from_cluster">Este dispositivo fue eliminado del clúster. Vuelve a emparejarlo para unirte.</string>
     <string name="transfer_cancelled">Transferencia cancelada</string>
     <string name="queue_retry_failed">No se pudo reintentar esta transferencia</string>
     <string name="queue_retry_now">Reintentar ahora</string>
@@ -1033,6 +1036,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="show_in_folder">Mostrar en carpeta</string>
     <string name="error_peer_timeout">El dispositivo tardó demasiado en responder. Comprueba que esté activo y en la misma red Wi-Fi.</string>
     <string name="error_peer_unreachable">No se pudo conectar con el dispositivo. Comprueba que FileApex esté en ejecución y que ambos estén en la misma red.</string>
+    <string name="error_peer_not_trusted">Este dispositivo ya no confía en ti. Puede haberte eliminado de su clúster. Vuelve a emparejarlo para explorar.</string>
     <string name="error_disk_full">No hay suficiente espacio de almacenamiento para terminar.</string>
     <string name="error_connection_lost">La conexión se interrumpió. Inténtalo de nuevo.</string>
     <string name="filter_this_folder">Filtrar esta carpeta</string>
@@ -1365,7 +1369,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="about_source_link">Ver código fuente</string>
     <string name="about_licenses_link">Leer las licencias completas</string>
     <string name="about_trademarks">Tailscale, Iroh y los demás nombres pertenecen a sus propietarios y se usan solo para indicar con qué funciona FileApex.</string>
-    <string name="join_tap_device">Toca el dispositivo con el que quieres emparejar</string>
+    <string name="join_tap_device">Toca el dispositivo al que quieres unirte. Si este dispositivo ya tiene dispositivos emparejados, los deja.</string>
     <string name="paste_pairing_link">Pega un enlace de emparejamiento</string>
     <string name="friends_entry">Conectar con amigos</string>
     <string name="friends_intro_title">Cómo funcionan los amigos</string>
@@ -1438,6 +1442,9 @@ Toca el hub central (+) para emparejar</string>
     <string name="friends_joined">%1$s se unió</string>
     <string name="friends_added">Se añadió %1$s</string>
     <string name="friends_send_file">Enviar archivo</string>
+    <string name="friends_send_dropped_no_friend">No se envió nada: ese amigo ya no está en tu lista.</string>
+    <string name="friends_send_dropped_nothing">No se envió nada: no se eligió ningún archivo.</string>
+    <string name="friends_send_dropped_not_file">Algunos elementos elegidos no son archivos y se omitieron.</string>
     <string name="friends_rename">Renombrar</string>
     <string name="friends_block">Bloquear</string>
     <string name="friends_unblock">Desbloquear</string>
@@ -1461,6 +1468,20 @@ Toca el hub central (+) para emparejar</string>
     <string name="friends_status_received">Recibido</string>
     <string name="friends_status_refused">Tu amigo rechazó</string>
     <string name="friends_status_failed">Falló, envía de nuevo para reanudar</string>
+    <string name="friends_failed_unreachable">No se pudo contactar a tu amigo, envía de nuevo para reanudar</string>
+    <string name="friends_failed_timeout">Tu amigo no respondió a tiempo, envía de nuevo para reanudar</string>
+    <string name="friends_failed_lost">Se perdió la conexión, envía de nuevo para reanudar</string>
+    <string name="friends_failed_answer">La app de tu amigo respondió de forma inesperada, envía de nuevo para reanudar</string>
+    <string name="friends_failed_file">No se pudo leer el archivo, revísalo y envía de nuevo</string>
+    <string name="friends_failed_gone">Este amigo fue eliminado, agrégalo de nuevo para enviar</string>
+    <string name="friends_path_checking">Comprobando la conexión...</string>
+    <string name="friends_path_direct_lan">Conexión directa en tu red (%1$s ms)</string>
+    <string name="friends_path_direct_internet">Conexión directa por internet (%1$s ms)</string>
+    <string name="friends_path_relay">Usando relé</string>
+    <string name="friends_path_relay_no_direct">No se pudo crear una conexión directa, usando relé</string>
+    <string name="friends_path_relay_hidden">Usando relé (tu dirección IP está oculta)</string>
+    <string name="friends_path_unreachable">No se puede contactar a este amigo ahora</string>
+    <string name="friends_removed_you">Te han eliminado. ¿Eliminarlos aquí también?</string>
     <string name="friends_error_generic">No se pudo conectar con tu amigo.</string>
     <string name="friends_invite_message">Únete a mí en FileApex. Abre FileApex, toca Conectar con amigos, luego Introducir una invitación, pega este enlace y escribe el PIN que te diga: %1$s</string>
     <string name="friends_copy_message">Copiar mensaje de invitación</string>
@@ -1480,5 +1501,27 @@ Toca el hub central (+) para emparejar</string>
     <string name="alert_critical_notice">Aviso crítico en el Tablón</string>
     <string name="notice_alert_description">Aviso crítico</string>
     <string name="notice_update">Actualizar</string>
+    <string name="identity_changed_title">Este dispositivo tiene una identidad nueva</string>
+    <string name="identity_changed_body">La clave de identidad de este dispositivo se perdió o se reemplazó, así que tiene una identidad nueva. Tus otros dispositivos aún lo conocen con la anterior y lo rechazan. En uno de tus otros dispositivos elige Añadir un dispositivo a este, y aquí elige Unirse a otro dispositivo y tócalo. Ese dispositivo se lo cuenta a los demás.</string>
+    <string name="identity_changed_ok">Aceptar</string>
+    <string name="identity_change_ask_title">Un dispositivo pide conservar su lugar</string>
+    <string name="identity_change_ask_body">%1$s perdió su clave de identidad y ahora tiene una identidad nueva. Compara este código con el de ese dispositivo y confirma solo si coinciden.</string>
+    <string name="identity_change_ask_yes">Los códigos coinciden</string>
+    <string name="identity_change_ask_no">No, rechazar</string>
+    <string name="identity_changed_waiting">Se pidió a %1$s que confirme. En ese dispositivo, comprueba que este código coincide y confirma: %2$s</string>
+    <string name="friends_queue_open">Abrir la cola de transferencias de amigos</string>
+    <string name="friends_queue_title">Transferencias de amigos</string>
+    <string name="friends_queue_empty">No hay transferencias en curso</string>
+    <string name="friends_scan_invite">Escanear invitación</string>
+    <string name="friends_scan_again">Volver a escanear</string>
+    <string name="friends_scan_invalid">Esto no es una invitación de amistad.</string>
+    <string name="friends_share_queued">Archivos en cola para tu amigo</string>
+    <string name="friends_share_failed">No se pudieron poner archivos en cola para un amigo. Revisa las transferencias antes de reintentar.</string>
+    <string name="share_targets_none">Abre FileApex y añade un dispositivo o amigo. Luego vuelve a intentarlo.</string>
+    <string name="share_targets_count">%1$s destinos</string>
+    <string name="friends_rename_failed">No se pudo cambiar el nombre. Finaliza las transferencias y revisa la carpeta de destino.</string>
+    <string name="friends_remove_failed">No se pudo completar la eliminación. Revisa la lista de amigos; pueden quedar archivos temporales.</string>
+    <string name="friends_notification_permission">Permitir notificaciones de amigos</string>
+    <string name="friends_share_queue_failed">No se pudo poner el envío a algunos amigos en la cola. Revisa los destinos restantes e inténtalo de nuevo. No se repetirá el envío a los amigos que ya están en la cola.</string>
 </resources>
 

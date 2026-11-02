@@ -154,4 +154,12 @@ class RosterMergeTest {
         assertEquals(known.supportedProtocolsJson, RosterMerge.preferRicher(known, unknown).supportedProtocolsJson)
         assertEquals(known.supportedProtocolsJson, RosterMerge.preferRicher(unknown, known).supportedProtocolsJson)
     }
+
+    @Test
+    fun placeholderRowsWithNoAddressAreNeverTheSameDevice() {
+        val a = device("a", name = "Paired Device", ip = "")
+        val b = device("b", name = "Paired Device", ip = "")
+        assertFalse(RosterMerge.areAliases(a, b))
+        assertTrue(RosterMerge.areAliases(device("c", name = "Pixel", ip = ""), device("d", name = "Pixel", ip = "10.0.0.5")))
+    }
 }

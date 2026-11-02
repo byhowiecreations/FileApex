@@ -5,6 +5,7 @@ import com.fileapex.ui.ExplorerNavigationAction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CopyAll
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -14,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import com.fileapex.i18n.stringRes
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,7 +85,16 @@ internal fun ExplorerScope.ExplorerTopBar() {
 @Composable
 internal fun ExplorerScope.ExplorerCopyButtons() {
     with(inputs) { with(frame) { with(live) {
-        if (showCopyFabs) {
+        val pick = onPickFiles
+        if (showCopyFabs && pick != null) {
+            ExtendedFloatingActionButton(
+                onClick = { viewModel.pickSelected(pick) },
+                icon = { Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null) },
+                text = { Text(stringRes("send")) },
+                containerColor = FileApexTeal,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
+        } else if (showCopyFabs) {
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(10.dp)

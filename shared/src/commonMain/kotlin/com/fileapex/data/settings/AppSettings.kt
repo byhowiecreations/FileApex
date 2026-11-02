@@ -60,7 +60,7 @@ interface AppSettings {
     fun setDesktopAutostart(enabled: Boolean)
     val deviceOrderIds: StateFlow<String>
     val deviceOrderUpdatedAtEpochMs: StateFlow<Long>
-    /** [com.fileapex.domain.peer.ClusterClock] stamp of this device's latest pairing; 0 until it pairs on 0.14.3a+. */
+    /** Unused leftover pairing stamp in settings; membership is the signed chain. */
     val clusterMembershipVersion: StateFlow<Long>
     val membershipProtocolSinceEpochMs: StateFlow<Long>
     /** Pending LAN subnet scan waits, so a restart does not scan every peer again. Empty when none. */

@@ -2,6 +2,7 @@ package com.fileapex.security.tls
 
 import com.fileapex.cloud.seal.ClusterRecordKey
 import com.fileapex.cloud.seal.ClusterRecordKeys
+import com.fileapex.membership.memberCanCommandMembership
 import com.fileapex.data.db.DeviceDao
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.RemovedDeviceEntity
@@ -19,6 +20,7 @@ import org.junit.Test
 
 class TlsPinAnnouncementTest {
     private class MemoryDao : DeviceDao {
+        override suspend fun forgetLocalExcept(keepId: String) = Unit
         val devices = mutableMapOf<String, PairedDeviceEntity>()
         override fun getAllDevicesUnordered(): Flow<List<PairedDeviceEntity>> = emptyFlow()
         override suspend fun getAllDevicesOnceUnordered() = devices.values.filter { !it.isRemoved }
@@ -29,7 +31,6 @@ class TlsPinAnnouncementTest {
         override suspend fun deleteDevice(deviceId: String) { devices.remove(deviceId) }
         override suspend fun deleteAllDevices() = devices.clear()
         override suspend fun insertRemovedDevice(device: RemovedDeviceEntity) {}
-        override suspend fun countRemovedById(deviceId: String) = 0
         override suspend fun clearRemovedDevice(deviceId: String) {}
         override suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String) {}
         override suspend fun getAllRemovedDevices() = emptyList<RemovedDeviceEntity>()
@@ -37,9 +38,6 @@ class TlsPinAnnouncementTest {
         override suspend fun touchLastSeen(deviceId: String, ip: String, port: Int, epochMs: Long) {}
         override suspend fun touchLastSeenEpoch(deviceId: String, epochMs: Long) {}
         override suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String) {}
-        override suspend fun updateTls(deviceId: String, pin: String, alt: String, port: Int) {
-            devices[deviceId]?.let { devices[deviceId] = it.copy(tlsPin = pin, tlsPinAlt = alt, tlsPort = port) }
-        }
         override suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {}
         override suspend fun updateCardLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String) {}
         override suspend fun updateTileLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String) {}
@@ -233,13 +231,44 @@ class TlsPinAnnouncementTest {
     }
 
     @Test
-    fun removingAPeerClearsItsPin() = runBlocking {
+    fun aRemovedPeerKeepsItsPinOnlyAsARevokedPinAndIsNoLongerListed() = runBlocking {
         repo.adoptFromPairing(peer())
         repo.recordTlsPin("peer", pinB, 9443, alt = pinA)
         repo.removePermanently("peer")
-        val tomb = dao.devices["peer"]
-        assertEquals("", tomb?.tlsPin.orEmpty())
-        assertEquals("", tomb?.tlsPinAlt.orEmpty())
+        assertTrue(dao.devices["peer"]!!.isRemoved)
+        val revoked = repo.removedDevicesWithPins().single()
+        assertEquals(listOf("peer", pinB, pinA), listOf(revoked.deviceId, revoked.pin, revoked.alt))
+        assertTrue(repo.listDevices().none { it.deviceId == "peer" })
+    }
+
+    @Test
+    fun aLegacyPeerCannotRotateAStoredPinOrHandOverTheClusterKey() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        val state = com.fileapex.membership.ChainState(
+            10L, "h",
+            mapOf(
+                "me" to com.fileapex.membership.ChainMember("k-me", pinA, true),
+                "peer" to com.fileapex.membership.ChainMember("legacy:peer", pinA, true)
+            )
+        )
+        var stored = ""
+        ClusterRecordKeys.read = { stored }
+        ClusterRecordKeys.write = { stored = it }
+        ClusterRecordKeys.forgetForTests()
+        try {
+            val theirs = ClusterRecordKey.generate(3)
+            val payload = """{"pin":"$pinB","tlsPort":9443,"issuedAtEpochMs":$now,"clusterKey":${kotlinx.serialization.json.JsonPrimitive(theirs.toJson())}}"""
+            val sealed = FakeCrypto("peer-key").encrypt(payload.encodeToByteArray(), "peer", "me", "my-key")
+            val outcome = TlsPinAnnouncements.accept(
+                repo, TlsPinAnnouncement("peer", "peer-key", sealed), "me", now, FakeCrypto("my-key")
+            ) { state.memberCanCommandMembership(it) }
+            assertEquals(TlsAnnouncementOutcome.NoAuthority, outcome)
+            assertEquals(pinA, repo.getDevice("peer")!!.tlsPin)
+            assertNull(ClusterRecordKeys.current())
+        } finally {
+            ClusterRecordKeys.forgetForTests()
+        }
     }
 
     @Test

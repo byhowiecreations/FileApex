@@ -5,6 +5,9 @@ package com.fileapex.platform
  * are invoked only when [DesktopPlatformPaths.isMacOs].
  */
 object DesktopJvmStartup {
+    /** The window class on Linux; every package launcher names it in StartupWMClass (`composeApp/linux/FileApex.desktop`). */
+    const val LINUX_WINDOW_CLASS = "FileApex"
+
     fun onMainEntry() {
         DesktopLifecycleLog.markProcessStart()
         DesktopCrashHandler.install()
@@ -24,7 +27,7 @@ object DesktopJvmStartup {
             val toolkit = java.awt.Toolkit.getDefaultToolkit()
             val field = toolkit.javaClass.getDeclaredField("awtAppClassName")
             field.isAccessible = true
-            field.set(null, "FileApex")
+            field.set(null, LINUX_WINDOW_CLASS)
         }.onFailure { println("DesktopJvmStartup: window class not set - ${it.message}") }
     }
 

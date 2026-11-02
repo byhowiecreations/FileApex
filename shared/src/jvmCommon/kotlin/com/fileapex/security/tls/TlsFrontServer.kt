@@ -43,7 +43,8 @@ class PinningClientTrustManager(
     private fun verify(chain: Array<out X509Certificate>?) {
         val leaf = chain?.firstOrNull() ?: throw CertificateException("no client certificate")
         if (leaf.publicKey.algorithm != "EC") throw CertificateException("unsupported key type")
-        if (directory.deviceIdForPin(TlsPin.of(leaf.publicKey)) == null && !allowUnpinned()) {
+        val pin = TlsPin.of(leaf.publicKey)
+        if (directory.deviceIdForPin(pin) == null && directory.revokedDeviceIdForPin(pin) == null && !allowUnpinned()) {
             throw CertificateException("client key is not pinned")
         }
     }
@@ -123,7 +124,8 @@ class TlsFrontServer(
     /** Closes connections whose device or pin is no longer in the directory (unpaired, re-keyed). */
     fun revalidate() {
         for ((socket, peer) in sessions) {
-            if (!peer.pairingOnly && directory.deviceIdForPin(peer.pin) != peer.deviceId) {
+            val current = if (peer.revokedOnly) directory.revokedDeviceIdForPin(peer.pin) else directory.deviceIdForPin(peer.pin)
+            if (!peer.pairingOnly && current != peer.deviceId) {
                 log("TLS connection dropped: peer ${peer.deviceId} no longer pinned", null)
                 runCatching { socket.close() }
             }
@@ -187,19 +189,23 @@ class TlsFrontServer(
                 return
             }
             val pin = TlsPin.of(leaf.publicKey)
-            val known = directory.deviceIdForPin(pin)
-            if (known == null && !allowUnpinned()) {
+            val standing = PeerStanding.of(directory.deviceIdForPin(pin), directory.revokedDeviceIdForPin(pin), allowUnpinned())
+            if (standing == PeerStanding.Rejected) {
                 log("TLS client key ${TlsPin.forLog(pin)} is not pinned", null)
                 return
             }
-            val deviceId = known.orEmpty()
+            val deviceId = when (standing) {
+                is PeerStanding.Paired -> standing.deviceId
+                is PeerStanding.Revoked -> standing.deviceId
+                else -> ""
+            }
             client.soTimeout = 0
             client.tcpNoDelay = true
             client.keepAlive = true
             val up = Socket(BRIDGE_ADDRESS, bridgePort).also { upstream = it; open.add(it) }
             up.tcpNoDelay = true
             sourcePort = up.localPort
-            val peer = BridgedPeer(deviceId, pin, client.inetAddress.hostAddress.orEmpty().substringBefore('%'), pairingOnly = known == null)
+            val peer = BridgedPeer(deviceId, pin, client.inetAddress.hostAddress.orEmpty().substringBefore('%'), pairingOnly = standing == PeerStanding.PairingOnly, revokedOnly = standing is PeerStanding.Revoked)
             TlsBridgeRegistry.register(sourcePort, peer)
             sessions[client] = peer
             val activity = AtomicLong(System.nanoTime()).also { lastActivity[client] = it }
@@ -262,20 +268,27 @@ class TlsFrontServer(
     }
 }
 
-/** Pin lookup backed by the paired-device roster. Refreshed whenever the roster changes. */
-class RosterTlsPeerDirectory(private val snapshot: () -> List<com.fileapex.data.db.PairedDeviceEntity>) : TlsPeerDirectory {
+/** Pin lookup backed by the pin store: active entries are paired peers, revoked ones are devices to be told so. Refreshed whenever the store changes. */
+class RosterTlsPeerDirectory : TlsPeerDirectory {
     @Volatile
     private var byPin: Map<String, String> = emptyMap()
 
-    fun refresh(devices: List<com.fileapex.data.db.PairedDeviceEntity> = snapshot()) {
+    @Volatile
+    private var byRevokedPin: Map<String, String> = emptyMap()
+
+    fun refresh(entries: List<com.fileapex.data.device.TlsPinEntry>) {
         val map = HashMap<String, String>()
-        for (device in devices) {
-            if (device.isRemoved) continue
-            if (device.tlsPin.isNotEmpty()) map[device.tlsPin] = device.deviceId
-            if (device.tlsPinAlt.isNotEmpty()) map[device.tlsPinAlt] = device.deviceId
+        val revoked = HashMap<String, String>()
+        for (entry in entries) {
+            val target = if (entry.revoked) revoked else map
+            if (entry.pin.isNotEmpty()) target[entry.pin] = entry.deviceId
+            if (entry.alt.isNotEmpty()) target[entry.alt] = entry.deviceId
         }
         byPin = map
+        byRevokedPin = revoked
     }
 
     override fun deviceIdForPin(pin: String): String? = byPin[pin.lowercase()]
+
+    override fun revokedDeviceIdForPin(pin: String): String? = byRevokedPin[pin.lowercase()]
 }

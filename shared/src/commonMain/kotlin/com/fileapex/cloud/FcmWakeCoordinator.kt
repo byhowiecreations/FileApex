@@ -128,16 +128,7 @@ object FcmWakeCoordinator {
                         )
                         continue
                     }
-                    FcmWakeBackend.sendNoteWake(
-                        targetFcmToken = target.fcmToken,
-                        sourceDeviceId = selfId,
-                        noteId = noteId,
-                        content = content,
-                        driveFileId = driveFileId,
-                        checksum = checksum,
-                        attachmentName = attachmentName,
-                        attachmentSizeBytes = attachmentSizeBytes
-                    )
+                    println("FcmWakeCoordinator: ${target.deviceId} cannot read sealed pushes, no plain push is sent")
                 }
             }.onFailure { error ->
                 println("FcmWakeCoordinator: Note FCM wake dispatch failed - ${error.message}")
@@ -308,14 +299,7 @@ object FcmWakeCoordinator {
                         )
                         continue
                     }
-                    FcmWakeBackend.sendNoteDeleteWake(
-                        targetFcmToken = target.fcmToken,
-                        sourceDeviceId = selfId,
-                        noteId = noteId,
-                        driveFileId = driveFileId,
-                        checksum = checksum,
-                        attachmentName = attachmentName
-                    )
+                    println("FcmWakeCoordinator: ${target.deviceId} cannot read sealed pushes, no plain push is sent")
                 }
             }.onFailure { error ->
                 println("FcmWakeCoordinator: Note delete FCM wake dispatch failed - ${error.message}")

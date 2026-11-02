@@ -6,8 +6,6 @@ import com.fileapex.data.bulletin.BulletinBoardRepository
 import com.fileapex.data.bulletin.BulletinBoardSyncEngine
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.data.device.LocalDeviceRef
-import com.fileapex.data.device.SettingsMembershipStore
-import com.fileapex.data.device.recoverEmptyRosterIfNeeded
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.DeviceNamePeerLabelsStore
@@ -34,8 +32,6 @@ import kotlinx.coroutines.launch
 object FileApexServices {
     private val bootstrapScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val bootstrapDeferred = CompletableDeferred<Unit>()
-    private const val ROSTER_CATCH_UP_FIRST_MS = 60_000L
-    private const val ROSTER_CATCH_UP_EVERY_MS = 10L * 60_000L
 
     @Volatile
     private var bootstrapStarted = false
@@ -134,25 +130,20 @@ object FileApexServices {
         )
     }
 
-    val peerAdmission: com.fileapex.domain.pairing.PeerAdmission by lazy {
-        com.fileapex.domain.pairing.PeerAdmission(
-            repository = deviceRepository,
-            client = client,
-            identityProvider = { loadLocalIdentity() },
-            scanBackoff = lanScanBackoff,
-            onSuperseded = { removed -> pairingCoordinator.broadcastDeviceRemoval(removed) },
-            onPromoted = { device ->
-                presenceMonitor.notifyPassiveReachability(device.deviceId, epochMs = com.fileapex.util.TimeUtils.now())
-            }
-        )
-    }
+    @Volatile
+    private var membershipHubInstance: com.fileapex.membership.MembershipHub? = null
+
+    /** The master roster layer; null until the signing identity and the database exist. */
+    val membershipHub: com.fileapex.membership.MembershipHub?
+        get() = membershipHubInstance ?: synchronized(this) {
+            membershipHubInstance ?: database?.let { MembershipWiring.create(it, deviceRepository, client) }?.also { membershipHubInstance = it }
+        }
 
     val pairingCoordinator: PairingCoordinator by lazy {
         PairingCoordinator(
             repository = deviceRepository,
             client = client,
             identityProvider = { loadLocalIdentity() },
-            admission = { peerAdmission },
             onPassiveReachability = { deviceIds, epochMs ->
                 presenceMonitor.notifyPassiveReachability(*deviceIds.toTypedArray(), epochMs = epochMs)
             }
@@ -185,25 +176,34 @@ object FileApexServices {
                     endpoints = NetworkUtils.shareEndpoints(identity)
                 )
             },
-            membershipStore = SettingsMembershipStore { settings },
-            candidates = com.fileapex.data.db.RoomPeerCandidateStore(database.peerCandidateDao())
+            pins = com.fileapex.data.db.RoomTlsPinStore(database.tlsPinDao())
         )
-        client.onRevocationDetected = { host, port, revokedAt ->
+        client.onRevocationDetected = { host, port, revokedAt, reason, removedBy ->
             com.fileapex.session.DeviceSessionManager.clearAllSessions()
             presenceMonitor.refreshOnlineSnapshot()
             RevokedByPeerNotice.onRevoked(host, deviceRepository.listDevices())
             val roster = deviceRepository.listDevices()
             val peerId = com.fileapex.security.tls.PeerTlsRoutes.lookup(host, port)?.deviceId
                 ?: roster.firstOrNull { it.lastKnownIp.trim() == host.trim() }?.deviceId
-            com.fileapex.domain.pairing.KickedByPeer.onRevoked(peerId, revokedAt, roster)
+            com.fileapex.domain.pairing.KickedByPeer.onRevoked(peerId, revokedAt, roster, reason = reason, removedBy = removedBy)
         }
-        client.membershipVersionProvider = { deviceRepository.selfMembershipVersion() }
+        client.membershipVersionProvider = { 0L }
+        MembershipWiring.start(bootstrapScope, { membershipHub }, presenceMonitor.onlineDeviceIds)
         // Routes must exist before the first request, or a pinned peer could be reached over HTTP.
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-            deviceRepository.listDevices().also { com.fileapex.security.tls.PeerTlsRoutes.update(it); com.fileapex.domain.clipboard.PeerE2eeVersions.update(it) }
+            deviceRepository.listDevices().also {
+                loadLocalIdentity().let { id -> com.fileapex.security.IdentityChangeNotice.report(id.previousDeviceId, id.deviceId, com.fileapex.security.IdentityChangeNotice.hasCluster(it)) { com.fileapex.data.identity.clearPreviousDeviceId() } }
+                com.fileapex.security.tls.PeerTlsRoutes.update(it)
+                com.fileapex.domain.clipboard.PeerE2eeVersions.update(it)
+                com.fileapex.domain.presence.PeerRefusals.updateRoster(it.associate { d -> d.lastKnownIp to d.deviceId })
+            }
         }
         bootstrapScope.launch {
-            deviceRepository.observeDevices().collect { com.fileapex.security.tls.PeerTlsRoutes.update(it); com.fileapex.domain.clipboard.PeerE2eeVersions.update(it) }
+            deviceRepository.observeDevices().collect {
+                com.fileapex.security.tls.PeerTlsRoutes.update(it)
+                com.fileapex.domain.clipboard.PeerE2eeVersions.update(it)
+                com.fileapex.domain.presence.PeerRefusals.updateRoster(it.associate { d -> d.lastKnownIp to d.deviceId })
+            }
         }
         com.fileapex.security.tls.TlsPinAnnouncer(
             repository = deviceRepository,
@@ -212,14 +212,6 @@ object FileApexServices {
             scope = bootstrapScope
         ).ensureStarted()
         com.fileapex.cloud.seal.CloudRecordResealer.start(bootstrapScope)
-        bootstrapScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(ROSTER_CATCH_UP_FIRST_MS)
-            while (true) {
-                cancellableCatching { pairingCoordinator.catchUpFromPeers(presenceMonitor.onlineDeviceIds.value) }
-                    .onFailure { error -> if (error is kotlinx.coroutines.CancellationException) throw error }
-                kotlinx.coroutines.delay(ROSTER_CATCH_UP_EVERY_MS)
-            }
-        }
         LocalDeviceNameStore.ensureLoaded()
         DeviceNamePeerLabelsStore.ensureLoaded()
         presenceMonitor.ensureOnlineSnapshotWatcher()
@@ -231,17 +223,6 @@ object FileApexServices {
         }
         com.fileapex.iroh.IrohRuntime.attach()
         com.fileapex.friends.FriendsHub.attach(database)
-        bootstrapScope.launch {
-            cancellableCatching { deviceRepository.demoteUnverifiedRows() }
-                .onFailure { error -> println("FileApexServices: unverified roster check skipped - ${error.message}") }
-            cancellableCatching {
-                recoverEmptyRosterIfNeeded(deviceRepository)
-            }.onFailure { error ->
-                println("FileApexServices: roster recovery skipped - ${error.message}")
-            }
-            cancellableCatching { peerAdmission.verifyPending() }
-                .onFailure { error -> println("FileApexServices: candidate check skipped - ${error.message}") }
-        }
         markBootstrapComplete()
     }
 
@@ -318,17 +299,22 @@ object FileApexServices {
 
     fun deviceRepositoryOrNull(): DeviceRepository? = deviceRepositoryInstance
 
+    /** Tests install a roster and hub so the chain routes and the revocation gate can run without bootstrapping the app. */
+    internal fun installMembershipForTest(repository: DeviceRepository?, hub: com.fileapex.membership.MembershipHub?) {
+        deviceRepositoryInstance = repository
+        membershipHubInstance = hub
+    }
+
+    /** A device the cluster removed keeps its friends and settings but none of the cluster's data, old Bulletin file included. */
+    suspend fun purgeClusterData() {
+        database?.let { com.fileapex.data.db.clearClusterData(it) }
+        legacyBulletinPath?.let { BulletinBoardMerge.deleteLegacyFiles(it) }
+    }
+
     suspend fun purgeDatabases() {
         database?.let { db ->
-            cancellableCatching { db.deviceDao().deleteAllDevices() }
-            cancellableCatching { db.deviceDao().deleteAllRemovedDevices() }
-            cancellableCatching { db.pendingTransferDao().deleteAll() }
-            cancellableCatching { db.messageDao().deleteAllMessages() }
-            cancellableCatching { db.tombstoneDao().deleteAllTombstones() }
-            cancellableCatching { db.messageFlagDao().deleteAllFlags() }
-            cancellableCatching { db.checklistItemDao().deleteAllItems() }
-            cancellableCatching { db.outboxDao().deleteAllOutbox() }
-            cancellableCatching { db.processedPacketDao().deleteAllPackets() }
+            cancellableCatching { com.fileapex.data.db.clearClusterData(db) }
+            println("FileApexServices: every table is cleared (Leave Cluster or a wipe)")
             runCatching { db.clearAllTables() }
         }
         // A wipe must not leave the old Bulletin file (or its merge backup) behind to be copied in again.

@@ -68,5 +68,8 @@ scripts/test_check_play_bundle.py
 # Notice file is tracked even though a global *.json ignore may exist
 !/notice/
 !/notice/notice.json
+# Test vectors and the exported Room schemas are tracked too; they hold only generated test data and table shapes
+!/native/tsnet/daemon/testdata/*.json
+!/shared/schemas/**/*.json
 /notice/notices.src.json
 scripts/hosts.local.env

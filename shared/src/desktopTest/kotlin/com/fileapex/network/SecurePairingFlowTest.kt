@@ -60,7 +60,7 @@ class SecurePairingFlowTest {
         ).also { it.start() }
         front = TlsFrontServer(
             identity = { hostIdentity },
-            directory = RosterTlsPeerDirectory { emptyList() },
+            directory = RosterTlsPeerDirectory(),
             bindHost = "127.0.0.1",
             preferredPort = 0,
             bridgePort = bridgePort,
@@ -173,13 +173,25 @@ class SecurePairingFlowTest {
         // Play the joiner by hand: commit to one value, reveal another.
         val joinerPin = joinerStore.getOrCreate().pin
         val commit = PairingSas.commit("the-committed-value", joinerPin, "joiner-1")
-        val offer = rawPost("/api/v1/pairing/secure/offer", """{"commit":"$commit","scannerDevice":${scannerJson()}}""")
+        val offer = rawPost("/api/v2/pairing/secure/offer", """{"commit":"$commit","scannerDevice":${scannerJson()}}""")
         assertTrue(offer, offer.startsWith("HTTP/1.1 200"))
         val sessionId = Regex("\"sessionId\":\"([0-9a-f]+)\"").find(offer)!!.groupValues[1]
-        val reveal = rawPost("/api/v1/pairing/secure/reveal", """{"sessionId":"$sessionId","nonceB":"a-different-value"}""")
+        val reveal = rawPost("/api/v2/pairing/secure/reveal", """{"sessionId":"$sessionId","nonceB":"a-different-value"}""")
         assertTrue(reveal, reveal.startsWith("HTTP/1.1 403"))
         assertNull(PairingConfirmations.board.pendingJoin.value)
         assertNull(adopted)
+    }
+
+    @Test
+    fun thePairingRoutesAreVersion2AndTheOldOnesAskTheJoinerToUpdate() {
+        val joinerPin = joinerStore.getOrCreate().pin
+        val commit = PairingSas.commit("a-value", joinerPin, "joiner-1")
+        val body = """{"commit":"$commit","scannerDevice":${scannerJson()}}"""
+        val v2 = rawPost("/api/v2/pairing/secure/offer", body)
+        assertTrue(v2, v2.startsWith("HTTP/1.1 200"))
+        val v1 = rawPost("/api/v1/pairing/secure/offer", body)
+        assertTrue(v1, v1.startsWith("HTTP/1.1 426"))
+        assertTrue(v1, v1.contains("pairing_update_joiner"))
     }
 
     @Test

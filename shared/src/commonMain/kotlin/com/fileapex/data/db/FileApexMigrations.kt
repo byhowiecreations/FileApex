@@ -343,3 +343,85 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
 val MIGRATION_22_23 = object : Migration(22, 23) {
     override suspend fun migrate(connection: SQLiteConnection) = Unit
 }
+
+/** A removal keeps why it was made and by which device, so a removed device that comes back online can be told. */
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare("ALTER TABLE `removed_devices` ADD COLUMN `reason` TEXT NOT NULL DEFAULT ''").use { it.step() }
+        connection.prepare("ALTER TABLE `removed_devices` ADD COLUMN `removedBy` TEXT NOT NULL DEFAULT ''").use { it.step() }
+    }
+}
+
+/** The master roster tables (see MembershipTables). Only what Room expects: the partial unique index and the row checks are added by MembershipSchemaCallback when the database opens, because Room rejects an index its entities do not declare if it is there while it validates. */
+val MIGRATION_24_25 = object : Migration(24, 25) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare(
+            "CREATE TABLE IF NOT EXISTS `members` (`deviceId` TEXT NOT NULL, `state` TEXT NOT NULL, `publicKey` TEXT NOT NULL, `tlsPin` TEXT NOT NULL, " +
+                "`eventStamp` INTEGER NOT NULL, `eventActor` TEXT NOT NULL, `eventActorKey` TEXT NOT NULL, `eventReason` TEXT NOT NULL, " +
+                "`eventSignature` TEXT NOT NULL, PRIMARY KEY(`deviceId`))"
+        ).use { it.step() }
+        connection.prepare("CREATE INDEX IF NOT EXISTS `index_members_state` ON `members` (`state`)").use { it.step() }
+        connection.prepare("CREATE TABLE IF NOT EXISTS `member_anchors` (`deviceId` TEXT NOT NULL, `publicKey` TEXT NOT NULL, PRIMARY KEY(`deviceId`))").use { it.step() }
+        connection.prepare("CREATE TABLE IF NOT EXISTS `membership_meta` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))").use { it.step() }
+        connection.prepare(
+            "CREATE TABLE IF NOT EXISTS `membership_outbox` (`peerId` TEXT NOT NULL, `signature` TEXT NOT NULL, `eventJson` TEXT NOT NULL, " +
+                "`enqueuedAt` INTEGER NOT NULL, PRIMARY KEY(`peerId`, `signature`))"
+        ).use { it.step() }
+    }
+}
+
+/** The roster carries the TLS facts of every device (alt pin, port, and the pins of removed devices) and takes over what the old pin columns held. */
+val MIGRATION_25_26 = object : Migration(25, 26) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        fun run(sql: String) = connection.prepare(sql).use { it.step() }
+        run("ALTER TABLE `members` ADD COLUMN `tlsPinAlt` TEXT NOT NULL DEFAULT ''")
+        run("ALTER TABLE `members` ADD COLUMN `tlsPort` INTEGER NOT NULL DEFAULT 0")
+        run(
+            "UPDATE members SET " +
+                "tlsPinAlt = COALESCE((SELECT p.tlsPinAlt FROM paired_devices p WHERE p.deviceId = members.deviceId AND p.isRemoved = 0 AND length(p.tlsPinAlt) = 64), ''), " +
+                "tlsPort = COALESCE((SELECT p.tlsPort FROM paired_devices p WHERE p.deviceId = members.deviceId AND p.isRemoved = 0), 0) " +
+                "WHERE state = 'ACTIVE'"
+        )
+        run(
+            "UPDATE members SET tlsPin = (SELECT p.tlsPin FROM paired_devices p WHERE p.deviceId = members.deviceId AND length(p.tlsPin) = 64) " +
+                "WHERE state != 'ACTIVE' AND length(tlsPin) = 0 AND EXISTS (SELECT 1 FROM paired_devices p WHERE p.deviceId = members.deviceId AND length(p.tlsPin) = 64)"
+        )
+        run(
+            "INSERT OR IGNORE INTO members (deviceId, state, publicKey, tlsPin, eventStamp, eventActor, eventActorKey, eventReason, eventSignature, tlsPinAlt, tlsPort) " +
+                "SELECT p.deviceId, 'ACTIVE', '', p.tlsPin, MAX(p.clusterVersion, 1), '', '', 'legacy', '', " +
+                "CASE WHEN length(p.tlsPinAlt) = 64 THEN p.tlsPinAlt ELSE '' END, p.tlsPort " +
+                "FROM paired_devices p WHERE p.isRemoved = 0 AND length(p.tlsPin) = 64 " +
+                "AND NOT EXISTS (SELECT 1 FROM members m WHERE m.deviceId = p.deviceId) " +
+                "AND NOT EXISTS (SELECT 1 FROM members m WHERE m.state = 'ACTIVE' AND m.tlsPin = p.tlsPin) " +
+                "AND p.deviceId = (SELECT MIN(q.deviceId) FROM paired_devices q WHERE q.isRemoved = 0 AND q.tlsPin = p.tlsPin)"
+        )
+        run(
+            "INSERT OR IGNORE INTO members (deviceId, state, publicKey, tlsPin, eventStamp, eventActor, eventActorKey, eventReason, eventSignature, tlsPinAlt, tlsPort) " +
+                "SELECT p.deviceId, 'REMOVED', '', p.tlsPin, MAX(p.clusterVersion, COALESCE(p.removedAt, 0), 1), '', '', 'legacy', '', '', 0 " +
+                "FROM paired_devices p WHERE p.isRemoved = 1 AND length(p.tlsPin) = 64 " +
+                "AND NOT EXISTS (SELECT 1 FROM members m WHERE m.deviceId = p.deviceId)"
+        )
+    }
+}
+
+private val STEPS: List<Migration> = listOf(
+    MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
+    MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
+    MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24,
+    MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28
+)
+
+/**
+ * Room rejects an index its entities do not declare while it validates after a migration, and it validates every table.
+ * The roster's partial unique index stays in the file for good (Room cannot declare it), so each migration starts by
+ * removing it; [MembershipSchemaCallback] puts it back when the database opens.
+ */
+fun rosterSafe(inner: Migration): Migration = object : Migration(inner.startVersion, inner.endVersion) {
+    override suspend fun migrate(connection: SQLiteConnection) {
+        connection.prepare("DROP INDEX IF EXISTS `members_active_pin`").use { it.step() }
+        inner.migrate(connection)
+    }
+}
+
+/** Every migration the app registers; the database builders of both platforms use this list. */
+fun rosterSafeMigrations(): Array<Migration> = STEPS.map(::rosterSafe).toTypedArray()

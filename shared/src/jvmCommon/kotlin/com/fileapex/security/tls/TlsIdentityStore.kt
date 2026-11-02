@@ -5,9 +5,6 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.PosixFilePermissions
 import java.security.KeyFactory
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
@@ -25,7 +22,10 @@ class TlsIdentityStore(
     private val vaults: List<TlsSecretVault>,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
-    private val file get() = File(directory, FILE_NAME)
+    private val vaultFile = VaultFile(directory, FILE_NAME, vaults, "TlsIdentity")
+
+    /** The key this device signs membership records with, kept in the same directory and sealed by the same vaults. */
+    val signingKeys: SigningKeyStore by lazy { SigningKeyStore(directory, vaults) }
 
     /** The proof written by the last [regenerate] while it is younger than [TlsRotation.MAX_AGE_MS] and names the current key. */
     @Synchronized
@@ -40,7 +40,7 @@ class TlsIdentityStore(
     @Throws(TlsIdentityUnavailableException::class)
     fun getOrCreate(): TlsIdentity {
         cached?.let { return it }
-        val loaded = if (file.isFile) load() else null
+        val loaded = if (vaultFile.exists()) load() else null
         val identity = when {
             loaded == null -> create()
             TlsIdentityFactory.needsReissue(loaded, clock()) -> TlsIdentityFactory.reissue(loaded, clock()).also(::save)
@@ -53,7 +53,7 @@ class TlsIdentityStore(
     /** Explicit recovery for a lost key. The pin changes; peers must re-confirm. */
     @Synchronized
     fun regenerate(): TlsIdentity {
-        val previous = cached ?: runCatching { if (file.isFile) load() else null }.getOrNull()
+        val previous = cached ?: runCatching { if (vaultFile.exists()) load() else null }.getOrNull()
         val identity = TlsIdentityFactory.generate(clock())
         save(identity)
         // Peers that pinned the old key accept the new one when it is signed by the old key; kept for 90 days.
@@ -67,6 +67,31 @@ class TlsIdentityStore(
         return identity
     }
 
+    /**
+     * A device the cluster removed comes back as a new join with a new key, so no pin the old cluster holds for it can
+     * match. The new key is built and checked in memory first, written atomically, and only then replaces the one in use;
+     * if it cannot be saved the old key stays. No rotation proof is written: nobody should accept it on the old key's word.
+     */
+    @Synchronized
+    @Throws(TlsIdentityUnavailableException::class)
+    fun replaceForRejoin(): TlsIdentity {
+        val identity = TlsIdentityFactory.generate(clock())
+        check(isUsable(identity)) { "generated TLS identity failed its self-check" }
+        save(identity)
+        runCatching { File(directory, ROTATION_FILE).delete() }
+        cached = identity
+        println("TlsIdentity: replaced after removal, pin ${TlsPin.forLog(identity.pin)}")
+        return identity
+    }
+
+    private fun isUsable(identity: TlsIdentity): Boolean = runCatching {
+        val spki = java.security.MessageDigest.getInstance("SHA-256").digest(identity.certificate.publicKey.encoded)
+        if (!spki.joinToString("") { "%02x".format(it) }.equals(identity.pin, ignoreCase = true)) return false
+        val probe = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val signature = java.security.Signature.getInstance("SHA256withECDSA").run { initSign(identity.privateKey); update(probe); sign() }
+        java.security.Signature.getInstance("SHA256withECDSA").run { initVerify(identity.certificate.publicKey); update(probe); verify(signature) }
+    }.getOrDefault(false)
+
     private fun create(): TlsIdentity {
         val identity = TlsIdentityFactory.generate(clock())
         save(identity)
@@ -74,49 +99,16 @@ class TlsIdentityStore(
         return identity
     }
 
-    private fun save(identity: TlsIdentity) {
-        val plain = encode(identity)
-        var chosen: TlsSecretVault = PlainTlsVault
-        var sealed: ByteArray? = null
-        for (vault in vaults + PlainTlsVault) {
-            val result = runCatching { vault.seal(plain) }
-            if (result.isSuccess) {
-                chosen = vault
-                sealed = result.getOrThrow()
-                break
-            }
-            val failure = result.exceptionOrNull()
-            // A vault that may work again soon is no reason to write the private key in clear text.
-            if (generateSequence(failure) { it.cause }.any { it is com.fileapex.data.settings.SecretUnavailableException }) {
-                throw TlsIdentityUnavailableException("secure storage is not available right now", failure)
-            }
-            println("TlsIdentity: vault ${vault.scheme} failed to seal - ${failure?.javaClass?.simpleName}")
-        }
-        writeAtomically(byteArrayOf(chosen.scheme.toByte()) + checkNotNull(sealed))
-    }
+    private fun save(identity: TlsIdentity) = vaultFile.write(encode(identity))
 
-    private fun load(): TlsIdentity {
-        val raw = file.readBytes()
-        if (raw.size < 2) throw TlsIdentityUnavailableException("identity file truncated")
-        val scheme = raw[0].toInt()
-        val vault = (vaults + PlainTlsVault).firstOrNull { it.scheme == scheme }
-            ?: throw TlsIdentityUnavailableException("no vault for scheme $scheme on this device")
-        return try {
-            decode(vault.open(raw.copyOfRange(1, raw.size)))
-        } catch (e: Exception) {
-            throw TlsIdentityUnavailableException("identity could not be opened (scheme $scheme)", e)
-        }
-    }
-
-    private fun writeAtomically(bytes: ByteArray) {
-        directory.mkdirs()
-        runCatching {
-            Files.setPosixFilePermissions(directory.toPath(), PosixFilePermissions.fromString("rwx------"))
-        }
-        val temp = File(directory, "$FILE_NAME.tmp")
-        temp.writeBytes(bytes)
-        runCatching { Files.setPosixFilePermissions(temp.toPath(), PosixFilePermissions.fromString("rw-------")) }
-        Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    private fun load(): TlsIdentity = try {
+        decode(vaultFile.read())
+    } catch (e: java.security.GeneralSecurityException) {
+        throw TlsIdentityUnavailableException("identity could not be decoded", e)
+    } catch (e: IllegalArgumentException) {
+        throw TlsIdentityUnavailableException("identity could not be decoded", e)
+    } catch (e: java.io.IOException) {
+        throw TlsIdentityUnavailableException("identity could not be decoded", e)
     }
 
     private fun encode(identity: TlsIdentity): ByteArray {

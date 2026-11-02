@@ -1,7 +1,6 @@
 package com.fileapex.data.settings
 
 import com.fileapex.util.cancellableCatching
-import java.util.concurrent.atomic.AtomicReference
 import java.util.prefs.Preferences
 
 internal class DesktopSettingsKvStore(
@@ -38,17 +37,26 @@ internal class DesktopSettingsKvStore(
     }
 }
 
-private val desktopSettings = AtomicReference<AppSettings?>(null)
-
-actual fun createAppSettings(): AppSettings {
-    return desktopSettings.updateAndGet { existing ->
-        existing ?: BaseAppSettings(
-            SealingKvStore(
-                DesktopSettingsKvStore(Preferences.userRoot().node("com.fileapex.settings")),
-                DesktopSettingsSecrets.sealer(),
-                BaseAppSettings.SECRET_KEYS
-            ),
-            existingInstall = com.fileapex.platform.DesktopPlatformPaths.databaseFile().exists()
-        )
-    }!!
+/** Every value sealed with the settings key, the secrets (PIN, private keys, tokens) sealed on their own by the platform. */
+private fun sealedSettingsStore(base: SettingsKvStore): SettingsKvStore {
+    val master = SettingsMasterKey(base, DesktopSettingsSecrets.sealer())
+    val values = SealedValuesKvStore(base, { master.sealer() }, BaseAppSettings.SECRET_KEYS + SettingsMasterKey.KEY)
+    values.sealAll()
+    // Counts only, no keys and no values: lets a lost theme or layout be told apart from a store that never opened.
+    val health = values.health()
+    com.fileapex.platform.DesktopLifecycleLog.log("settings: key ${master.outcome}, $health")
+    if (health.unreadableKeys.isNotEmpty()) {
+        com.fileapex.platform.DesktopLifecycleLog.log("settings: cannot be opened (names only): ${health.unreadableKeys.joinToString(", ")}")
+    }
+    return SealingKvStore(values, DesktopSettingsSecrets.sealer(), BaseAppSettings.SECRET_KEYS)
 }
+
+/** Built once: two threads asking for the settings together must not each open and key the store. */
+private val desktopSettings = com.fileapex.util.SingleInstance<AppSettings> {
+    BaseAppSettings(
+        sealedSettingsStore(DesktopSettingsKvStore(Preferences.userRoot().node("com.fileapex.settings"))),
+        existingInstall = com.fileapex.platform.DesktopPlatformPaths.databaseFile().exists()
+    )
+}
+
+actual fun createAppSettings(): AppSettings = desktopSettings.get()

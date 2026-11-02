@@ -253,6 +253,8 @@ func openPair(local *ecdh.PrivateKey, peerPublicB64, salt, payloadB64 string) ([
 type tlsPeer struct {
 	Pin  string `json:"pin"`
 	Port int    `json:"port"`
+	// Revoked keeps the key of a device the cluster removed: it may still connect, to read its own removal and nothing else.
+	Revoked bool `json:"revoked,omitempty"`
 }
 
 // tlsState is guarded by its own mutex so it can be used while Node.mu is held.
@@ -297,6 +299,28 @@ func (t *tlsState) persistLocked() {
 	}
 }
 
+// current is the identity in use now; renewIdentity can replace it while the servers run.
+func (t *tlsState) current() *tlsIdentity {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.identity
+}
+
+// renewIdentity makes a new TLS key and certificate. The listening servers present it from the next connection on.
+func (t *tlsState) renewIdentity(now time.Time) (*tlsIdentity, error) {
+	_ = os.Remove(filepath.Join(t.dir, "tls_key.pem"))
+	_ = os.Remove(filepath.Join(t.dir, "tls_cert.pem"))
+	identity, err := loadOrCreateTLSIdentity(t.dir, now)
+	if err != nil {
+		return nil, err
+	}
+	t.mu.Lock()
+	t.identity = identity
+	t.clients = map[string]*http.Client{}
+	t.mu.Unlock()
+	return identity, nil
+}
+
 func (t *tlsState) publicKeyB64() string {
 	return base64.StdEncoding.EncodeToString(t.pairKey.PublicKey().Bytes())
 }
@@ -325,6 +349,23 @@ func (t *tlsState) record(id, pin string, port int) {
 	t.peers[id] = tlsPeer{Pin: pin, Port: port}
 	delete(t.clients, id)
 	t.persistLocked()
+}
+
+func (t *tlsState) revoke(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if p, ok := t.peers[id]; ok && !p.Revoked {
+		p.Revoked = true
+		t.peers[id] = p
+		delete(t.clients, id)
+		t.persistLocked()
+	}
+}
+
+func (t *tlsState) isRevoked(id string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.peers[strings.TrimSpace(id)].Revoked
 }
 
 func (t *tlsState) forget(id string) {
@@ -383,9 +424,12 @@ func requiresTLS(path string) bool {
 
 func (t *tlsState) serverConfig() *tls.Config {
 	return &tls.Config{
-		Certificates: []tls.Certificate{t.identity.cert},
-		ClientAuth:   tls.RequireAnyClientCert,
-		MinVersion:   tls.VersionTLS12,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			cert := t.current().cert
+			return &cert, nil
+		},
+		ClientAuth: tls.RequireAnyClientCert,
+		MinVersion: tls.VersionTLS12,
 		VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
 			if len(raw) == 0 {
 				return errors.New("no client certificate")
@@ -416,7 +460,10 @@ func leafPin(leaf *x509.Certificate) (string, error) {
 
 func (t *tlsState) clientConfig(pins map[string]bool) *tls.Config {
 	return &tls.Config{
-		Certificates:       []tls.Certificate{t.identity.cert},
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			cert := t.current().cert
+			return &cert, nil
+		},
 		InsecureSkipVerify: true, // identity is the pin below, not a name or a CA
 		MinVersion:         tls.VersionTLS12,
 		VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
@@ -514,7 +561,7 @@ func (n *Node) shutdownTLS(timeout time.Duration) {
 // may only use the routes in requiresTLS's allow list.
 func (n *Node) guard(next http.Handler, viaTLS bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claimed, _ := requestSender(r)
+		claimed := requestSender(r)
 		if viaTLS {
 			var certID string
 			if n.tls != nil && r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
@@ -567,7 +614,7 @@ func (n *Node) buildAnnouncement(peer deviceRecord, now time.Time) (tlsAnnouncem
 	if n.tls == nil || port <= 0 || strings.TrimSpace(peer.PublicKey) == "" {
 		return tlsAnnouncement{}, false
 	}
-	body, err := json.Marshal(tlsPayload{Pin: n.tls.identity.pin, TLSPort: port, IssuedAtEpochMs: now.UnixMilli()})
+	body, err := json.Marshal(tlsPayload{Pin: n.tls.current().pin, TLSPort: port, IssuedAtEpochMs: now.UnixMilli()})
 	if err != nil {
 		return tlsAnnouncement{}, false
 	}
@@ -757,9 +804,7 @@ func (n *Node) announceTLSTo(ctx context.Context, peer deviceRecord, now time.Ti
 	if err != nil {
 		return err
 	}
-	q := url.Values{}
-	n.stampQuery(q)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL(peer.LastKnownIP, peer.Port, "/api/v1/tls/pin", q), bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL(peer.LastKnownIP, peer.Port, "/api/v1/tls/pin", nil), bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -811,7 +856,7 @@ func (n *Node) tlsAnnounceRound(ctx context.Context) {
 	}
 	now := time.Now()
 	for _, peer := range n.roster() {
-		if peer.IsRemoved || strings.TrimSpace(peer.PublicKey) == "" || !isPrivateLAN(peer.LastKnownIP) || peer.Port <= 0 {
+		if strings.TrimSpace(peer.PublicKey) == "" || !isPrivateLAN(peer.LastKnownIP) || peer.Port <= 0 {
 			continue
 		}
 		if _, pinned := n.tls.peer(peer.DeviceID); pinned {

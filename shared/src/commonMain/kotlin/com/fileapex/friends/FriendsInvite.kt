@@ -27,14 +27,19 @@ data class FriendInviteLink(
 
         /** Null for anything that is not a well-formed friends invite. Tolerates surrounding text and a missing scheme slash. */
         fun parse(text: String): FriendInviteLink? {
+            if (text.length > 16_384) return null
             val start = text.indexOf("fileapex:")
             if (start < 0) return null
             val raw = text.substring(start).takeWhile { !it.isWhitespace() }
+            if (raw.length > 8192) return null
             val rest = raw.removePrefix("fileapex:").trimStart('/')
             if (!rest.startsWith("friend?")) return null
-            val q = rest.removePrefix("friend?").split('&').mapNotNull {
-                val i = it.indexOf('='); if (i < 0) null else it.substring(0, i) to dec(it.substring(i + 1))
-            }.toMap()
+            val entries = rest.removePrefix("friend?").split('&')
+            if (entries.any { it.indexOf('=') <= 0 }) return null
+            val pairs = entries.map { val i = it.indexOf('='); it.substring(0, i) to dec(it.substring(i + 1)) }
+            val allowed = setOf("v", "i", "s", "a", "g", "n")
+            if (pairs.any { it.first !in allowed } || pairs.map { it.first }.toSet().size != pairs.size) return null
+            val q = pairs.toMap()
             if (q["v"] != "1") return null
             val id = q["i"]?.takeIf { HEX32.matches(it) } ?: return null
             val secret = q["s"]?.takeIf { HEX32.matches(it) } ?: return null

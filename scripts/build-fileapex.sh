@@ -353,12 +353,16 @@ run_remote_windows() {
     trap 'rm -rf "$remote_tmp"' RETURN
 
     cat > "$remote_tmp/build_full.ps1" <<'EOF'
-param([string]$Branch)
+param([string]$Branch, [string]$Expected)
 $ErrorActionPreference = 'Stop'
 $env:Path = "C:\msys64\ucrt64\bin;" + $env:Path
 Set-Location C:\Users\cliff\AndroidStudioProjects\FileApex
+Remove-Item -ErrorAction SilentlyContinue current\FileApex-v*.exe
 git fetch origin
+if ($LASTEXITCODE -ne 0) { exit 1 }
 git checkout -B $Branch "origin/$Branch"
+if ($LASTEXITCODE -ne 0) { exit 1 }
+if ((git rev-parse HEAD) -ne $Expected) { Write-Output "This host is not on the pushed commit $Expected"; exit 1 }
 git log --oneline -1
 .\gradlew.bat copyWindowsBuilds --console=plain
 exit $LASTEXITCODE
@@ -367,8 +371,11 @@ EOF
     mkdir -p "$CURRENT_DIR"
     echo "[Windows] Connecting to $WIN_HOST ($branch)..."
     scp -q "$remote_tmp/build_full.ps1" "$WIN_HOST:build_full.ps1"
-    ssh -n "$WIN_HOST" "powershell -NoProfile -ExecutionPolicy Bypass -File build_full.ps1 -Branch $branch"
-    scp -q "$WIN_HOST:$WIN_DIR/current/FileApex-v$version.exe" "$CURRENT_DIR/"
+    local expected
+    expected="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
+    ssh -n "$WIN_HOST" "powershell -NoProfile -ExecutionPolicy Bypass -File build_full.ps1 -Branch $branch -Expected \"$expected\"" || {
+        echo "[Windows] The remote build failed; nothing was copied."; return 1; }
+    scp -q "$WIN_HOST:$WIN_DIR/current/FileApex-v$version.exe" "$CURRENT_DIR/" || { echo "[Windows] Copying the installer failed."; return 1; }
     ssh -n "$WIN_HOST" "(Get-FileHash $WIN_DIR/current/FileApex-v$version.exe -Algorithm SHA256).Hash.ToLower()" \
         > "$remote_tmp/windows.sha" 2>/dev/null
     local local_sha remote_sha
@@ -394,21 +401,28 @@ run_remote_linux() {
 #!/usr/bin/env bash
 set -euo pipefail
 BRANCH="$1"
+EXPECTED="$2"
 export PATH="$HOME/toolchain/go/bin:/usr/local/bin:$PATH"
 export FILEAPEX_JDK="$HOME/toolchain/temurin21"
 cd "$HOME/FileApex"
+if [ -n "$(git status --porcelain)" ]; then
+  echo "The Linux checkout has local changes; refusing to build. Commit or clear them on the VM first:"
+  git status --short
+  exit 1
+fi
+rm -rf current
 git fetch origin
 git checkout -B "$BRANCH" "origin/$BRANCH"
+[ "$(git rev-parse HEAD)" = "$EXPECTED" ] || { echo "This host is not on the pushed commit $EXPECTED"; exit 1; }
 git log --oneline -1
-rm -rf current
 bash scripts/build_linux.sh
 EOF
 
     mkdir -p "$CURRENT_DIR"
     echo "[Linux] Connecting to $LIN_HOST ($branch)..."
     scp -q -i "$LIN_KEY" "$remote_tmp/build_full_linux.sh" "$LIN_HOST:build_full_linux.sh"
-    ssh -n -i "$LIN_KEY" "$LIN_HOST" "bash build_full_linux.sh $branch"
-    scp -q -i "$LIN_KEY" "$LIN_HOST:FileApex/current/FileApex-v$version-*" "$CURRENT_DIR/"
+    ssh -n -i "$LIN_KEY" "$LIN_HOST" "bash build_full_linux.sh $branch $(git -C "$PROJECT_DIR" rev-parse HEAD)" || { echo "[Linux] The remote build failed; nothing was copied."; return 1; }
+    scp -q -i "$LIN_KEY" "$LIN_HOST:FileApex/current/FileApex-v$version-*" "$CURRENT_DIR/" || { echo "[Linux] Copying the packages failed."; return 1; }
     local f local_sha remote_sha
     for f in "$CURRENT_DIR/FileApex-v$version-amd64.deb" \
              "$CURRENT_DIR/FileApex-v$version-x86_64.rpm" \

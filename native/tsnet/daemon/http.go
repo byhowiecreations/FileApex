@@ -85,11 +85,8 @@ func (n *Node) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", n.handleHealth)
 	mux.HandleFunc("/api/v1/identity", n.handleIdentity)
-	mux.HandleFunc("/api/v1/devices", n.handleDevices)
-	mux.HandleFunc("/api/v1/devices/merge", n.handleMerge)
-	mux.HandleFunc("/api/v1/devices/removed", n.handleRemoved)
-	mux.HandleFunc("/api/v1/cluster/remove", n.handleRemove)
-	mux.HandleFunc("/cluster/remove", n.handleRemove)
+	mux.HandleFunc("/api/v1/membership/chain", n.handleChain)
+	mux.HandleFunc("/api/v1/membership/chain/join", n.handleChainJoin)
 	mux.HandleFunc("/api/v1/identity/rename", n.handleRename)
 	mux.HandleFunc("/api/v1/files/capabilities", n.handleCapabilities)
 	mux.HandleFunc("/api/v1/files/list", n.handleList)
@@ -112,11 +109,6 @@ func (n *Node) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	if !n.pass(w, r, "open") {
 		return
-	}
-	// Only a peer that presented its pinned TLS certificate sees the removal fingerprint.
-	if r.TLS != nil {
-		w.Header().Set(removalsHeader, n.removalsDigest())
-		w.Header().Set(clusterDigestHeader, n.clusterDigest())
 	}
 	writeText(w, http.StatusOK, "ok")
 }
@@ -148,28 +140,6 @@ func strangerIdentity(state nodeState) nodeState {
 	return state
 }
 
-func (n *Node) handleDevices(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !n.pass(w, r, "peer") {
-		return
-	}
-	writeJSON(w, http.StatusOK, n.publishedRoster())
-}
-
-func (n *Node) handleRemoved(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !n.pass(w, r, "peer") {
-		return
-	}
-	writeJSON(w, http.StatusOK, n.windowedRemovals())
-}
-
 func (n *Node) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -184,76 +154,6 @@ func (n *Node) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		"segmentedUpload": false,
 		"backupSync":      true,
 	})
-}
-
-func (n *Node) handleMerge(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	id, mv := requestSender(r)
-	if !n.allowMerge(id, mv) {
-		log.Printf("Rejected cluster sync from unpaired device %q", id)
-		http.Error(w, "peer_not_paired", http.StatusForbidden)
-		return
-	}
-	n.noteContact(id, r.RemoteAddr)
-	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
-	if err != nil || len(bytesTrim(body)) == 0 {
-		http.Error(w, "Empty cluster sync payload", http.StatusBadRequest)
-		return
-	}
-	var req clusterSync
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid sync payload", http.StatusBadRequest)
-		return
-	}
-	if req.EventKind == "" {
-		req.EventKind = "SELF_METADATA"
-	}
-	if n.applySync(req) {
-		log.Printf("Removed from the cluster. Listening for a new pairing broadcast.")
-	} else {
-		log.Printf("Cluster sync %s from %s (%d peers now)", req.EventKind, id, len(n.roster()))
-	}
-	// The sender compares this with its own removal fingerprint; only a peer that presented its pinned certificate sees it.
-	if r.TLS != nil {
-		w.Header().Set(removalsHeader, n.removalsDigest())
-		w.Header().Set(clusterDigestHeader, n.clusterDigest())
-	}
-	writeJSON(w, http.StatusOK, n.publishedRoster())
-}
-
-func (n *Node) handleRemove(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !n.pass(w, r, "peer") {
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil || len(bytesTrim(body)) == 0 {
-		http.Error(w, "Empty removal payload", http.StatusBadRequest)
-		return
-	}
-	var record removedRecord
-	if err := json.Unmarshal(body, &record); err != nil {
-		http.Error(w, "Invalid removal payload", http.StatusBadRequest)
-		return
-	}
-	self := strings.TrimSpace(record.DeviceID) == n.deviceID()
-	left := n.applySync(clusterSync{EventKind: "REMOVAL", RemovedDevices: []removedRecord{record}})
-	if self {
-		if left {
-			log.Printf("This node was removed from the cluster.")
-			_, _ = w.Write([]byte("revoked_acknowledged"))
-		} else {
-			_, _ = w.Write([]byte("revocation_ignored"))
-		}
-		return
-	}
-	w.WriteHeader(http.StatusOK)
 }
 
 func (n *Node) handleRename(w http.ResponseWriter, r *http.Request) {
@@ -284,7 +184,7 @@ func (n *Node) handleRename(w http.ResponseWriter, r *http.Request) {
 	n.renameSelf(name)
 	log.Printf("Device name is now %s", name)
 	w.WriteHeader(http.StatusOK)
-	go n.announceSelf(context.Background(), "SELF_METADATA")
+	go n.announceChain(context.Background())
 }
 
 func (n *Node) handleList(w http.ResponseWriter, r *http.Request) {
@@ -418,7 +318,7 @@ func (n *Node) handleResume(w http.ResponseWriter, r *http.Request) {
 	}
 	expected := queryInt64(r, "expectedSize")
 	tx := r.URL.Query().Get("txId")
-	sender, _ := requestSender(r)
+	sender := requestSender(r)
 	if entry, ok := n.findCompleted(tx, sender, expected); ok {
 		writeJSON(w, http.StatusOK, map[string]any{"offset": entry.Size, "complete": true})
 		return
@@ -447,7 +347,7 @@ func (n *Node) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sender, _ := requestSender(r)
+	sender := requestSender(r)
 	if !n.pass(w, r, "peer") {
 		return
 	}
@@ -645,7 +545,7 @@ func (n *Node) handleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "delete_failed", http.StatusInternalServerError)
 		return
 	}
-	sender, _ := requestSender(r)
+	sender := requestSender(r)
 	log.Printf("Deleted %s at the request of %s", resolved, n.peerLabel(sender))
 	writeText(w, http.StatusOK, "ok")
 }
@@ -655,13 +555,13 @@ func (n *Node) handleDelete(w http.ResponseWriter, r *http.Request) {
 const idleConnectionTimeout = 5 * time.Minute
 
 func (n *Node) pass(w http.ResponseWriter, r *http.Request, kind string) bool {
-	id, mv := requestSender(r)
-	if id != "" && n.isRevoked(id, mv) {
+	id := requestSender(r)
+	if id != "" && n.tls != nil && n.tls.isRevoked(id) {
 		w.Header().Set("X-FileApex-Status", "revoked")
 		http.Error(w, "revoked", http.StatusUnauthorized)
 		return false
 	}
-	if kind == "peer" && !n.allowUpload(id, mv) {
+	if kind == "peer" && !n.allowUpload(id) {
 		log.Printf("Rejected %s %s from unpaired device %q", r.Method, r.URL.Path, id)
 		http.Error(w, "peer_not_paired", http.StatusForbidden)
 		return false
@@ -766,7 +666,7 @@ type fileItem struct {
 	MimeType     string `json:"mimeType"`
 }
 
-func requestSender(r *http.Request) (string, int64) {
+func requestSender(r *http.Request) string {
 	q := r.URL.Query()
 	id := strings.TrimSpace(q.Get("from"))
 	if id == "" {
@@ -775,11 +675,7 @@ func requestSender(r *http.Request) (string, int64) {
 	if id == "" {
 		id = strings.TrimSpace(q.Get("senderId"))
 	}
-	mv, _ := strconv.ParseInt(q.Get("mv"), 10, 64)
-	if mv == 0 {
-		mv, _ = strconv.ParseInt(r.Header.Get("X-FileApex-Membership-Version"), 10, 64)
-	}
-	return id, mv
+	return id
 }
 
 func queryInt64(r *http.Request, key string) int64 {

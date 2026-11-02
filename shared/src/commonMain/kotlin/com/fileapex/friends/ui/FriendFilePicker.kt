@@ -67,7 +67,7 @@ private fun FriendFilePickerDialog(titleKey: String, viewModelKey: String, onPic
                     embeddedInCompactShell = true,
                     showTopBar = true,
                     hostSplit = false,
-                    onPickFiles = { paths -> onPick(paths.map { File(it) }.filter { it.isFile }) }
+                    onPickFiles = { paths -> onPick(paths.map { File(it) }) }
                 )
             }
         }

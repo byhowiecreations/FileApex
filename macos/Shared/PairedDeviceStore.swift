@@ -1,6 +1,6 @@
 import Foundation
 
-/// One paired device the share sheet can send to. The running FileApex app owns the database and tells us only this.
+/// A share destination supplied by the running app. Friend ids have the local-only friend: prefix.
 public struct PairedDevice: Identifiable, Hashable, Sendable {
     public var id: String { deviceId }
     public let deviceId: String

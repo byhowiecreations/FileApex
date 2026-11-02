@@ -28,4 +28,15 @@ class FriendsInviteTest {
         assertFalse(FriendsInviteSecrets.matches(v, "b".repeat(32), "123456"))
         assertTrue(Regex("\\d{6}").matches(FriendsInviteSecrets.newPin()))
     }
+
+    @Test fun duplicateCredentialsAndEmbeddedPinsAreRejected() {
+        val uri = FriendInviteLink("1".repeat(32), "2".repeat(32), "$key||", "Friends", "Alex").toUri()
+        assertNull(FriendInviteLink.parse("$uri&s=${"3".repeat(32)}"))
+        assertNull(FriendInviteLink.parse("$uri&pin=123456"))
+    }
+
+    @Test fun anOversizedInviteIsRejectedBeforeParsingUnboundedMetadata() {
+        val uri = FriendInviteLink("1".repeat(32), "2".repeat(32), "$key||", "Friends", "Alex").toUri()
+        assertNull(FriendInviteLink.parse(uri + "x".repeat(20_000)))
+    }
 }

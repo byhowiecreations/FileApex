@@ -51,6 +51,10 @@ Name: "{autodesktop}\FileApex"; Filename: "{app}\FileApex.exe"; Tasks: desktopsh
 Name: "{usersendto}\FileApex"; Filename: "{app}\FileApex.exe"; Tasks: sendtoshortcut; WorkingDir: "{app}"
 
 [Registry]
+Root: HKA; Subkey: "Software\Classes\fileapex"; ValueType: string; ValueData: "URL:FileApex"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\fileapex"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\fileapex\DefaultIcon"; ValueType: string; ValueData: """{app}\FileApex.exe"",0"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\fileapex\shell\open\command"; ValueType: string; ValueData: """{app}\FileApex.exe"" ""%1"""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "RuntimeDir"; ValueData: "{app}\runtime"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\FileApex"; ValueType: string; ValueName: "Executable"; ValueData: "{app}\FileApex.exe"; Flags: uninsdeletekey

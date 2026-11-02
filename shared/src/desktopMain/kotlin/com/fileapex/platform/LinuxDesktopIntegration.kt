@@ -17,32 +17,42 @@ object LinuxDesktopIntegration {
             .onFailure { println("LinuxDesktopIntegration: skipped (${it::class.simpleName})") }
     }
 
+    /** Where the integration writes; the real values come from the user's session, tests pass temporary folders. */
+    internal class Layout(val home: File, val dataHome: File, val desktop: File?, val supportDirectory: File, val icon: File?)
+
     private fun install() {
         val appImage = System.getenv("APPIMAGE")?.trim().orEmpty().takeIf { File(it).isFile }
         val launcher = appImage ?: ProcessHandle.current().info().command().orElse(null) ?: return
-        val marker = File(DesktopPlatformPaths.applicationSupportDirectory(), ".desktop-integration")
-        if (marker.isFile && marker.readText().trim() == launcher) return
-
         val home = File(System.getProperty("user.home") ?: return)
-        val iconTarget = File(dataHome(home), "icons/hicolor/512x512/apps/$ICON_NAME.png")
-        val icon = bundledIcon()
-        if (icon != null) {
+        install(
+            Layout(home, dataHome(home), userDesktopDir(home), DesktopPlatformPaths.applicationSupportDirectory(), bundledIcon()),
+            launcher, appImage != null
+        )
+    }
+
+    internal fun install(layout: Layout, launcher: String, appImage: Boolean) {
+        val marker = File(layout.supportDirectory, ".desktop-integration")
+        val stamp = desktopEntry(launcher, ICON_NAME)
+        if (marker.isFile && marker.readText() == stamp) return
+
+        val iconTarget = File(layout.dataHome, "icons/hicolor/512x512/apps/$ICON_NAME.png")
+        if (layout.icon != null) {
             iconTarget.parentFile.mkdirs()
-            Files.copy(icon.toPath(), iconTarget.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            Files.copy(layout.icon.toPath(), iconTarget.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
         val iconRef = if (iconTarget.isFile) iconTarget.absolutePath else ICON_NAME
         val entry = desktopEntry(execPath = launcher, icon = iconRef)
 
-        if (appImage != null) {
-            val menuFile = File(dataHome(home), "applications/$DESKTOP_FILE")
+        if (appImage) {
+            val menuFile = File(layout.dataHome, "applications/$DESKTOP_FILE")
             menuFile.parentFile.mkdirs()
             menuFile.writeText(entry)
             menuFile.setExecutable(true)
             runQuietly("update-desktop-database", menuFile.parentFile.absolutePath)
         }
 
-        val desktop = userDesktopDir(home)
-        if (desktop.isDirectory) {
+        val desktop = layout.desktop
+        if (desktop != null && desktop.isDirectory) {
             val shortcut = File(desktop, "FileApex.desktop")
             shortcut.writeText(entry)
             runCatching {
@@ -51,10 +61,10 @@ object LinuxDesktopIntegration {
             // GNOME shows an untrusted launcher as a text file.
             runQuietly("gio", "set", shortcut.absolutePath, "metadata::trusted", "true")
         }
-        marker.writeText(launcher)
+        marker.writeText(stamp)
     }
 
-    private fun desktopEntry(execPath: String, icon: String): String =
+    internal fun desktopEntry(execPath: String, icon: String): String =
         """
         [Desktop Entry]
         Type=Application
@@ -64,6 +74,7 @@ object LinuxDesktopIntegration {
         Icon=$icon
         Terminal=false
         Categories=Utility;FileTools;Network;
+        MimeType=x-scheme-handler/fileapex;
         StartupWMClass=FileApex
         """.trimIndent() + "\n"
 

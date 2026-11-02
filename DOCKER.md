@@ -36,7 +36,7 @@ FileApex daemon supports helpful command-line flags to manage your configuration
 
 | Flag | Purpose | Description |
 | :--- | :--- | :--- |
-| `--reset` | Clear Configuration | Clears the existing configuration file (`/app/data/config.json`) and forces a full re-initialization on startup. |
+| `--reset` | Leave the cluster | Tells the other devices the node is leaving (a signed leave record), then clears the cluster, the saved keys of the other devices and the Tailscale setup. The device id stays, so a later pairing is the same node. |
 | `--setup` | Interactive Menu | A restart of an already joined node resumes on its own; use this flag to reopen the menu. Launches the full interactive configuration menu with 4 choices: <br>1. Join local cluster (Auto-detect or manual code entry)<br>2. Connect to Tailscale via browser sign-in<br>3. Enter Tailscale pre-auth key<br>4. Reset configuration and setup new |
 | `--tailscale` | Direct Tailscale Setup | Bypasses the main menu and goes directly to Tailscale connection methods (URL browser sign-in or pre-auth key). |
 
@@ -131,7 +131,17 @@ Publish it when you do not use host or macvlan networking: `-p 8080:8080 -p 8081
 - After a device is paired, apps and the daemon exchange their keys on their own, using the pairing key.
   No re-pair and no prompt are needed. From then on that device talks to the daemon over TLS only, and the
   daemon refuses plain HTTP that names it, apart from pairing, presence and the key exchange.
-- Devices on older builds, and any device that has not exchanged keys yet, keep using plain HTTP.
+- Devices on older builds, and any device that has not exchanged keys yet, keep using plain HTTP for presence only; everything else needs the pinned TLS connection.
 - If a paired device later shows a different key, the daemon keeps the one it has and logs the change.
-  Re-pair that device (or run `--reset`) after checking it is really yours.
-- `--reset` also clears the accepted pins. The daemon's own key stays.
+  Re-pair that device after checking it is really yours.
+- `--reset` also clears the accepted pins and makes the daemon a new TLS key and a new signing key.
+
+## Membership
+
+The node takes part in the same signed membership chain as the apps (`chain.json` and the signing key `chain_signing.key` in the data volume; keep the volume).
+
+- It pairs on pairing protocol 2 only. If the other device is on an older version the node stops with "update it first"; the older device has to be updated, there is no fallback.
+- Pairing in person makes the host's cluster win: the node's own cluster, if it had one, ends and it joins the host's.
+- A node that was already in a cluster before this version upgrades in place: it keeps its place, takes its own signing key and asks an active member to bind it. No re-pair is needed.
+- When another device removes the node, or the node is removed while it was offline, it lets go of the whole cluster, makes new keys and listens for a new pairing at once. There is no "removed" state to clear with `--reset` any more.
+- The node never removes another device and has no pairing screen; a node always joins a host.

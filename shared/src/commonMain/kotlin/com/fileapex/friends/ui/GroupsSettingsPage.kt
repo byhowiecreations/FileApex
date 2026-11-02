@@ -79,6 +79,11 @@ fun GroupsSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack: () -> Unit)
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringRes("groups_about"), style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = { FriendsUi.open() }) { Text(stringRes("groups_open_friends")) }
+                    if (com.fileapex.friends.FriendsNotifier.canRequestPermission) {
+                        TextButton(onClick = { com.fileapex.friends.FriendsNotifier.requestPermission() }) {
+                            Text(stringRes("friends_notification_permission"))
+                        }
+                    }
                 }
             }
             Card(Modifier.fillMaxWidth(), shape = shape, colors = settingsCardColors()) {
@@ -145,11 +150,12 @@ fun GroupsSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack: () -> Unit)
     }
 
     removeOf?.let { f ->
+        var failed by remember(f.friendKey) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { removeOf = null },
             title = { Text(stringRes("friends_remove") + " " + f.label + "?") },
-            text = { Text(stringRes("groups_remove_confirm")) },
-            confirmButton = { Button(onClick = { scope.launch { FriendsHub.remove(f.friendKey) }; removeOf = null }) { Text(stringRes("friends_remove")) } },
+            text = { Text(stringRes(if (failed) "friends_remove_failed" else "groups_remove_confirm")) },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.remove(f.friendKey) }.onSuccess { removeOf = null }.onFailure { failed = true } } }) { Text(stringRes("friends_remove")) } },
             dismissButton = { TextButton(onClick = { removeOf = null }) { Text(stringRes("cancel")) } }
         )
     }

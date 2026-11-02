@@ -47,15 +47,27 @@ object IdentityBinding {
     }
 }
 
-/** Picks this device's id at load time: keeps a pre-0.16.5c id, otherwise derives it from the key. */
+/**
+ * Picks this device's id at load time: keeps a pre-0.16.5c id, otherwise derives it from the key. When a derived id gives
+ * way to another because the key changed, [remember] gets the old one before it is overwritten, so the device can tell
+ * the cluster who it was.
+ */
 object LocalIdentityBinding {
-    fun resolve(storedId: String?, fallbackId: () -> String, persist: (String) -> Unit): String {
+    fun resolve(
+        storedId: String?,
+        fallbackId: () -> String,
+        persist: (String) -> Unit,
+        remember: (previousId: String) -> Unit = {},
+        publicKey: () -> String? = { runCatching { ClipboardE2ee.publicKeyBase64() }.getOrNull() }
+    ): String {
         val stored = storedId?.trim().orEmpty()
         if (stored.isNotEmpty() && !IdentityBinding.isDerived(stored)) return stored
-        val derived = runCatching { IdentityBinding.deriveDeviceId(ClipboardE2ee.publicKeyBase64()) }
-            .getOrNull()
+        val derived = publicKey()?.let { runCatching { IdentityBinding.deriveDeviceId(it) }.getOrNull() }
         val resolved = derived ?: stored.ifEmpty { fallbackId() }
-        if (resolved != stored) persist(resolved)
+        if (resolved != stored) {
+            if (stored.isNotEmpty() && derived != null) remember(stored)
+            persist(resolved)
+        }
         return resolved
     }
 }

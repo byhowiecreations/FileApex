@@ -3,6 +3,7 @@ package com.fileapex.friends.transfer
 import com.fileapex.iroh.IrohStream
 import java.io.IOException
 import java.nio.ByteBuffer
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** What a sender announces before any file byte moves. Nothing else about the sender's device is ever sent. */
 data class FriendOffer(
@@ -11,7 +12,8 @@ data class FriendOffer(
     val fileName: String,
     val chunkBytes: Int = FriendsWire.DATA_CHUNK,
     /** Set when the receiver already said yes to a whole batch this file belongs to; empty for a file offered on its own. */
-    val batchId: String = ""
+    val batchId: String = "",
+    val sha256: String = ""
 )
 
 /** Framing for the friends stream: 4-byte length, hard cap, so a hostile peer cannot make us allocate. */
@@ -28,11 +30,11 @@ object FriendsWire {
     const val HASH_BYTES = 32
     val ID = Regex("[0-9a-f]{32}")
 
-    suspend fun readExact(stream: IrohStream, n: Int): ByteArray {
+    suspend fun readExact(stream: IrohStream, n: Int, timeoutMs: Long = 30_000L): ByteArray {
         val out = ByteArray(n)
         var got = 0
         while (got < n) {
-            val chunk = stream.read(n - got) ?: throw IOException("stream ended")
+            val chunk = readChunk(stream, n - got, timeoutMs) ?: throw IOException("friend stream ended or timed out")
             chunk.copyInto(out, got)
             got += chunk.size
         }
@@ -41,26 +43,39 @@ object FriendsWire {
 
     suspend fun writeFrame(stream: IrohStream, bytes: ByteArray) {
         require(bytes.size <= MAX_FRAME) { "frame too large" }
-        stream.write(ByteBuffer.allocate(4).putInt(bytes.size).array() + bytes)
+        writeRaw(stream, ByteBuffer.allocate(4).putInt(bytes.size).array() + bytes)
     }
 
-    suspend fun readFrame(stream: IrohStream): ByteArray {
-        val len = ByteBuffer.wrap(readExact(stream, 4)).int
+    suspend fun readFrame(stream: IrohStream, timeoutMs: Long = 150_000L): ByteArray = withTimeoutOrNull(timeoutMs) {
+        val len = ByteBuffer.wrap(readExact(stream, 4, timeoutMs)).int
         if (len < 0 || len > MAX_FRAME) throw IOException("frame too large")
-        return readExact(stream, len)
+        readExact(stream, len, timeoutMs)
+    } ?: throw IOException("friend reply timed out")
+
+    suspend fun readChunk(stream: IrohStream, max: Int, timeoutMs: Long = 30_000L): ByteArray? =
+        withTimeoutOrNull(timeoutMs) { stream.read(max) }
+
+    suspend fun writeRaw(stream: IrohStream, bytes: ByteArray, timeoutMs: Long = 30_000L) {
+        if (withTimeoutOrNull(timeoutMs) { stream.write(bytes); true } != true) throw IOException("friend write timed out")
     }
 
     fun encodeOffer(o: FriendOffer): ByteArray =
-        if (o.batchId.isEmpty()) "v2\n${o.transferId}\n${o.sizeBytes}\n${o.chunkBytes}\n${o.fileName}".encodeToByteArray()
+        if (o.sha256.isNotEmpty()) "v4\n${o.transferId}\n${o.sizeBytes}\n${o.chunkBytes}\n${o.batchId}\n${o.sha256}\n${o.fileName}".encodeToByteArray()
+        else if (o.batchId.isEmpty()) "v2\n${o.transferId}\n${o.sizeBytes}\n${o.chunkBytes}\n${o.fileName}".encodeToByteArray()
         else "v3\n${o.transferId}\n${o.sizeBytes}\n${o.chunkBytes}\n${o.batchId}\n${o.fileName}".encodeToByteArray()
 
     /** Null for anything malformed; the caller drops the stream. */
     fun decodeOffer(bytes: ByteArray): FriendOffer? {
-        val p = bytes.decodeToString().split("\n", limit = 6)
+        val p = bytes.decodeToString().split("\n", limit = 7)
+        val verified = p.firstOrNull() == "v4"
         val batched = p.firstOrNull() == "v3"
-        if (p.size != (if (batched) 6 else 5) || (p[0] != "v2" && !batched) || !ID.matches(p[1])) return null
+        if (p.size != (if (verified) 7 else if (batched) 6 else 5) || (p[0] != "v2" && !batched && !verified) || !ID.matches(p[1])) return null
         val size = p[2].toLongOrNull()?.takeIf { it >= 0 } ?: return null
         val chunk = p[3].toIntOrNull()?.takeIf { it in MIN_DATA_CHUNK..MAX_DATA_CHUNK } ?: return null
+        if (verified) {
+            if ((p[4].isNotEmpty() && !ID.matches(p[4])) || !Regex("[0-9a-f]{64}").matches(p[5])) return null
+            return FriendOffer(p[1], size, p[6], chunk, p[4], p[5])
+        }
         if (!batched) return FriendOffer(p[1], size, p[4], chunk)
         if (!ID.matches(p[4])) return null
         return FriendOffer(p[1], size, p[5], chunk, p[4])

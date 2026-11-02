@@ -3,8 +3,14 @@ package com.fileapex.friends.transfer
 import com.fileapex.iroh.IrohStream
 import com.fileapex.util.TimeUtils
 import java.io.IOException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** What a sender announces before sending several files: how many, how big in total, and a few names for the prompt. */
@@ -40,11 +46,13 @@ class FriendBatchGrants(private val now: () -> Long = { TimeUtils.now() }, priva
         val accepted = HashMap<String, Long>()
     }
 
-    private val grants = LinkedHashMap<String, Grant>()
+    private val grants = LinkedHashMap<Pair<String, String>, Grant>()
 
     @Synchronized fun grant(friendKey: String, batch: FriendBatch) {
         dropExpired()
-        grants[batch.id] = Grant(friendKey, batch.count, batch.totalBytes, now() + ttlMs)
+        val key = friendKey to batch.id
+        if (key in grants) return
+        grants[key] = Grant(friendKey, batch.count, batch.totalBytes, now() + ttlMs)
         while (grants.size > MAX_GRANTS) grants.remove(grants.keys.first())
     }
 
@@ -52,7 +60,7 @@ class FriendBatchGrants(private val now: () -> Long = { TimeUtils.now() }, priva
     @Synchronized fun allows(friendKey: String, offer: FriendOffer): Boolean {
         if (offer.batchId.isEmpty()) return false
         dropExpired()
-        val g = grants[offer.batchId]?.takeIf { it.friendKey == friendKey } ?: return false
+        val g = grants[friendKey to offer.batchId] ?: return false
         val earlier = g.accepted[offer.transferId]
         // The same file offered again after an interruption does not use the grant twice.
         if (earlier != null) return offer.sizeBytes <= earlier
@@ -79,9 +87,10 @@ object FriendBatchNegotiation {
     private const val ANSWER_TIMEOUT_MS = 150_000L
 
     /** Sender side on a fresh stream whose kind byte is already written. A closed stream means the friend's app does not know batches. */
-    suspend fun announce(stream: IrohStream, batch: FriendBatch, timeoutMs: Long = ANSWER_TIMEOUT_MS): BatchAnswer {
+    suspend fun announce(stream: IrohStream, batch: FriendBatch, timeoutMs: Long = ANSWER_TIMEOUT_MS, onWaiting: () -> Unit = {}): BatchAnswer {
         try {
             FriendsWire.writeFrame(stream, FriendsBatchWire.encode(batch))
+            onWaiting()
             val reply = withTimeoutOrNull(timeoutMs) { FriendsWire.decodeReply(FriendsWire.readFrame(stream)) } ?: return BatchAnswer.Refused
             return if (reply.first) BatchAnswer.Accepted else BatchAnswer.Refused
         } catch (_: IOException) {
@@ -124,19 +133,30 @@ class FriendBatchReceiver(
  * [id] is the batch id to put in offers, an empty string to offer each file on its own (the friend's app has no batches
  * or could not be reached), or null when the friend said no.
  */
-class FriendSendBatch(val batch: FriendBatch, private val open: suspend () -> IrohStream) {
-    private val lock = Mutex()
-    private var settled = false
-    private var answer: String? = ""
+class FriendSendBatch(val batch: FriendBatch, private val scope: CoroutineScope, private val open: suspend () -> IrohStream) {
+    private var remaining = batch.count
+    private var answer: Deferred<String?>? = null
+    private val waiting = MutableStateFlow(false)
 
-    suspend fun id(): String? = lock.withLock {
-        if (!settled) { answer = negotiate(); settled = true }
-        answer
+    suspend fun id(onWaiting: () -> Unit = {}): String? {
+        val shared = synchronized(this) {
+            if (remaining == 0) return null
+            answer ?: scope.async(start = CoroutineStart.LAZY) { negotiate() }.also { answer = it }
+        }
+        return coroutineScope {
+            val observer = launch(start = CoroutineStart.UNDISPATCHED) { waiting.first { it }; onWaiting() }
+            try { shared.await() } finally { observer.cancel() }
+        }
+    }
+
+    @Synchronized fun release() {
+        check(remaining > 0) { "Batch file already released" }
+        if (--remaining == 0) answer?.cancel()
     }
 
     private suspend fun negotiate(): String? {
         val stream = try { open() } catch (_: IOException) { return "" }
-        return when (FriendBatchNegotiation.announce(stream, batch)) {
+        return when (FriendBatchNegotiation.announce(stream, batch, onWaiting = { waiting.value = true })) {
             BatchAnswer.Accepted -> batch.id
             BatchAnswer.Refused -> null
             BatchAnswer.Unsupported -> ""

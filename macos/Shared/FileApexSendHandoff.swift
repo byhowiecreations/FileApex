@@ -15,6 +15,7 @@ enum FileApexLocalApi {
     struct Reply: Decodable {
         let ok: Bool
         let message: String
+        let acceptedIds: [String]?
     }
 
     struct DeviceRow: Decodable {
@@ -192,6 +193,9 @@ enum FileApexSendHandoff {
         }
         let reply = try await FileApexLocalApi.send(paths: files.map(\.path), deviceIds: deviceIds)
         if !reply.ok {
+            if let acceptedIds = reply.acceptedIds, !acceptedIds.isEmpty {
+                throw HandoffError.partial(reply.message, acceptedIds)
+            }
             throw HandoffError.failed(reply.message.isEmpty ? AppCopy.shared.t("send_failed") : reply.message)
         }
         return reply
@@ -199,11 +203,14 @@ enum FileApexSendHandoff {
 
     enum HandoffError: LocalizedError {
         case failed(String)
+        case partial(String, [String])
         case noSendableFiles
 
         var errorDescription: String? {
             switch self {
             case .failed(let message):
+                return message
+            case .partial(let message, _):
                 return message
             case .noSendableFiles:
                 return AppCopy.shared.t("handoff_no_files")

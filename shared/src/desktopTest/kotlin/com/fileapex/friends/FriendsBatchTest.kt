@@ -98,6 +98,26 @@ class FriendsBatchTest {
         assertFalse(g.allows("k", offer(1, batch = "")))
     }
 
+    @Test fun aDuplicateAnnouncementCannotRefillAnExistingGrant() {
+        val g = FriendBatchGrants()
+        val original = batch(count = 2, total = 2000)
+        g.grant("k", original)
+        assertTrue(g.allows("k", offer(1)))
+        g.grant("k", original)
+        assertTrue(g.allows("k", offer(2)))
+        assertFalse("Reannouncing an ID must not reset its accepted-file count", g.allows("k", offer(3)))
+    }
+
+    @Test fun equalBatchIdsFromDifferentFriendsDoNotReplaceEachOthersPermission() {
+        val g = FriendBatchGrants()
+        g.grant("first", batch(count = 1, total = 1000))
+        g.grant("second", batch(count = 1, total = 1000))
+        assertTrue(g.allows("first", offer(1)))
+        assertTrue(g.allows("second", offer(1)))
+        assertFalse(g.allows("first", offer(2)))
+        assertFalse(g.allows("second", offer(2)))
+    }
+
     @Test fun aGrantExpires() {
         var now = 0L
         val g = FriendBatchGrants(now = { now }, ttlMs = 1000); g.grant("k", batch())
@@ -173,24 +193,80 @@ class FriendsBatchTest {
 
     @Test fun senderAsksOnceForManyFiles() = runBlocking {
         var opened = 0
-        val sb = FriendSendBatch(batch()) { opened++; val (s, r) = pair(); launch { receiver({ true }).handle("k", r) }; s }
+        val sb = FriendSendBatch(batch(), this) { opened++; val (s, r) = pair(); launch { receiver({ true }).handle("k", r) }; s }
         val ids = (1..4).map { async { sb.id() } }.awaitAll()
         assertEquals(1, opened)
         assertTrue(ids.all { it == bid })
     }
 
+    @Test fun cancelingOneFileDoesNotRepeatTheBatchPromptForAnotherFile() = runBlocking {
+        var opened = 0
+        val asked = CompletableDeferred<Unit>()
+        val answer = CompletableDeferred<Boolean>()
+        val sb = FriendSendBatch(batch(), this) {
+            opened++
+            val (s, r) = pair()
+            launch { receiver({ asked.complete(Unit); answer.await() }).handle("k", r) }
+            s
+        }
+        val first = async { sb.id() }
+        withTimeout(2_000) { asked.await() }
+        val sibling = async(start = CoroutineStart.UNDISPATCHED) { sb.id() }
+        first.cancelAndJoin()
+        answer.complete(true)
+        assertEquals(bid, withTimeout(2_000) { sibling.await() })
+        assertEquals(1, opened)
+    }
+
+    @Test fun releasingTheLastFileAbortsPendingNegotiation() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        var aborted = false
+        val stream = object : IrohStream {
+            override suspend fun read(max: Int): ByteArray? { entered.complete(Unit); awaitCancellation() }
+            override suspend fun write(bytes: ByteArray) = Unit
+            override suspend fun finish() = Unit
+            override fun abort() { aborted = true }
+        }
+        val sb = FriendSendBatch(batch(count = 2), this) { stream }
+        val first = async { sb.id() }
+        withTimeout(2_000) { entered.await() }
+        sb.release()
+        assertFalse(aborted)
+        sb.release()
+        withTimeout(2_000) { first.join() }
+        assertTrue(first.isCancelled)
+        assertTrue(aborted)
+    }
+
+    @Test fun everyFileObservesTheSharedAcceptanceWait() = runBlocking {
+        val answer = CompletableDeferred<Boolean>()
+        val waiting = Channel<Unit>(2)
+        val sb = FriendSendBatch(batch(count = 2), this) {
+            val (s, r) = pair()
+            launch { receiver({ answer.await() }).handle("k", r) }
+            s
+        }
+        val first = async { sb.id { waiting.trySend(Unit).getOrThrow() } }
+        withTimeout(2_000) { waiting.receive() }
+        val second = async { sb.id { waiting.trySend(Unit).getOrThrow() } }
+        withTimeout(2_000) { waiting.receive() }
+        answer.complete(true)
+        assertEquals(bid, first.await())
+        assertEquals(bid, second.await())
+    }
+
     @Test fun senderFallsBackToSeparateOffersForAnOldReceiver() = runBlocking {
-        val sb = FriendSendBatch(batch()) { val (s, r) = pair(); r.abort(); s }
+        val sb = FriendSendBatch(batch(), this) { val (s, r) = pair(); r.abort(); s }
         assertEquals("", sb.id())
     }
 
     @Test fun senderGetsNullWhenTheFriendSaysNo() = runBlocking {
-        val sb = FriendSendBatch(batch()) { val (s, r) = pair(); launch { receiver({ false }).handle("k", r) }; s }
+        val sb = FriendSendBatch(batch(), this) { val (s, r) = pair(); launch { receiver({ false }).handle("k", r) }; s }
         assertNull(sb.id())
     }
 
     @Test fun senderFallsBackWhenTheConnectionCannotBeOpened() = runBlocking {
-        val sb = FriendSendBatch(batch()) { throw java.io.IOException("down") }
+        val sb = FriendSendBatch(batch(), this) { throw java.io.IOException("down") }
         assertEquals("", sb.id())
     }
 

@@ -24,6 +24,9 @@ object UserFacingErrors {
     /** Localizes persisted raw error strings (for example, queue rows written by older builds). */
     fun messageForRaw(raw: String): String? = keyForText(raw)?.let { AppI18n.t(it) }
 
+    /** True when a peer's TLS layer refused our certificate: it does not trust this device, so no other route will help. */
+    fun isPeerRefusal(error: Throwable): Boolean = keyFor(error) == "error_peer_not_trusted"
+
     private fun keyFor(error: Throwable): String? {
         var current: Throwable? = error
         var depth = 0
@@ -47,6 +50,8 @@ object UserFacingErrors {
         val text = raw.lowercase()
         return when {
             "no space left" in text || "enospc" in text -> "error_disk_full"
+            "certificate_unknown" in text || "certificate unknown" in text || "bad_certificate" in text ||
+                "bad certificate" in text -> "error_peer_not_trusted"
             "timed out" in text || "timeout" in text -> "error_peer_timeout"
             "connection refused" in text || "no route to host" in text ||
                 "network is unreachable" in text || "host unreachable" in text -> "error_peer_unreachable"

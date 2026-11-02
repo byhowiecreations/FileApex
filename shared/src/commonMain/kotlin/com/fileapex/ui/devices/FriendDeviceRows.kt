@@ -1,6 +1,7 @@
 package com.fileapex.ui.devices
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.PushPin
@@ -22,7 +23,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.fileapex.friends.FriendsHub
-import com.fileapex.friends.ui.friendFiles
 import com.fileapex.friends.ui.FriendSendSession
 import com.fileapex.friends.ui.FriendSendTarget
 import com.fileapex.i18n.stringRes
@@ -86,7 +86,7 @@ class FriendDeviceActions internal constructor(
 
     fun drop(deviceId: String, paths: List<String>): Boolean {
         if (!isFriend(deviceId)) return false
-        friendFiles(paths).takeIf { it.isNotEmpty() }?.let { files -> scope.launch { FriendsHub.enqueueSend(key(deviceId), files) } }
+        scope.launch { FriendsHub.sendPaths(key(deviceId), paths) }
         return true
     }
 }
@@ -98,11 +98,12 @@ fun rememberFriendDeviceActions(showLocalFiles: () -> Unit): FriendDeviceActions
     val showLocal by rememberUpdatedState(showLocalFiles)
     renaming?.let { (key, current) ->
         var text by remember(key) { mutableStateOf(current) }
+        var failed by remember(key) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { renaming = null },
             title = { Text(stringRes("friends_rename")) },
-            text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
-            confirmButton = { Button(onClick = { scope.launch { FriendsHub.rename(key, text) }; renaming = null }) { Text(stringRes("save")) } },
+            text = { Column { OutlinedTextField(value = text, onValueChange = { text = it; failed = false }, singleLine = true); if (failed) Text(stringRes("friends_rename_failed")) } },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.rename(key, text) }.onSuccess { renaming = null }.onFailure { failed = true } } }) { Text(stringRes("save")) } },
             dismissButton = { TextButton(onClick = { renaming = null }) { Text(stringRes("cancel")) } }
         )
     }

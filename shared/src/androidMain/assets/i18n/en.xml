@@ -131,8 +131,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="grant_access">Grant Access</string>
     <string name="grant_file_access">Grant file access</string>
     <string name="add_new_device">Add New Device</string>
-    <string name="join_device">Join device</string>
-    <string name="generate_qr">Generate QR Code</string>
+    <string name="join_device">Join another device</string>
+    <string name="generate_qr">Add a device to this one</string>
     <string name="send_clipboard">Send Clipboard</string>
     <string name="check_batteries">Check Batteries</string>
     <string name="check_battery">Check Battery</string>
@@ -420,7 +420,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="pin_idle_immediate">Immediate</string>
     <string name="pin_idle_10m">10 minutes</string>
     <string name="home">Home</string>
-    <string name="no_paired_devices_hint">No paired devices yet. Tap Add New Device to generate a QR code or join a device.</string>
+    <string name="no_paired_devices_hint">No paired devices yet. Tap Add New Device to add a device to this one or join another device.</string>
 <string name="watchdog_desc">Enable background watchdog to automatically restart the FileApex file server daemon if aggressive OEM battery management terminates it in the background. Peer UDP wake only works while the share-server notification is active.</string>
     <string name="background_restricted_desc">Android is blocking FileApex from running in the background. Tap to open App battery usage and set FileApex to Unrestricted or Always allow.</string>
     <string name="background_restricted_desc_steps">Android is blocking FileApex from running in the background. Tap to open system settings, then choose: %1$s</string>
@@ -519,7 +519,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="error_select_files">Select at least one file to send</string>
     <string name="error_send_failed">Send To failed for all destinations</string>
     <string name="send_to_finished_errors">Send To finished with %1$s error(s)</string>
-    <string name="qr_intro">Show this code on one device. On the other, scan it with the Camera app and tap Open FileApex, or use Add New Device → Join device and tap this device. If you do not scan, both screens show the same number: confirm they match.</string>
+    <string name="qr_intro">Show this code on the device that keeps its devices. On the other device, scan it with the Camera app and tap Open FileApex, or use Add New Device → Join another device and tap this device. If you do not scan, both screens show the same number: confirm they match. The other device joins this one; if it already has paired devices, it leaves them and takes on the devices of this one.</string>
     <string name="paired_with">Paired with %1$s.</string>
     <string name="starting_share_server">Starting share server… pairing will work once ready.</string>
     <string name="qr_timeout">No device confirmed in time. Tap Retry for a new QR code and local broadcast.</string>
@@ -709,7 +709,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="oem_transsion_autostart">Enable FileApex in Phone Master Auto-start management and exclude from Battery Lab restrictions.</string>
     <string name="pair_with_this_node">Pair with this node</string>
     <string name="manual_pairing_code">MANUAL PAIRING CODE</string>
-    <string name="scan_qr_pairing_hint">Scan the QR with Camera or FileApex, or choose Join device on the other device and tap this one.</string>
+    <string name="scan_qr_pairing_hint">Scan the QR with Camera or FileApex, or choose Join another device on the other device and tap this one.</string>
     <string name="no_lan_ipv4">No LAN IPv4 address found. Join Wi‑Fi and retry.</string>
     <string name="pairing_scan_own_qr">You scanned this device\'s own QR code</string>
     <string name="pairing_failed">Pairing failed</string>
@@ -720,6 +720,8 @@ Tap Central Hub (+) to Pair</string>
     <string name="incorrect_pin">Incorrect PIN</string>
     <string name="incorrect_pin_pairing">Incorrect PIN: pairing rejected</string>
     <string name="pairing_code_expired">Pairing code expired or incorrect. Ask the other device to tap Retry.</string>
+    <string name="pairing_update_this_device">This device is on an older version of FileApex. Update it, then pair again.</string>
+    <string name="pairing_update_other_device">The other device is on an older version of FileApex. Update it there first, then pair again.</string>
     <string name="pairing_handshake_failed">Pairing handshake failed (%1$s)</string>
     <string name="pairing_not_fileapex">Not a FileApex pairing code: scan with Camera and tap Open FileApex, or use Scan QR Code inside FileApex. Scanner saw: %1$s</string>
     <string name="live_qr_android_only">Live QR camera is available on Android</string>
@@ -1049,6 +1051,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="leave_cluster_failed_message">Some data could not be removed. Your device list may still be on this device. Close and reopen FileApex, then try again.</string>
     <string name="peer_revoked_this_device">%1$s no longer recognizes this device: pair again to rejoin</string>
     <string name="removed_signed_out_google">This device was removed from the cluster and signed out of Google in FileApex. Pair again to rejoin.</string>
+    <string name="removed_from_cluster">This device was removed from the cluster. Pair again to rejoin.</string>
     <string name="transfer_cancelled">Transfer cancelled</string>
     <string name="queue_retry_failed">Could not retry this transfer</string>
     <string name="queue_retry_now">Retry now</string>
@@ -1056,6 +1059,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="show_in_folder">Show in folder</string>
     <string name="error_peer_timeout">The device took too long to respond. Check that it is awake and on the same Wi-Fi.</string>
     <string name="error_peer_unreachable">Could not reach the device. Check that FileApex is running on it and both devices are on the same network.</string>
+    <string name="error_peer_not_trusted">This device no longer trusts you. It may have removed you from its cluster. Pair with it again to browse.</string>
     <string name="error_disk_full">Not enough storage space to finish.</string>
     <string name="error_connection_lost">The connection was interrupted. Try again.</string>
     <string name="filter_this_folder">Filter this folder</string>
@@ -1365,7 +1369,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="about_source_link">View source</string>
     <string name="about_licenses_link">Read the full licences</string>
     <string name="about_trademarks">Tailscale, Iroh and the other names above belong to their owners and are used only to say what FileApex works with.</string>
-    <string name="join_tap_device">Tap the device you want to pair with</string>
+    <string name="join_tap_device">Tap the device you want to join. If this device already has paired devices, it leaves them.</string>
     <string name="paste_pairing_link">Paste a pairing link</string>
     <string name="friends_entry">Connect with friends</string>
     <string name="friends_intro_title">How friends work</string>
@@ -1438,6 +1442,9 @@ Tap Central Hub (+) to Pair</string>
     <string name="friends_joined">%1$s joined</string>
     <string name="friends_added">Added %1$s</string>
     <string name="friends_send_file">Send file</string>
+    <string name="friends_send_dropped_no_friend">Nothing was sent: that friend is no longer in your list.</string>
+    <string name="friends_send_dropped_nothing">Nothing was sent: no file was chosen.</string>
+    <string name="friends_send_dropped_not_file">Some chosen items are not files and were skipped.</string>
     <string name="friends_rename">Rename</string>
     <string name="friends_block">Block</string>
     <string name="friends_unblock">Unblock</string>
@@ -1461,6 +1468,20 @@ Tap Central Hub (+) to Pair</string>
     <string name="friends_status_received">Received</string>
     <string name="friends_status_refused">Your friend declined</string>
     <string name="friends_status_failed">Failed, send again to resume</string>
+    <string name="friends_failed_unreachable">Couldn\'t reach your friend, send again to resume</string>
+    <string name="friends_failed_timeout">Your friend didn\'t answer in time, send again to resume</string>
+    <string name="friends_failed_lost">The connection dropped, send again to resume</string>
+    <string name="friends_failed_answer">Your friend\'s app answered unexpectedly, send again to resume</string>
+    <string name="friends_failed_file">Couldn\'t read the file, check it and send again</string>
+    <string name="friends_failed_gone">This friend was removed, add them again to send</string>
+    <string name="friends_path_checking">Checking connection...</string>
+    <string name="friends_path_direct_lan">Direct connection on your network (%1$s ms)</string>
+    <string name="friends_path_direct_internet">Direct connection over the internet (%1$s ms)</string>
+    <string name="friends_path_relay">Using relay</string>
+    <string name="friends_path_relay_no_direct">Could not create a direct connection, using relay</string>
+    <string name="friends_path_relay_hidden">Using relay (your IP address is hidden)</string>
+    <string name="friends_path_unreachable">Can\'t reach this friend right now</string>
+    <string name="friends_removed_you">They removed you. Remove them here too?</string>
     <string name="friends_error_generic">Could not connect to your friend.</string>
     <string name="friends_invite_message">Join me on FileApex. Open FileApex, tap Connect with friends, then Enter an invite, paste this link and type the PIN I tell you: %1$s</string>
     <string name="friends_copy_message">Copy invite message</string>
@@ -1480,5 +1501,27 @@ Tap Central Hub (+) to Pair</string>
     <string name="alert_critical_notice">Critical notice in Bulletin Board</string>
     <string name="notice_alert_description">Critical notice</string>
     <string name="notice_update">Update</string>
+    <string name="identity_changed_title">This device has a new identity</string>
+    <string name="identity_changed_body">This device\'s identity key was lost or replaced, so it has a new identity. Your other devices still know it under the old one and refuse it. On one of your other devices choose Add a device to this one, then here choose Join another device and tap it. That device tells the rest.</string>
+    <string name="identity_changed_ok">OK</string>
+    <string name="identity_change_ask_title">A device asks to keep its place</string>
+    <string name="identity_change_ask_body">%1$s lost its identity key and now has a new identity. Compare this code with the one on that device and confirm only if they match.</string>
+    <string name="identity_change_ask_yes">The codes match</string>
+    <string name="identity_change_ask_no">No, decline</string>
+    <string name="identity_changed_waiting">Asking %1$s to confirm. On that device, check that this code matches and confirm: %2$s</string>
+    <string name="friends_queue_open">Open friend transfer queue</string>
+    <string name="friends_queue_title">Friend transfers</string>
+    <string name="friends_queue_empty">No current transfers</string>
+    <string name="friends_scan_invite">Scan invite</string>
+    <string name="friends_scan_again">Scan again</string>
+    <string name="friends_scan_invalid">This is not a friend invite.</string>
+    <string name="friends_share_queued">Files queued for your friend</string>
+    <string name="friends_share_failed">Could not queue files for a friend. Review transfers before retrying.</string>
+    <string name="share_targets_none">Open FileApex and add a device or friend, then try again.</string>
+    <string name="share_targets_count">%1$s destinations</string>
+    <string name="friends_rename_failed">Could not rename. Finish transfers and check the destination folder.</string>
+    <string name="friends_remove_failed">Removal could not finish. Check the friend list; some temporary files may remain.</string>
+    <string name="friends_notification_permission">Allow Friends notifications</string>
+    <string name="friends_share_queue_failed">Some friends could not be queued. Check the remaining destinations and try again. Friends already queued will not be sent again.</string>
 </resources>
 

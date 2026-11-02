@@ -67,6 +67,14 @@ object NotePushCrypto {
         }
     }
 
+    private val NOTE_TYPES = setOf(FcmWakeProtocol.TYPE_NOTE_INLINE, FcmWakeProtocol.TYPE_NOTE_SYNC)
+    private val SENSITIVE_KEYS = listOf(
+        FcmWakeProtocol.KEY_CONTENT, FcmWakeProtocol.KEY_DRIVE_FILE_ID, FcmWakeProtocol.KEY_CHECKSUM, FcmWakeProtocol.KEY_ATTACHMENT_NAME
+    )
+
+    private fun carriesPlainNoteContent(data: Map<String, String>): Boolean =
+        data[FcmWakeProtocol.KEY_TYPE] in NOTE_TYPES && SENSITIVE_KEYS.any { !data[it].isNullOrBlank() }
+
     /** Seals [fields]; when the ciphertext would not fit in a push the text is left out so the peer pulls it instead. */
     internal suspend fun sealForWithinLimit(targetDeviceId: String, noteId: String, fields: SealedNoteFields): Pair<String, Boolean>? {
         val full = sealFor(targetDeviceId, noteId, fields) ?: return null
@@ -75,9 +83,12 @@ object NotePushCrypto {
         return without to false
     }
 
-    /** The data map with a sealed push opened, [data] itself for a plain push, or null when a sealed push cannot be opened. */
+    /**
+     * The data map with a sealed push opened, [data] itself for a push that carries nothing sensitive (a wake, a delete),
+     * or null when a sealed push cannot be opened or a note push brings its content, file name or Drive id in the clear.
+     */
     suspend fun unseal(data: Map<String, String>): Map<String, String>? {
-        val ciphertext = data[FcmWakeProtocol.KEY_SEALED] ?: return data
+        val ciphertext = data[FcmWakeProtocol.KEY_SEALED] ?: return data.takeUnless { carriesPlainNoteContent(it) }
         val senderId = data[FcmWakeProtocol.KEY_SOURCE_DEVICE_ID].orEmpty().trim()
         val noteId = data[FcmWakeProtocol.KEY_NOTE_ID].orEmpty()
         if (senderId.isEmpty() || noteId.isEmpty()) return null

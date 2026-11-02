@@ -32,7 +32,7 @@ object SealingPass {
             connection.prepare("UPDATE `$table` SET ${names.joinToString(", ") { "`$it` = ?" }} WHERE rowid = ?").use { u ->
                 names.forEachIndexed { i, name ->
                     val plain = values[i]
-                    if (plain == null) u.bindNull(i + 1) else u.bindText(i + 1, if (sealsItself) plain else sealer.seal(table, name, plain))
+                    if (plain == null) u.bindNull(i + 1) else u.bindText(i + 1, if (sealsItself) plain else sealer.seal(SealedColumns.contextOf(table), name, plain))
                 }
                 u.bindLong(names.size + 1, rowid)
                 u.step()

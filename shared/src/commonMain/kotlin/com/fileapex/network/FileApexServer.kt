@@ -5,7 +5,6 @@ import com.fileapex.data.files.LocalFileRepository
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.pairing.ClusterSyncRequest
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.PeerNodeStateMapper
 import com.fileapex.i18n.AppI18n
@@ -20,6 +19,8 @@ import com.fileapex.network.routes.registerLocalExtensionRoutes
 import com.fileapex.network.routes.registerIrohRoutes
 import com.fileapex.network.routes.registerNotificationRoutes
 import com.fileapex.network.routes.registerPresenceRoutes
+import com.fileapex.network.routes.registerChainRoutes
+import com.fileapex.network.routes.registerIdentityChangeRoutes
 import com.fileapex.network.routes.registerTlsRoutes
 import com.fileapex.security.tls.TlsTransportPolicy
 import com.fileapex.util.NetworkUtils
@@ -66,22 +67,11 @@ class FileApexServer(
     internal val identityProvider: () -> LocalIdentity = { loadLocalIdentity() },
     internal val onPairingRespond: suspend (PairedDeviceEntity) -> Unit = {},
     internal val onPairingRespondComplete: suspend (PairedDeviceEntity) -> Unit = {},
-    /** The second argument is the sender's device id when mutual TLS authenticated it, else null. */
-    internal val onClusterMerge: suspend (ClusterSyncRequest, String?) -> Unit = { _, _ -> },
-    internal val onClusterPeerRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Unit = {},
-    internal val onClusterSelfRemoved: suspend (com.fileapex.domain.pairing.RemovedDeviceRecord) -> Boolean = { false },
-    /** True when the device id is an active member of this node's roster. Gates removals aimed at this node. */
+    /** True when the device id is an active member of this node's roster. */
     internal val isRosterMember: suspend (String) -> Boolean = { false },
     internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
-    /** Fingerprint of this node's removal records, sent to a proven peer on health and merge answers (RemovalFingerprint). */
-    internal val removalFingerprint: suspend () -> String = { com.fileapex.domain.pairing.RemovalFingerprint.NONE },
-    /** Digest of this node's roster and removal records, sent beside the fingerprint (ClusterDigest). */
-    internal val clusterDigest: suspend () -> String = { com.fileapex.domain.pairing.ClusterDigest.NONE },
-    /** The removal records inside the fingerprint window, for a peer whose fingerprint differs. */
-    internal val removalRecords: suspend () -> List<com.fileapex.domain.pairing.RemovedDeviceRecord> = { emptyList() },
     /** What the macOS Finder extensions ask of this app over 127.0.0.1; null where there are none. */
     internal val localExtension: LocalExtensionApi? = null,
-    internal val onListIntroductions: suspend (recipientId: String) -> List<com.fileapex.security.SealedIntroduction> = { emptyList() },
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->
         if (error != null) {
             println("FileApexServer: $message :: ${error.message}")
@@ -156,6 +146,11 @@ class FileApexServer(
                 intercept(ApplicationCallPipeline.Call) {
                     val path = call.request.local.uri
                     val bridged = bridgedPeer(call)
+                    if (bridged?.revokedOnly == true && !RevokedAccess.allows(call.request.local.method.value, path)) {
+                        answerRevoked(call, bridged.deviceId, identityProvider().deviceId)
+                        finish()
+                        return@intercept
+                    }
                     if (isBridgeConnection(call) && rejectBridgedRequest(call, bridged, path)) {
                         finish()
                         return@intercept
@@ -165,7 +160,7 @@ class FileApexServer(
                         val claimedDevice = claimed.takeIf { it.isNotEmpty() }
                             ?.let { com.fileapex.util.cancellableCatching { FileApexServices.deviceRepository.getDevice(it) }.getOrNull() }
                         if (claimedDevice != null && !claimedDevice.isRemoved && claimedDevice.tlsPin.isNotEmpty()) {
-                            onLog("Rejected plain HTTP from pinned peer $claimed", null)
+                            onLog("Rejected plain HTTP from pinned peer $claimed for ${path.substringBefore('?')} from ${com.fileapex.util.NetworkUtils.lastOctetLabel(call.request.local.remoteAddress.trim())}", null)
                             call.respond(HttpStatusCode.Forbidden, "tls_required")
                             finish()
                             return@intercept
@@ -176,7 +171,7 @@ class FileApexServer(
                     // (the TLS front, which the LAN and the tailnet both reach) or the Iroh bridge.
                     val remoteSource = call.request.local.remoteAddress.trim()
                     if (RouteAuthPolicy.accessFor(path) == RouteAccess.Peer) {
-                        if (authenticatedPeerId(call) == null) {
+                        if (authenticatedPeerId(call) == null && bridged?.revokedOnly != true) {
                             val tooMany = unauthenticatedThrottle.hitAndCheck(remoteSource, com.fileapex.util.TimeUtils.now())
                             if (!tooMany && rejectionLogged.putIfAbsent(remoteSource, true) == null) {
                                 onLog(
@@ -199,7 +194,9 @@ class FileApexServer(
                         finish()
                         return@intercept
                     }
-                    if (!path.startsWith("/api/v1/pairing") && !path.startsWith("/api/v1/auth") && !path.contains("/cluster/remove")) {
+                    if (!path.startsWith("/api/v1/pairing") && !path.startsWith("/api/v2/pairing") && !path.startsWith("/api/v1/auth") &&
+                        RevokedAccess.gatedAsRevoked(call.request.local.method.value, path)
+                    ) {
                         val from = bridged?.deviceId ?: call.request.queryParameters["from"]?.trim().orEmpty().ifEmpty {
                             call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
                         }
@@ -216,9 +213,7 @@ class FileApexServer(
                                 false
                             }
                             if (isRevoked) {
-                                call.response.headers.append("X-FileApex-Status", "revoked")
-                                call.response.headers.append("X-FileApex-Revoked-At", FileApexServices.deviceRepository.revokedVersion(from).toString())
-                                call.respond(HttpStatusCode.Unauthorized, "revoked")
+                                answerRevoked(call, from, identityProvider().deviceId)
                                 finish()
                                 return@intercept
                             }
@@ -237,6 +232,8 @@ class FileApexServer(
                     registerDiagnosticRoutes(this@FileApexServer)
                     registerNotificationRoutes(this@FileApexServer)
                     registerTlsRoutes(this@FileApexServer)
+                    registerChainRoutes(this@FileApexServer)
+                    registerIdentityChangeRoutes(this@FileApexServer)
                     registerLocalExtensionRoutes(this@FileApexServer)
                     registerPresenceRoutes(this@FileApexServer)
                 }
@@ -269,7 +266,6 @@ class FileApexServer(
         val settings = FileApexServices.settings
         val full = PeerNodeStateMapper.selfState(
             identity = identity,
-            membershipVersion = FileApexServices.deviceRepository.selfMembershipVersion(),
             pinRequired = settings.pinRequiredEnabled.value
         )
         // A stranger learns who answers and how to reach it; the shared folder's location is for paired devices only.

@@ -16,6 +16,7 @@ import org.junit.Test
 class CliDeviceResolverTest {
 
     private class FakeDeviceDao(var devices: List<PairedDeviceEntity>) : DeviceDao {
+        override suspend fun forgetLocalExcept(keepId: String) = Unit
         override fun getAllDevicesUnordered(): Flow<List<PairedDeviceEntity>> = emptyFlow()
         override suspend fun getAllDevicesOnceUnordered(): List<PairedDeviceEntity> = devices
         override suspend fun getDevice(deviceId: String): PairedDeviceEntity? =
@@ -26,7 +27,6 @@ class CliDeviceResolverTest {
         override suspend fun deleteDevice(deviceId: String) {}
         override suspend fun deleteAllDevices() {}
         override suspend fun insertRemovedDevice(device: com.fileapex.data.db.RemovedDeviceEntity) {}
-        override suspend fun countRemovedById(deviceId: String): Int = 0
         override suspend fun clearRemovedDevice(deviceId: String) {}
         override suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String) {}
         override suspend fun getAllRemovedDevices(): List<com.fileapex.data.db.RemovedDeviceEntity> = emptyList()
@@ -34,7 +34,6 @@ class CliDeviceResolverTest {
         override suspend fun touchLastSeen(deviceId: String, ip: String, port: Int, epochMs: Long) {}
         override suspend fun touchLastSeenEpoch(deviceId: String, epochMs: Long) {}
         override suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String) {}
-        override suspend fun updateTls(deviceId: String, pin: String, alt: String, port: Int) {}
         override suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {}
         override suspend fun updateCardLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String) {}
         override suspend fun updateTileLayout(deviceId: String, x: Float?, y: Float?, order: Int, menuOrder: String) {}

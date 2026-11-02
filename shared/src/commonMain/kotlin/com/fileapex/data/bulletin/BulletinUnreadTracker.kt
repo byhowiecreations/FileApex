@@ -24,8 +24,13 @@ class BulletinUnreadTracker(
         if (settings.bulletinSeenAtEpochMs.value == 0L) settings.setBulletinSeenAtEpochMs(now())
     }
 
+    private var lastCount = 0
+
     val unread: StateFlow<Int> = combine(repository.messages, settings.bulletinSeenAtEpochMs) { rows, seenAt ->
-        BulletinUnread.count(rows, selfId(), seenAt)
+        BulletinUnread.count(rows, selfId(), seenAt).also { count ->
+            if (count - lastCount >= JUMP_LOGGED_AT) println("BulletinUnread: jumped from $lastCount, ${BulletinUnread.jumpNote(rows, selfId(), seenAt, now())}")
+            lastCount = count
+        }
     }.flowOn(Dispatchers.IO).stateIn(scope, SharingStarted.Eagerly, 0)
 
     val batteryLow: StateFlow<List<BatteryLowAlert>> = repository.messages
@@ -44,5 +49,6 @@ class BulletinUnreadTracker(
 
     private companion object {
         const val SEEN_WRITE_GAP_MS = 5_000L
+        const val JUMP_LOGGED_AT = 3
     }
 }

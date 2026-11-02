@@ -570,7 +570,7 @@ class ExplorerViewModel(
     fun enterSelectionMode(preselect: RemoteFileItem? = null) = selection.enterSelectionMode(preselect)
     fun exitSelectionMode() = selection.exitSelectionMode()
     fun toggleFileSelection(item: RemoteFileItem) = selection.toggleFileSelection(item)
-    fun selectedItems(): List<RemoteFileItem> = selection.selectedItems()
+    fun pickSelected(send: (List<String>) -> Unit) = selection.pickSelected(send)
 }
 
 /** Thrown when a PIN-protected peer needs (re)unlock before folder navigation. */

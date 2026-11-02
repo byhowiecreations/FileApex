@@ -19,15 +19,23 @@ actual fun loadLocalIdentity(): LocalIdentity {
     val prefs = identityContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     val deviceId = com.fileapex.security.LocalIdentityBinding.resolve(
         storedId = prefs.getString(KEY_ID, null),
-        fallbackId = ::generateDeviceId
-    ) { id -> prefs.edit().putString(KEY_ID, id).apply() }
+        fallbackId = ::generateDeviceId,
+        persist = { id -> prefs.edit().putString(KEY_ID, id).apply() },
+        remember = { previous -> prefs.edit().putString(KEY_PREVIOUS_ID, previous).apply() }
+    )
     val storedName = prefs.getString(KEY_NAME, null)?.trim().orEmpty()
     return LocalIdentity(
         deviceId = deviceId,
         deviceName = storedName.ifBlank { platformDeviceName() },
         rootPath = defaultStorageRoot(),
-        sharePort = LocalIdentity.DEFAULT_SHARE_PORT
+        sharePort = LocalIdentity.DEFAULT_SHARE_PORT,
+        previousDeviceId = prefs.getString(KEY_PREVIOUS_ID, null)?.trim().orEmpty()
     )
+}
+
+actual fun clearPreviousDeviceId() {
+    check(::identityContext.isInitialized) { "Call initAndroidLocalIdentity(context) before clearPreviousDeviceId()" }
+    identityContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_PREVIOUS_ID).apply()
 }
 
 actual fun updateLocalDeviceName(newName: String) {
@@ -44,4 +52,5 @@ actual fun updateLocalDeviceName(newName: String) {
 
 private const val PREFS = "fileapex_identity"
 private const val KEY_ID = "device_id"
+private const val KEY_PREVIOUS_ID = "previous_device_id"
 private const val KEY_NAME = "device_name"

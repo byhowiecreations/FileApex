@@ -25,7 +25,7 @@ data class CloudDeviceRecord(
     val deviceDetailsCloudEnabled: Boolean = false,
     /** Static hardware parameters (manufacturer, model, device, board) for reconciliation. */
     val hardwareFingerprint: Map<String, String> = emptyMap(),
-    /** Publisher's own [com.fileapex.domain.peer.ClusterClock] membership stamp; 0 on older builds. */
+    /** Unused leftover stamp on the cloud document; membership is the signed chain. */
     val membershipVersion: Long = 0L,
     val membershipProtocol: Int = 0,
     /** Name and address sealed with the cluster key (see CloudRecordSeal); empty when this device has no key. */

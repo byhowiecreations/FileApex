@@ -11,6 +11,7 @@ object DesktopLifecycleLog {
 
     fun markProcessStart() {
         processStartNs.compareAndSet(0L, System.nanoTime())
+        com.fileapex.security.tls.PeerTlsRoutes.journal = { log(it) }
         log("process start")
     }
 

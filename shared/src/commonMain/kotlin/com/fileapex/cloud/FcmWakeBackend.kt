@@ -58,57 +58,6 @@ object FcmWakeBackend {
         )
     }
 
-    suspend fun sendNoteWake(
-        targetFcmToken: String,
-        sourceDeviceId: String,
-        noteId: String,
-        content: String?,
-        driveFileId: String?,
-        checksum: String?,
-        attachmentName: String? = null,
-        attachmentSizeBytes: Long = 0L
-    ): Boolean {
-        if (!isConfigured()) return false
-        if (targetFcmToken.isBlank() || noteId.isBlank()) return false
-        val MAX_INLINE_BYTES = 3000
-        val contentBytes = content?.toByteArray(Charsets.UTF_8)
-        val hasDriveFile = !driveFileId.isNullOrBlank()
-        val hasAttachment = !attachmentName.isNullOrBlank() || attachmentSizeBytes > 0L
-        val isInline = !hasDriveFile &&
-            !hasAttachment &&
-            contentBytes != null &&
-            contentBytes.size <= MAX_INLINE_BYTES
-
-        val dataObj = buildJsonObject {
-            put(
-                FcmWakeProtocol.Keys.TYPE,
-                if (isInline) FcmWakeProtocol.TYPE_NOTE_INLINE else FcmWakeProtocol.TYPE_NOTE_SYNC
-            )
-            put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
-            put(FcmWakeProtocol.Keys.NOTE_ID, noteId)
-            put(FcmWakeProtocol.Keys.EPOCH_MS, TimeUtils.now().toString())
-            if (!content.isNullOrBlank() && (isInline || contentBytes == null || contentBytes.size <= MAX_INLINE_BYTES)) {
-                put(FcmWakeProtocol.Keys.CONTENT, content)
-            }
-            if (hasDriveFile) {
-                put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId)
-                put(FcmWakeProtocol.Keys.CHECKSUM, checksum.orEmpty())
-            }
-            if (hasAttachment) {
-                if (!attachmentName.isNullOrBlank()) {
-                    put(FcmWakeProtocol.Keys.ATTACHMENT_NAME, attachmentName)
-                }
-                if (attachmentSizeBytes > 0L) {
-                    put(FcmWakeProtocol.Keys.ATTACHMENT_SIZE, attachmentSizeBytes.toString())
-                }
-            } else if (!isInline && !hasDriveFile) {
-                put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId.orEmpty())
-                put(FcmWakeProtocol.Keys.CHECKSUM, checksum.orEmpty())
-            }
-        }
-        return relay.sendDataWake(targetFcmToken, dataObj)
-    }
-
     /** A Bulletin Board push whose content is in [sealed]; only the type, note id and sender are readable. */
     suspend fun sendSealedNoteWake(
         targetFcmToken: String,
@@ -130,34 +79,6 @@ object FcmWakeBackend {
                 put(FcmWakeProtocol.KEY_SEALED, sealed)
             }
         )
-    }
-
-    suspend fun sendNoteDeleteWake(
-        targetFcmToken: String,
-        sourceDeviceId: String,
-        noteId: String,
-        driveFileId: String? = null,
-        checksum: String? = null,
-        attachmentName: String? = null
-    ): Boolean {
-        if (!isConfigured()) return false
-        if (targetFcmToken.isBlank() || noteId.isBlank()) return false
-        val dataObj = buildJsonObject {
-            put(FcmWakeProtocol.Keys.TYPE, FcmWakeProtocol.TYPE_NOTE_DELETE)
-            put(FcmWakeProtocol.Keys.SOURCE_DEVICE_ID, sourceDeviceId)
-            put(FcmWakeProtocol.Keys.NOTE_ID, noteId)
-            put(FcmWakeProtocol.Keys.ACTION, FcmWakeProtocol.ACTION_RETRACT_MESSAGE)
-            if (!driveFileId.isNullOrBlank()) {
-                put(FcmWakeProtocol.Keys.DRIVE_FILE_ID, driveFileId)
-            }
-            if (!checksum.isNullOrBlank()) {
-                put(FcmWakeProtocol.Keys.CHECKSUM, checksum)
-            }
-            if (!attachmentName.isNullOrBlank()) {
-                put(FcmWakeProtocol.Keys.ATTACHMENT_NAME, attachmentName)
-            }
-        }
-        return relay.sendDataWake(targetFcmToken, dataObj)
     }
 
     suspend fun sendDriveRelayPointer(

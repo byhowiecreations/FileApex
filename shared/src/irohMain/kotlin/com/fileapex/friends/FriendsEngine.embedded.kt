@@ -8,13 +8,13 @@ import computer.iroh.EndpointAddr
 import computer.iroh.EndpointBuilder
 import computer.iroh.EndpointId
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -32,9 +32,12 @@ internal class FriendsIrohEndpoint private constructor(
     private val admit: suspend (String) -> Boolean
 ) : FriendsEndpoint {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val inbox = Channel<FriendsInbound>(Channel.UNLIMITED)
+    private val inbox = FriendsInbox()
     private val connections = ConcurrentHashMap<String, Connection>()
+    private val refused = ConcurrentHashMap.newKeySet<String>()
     private val locks = ConcurrentHashMap<String, Mutex>()
+    private val alive = AtomicBoolean(true)
+    override val isAlive: Boolean get() = alive.get()
 
     override val id: String = endpoint.id().toBytes().toHex()
 
@@ -47,7 +50,7 @@ internal class FriendsIrohEndpoint private constructor(
         return listOf(id, a.relayUrl().orEmpty(), if (hideIp) "" else a.directAddresses().joinToString(",")).joinToString("|")
     }
 
-    override suspend fun accept(): FriendsInbound? = try { inbox.receive() } catch (_: kotlinx.coroutines.channels.ClosedReceiveChannelException) { null }
+    override suspend fun accept(): FriendsInbound? = inbox.accept()
 
     override suspend fun open(peerId: String, addressHint: String?): IrohStream {
         for (attempt in 0..1) {
@@ -64,14 +67,22 @@ internal class FriendsIrohEndpoint private constructor(
         throw java.io.IOException("friend open failed")
     }
 
-    override fun pathKind(peerId: String): String? {
+    override suspend fun connect(peerId: String) {
+        try { withTimeout(CONNECT_TIMEOUT_MS) { connectionTo(peerId, null) } }
+        catch (e: TimeoutCancellationException) { throw java.io.IOException("friend connect timed out") }
+        catch (e: computer.iroh.IrohException) { connections.remove(peerId); throw java.io.IOException("friend open: ${e.message.orEmpty().take(120)}", e) }
+    }
+
+    override fun refusedBy(peerId: String) = peerId in refused
+
+    override fun pathInfo(peerId: String): FriendPathInfo? {
         val c = connections[peerId]?.takeIf { it.closeReason() == null } ?: return null
-        val selected = c.paths().filter { it.isSelected }
-        if (selected.isEmpty()) return null
-        return if (selected.any { it.isRelay }) "relay" else "direct"
+        val path = c.paths().firstOrNull { it.isSelected } ?: return null
+        return FriendPathInfo(relay = path.isRelay, local = path.isIp && FriendPathAddress.isLocal(path.remoteAddr), rttMs = path.rttMs.toLong())
     }
 
     override suspend fun close() {
+        alive.set(false)
         inbox.close()
         scope.cancel()
         endpoint.shutdown()
@@ -90,18 +101,19 @@ internal class FriendsIrohEndpoint private constructor(
             val connection = endpoint.connect(target(peerId, hint), ALPN)
             connections[peerId] = connection
             scope.launch { acceptStreams(peerId, connection) }
+            scope.launch { if (NOT_A_FRIEND in connection.closed()) refused.add(peerId) }
             connection
         }
 
     private suspend fun acceptLoop() {
-        while (true) {
+        try { while (true) {
             val incoming = try { endpoint.acceptNext() ?: return } catch (e: CancellationException) { throw e } catch (_: computer.iroh.IrohException) { return }
             scope.launch {
                 try {
                     val connection = incoming.accept().connect()
                     val peer = connection.remoteId().toBytes().toHex()
                     if (!admit(peer)) {
-                        runCatching { connection.close(1L, ByteArray(0)) }
+                        runCatching { connection.close(1L, NOT_A_FRIEND.encodeToByteArray()) }
                         return@launch
                     }
                     connections.compute(peer) { _, old -> if (old == null || old.closeReason() != null) connection else old }
@@ -111,6 +123,9 @@ internal class FriendsIrohEndpoint private constructor(
                 } catch (_: computer.iroh.IrohException) {
                 }
             }
+        } } finally {
+            alive.set(false)
+            inbox.close()
         }
     }
 
@@ -157,6 +172,8 @@ internal class FriendsIrohEndpoint private constructor(
     companion object {
         val ALPN = "fileapex/friends/1".encodeToByteArray()
         private const val CONNECT_TIMEOUT_MS = 30_000L
+        /** The close reason a device gives a peer it does not have as a friend. */
+        private const val NOT_A_FRIEND = "not a friend"
 
         suspend fun bind(secretKey: ByteArray, hideIp: Boolean, admit: suspend (String) -> Boolean): FriendsIrohEndpoint {
             val builder = EndpointBuilder()

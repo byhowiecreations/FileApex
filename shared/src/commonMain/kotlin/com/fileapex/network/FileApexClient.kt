@@ -22,7 +22,7 @@ class FileApexClient(
     internal val json: Json = FileApexHttpClientFactory.defaultJson,
     internal val localDeviceId: () -> String = { loadLocalIdentity().deviceId }
 ) {
-    var onRevocationDetected: (suspend (host: String, port: Int, revokedAt: Long) -> Unit)? = null
+    var onRevocationDetected: (suspend (host: String, port: Int, revokedAt: Long, reason: String, removedBy: String) -> Unit)? = null
     /** This node's membership stamp, sent as `mv` for the peer's revocation gate. */
     var membershipVersionProvider: (() -> Long)? = null
 
@@ -246,9 +246,7 @@ class FileApexClient(
         val reached: Boolean,
         val respondedAs: String? = null,
         val membershipVersion: Long? = null,
-        val bulletinVersion: Long? = null,
-        val removals: String? = null,
-        val clusterDigest: String? = null
+        val bulletinVersion: Long? = null
     )
 
     suspend fun probeHealth(
@@ -264,8 +262,7 @@ class FileApexClient(
         checkRevocation(host, port, health)
         if (health.statusCode in 200..299) return HealthProbe(
             true, health.body.respondedAsId(), PeerHttpHeaders.membershipVersion(health.headers),
-            PeerHttpHeaders.bulletinVersion(health.headers), PeerHttpHeaders.removals(health.headers),
-            PeerHttpHeaders.clusterDigest(health.headers)
+            PeerHttpHeaders.bulletinVersion(health.headers)
         )
         return HealthProbe(false)
     }
@@ -326,7 +323,13 @@ class FileApexClient(
     private suspend fun checkRevocation(host: String, port: Int, response: PeerBoundHttpResponse) {
         if (response.statusCode == 401 && response.body.contains("revoked", ignoreCase = true)) {
             try {
-                onRevocationDetected?.invoke(host, port, response.headers["x-fileapex-revoked-at"]?.trim()?.toLongOrNull() ?: 0L)
+                onRevocationDetected?.invoke(
+                    host,
+                    port,
+                    response.headers["x-fileapex-revoked-at"]?.trim()?.toLongOrNull() ?: 0L,
+                    response.headers["x-fileapex-revoked-reason"]?.trim().orEmpty(),
+                    response.headers["x-fileapex-revoked-by"]?.trim().orEmpty()
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -481,7 +484,6 @@ class FileApexClient(
         private const val PEER_STATE_TIMEOUT_MS = 5_000L
         private const val BATTERY_CHECK_TIMEOUT_MS = 20_000L
         private const val DIAGNOSTICS_TIMEOUT_MS = 25_000L
-        internal const val CLUSTER_SYNC_TIMEOUT_MS = 15_000L
     }
 }
 

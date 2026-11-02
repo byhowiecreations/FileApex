@@ -13,7 +13,8 @@ import kotlinx.coroutines.sync.withLock
  */
 internal class PeerContactRecords(
     private val deviceDao: DeviceDao,
-    private val mutex: Mutex
+    private val mutex: Mutex,
+    private val pins: TlsPinStore
 ) {
     /**
      * Records a successful health probe when the full identity payload could not be fetched.
@@ -44,6 +45,41 @@ internal class PeerContactRecords(
         }
         deviceDao.touchLastSeen(trimmedId, cleanedIp, port, nextEpoch)
         true
+    }
+
+    /**
+     * A profile that came with the chain: names, address, ports and keys of a device this device already holds as an
+     * active member. Only profile columns are written; a relayed profile never supplies presence, never evicts a usable
+     * address with one from another subnet, and never touches membership. [ownProfile] is true when the device sent it
+     * about itself; a relayed copy may fill a placeholder name but never replaces a name already held, or a stale name
+     * spread by one member would undo a rename on every device.
+     */
+    suspend fun applyChainProfile(state: com.fileapex.domain.peer.PeerNodeState, ownProfile: Boolean): Boolean {
+        val id = state.deviceId.trim()
+        if (id.isEmpty()) return false
+        val changed = mutex.withLock {
+            val existing = deviceDao.getDevice(id)?.takeUnless { it.isRemoved } ?: return@withLock null
+            val mapped = com.fileapex.domain.peer.PeerNodeStateMapper.toEntity(state, existing)
+            val incoming = if (ownProfile || DeviceDisplayNames.isPlaceholder(existing.deviceName)) mapped else mapped.copy(deviceName = existing.deviceName)
+            val keepEndpoint = RosterMerge.hasUsableEndpoint(existing) && incoming.lastKnownIp != existing.lastKnownIp &&
+                !com.fileapex.util.NetworkUtils.sameIpv4Slash24(incoming.lastKnownIp, existing.lastKnownIp)
+            val next = RosterMerge.normalize(
+                incoming.copy(
+                    lastSeenEpochMs = existing.lastSeenEpochMs,
+                    lastKnownIp = if (keepEndpoint) existing.lastKnownIp else incoming.lastKnownIp,
+                    port = if (keepEndpoint) existing.port else incoming.port,
+                    clusterVersion = existing.clusterVersion,
+                    supportedProtocolsJson = RosterMerge.knownProtocols(incoming.supportedProtocolsJson, existing.supportedProtocolsJson)
+                ),
+                existing
+            )
+            if (next.copy(isRemoved = existing.isRemoved, removedAt = existing.removedAt, tlsPin = existing.tlsPin, tlsPinAlt = existing.tlsPinAlt, tlsPort = existing.tlsPort) != existing) {
+                deviceDao.upsertProfile(next)
+            }
+            true
+        } ?: return false
+        if (state.tlsPort in 1..65535) pins.recordPort(id, state.tlsPort)
+        return changed
     }
 
     /** Extends the online window without replacing the LAN address. Used for tailnet probes. */
@@ -81,27 +117,17 @@ internal class PeerContactRecords(
     }
 
     /**
-     * Stores the TLS pin for [deviceId]. Only callers that received the pin over a trusted channel
+     * Hands the TLS pin for [deviceId] to the pin store. Only callers that received the pin over a trusted channel
      * (pairing QR, authenticated migration message, confirmed fingerprint) may use this. No merge path
      * ever copies a pin from incoming data.
      */
-    suspend fun recordTlsPin(deviceId: String, pin: String, port: Int, alt: String = ""): Boolean =
+    suspend fun recordTlsPin(deviceId: String, pin: String, port: Int, alt: String = "", rejoin: Boolean = false, userConfirmed: Boolean = false): Boolean =
         mutex.withLock {
             val trimmedId = deviceId.trim()
-            val normalizedPin = pin.trim().lowercase()
-            val normalizedAlt = alt.trim().lowercase()
-            if (trimmedId.isEmpty() || !TLS_PIN_FORMAT.matches(normalizedPin)) return false
-            if (normalizedAlt.isNotEmpty() && !TLS_PIN_FORMAT.matches(normalizedAlt)) return false
+            if (trimmedId.isEmpty()) return false
             val existing = deviceDao.getDevice(trimmedId) ?: return false
-            if (existing.isRemoved) return false
-            val resolvedPort = if (port in 1..65535) port else existing.tlsPort
-            if (existing.tlsPin == normalizedPin && existing.tlsPinAlt == normalizedAlt &&
-                existing.tlsPort == resolvedPort
-            ) {
-                return false
-            }
-            deviceDao.updateTls(trimmedId, normalizedPin, normalizedAlt, resolvedPort)
-            true
+            if (existing.isRemoved && !rejoin) return false
+            pins.record(trimmedId, pin, port, alt, rejoin, userConfirmed)
         }
 
     /** Only a key the id is derived from is accepted, and a stored key is never replaced. */

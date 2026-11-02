@@ -723,6 +723,9 @@ tasks.register("buildLinuxTsnet") {
     }
 }
 
+/** The one launcher file of every Linux package; jpackage fills in the APPLICATION_* fields and the AppImage task does the same. */
+val linuxLauncher: File = project.file("linux/FileApex.desktop")
+
 tasks.register<Copy>("stageLinuxJpackageResources") {
     group = "distribution"
     description = "Place libFileApexTsnet.so where jpackage copies app resources from"
@@ -1739,17 +1742,13 @@ tasks.register("packageLinuxAppImage") {
         icon.copyTo(appDir.resolve("fileapex.png"), overwrite = true)
         icon.copyTo(appDir.resolve(".DirIcon"), overwrite = true)
         appDir.resolve("fileapex.desktop").writeText(
-            """
-            [Desktop Entry]
-            Type=Application
-            Name=FileApex
-            Comment=Local-first file explorer for your own devices
-            Exec=fileapex %U
-            Icon=fileapex
-            Terminal=false
-            Categories=Utility;FileTools;Network;
-            StartupWMClass=FileApex
-            """.trimIndent() + "\n"
+            linuxLauncher.readText()
+                .replace("APPLICATION_NAME", "FileApex")
+                .replace("APPLICATION_DESCRIPTION", "Local-first file explorer for your own devices")
+                .replace("APPLICATION_LAUNCHER", "fileapex")
+                .replace("APPLICATION_ICON", "fileapex")
+                .replace("DEPLOY_BUNDLE_CATEGORY", "Utility;FileTools;Network;")
+                .replace("DESKTOP_MIMES\n", "")
         )
         val run = appDir.resolve("AppRun")
         run.writeText(
@@ -1802,10 +1801,61 @@ if (isLinuxHost()) {
         .configureEach { dependsOn("verifyLinuxBuildJdk") }
 }
 
+/**
+ * The Compose plugin empties its own jpackage resource directory on every run, so its package tasks cannot carry our
+ * launcher file. These tasks run jpackage on the app image the plugin already builds, with our directory as the
+ * resource directory: jpackage then writes the launcher from `linux/FileApex.desktop`, which names `StartupWMClass`
+ * so the dock matches the window to the app and shows its icon.
+ */
+fun registerLinuxPackage(name: String, type: String) {
+    tasks.register(name) {
+        group = "distribution"
+        description = "Build the $type from the app image with FileApex's own launcher file"
+        dependsOn("createReleaseDistributable")
+        onlyIf { isLinuxHost() }
+        doLast {
+            val resources = layout.buildDirectory.dir("linux-launcher-resources").get().asFile
+            resources.deleteRecursively()
+            resources.mkdirs()
+            linuxLauncher.copyTo(resources.resolve("FileApex.desktop"))
+            // Without this jpackage replaces the app image's icon with its own 32x32 default when it packages.
+            project.file("icons/FileApex-1024.png").copyTo(resources.resolve("FileApex.png"))
+            val appImage = layout.buildDirectory.dir("compose/binaries/main-release/app/FileApex").get().asFile
+            check(appImage.isDirectory) { "The app image is missing: $appImage" }
+            val dest = layout.buildDirectory.dir("compose/binaries/main-release/$type").get().asFile
+            dest.mkdirs()
+            dest.listFiles().orEmpty().filter { it.extension == type }.forEach { it.delete() }
+            val command = listOf(
+                File(System.getProperty("java.home"), "bin/jpackage").absolutePath,
+                "--type", type,
+                "--app-image", appImage.absolutePath,
+                "--resource-dir", resources.absolutePath,
+                "--dest", dest.absolutePath,
+                "--name", "FileApex",
+                "--description", "FileApex",
+                "--vendor", "ByHowieCreations",
+                "--app-version", "1.0.$fileapexVersionCode",
+                "--linux-package-name", "fileapex",
+                "--linux-shortcut",
+                "--linux-app-category", "Utility",
+                "--linux-menu-group", "Utility",
+                "--linux-deb-maintainer", "ByHowieCreations",
+                "--linux-rpm-license-type", "Proprietary"
+            )
+            val process = ProcessBuilder(command).directory(layout.buildDirectory.get().asFile).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            check(process.waitFor() == 0) { "jpackage for the $type failed: $output" }
+            check(dest.listFiles().orEmpty().any { it.extension == type }) { "jpackage made no .$type in $dest" }
+        }
+    }
+}
+registerLinuxPackage("packageLinuxDeb", "deb")
+registerLinuxPackage("packageLinuxRpm", "rpm")
+
 tasks.register("shipLinuxPackages") {
     group = "distribution"
     description = "Build release .deb, .rpm and AppImage and move them to current/ (Linux host only)"
-    dependsOn("packageReleaseDeb", "packageReleaseRpm", "packageLinuxAppImage")
+    dependsOn("packageLinuxDeb", "packageLinuxRpm", "packageLinuxAppImage")
     onlyIf { isLinuxHost() }
 
     doLast {

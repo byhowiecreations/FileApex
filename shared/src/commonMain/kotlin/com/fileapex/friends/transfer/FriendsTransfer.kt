@@ -6,6 +6,8 @@ import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.security.MessageDigest
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** How a received file ended. Anything but [Received] leaves a resumable partial file unless noted. */
@@ -39,36 +41,46 @@ class FriendsReceiver(
     private val maxBytes: Long,
     private val acceptTimeoutMs: Long = 120_000L,
     private val onEvent: (FriendReceiveEvent) -> Unit = {},
+    private val freeBytes: () -> Long = { quarantine.usableSpace },
     private val decide: suspend (FriendOffer) -> Boolean
 ) {
     suspend fun handle(stream: IrohStream, friendKey: String): FriendReceiveResult {
         val offer = try { FriendsWire.decodeOffer(FriendsWire.readFrame(stream)) } catch (_: IOException) { null }
             ?: return FriendReceiveResult.Malformed.also { stream.abort() }
+        val part = File(quarantine, partName(friendKey, offer.transferId))
+        if (!FriendReceiveFiles.claim(part)) {
+            FriendsWire.writeFrame(stream, FriendsWire.encodeReply(false, 0))
+            stream.finish()
+            return FriendReceiveResult.Refused
+        }
+        return try { receiveOffer(stream, offer, part) } finally { FriendReceiveFiles.release(part) }
+    }
+
+    private suspend fun receiveOffer(stream: IrohStream, offer: FriendOffer, part: File): FriendReceiveResult {
         quarantine.mkdirs()
-        val remainingNeeded = offer.sizeBytes
+        val plan = PiecePlan(offer.sizeBytes, offer.chunkBytes)
+        var offset = if (offer.sha256.isNotEmpty() && part.exists()) plan.resumeOffset(part.length()) else 0L
         val fitsLimit = offer.sizeBytes <= maxBytes
-        val fitsDisk = quarantine.usableSpace > remainingNeeded + SPARE
+        val fitsDisk = fitsLimit && FriendReceiveFiles.reserve(part, offer.sizeBytes - offset, freeBytes)
         if (!fitsLimit) onEvent(FriendReceiveEvent.Declined(offer, "size")) else if (!fitsDisk) onEvent(FriendReceiveEvent.Declined(offer, "space"))
         val ok = fitsLimit && fitsDisk && (withTimeoutOrNull(acceptTimeoutMs) { decide(offer) } ?: false)
         if (!ok) {
-            runCatching { FriendsWire.writeFrame(stream, FriendsWire.encodeReply(false, 0)) }
+            replyIfOpen(stream, FriendsWire.encodeReply(false, 0))
             stream.abort()
             return FriendReceiveResult.Refused
         }
-        val part = File(quarantine, partName(friendKey, offer.transferId))
         // Only whole verified pieces count, so a partial file resumes at the last piece boundary.
-        val plan = PiecePlan(offer.sizeBytes, offer.chunkBytes)
-        var offset = if (part.exists()) plan.resumeOffset(part.length()) else 0L
         if (offset == 0L) part.delete()
         FriendsWire.writeFrame(stream, FriendsWire.encodeReply(true, offset))
         onEvent(FriendReceiveEvent.Started(offer, offset, part.name))
+        var senderCanceled = false
         try {
             RandomAccessFile(part, "rw").use { raf ->
                 raf.setLength(offset)
                 val piece = ByteArray(plan.bufferBytes)
                 while (offset < offer.sizeBytes) {
                     when (FriendsWire.readExact(stream, 1)[0].toInt()) {
-                        FriendsWire.TAG_CANCEL -> { part.delete(); return FriendReceiveResult.CanceledBySender }
+                        FriendsWire.TAG_CANCEL -> { senderCanceled = true; break }
                         FriendsWire.TAG_CHUNK -> Unit
                         else -> return FriendReceiveResult.Malformed
                     }
@@ -76,46 +88,58 @@ class FriendsReceiver(
                     val length = plan.lengthAt(offset)
                     var got = 0
                     while (got < length) {
-                        val bytes = stream.read(minOf(FriendsWire.CHUNK, length - got)) ?: return FriendReceiveResult.Interrupted
+                        val bytes = FriendsWire.readChunk(stream, minOf(FriendsWire.CHUNK, length - got)) ?: return FriendReceiveResult.Interrupted
                         bytes.copyInto(piece, got)
                         got += bytes.size
                         onEvent(FriendReceiveEvent.Progress(offer, offset + got))
                     }
                     if (!MessageDigest.isEqual(MessageDigest.getInstance("SHA-256").also { it.update(piece, 0, length) }.digest(), expected)) {
-                        runCatching { FriendsWire.writeFrame(stream, "bad".encodeToByteArray()) }
+                        replyIfOpen(stream, "bad".encodeToByteArray())
                         return FriendReceiveResult.HashMismatch
                     }
                     raf.seek(offset)
                     raf.write(piece, 0, length)
                     offset += length
+                    FriendReceiveFiles.written(part, offer.sizeBytes - offset)
                 }
             }
         } catch (_: IOException) {
             return FriendReceiveResult.Interrupted
         }
+        if (senderCanceled) {
+            if (part.exists() && !part.delete()) throw IOException("Could not remove canceled friend partial file")
+            return FriendReceiveResult.CanceledBySender
+        }
         onEvent(FriendReceiveEvent.Verifying(offer))
-        val target = uniqueTarget(FriendsWire.safeName(offer.fileName))
-        if (!part.renameTo(target)) { part.copyTo(target); part.delete() }
-        runCatching { FriendsWire.writeFrame(stream, "ok".encodeToByteArray()); stream.finish() }
+        currentCoroutineContext().ensureActive()
+        if (offer.sha256.isNotEmpty() && !MessageDigest.isEqual(friendFileSha256(part).encodeToByteArray(), offer.sha256.encodeToByteArray())) {
+            if (!part.delete()) throw IOException("Could not remove corrupt friend partial file")
+            FriendsWire.writeFrame(stream, "bad".encodeToByteArray())
+            stream.finish()
+            return FriendReceiveResult.HashMismatch
+        }
+        currentCoroutineContext().ensureActive()
+        val target = try { FriendReceiveFiles.publish(part, offer.fileName) } catch (_: IOException) {
+            stream.abort()
+            return FriendReceiveResult.Interrupted
+        }
+        replyIfOpen(stream, "ok".encodeToByteArray(), finish = true)
         return FriendReceiveResult.Received(target)
     }
 
-    private fun uniqueTarget(name: String): File {
-        var f = File(quarantine, name)
-        var i = 1
-        val stem = name.substringBeforeLast('.', name)
-        val ext = name.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" }
-        while (f.exists()) f = File(quarantine, "$stem ($i)$ext").also { i++ }
-        return f
+    /** The sender may already have dropped the stream; that is not an error here, but cancellation of this receive still propagates. */
+    private suspend fun replyIfOpen(stream: IrohStream, frame: ByteArray, finish: Boolean = false) {
+        try {
+            FriendsWire.writeFrame(stream, frame)
+            if (finish) stream.finish()
+        } catch (_: IOException) { }
     }
 
     companion object {
-        private const val SPARE = 50L * 1024 * 1024
-
         /** Derived, so a sender can neither pick a path nor collide with another friend's transfer. */
         fun partName(friendKey: String, transferId: String): String {
             val h = MessageDigest.getInstance("SHA-256").digest("$friendKey|$transferId".encodeToByteArray())
-            return h.take(16).joinToString("") { "%02x".format(it) } + ".part"
+            return ".fileapex-" + h.take(16).joinToString("") { "%02x".format(it) } + ".part"
         }
 
         fun sha256(file: File): String {
@@ -147,7 +171,7 @@ sealed interface FriendSendPhase {
 
 /**
  * Sending side: offer, wait for the friend's yes and the resume offset, then push the file in pieces of [FriendsWire.DATA_CHUNK],
- * each led by its own SHA-256 so the receiver verifies as it goes. There is no hashing pass before the first byte moves.
+ * each led by its own SHA-256. A whole-file digest in the offer also verifies resumed bytes before publication.
  * [shouldCancel] is checked between pieces; when it is true the receiver is told to delete its part file.
  */
 object FriendsSender {
@@ -158,16 +182,22 @@ object FriendsSender {
         onPhase: (FriendSendPhase) -> Unit = {},
         shouldCancel: () -> Boolean = { false },
         batchId: String = "",
+        onFailure: (String) -> Unit = {},
         onProgress: (Long) -> Unit = {}
     ): FriendSendResult {
+        fun failed(reason: String): FriendSendResult { onFailure(reason); return FriendSendResult.Failed }
         try {
-            val offer = FriendOffer(transferId, file.length(), file.name, batchId = batchId)
+            if (shouldCancel()) return FriendSendResult.Canceled
+            onPhase(FriendSendPhase.Preparing)
+            val hash = friendFileSha256(file)
+            if (shouldCancel()) return FriendSendResult.Canceled
+            val offer = FriendOffer(transferId, file.length(), file.name, batchId = batchId, sha256 = hash)
             onPhase(FriendSendPhase.Waiting)
             FriendsWire.writeFrame(stream, FriendsWire.encodeOffer(offer))
-            val (accepted, offset) = FriendsWire.decodeReply(FriendsWire.readFrame(stream)) ?: return FriendSendResult.Failed
+            val (accepted, offset) = FriendsWire.decodeReply(FriendsWire.readFrame(stream)) ?: return failed(FriendFailure.ANSWER)
             if (!accepted) return FriendSendResult.Refused
             val plan = PiecePlan(offer.sizeBytes, offer.chunkBytes)
-            if (!plan.isValidOffset(offset)) return FriendSendResult.Failed
+            if (!plan.isValidOffset(offset)) return failed(FriendFailure.ANSWER)
             onPhase(FriendSendPhase.Sending(offset))
             RandomAccessFile(file, "r").use { raf ->
                 raf.seek(offset)
@@ -175,18 +205,18 @@ object FriendsSender {
                 var sent = offset
                 while (sent < offer.sizeBytes) {
                     if (shouldCancel()) {
-                        stream.write(byteArrayOf(FriendsWire.TAG_CANCEL.toByte()))
+                        FriendsWire.writeRaw(stream, byteArrayOf(FriendsWire.TAG_CANCEL.toByte()))
                         stream.finish()
                         return FriendSendResult.Canceled
                     }
                     val length = plan.lengthAt(sent)
                     raf.readFully(piece, 0, length)
                     val digest = MessageDigest.getInstance("SHA-256").also { it.update(piece, 0, length) }.digest()
-                    stream.write(byteArrayOf(FriendsWire.TAG_CHUNK.toByte()) + digest)
+                    FriendsWire.writeRaw(stream, byteArrayOf(FriendsWire.TAG_CHUNK.toByte()) + digest)
                     var written = 0
                     while (written < length) {
                         val n = minOf(FriendsWire.CHUNK, length - written)
-                        stream.write(piece.copyOfRange(written, written + n))
+                        FriendsWire.writeRaw(stream, piece.copyOfRange(written, written + n))
                         written += n
                         onProgress(sent + written)
                     }
@@ -195,9 +225,9 @@ object FriendsSender {
             }
             stream.finish()
             onPhase(FriendSendPhase.Verifying)
-            return if (FriendsWire.readFrame(stream).decodeToString() == "ok") FriendSendResult.Done else FriendSendResult.Failed
-        } catch (_: IOException) {
-            return FriendSendResult.Failed
+            return if (FriendsWire.readFrame(stream, timeoutMs = 300_000L).decodeToString() == "ok") FriendSendResult.Done else failed(FriendFailure.ANSWER)
+        } catch (e: IOException) {
+            return failed(FriendFailure.of(e))
         }
     }
 }

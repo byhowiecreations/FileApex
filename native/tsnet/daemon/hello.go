@@ -114,7 +114,7 @@ func (n *Node) helloProof(peer deviceRecord, data []byte) ([]byte, error) {
 }
 
 func (n *Node) verifyHello(p helloPacket, peer deviceRecord, now time.Time) bool {
-	if peer.IsRemoved || peer.DeviceID != p.senderID || strings.TrimSpace(peer.PublicKey) == "" {
+	if peer.DeviceID != p.senderID || strings.TrimSpace(peer.PublicKey) == "" {
 		return false
 	}
 	if p.port < 1 || p.port > 65535 {

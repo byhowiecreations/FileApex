@@ -25,7 +25,8 @@ internal fun Route.registerTlsRoutes(server: FileApexServer) {
             val now = TimeUtils.now()
             when (TlsPinAnnouncements.accept(repository, announcement, localId, now)) {
                 TlsAnnouncementOutcome.UnknownPeer,
-                TlsAnnouncementOutcome.SenderKeyMismatch -> call.respond(HttpStatusCode.Forbidden, "tls_pin_not_trusted")
+                TlsAnnouncementOutcome.SenderKeyMismatch,
+                TlsAnnouncementOutcome.NoAuthority -> call.respond(HttpStatusCode.Forbidden, "tls_pin_not_trusted")
                 TlsAnnouncementOutcome.Undecryptable,
                 TlsAnnouncementOutcome.Invalid -> call.respond(HttpStatusCode.BadRequest, "tls_pin_invalid")
                 else -> {

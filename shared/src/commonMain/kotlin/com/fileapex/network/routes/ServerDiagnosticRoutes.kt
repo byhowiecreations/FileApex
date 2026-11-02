@@ -32,10 +32,6 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
         val peerId = server.authenticatedPeerId(call)
         if (peerId != null) {
             runCatching { TransferTransactionJournal.purgeInstalledForSender(peerId) }
-            runCatching { com.fileapex.di.FileApexServices.deviceRepository.selfMembershipVersion().toString() }.getOrNull()?.let { version ->
-                call.response.headers.append(com.fileapex.network.PeerHttpHeaders.MEMBERSHIP_VERSION, version)
-            }
-            call.appendClusterHeaders(server)
             runCatching { com.fileapex.di.FileApexServices.bulletinSyncEngine.latestChange() }.getOrNull()?.let { version ->
                 call.response.headers.append(com.fileapex.network.PeerHttpHeaders.BULLETIN_VERSION, version.toString())
             }

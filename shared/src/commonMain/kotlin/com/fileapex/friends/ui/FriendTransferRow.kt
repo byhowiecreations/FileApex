@@ -55,7 +55,7 @@ private fun detail(t: FriendTransfer, moving: Boolean): String {
             FriendTransferStatus.ACTIVE -> if (send) "friends_status_sending" else "friends_status_receiving"
             FriendTransferStatus.DONE -> if (send) "friends_status_sent" else "friends_status_received"
             FriendTransferStatus.REFUSED -> when (t.note) { "size" -> "friends_refused_size"; "space" -> "friends_refused_space"; else -> "friends_status_refused" }
-            FriendTransferStatus.FAILED -> "friends_status_failed"
+            FriendTransferStatus.FAILED -> when (t.note) { "unreachable" -> "friends_failed_unreachable"; "timeout" -> "friends_failed_timeout"; "lost" -> "friends_failed_lost"; "answer" -> "friends_failed_answer"; "file" -> "friends_failed_file"; "gone" -> "friends_failed_gone"; else -> "friends_status_failed" }
             FriendTransferStatus.CANCELED -> "friends_status_canceled"
         }
     )

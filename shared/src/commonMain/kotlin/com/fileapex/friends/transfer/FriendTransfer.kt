@@ -2,6 +2,9 @@ package com.fileapex.friends.transfer
 
 import com.fileapex.util.TimeUtils
 import java.io.File
+import java.io.IOException
+import java.util.UUID
+import com.fileapex.iroh.IrohStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -52,19 +55,19 @@ class FriendsTransferBoard(
     private val lastEmit = ConcurrentHashMap<String, Long>()
     private val activeSince = ConcurrentHashMap<String, Pair<Long, Long>>()
 
-    fun get(id: String): FriendTransfer? = internal.value.firstOrNull { it.id == id }
+    @Synchronized fun get(id: String): FriendTransfer? = internal.value.firstOrNull { it.id == id }
 
-    fun put(transfer: FriendTransfer) {
+    @Synchronized fun put(transfer: FriendTransfer) {
         internal.update { list -> if (list.any { it.id == transfer.id }) list.map { if (it.id == transfer.id) transfer else it } else list + transfer }
         lastEmit[transfer.id] = now()
         onChange(transfer)
     }
 
-    fun status(id: String, status: FriendTransferStatus) {
+    @Synchronized fun status(id: String, status: FriendTransferStatus, note: String = "") {
         val current = get(id) ?: return
-        if (current.status == status) return
+        if (current.status.finished || current.status == status) return
         if (status == FriendTransferStatus.ACTIVE) activeSince[id] = now() to current.doneBytes
-        val updated = current.copy(status = status, doneBytes = if (status == FriendTransferStatus.DONE) current.totalBytes else current.doneBytes)
+        val updated = current.copy(status = status, note = note.ifEmpty { current.note }, doneBytes = if (status == FriendTransferStatus.DONE) current.totalBytes else current.doneBytes)
         put(updated)
         if (status.finished) {
             activeSince.remove(id)
@@ -72,8 +75,9 @@ class FriendsTransferBoard(
         }
     }
 
-    fun progress(id: String, done: Long) {
+    @Synchronized fun progress(id: String, done: Long) {
         val current = get(id) ?: return
+        if (current.status.finished) return
         val t = now()
         if (t - (lastEmit[id] ?: 0L) < minGapMs) return
         val (since, fromBytes) = activeSince[id] ?: (t to done)
@@ -82,14 +86,14 @@ class FriendsTransferBoard(
         put(current.copy(doneBytes = done, speedBps = speed.coerceAtLeast(0L)))
     }
 
-    fun drop(id: String) {
+    @Synchronized fun drop(id: String) {
         internal.update { list -> list.filterNot { it.id == id } }
         lastEmit.remove(id)
         activeSince.remove(id)
     }
 }
 
-/** Files waiting to be sent, first in first out. The hub keeps one active send per friend and takes the next from here. */
+/** Files waiting to be sent, first in first out within each friend's lane limits. */
 class FriendsSendQueue {
     /** [owned] marks a private copy the queue made for a share; it is deleted when the transfer ends or is dropped. */
     data class Item(val id: String, val friendKey: String, val file: File, val owned: Boolean = false, val batch: FriendSendBatch? = null)
@@ -97,6 +101,22 @@ class FriendsSendQueue {
     private val items = ArrayDeque<Item>()
 
     @Synchronized fun add(item: Item) { items.addLast(item) }
+
+    @Synchronized fun enqueue(friendKey: String, label: String, files: List<File>, owned: Boolean, board: FriendsTransferBoard, scope: CoroutineScope, openBatch: suspend () -> IrohStream) {
+        val prepared = files.chunked(FriendsBatchWire.MAX_FILES).flatMap { chunk ->
+            val measured = chunk.map { it to it.length() }
+            val total = try { measured.fold(0L) { sum, (_, size) -> Math.addExact(sum, size) } }
+                catch (e: ArithmeticException) { throw IOException("Selected files exceed the supported batch size", e) }
+            val batch = if (chunk.size > 1) FriendSendBatch(
+                FriendBatch(UUID.randomUUID().toString().replace("-", ""), chunk.size, total, chunk.take(FriendsBatchWire.MAX_NAMES).map { it.name }), scope, openBatch
+            ) else null
+            measured.map { (file, size) -> Item("s${UUID.randomUUID()}", friendKey, file, owned, batch) to size }
+        }
+        prepared.forEach { (item, size) ->
+            board.put(FriendTransfer(item.id, friendKey, label, FriendTransferDirection.SEND, item.file.name, size, status = FriendTransferStatus.QUEUED))
+            items.addLast(item)
+        }
+    }
 
     @Synchronized fun take(friendKey: String, skipLarge: Boolean = false, largeBytes: Long = Long.MAX_VALUE): Item? {
         val at = items.indexOfFirst { it.friendKey == friendKey && !(skipLarge && it.file.length() >= largeBytes) }
@@ -106,11 +126,11 @@ class FriendsSendQueue {
     /** The item when it was still waiting and is now gone. */
     @Synchronized fun removeItem(id: String): Item? {
         val at = items.indexOfFirst { it.id == id }
-        return if (at < 0) null else items.removeAt(at)
+        return if (at < 0) null else items.removeAt(at).also { it.batch?.release() }
     }
 
     /** True when the item was still waiting and is now gone. */
-    @Synchronized fun remove(id: String): Boolean = items.removeAll { it.id == id }
+    @Synchronized fun remove(id: String): Boolean = removeItem(id) != null
 
     @Synchronized fun idsFor(friendKey: String): List<String> = items.filter { it.friendKey == friendKey }.map { it.id }
 }

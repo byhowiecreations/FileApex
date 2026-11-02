@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import com.fileapex.platform.FileApexAndroidBootstrap
 import com.fileapex.platform.ShareServerForegroundNotification
 import com.fileapex.platform.isUserStorageUnlocked
+import com.fileapex.platform.trimsMemoryAt
 
 class FileApexApplication : Application(), Configuration.Provider {
     // First, before any property below can start the coroutine pool (it reads the keep-alive setting once).
@@ -44,7 +45,7 @@ class FileApexApplication : Application(), Configuration.Provider {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_RUNNING_LOW && isUserStorageUnlocked(this)) {
+        if (trimsMemoryAt(level) && isUserStorageUnlocked(this)) {
             com.fileapex.platform.MemoryTrim.release()
         }
     }

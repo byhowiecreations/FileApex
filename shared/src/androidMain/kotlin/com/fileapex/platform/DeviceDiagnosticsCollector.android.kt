@@ -95,7 +95,7 @@ private fun readProcessor(): ProcessorDiagnostics {
     val scaling = when {
         freqsMhz.isEmpty() -> "Unknown"
         freqsMhz.size == 1 -> "${freqsMhz.first()} MHz"
-        else -> "${freqsMhz.min()}–${freqsMhz.max()} MHz"
+        else -> "${freqsMhz.min()} to ${freqsMhz.max()} MHz"
     }
     val governor = readCpuGovernor()
     val frequencyScaling = if (governor.isNotBlank()) "$scaling ($governor)" else scaling

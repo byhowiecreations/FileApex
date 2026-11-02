@@ -16,8 +16,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -33,14 +31,9 @@ data class GenerateQrUiState(
 )
 
 /**
- * Shows a QR for inbound pairing and dismisses automatically when Room reports a newly paired device.
+ * Shows a QR for inbound pairing and closes when the host accepts a joiner, new or already on the roster.
  */
 class GenerateQrViewModel : ViewModel() {
-    private val deviceRepository = FileApexServices.deviceRepository
-    private val baselineDeviceIds = mutableSetOf<String>()
-
-    @Volatile
-    private var baselineLoaded = false
     private var hostTicker: Job? = null
     private var serverWarmupJob: Job? = null
 
@@ -54,16 +47,12 @@ class GenerateQrViewModel : ViewModel() {
     /** Call each time the Generate QR screen is shown (resets auto-close state from prior visits). */
     fun onScreenEntered() {
         viewModelScope.launch {
-            baselineDeviceIds.clear()
-            baselineDeviceIds.addAll(deviceRepository.listDevices().map { it.deviceId })
-            baselineLoaded = true
             _uiState.update { it.copy(pairedDeviceName = null) }
             refresh(restartBroadcast = true)
         }
     }
 
     fun onScreenLeft() {
-        baselineLoaded = false
         hostTicker?.cancel()
         hostTicker = null
         serverWarmupJob?.cancel()
@@ -164,25 +153,16 @@ class GenerateQrViewModel : ViewModel() {
 
     private fun observeIncomingPairings() {
         viewModelScope.launch {
-            deviceRepository.observeDevices()
-                .map { devices -> devices.map { it.deviceId to it.deviceName } }
-                .distinctUntilChanged()
-                .collect { devices ->
-                    if (!baselineLoaded) return@collect
-                    val newlyPaired = devices.firstOrNull { (id, _) -> id !in baselineDeviceIds }
-                    if (newlyPaired != null) {
-                        baselineDeviceIds.add(newlyPaired.first)
-                        LanPairingDiscovery.onHostPairingAccepted()
-                        hostTicker?.cancel()
-                        _uiState.update {
-                            it.copy(
-                                pairedDeviceName = newlyPaired.second,
-                                broadcast = HostPairingBroadcastState(remainingLabel = "0:00"),
-                                preparingShareServer = false
-                            )
-                        }
-                    }
+            LanPairingDiscovery.hostPaired.collect { joiner ->
+                hostTicker?.cancel()
+                _uiState.update {
+                    it.copy(
+                        pairedDeviceName = joiner.deviceName,
+                        broadcast = HostPairingBroadcastState(remainingLabel = "0:00"),
+                        preparingShareServer = false
+                    )
                 }
+            }
         }
     }
 }

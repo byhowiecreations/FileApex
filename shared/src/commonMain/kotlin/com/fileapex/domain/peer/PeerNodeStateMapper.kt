@@ -22,7 +22,7 @@ object PeerNodeStateMapper {
 
     fun selfState(
         identity: LocalIdentity,
-        membershipVersion: Long,
+        membershipVersion: Long = 0L,
         deviceName: String = LocalDeviceNameStore.current().ifBlank { identity.deviceName },
         pinRequired: Boolean = false,
         lastSeenTimestamp: Long = TimeUtils.now()
@@ -52,7 +52,7 @@ object PeerNodeStateMapper {
             isRemoved = false,
             removedAt = null,
             membershipVersion = membershipVersion,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL,
+            membershipProtocol = 0,
             tlsPin = com.fileapex.security.tls.LocalTlsInfo.pin,
             tlsPort = com.fileapex.security.tls.LocalTlsInfo.port,
             tlsRotation = com.fileapex.security.tls.LocalTlsInfo.rotation,
@@ -131,9 +131,6 @@ object PeerNodeStateMapper {
             removedAt = state.removedAt ?: if (state.isRemoved) version else null,
             tailnetHostname = existing?.tailnetHostname.orEmpty(),
             tailnetIpv4 = existing?.tailnetIpv4.orEmpty(),
-            tlsPin = existing?.tlsPin.orEmpty(),
-            tlsPinAlt = existing?.tlsPinAlt.orEmpty(),
-            tlsPort = state.tlsPort.takeIf { it in 1..65535 } ?: existing?.tlsPort ?: 0,
             hardwareHash = state.hardwareHash.trim().ifBlank { existing?.hardwareHash.orEmpty() }
         )
     }
@@ -159,7 +156,7 @@ object PeerNodeStateMapper {
             isRemoved = entity.isRemoved,
             removedAt = entity.removedAt,
             membershipVersion = entity.clusterVersion,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL,
+            membershipProtocol = 0,
             tlsPin = entity.tlsPin,
             tlsPort = entity.tlsPort
         )

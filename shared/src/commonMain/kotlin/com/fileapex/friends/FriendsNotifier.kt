@@ -1,7 +1,9 @@
 package com.fileapex.friends
 
-/** Tells the user outside the app that a friend is waiting for an Accept. Android posts a notification, desktop shows the in-app prompt only. */
+/** Platform notifications for incoming offers and finished files, alongside the in-app queue. */
 expect object FriendsNotifier {
+    val canRequestPermission: Boolean
+    fun requestPermission()
     fun offerPending(offer: PendingFriendOffer)
     fun offerResolved(offerId: String)
     /** A file finished. Android posts a notification with View and Open location when the app is in the background; the in-app card covers the foreground. */

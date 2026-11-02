@@ -27,6 +27,15 @@ object BulletinUnread {
         .filter { !it.isDeleted && it.originDeviceId != selfId && it.updatedAt > seenAt && it.contentType != BulletinContentType.BATTERY_LOW }
         .map { it.id }.toSet()
 
+    /** Counts only, for a log line when the unread number jumps: tells a reset marker from rows that were just rewritten. */
+    fun jumpNote(messages: List<MessageEntity>, selfId: String, seenAt: Long, now: Long): String {
+        val minute = 60_000L
+        val newest = messages.maxOfOrNull { it.updatedAt }
+        return "unread=${count(messages, selfId, seenAt)} rows=${messages.size} markerAgeMin=${(now - seenAt) / minute} " +
+            "newestChangeAgeMin=${newest?.let { (now - it) / minute } ?: -1} fromOthers=${messages.count { it.originDeviceId != selfId }} " +
+            "changedLast5Min=${messages.count { it.updatedAt >= now - 5 * minute }}"
+    }
+
     fun batteryLow(messages: List<MessageEntity>, selfId: String): List<BatteryLowAlert> = messages
         .filter { !it.isDeleted && it.originDeviceId != selfId && it.contentType == BulletinContentType.BATTERY_LOW }
         .groupBy { it.originDeviceId }

@@ -580,9 +580,9 @@ private fun getBatteryColor(percent: Int?, isCharging: Boolean, isOnline: Boolea
         !isOnline -> Color(0xFFFF6E6E)
         isCharging -> Color(0xFF00E5FF) // Teal / Cyan (Charging)
         percent != null -> when (percent) {
-            in 40..100 -> Color(0xFF00E676) // Green (40% – 100%)
-            in 21..39 -> Color(0xFFFF9800)  // Orange (21% – 39%)
-            else -> Color(0xFFFF5252)       // Red (1% – 20%)
+            in 40..100 -> Color(0xFF00E676) // Green (40% to 100%)
+            in 21..39 -> Color(0xFFFF9800)  // Orange (21% to 39%)
+            else -> Color(0xFFFF5252)       // Red (1% to 20%)
         }
         else -> Color(0xFFB9F6CA)
     }
@@ -612,9 +612,9 @@ private fun formatTerminalLine(line: String): AnnotatedString {
                 val batteryColor = when {
                     isCharging -> Color(0xFF00E5FF) // Teal / Cyan (Charging)
                     percentNumber != null -> when (percentNumber) {
-                        in 40..100 -> Color(0xFF00E676) // Green (40% – 100%)
-                        in 21..39 -> Color(0xFFFF9800)  // Orange (21% – 39%)
-                        else -> Color(0xFFFF5252)       // Red (1% – 20%)
+                        in 40..100 -> Color(0xFF00E676) // Green (40% to 100%)
+                        in 21..39 -> Color(0xFFFF9800)  // Orange (21% to 39%)
+                        else -> Color(0xFFFF5252)       // Red (1% to 20%)
                     }
                     statePart.contains("OFFLINE", ignoreCase = true) -> Color(0xFFFF6E6E)
                     else -> Color(0xFFB9F6CA)
@@ -687,9 +687,9 @@ private fun formatTerminalLine(line: String): AnnotatedString {
                 val batteryColor = when {
                     isCharging -> Color(0xFF00E5FF) // Teal / Cyan (Charging)
                     percentNumber != null -> when (percentNumber) {
-                        in 40..100 -> Color(0xFF00E676) // Green (40% – 100%)
-                        in 21..39 -> Color(0xFFFF9800)  // Orange (21% – 39%)
-                        else -> Color(0xFFFF5252)       // Red (1% – 20%)
+                        in 40..100 -> Color(0xFF00E676) // Green (40% to 100%)
+                        in 21..39 -> Color(0xFFFF9800)  // Orange (21% to 39%)
+                        else -> Color(0xFFFF5252)       // Red (1% to 20%)
                     }
                     col0.contains("OFFLINE", ignoreCase = true) || col2.contains("OFFLINE", ignoreCase = true) ->
                         Color(0xFFFF6E6E)

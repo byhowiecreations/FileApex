@@ -132,7 +132,7 @@ class IrohBridge(
                     inbound.stream.abort()
                     return@launch
                 }
-                if (viaBridge && peer != null) {
+                if (viaBridge) {
                     registeredPort = server.localPort
                     TlsBridgeRegistry.register(registeredPort, peer)
                 }

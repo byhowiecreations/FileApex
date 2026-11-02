@@ -259,10 +259,7 @@ class PeerPresenceMonitor(
             val lan = isActiveLanConnectivity()
             if (lan || tailnetNodeUp()) {
                 scope.launch {
-                    cancellableCatching {
-                        awaitShareServerReady()
-                        if (repository.listCandidates().isNotEmpty()) FileApexServices.peerAdmission.verifyPending()
-                    }
+                    cancellableCatching { awaitShareServerReady() }
                 }
             }
             if (peers.isEmpty()) {
@@ -579,12 +576,6 @@ class PeerPresenceMonitor(
         override fun onBulletinVersion(peer: PairedDeviceEntity, version: Long) {
             FileApexServices.bulletinSyncEngine.onPeerBulletinVersion(peer, version)
         }
-        override fun pullRemovals(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String) {
-            scope.launch { pullers.removals.pull(peer, endpoint, theirs) }
-        }
-        override fun reconcileCluster(peer: PairedDeviceEntity, endpoint: ResolvedPeerEndpoint, theirs: String) {
-            scope.launch { pullers.cluster.pull(peer, endpoint, theirs) }
-        }
         override suspend fun touchLastSeenEpoch(deviceId: String) {
             mutex.withLock { repository.touchPeerLastSeenEpoch(deviceId) }
         }
@@ -597,7 +588,7 @@ class PeerPresenceMonitor(
             mutex.withLock { repository.applyPeerNodeState(state, rosterDeviceId = rosterDeviceId, observedDirectly = true) }
         }
         override suspend fun supersedeHardwareTwins(state: PeerNodeState) {
-            FileApexServices.peerAdmission.supersedeHardwareTwins(state)
+            com.fileapex.domain.pairing.HardwareTwins.supersede(state)
         }
     }, nodeStateClaims)
 
@@ -631,8 +622,6 @@ class PeerPresenceMonitor(
             mutex.withLock { repository.applyPeerNodeState(state, rosterDeviceId = rosterDeviceId, observedDirectly = true) }
         }
     })
-
-    private val pullers = RemovalPullers(repository, client)
 
     private suspend fun markReachable(vararg deviceIds: String, epochMs: Long = TimeUtils.now(), overLan: Boolean = true, via: RouteKind? = null) {
         book.record(deviceIds, epochMs, via ?: if (overLan) RouteKind.Lan else null)

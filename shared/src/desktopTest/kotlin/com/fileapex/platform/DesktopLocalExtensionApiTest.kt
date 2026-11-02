@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import com.fileapex.network.LocalShareDevice
+import com.fileapex.friends.FriendShareTarget
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,18 +10,23 @@ import org.junit.Test
 
 class DesktopLocalExtensionApiTest {
     private class Rig(
-        var queued: SendOutcome = SendOutcome(sent = true, queued = false, message = "Sent 2 files")
+        var queued: SendOutcome = SendOutcome(sent = true, queued = false, message = "Sent 2 files"),
+        val friendTargets: List<FriendShareTarget> = emptyList(),
+        var friendAccepted: Boolean = true
     ) {
         val sent = mutableListOf<Pair<List<String>, List<String>>>()
         val files = mutableListOf<Triple<String, String, String>>()
         val texts = mutableListOf<String>()
+        val friendSends = mutableListOf<Pair<List<String>, String>>()
         var failWith: Throwable? = null
         val api = DesktopLocalExtensionApi(
             devices = { listOf(ShareRow("d1", "Fold", false, true), ShareRow("d2", "Studio", false, false), ShareRow("d3", "Gone", true, true)) },
             sendOrQueue = { paths, ids -> failWith?.let { throw it }; sent += paths to ids; queued },
             postFile = { path, caption -> files += Triple(path, java.io.File(path).name, caption) },
             postText = { texts += it },
-            text = { key -> key }
+            text = { key -> key },
+            friends = { friendTargets },
+            sendFriendPaths = { paths, key -> friendSends += paths to key; friendAccepted }
         )
     }
 
@@ -73,6 +79,33 @@ class DesktopLocalExtensionApiTest {
         assertTrue(rig.texts.isEmpty())
         tmp.delete()
         Unit
+    }
+
+    @Test fun finderListsFriendsWithoutAddingThemToThePairedDeviceRepository() = runBlocking {
+        val rig = Rig(friendTargets = listOf(FriendShareTarget("key", "Alex", "Family")))
+        assertEquals(LocalShareDevice("friend:key", "Alex (Family)", true), rig.api.devices().last())
+    }
+
+    @Test fun finderFriendIdsNeverReachThePairedDeviceTransferQueue() = runBlocking {
+        val rig = Rig(friendTargets = listOf(FriendShareTarget("key", "Alex", "Family")))
+        val result = rig.api.send(listOf("/a/file"), listOf("d1", "friend:key"))
+        assertTrue(result.ok)
+        assertEquals(listOf(listOf("/a/file") to listOf("d1")), rig.sent)
+        assertEquals(listOf(listOf("/a/file") to "key"), rig.friendSends)
+    }
+
+    @Test fun forgedOrRemovedFriendTargetsAreRejectedBeforeAnyDispatch() = runBlocking {
+        val rig = Rig()
+        assertFalse(rig.api.send(listOf("/a/file"), listOf("d1", "friend:missing")).ok)
+        assertTrue(rig.sent.isEmpty())
+        assertTrue(rig.friendSends.isEmpty())
+    }
+
+    @Test fun partialHandoffReportsAcceptedTargetsSoARetryDoesNotResendThem() = runBlocking {
+        val rig = Rig(friendTargets = listOf(FriendShareTarget("key", "Alex", "Family")), friendAccepted = false)
+        val result = rig.api.send(listOf("/a/file"), listOf("d1", "friend:key"))
+        assertFalse(result.ok)
+        assertEquals(listOf("d1"), result.acceptedIds)
     }
 
     @Test

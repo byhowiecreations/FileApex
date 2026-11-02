@@ -39,15 +39,11 @@ internal class DevicesPairingActions(
                 if (payload.deviceId == identity.deviceId) {
                     error(AppI18n.t("pairing_scan_own_qr"))
                 }
-                val verified = cancellableCatching {
-                    FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
-                }.getOrNull()
-                val pinRequired = verified?.pinRequired == true || payload.pinRequired
-                if (pinRequired) {
+                if (payload.pinRequired) {
                     _uiState.update {
                         it.copy(
                             pendingPinPairing = payload.copy(pinRequired = true),
-                            statusMessage = AppI18n.t("enter_pin_for", verified?.deviceName ?: payload.deviceName)
+                            statusMessage = AppI18n.t("enter_pin_for", payload.deviceName)
                         )
                     }
                     return@launch
@@ -103,24 +99,19 @@ internal class DevicesPairingActions(
     private suspend fun completePairing(payload: PairingPayload, pin: String?) {
         // Snapshot before anything is adopted: only this pre-pairing cluster is ours to announce.
         val preexistingIds = repository.listDevices().map { it.deviceId }.toSet()
-        val verified = cancellableCatching {
-            FileApexServices.client.fetchPeerNodeState(payload.host, payload.port)
-        }.getOrNull()
-
-        val broadcasterId = verified?.deviceId ?: payload.deviceId
-        val broadcasterName = verified?.deviceName ?: payload.deviceName
-        val broadcasterRoot = verified?.rootPath ?: payload.rootPath
+        val broadcasterId = payload.deviceId
+        val broadcasterName = payload.deviceName
+        val broadcasterRoot = payload.rootPath
 
         // The pairing code that was scanned, typed or auto-filled is the authorization; there is no second check.
-        val hostPin = payload.tlsPin.ifBlank { verified?.tlsPin.orEmpty() }
-        val hostPort = if (payload.tlsPort > 0) payload.tlsPort else verified?.tlsPort ?: 0
+        val hostPort = payload.tlsPort
 
         val broadcasterEntity = PairedDeviceEntity(
             deviceId = broadcasterId,
             deviceName = broadcasterName,
             lastKnownIp = payload.host,
             port = payload.port,
-            publicKeyHash = verified?.publicKeyHash?.ifBlank { payload.publicKeyHash } ?: payload.publicKeyHash,
+            publicKeyHash = payload.publicKeyHash,
             rootPath = broadcasterRoot
         )
 
@@ -179,24 +170,19 @@ internal class DevicesPairingActions(
         }
         // Stored only now, with the key the handshake proved.
         repository.adoptFromPairing(broadcasterEntity)
-        repository.recordTlsPin(broadcasterId, provenPin, hostPort)
-        verified?.let { state ->
-            repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
-        }
+        repository.recordTlsPin(broadcasterId, provenPin, hostPort, rejoin = true)
         if (!pin.isNullOrBlank()) {
             FileApexServices.client.rememberSessionPin(payload.host, payload.port, pin)
             DeviceSessionManager.markDeviceAccessed(broadcasterId)
         }
 
-        // The first identity request carries our id, which a peer holding an old removal for us refuses (401).
-        // Accepting the pairing clears that removal, and introductions can only be sealed for a peer whose key we hold.
-        if (verified == null) {
-            cancellableCatching { FileApexServices.client.fetchPeerNodeState(payload.host, payload.port) }
-                .getOrNull()
-                ?.let { state ->
-                    repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
-                }
-        }
+        // Only now, after the handshake, is this device a pinned peer of the host: its identity is read once, introductions
+        // can only be sealed for a peer whose key we hold.
+        cancellableCatching { FileApexServices.client.fetchPeerNodeState(payload.host, payload.port) }
+            .getOrNull()
+            ?.let { state ->
+                repository.applyPeerNodeState(state, rosterDeviceId = payload.deviceId, observedDirectly = true)
+            }
 
         // Navigate back immediately: roster import / cluster announce can take seconds on cold LAN.
         _uiState.update {
@@ -212,33 +198,8 @@ internal class DevicesPairingActions(
                     println("DevicesViewModel: pairing with ${broadcasterName} not ready; cluster sync left to catch-up")
                     return@cancellableCatching
                 }
-                val importedCount = FileApexServices.pairingCoordinator.importDirectPeerRoster(
-                    host = payload.host,
-                    port = payload.port,
-                    excludeDeviceIds = setOf(broadcasterId),
-                )
-                // Introduce ourselves only to peers just imported from the broadcaster; our own
-                // cluster already knows us and is told about the broadcaster by afterOutboundPair.
-                val importedIds = repository.listDevices().map { it.deviceId }.toSet() -
-                    preexistingIds - broadcasterId
-                if (importedIds.isNotEmpty()) {
-                    FileApexServices.pairingCoordinator.announceSelfToCluster(
-                        excludeDeviceIds = setOf(broadcasterId),
-                        onlyDeviceIds = importedIds
-                    )
-                }
-                FileApexServices.pairingCoordinator.afterOutboundPair(
-                    broadcasterEntity,
-                    preexistingDeviceIds = preexistingIds
-                )
-                if (importedCount > 0) {
-                    _uiState.update {
-                        it.copy(
-                            statusMessage = "${AppI18n.t("paired_with", broadcasterName)} ${AppI18n.plural("paired_cluster_extra", importedCount)}",
-                            pairingSucceeded = true
-                        )
-                    }
-                }
+                FileApexServices.membershipHub?.onJoinedHost(broadcasterId, com.fileapex.security.tls.LocalTlsInfo.pin)
+                FileApexServices.pairingCoordinator.afterOutboundPair(broadcasterEntity, preexistingDeviceIds = preexistingIds)
             }.onFailure { error ->
                 println("DevicesViewModel: post-pair cluster sync failed - ${error.message}")
             }
@@ -251,6 +212,8 @@ private fun securePairingMessage(code: String): String = when {
     "pairing_declined" in code -> AppI18n.t("pairing_declined")
     "pairing_busy" in code -> AppI18n.t("pairing_busy")
     "slow_down" in code -> AppI18n.t("pairing_slow_down")
+    "pairing_update_joiner" in code -> AppI18n.t("pairing_update_this_device")
+    "pairing_update_host" in code -> AppI18n.t("pairing_update_other_device")
     "pairing_code" in code -> AppI18n.t("pairing_code_expired")
     else -> AppI18n.t("pairing_handshake_failed", code)
 }

@@ -65,16 +65,8 @@ object ServerLifecycleManager {
                 FileApexServices.pairingCoordinator.handleInboundScanner(scanningDevice)
             },
             onPairingRespondComplete = { scanningDevice ->
-                FileApexServices.pairingCoordinator.propagatePairingComplete(scanningDevice)
-            },
-            onClusterMerge = { request, authenticatedSender ->
-                FileApexServices.pairingCoordinator.mergeIncoming(request, authenticatedSender)
-            },
-            onClusterPeerRemoved = { record ->
-                FileApexServices.pairingCoordinator.handlePeerRemoval(record, forward = true)
-            },
-            onClusterSelfRemoved = { record ->
-                FileApexServices.pairingCoordinator.handleSelfRemoval(record)
+                FileApexServices.pairingCoordinator.afterOutboundPair(scanningDevice)
+                FileApexServices.membershipHub?.onPaired(scanningDevice.deviceId, LocalTlsInfo.pin)
             },
             isRosterMember = { deviceId ->
                 FileApexServices.deviceRepository.hasActiveDevice(deviceId)
@@ -86,18 +78,7 @@ object ServerLifecycleManager {
                     .filter { com.fileapex.domain.pairing.PeerTrustRules.reachedDirectly(it) }
                     .map { it.copy(hardwareHash = "") }
             },
-            removalFingerprint = { FileApexServices.deviceRepository.removalFingerprint() },
             localExtension = platformLocalExtensionApi(),
-            clusterDigest = { FileApexServices.deviceRepository.clusterDigest() },
-            removalRecords = { FileApexServices.deviceRepository.windowedRemovals() },
-            onListIntroductions = { recipientId ->
-                val recipient = FileApexServices.deviceRepository.getDevice(recipientId)
-                if (recipient == null || recipient.isRemoved) {
-                    emptyList()
-                } else {
-                    FileApexServices.peerAdmission.sealedIntroductionsFor(recipient)
-                }
-            },
             onLog = onLog
         )
         cancellableCatching { server.start() }

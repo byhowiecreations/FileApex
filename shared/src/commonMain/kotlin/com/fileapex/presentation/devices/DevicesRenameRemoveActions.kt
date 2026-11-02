@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.di.FileApexServices
+import com.fileapex.membership.removalIsClusterKick
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.platform.purgeDirectShareTarget
@@ -96,13 +97,23 @@ internal class DevicesRenameRemoveActions(
                 return@launch
             }
             cancellableCatching {
-                val removed = repository.removePermanently(deviceId)
+                val selfId = com.fileapex.data.identity.loadLocalIdentity().deviceId
+                val hub = FileApexServices.membershipHub
+                val clusterKick = hub?.chainLog?.view()?.state?.removalIsClusterKick(selfId, deviceId) == true
+                // The signed removal comes first, while the device is still an active member of the master roster.
+                hub?.chainTick?.removeMember(deviceId)
+                val removed = repository.removePermanently(
+                    deviceId,
+                    reason = com.fileapex.domain.pairing.RemovalReason.USER_REMOVED.code,
+                    removedBy = selfId
+                )
                 check(removed) { "Could not remove device" }
                 DeviceSessionManager.clearSession(deviceId)
                 purgeDirectShareTarget(deviceId)
-                FileApexServices.pairingCoordinator.broadcastDeviceRemoval(device)
-                GoogleLinkCoordinator.publishRemovedPeer(deviceId)
-                com.fileapex.cloud.seal.ClusterRecordKeys.rotate()
+                if (clusterKick) {
+                    GoogleLinkCoordinator.publishRemovedPeer(deviceId)
+                    com.fileapex.cloud.seal.ClusterRecordKeys.rotate()
+                }
                 presence.refreshOnlineSnapshot()
             }.fold(
                 onSuccess = {

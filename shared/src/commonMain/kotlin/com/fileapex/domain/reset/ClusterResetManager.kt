@@ -1,23 +1,15 @@
 package com.fileapex.domain.reset
 
-import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.pairing.RemovedDeviceRecord
-import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.network.ServerLifecycleManager
 import com.fileapex.session.DeviceSessionManager
-import com.fileapex.util.NetworkUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 object ClusterResetManager {
     private val outcomeFlow = MutableStateFlow<Boolean?>(null)
@@ -45,8 +37,7 @@ object ClusterResetManager {
     }
 
     private suspend fun runLeaveClusterAndReset(): Boolean {
-        // Step A: Cluster Broadcast to online peers
-        cancellableCatching { broadcastClusterRemoval() }
+        cancellableCatching { FileApexServices.membershipHub?.chainTick?.leave() }
 
         // The Tailscale login belongs to the cluster identity being wiped.
         cancellableCatching { com.fileapex.tailscale.TailscaleNodeRuntime.clearForWipe() }
@@ -57,7 +48,6 @@ object ClusterResetManager {
 
         // Step C: Database Purge
         cancellableCatching { purgeDatabases() }
-        cancellableCatching { FileApexServices.deviceRepository.forgetDroppedCandidates() }
         if (ClusterResetPlatform.keepsAppRunning && !rosterIsEmpty()) {
             cancellableCatching { purgeDatabases() }
             if (!rosterIsEmpty()) {
@@ -65,6 +55,8 @@ object ClusterResetManager {
                 return false
             }
         }
+
+        renewTlsKeyAfterWipe(ClusterResetPlatform.keepsAppRunning) { com.fileapex.security.tls.TlsIdentityRenewal.renew() }
 
         // Step D: State Reset & Restart
         runCatching { resetStateAndRestart() }
@@ -77,45 +69,10 @@ object ClusterResetManager {
         return true
     }
 
-    private suspend fun broadcastClusterRemoval() {
-        val identity = runCatching { loadLocalIdentity() }.getOrNull() ?: return
-        val localId = identity.deviceId
-        val version = FileApexServices.deviceRepository.nextMembershipVersion()
-        val hash = com.fileapex.security.IdentityBinding.localHash(localId)
-        val removal = RemovedDeviceRecord(
-            deviceId = localId,
-            publicKeyHash = hash,
-            lastKnownIp = "",
-            port = identity.sharePort,
-            clusterVersion = version,
-            removedAt = version,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
-        )
-        val peers = cancellableCatching {
-            FileApexServices.deviceRepository.listDevices().filter {
-                it.deviceId.isNotBlank() && it.deviceId != localId && !it.isRemoved
-            }
-        }.getOrDefault(emptyList())
-
-        if (peers.isNotEmpty()) {
-            coroutineScope {
-                peers.map { peer ->
-                    async(Dispatchers.IO) {
-                        val host = peer.lastKnownIp.trim()
-                        if (!NetworkUtils.isUsableLanIpv4(host)) return@async
-                        withTimeoutOrNull(2000L) {
-                            cancellableCatching {
-                                FileApexServices.client.cluster.postClusterRemove(
-                                    host = host,
-                                    port = peer.port,
-                                    record = removal
-                                )
-                            }
-                        }
-                    }
-                }.awaitAll()
-            }
-        }
+    /** A desktop keeps its TLS key file through the wipe, so it takes a new key; a platform that restarts erased the file with its key store. */
+    internal suspend fun renewTlsKeyAfterWipe(keepsAppRunning: Boolean, renew: suspend () -> Unit) {
+        if (!keepsAppRunning) return
+        cancellableCatching { renew() }.onFailure { println("ClusterResetManager: no new TLS key (${it::class.simpleName})") }
     }
 
     private suspend fun rosterIsEmpty(): Boolean =

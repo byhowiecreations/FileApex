@@ -14,3 +14,7 @@ data class IncomingShareFile(
     val absolutePath: String,
     val sizeBytes: Long
 )
+
+/** Path resolution is complete; send-time validation still checks that each source exists and is readable. */
+val IncomingSharePayload.hasResolvedPaths: Boolean
+    get() = files.isNotEmpty() && files.all { it.absolutePath.isNotBlank() && it.sizeBytes >= 0L }

@@ -16,8 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -43,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.fileapex.friends.FriendPath
+import com.fileapex.friends.FriendPathStatus
 import com.fileapex.friends.data.FriendLinkEntity
 import com.fileapex.friends.transfer.FriendTransfer
 import com.fileapex.friends.transfer.FriendTransferStatus
@@ -79,8 +86,10 @@ internal fun FriendCard(
     onPin: (Boolean) -> Unit,
     onDroppedOnHome: () -> Unit = {},
     onFilesDropped: (List<java.io.File>) -> Unit = {},
+    path: FriendPathStatus? = null,
     modifier: Modifier = Modifier
 ) {
+    val removedYou by com.fileapex.friends.FriendsHub.removedYou.collectAsState()
     var menu by remember { mutableStateOf(false) }
     var cardOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var outside by remember { mutableStateOf(false) }
@@ -111,19 +120,28 @@ internal fun FriendCard(
                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
                     Text(friend.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(friend.groupName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (friend.friendKey in removedYou) Text(stringRes("friends_removed_you"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    else path?.let { Text(stringRes(friendPathKey(it.path), it.rttMs.toString()), style = MaterialTheme.typography.labelSmall, color = if (it.path == FriendPath.DIRECT_LAN || it.path == FriendPath.DIRECT_INTERNET) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                 if (pinned) Icon(Icons.Filled.PushPin, contentDescription = stringRes("friends_pinned"), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringRes("friends_menu")) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text(stringRes("friends_send_file")) }, onClick = { menu = false; onSend() })
-                        DropdownMenuItem(text = { Text(stringRes("friends_rename")) }, onClick = { menu = false; onRename() })
+                        val error = MaterialTheme.colorScheme.error
+                        DropdownMenuItem(text = { Text(stringRes("friends_send_file")) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null) }, onClick = { menu = false; onSend() })
+                        DropdownMenuItem(text = { Text(stringRes("friends_rename")) }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
                         DropdownMenuItem(
-                            text = { Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = friend.autoAccept, onCheckedChange = null); Text(stringRes("groups_header_auto_accept")) } },
+                            text = { Text(stringRes("groups_header_auto_accept")) },
+                            leadingIcon = { Icon(Icons.Filled.DoneAll, null) },
+                            trailingIcon = { Checkbox(checked = friend.autoAccept, onCheckedChange = null) },
                             onClick = { onAutoAccept(!friend.autoAccept) }
                         )
-                        DropdownMenuItem(text = { Text(stringRes(if (pinned) "friends_unpin" else "friends_pin_device")) }, onClick = { menu = false; onPin(!pinned) })
-                        DropdownMenuItem(text = { Text(stringRes("friends_remove"), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onRemove() })
+                        DropdownMenuItem(
+                            text = { Text(stringRes(if (pinned) "friends_unpin" else "friends_pin_device")) },
+                            leadingIcon = { Icon(if (pinned) Icons.Outlined.PushPin else Icons.Filled.PushPin, null) },
+                            onClick = { menu = false; onPin(!pinned) }
+                        )
+                        DropdownMenuItem(text = { Text(stringRes("friends_remove"), color = error) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = error) }, onClick = { menu = false; onRemove() })
                     }
                 }
             }
@@ -132,8 +150,7 @@ internal fun FriendCard(
     }
 }
 
-/** A friend takes single files only; dropped folders are skipped. */
-fun friendFiles(paths: List<String>): List<java.io.File> = paths.map { java.io.File(it) }.filter { it.isFile }
+fun friendFiles(paths: List<String>): List<java.io.File> = paths.map { java.io.File(it) }
 
 /** The person's initial on the group colour, sized by whatever the theme gives it, with a ring while a transfer runs. Used where a device icon would be. */
 @Composable
@@ -148,4 +165,14 @@ fun FriendGlyph(label: String, group: String, friendKey: String, modifier: Modif
             else CircularProgressIndicator(modifier = Modifier.fillMaxSize(), strokeWidth = 3.dp)
         }
     }
+}
+
+internal fun friendPathKey(path: FriendPath): String = when (path) {
+    FriendPath.CHECKING -> "friends_path_checking"
+    FriendPath.DIRECT_LAN -> "friends_path_direct_lan"
+    FriendPath.DIRECT_INTERNET -> "friends_path_direct_internet"
+    FriendPath.RELAY -> "friends_path_relay"
+    FriendPath.RELAY_NO_DIRECT -> "friends_path_relay_no_direct"
+    FriendPath.RELAY_HIDDEN -> "friends_path_relay_hidden"
+    FriendPath.UNREACHABLE -> "friends_path_unreachable"
 }

@@ -131,16 +131,26 @@ object DesktopWindowBoundsValidator {
         widthPx >= MIN_WIDTH_PX && heightPx >= MIN_HEIGHT_PX &&
             widthPx / scale <= screenWidth && heightPx / scale <= screenHeight
 
-    fun isOnScreen(bounds: DesktopWindowBounds): Boolean {
+    fun isOnScreen(bounds: DesktopWindowBounds): Boolean =
+        isOnScreen(
+            bounds,
+            GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.map { it.defaultConfiguration.bounds },
+            DesktopUiMetrics.scaleFactor()
+        )
+
+    /**
+     * [bounds] are stored scaled by [scale] (physical pixels); AWT reports [screens] in unscaled units, so the window is
+     * brought back to those units before it is compared with them.
+     */
+    fun isOnScreen(bounds: DesktopWindowBounds, screens: List<Rectangle>, scale: Float): Boolean {
         if (bounds.width < MIN_WIDTH_PX || bounds.height < MIN_HEIGHT_PX) return false
-        val windowRect = Rectangle(bounds.x, bounds.y, bounds.width, bounds.height)
-        val screens = GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices
-        val topLeftOnScreen = screens.any { device ->
-            device.defaultConfiguration.bounds.contains(bounds.x, bounds.y)
-        }
-        if (!topLeftOnScreen) return false
-        return screens.any { device ->
-            val visible = windowRect.intersection(device.defaultConfiguration.bounds)
+        val unit = if (scale > 0f) scale else 1f
+        val x = (bounds.x / unit).roundToInt()
+        val y = (bounds.y / unit).roundToInt()
+        val windowRect = Rectangle(x, y, (bounds.width / unit).roundToInt(), (bounds.height / unit).roundToInt())
+        if (screens.none { it.contains(x, y) }) return false
+        return screens.any { screen ->
+            val visible = windowRect.intersection(screen)
             visible.width >= MIN_VISIBLE_WIDTH_PX && visible.height >= MIN_VISIBLE_HEIGHT_PX
         }
     }

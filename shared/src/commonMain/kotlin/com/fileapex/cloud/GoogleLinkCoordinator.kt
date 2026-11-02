@@ -8,7 +8,6 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
-import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.localDeviceHardwareProfile
 import com.fileapex.util.NetworkUtils
@@ -675,8 +674,8 @@ object GoogleLinkCoordinator {
                 "GoogleLinkCoordinator.buildSelfPresence.updatedAtEpochMs"
             ),
             hardwareFingerprint = com.fileapex.platform.localHardwareFingerprint(),
-            membershipVersion = FileApexServices.deviceRepositoryOrNull()?.selfMembershipVersion() ?: 0L,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipVersion = 0L,
+            membershipProtocol = 0
         )
     }
 

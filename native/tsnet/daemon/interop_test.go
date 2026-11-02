@@ -24,7 +24,7 @@ func TestInteropHold(t *testing.T) {
 	n.allowLoopback = true
 	n.peers[peerID] = deviceRecord{
 		DeviceID: peerID, DeviceName: "Interop peer", LastKnownIP: "127.0.0.1", Port: 1,
-		PublicKey: os.Getenv("FA_INTEROP_PEER_PUB"), ClusterVersion: time.Now().UnixMilli(),
+		PublicKey: os.Getenv("FA_INTEROP_PEER_PUB"),
 	}
 	if err := n.serve(); err != nil {
 		t.Fatal(err)

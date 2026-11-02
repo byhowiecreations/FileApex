@@ -13,12 +13,16 @@ import android.provider.OpenableColumns
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Android system Share (ACTION_SEND / ACTION_SEND_MULTIPLE) → staged files for TransferManager.
@@ -87,37 +91,48 @@ object AndroidShareIntake {
         context: Context,
         uris: List<Uri>,
         sessionId: String = UUID.randomUUID().toString()
-    ): IncomingSharePayload = withContext(Dispatchers.IO) {
+    ): IncomingSharePayload {
         require(uris.isNotEmpty()) { com.fileapex.i18n.AppI18n.t("no_shared_file") }
-        val resolver = context.contentResolver
+        require(sessionId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) { "Invalid share session" }
         var stagingDir: File? = null
-
-        val files = coroutineScope {
-            uris.mapIndexed { index, uri ->
-                async {
-                    val directPath = resolveDirectFilePath(context, uri)
-                    if (directPath != null) {
-                        val directFile = File(directPath)
-                        val length = directFile.length()
-                        if (length > 0L) {
-                            return@async IncomingShareFile(
-                                fileName = directFile.name,
-                                absolutePath = directFile.absolutePath,
-                                sizeBytes = length
-                            )
+        val stagingLock = Any()
+        var completed = false
+        try {
+            val payload = withContext(Dispatchers.IO) {
+                val resolver = context.contentResolver
+                val files = coroutineScope {
+                    uris.mapIndexed { index, uri ->
+                        async {
+                            val directPath = resolveDirectFilePath(context, uri)
+                            if (directPath != null) {
+                                val directFile = File(directPath)
+                                if (directFile.isFile && directFile.canRead()) {
+                                    return@async IncomingShareFile(directFile.name, directFile.absolutePath, directFile.length())
+                                }
+                            }
+                            val dir = synchronized(stagingLock) {
+                                stagingDir ?: run {
+                                    val root = File(context.filesDir, "share-staging")
+                                    if (!root.isDirectory && !root.mkdirs()) throw IOException("Could not create share staging root")
+                                    File(root, sessionId).also {
+                                        if (!it.mkdir()) throw IOException("Could not create owned share session")
+                                        stagingDir = it
+                                    }
+                                }
+                            }
+                            stageOne(resolver, dir, uri, index)
                         }
-                    }
-                    val dir = stagingDir ?: synchronized(sessionId) {
-                        stagingDir ?: File(context.filesDir, "share-staging/$sessionId").also {
-                            it.mkdirs()
-                            stagingDir = it
-                        }
-                    }
-                    stageOne(resolver, dir, uri, index)
+                    }.awaitAll()
                 }
-            }.awaitAll()
+                IncomingSharePayload(sessionId = sessionId, files = files)
+            }
+            completed = true
+            return payload
+        } finally {
+            if (!completed) withContext(NonCancellable + Dispatchers.IO) {
+                stagingDir?.let { if (!it.deleteRecursively()) throw IOException("Could not remove failed share staging") }
+            }
         }
-        IncomingSharePayload(sessionId = sessionId, files = files)
     }
 
     fun resolveDirectFilePath(context: Context, uri: Uri): String? {
@@ -223,7 +238,7 @@ object AndroidShareIntake {
         }
     }.getOrNull()
 
-    private fun stageOne(
+    private suspend fun stageOne(
         resolver: ContentResolver,
         stagingDir: File,
         uri: Uri,
@@ -233,23 +248,23 @@ object AndroidShareIntake {
             ?.takeIf { it.isNotBlank() }
             ?: "shared-$index"
         val safeName = sanitizeFileName(displayName)
-        var dest = File(stagingDir, safeName)
-        if (dest.exists()) {
-            val stem = dest.nameWithoutExtension
-            val ext = dest.extension
-            var n = 1
-            do {
-                dest = File(
-                    stagingDir,
-                    if (ext.isEmpty()) "$stem ($n)" else "$stem ($n).$ext"
-                )
-                n++
-            } while (dest.exists())
-        }
+        var dest: File
+        do { dest = File(UniqueFileNames.resolveInDirectory(stagingDir.absolutePath, safeName)) } while (!dest.createNewFile())
+        val coroutine = currentCoroutineContext()
         val copiedBytes = resolver.openInputStream(uri)?.use { input ->
-            dest.outputStream().use { output -> input.copyTo(output) }
+            dest.outputStream().use { output ->
+                val buffer = ByteArray(32 * 1024)
+                var total = 0L
+                while (true) {
+                    coroutine.ensureActive()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    total += count
+                }
+                total
+            }
         } ?: error("${com.fileapex.i18n.AppI18n.t("could_not_read_shared_files")}: $displayName")
-        check(copiedBytes > 0L) { "Shared file is empty: $displayName" }
         return IncomingShareFile(
             fileName = dest.name,
             absolutePath = dest.absolutePath,

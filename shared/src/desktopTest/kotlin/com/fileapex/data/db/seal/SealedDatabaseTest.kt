@@ -9,7 +9,6 @@ import com.fileapex.data.bulletin.MessageEntity
 import com.fileapex.data.bulletin.ProcessedPacketEntity
 import com.fileapex.data.db.FileApexDatabase
 import com.fileapex.data.db.PairedDeviceEntity
-import com.fileapex.data.db.PeerCandidateEntity
 import com.fileapex.data.db.getAllDevicesOnce
 import com.fileapex.data.db.PendingTransferEntity
 import com.fileapex.data.db.RemovedDeviceEntity
@@ -65,7 +64,6 @@ class SealedDatabaseTest {
         db.friendsDao().putLink(FriendLinkEntity("k1", "Grandma", "Family", 5L, "Grandma"))
         db.friendsDao().putIncoming(FriendIncomingEntity("t1", "k1", "taxes.pdf", 10L, "aa", "RECEIVED", 10L, "/inbox/Grandma/taxes.pdf", 6L))
         db.pendingTransferDao().upsert(PendingTransferEntity("p1", 1L, "Queued", "LocalRoots", "[\"/home/me/secret.txt\"]", "[]", "secret.txt to Laptop", lastError = "no route to Laptop"))
-        db.peerCandidateDao().put(PeerCandidateEntity("d9", "d1", "MDNS", 1L, 2L, 0, 0L, "{\"name\":\"Kitchen iPad\"}"))
         db.deviceDao().insertRemovedDevice(RemovedDeviceEntity("d8", "hash", "192.168.1.77", 8080, 5L))
     }
 
@@ -80,16 +78,13 @@ class SealedDatabaseTest {
         assertEquals("taxes.pdf", db.friendsDao().incoming("t1")!!.fileName)
         val transfer = db.pendingTransferDao().getById("p1")!!
         assertEquals("secret.txt to Laptop", transfer.displayLabel); assertEquals("no route to Laptop", transfer.lastError)
-        assertEquals("{\"name\":\"Kitchen iPad\"}", db.peerCandidateDao().get("d9")!!.deviceJson)
-        assertEquals("192.168.1.77", db.deviceDao().getAllRemovedDevices().single().lastKnownIp)
+        assertEquals("hash", db.deviceDao().getAllRemovedDevices().single().publicKeyHash)
         db.close()
         assertSealed("SELECT senderName, content FROM messages", "Ann Phone", "milk")
         assertSealed("SELECT text FROM checklist_items", "oat")
         assertSealed("SELECT label, groupName, folderName FROM friend_links", "Grandma", "Family", "Grandma")
         assertSealed("SELECT fileName, quarantinePath FROM friend_incoming", "taxes", "inbox")
         assertSealed("SELECT sourceJson, displayLabel, lastError FROM pending_transfers", "secret", "secret", "route")
-        assertSealed("SELECT deviceJson FROM peer_candidates", "Kitchen")
-        assertSealed("SELECT lastKnownIp FROM removed_devices", "192.168")
         assertEquals("m1", rawRows("SELECT id FROM messages").single().single())
     }
 
@@ -107,10 +102,10 @@ class SealedDatabaseTest {
         assertEquals("10.9.9.9", db.deviceDao().getDevice("1")!!.lastKnownIp)
         assertEquals("host3.ts.net", db.deviceDao().getDevice("3")!!.tailnetHostname)
         db.close()
-        val row = rawRows("SELECT deviceName, lastKnownIp, rootPath, deviceMake, deviceModel, tailnetHostname, tailnetIpv4 FROM paired_devices WHERE deviceId = '1'").single()
+        val row = rawRows("SELECT deviceName, lastKnownIp, rootPath, deviceMake, deviceModel, tailnetHostname, tailnetIpv4 FROM member_profiles WHERE deviceId = '1'").single()
         row.forEach { assertTrue("not sealed: $it", it!!.startsWith(FieldSealer.PREFIX)) }
-        assertEquals("8080", rawRows("SELECT port FROM paired_devices WHERE deviceId = '3'").single().single())
-        assertEquals("h1", rawRows("SELECT publicKeyHash FROM paired_devices WHERE deviceId = '1'").single().single())
+        assertEquals("8080", rawRows("SELECT port FROM member_profiles WHERE deviceId = '3'").single().single())
+        assertEquals("h1", rawRows("SELECT publicKeyHash FROM member_profiles WHERE deviceId = '1'").single().single())
     }
 
     @Test

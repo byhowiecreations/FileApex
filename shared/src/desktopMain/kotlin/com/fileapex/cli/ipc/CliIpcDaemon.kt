@@ -3,12 +3,16 @@ package com.fileapex.cli.ipc
 import com.fileapex.cli.dash.CliClusterEngine
 import com.fileapex.cli.commands.CliCommandHandler
 import com.fileapex.util.cancellableCatching
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.io.IOException
+import com.fileapex.platform.DesktopInstanceWire
+import com.fileapex.platform.DesktopPlatformPaths
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,38 +23,63 @@ object CliIpcDaemon {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
     private var serverSocket: ServerSocket? = null
+    private val clients = ConcurrentHashMap.newKeySet<Socket>()
+    private val slots = Semaphore(8)
+    private const val REQUEST_TIMEOUT_MS = 10_000
+    private const val PROMPT_TIMEOUT_MS = 10 * 60_000
 
-    fun start() {
-        if (serverSocket != null) return
-        cancellableCatching {
-            serverSocket = ServerSocket(CLI_IPC_PORT, 50, InetAddress.getLoopbackAddress())
+    @Synchronized fun start(port: Int = CLI_IPC_PORT, credential: ByteArray? = null, requestTimeoutMs: Int = REQUEST_TIMEOUT_MS): Int? {
+        serverSocket?.let { return it.localPort }
+        return cancellableCatching {
+            val key = credential?.copyOf() ?: DesktopInstanceWire.readDescriptor(DesktopPlatformPaths.applicationSupportDirectory()).key()
+            val listener = ServerSocket(port, 8, InetAddress.getLoopbackAddress())
+            serverSocket = listener
             scope.launch {
-                while (true) {
-                    val client = serverSocket?.accept() ?: break
-                    scope.launch {
-                        handleClient(client)
+                try {
+                    while (!listener.isClosed) {
+                        slots.acquire()
+                        var assigned = false
+                        try {
+                            val client = listener.accept()
+                            clients.add(client)
+                            scope.launch {
+                                try { handleClient(client, key, requestTimeoutMs) }
+                                catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { println("CliIpcDaemon: client ended :: ${e::class.simpleName}"); client.close() }
+                                finally { clients.remove(client) }
+                            }.invokeOnCompletion { slots.release() }
+                            assigned = true
+                        } finally { if (!assigned) slots.release() }
                     }
-                }
+                } catch (e: CancellationException) { throw e }
+                catch (e: IOException) { if (!listener.isClosed) println("CliIpcDaemon: listener ended :: ${e::class.simpleName}") }
+                finally { key.fill(0) }
             }
-            println("CliIpcDaemon: Active on 127.0.0.1:$CLI_IPC_PORT")
+            listener.localPort
         }.onFailure { error ->
-            println("CliIpcDaemon: Could not bind port $CLI_IPC_PORT :: ${error.message}")
-        }
+            println("CliIpcDaemon: Could not start :: ${error::class.simpleName}")
+        }.getOrNull()
     }
 
     fun stop() {
         runCatching {
             serverSocket?.close()
             serverSocket = null
+            clients.forEach { it.close() }
         }
     }
 
-    private suspend fun handleClient(socket: Socket) {
+    private suspend fun handleClient(socket: Socket, key: ByteArray, requestTimeoutMs: Int) {
         socket.use { s ->
-            val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
+            s.soTimeout = 1500
+            if (!DesktopInstanceWire.deadline(s) { DesktopInstanceWire.serverAuthenticate(s, key, "cli") }) return
+            val reader = java.io.BufferedInputStream(s.getInputStream())
             val writer = PrintWriter(s.getOutputStream(), true, Charsets.UTF_8)
 
-            val firstLine = reader.readLine() ?: return
+            // The request must arrive promptly; once a command runs the socket may stay quiet for as long as it takes.
+            s.soTimeout = requestTimeoutMs
+            val firstLine = reader.readBoundedLine() ?: return
+            s.soTimeout = 0
             // Check if this is a structured CLI request or legacy path handoff
             val request = runCatching {
                 json.decodeFromString<CliRequest>(firstLine)
@@ -78,7 +107,8 @@ object CliIpcDaemon {
                     prompt = { question ->
                         val packet = CliIpcPacket.Prompt(question)
                         writer.println(json.encodeToString<CliIpcPacket>(packet))
-                        val responseLine = reader.readLine()
+                        s.soTimeout = PROMPT_TIMEOUT_MS
+                        val responseLine = try { reader.readBoundedLine() } catch (_: java.net.SocketTimeoutException) { null } finally { s.soTimeout = 0 }
                         if (responseLine != null) {
                             runCatching {
                                 val inputPacket = json.decodeFromString<CliIpcPacket>(responseLine)

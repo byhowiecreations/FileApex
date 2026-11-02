@@ -8,7 +8,9 @@ data class BridgedPeer(
     val pin: String,
     val remoteIp: String,
     /** A client key nobody has paired yet, let in only while this device shows its pairing screen; reaches the secure pairing route alone. */
-    val pairingOnly: Boolean = false
+    val pairingOnly: Boolean = false,
+    /** The key of a device this one removed: it completes the handshake only to be answered `401 revoked`, never anything else. */
+    val revokedOnly: Boolean = false
 )
 
 /**
@@ -35,6 +37,9 @@ object TlsBridgeRegistry {
 interface TlsPeerDirectory {
     /** Device id whose stored pin (or pending alternate pin) equals [pin]; null for strangers. */
     fun deviceIdForPin(pin: String): String?
+
+    /** Device id of a removed device whose pin is still kept, so it can be told it was removed; null otherwise. */
+    fun revokedDeviceIdForPin(pin: String): String? = null
 }
 
 interface TlsFront {

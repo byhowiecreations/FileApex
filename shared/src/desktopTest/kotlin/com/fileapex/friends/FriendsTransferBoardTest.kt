@@ -50,6 +50,16 @@ class FriendsTransferBoardTest {
         assertNull(board.get("t1"))
     }
 
+    @Test fun completedRowsIgnoreLateCancelAndProgressUpdates() {
+        board.put(transfer())
+        board.status("t1", FriendTransferStatus.DONE)
+        clock += 1_000
+        board.progress("t1", 200)
+        board.status("t1", FriendTransferStatus.CANCELED)
+        assertEquals(FriendTransferStatus.DONE, board.get("t1")!!.status)
+        assertEquals(1000L, board.get("t1")!!.doneBytes)
+    }
+
     @Test fun queueIsFirstInFirstOutPerFriendAndCancelRemovesAWaitingFile() {
         val q = FriendsSendQueue()
         val f = File("x")

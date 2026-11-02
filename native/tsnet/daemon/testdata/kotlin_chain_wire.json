@@ -1,0 +1,169 @@
+{
+    "answer": {
+        "head": "1c4dfa15b79eb20de9ffc194f3a13441a7ade6242ae56b1fa45fb561bfc50893",
+        "records": [
+            {
+                "seq": 1,
+                "parentHash": "",
+                "kind": "GENESIS",
+                "actor": "device-a",
+                "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwLVbM2lhI84meNNwD2DmRcmCp0qMTpunMZmZyqpFzH75DGpvZwhVWMKfRkkhPJuO0DNf99gOm/oqEbHgPiidGA==",
+                "subject": "device-a",
+                "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwLVbM2lhI84meNNwD2DmRcmCp0qMTpunMZmZyqpFzH75DGpvZwhVWMKfRkkhPJuO0DNf99gOm/oqEbHgPiidGA==",
+                "tlsPin": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "reason": "paired",
+                "signature": "MEQCIDxTpuhuGqihwrGXJzzbIwUFlPDT73IprcDzEqrGCkDKAiA0jQJbe12hKjsi4YlbfM+2FYzeu1SyPcmgARMR5fKUnw=="
+            },
+            {
+                "seq": 2,
+                "parentHash": "fa7133744d2af8d739d9980a5282d1d4ae8a782f44638328756e0eaf0ceff38d",
+                "kind": "ADMIT",
+                "actor": "device-a",
+                "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwLVbM2lhI84meNNwD2DmRcmCp0qMTpunMZmZyqpFzH75DGpvZwhVWMKfRkkhPJuO0DNf99gOm/oqEbHgPiidGA==",
+                "subject": "device-b",
+                "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzMDJpbYZmr0EbfLSVGRCO1SYkDGrrB1bVVOiGZ7lqqCxMfegxi0dswmjxgr0Zx6It+ZfrqiUpRLrG+35Vb5m7g==",
+                "tlsPin": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "reason": "paired",
+                "signature": "MEYCIQCs7EOY2kevfp/FfrX5GgxOZ8sY+EIYLoBeakrCv8OQcwIhAMzjquYLsNrdCHZWl4IuOCDP0COfQkbs1Q14KKDAD6a9"
+            }
+        ],
+        "profiles": [
+            {
+                "deviceId": "device-a",
+                "deviceName": "Pixel",
+                "ipAddress": "192.168.1.20",
+                "port": 8080,
+                "clientVersion": "",
+                "clientVersionCode": 0,
+                "platform": "android",
+                "os": "android",
+                "deviceMake": "",
+                "deviceModel": "",
+                "supportedProtocols": [
+                    "fileapex.v1.identity",
+                    "fileapex.v1.files",
+                    "fileapex.v1.cluster",
+                    "fileapex.v1.pairing",
+                    "fileapex.v1.pairing-secure",
+                    "fileapex.v2.membership.chain"
+                ],
+                "lastSeenTimestamp": 0,
+                "rootPath": "/storage/emulated/0",
+                "publicKeyHash": "",
+                "publicKey": "pairkey",
+                "pinRequired": false,
+                "clusterVersion": 0,
+                "isRemoved": false,
+                "removedAt": null,
+                "membershipVersion": 0,
+                "membershipProtocol": 0,
+                "tlsPin": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "tlsPort": 8081,
+                "tlsRotation": "",
+                "hardwareHash": ""
+            }
+        ]
+    },
+    "push": {
+        "records": [
+            {
+                "seq": 1,
+                "parentHash": "",
+                "kind": "GENESIS",
+                "actor": "device-a",
+                "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwLVbM2lhI84meNNwD2DmRcmCp0qMTpunMZmZyqpFzH75DGpvZwhVWMKfRkkhPJuO0DNf99gOm/oqEbHgPiidGA==",
+                "subject": "device-a",
+                "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwLVbM2lhI84meNNwD2DmRcmCp0qMTpunMZmZyqpFzH75DGpvZwhVWMKfRkkhPJuO0DNf99gOm/oqEbHgPiidGA==",
+                "tlsPin": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "reason": "paired",
+                "signature": "MEQCIDxTpuhuGqihwrGXJzzbIwUFlPDT73IprcDzEqrGCkDKAiA0jQJbe12hKjsi4YlbfM+2FYzeu1SyPcmgARMR5fKUnw=="
+            },
+            {
+                "seq": 2,
+                "parentHash": "fa7133744d2af8d739d9980a5282d1d4ae8a782f44638328756e0eaf0ceff38d",
+                "kind": "ADMIT",
+                "actor": "device-a",
+                "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwLVbM2lhI84meNNwD2DmRcmCp0qMTpunMZmZyqpFzH75DGpvZwhVWMKfRkkhPJuO0DNf99gOm/oqEbHgPiidGA==",
+                "subject": "device-b",
+                "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzMDJpbYZmr0EbfLSVGRCO1SYkDGrrB1bVVOiGZ7lqqCxMfegxi0dswmjxgr0Zx6It+ZfrqiUpRLrG+35Vb5m7g==",
+                "tlsPin": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "reason": "paired",
+                "signature": "MEYCIQCs7EOY2kevfp/FfrX5GgxOZ8sY+EIYLoBeakrCv8OQcwIhAMzjquYLsNrdCHZWl4IuOCDP0COfQkbs1Q14KKDAD6a9"
+            }
+        ],
+        "profiles": [
+            {
+                "deviceId": "device-b",
+                "deviceName": "Laptop",
+                "ipAddress": "192.168.1.20",
+                "port": 8080,
+                "clientVersion": "",
+                "clientVersionCode": 0,
+                "platform": "android",
+                "os": "android",
+                "deviceMake": "",
+                "deviceModel": "",
+                "supportedProtocols": [
+                    "fileapex.v1.identity",
+                    "fileapex.v1.files",
+                    "fileapex.v1.cluster",
+                    "fileapex.v1.pairing",
+                    "fileapex.v1.pairing-secure",
+                    "fileapex.v2.membership.chain"
+                ],
+                "lastSeenTimestamp": 0,
+                "rootPath": "/storage/emulated/0",
+                "publicKeyHash": "",
+                "publicKey": "pairkey",
+                "pinRequired": false,
+                "clusterVersion": 0,
+                "isRemoved": false,
+                "removedAt": null,
+                "membershipVersion": 0,
+                "membershipProtocol": 0,
+                "tlsPin": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "tlsPort": 8081,
+                "tlsRotation": "",
+                "hardwareHash": ""
+            }
+        ]
+    },
+    "join": {
+        "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzMDJpbYZmr0EbfLSVGRCO1SYkDGrrB1bVVOiGZ7lqqCxMfegxi0dswmjxgr0Zx6It+ZfrqiUpRLrG+35Vb5m7g==",
+        "tlsPin": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "profile": {
+            "deviceId": "device-b",
+            "deviceName": "Laptop",
+            "ipAddress": "192.168.1.20",
+            "port": 8080,
+            "clientVersion": "",
+            "clientVersionCode": 0,
+            "platform": "android",
+            "os": "android",
+            "deviceMake": "",
+            "deviceModel": "",
+            "supportedProtocols": [
+                "fileapex.v1.identity",
+                "fileapex.v1.files",
+                "fileapex.v1.cluster",
+                "fileapex.v1.pairing",
+                "fileapex.v1.pairing-secure",
+                "fileapex.v2.membership.chain"
+            ],
+            "lastSeenTimestamp": 0,
+            "rootPath": "/storage/emulated/0",
+            "publicKeyHash": "",
+            "publicKey": "pairkey",
+            "pinRequired": false,
+            "clusterVersion": 0,
+            "isRemoved": false,
+            "removedAt": null,
+            "membershipVersion": 0,
+            "membershipProtocol": 0,
+            "tlsPin": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tlsPort": 8081,
+            "tlsRotation": "",
+            "hardwareHash": ""
+        }
+    }
+}

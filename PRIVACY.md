@@ -1,6 +1,6 @@
 # FileApex Privacy Policy
 
-**Effective Date:** Oct 9, 2026
+**Effective Date:** Oct 29, 2026
 **Developer:** ByHowieCreations
 **Application:** FileApex (Android, macOS, Windows)
 **Contact:** byhowiecreations@gmail.com
@@ -18,6 +18,8 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 **Files (Cloud Relay, opt-in):** If you enable Google Drive Relay, files/attachments are stored in a `FileApex Relay` folder in your own Google Drive, and receiving devices download them directly from that folder. Access is scoped to that folder only, FileApex cannot see or modify other files in your Drive.
 
 **Device pairing metadata:** Device name, hardware model/OS, local IP and port, battery/storage/RAM (shown in Device Details), and cryptographic pairing tokens, public keys, and optional PIN hashes. Stored locally in an on-device SQLite database, protected by OS-level sandboxing and file-based encryption. Deleted immediately when you unpair a device.
+
+**Device list in your Firebase account.** If you link a Google Account, FileApex keeps a list of your devices in your own Firebase project so they can find each other: device name, model, network address and status such as battery. Names and addresses are encrypted between your devices in current versions.
 
 **Bulletin Board (messages/notes):** Stored locally by default. If Google Account is linked, message text, attachment names/sizes, and Drive file references are sent via Firebase Cloud Messaging so your other devices get pushed notifications. Deleting a message removes it locally, or you can send a retraction broadcast to remove it from all paired devices and, if it had an attachment, from Google Drive.
 
@@ -52,8 +54,11 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 | Google Sign-In / OAuth (Google) | Account authentication | OAuth tokens tied to your paired devices |
 | GitHub Releases API | Update checks | Public release tag lookup only, no identifiers sent |
 | GitHub (raw file) | Critical Notifications | One public file, `notice/notice.json`, fetched without any identifier; GitHub sees your IP address as for any download |
+| FileApex message relay (Cloudflare) | Adds the API key and passes push messages to Google. Used only when a Google Account is linked | Device push tokens and the message. Nothing is stored |
 
 If you never sign in with Google or enable cloud relay, none of these are contacted, and FileApex runs entirely offline on your local network, with the exception of the GitHub update checker, which is contacted if you manually trigger a version check, and the Critical Notifications check described below, which you can turn off in Settings.
+
+**Cloud messages.** If you link a Google Account, FileApex sends its push messages through a small relay on Cloudflare. The relay exists only to add the developer's Google API key, so the key is not stored in the app. It passes each message to Google and keeps nothing. If you never link a Google Account, it is never contacted.
 
 ## Permissions
 

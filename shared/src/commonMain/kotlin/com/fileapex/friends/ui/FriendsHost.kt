@@ -50,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,6 +66,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.fileapex.di.FileApexServices
 import com.fileapex.friends.ActiveInvite
+import com.fileapex.friends.FriendPaths
 import com.fileapex.friends.FriendsHub
 import com.fileapex.friends.data.FriendLinkEntity
 import com.fileapex.i18n.formatLocalizedDateTime
@@ -76,6 +78,7 @@ import com.fileapex.platform.rememberDownloadsFilePicker
 import io.github.alexzhirkevich.qrose.options.QrErrorCorrectionLevel
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import java.io.File
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -169,6 +172,7 @@ fun FriendsHost() {
         )
     }
     FriendReceivedHost()
+    FriendTransfersPanel()
     addedName?.let { name ->
         AlertDialog(
             onDismissRequest = { addedName = null },
@@ -193,12 +197,14 @@ private fun FriendsPanel(onClose: () -> Unit) {
     val friends by FriendsHub.friends.collectAsState()
     val transfers by FriendsHub.transfers.collectAsState()
     val pinned by FriendsHub.pinned.collectAsState()
+    val paths by FriendPaths.tracker.paths.collectAsState()
     val incomingText by FriendsUi.incomingInvite.collectAsState()
     val mode by FriendsUi.mode.collectAsState()
     fun setMode(m: PanelMode) { FriendsUi.mode.value = m }
     LaunchedEffect(incomingText) { if (incomingText != null) setMode(PanelMode.Enter) }
     LaunchedEffect(Unit) { FriendsHub.joined.collect { setMode(PanelMode.List) } }
     LaunchedEffect(Unit) { FriendsHub.added.collect { setMode(PanelMode.List) } }
+    LaunchedEffect(friends.map { it.friendKey }, mode) { if (mode == PanelMode.List) while (true) { FriendPaths.tracker.refresh(friends.map { it.friendKey }); delay(3_000L) } }
     var hideIp by remember { mutableStateOf(FileApexServices.settings.friendsHideIp()) }
     var sendTo by remember { mutableStateOf<FriendLinkEntity?>(null) }
     var renameOf by remember { mutableStateOf<FriendLinkEntity?>(null) }
@@ -206,11 +212,14 @@ private fun FriendsPanel(onClose: () -> Unit) {
     val pick = rememberFriendFilePicker { picked ->
         val target = sendTo
         sendTo = null
-        if (picked.isNotEmpty() && target != null) scope.launch { FriendsHub.enqueueSend(target.friendKey, picked) }
+        if (picked.isNotEmpty() && target != null) FriendsHub.queueFiles(target.friendKey, picked)
     }
 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringRes(when (mode) { PanelMode.Invite -> "friends_invite"; PanelMode.Enter -> "friends_enter"; PanelMode.List -> "groups_title" }), style = MaterialTheme.typography.headlineSmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringRes(when (mode) { PanelMode.Invite -> "friends_invite"; PanelMode.Enter -> "friends_enter"; PanelMode.List -> "groups_title" }), Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
+            FriendQueueButton()
+        }
         if (!FriendsHub.available) {
             Text(stringRes("friends_unavailable"), color = MaterialTheme.colorScheme.error)
             TextButton(onClick = onClose) { Text(stringRes("close")) }
@@ -253,7 +262,8 @@ private fun FriendsPanel(onClose: () -> Unit) {
                             onRemove = { removeOf = friend },
                             onAutoAccept = { on -> scope.launch { FriendsHub.setAutoAccept(friend.friendKey, on) } },
                             onPin = { on -> FriendsHub.setPinned(friend.friendKey, on) },
-                            onFilesDropped = { files -> scope.launch { FriendsHub.enqueueSend(friend.friendKey, files) } },
+                            onFilesDropped = { files -> FriendsHub.queueFiles(friend.friendKey, files) },
+                            path = paths[friend.friendKey],
                             onDroppedOnHome = { FriendsHub.setPinned(friend.friendKey, true); FriendsUi.stage.value = FriendsUi.Stage.Closed },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -269,19 +279,22 @@ private fun FriendsPanel(onClose: () -> Unit) {
 
     renameOf?.let { f ->
         var text by remember(f.friendKey) { mutableStateOf(f.label) }
+        var failed by remember(f.friendKey) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { renameOf = null },
             title = { Text(stringRes("friends_rename")) },
-            text = { OutlinedTextField(text, { text = it.take(40) }, singleLine = true) },
-            confirmButton = { Button(onClick = { scope.launch { FriendsHub.rename(f.friendKey, text) }; renameOf = null }) { Text(stringRes("save")) } },
+            text = { Column { OutlinedTextField(text, { text = it.take(40); failed = false }, singleLine = true); if (failed) Text(stringRes("friends_rename_failed"), color = MaterialTheme.colorScheme.error) } },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.rename(f.friendKey, text) }.onSuccess { renameOf = null }.onFailure { failed = true } } }) { Text(stringRes("save")) } },
             dismissButton = { TextButton(onClick = { renameOf = null }) { Text(stringRes("cancel")) } }
         )
     }
     removeOf?.let { f ->
+        var failed by remember(f.friendKey) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { removeOf = null },
             title = { Text(stringRes("friends_remove") + " " + f.label + "?") },
-            confirmButton = { Button(onClick = { scope.launch { FriendsHub.remove(f.friendKey) }; removeOf = null }) { Text(stringRes("friends_remove")) } },
+            text = { if (failed) Text(stringRes("friends_remove_failed"), color = MaterialTheme.colorScheme.error) },
+            confirmButton = { Button(onClick = { scope.launch { com.fileapex.util.cancellableCatching { FriendsHub.remove(f.friendKey) }.onSuccess { removeOf = null }.onFailure { failed = true } } }) { Text(stringRes("friends_remove")) } },
             dismissButton = { TextButton(onClick = { removeOf = null }) { Text(stringRes("cancel")) } }
         )
     }
@@ -341,7 +354,15 @@ private fun InvitePane(onBack: () -> Unit) {
                 OutlinedButton(onClick = { PlatformClipboard.setSystemClipboardText(active.uri); copied = true }) { Text(stringRes("friends_copy_link")) }
             }
             if (copied) Text(stringRes("friends_link_copied"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-            TextButton(onClick = { FriendsHub.cancelInvite(); onBack() }) { Text(stringRes("close")) }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            TextButton(enabled = !busy, onClick = {
+                busy = true; error = null
+                scope.launch {
+                    com.fileapex.util.cancellableCatching { FriendsHub.cancelInvite(); onBack() }
+                        .onFailure { error = genericError }
+                    busy = false
+                }
+            }) { Text(stringRes("close")) }
         }
     }
 }
@@ -349,31 +370,46 @@ private fun InvitePane(onBack: () -> Unit) {
 @Composable
 private fun EnterPane(prefill: String, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var link by remember { mutableStateOf(prefill) }
-    var pin by remember { mutableStateOf("") }
-    var myName by remember { mutableStateOf("") }
+    val input = remember(prefill) { FriendInviteForm(prefill) }
+    var scanning by remember { mutableStateOf(false) }
+    var scanGeneration by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var added by remember { mutableStateOf<String?>(null) }
     val genericError = stringRes("friends_error_generic")
-    OutlinedTextField(link, { link = it }, label = { Text(stringRes("friends_paste_invite")) }, maxLines = 2, modifier = Modifier.fillMaxWidth())
+    val invalidInvite = stringRes("friends_scan_invalid")
+    if (!isDesktopHost()) {
+        if (!scanning) OutlinedButton(onClick = { scanning = true }, enabled = !busy) { Text(stringRes("friends_scan_invite")) }
+        else {
+            key(scanGeneration) {
+                com.fileapex.ui.PairingQrScanner(onQrText = { text ->
+                    if (input.acceptScan(text)) { scanning = false; error = null } else error = invalidInvite
+                }, modifier = Modifier.fillMaxWidth().height(220.dp), enabled = !busy)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { scanGeneration++; error = null }) { Text(stringRes("friends_scan_again")) }
+                TextButton(onClick = { scanning = false }) { Text(stringRes("cancel")) }
+            }
+        }
+    }
+    OutlinedTextField(input.link, { input.link = it }, label = { Text(stringRes("friends_paste_invite")) }, isError = input.link.isNotBlank() && !input.inviteValid, maxLines = 2, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(
-        pin,
-        { pin = it.filter(Char::isDigit).take(6) },
+        input.pin,
+        input::pinChanged,
         label = { Text(stringRes("friends_pin")) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth()
     )
-    OutlinedTextField(myName, { myName = it.take(40) }, label = { Text(stringRes("friends_your_name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(input.name, { input.name = it.take(40) }, label = { Text(stringRes("friends_your_name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     added?.let { Text(stringRes("friends_added", it), color = MaterialTheme.colorScheme.primary) }
     Spacer(Modifier.height(4.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = !busy && pin.length == 6 && myName.isNotBlank() && link.isNotBlank(), onClick = {
+        Button(enabled = !busy && input.canJoin, onClick = {
             busy = true; error = null
             scope.launch {
-                FriendsHub.join(link, pin, myName.trim())
+                FriendsHub.join(input.link, input.pin, input.name.trim())
                     .onSuccess { added = it; FriendsUi.incomingInvite.value = null; onDone() }
                     .onFailure { error = it.message ?: genericError }
                 busy = false

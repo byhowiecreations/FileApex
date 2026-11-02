@@ -11,18 +11,26 @@ actual fun loadLocalIdentity(): LocalIdentity {
     val props = loadProps()
     val deviceId = com.fileapex.security.LocalIdentityBinding.resolve(
         storedId = props.getProperty("deviceId"),
-        fallbackId = ::generateDeviceId
-    ) { id ->
-        props.setProperty("deviceId", id)
-        persistProps(props)
-    }
+        fallbackId = ::generateDeviceId,
+        persist = { id ->
+            props.setProperty("deviceId", id)
+            persistProps(props)
+        },
+        remember = { previous -> props.setProperty("previousDeviceId", previous) }
+    )
     val storedName = props.getProperty("deviceName")?.trim().orEmpty()
     return LocalIdentity(
         deviceId = deviceId,
         deviceName = storedName.ifBlank { platformDeviceName() },
         rootPath = defaultStorageRoot(),
-        sharePort = LocalIdentity.DEFAULT_SHARE_PORT
+        sharePort = LocalIdentity.DEFAULT_SHARE_PORT,
+        previousDeviceId = props.getProperty("previousDeviceId")?.trim().orEmpty()
     )
+}
+
+actual fun clearPreviousDeviceId() {
+    val props = loadProps()
+    if (props.remove("previousDeviceId") != null) persistProps(props)
 }
 
 actual fun updateLocalDeviceName(newName: String) {

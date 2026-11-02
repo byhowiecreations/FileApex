@@ -54,39 +54,27 @@ private class AndroidSettingsKvStore(
     }
 }
 
-/** The settings store with the secrets (PIN, private keys, tokens) sealed by the Android Keystore. */
-private fun sealedSettingsStore(prefs: SharedPreferences, googleBackup: SharedPreferences): SettingsKvStore =
-    SealingKvStore(
-        AndroidSettingsKvStore(prefs, googleBackup),
-        AndroidSettingsSecrets.sealer(),
-        BaseAppSettings.SECRET_KEYS
-    )
+/** Every setting value sealed with the settings key, the secrets (PIN, private keys, tokens) sealed on their own by the Android Keystore. */
+private fun sealedSettingsStore(prefs: SharedPreferences, googleBackup: SharedPreferences): SettingsKvStore {
+    val base = AndroidSettingsKvStore(prefs, googleBackup)
+    val master = SettingsMasterKey(base, AndroidSettingsSecrets.sealer())
+    // The Google link flag, email and uid are mirrored in clear text into the backup file so a restore on a new phone can find them.
+    val mirrored = setOf(BaseAppSettings.KEY_GOOGLE, BaseAppSettings.KEY_GOOGLE_EMAIL, BaseAppSettings.KEY_GOOGLE_UID)
+    val values = SealedValuesKvStore(base, { master.sealer() }, BaseAppSettings.SECRET_KEYS + SettingsMasterKey.KEY + mirrored)
+    values.sealAll()
+    return SealingKvStore(values, AndroidSettingsSecrets.sealer(), BaseAppSettings.SECRET_KEYS)
+}
 
 private lateinit var androidAppContext: Context
 private var androidSettings: AppSettings? = null
+private val androidSettingsLock = Any()
 
 /** Application context for platform features that need Android APIs (updates, etc.). */
 fun androidAppContextOrNull(): Context? {
     return if (::androidAppContext.isInitialized) androidAppContext else null
 }
 
-fun initAndroidAppSettings(context: Context) {
-    androidAppContext = context.applicationContext
-    val settingsPrefs = androidAppContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val googleBackup = androidAppContext.getSharedPreferences(GOOGLE_BACKUP_PREFS, Context.MODE_PRIVATE)
-    hydrateGoogleBackup(settingsPrefs, googleBackup)
-    androidSettings = BaseAppSettings(
-        sealedSettingsStore(settingsPrefs, googleBackup),
-        existingInstall = androidAppContext.getDatabasePath("fileapex.db").exists()
-    )
-}
-
-actual fun createAppSettings(): AppSettings {
-    val existing = androidSettings
-    if (existing != null) return existing
-    check(::androidAppContext.isInitialized) {
-        "Call initAndroidAppSettings(context) before createAppSettings()"
-    }
+private fun buildAndroidSettings(): AppSettings {
     val settingsPrefs = androidAppContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val googleBackup = androidAppContext.getSharedPreferences(GOOGLE_BACKUP_PREFS, Context.MODE_PRIVATE)
     hydrateGoogleBackup(settingsPrefs, googleBackup)
@@ -94,7 +82,22 @@ actual fun createAppSettings(): AppSettings {
         sealedSettingsStore(settingsPrefs, googleBackup),
         existingInstall = androidAppContext.getDatabasePath("fileapex.db").exists()
     )
-        .also { androidSettings = it }
+}
+
+fun initAndroidAppSettings(context: Context) {
+    androidAppContext = context.applicationContext
+    synchronized(androidSettingsLock) {
+        if (androidSettings == null) androidSettings = buildAndroidSettings()
+    }
+}
+
+actual fun createAppSettings(): AppSettings {
+    check(::androidAppContext.isInitialized) {
+        "Call initAndroidAppSettings(context) before createAppSettings()"
+    }
+    return synchronized(androidSettingsLock) {
+        androidSettings ?: buildAndroidSettings().also { androidSettings = it }
+    }
 }
 
 /**

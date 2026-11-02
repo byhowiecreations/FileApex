@@ -18,6 +18,18 @@ object TlsFrontFactory {
     /** Registers the factory. [storeProvider] may return null before the platform context exists. */
     fun install(storeProvider: () -> TlsIdentityStore?) {
         PeerTlsConnector.configure(storeProvider)
+        com.fileapex.membership.ChainSigning.provider = {
+            runCatching { storeProvider()?.signingKeys?.signer(FileApexServices.localIdentity.deviceId) }.getOrNull()
+        }
+        com.fileapex.membership.ChainSigning.renew = { storeProvider()?.signingKeys?.replaceForRejoin() }
+        TlsIdentityRenewal.renew = {
+            val store = storeProvider() ?: error("no TLS identity store")
+            store.replaceForRejoin()
+            store.signingKeys.replaceForRejoin()
+            com.fileapex.network.ServerLifecycleManager.stop()
+            com.fileapex.network.ServerLifecycleManager.ensureRunning()
+            TlsIdentityRenewal.afterRenewal.forEach { it() }
+        }
         TlsFrontProvider.factory = { bindHost -> create(storeProvider(), bindHost) }
     }
 
@@ -32,8 +44,8 @@ object TlsFrontFactory {
         LocalTlsInfo.pin = identity.pin
         LocalTlsInfo.rotation = store.currentRotationProof(identity)?.let(TlsRotation::encode).orEmpty()
         val repository = FileApexServices.deviceRepository
-        val directory = RosterTlsPeerDirectory { runBlocking { repository.listDevices() } }
-        directory.refresh()
+        val directory = RosterTlsPeerDirectory()
+        directory.refresh(runBlocking { repository.pinEntries() })
         val httpPort = FileApexServices.localIdentity.sharePort
         val server = TlsFrontServer(
             identity = { identity },
@@ -66,8 +78,8 @@ private class RosterWatchingFront(
     override fun start(): Int {
         val port = inner.start()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO).also {
-            repository.observeDevices().onEach { devices ->
-                directory.refresh(devices)
+            repository.observePinEntries().onEach { entries ->
+                directory.refresh(entries)
                 inner.revalidate()
             }.launchIn(it)
         }

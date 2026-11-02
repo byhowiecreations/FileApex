@@ -98,6 +98,7 @@ import com.fileapex.i18n.needsLanguagePrompt
 import com.fileapex.i18n.persistAppLanguage
 import com.fileapex.i18n.stringRes
 import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -524,16 +525,16 @@ fun App(
                                                 }
                                                 route = AppRoute.Devices
                                             }
-                                            AppRoute.Settings -> {
-                                                simpleDestination = SimpleDestination.Settings
-                                                route = AppRoute.Devices
-                                            }
+                                            AppRoute.Settings -> simpleDestination = SimpleDestination.Settings
                                             else -> Unit
                                         }
                                     }
                                     SimpleHome(
-                                        destination = simpleDestination,
-                                        onDestinationChange = { simpleDestination = it },
+                                        destination = com.fileapex.navigation.SimpleRouting.destinationFor(route, simpleDestination),
+                                        onDestinationChange = {
+                                            simpleDestination = it
+                                            route = com.fileapex.navigation.SimpleRouting.routeFor(it, route)
+                                        },
                                         isWide = isWide,
                                         devicesViewModel = devicesViewModel,
                                         hasStoragePermission = hasStoragePermission,
@@ -554,7 +555,10 @@ fun App(
                                         settingsContent = { deepLink, onDeepLinkConsumed ->
                                             SettingsScreen(
                                                 appVersionName = appVersionName,
-                                                onBack = { simpleDestination = SimpleDestination.Home },
+                                                onBack = {
+                                                    simpleDestination = SimpleDestination.Home
+                                                    route = com.fileapex.navigation.SimpleRouting.routeFor(SimpleDestination.Home, route)
+                                                },
                                                 showRootBackNavigation = false,
                                                 layoutMode = SettingsScreenLayoutMode.ListPane,
                                                 backgroundPersistence = backgroundPersistence,
@@ -960,6 +964,40 @@ fun App(
             cancelLabel = stringRes("pairing_check_cancel"),
             onConfirm = { pairingBoard.decideJoiner(true) },
             onCancel = { pairingBoard.decideJoiner(false) }
+        )
+    }
+
+    val identityChange by com.fileapex.security.IdentityChangeNotice.pending.collectAsState()
+    val identityRequest by com.fileapex.security.IdentityChangeNotice.request.collectAsState()
+    if (identityChange != null) {
+        val asking = identityRequest as? com.fileapex.membership.IdentityChangeRequester.State.Asking
+        val askedName by produceState<String?>(null, asking?.peerId) {
+            value = asking?.let { com.fileapex.di.FileApexServices.deviceRepository.getDevice(it.peerId)?.deviceName ?: it.peerId }
+        }
+        com.fileapex.ui.dialogs.IdentityChangedDialog(askedName = askedName, code = asking?.code, onDismiss = com.fileapex.security.IdentityChangeNotice::acknowledge)
+    }
+
+    val identityInbox by produceState<com.fileapex.membership.IdentityChangeInbox?>(null) {
+        while (value == null) {
+            value = com.fileapex.di.FileApexServices.membershipHub?.identityChanges
+            if (value == null) kotlinx.coroutines.delay(2_000)
+        }
+    }
+    val askedToKeep by (identityInbox?.pending ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList()) }).collectAsState()
+    askedToKeep.firstOrNull()?.let { ask ->
+        val oldName by produceState<String?>(null, ask.request.oldId) {
+            value = com.fileapex.di.FileApexServices.deviceRepository.getDevice(ask.request.oldId)?.deviceName ?: ask.request.oldId
+        }
+        val inbox = identityInbox
+        val answerScope = rememberCoroutineScope()
+        com.fileapex.ui.dialogs.PairingCheckDialog(
+            title = stringRes("identity_change_ask_title"),
+            body = stringRes("identity_change_ask_body", oldName ?: ask.request.oldId),
+            code = ask.code,
+            confirmLabel = stringRes("identity_change_ask_yes"),
+            cancelLabel = stringRes("identity_change_ask_no"),
+            onConfirm = { answerScope.launch { inbox?.accept(ask.request.oldId) } },
+            onCancel = { inbox?.decline(ask.request.oldId) }
         )
     }
 

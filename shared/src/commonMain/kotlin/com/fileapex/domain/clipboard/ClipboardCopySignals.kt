@@ -1,7 +1,7 @@
 package com.fileapex.domain.clipboard
 
 /**
- * Copy/cut chrome across Android 9–15 locales. Keep this off AccessibilityNodeInfo so
+ * Copy/cut chrome across Android 9 to 15 locales. Keep this off AccessibilityNodeInfo so
  * payload gating stays testable; OEM copy menus often never fill ClipboardManager in background.
  */
 object ClipboardCopySignals {

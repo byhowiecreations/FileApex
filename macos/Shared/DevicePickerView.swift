@@ -29,7 +29,7 @@ public struct DevicePickerView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 120)
             } else if model.devices.isEmpty {
-                Text(AppCopy.shared.t("pair_devices_then_retry"))
+                Text(AppCopy.shared.t("share_targets_none"))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
             } else {

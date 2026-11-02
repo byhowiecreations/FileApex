@@ -25,6 +25,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.fileapex.friends.FriendReceivedFile
 import com.fileapex.friends.FriendsHub
+import com.fileapex.friends.transfer.FriendSendIntake
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.openLocalFile
 import com.fileapex.platform.revealInFolder
@@ -37,6 +38,33 @@ private const val CARD_SHOWN_MS = 10_000L
 fun FriendReceivedHost() {
     var file by remember { mutableStateOf<FriendReceivedFile?>(null) }
     LaunchedEffect(Unit) { FriendsHub.received.collect { file = it } }
+    var dropped by remember { mutableStateOf<FriendSendIntake.Drop?>(null) }
+    LaunchedEffect(Unit) { FriendSendIntake.dropped.collect { dropped = it } }
+    dropped?.let { reason ->
+        LaunchedEffect(reason) { delay(CARD_SHOWN_MS); if (dropped == reason) dropped = null }
+        Popup(alignment = Alignment.BottomCenter, properties = PopupProperties(focusable = false)) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shadowElevation = 6.dp,
+                modifier = Modifier.padding(16.dp).widthIn(max = 420.dp).fillMaxWidth()
+            ) {
+                Row(Modifier.padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringRes(when (reason) {
+                            FriendSendIntake.Drop.NO_FRIEND -> "friends_send_dropped_no_friend"
+                            FriendSendIntake.Drop.NOTHING_CHOSEN -> "friends_send_dropped_nothing"
+                            FriendSendIntake.Drop.NOT_A_FILE -> "friends_send_dropped_not_file"
+                            FriendSendIntake.Drop.UNAVAILABLE -> "friends_unavailable"
+                        }),
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { dropped = null }) { Text(stringRes("ok")) }
+                }
+            }
+        }
+    }
     val shown = file ?: return
     LaunchedEffect(shown) { delay(CARD_SHOWN_MS); if (file === shown) file = null }
     Popup(alignment = Alignment.BottomCenter, properties = PopupProperties(focusable = false)) {

@@ -17,3 +17,6 @@ fun isUserStorageUnlocked(context: Context): Boolean {
     val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager ?: return true
     return userManager.isUserUnlocked
 }
+
+/** Android delivers only UI_HIDDEN and the background levels since API 34; the running levels are deprecated and never arrive. */
+fun trimsMemoryAt(level: Int): Boolean = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN

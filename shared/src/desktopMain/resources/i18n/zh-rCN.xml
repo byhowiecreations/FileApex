@@ -125,8 +125,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="grant_access">授予权限</string>
     <string name="grant_file_access">授予文件访问权限</string>
     <string name="add_new_device">添加新设备</string>
-    <string name="join_device">加入设备</string>
-    <string name="generate_qr">生成二维码</string>
+    <string name="join_device">加入另一台设备</string>
+    <string name="generate_qr">将设备添加到此设备</string>
     <string name="send_clipboard">发送剪贴板</string>
     <string name="check_batteries">查看电量</string>
     <string name="check_battery">查看电量</string>
@@ -413,7 +413,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="pin_idle_immediate">立即</string>
     <string name="pin_idle_10m">10 分钟</string>
     <string name="home">主页</string>
-    <string name="no_paired_devices_hint">还没有已配对的设备。点按添加新设备以生成二维码或加入设备。</string>
+    <string name="no_paired_devices_hint">还没有已配对的设备。点按添加新设备，将设备添加到此设备或加入另一台设备。</string>
 <string name="watchdog_desc">启用后台看门狗，以便在激进的厂商省电策略终止 FileApex 文件服务时自动重启。对端 UDP 唤醒仅在共享服务通知处于活动状态时有效。</string>
     <string name="background_restricted_desc">Android 正在阻止 FileApex 在后台运行。点按打开应用耗电管理，并将 FileApex 设为无限制或始终允许。</string>
     <string name="background_restricted_desc_steps">Android 正在阻止 FileApex 在后台运行。点按打开系统设置，然后选择：%1$s</string>
@@ -509,7 +509,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="error_select_files">请至少选择一个要发送的文件</string>
     <string name="error_send_failed">所有目标的“发送到”均失败</string>
     <string name="send_to_finished_errors">“发送到”完成，但有 %1$s 个错误</string>
-    <string name="qr_intro">在一台设备上显示此二维码。在另一台设备上用相机扫描并点击“打开 FileApex”，或使用 添加新设备 → 加入设备 并点击此设备。如果不扫描，两个屏幕会显示相同的数字：请确认一致。</string>
+    <string name="qr_intro">在保留其设备的那台设备上显示此二维码。在另一台设备上用相机扫描并点击“打开 FileApex”，或使用 添加新设备 → 加入另一台设备 并点击此设备。如果不扫描，两个屏幕会显示相同的数字：请确认一致。另一台设备会加入此设备；如果它已有已配对的设备，会离开它们并采用此设备的设备。</string>
     <string name="paired_with">已与 %1$s 配对。</string>
     <string name="starting_share_server">正在启动共享服务…就绪后即可配对。</string>
     <string name="qr_timeout">没有设备及时确认。点击重试以获取新的二维码和本地广播。</string>
@@ -697,7 +697,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="oem_transsion_autostart">在手机管家自启动管理中开启 FileApex，并在省电管家中排除限制。</string>
     <string name="pair_with_this_node">与此节点配对</string>
     <string name="manual_pairing_code">手动配对码</string>
-    <string name="scan_qr_pairing_hint">用相机或 FileApex 扫描二维码，或在另一台设备上选择“加入设备”并点击此设备。</string>
+    <string name="scan_qr_pairing_hint">用相机或 FileApex 扫描二维码，或在另一台设备上选择“加入另一台设备”并点击此设备。</string>
     <string name="no_lan_ipv4">未找到局域网 IPv4 地址。请加入 Wi‑Fi 后重试。</string>
     <string name="pairing_scan_own_qr">你扫描的是本机自己的二维码</string>
     <string name="pairing_failed">配对失败</string>
@@ -708,6 +708,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="incorrect_pin">PIN 不正确</string>
     <string name="incorrect_pin_pairing">PIN 不正确: 配对被拒绝</string>
     <string name="pairing_code_expired">配对码已过期或不正确。请让另一台设备点按重试。</string>
+    <string name="pairing_update_this_device">此设备的 FileApex 版本较旧。请先更新，然后重新配对。</string>
+    <string name="pairing_update_other_device">另一台设备的 FileApex 版本较旧。请先在那台设备上更新，然后重新配对。</string>
     <string name="pairing_handshake_failed">配对握手失败（%1$s）</string>
     <string name="pairing_not_fileapex">不是 FileApex 配对码: 请用相机扫描并点按打开 FileApex，或在 FileApex 内使用扫描二维码。扫描器看到：%1$s</string>
     <string name="live_qr_android_only">实时二维码相机仅在 Android 上可用</string>
@@ -1011,6 +1013,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="back_to_settings">返回设置</string>
     <string name="peer_revoked_this_device">%1$s 已不再识别此设备: 请重新配对以加入</string>
     <string name="removed_signed_out_google">此设备已从集群中移除，并已在 FileApex 中退出 Google 账号。请重新配对以加入。</string>
+    <string name="removed_from_cluster">此设备已从集群中移除。请重新配对以加入。</string>
     <string name="transfer_cancelled">传输已取消</string>
     <string name="queue_retry_failed">无法重试此传输</string>
     <string name="queue_retry_now">立即重试</string>
@@ -1018,6 +1021,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="show_in_folder">在文件夹中显示</string>
     <string name="error_peer_timeout">设备响应超时。请确认它已唤醒并连接到同一 Wi-Fi。</string>
     <string name="error_peer_unreachable">无法连接到设备。请确认其上的 FileApex 正在运行，且两台设备位于同一网络。</string>
+    <string name="error_peer_not_trusted">此设备不再信任你，可能已将你从其集群中移除。请重新与它配对后再浏览。</string>
     <string name="error_disk_full">存储空间不足，无法完成。</string>
     <string name="error_connection_lost">连接已中断，请重试。</string>
     <string name="filter_this_folder">筛选此文件夹</string>
@@ -1350,7 +1354,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="about_source_link">查看源代码</string>
     <string name="about_licenses_link">阅读完整许可证</string>
     <string name="about_trademarks">Tailscale、Iroh 及上述其他名称归其所有者所有,仅用于说明 FileApex 可配合使用的服务。</string>
-    <string name="join_tap_device">点击要配对的设备</string>
+    <string name="join_tap_device">点击要加入的设备。如果此设备已有已配对的设备，会离开它们。</string>
     <string name="paste_pairing_link">粘贴配对链接</string>
     <string name="friends_entry">与朋友连接</string>
     <string name="friends_intro_title">朋友功能如何运作</string>
@@ -1423,6 +1427,9 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="friends_joined">%1$s 已加入</string>
     <string name="friends_added">已添加 %1$s</string>
     <string name="friends_send_file">发送文件</string>
+    <string name="friends_send_dropped_no_friend">未发送任何内容：该好友已不在你的列表中。</string>
+    <string name="friends_send_dropped_nothing">未发送任何内容：未选择文件。</string>
+    <string name="friends_send_dropped_not_file">所选的部分项目不是文件，已跳过。</string>
     <string name="friends_rename">重命名</string>
     <string name="friends_block">屏蔽</string>
     <string name="friends_unblock">取消屏蔽</string>
@@ -1446,6 +1453,20 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="friends_status_received">已收到</string>
     <string name="friends_status_refused">朋友已拒绝</string>
     <string name="friends_status_failed">失败，重新发送可继续</string>
+    <string name="friends_failed_unreachable">无法联系到你的好友，请重新发送以继续</string>
+    <string name="friends_failed_timeout">你的好友未及时响应，请重新发送以继续</string>
+    <string name="friends_failed_lost">连接已断开，请重新发送以继续</string>
+    <string name="friends_failed_answer">好友的应用返回了意外的响应，请重新发送以继续</string>
+    <string name="friends_failed_file">无法读取该文件，请检查后重新发送</string>
+    <string name="friends_failed_gone">该好友已被移除，请重新添加后再发送</string>
+    <string name="friends_path_checking">正在检查连接...</string>
+    <string name="friends_path_direct_lan">在你的网络内直接连接（%1$s 毫秒）</string>
+    <string name="friends_path_direct_internet">通过互联网直接连接（%1$s 毫秒）</string>
+    <string name="friends_path_relay">正在使用中继</string>
+    <string name="friends_path_relay_no_direct">无法建立直接连接，正在使用中继</string>
+    <string name="friends_path_relay_hidden">正在使用中继（你的 IP 地址已隐藏）</string>
+    <string name="friends_path_unreachable">暂时无法联系到这位好友</string>
+    <string name="friends_removed_you">对方已将你移除。也在此处移除对方吗？</string>
     <string name="friends_error_generic">无法连接到朋友。</string>
     <string name="friends_invite_message">在 FileApex 上加入我。打开 FileApex，点“与朋友连接”，再点“输入邀请”，粘贴此链接并输入我告诉你的 PIN：%1$s</string>
     <string name="friends_copy_message">复制邀请消息</string>
@@ -1465,5 +1486,27 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="alert_critical_notice">公告板中有重要通知</string>
     <string name="notice_alert_description">重要通知</string>
     <string name="notice_update">更新</string>
+    <string name="identity_changed_title">此设备有了新的身份</string>
+    <string name="identity_changed_body">此设备的身份密钥已丢失或被替换，因此它有了新的身份。你的其他设备仍以旧身份识别它并会拒绝它。请在你的其他设备之一上选择“将设备添加到此设备”，然后在此设备上选择“加入另一台设备”并点击它。该设备会告知其余设备。</string>
+    <string name="identity_changed_ok">确定</string>
+    <string name="identity_change_ask_title">有设备请求保留其位置</string>
+    <string name="identity_change_ask_body">%1$s 丢失了身份密钥，现在有了新身份。请将此验证码与该设备上的核对，仅在一致时确认。</string>
+    <string name="identity_change_ask_yes">验证码一致</string>
+    <string name="identity_change_ask_no">不，拒绝</string>
+    <string name="identity_changed_waiting">已请 %1$s 确认。请在该设备上核对此验证码一致后确认：%2$s</string>
+    <string name="friends_queue_open">打开好友传输队列</string>
+    <string name="friends_queue_title">好友传输</string>
+    <string name="friends_queue_empty">当前没有传输</string>
+    <string name="friends_scan_invite">扫描邀请</string>
+    <string name="friends_scan_again">重新扫描</string>
+    <string name="friends_scan_invalid">这不是好友邀请。</string>
+    <string name="friends_share_queued">已将文件加入好友发送队列</string>
+    <string name="friends_share_failed">无法为好友将文件加入队列。重试前请检查传输。</string>
+    <string name="share_targets_none">请打开 FileApex 并添加设备或好友，然后重试。</string>
+    <string name="share_targets_count">%1$s 个目标</string>
+    <string name="friends_rename_failed">无法重命名。请先完成传输并检查目标文件夹。</string>
+    <string name="friends_remove_failed">移除未能完成。请检查好友列表，可能仍有临时文件。</string>
+    <string name="friends_notification_permission">允许好友通知</string>
+    <string name="friends_share_queue_failed">部分好友未能加入发送队列。请检查剩余目标后重试。已加入队列的好友不会重复发送。</string>
 </resources>
 

@@ -30,6 +30,9 @@ data class PeerBoundStreamResult(
     val statusCode: Int
 )
 
+/** Reads the signed membership chain from a peer's TLS port without holding it to a pin. See [UnpinnedFetch]. */
+internal expect suspend fun peerChainGetUnpinned(host: String, tlsPort: Int, timeoutMs: Long): PeerBoundHttpResponse?
+
 expect suspend fun peerHttpGet(
     host: String,
     port: Int,

@@ -132,8 +132,8 @@ func startNode(t *testing.T, n *Node) (httpPort, tlsPort int) {
 
 // pairUp makes each node know the other as a paired peer with its pairing key.
 func pairUp(a, b *Node, aHTTP, bHTTP int) {
-	a.peers[b.identity.DeviceID] = deviceRecord{DeviceID: b.identity.DeviceID, DeviceName: "B", LastKnownIP: "127.0.0.1", Port: bHTTP, PublicKey: b.pairPublicKey(), ClusterVersion: time.Now().UnixMilli()}
-	b.peers[a.identity.DeviceID] = deviceRecord{DeviceID: a.identity.DeviceID, DeviceName: "A", LastKnownIP: "127.0.0.1", Port: aHTTP, PublicKey: a.pairPublicKey(), ClusterVersion: time.Now().UnixMilli()}
+	a.peers[b.identity.DeviceID] = deviceRecord{DeviceID: b.identity.DeviceID, DeviceName: "B", LastKnownIP: "127.0.0.1", Port: bHTTP, PublicKey: b.pairPublicKey()}
+	b.peers[a.identity.DeviceID] = deviceRecord{DeviceID: a.identity.DeviceID, DeviceName: "A", LastKnownIP: "127.0.0.1", Port: aHTTP, PublicKey: a.pairPublicKey()}
 }
 
 func plainGet(t *testing.T, url string) (int, string) {

@@ -2,22 +2,52 @@ package com.fileapex.platform
 
 import java.awt.Desktop
 import java.net.URI
+import com.fileapex.domain.launch.DesktopLaunchInbox
+import com.fileapex.domain.launch.DesktopLaunchRequest
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 
-/** Receives `fileapex://` links the system hands to the running app: the Google sign-in return. */
+/** Native launch events enter the same pending domain inbox as forwarded launcher arguments. */
 object DesktopUriHandler {
+    private var scope = newScope()
+    private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Synchronized private fun active() = scope
+
+    /** App shutdown: pending file events are cancelled; a later event gets a fresh scope. */
+    @Synchronized fun stop() {
+        scope.cancel()
+        scope = newScope()
+    }
+
     fun installOpenUriHandler() {
         runCatching {
             if (!Desktop.isDesktopSupported()) return
             val desktop = Desktop.getDesktop()
-            if (!desktop.isSupported(Desktop.Action.APP_OPEN_URI)) return
-            desktop.setOpenURIHandler { event -> handleOAuthCallback(event.uri) }
-            println("DesktopUriHandler: APP_OPEN_URI handler installed")
+            if (desktop.isSupported(Desktop.Action.APP_OPEN_URI)) desktop.setOpenURIHandler { event -> queueUri(event.uri) }
+            if (desktop.isSupported(Desktop.Action.APP_OPEN_FILE)) desktop.setOpenFileHandler { event -> queueFiles(event.files) }
         }.onFailure { error ->
             println("DesktopUriHandler: URI handler not available :: ${error.message}")
         }
     }
 
-    private fun handleOAuthCallback(uri: URI): Boolean {
+    fun queueUri(uri: URI, inbox: DesktopLaunchInbox = DesktopLaunchInbox.live): Boolean =
+        inbox.offer(DesktopLaunchRequest(args = listOf(uri.toString()), cwd = System.getProperty("user.dir")))
+
+    fun queueFiles(files: List<File>, inbox: DesktopLaunchInbox = DesktopLaunchInbox.live) = active().launch {
+        com.fileapex.util.cancellableCatching {
+            val args = files.map { it.absolutePath }
+            ensureActive()
+            if (!inbox.offer(DesktopLaunchRequest(args = args, cwd = System.getProperty("user.dir"))))
+                println("DesktopUriHandler: file launch was refused")
+        }.onFailure { println("DesktopUriHandler: file launch failed :: ${it::class.simpleName}") }
+    }
+
+    fun handleOAuthCallback(uri: URI): Boolean {
         val scheme = uri.scheme?.lowercase() ?: return false
         if (scheme != "apex" && scheme != "fileapex") return false
         if (uri.host != "oauth-callback") return false

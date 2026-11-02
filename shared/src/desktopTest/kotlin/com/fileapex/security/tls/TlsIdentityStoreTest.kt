@@ -130,4 +130,42 @@ class TlsIdentityStoreTest {
         assertTrue(TlsRotation.verify(proof, setOf(old.pin), fresh.pin, System.currentTimeMillis()))
         assertEquals(null, store.currentRotationProof(old))
     }
+
+    private class SwitchVault(override val scheme: Int = 5) : TlsSecretVault {
+        var sealing = true
+        override fun seal(plain: ByteArray): ByteArray {
+            if (!sealing) throw com.fileapex.data.settings.SecretUnavailableException("locked")
+            return plain
+        }
+        override fun open(sealed: ByteArray) = sealed
+    }
+
+    @Test
+    fun aKickedDeviceTakesANewKeyThatSurvivesARestartAndCarriesNoRotationProof() {
+        val store = TlsIdentityStore(dir(), emptyList())
+        val old = store.getOrCreate()
+        store.regenerate()
+        val fresh = store.replaceForRejoin()
+        assertNotEquals(old.pin, fresh.pin)
+        assertEquals(fresh.pin, store.getOrCreate().pin)
+        val reopened = TlsIdentityStore(dir(), emptyList())
+        assertEquals(fresh.pin, reopened.getOrCreate().pin)
+        assertEquals("the old key must not vouch for the new one", null, reopened.currentRotationProof(fresh))
+    }
+
+    @Test
+    fun aReplacementThatCannotBeSavedKeepsTheOldKeyInMemoryAndOnDisk() {
+        val vault = SwitchVault()
+        val store = TlsIdentityStore(dir(), listOf(vault))
+        val old = store.getOrCreate()
+        val before = File(dir(), "tls_identity.v1").readBytes()
+        vault.sealing = false
+        try {
+            store.replaceForRejoin()
+            fail("expected TlsIdentityUnavailableException")
+        } catch (_: TlsIdentityUnavailableException) {
+        }
+        assertEquals(old.pin, store.getOrCreate().pin)
+        assertTrue(before.contentEquals(File(dir(), "tls_identity.v1").readBytes()))
+    }
 }

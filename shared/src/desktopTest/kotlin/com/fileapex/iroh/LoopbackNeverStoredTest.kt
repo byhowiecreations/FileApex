@@ -23,6 +23,7 @@ import org.junit.Test
  */
 class LoopbackNeverStoredTest {
     private class MemoryDao : DeviceDao {
+        override suspend fun forgetLocalExcept(keepId: String) = Unit
         val devices = mutableMapOf<String, PairedDeviceEntity>()
         val touches = mutableListOf<Pair<String, Int>>()
         val endpointUpdates = mutableListOf<Pair<String, Int>>()
@@ -35,7 +36,6 @@ class LoopbackNeverStoredTest {
         override suspend fun deleteDevice(deviceId: String) { devices.remove(deviceId) }
         override suspend fun deleteAllDevices() = devices.clear()
         override suspend fun insertRemovedDevice(device: RemovedDeviceEntity) {}
-        override suspend fun countRemovedById(deviceId: String) = 0
         override suspend fun clearRemovedDevice(deviceId: String) {}
         override suspend fun clearRemovedByPublicKeyHash(publicKeyHash: String) {}
         override suspend fun getAllRemovedDevices() = emptyList<RemovedDeviceEntity>()
@@ -46,7 +46,6 @@ class LoopbackNeverStoredTest {
         }
         override suspend fun touchLastSeenEpoch(deviceId: String, epochMs: Long) {}
         override suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String) {}
-        override suspend fun updateTls(deviceId: String, pin: String, alt: String, port: Int) {}
         override suspend fun updateEndpoint(deviceId: String, ip: String, port: Int) {
             endpointUpdates += ip to port
             devices[deviceId]?.let { devices[deviceId] = it.copy(lastKnownIp = ip, port = port) }

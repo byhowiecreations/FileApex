@@ -20,6 +20,7 @@ object RouteAuthPolicy {
     /** Pairing and PIN verification happen before two devices trust each other; the web intake serves a browser; the local routes check for this machine and a token themselves. */
     val OPEN_PREFIXES: List<String> = listOf(
         "/api/v1/pairing",
+        "/api/v2/pairing",
         "/api/v1/auth",
         "/api/v1/web",
         "/api/v1/local"

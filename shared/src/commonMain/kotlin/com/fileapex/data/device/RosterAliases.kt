@@ -48,7 +48,7 @@ internal class RosterAliases(
         if (existing == merged && !purgedSelf) {
             return false
         }
-        roster.writeKeepingTlsTrust(merged)
+        roster.writeDevice(merged)
         return true
     }
 
@@ -88,7 +88,7 @@ internal class RosterAliases(
             return false
         }
 
-        if (currentWinner != merged) roster.writeKeepingTlsTrust(merged) // survivor first: the list never misses it
+        if (currentWinner != merged) roster.writeDevice(merged) // survivor first: the list never misses it
         for (id in toDelete) {
             deviceDao.deleteDevice(id)
         }
@@ -101,7 +101,7 @@ internal class RosterAliases(
         val byId = all.associateBy { it.deviceId }
         for (keeper in collapsed) {
             if (byId[keeper.deviceId] != keeper) {
-                roster.writeKeepingTlsTrust(keeper)
+                roster.writeDevice(keeper)
             }
         }
         for (device in all) {

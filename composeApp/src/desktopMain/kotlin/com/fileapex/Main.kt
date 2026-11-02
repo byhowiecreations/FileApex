@@ -58,10 +58,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.withContext
 
-import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
-import java.io.File
-import java.util.UUID
+import com.fileapex.domain.launch.DesktopLaunchInbox
+import com.fileapex.domain.launch.DesktopLaunchRequest
+import com.fileapex.platform.DesktopSingleInstance
+import com.fileapex.platform.DesktopUriHandler
 
 /** The window size is remembered per theme; Carousel's key is versioned so a new default takes effect once. */
 private fun sizeKey(theme: AppTheme): String = if (theme == AppTheme.CAROUSEL) "CAROUSEL_2" else theme.name
@@ -75,8 +76,6 @@ fun main(args: Array<String>) {
     com.fileapex.platform.ThreadTuning.apply()
     com.fileapex.util.LogRedaction.install()
     DesktopCrashHandler.install()
-    // The CLI dials pinned peers too, so the client identity must exist before either path starts.
-    com.fileapex.security.tls.PeerTlsConnector.configure { com.fileapex.security.tls.DesktopTlsIdentity.store() }
     try {
         if (isCliInvocation(args)) {
             if (com.fileapex.platform.DesktopPlatformPaths.isWindows()) {
@@ -85,6 +84,13 @@ fun main(args: Array<String>) {
             com.fileapex.cli.CliRunner.run(if (args.isEmpty()) arrayOf("help") else args)
             return
         }
+        val atSignIn = com.fileapex.platform.DesktopAutostart.isAutostartLaunch(args)
+        val launch = DesktopLaunchRequest(
+            args = args.filterNot { it.equals(com.fileapex.platform.DesktopAutostart.FLAG, ignoreCase = true) },
+            cwd = System.getProperty("user.dir"), activate = !atSignIn
+        )
+        if (DesktopSingleInstance.start(DesktopPlatformPaths.applicationSupportDirectory(), launch, DesktopLaunchInbox.live::offer) == null) return
+        com.fileapex.security.tls.PeerTlsConnector.configure { com.fileapex.security.tls.DesktopTlsIdentity.store() }
         DesktopJvmStartup.onMainEntry()
         com.fileapex.security.tls.TlsFrontFactory.install { com.fileapex.security.tls.DesktopTlsIdentity.store() }
         FileApexServices.beginBootstrap(
@@ -92,13 +98,12 @@ fun main(args: Array<String>) {
             legacyBulletinPath = com.fileapex.platform.DesktopPlatformPaths.bulletinBoardDatabaseFile().absolutePath
         )
 
-        val initialShare = parseCliSharePayload(args)
         // A start at sign-in opens the window minimized (it stays in the taskbar), not in front of the user's work.
-        com.fileapex.platform.DesktopAutostart.launchedAtSignIn = com.fileapex.platform.DesktopAutostart.isAutostartLaunch(args)
+        com.fileapex.platform.DesktopAutostart.launchedAtSignIn = atSignIn
         Thread {
             runCatching { com.fileapex.platform.BootLaunchPreference.syncFromSettings() }
         }.apply { isDaemon = true; name = "autostart-sync" }.start()
-        startDesktopApplication(initialShare)
+        startDesktopApplication()
     } catch (t: Throwable) {
         DesktopCrashHandler.handleCrash(Thread.currentThread(), t)
         throw t
@@ -121,7 +126,7 @@ private fun isCliInvocation(args: Array<String>): Boolean {
     )
 }
 
-private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload?) {
+private fun startDesktopApplication() {
     if (DesktopPlatformPaths.isMacOs()) {
         System.setProperty("apple.awt.application.appearance", "NSAppearanceNameDarkAqua")
     }
@@ -133,7 +138,8 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
     application(exitProcessOnExit = !DesktopPlatformPaths.isMacOs()) {
         var servicesReady by remember { mutableStateOf(FileApexServices.isBootstrapComplete) }
         var mainWindowVisible by remember { mutableStateOf(true) }
-        var desktopIncomingShare by remember { mutableStateOf(initialCliSharePayload) }
+        var desktopIncomingShare by remember { mutableStateOf<IncomingSharePayload?>(null) }
+        val launchRequests by DesktopLaunchInbox.live.pending.collectAsState()
 
         LaunchedEffect(Unit) {
             val t0 = System.nanoTime()
@@ -266,6 +272,8 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             com.fileapex.cloud.DesktopAuthCoordinator.cancelPending()
             DesktopShareServerController.shutdownForQuit()
             DesktopTraySupport.dispose()
+            DesktopUriHandler.stop()
+            DesktopSingleInstance.stopLiveForwarding()
         }
 
         fun quitDesktop() {
@@ -290,8 +298,9 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
             visible = if (DesktopPlatformPaths.isMacOs()) true else mainWindowVisible,
         ) {
             // Light shell first so splash hide + tray attach are not stuck behind Kinetic/PNG
-            // first composition (that path was ~6–10s of Dock bounce / frozen splash).
+            // first composition (that path was ~6 to 10s of Dock bounce / frozen splash).
             var mountApp by remember { mutableStateOf(false) }
+            var launchRoutingReady by remember { mutableStateOf(false) }
 
             LaunchedEffect(window, mountApp) {
                 // The tray and window-policy setup blocks the UI thread, so it runs after the app's first frame.
@@ -315,6 +324,29 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
                 if (DesktopPlatformPaths.isMacOs()) {
                     DesktopMacTrayBridge.installAppLifecycle()
                 }
+                launchRoutingReady = true
+            }
+
+            val nextLaunch = launchRequests.firstOrNull()
+            LaunchedEffect(servicesReady, launchRoutingReady, nextLaunch?.id, desktopIncomingShare?.sessionId) {
+                val input = nextLaunch ?: return@LaunchedEffect
+                if (!servicesReady || !launchRoutingReady || (input.share != null && desktopIncomingShare != null)) return@LaunchedEffect
+                if (input.activate) {
+                    mainWindowVisible = true
+                    windowState.isMinimized = false
+                    DesktopTraySupport.showMainWindow()
+                    window.toFront()
+                    window.requestFocus()
+                }
+                input.share?.let { desktopIncomingShare = it }
+                input.uris.forEach { text ->
+                    val uri = java.net.URI(text)
+                    if (uri.scheme.equals("fileapex", true) && uri.host == "friend")
+                        com.fileapex.friends.ui.FriendsUi.openWithInvite(text)
+                    else if (!DesktopUriHandler.handleOAuthCallback(uri))
+                        println("Desktop launch: unsupported app URI")
+                }
+                DesktopLaunchInbox.live.consume(input.id)
             }
 
             LaunchedEffect(window) {
@@ -388,25 +420,6 @@ private fun startDesktopApplication(initialCliSharePayload: IncomingSharePayload
         }
 
     }
-}
-
-private fun parseCliSharePayload(args: Array<String>): IncomingSharePayload? {
-    if (args.isEmpty()) return null
-    val files = args.mapNotNull { pathStr ->
-        val file = File(pathStr)
-        if (file.exists()) {
-            IncomingShareFile(
-                fileName = file.name,
-                absolutePath = file.absolutePath,
-                sizeBytes = if (file.isFile) file.length() else 0L
-            )
-        } else null
-    }
-    if (files.isEmpty()) return null
-    return IncomingSharePayload(
-        sessionId = UUID.randomUUID().toString(),
-        files = files
-    )
 }
 
 private fun preferredWindowSize(deviceCount: Int, layoutMode: DesktopLayoutMode): DpSize {

@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
@@ -74,7 +74,7 @@ private fun DockItem.title(): String = when (this) {
 private fun DockItem.icon(): ImageVector = when (this) {
     DockItem.Home -> Icons.Outlined.Home
     DockItem.LocalFiles -> Icons.Outlined.Folder
-    DockItem.Bulletin -> Icons.Outlined.Article
+    DockItem.Bulletin -> Icons.AutoMirrored.Outlined.Article
     DockItem.Add -> Icons.Outlined.Add
     DockItem.Settings -> Icons.Outlined.Settings
 }

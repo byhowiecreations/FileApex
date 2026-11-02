@@ -48,7 +48,8 @@ internal object RosterMerge {
         val endpointB = endpointKey(b.lastKnownIp, b.port)
         val nameA = normalizeName(a.deviceName)
         val nameB = normalizeName(b.deviceName)
-        if (nameA.isNotEmpty() && nameA == nameB && (endpointA == null || endpointB == null)) {
+        val named = !com.fileapex.data.device.DeviceDisplayNames.isPlaceholder(a.deviceName) && !com.fileapex.data.device.DeviceDisplayNames.isPlaceholder(b.deviceName)
+        if (named && nameA.isNotEmpty() && nameA == nameB && (endpointA == null || endpointB == null)) {
             return true
         }
 
@@ -215,9 +216,6 @@ internal object RosterMerge {
                 device.lastSeenEpochMs.coerceAtLeast(0L),
                 preserveFrom?.lastSeenEpochMs?.coerceAtLeast(0L) ?: 0L
             ),
-            tlsPin = preserveFrom?.tlsPin.orEmpty(),
-            tlsPinAlt = preserveFrom?.tlsPinAlt.orEmpty(),
-            tlsPort = device.tlsPort.takeIf { it in 1..65535 } ?: preserveFrom?.tlsPort ?: 0,
             tailnetHostname = device.tailnetHostname.trim().ifBlank { preserveFrom?.tailnetHostname.orEmpty() },
             tailnetIpv4 = device.tailnetIpv4.trim().let { incoming ->
                 if (com.fileapex.tailscale.isTailscaleIPv4(incoming)) {

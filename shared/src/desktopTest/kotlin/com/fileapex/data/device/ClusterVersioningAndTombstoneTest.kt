@@ -3,8 +3,6 @@ package com.fileapex.data.device
 import com.fileapex.data.db.DeviceDao
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.db.RemovedDeviceEntity
-import com.fileapex.domain.pairing.RemovedDeviceRecord
-import com.fileapex.domain.peer.ClusterClock
 import com.fileapex.domain.peer.PeerNodeState
 import com.fileapex.domain.peer.rosterWithoutRelayedPresence
 import com.fileapex.util.TimeUtils
@@ -21,6 +19,7 @@ import org.junit.Test
 class ClusterVersioningAndTombstoneTest {
 
     private class InMemoryDeviceDao : DeviceDao {
+        override suspend fun forgetLocalExcept(keepId: String) = Unit
         val devices = mutableMapOf<String, PairedDeviceEntity>()
         val removed = mutableMapOf<String, RemovedDeviceEntity>()
 
@@ -54,8 +53,6 @@ class ClusterVersioningAndTombstoneTest {
             removed[device.deviceId] = device
         }
 
-        override suspend fun countRemovedById(deviceId: String): Int =
-            if (removed.containsKey(deviceId)) 1 else 0
 
         override suspend fun clearRemovedDevice(deviceId: String) {
             removed.remove(deviceId)
@@ -87,12 +84,6 @@ class ClusterVersioningAndTombstoneTest {
         override suspend fun updateTailnet(deviceId: String, hostname: String, ipv4: String) {
             devices[deviceId]?.let {
                 devices[deviceId] = it.copy(tailnetHostname = hostname, tailnetIpv4 = ipv4)
-            }
-        }
-
-        override suspend fun updateTls(deviceId: String, pin: String, alt: String, port: Int) {
-            devices[deviceId]?.let {
-                devices[deviceId] = it.copy(tlsPin = pin, tlsPinAlt = alt, tlsPort = port)
             }
         }
 
@@ -134,9 +125,10 @@ class ClusterVersioningAndTombstoneTest {
         repo.adoptFromPairing(tlsPeer(pin = pinA, port = 8443))
         val stored = repo.getDevice("dev-tls")!!
         assertEquals("", stored.tlsPin)
-        assertEquals(8443, stored.tlsPort)
+        assertEquals("the port is a fact about a pin and is not shown without one", 0, stored.tlsPort)
         assertTrue(repo.recordTlsPin("dev-tls", pinA.uppercase(), 8443))
         assertEquals(pinA, repo.getDevice("dev-tls")!!.tlsPin)
+        assertEquals(8443, repo.getDevice("dev-tls")!!.tlsPort)
     }
 
     @Test
@@ -146,7 +138,6 @@ class ClusterVersioningAndTombstoneTest {
         repo.recordTlsPin("dev-tls", pinA, 8443)
 
         repo.upsert(tlsPeer(pin = pinB, port = 9443))
-        repo.adoptFromRosterIntro(tlsPeer(pin = pinB, port = 9443).copy(clusterVersion = 5000L))
         repo.applyPeerNodeState(
             PeerNodeState(
                 deviceId = "dev-tls", deviceName = "Desk", ipAddress = "192.168.1.60", port = 49428,
@@ -263,100 +254,6 @@ class ClusterVersioningAndTombstoneTest {
     }
 
     @Test
-    fun testRemoteRemovalNewerThanPairingApplies() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("dev-3", "192.168.1.70"))
-        val paired = repo.getDevice("dev-3")!!.clusterVersion
-
-        val applied = repo.applyRemoteRemoval(removal("dev-3", paired + 1))
-        assertTrue(applied)
-
-        assertEquals(0, repo.listDevices().size)
-        val entry = repo.getDeviceEntry("dev-3")!!
-        assertTrue(entry.isRemoved)
-        assertEquals(paired + 1, entry.clusterVersion)
-        assertEquals("", entry.publicKey)
-    }
-
-    @Test
-    fun testRemoteRemovalOlderThanPairingIgnored() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("dev-4", "192.168.1.80"))
-        val paired = repo.getDevice("dev-4")!!.clusterVersion
-
-        assertFalse(repo.applyRemoteRemoval(removal("dev-4", paired - 1)))
-        assertFalse(repo.applyRemoteRemoval(removal("dev-4", paired)))
-
-        val active = repo.getDevice("dev-4")!!
-        assertFalse(active.isRemoved)
-        assertEquals(paired, active.clusterVersion)
-    }
-
-    @Test
-    fun testUnversionedOrLegacyRemovalIgnored() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("honor", "192.168.1.81"))
-        val future = TimeUtils.now() + 60_000L
-
-        assertFalse(repo.applyRemoteRemoval(RemovedDeviceRecord(deviceId = "honor")))
-        assertFalse(repo.applyRemoteRemoval(removal("honor", future).copy(membershipProtocol = 0)))
-        assertNotNull(repo.getDevice("honor"))
-    }
-
-    @Test
-    fun testFutureSkewedRemovalIgnored() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("skew", "192.168.1.82"))
-        val tooFar = TimeUtils.now() + ClusterClock.MAX_FORWARD_SKEW_MS + 60_000L
-
-        assertFalse(repo.applyRemoteRemoval(removal("skew", tooFar)))
-        assertNotNull(repo.getDevice("skew"))
-    }
-
-    @Test
-    fun testEchoOfOldTombstoneAfterRepairIgnored() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("x9d", "192.168.1.83"))
-        repo.removePermanently("x9d")
-        val removedAt = repo.getDeviceEntry("x9d")!!.clusterVersion
-
-        repo.adoptFromPairing(peer("x9d", "192.168.1.83"))
-        val repaired = repo.getDevice("x9d")!!.clusterVersion
-        assertTrue(repaired > removedAt)
-
-        assertFalse(repo.applyRemoteRemoval(removal("x9d", removedAt)))
-        assertNotNull(repo.getDevice("x9d"))
-        assertFalse(repo.isDeviceIdRevoked("x9d"))
-    }
-
-    @Test
-    fun testRemovalForUnknownPeerLeavesNoBlankRosterRow() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-
-        assertTrue(repo.applyRemoteRemoval(removal("ghost", TimeUtils.now())))
-        assertNull(dao.getDevice("ghost"))
-        assertEquals(1, dao.getAllRemovedDevices().size)
-        assertTrue(repo.isDeviceIdRevoked("ghost"))
-    }
-
-    @Test
-    fun testRepeatedRemovalAppliesOnlyOnce() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("dup", "192.168.1.84"))
-        val version = repo.getDevice("dup")!!.clusterVersion + 1
-
-        assertTrue(repo.applyRemoteRemoval(removal("dup", version)))
-        assertFalse(repo.applyRemoteRemoval(removal("dup", version)))
-    }
-
-    @Test
     fun testStampedIntroLiftsOlderTombstoneButLegacyStateCannot() = runBlocking {
         val dao = InMemoryDeviceDao()
         val repo = DeviceRepository(dao)
@@ -368,11 +265,9 @@ class ClusterVersioningAndTombstoneTest {
         assertFalse(repo.applyPeerNodeState(legacy))
         assertTrue(repo.isDeviceIdRevoked("pixel"))
 
-        val stamped = legacy.copy(membershipVersion = removedAt + 1, membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL)
-        assertTrue(repo.applyPeerNodeState(stamped))
-        val active = repo.getDevice("pixel")!!
-        assertEquals(removedAt + 1, active.clusterVersion)
-        assertFalse(repo.isDeviceIdRevoked("pixel"))
+        val stamped = legacy.copy(membershipVersion = removedAt + 1, membershipProtocol = 2)
+        assertFalse(repo.applyPeerNodeState(stamped))
+        assertTrue(repo.isDeviceIdRevoked("pixel"))
     }
 
     @Test
@@ -383,7 +278,7 @@ class ClusterVersioningAndTombstoneTest {
         val removedState = nodeState("fold", "192.168.1.86").copy(
             isRemoved = true,
             membershipVersion = TimeUtils.now() + 1_000L,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
 
         assertFalse(repo.applyPeerNodeState(removedState))
@@ -399,56 +294,13 @@ class ClusterVersioningAndTombstoneTest {
         val heartbeat = nodeState("tcl", "192.168.1.99").copy(
             lastSeenTimestamp = TimeUtils.now() + 1_000L,
             membershipVersion = stored - 10_000L,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
 
         assertTrue(repo.applyPeerNodeState(heartbeat))
         val updated = repo.getDevice("tcl")!!
         assertEquals("192.168.1.99", updated.lastKnownIp)
         assertEquals(stored, updated.clusterVersion)
-    }
-
-    @Test
-    fun testClusterClockIsMonotonicAndOutranksObservedStamps() {
-        val ahead = TimeUtils.now() + 120_000L
-        ClusterClock.observe(ahead)
-        val first = ClusterClock.next()
-        val second = ClusterClock.next()
-        assertTrue(first > ahead)
-        assertTrue(second > first)
-        assertFalse(ClusterClock.isAcceptable(0L))
-        assertFalse(ClusterClock.isAcceptable(TimeUtils.now() + ClusterClock.MAX_FORWARD_SKEW_MS + 60_000L))
-    }
-
-    @Test
-    fun testReconcileRemotePeerLww() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("dev-5", "192.168.1.90"))
-        val initial = repo.getDevice("dev-5")!!
-
-        val remoteNewer = initial.copy(lastKnownIp = "192.168.1.95", clusterVersion = initial.clusterVersion + 10)
-        assertTrue(repo.reconcileRemotePeer(remoteNewer))
-        val updated = repo.getDevice("dev-5")!!
-        assertEquals("192.168.1.95", updated.lastKnownIp)
-        assertEquals(initial.clusterVersion + 10, updated.clusterVersion)
-
-        val remoteOlder = initial.copy(lastKnownIp = "192.168.1.99", clusterVersion = initial.clusterVersion - 10)
-        assertFalse(repo.reconcileRemotePeer(remoteOlder))
-        val unchanged = repo.getDevice("dev-5")!!
-        assertEquals("192.168.1.95", unchanged.lastKnownIp)
-        assertEquals(initial.clusterVersion + 10, unchanged.clusterVersion)
-    }
-
-    @Test
-    fun testReconcileRemotePeerNeverAppliesTombstones() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-        repo.adoptFromPairing(peer("moto", "192.168.1.91"))
-        val row = repo.getDevice("moto")!!
-
-        assertFalse(repo.reconcileRemotePeer(row.copy(isRemoved = true, clusterVersion = row.clusterVersion + 10)))
-        assertNotNull(repo.getDevice("moto"))
     }
 
     @Test
@@ -486,14 +338,6 @@ class ClusterVersioningAndTombstoneTest {
         rootPath = "/"
     )
 
-    private fun removal(id: String, version: Long) = RemovedDeviceRecord(
-        deviceId = id,
-        publicKeyHash = "hash-$id",
-        clusterVersion = version,
-        removedAt = version,
-        membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
-    )
-
     @Test
     fun anAdoptionTheOtherSideNeverAcceptedIsUndoneWithoutLeavingARemoval() = runBlocking {
         val dao = InMemoryDeviceDao()
@@ -519,47 +363,6 @@ class ClusterVersioningAndTombstoneTest {
         publicKey = "key-$id",
         lastSeenTimestamp = TimeUtils.now()
     )
-
-    @Test
-    fun testGossipReconcileRemotePeerCannotResurrectTombstonedDevice() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-
-        val device = PairedDeviceEntity(
-            deviceId = "dev-8",
-            deviceName = "Echo Phone",
-            lastKnownIp = "192.168.1.150",
-            port = 49428,
-            publicKeyHash = "hash-echo-8",
-            publicKey = "key-echo-8",
-            rootPath = "/",
-            clusterVersion = 1000L
-        )
-        repo.adoptFromPairing(device)
-        assertEquals(1, repo.listDevices().size)
-
-        // Device is removed permanently
-        repo.removePermanently("dev-8")
-        assertEquals(0, repo.listDevices().size)
-        assertTrue(repo.isDeviceIdRevoked("dev-8"))
-
-        // Another peer on LAN gossips active dev-8 with a higher clusterVersion (5000L)
-        val gossipFromStalePeer = device.copy(
-            clusterVersion = 5000L,
-            lastSeenEpochMs = 5000L,
-            isRemoved = false,
-            removedAt = null
-        )
-        val reconciled = repo.reconcileRemotePeer(gossipFromStalePeer)
-        assertFalse(reconciled)
-
-        // dev-8 MUST remain tombstoned and not in active roster
-        assertEquals(0, repo.listDevices().size)
-        assertTrue(repo.isDeviceIdRevoked("dev-8"))
-        val tombstone = repo.getDeviceEntry("dev-8")
-        assertNotNull(tombstone)
-        assertTrue(tombstone!!.isRemoved)
-    }
 
     @Test
     fun testApplyPeerNodeStateCannotResurrectTombstonedDevice() = runBlocking {
@@ -639,63 +442,6 @@ class ClusterVersioningAndTombstoneTest {
     }
 
     @Test
-    fun testReconcileRemotePeerIgnoresLegacyRosterWithoutClusterVersion() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-
-        val legacyRosterDevice = PairedDeviceEntity(
-            deviceId = "stale-peer",
-            deviceName = "Stale Peer",
-            lastKnownIp = "192.168.1.190",
-            port = 49428,
-            publicKeyHash = "hash-stale",
-            publicKey = "key-stale",
-            rootPath = "/",
-            clusterVersion = 0L // Legacy device returns 0
-        )
-
-        val reconciled = repo.reconcileRemotePeer(legacyRosterDevice)
-        assertFalse(reconciled)
-        assertEquals(0, repo.listDevices().size)
-    }
-
-    @Test
-    fun testGetTombstoneRecordsIncludesBothTables() = runBlocking {
-        val dao = InMemoryDeviceDao()
-        val repo = DeviceRepository(dao)
-
-        val pairedTombstone = PairedDeviceEntity(
-            deviceId = "tombstone-1",
-            deviceName = "Old Tablet",
-            lastKnownIp = "192.168.1.200",
-            port = 49428,
-            publicKeyHash = "hash-t1",
-            isRemoved = true,
-            rootPath = "/",
-            clusterVersion = 5000L,
-            removedAt = 5000L
-        )
-        dao.upsertDevice(pairedTombstone)
-
-        dao.insertRemovedDevice(
-            RemovedDeviceEntity(
-                deviceId = "tombstone-2",
-                publicKeyHash = "hash-t2",
-                lastKnownIp = "192.168.1.201",
-                port = 49428,
-                removedAtEpochMs = 6000L
-            )
-        )
-
-        val records = repo.getTombstoneRecords(maxAgeMs = Long.MAX_VALUE)
-        assertEquals(2, records.size)
-        assertTrue(records.any { it.deviceId == "tombstone-1" })
-        assertTrue(records.any { it.deviceId == "tombstone-2" })
-        assertTrue(records.all { it.membershipProtocol == 0 })
-        assertTrue(repo.getTombstoneRecords().isEmpty())
-    }
-
-    @Test
     fun testAdoptFromPairingKeepsTombstoneOfOldIdentityOnSameEndpoint() = runBlocking {
         val dao = InMemoryDeviceDao()
         val repo = DeviceRepository(dao)
@@ -712,7 +458,7 @@ class ClusterVersioningAndTombstoneTest {
         repo.removePermanently(oldDevice.deviceId)
 
         assertEquals(0, repo.listDevices().size)
-        assertTrue(dao.countRemovedById("old-device-id") > 0)
+        assertTrue(dao.getAllRemovedDevices().any { it.deviceId == "old-device-id" })
         assertEquals(1, dao.getTombstonedDevices().size)
 
         // After wipe/reset, device has new deviceId and keypair, but same IP and port
@@ -741,7 +487,7 @@ class ClusterVersioningAndTombstoneTest {
         repo.removePermanently("x9d-old")
         val removedAt = repo.getDeviceEntry("x9d-old")!!.clusterVersion
         val doc = peer("x9d-old", "172.16.16.105")
-        val stamped = ClusterClock.MEMBERSHIP_PROTOCOL
+        val stamped = 2
 
         assertEquals(CloudSeedOutcome.Superseded, repo.applyCloudSeed(doc, 0L, 0, removedAt - 1))
         assertEquals(CloudSeedOutcome.Skipped, repo.applyCloudSeed(doc, removedAt + 1, stamped, removedAt + 1))
@@ -754,7 +500,7 @@ class ClusterVersioningAndTombstoneTest {
         val dao = InMemoryDeviceDao()
         val repo = DeviceRepository(dao)
         val now = TimeUtils.now()
-        val stamped = ClusterClock.MEMBERSHIP_PROTOCOL
+        val stamped = 2
 
         assertEquals(CloudSeedOutcome.Skipped, repo.applyCloudSeed(peer("legacy", "172.16.16.20"), 0L, 0, now))
         assertEquals(
@@ -763,12 +509,12 @@ class ClusterVersioningAndTombstoneTest {
         )
         assertEquals(
             CloudSeedOutcome.Skipped,
-            repo.applyCloudSeed(peer("skewed", "172.16.16.22"), now + ClusterClock.MAX_FORWARD_SKEW_MS + 60_000L, stamped, now)
+            repo.applyCloudSeed(peer("skewed", "192.168.50.22"), now + 700_000L, stamped, now)
         )
         assertEquals(0, repo.listDevices().size)
 
-        assertEquals(CloudSeedOutcome.Applied, repo.applyCloudSeed(peer("nx1", "172.16.16.105"), now, stamped, now))
-        assertEquals(now, repo.getDevice("nx1")!!.clusterVersion)
+        assertEquals(CloudSeedOutcome.Skipped, repo.applyCloudSeed(peer("nx1", "192.168.50.105"), now, stamped, now))
+        assertNull(repo.getDevice("nx1"))
     }
 
     @Test
@@ -801,7 +547,7 @@ class ClusterVersioningAndTombstoneTest {
     }
 
     @Test
-    fun testIsDeviceIdRevokedClearsTombstoneWhenIncomingClusterVersionIsNewer() = runBlocking {
+    fun testIsDeviceIdRevokedKeepsATombstoneWhenACallerClaimsANewerStamp() = runBlocking {
         val dao = InMemoryDeviceDao()
         val repo = DeviceRepository(dao)
 
@@ -823,12 +569,20 @@ class ClusterVersioningAndTombstoneTest {
 
         assertTrue(repo.isDeviceIdRevoked("dev-x", membershipVersion = tombstoneTime - 100L))
         assertTrue(repo.isDeviceIdRevoked("dev-x", membershipVersion = tombstoneTime))
+        assertTrue(repo.isDeviceIdRevoked("dev-x", membershipVersion = tombstoneTime + 1000L))
+        assertEquals(1, dao.getAllRemovedDevices().size)
+        assertTrue(repo.getDevice("dev-x") == null || repo.getDevice("dev-x")!!.isRemoved)
+    }
 
-        assertFalse(repo.isDeviceIdRevoked("dev-x", membershipVersion = tombstoneTime + 1000L))
-        assertEquals(0, dao.getAllRemovedDevices().size)
-        val reinstated = repo.getDevice("dev-x")!!
-        assertEquals(tombstoneTime + 1000L, reinstated.clusterVersion)
-        assertFalse(repo.isDeviceIdRevoked("dev-x"))
+    @Test
+    fun aClaimedMembershipVersionDoesNotLiftATombstone() = runBlocking {
+        val dao = InMemoryDeviceDao()
+        val repo = DeviceRepository(dao)
+        repo.adoptFromPairing(peer("kicked", "192.168.1.40"))
+        repo.removePermanently("kicked")
+        val claimed = TimeUtils.now() + 60_000L
+        assertTrue(repo.isDeviceIdRevoked("kicked", membershipVersion = claimed))
+        assertTrue(repo.isDeviceIdRevoked("kicked"))
     }
 
     @Test
@@ -836,8 +590,6 @@ class ClusterVersioningAndTombstoneTest {
         val repo = DeviceRepository(InMemoryDeviceDao())
         repo.adoptFromPairing(peer("cmf", "192.168.1.40"))
         assertTrue(repo.touchPeerLastSeen("cmf", "192.168.1.40", 49428, 1_700_000_000_000L))
-        val echoed = repo.getDevice("cmf")!!.copy(lastSeenEpochMs = 0L)
-        repo.reconcileRemotePeer(echoed)
         assertEquals(1_700_000_000_000L, repo.getDevice("cmf")!!.lastSeenEpochMs)
     }
 
@@ -851,7 +603,7 @@ class ClusterVersioningAndTombstoneTest {
             clientVersion = "docker",
             lastSeenTimestamp = TimeUtils.now() + 60_000L,
             membershipVersion = stored.clusterVersion + 1,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
 
         assertTrue(repo.applyPeerNodeState(state))
@@ -874,19 +626,9 @@ class ClusterVersioningAndTombstoneTest {
         val relayed = nodeState("magic", "192.168.1.30").copy(
             lastSeenTimestamp = TimeUtils.now(),
             membershipVersion = stored.clusterVersion + 1,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
         repo.applyPeerNodeState(relayed)
-        assertEquals(0L, repo.getDevice("magic")!!.lastSeenEpochMs)
-
-        repo.adoptFromRosterIntro(
-            repo.getDevice("magic")!!.copy(lastSeenEpochMs = TimeUtils.now())
-        )
-        assertEquals(0L, repo.getDevice("magic")!!.lastSeenEpochMs)
-
-        repo.reconcileRemotePeer(
-            repo.getDevice("magic")!!.copy(lastSeenEpochMs = TimeUtils.now())
-        )
         assertEquals(0L, repo.getDevice("magic")!!.lastSeenEpochMs)
     }
 
@@ -897,7 +639,7 @@ class ClusterVersioningAndTombstoneTest {
         val stored = repo.getDevice("magic")!!
         val relayed = nodeState("magic", "10.120.21.250").copy(
             membershipVersion = stored.clusterVersion + 1,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
 
         repo.applyPeerNodeState(relayed)
@@ -914,7 +656,7 @@ class ClusterVersioningAndTombstoneTest {
         val stored = repo.getDevice("magic")!!
         val relayed = nodeState("magic", "172.16.16.218").copy(
             membershipVersion = stored.clusterVersion + 1,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
 
         repo.applyPeerNodeState(relayed)
@@ -929,7 +671,7 @@ class ClusterVersioningAndTombstoneTest {
         val stored = repo.getDevice("magic")!!
         val fetched = nodeState("magic", "172.16.16.99").copy(
             membershipVersion = stored.clusterVersion + 1,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
 
         repo.applyPeerNodeState(fetched, observedDirectly = true)
@@ -946,7 +688,7 @@ class ClusterVersioningAndTombstoneTest {
         val fetched = nodeState("magic", "192.168.1.30").copy(
             lastSeenTimestamp = 1L,
             membershipVersion = stored.clusterVersion + 1,
-            membershipProtocol = ClusterClock.MEMBERSHIP_PROTOCOL
+            membershipProtocol = 2
         )
         repo.applyPeerNodeState(fetched, observedDirectly = true)
         assertTrue(repo.getDevice("magic")!!.lastSeenEpochMs >= before)

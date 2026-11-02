@@ -13,7 +13,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,7 +29,6 @@ import com.fileapex.friends.ui.FriendSendSession
 import com.fileapex.friends.ui.FriendSendTarget
 import com.fileapex.friends.ui.friendFiles
 import com.fileapex.i18n.stringRes
-import kotlinx.coroutines.launch
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.ExplorerUiState
 import com.fileapex.presentation.ExplorerViewModel
@@ -84,11 +82,11 @@ fun FileExplorerScreen(
     LaunchedEffect(sendRequest, canPick) {
         val request = sendRequest
         if (canPick && request != null) {
+            println("FriendsSend: a file screen (${viewModelKey.take(12)}) took the friend send request")
             friendSend = request
             FriendSendSession.clear()
         }
     }
-    val sendScope = rememberCoroutineScope()
     val picking = friendSend
     val explorer = rememberExplorerScope(
         ExplorerInputs(
@@ -113,7 +111,7 @@ fun FileExplorerScreen(
             filterBarLeading = filterBarLeading,
             onDropBoxFiles = onDropBoxFiles,
             onPickFiles = if (picking == null) onPickFiles else { paths ->
-                friendFiles(paths).takeIf { it.isNotEmpty() }?.let { files -> sendScope.launch { FriendsHub.enqueueSend(picking.key, files) } }
+                FriendsHub.queueSend(picking.key, paths)
                 friendSend = null
                 onBack()
             },

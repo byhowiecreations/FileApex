@@ -25,10 +25,12 @@ SWIFT_SOURCES=(
   "$TRAY/TrayMenuView.swift"
   "$TRAY/DropBoxWindowManager.swift"
   "$TRAY/NativeToast.swift"
+  "$TRAY/FriendsNotifications.swift"
   "$TRAY/TrayDeviceBridge.swift"
   "$TRAY/LocalNetworkProbe.swift"
   "$TRAY/LanHttpClient.swift"
   "$TRAY/LanTls.swift"
+  "$TRAY/LanPoolTag.swift"
   "$ROOT/macos/Shared/FileApexPaths.swift"
   "$ROOT/macos/Shared/AppCopy.swift"
 )
@@ -49,6 +51,7 @@ compile_arch() {
     -framework Foundation \
     -framework UniformTypeIdentifiers \
     -framework Network \
+    -framework UserNotifications \
     -Xlinker -install_name \
     -Xlinker @executable_path/../Frameworks/libFileApexTray.dylib
 }

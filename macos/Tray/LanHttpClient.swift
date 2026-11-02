@@ -149,11 +149,14 @@ enum LanHttpClient {
     private final class HeldSocket {
         let connection: NWConnection
         let key: String
+        /// See `lanPoolTag`: the kind of connection this socket is, checked again when it is taken.
+        let tag: String
         var pending = Data()
         var lastUsed = Date()
-        init(connection: NWConnection, key: String) {
+        init(connection: NWConnection, key: String, tag: String) {
             self.connection = connection
             self.key = key
+            self.tag = tag
         }
     }
 
@@ -165,8 +168,12 @@ enum LanHttpClient {
 
     private static func pooledExecute(target: Target, request: Data, timeoutMs: Int) -> (status: Int, body: Data, headers: [String: String])? {
         let key = "\(target.host):\(target.port)"
+        let tag = lanPoolTag(tlsPort: target.route?.tlsPort, pins: target.route?.pins ?? [])
         sweepSockets()
-        if let existing = takeSocket(key) {
+        let held = takeSocket(key)
+        if let existing = held, existing.tag != tag {
+            existing.connection.cancel()
+        } else if let existing = held {
             if let hit = exchange(on: existing, request: request, timeoutMs: min(timeoutMs, 4_000), fresh: false) {
                 if hit.keep {
                     parkSocket(existing)
@@ -285,7 +292,7 @@ enum LanHttpClient {
         stateLock.unlock()
         connection.stateUpdateHandler = nil
         if connection.state == .ready {
-            return HeldSocket(connection: connection, key: key)
+            return HeldSocket(connection: connection, key: key, tag: lanPoolTag(tlsPort: target.route?.tlsPort, pins: target.route?.pins ?? []))
         }
         connection.cancel()
         return nil

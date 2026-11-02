@@ -58,4 +58,21 @@ class NotePushCryptoTest {
         assertEquals(mapOf("a" to "b"), merged)
         assertTrue(NotePushCrypto.MAX_SEALED_INLINE_BYTES < 3000)
     }
+
+    @Test
+    fun aPlainNotePushThatCarriesContentIsRefused() = kotlinx.coroutines.runBlocking {
+        listOf(
+            mapOf("type" to "note_inline", "noteId" to "n1", "sourceDeviceId" to "d", "content" to "secret"),
+            mapOf("type" to "note_sync", "noteId" to "n1", "sourceDeviceId" to "d", "attachmentName" to "taxes.pdf"),
+            mapOf("type" to "note_inline", "noteId" to "n1", "sourceDeviceId" to "d", "driveFileId" to "abc")
+        ).forEach { assertNull(NotePushCrypto.unseal(it)) }
+    }
+
+    @Test
+    fun pushesThatCarryNothingSensitiveStillPassPlain() = kotlinx.coroutines.runBlocking {
+        val wake = mapOf("type" to "presence_wake", "sourceDeviceId" to "d")
+        val delete = mapOf("type" to "note_delete", "noteId" to "n1", "sourceDeviceId" to "d")
+        val bareSync = mapOf("type" to "note_sync", "noteId" to "n1", "sourceDeviceId" to "d")
+        listOf(wake, delete, bareSync).forEach { assertEquals(it, NotePushCrypto.unseal(it)) }
+    }
 }

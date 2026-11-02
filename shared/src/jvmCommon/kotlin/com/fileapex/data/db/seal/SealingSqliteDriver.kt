@@ -8,15 +8,24 @@ import java.util.concurrent.ConcurrentHashMap
 /** The table.column pairs that are sealed on disk. Nothing queries by one of these columns (see SealedColumnsGuardTest). */
 object SealedColumns {
     val STAGE_ONE: Map<String, Set<String>> = mapOf(
-        "paired_devices" to setOf("deviceName", "lastKnownIp", "rootPath", "deviceMake", "deviceModel", "tailnetHostname", "tailnetIpv4"),
+        "member_profiles" to setOf("deviceName", "lastKnownIp", "rootPath", "deviceMake", "deviceModel", "tailnetHostname", "tailnetIpv4"),
         "messages" to setOf("senderName", "content"),
         "checklist_items" to setOf("text"),
         "pending_transfers" to setOf("sourceJson", "displayLabel", "lastError"),
-        "peer_candidates" to setOf("deviceJson"),
-        "removed_devices" to setOf("lastKnownIp"),
         "friend_links" to setOf("label", "groupName", "folderName"),
         "friend_incoming" to setOf("fileName", "quarantinePath")
     )
+
+    /**
+     * The name a table's values are sealed under, when it differs from the table. The device profiles moved from
+     * `paired_devices` to `member_profiles` without being re-sealed, so they keep the old name as their context.
+     */
+    val CONTEXT_NAMES: Map<String, String> = mapOf("member_profiles" to "paired_devices")
+
+    /** Views that are read as if they were the table behind them; they are never written and never sealed by [SealingPass]. */
+    val READ_ALIASES: Map<String, String> = mapOf("paired_devices_view" to "member_profiles", "removed_devices_view" to "member_profiles")
+
+    fun contextOf(table: String): String = CONTEXT_NAMES[table] ?: table
 }
 
 /** A sensitive value was written while the field key is not available. Nothing is written in clear text instead. */
@@ -61,7 +70,7 @@ private class SealingStatement(
         val column = plan.boundColumns[index]
         if (column == null || value.isEmpty()) return delegate.bindText(index, value)
         val sealer = driver.currentSealer() ?: throw SealedStoreLockedException("the database key is not available, so ${plan.table}.$column was not written")
-        delegate.bindText(index, sealer.seal(plan.table!!, column, value))
+        delegate.bindText(index, sealer.seal(SealedColumns.contextOf(plan.table!!), column, value))
     }
 
     override fun getText(index: Int): String {
@@ -69,7 +78,7 @@ private class SealingStatement(
         val column = resultColumn(index) ?: return stored
         val sealer = driver.currentSealer()
         if (sealer == null) return if (stored.startsWith(FieldSealer.PREFIX)) "" else stored
-        return sealer.open(plan.table!!, column, stored) ?: ""
+        return sealer.open(SealedColumns.contextOf(plan.table!!), column, stored) ?: ""
     }
 
     private fun resultColumn(index: Int): String? {
@@ -86,11 +95,13 @@ internal class StatementPlan(val table: String?, val boundColumns: Map<Int, Stri
     companion object {
         private val NONE = StatementPlan(null, emptyMap(), emptySet())
         private val TABLE = Regex("""(?i)\b(?:INTO|UPDATE|FROM)\s+[`"\[]?([A-Za-z_][A-Za-z0-9_]*)[`"\]]?""")
+        private val INSERT_SELECT = Regex("""(?is)^\s*INSERT\s+(?:OR\s+\w+\s+)?INTO\s+[`"\[]?\w+[`"\]]?\s*(?:\([^)]*\)\s*)?SELECT\b""")
         private val INSERT = Regex("""(?is)^\s*INSERT\s+(?:OR\s+\w+\s+)?INTO\s+[`"\[]?(\w+)[`"\]]?\s*\((.*?)\)\s*VALUES\s*\((.*)\)\s*;?\s*$""")
         private val UPDATE = Regex("""(?is)^\s*UPDATE\s+(?:OR\s+\w+\s+)?[`"\[]?(\w+)[`"\]]?\s+SET\s+(.*?)(?:\s+WHERE\s+(.*))?;?\s*$""")
 
         fun of(sql: String, columns: Map<String, Set<String>>): StatementPlan {
-            val table = TABLE.find(sql)?.groupValues?.get(1)?.takeIf { it in columns } ?: return NONE
+            val named = TABLE.find(sql)?.groupValues?.get(1)
+            val table = (named?.let { SealedColumns.READ_ALIASES[it] ?: it })?.takeIf { it in columns } ?: return NONE
             val sealed = columns.getValue(table)
             if (Regex("""\?\d""").containsMatchIn(sql) && sealed.any { sql.contains(it) }) refuse(sql)
             val trimmed = sql.trimStart()
@@ -102,7 +113,7 @@ internal class StatementPlan(val table: String?, val boundColumns: Map<Int, Stri
         }
 
         private fun insert(sql: String, table: String, sealed: Set<String>): StatementPlan {
-            val m = INSERT.find(sql) ?: refuse(sql)
+            val m = INSERT.find(sql) ?: return if (INSERT_SELECT.containsMatchIn(sql) && !sql.contains('?')) StatementPlan(table, emptyMap(), sealed) else refuse(sql)
             val names = m.groupValues[2].split(',').map { it.trim().trim('`', '"', '[', ']') }
             val values = splitTopLevel(m.groupValues[3])
             if (names.size != values.size) refuse(sql)

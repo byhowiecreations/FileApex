@@ -4,8 +4,11 @@ import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.network.PairingBeaconTransport
 import com.fileapex.util.NetworkUtils
 import com.fileapex.util.TimeUtils
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class HostPairingBroadcastState(
@@ -14,6 +17,9 @@ data class HostPairingBroadcastState(
     val remainingMs: Long = 0L,
     val remainingLabel: String = "1:00"
 )
+
+/** The device that just finished pairing with this host, new to the roster or not. */
+data class PairedJoiner(val deviceId: String, val deviceName: String)
 
 /**
  * Host pairing-mode broadcast and joiner LAN discovery for the 6-digit pairing flow.
@@ -30,6 +36,11 @@ object LanPairingDiscovery {
     private val seen = LinkedHashMap<String, SeenBeacon>()
 
     private val _hostState = MutableStateFlow(HostPairingBroadcastState())
+
+    private val _hostPaired = MutableSharedFlow<PairedJoiner>(extraBufferCapacity = 8)
+
+    /** One event per joiner the host accepted, so a screen can close even when that device was already on the roster. */
+    val hostPaired: SharedFlow<PairedJoiner> = _hostPaired.asSharedFlow()
 
     private val _discoveredPeers = MutableStateFlow<List<PairingBeacon>>(emptyList())
     val discoveredPeers: StateFlow<List<PairingBeacon>> = _discoveredPeers.asStateFlow()
@@ -109,8 +120,9 @@ object LanPairingDiscovery {
         return burned
     }
 
-    fun onHostPairingAccepted() {
+    fun onHostPairingAccepted(joiner: PairedJoiner? = null) {
         stopHost()
+        joiner?.let { _hostPaired.tryEmit(it) }
     }
 
     fun startDiscovery() {

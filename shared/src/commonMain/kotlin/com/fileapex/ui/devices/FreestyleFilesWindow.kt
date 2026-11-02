@@ -35,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -59,7 +58,6 @@ import com.fileapex.ui.DeviceEntryIcon
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.deviceIconFillsOrb
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 
 @Composable
 internal fun FreestyleScope.FreestyleFilesWindow() {
@@ -419,7 +417,6 @@ internal fun ColumnScope.FreestyleFilesWindowBody(scope: FreestyleScope) {
 private fun ColumnScope.FreestyleWindowExplorer(scope: FreestyleScope) {
     with(scope) { with(live) {
             val friend = sendingToFriend
-            val sendScope = rememberCoroutineScope()
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 FileExplorerScreen(
                     target = browsingTarget!!,
@@ -430,9 +427,7 @@ private fun ColumnScope.FreestyleWindowExplorer(scope: FreestyleScope) {
                     viewModelKey = if (friend == null) browsingTarget!!.deviceId else "friend-file-pick",
                     onPickFiles = friend?.let { target ->
                         { paths ->
-                            friendFiles(paths).takeIf { it.isNotEmpty() }?.let { files ->
-                                sendScope.launch { FriendsHub.enqueueSend(target.key, files) }
-                            }
+                            FriendsHub.queueSend(target.key, paths)
                             sendingToFriend = null
                             browsingTarget = null
                             showFilesWindow = false

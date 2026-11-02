@@ -38,9 +38,9 @@ public final class DevicePickerModel: ObservableObject {
             devices = try await PairedDeviceStore.loadDevices()
             let fileCount = fileURLs.count
             if devices.isEmpty {
-                statusMessage = AppCopy.shared.t("no_paired_open_fileapex")
+                statusMessage = AppCopy.shared.t("share_targets_none")
             } else {
-                statusMessage = "\(AppCopy.shared.plural("file_count", count: fileCount)) · \(AppCopy.shared.plural("n_paired_devices", count: devices.count))"
+                statusMessage = "\(AppCopy.shared.plural("file_count", count: fileCount)) · \(AppCopy.shared.t("share_targets_count", String(devices.count)))"
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -72,6 +72,10 @@ public final class DevicePickerModel: ObservableObject {
             isSending = false
             return true
         } catch {
+            if let handoff = error as? FileApexSendHandoff.HandoffError,
+               case .partial(_, let acceptedIds) = handoff {
+                selectedIds.subtract(acceptedIds)
+            }
             errorMessage = error.localizedDescription
             isSending = false
             return false

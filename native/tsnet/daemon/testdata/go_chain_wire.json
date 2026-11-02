@@ -1,0 +1,175 @@
+{
+  "answer": {
+    "head": "28da465a295c0227ebfccfa6dd7e63a53c05ebee4e36f87b8deb780b715c55cd",
+    "records": [
+      {
+        "seq": 1,
+        "parentHash": "",
+        "kind": "GENESIS",
+        "actor": "40e79707-c497-4d3c-adf1-466f9ec4e13a",
+        "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElFpEXl52ou6ruOV9DoBQn5qNkwxop25Sdm2jPlC1U/aRIV9kAI5X15i9YJAf5cQWx0MzYTDZGraRZ6EJkn7Lqg==",
+        "subject": "40e79707-c497-4d3c-adf1-466f9ec4e13a",
+        "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElFpEXl52ou6ruOV9DoBQn5qNkwxop25Sdm2jPlC1U/aRIV9kAI5X15i9YJAf5cQWx0MzYTDZGraRZ6EJkn7Lqg==",
+        "tlsPin": "ebabf71fde1fd117ad81f8b15bb85c73d1498efc6efae8a6dee31abe3c0a780f",
+        "reason": "paired",
+        "signature": "MEUCIQDH8hw3fCYdUK52j14tu8hyufERwV6H+QOyE8QlF6ZrNAIga14QsU927LXSJtoilfGe0JZSOi7yMyHeWbhxLk8pGLk="
+      },
+      {
+        "seq": 2,
+        "parentHash": "e21312698b8ff0915fa7a0093439e7f289fda129c6db993a179d05f0293f803b",
+        "kind": "ADMIT",
+        "actor": "40e79707-c497-4d3c-adf1-466f9ec4e13a",
+        "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElFpEXl52ou6ruOV9DoBQn5qNkwxop25Sdm2jPlC1U/aRIV9kAI5X15i9YJAf5cQWx0MzYTDZGraRZ6EJkn7Lqg==",
+        "subject": "6fa84791-6139-41e7-ac0a-7734e7580e93",
+        "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHgAJlmOiW5ZyqLqaeqMz6Jzx1QrDHB7lF+lN6mdoDBBSovFo2CL1raEga1n3iok3t5M1PGxZJ1InF6G6MOUgsQ==",
+        "tlsPin": "307247cbfe50777715b382305b689b6a4bdee33281c23775a44fc2f801130114",
+        "reason": "paired",
+        "signature": "MEUCIQCbZ4z/LMgEfZaeIJF3SPWkccdDl85v8NVBG/uxb+n/fgIgC17zdeDDySIIQilX+QWrUw04hEl1maeMvcGRUaJdyhw="
+      }
+    ],
+    "profiles": [
+      {
+        "deviceId": "40e79707-c497-4d3c-adf1-466f9ec4e13a",
+        "deviceName": "Docker",
+        "ipAddress": "192.0.2.10",
+        "lastKnownIp": "192.0.2.10",
+        "port": 49474,
+        "clientVersion": "docker",
+        "appVersion": "",
+        "clientVersionCode": 0,
+        "appVersionCode": 0,
+        "platform": "linux",
+        "os": "linux",
+        "deviceMake": "FileApex",
+        "deviceModel": "OMV",
+        "supportedProtocols": [
+          "fileapex.v1.identity",
+          "fileapex.v1.files",
+          "fileapex.v1.cluster",
+          "fileapex.v1.pairing",
+          "fileapex.v2.membership.chain"
+        ],
+        "rootPath": "/var/folders/vg/hxqb66_n5bld3nxy8kbg7jhc0000gn/T/TestWriteTheWireTheKotlinCodeIsCheckedAgainst1911397651/001/inbox",
+        "publicKeyHash": "0b58576d385078f6",
+        "publicKey": "IUvaQMuUpk92ebyRqu/bGFIMv1b4hBhyxY6xD9/1Kk0=",
+        "pinRequired": false,
+        "isRemoved": false,
+        "tlsPin": "ebabf71fde1fd117ad81f8b15bb85c73d1498efc6efae8a6dee31abe3c0a780f",
+        "tlsPort": 49475
+      },
+      {
+        "deviceId": "6fa84791-6139-41e7-ac0a-7734e7580e93",
+        "deviceName": "Docker",
+        "ipAddress": "192.0.2.10",
+        "lastKnownIp": "192.0.2.10",
+        "port": 49477,
+        "clientVersion": "",
+        "appVersion": "",
+        "clientVersionCode": 0,
+        "appVersionCode": 0,
+        "platform": "",
+        "os": "",
+        "deviceMake": "",
+        "deviceModel": "",
+        "supportedProtocols": [],
+        "rootPath": "",
+        "publicKeyHash": "",
+        "publicKey": "",
+        "pinRequired": false,
+        "isRemoved": false
+      }
+    ]
+  },
+  "push": {
+    "records": [
+      {
+        "seq": 1,
+        "parentHash": "",
+        "kind": "GENESIS",
+        "actor": "40e79707-c497-4d3c-adf1-466f9ec4e13a",
+        "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElFpEXl52ou6ruOV9DoBQn5qNkwxop25Sdm2jPlC1U/aRIV9kAI5X15i9YJAf5cQWx0MzYTDZGraRZ6EJkn7Lqg==",
+        "subject": "40e79707-c497-4d3c-adf1-466f9ec4e13a",
+        "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElFpEXl52ou6ruOV9DoBQn5qNkwxop25Sdm2jPlC1U/aRIV9kAI5X15i9YJAf5cQWx0MzYTDZGraRZ6EJkn7Lqg==",
+        "tlsPin": "ebabf71fde1fd117ad81f8b15bb85c73d1498efc6efae8a6dee31abe3c0a780f",
+        "reason": "paired",
+        "signature": "MEUCIQDH8hw3fCYdUK52j14tu8hyufERwV6H+QOyE8QlF6ZrNAIga14QsU927LXSJtoilfGe0JZSOi7yMyHeWbhxLk8pGLk="
+      },
+      {
+        "seq": 2,
+        "parentHash": "e21312698b8ff0915fa7a0093439e7f289fda129c6db993a179d05f0293f803b",
+        "kind": "ADMIT",
+        "actor": "40e79707-c497-4d3c-adf1-466f9ec4e13a",
+        "actorKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElFpEXl52ou6ruOV9DoBQn5qNkwxop25Sdm2jPlC1U/aRIV9kAI5X15i9YJAf5cQWx0MzYTDZGraRZ6EJkn7Lqg==",
+        "subject": "6fa84791-6139-41e7-ac0a-7734e7580e93",
+        "subjectKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHgAJlmOiW5ZyqLqaeqMz6Jzx1QrDHB7lF+lN6mdoDBBSovFo2CL1raEga1n3iok3t5M1PGxZJ1InF6G6MOUgsQ==",
+        "tlsPin": "307247cbfe50777715b382305b689b6a4bdee33281c23775a44fc2f801130114",
+        "reason": "paired",
+        "signature": "MEUCIQCbZ4z/LMgEfZaeIJF3SPWkccdDl85v8NVBG/uxb+n/fgIgC17zdeDDySIIQilX+QWrUw04hEl1maeMvcGRUaJdyhw="
+      }
+    ],
+    "profiles": [
+      {
+        "deviceId": "6fa84791-6139-41e7-ac0a-7734e7580e93",
+        "deviceName": "Docker",
+        "ipAddress": "192.0.2.10",
+        "lastKnownIp": "192.0.2.10",
+        "port": 49477,
+        "clientVersion": "docker",
+        "appVersion": "",
+        "clientVersionCode": 0,
+        "appVersionCode": 0,
+        "platform": "linux",
+        "os": "linux",
+        "deviceMake": "FileApex",
+        "deviceModel": "OMV",
+        "supportedProtocols": [
+          "fileapex.v1.identity",
+          "fileapex.v1.files",
+          "fileapex.v1.cluster",
+          "fileapex.v1.pairing",
+          "fileapex.v2.membership.chain"
+        ],
+        "rootPath": "/var/folders/vg/hxqb66_n5bld3nxy8kbg7jhc0000gn/T/TestWriteTheWireTheKotlinCodeIsCheckedAgainst1911397651/002/inbox",
+        "publicKeyHash": "37d6f8fa6427a071",
+        "publicKey": "H4v0hmZswy4n78ubqQJjJPDyHoMEXoK5wXJcQSHvxlg=",
+        "pinRequired": false,
+        "isRemoved": false,
+        "tlsPin": "307247cbfe50777715b382305b689b6a4bdee33281c23775a44fc2f801130114",
+        "tlsPort": 49478
+      }
+    ]
+  },
+  "join": {
+    "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHgAJlmOiW5ZyqLqaeqMz6Jzx1QrDHB7lF+lN6mdoDBBSovFo2CL1raEga1n3iok3t5M1PGxZJ1InF6G6MOUgsQ==",
+    "tlsPin": "307247cbfe50777715b382305b689b6a4bdee33281c23775a44fc2f801130114",
+    "profile": {
+      "deviceId": "6fa84791-6139-41e7-ac0a-7734e7580e93",
+      "deviceName": "Docker",
+      "ipAddress": "192.0.2.10",
+      "lastKnownIp": "192.0.2.10",
+      "port": 49477,
+      "clientVersion": "docker",
+      "appVersion": "",
+      "clientVersionCode": 0,
+      "appVersionCode": 0,
+      "platform": "linux",
+      "os": "linux",
+      "deviceMake": "FileApex",
+      "deviceModel": "OMV",
+      "supportedProtocols": [
+        "fileapex.v1.identity",
+        "fileapex.v1.files",
+        "fileapex.v1.cluster",
+        "fileapex.v1.pairing",
+        "fileapex.v2.membership.chain"
+      ],
+      "rootPath": "/var/folders/vg/hxqb66_n5bld3nxy8kbg7jhc0000gn/T/TestWriteTheWireTheKotlinCodeIsCheckedAgainst1911397651/002/inbox",
+      "publicKeyHash": "37d6f8fa6427a071",
+      "publicKey": "H4v0hmZswy4n78ubqQJjJPDyHoMEXoK5wXJcQSHvxlg=",
+      "pinRequired": false,
+      "isRemoved": false,
+      "tlsPin": "307247cbfe50777715b382305b689b6a4bdee33281c23775a44fc2f801130114",
+      "tlsPort": 49478
+    }
+  }
+}

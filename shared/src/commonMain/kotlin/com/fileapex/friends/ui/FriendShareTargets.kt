@@ -24,9 +24,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.fileapex.friends.data.FriendLinkEntity
 import com.fileapex.friends.FriendsHub
+import com.fileapex.friends.transfer.FriendSharedQueueException
 import com.fileapex.i18n.stringRes
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** The friends as destinations in the Android share screen, under the user's own devices. */
@@ -48,19 +50,44 @@ fun LazyListScope.friendShareItems(friends: List<FriendLinkEntity>, selected: Se
 }
 
 /** Which friends are ticked in the share screen. */
-class FriendShareSelection(val scope: CoroutineScope) {
-    var selected by mutableStateOf(FriendsHub.takePreselectedShare()?.let { setOf(it) } ?: emptySet())
-    var friends by mutableStateOf(emptyList<FriendLinkEntity>())
+class FriendShareSelection(
+    val scope: CoroutineScope,
+    private val friendsSource: () -> List<FriendLinkEntity> = { emptyList() },
+    private val enqueue: suspend (Set<String>, List<File>) -> Set<String> = { keys, files -> FriendsHub.enqueueShared(keys, files) }
+) {
+    var selected by mutableStateOf(FriendsHub.takePreselectedShare()?.takeIf { FriendsHub.available }?.let { setOf(it) } ?: emptySet())
+    /** Read from the live source on each access, so composition reads the current list and nothing assigns it. */
+    val friends: List<FriendLinkEntity> get() = friendsSource()
+    var sending by mutableStateOf(false)
+        private set
+    var failed by mutableStateOf(false)
+        private set
 
-    fun toggle(key: String) { selected = if (key in selected) selected - key else selected + key }
+    fun toggle(key: String) { if (!sending) selected = if (key in selected) selected - key else selected + key }
+
+    suspend fun send(files: () -> List<File>, devicesSelected: Boolean, sendToDevices: () -> Unit, finishWithoutDevices: () -> Unit) {
+        if (sending) return
+        sending = true; failed = false
+        val attempted = selected.toSet()
+        try {
+            if (attempted.isNotEmpty()) selected -= enqueue(attempted, files())
+            if (selected.isNotEmpty()) { failed = true; return }
+            if (devicesSelected) sendToDevices() else finishWithoutDevices()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (e is FriendSharedQueueException) selected -= e.acceptedFriends.intersect(attempted)
+            failed = true
+            println("FriendsHub: share queue failed :: ${e::class.simpleName}")
+        } finally { sending = false }
+    }
 }
 
 @Composable
 fun rememberFriendShare(): FriendShareSelection {
     val scope = rememberCoroutineScope()
-    val holder = remember { FriendShareSelection(scope) }
-    holder.friends = FriendsHub.friends.collectAsState().value
-    return holder
+    val live = FriendsHub.friends.collectAsState()
+    return remember { FriendShareSelection(scope, friendsSource = { live.value.takeIf { FriendsHub.available }.orEmpty() }) }
 }
 
 /** The share screen's Send button: ticked friends get private copies of the files queued, ticked devices go through the usual send. */
@@ -73,14 +100,14 @@ fun ShareSendButton(
     sendToDevices: () -> Unit,
     finishWithoutDevices: () -> Unit
 ) {
-    Button(
+    Column {
+      if (share.failed) Text(stringRes("friends_share_queue_failed"), color = MaterialTheme.colorScheme.error)
+      Button(
         onClick = {
-            if (share.selected.isEmpty()) sendToDevices() else share.scope.launch {
-                FriendsHub.enqueueShared(share.selected, files())
-                if (devicesSelected) sendToDevices() else finishWithoutDevices()
-            }
+            share.scope.launch { share.send(files, devicesSelected, sendToDevices, finishWithoutDevices) }
         },
-        enabled = ready && (devicesSelected || share.selected.isNotEmpty()),
+        enabled = ready && !share.sending && (devicesSelected || share.selected.isNotEmpty()),
         modifier = Modifier.fillMaxWidth()
-    ) { Text(stringRes("send")) }
+      ) { Text(stringRes(if (share.sending) "friends_status_preparing" else "send")) }
+    }
 }

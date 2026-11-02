@@ -143,6 +143,12 @@ internal class ExplorerSelectionActions(
         }
     }
 
+    /** Hands the ticked files (not folders) to a picker, then clears the ticks so the next pick starts empty. */
+    fun pickSelected(send: (List<String>) -> Unit) {
+        send(selectedItems().filter { !it.isDirectory }.map { it.absolutePath })
+        exitSelectionMode()
+    }
+
     fun selectedItems(): List<RemoteFileItem> {
         val ids = _uiState.value.selectedFileIds
         val all = _uiState.value.contentDirectories + _uiState.value.contentFiles +

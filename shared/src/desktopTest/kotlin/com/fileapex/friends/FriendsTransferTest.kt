@@ -67,8 +67,10 @@ class FriendsTransferTest {
         val src = source(3_500_000); val q = File(dir, "q4")
         val (s1, r1) = pair(cutSender = 2_200_000)
         val rx1 = async { FriendsReceiver(q, 10_000_000) { true }.handle(r1, "k") }
-        assertEquals(FriendSendResult.Failed, FriendsSender.send(s1, src, id))
+        var why = ""
+        assertEquals(FriendSendResult.Failed, FriendsSender.send(s1, src, id, onFailure = { why = it }))
         assertEquals(FriendReceiveResult.Interrupted, rx1.await())
+        assertEquals("the sender says why it failed", FriendFailure.LOST, why)
         val part = q.listFiles()!!.single { it.name.endsWith(".part") }
         assertEquals(2L * FriendsWire.DATA_CHUNK, part.length())
         val (s2, r2) = pair()
@@ -132,7 +134,7 @@ class FriendsTransferTest {
         assertTrue(events.first() is FriendReceiveEvent.Started)
         assertEquals(300_000L, (events.filterIsInstance<FriendReceiveEvent.Progress>().last()).received)
         assertTrue(events.last() is FriendReceiveEvent.Verifying)
-        assertEquals(listOf(FriendSendPhase.Waiting, FriendSendPhase.Sending(0), FriendSendPhase.Verifying), phases)
+        assertEquals(listOf(FriendSendPhase.Preparing, FriendSendPhase.Waiting, FriendSendPhase.Sending(0), FriendSendPhase.Verifying), phases)
     }
 
     @Test fun tooBigIsReportedAsDeclinedForSize() = runBlocking {
@@ -141,5 +143,23 @@ class FriendsTransferTest {
         val rx = async { FriendsReceiver(File(dir, "q-big"), 100, onEvent = { events += it }) { true }.handle(r, "k") }
         FriendsSender.send(s, source(1000), id); rx.await()
         assertEquals("size", (events.single() as FriendReceiveEvent.Declined).reason)
+    }
+
+    /** Writes of the final acknowledgement fail with cancellation, as a cancelled receive scope does. */
+    private class CancelOnOk(private val inner: IrohStream) : IrohStream by inner {
+        override suspend fun write(bytes: ByteArray) {
+            if (bytes.contentEquals("ok".encodeToByteArray()) || (bytes.size > 4 && String(bytes, 4, bytes.size - 4) == "ok")) throw CancellationException("receive cancelled")
+            inner.write(bytes)
+        }
+    }
+
+    @Test fun cancellationDuringTheFinalAcknowledgementIsNotSwallowed() = runBlocking {
+        val src = source(1_000); val q = File(dir, "q-cancel-ack")
+        val (s, r) = pair()
+        val rx = async(start = CoroutineStart.UNDISPATCHED) {
+            runCatching { FriendsReceiver(q, 10_000_000) { true }.handle(CancelOnOk(r), "k") }.exceptionOrNull()
+        }
+        launch { FriendsSender.send(s, src, id) }
+        assertTrue(withTimeout(5_000L) { rx.await() } is CancellationException)
     }
 }

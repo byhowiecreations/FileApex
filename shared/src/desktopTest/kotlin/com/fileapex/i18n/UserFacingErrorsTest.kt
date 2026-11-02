@@ -34,6 +34,30 @@ class UserFacingErrorsTest {
     }
 
     @Test
+    fun aPeerThatRefusesOurCertificateIsExplainedInsteadOfShowingTheTlsText() {
+        val android = javax.net.ssl.SSLProtocolException(
+            "Read error: ssl=0xb4000073664339d8: Failure in SSL library, usually a protocol error\n" +
+                "error:10000416:SSL routines:OPENSSL_internal:SSLV3_ALERT_CERTIFICATE_UNKNOWN (tls_record.cc:489)"
+        )
+        val desktop = javax.net.ssl.SSLHandshakeException("Received fatal alert: certificate_unknown")
+        val wrapped = IllegalStateException("fetch failed", desktop)
+        val expected = AppI18n.t("error_peer_not_trusted")
+        assertTrue(expected != "error_peer_not_trusted")
+        assertEquals(expected, UserFacingErrors.message(android, "unable_to_reach_device"))
+        assertEquals(expected, UserFacingErrors.message(desktop, "unable_to_reach_device"))
+        assertEquals(expected, UserFacingErrors.message(wrapped, "unable_to_reach_device"))
+    }
+
+    @Test
+    fun onlyACertificateRefusalCountsAsThePeerNotTrustingUs() {
+        assertTrue(UserFacingErrors.isPeerRefusal(javax.net.ssl.SSLHandshakeException("Received fatal alert: certificate_unknown")))
+        assertTrue(UserFacingErrors.isPeerRefusal(IllegalStateException("x", javax.net.ssl.SSLProtocolException("SSLV3_ALERT_BAD_CERTIFICATE"))))
+        assertFalse(UserFacingErrors.isPeerRefusal(SocketTimeoutException("connect timed out")))
+        assertFalse(UserFacingErrors.isPeerRefusal(ConnectException("Connection refused")))
+        assertFalse(UserFacingErrors.isPeerRefusal(IllegalStateException("")))
+    }
+
+    @Test
     fun alreadyLocalizedMessagePassesThroughAndBlankUsesFallback() {
         assertEquals("Incorrect PIN", UserFacingErrors.message(IllegalStateException("Incorrect PIN"), "pairing_failed"))
         assertEquals(AppI18n.t("pairing_failed"), UserFacingErrors.message(IllegalStateException(""), "pairing_failed"))

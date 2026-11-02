@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class LocalShareDevice(val deviceId: String, val deviceName: String, val ready: Boolean)
 
 @Serializable
-data class LocalShareResult(val ok: Boolean, val message: String)
+data class LocalShareResult(val ok: Boolean, val message: String, val acceptedIds: List<String> = emptyList())
 
 /** What the running app does for its Finder extensions over 127.0.0.1. Nothing it is given is written to disk. */
 interface LocalExtensionApi {

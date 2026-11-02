@@ -32,7 +32,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** The only routes a TLS client that nobody has paired yet may reach. */
-const val SECURE_PAIRING_PREFIX = "/api/v1/pairing/secure"
+const val SECURE_PAIRING_PREFIX = "/api/v2/pairing/secure"
+
+/** The pairing of builds before version 2. They are answered with a request to update and nothing else. */
+const val OLD_SECURE_PAIRING_PREFIX = "/api/v1/pairing/secure"
 const val SECURE_PAIRING_QR_PATH = "$SECURE_PAIRING_PREFIX/qr"
 const val SECURE_PAIRING_OFFER_PATH = "$SECURE_PAIRING_PREFIX/offer"
 const val SECURE_PAIRING_REVEAL_PATH = "$SECURE_PAIRING_PREFIX/reveal"
@@ -48,25 +51,29 @@ internal suspend fun FileApexServer.rejectBridgedRequest(call: ApplicationCall, 
         call.request.headers["X-FileApex-Device-Id"]?.trim().orEmpty()
     }
     if (bridged != null && bridged.pairingOnly) {
-        if (path.substringBefore('?').startsWith("$SECURE_PAIRING_PREFIX/")) return false
+        val clean = path.substringBefore('?')
+        if (clean.startsWith("$SECURE_PAIRING_PREFIX/") || clean.startsWith("$OLD_SECURE_PAIRING_PREFIX/")) return false
         onLog("Rejected unpaired TLS client outside the pairing route", null)
         call.respond(HttpStatusCode.Forbidden, "pairing_only")
         return true
     }
-    if (bridged != null && (claimed.isEmpty() || claimed == bridged.deviceId)) return false
+    if (bridged != null && BridgeIdentity.matches(claimed, bridged.deviceId, path)) return false
     onLog("Rejected bridged request: identity mismatch", null)
     call.respond(HttpStatusCode.Forbidden, "peer_identity_mismatch")
     return true
 }
 
 internal fun Route.registerSecurePairingRoute(server: FileApexServer) {
+    for (step in listOf("qr", "offer", "reveal", "decide")) {
+        post("$OLD_SECURE_PAIRING_PREFIX/$step") { call.respond(HttpStatusCode.UpgradeRequired, "pairing_update_joiner") }
+    }
     post(SECURE_PAIRING_QR_PATH) {
         cancellableCatching {
             val peer = server.securePairingPeer(call) ?: return@cancellableCatching
             val request = server.decodeSecure(call, SecurePairRequest.serializer()) ?: return@cancellableCatching
             val joiner = request.scannerDevice
             val localId = server.identityProvider().deviceId
-            if (!server.acceptableJoiner(call, joiner.deviceId, joiner.deviceName, localId, request.pin)) return@cancellableCatching
+            if (!server.acceptableJoiner(call, joiner, localId, request.pin)) return@cancellableCatching
             val password = LanPairingDiscovery.passwordFor()
             if (password == null) {
                 call.respond(HttpStatusCode.Forbidden, "pairing_code_invalid")
@@ -101,7 +108,7 @@ internal fun Route.registerSecurePairingRoute(server: FileApexServer) {
             val request = server.decodeSecure(call, SasOfferRequest.serializer()) ?: return@cancellableCatching
             val joiner = request.scannerDevice
             val localId = server.identityProvider().deviceId
-            if (!server.acceptableJoiner(call, joiner.deviceId, joiner.deviceName, localId, request.pin)) return@cancellableCatching
+            if (!server.acceptableJoiner(call, joiner, localId, request.pin)) return@cancellableCatching
             val session = SecurePairingSessions.open(joiner, peer.pin, request.commit)
             if (session == null) {
                 call.respond(HttpStatusCode.Conflict, "pairing_busy")
@@ -209,9 +216,9 @@ private suspend fun <T> FileApexServer.decodeSecure(
 }
 
 private suspend fun FileApexServer.acceptableJoiner(
-    call: ApplicationCall, joinerId: String, joinerName: String, localId: String, devicePin: String
+    call: ApplicationCall, joiner: PairedDeviceEntity, localId: String, devicePin: String
 ): Boolean {
-    if (joinerId.isBlank() || joinerName.isBlank() || joinerId == localId) {
+    if (joiner.deviceId.isBlank() || joiner.deviceName.isBlank() || joiner.deviceId == localId) {
         call.respond(HttpStatusCode.BadRequest, "Missing required device fields")
         return false
     }
@@ -236,7 +243,7 @@ private suspend fun FileApexServer.storeJoiner(joiner: PairedDeviceEntity, hands
 }
 
 private fun FileApexServer.finishHostPairing(inbound: PairedDeviceEntity) {
-    LanPairingDiscovery.onHostPairingAccepted()
+    LanPairingDiscovery.onHostPairingAccepted(com.fileapex.domain.pairing.PairedJoiner(inbound.deviceId, inbound.deviceName))
     serverScope.launch {
         cancellableCatching {
             withContext(Dispatchers.IO) { onPairingRespondComplete(inbound) }

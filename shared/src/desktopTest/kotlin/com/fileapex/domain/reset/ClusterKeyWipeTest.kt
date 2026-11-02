@@ -32,4 +32,18 @@ class ClusterKeyWipeTest {
         assertNull(ClusterRecordKeys.current())
         assertEquals("", stored)
     }
+
+    @Test
+    fun aPlatformThatKeepsRunningTakesANewTlsKeyAfterTheWipeAndOneThatRestartsDoesNot() = kotlinx.coroutines.runBlocking {
+        var renewed = 0
+        ClusterResetManager.renewTlsKeyAfterWipe(keepsAppRunning = true) { renewed++ }
+        assertEquals(1, renewed)
+        ClusterResetManager.renewTlsKeyAfterWipe(keepsAppRunning = false) { renewed++ }
+        assertEquals("the platform that restarts erased its key store already", 1, renewed)
+    }
+
+    @Test
+    fun aNewTlsKeyThatCannotBeMadeDoesNotStopTheWipe() = kotlinx.coroutines.runBlocking {
+        ClusterResetManager.renewTlsKeyAfterWipe(keepsAppRunning = true) { error("vault locked") }
+    }
 }

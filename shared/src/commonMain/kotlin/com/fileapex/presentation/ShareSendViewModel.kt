@@ -7,6 +7,7 @@ import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.domain.share.IncomingShareFile
 import com.fileapex.domain.share.IncomingSharePayload
+import com.fileapex.domain.share.hasResolvedPaths
 import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.domain.transfer.MultiCopySource
 import com.fileapex.domain.transfer.verifiedFromDisk
@@ -50,7 +51,7 @@ class ShareSendViewModel(
             fileNames = payload.files.map { it.fileName },
             isPreparing = true,
             isDirectSend = !directTargetDeviceId.isNullOrBlank(),
-            filesReady = payload.isStaged
+            filesReady = payload.hasResolvedPaths
         )
     )
     val uiState: StateFlow<ShareSendUiState> = _uiState.asStateFlow()
@@ -59,7 +60,7 @@ class ShareSendViewModel(
         val targetId = directTargetDeviceId?.trim().orEmpty()
         if (targetId.isEmpty()) {
             prepareDestinations()
-        } else if (payload.isStaged) {
+        } else if (payload.hasResolvedPaths) {
             directSendStarted = true
             sendDirectToDevice(targetId)
         }
@@ -68,7 +69,7 @@ class ShareSendViewModel(
     /** Staging finishes after the sheet is already on screen. Paths arrive here. */
     fun updatePayload(next: IncomingSharePayload) {
         payload = next
-        val ready = next.isStaged
+        val ready = next.hasResolvedPaths
         _uiState.update { it.copy(fileNames = next.files.map { file -> file.fileName }, filesReady = ready) }
         val targetId = directTargetDeviceId?.trim().orEmpty()
         if (ready && targetId.isNotEmpty() && !directSendStarted) {
@@ -192,7 +193,7 @@ class ShareSendViewModel(
             it.copy(isSending = true, errorMessage = null, statusMessage = AppI18n.t("sending"))
         }
         cancellableCatching {
-            check(payload.isStaged) { AppI18n.t("preparing_shared_files") }
+            check(payload.hasResolvedPaths) { AppI18n.t("preparing_shared_files") }
             transferManager.awaitReady()
             val sources = payload.files.map { it.toSource().verifiedFromDisk() }
             FileApexServices.transferQueue.sendOrQueue(sources, selected, skipTransferPrepare)
@@ -228,9 +229,6 @@ class ShareSendViewModel(
             }
         )
     }
-
-    private val IncomingSharePayload.isStaged: Boolean
-        get() = files.isNotEmpty() && files.all { it.absolutePath.isNotBlank() && it.sizeBytes > 0L }
 
     private fun IncomingShareFile.toSource(): MultiCopySource.Local =
         MultiCopySource.Local(

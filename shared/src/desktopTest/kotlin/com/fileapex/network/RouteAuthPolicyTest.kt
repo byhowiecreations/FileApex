@@ -12,7 +12,7 @@ class RouteAuthPolicyTest {
             setOf("/", "/share", "/api/v1/health", "/api/v1/identity", "/api/v1/tls/pin"),
             RouteAuthPolicy.OPEN_EXACT
         )
-        assertEquals(listOf("/api/v1/pairing", "/api/v1/auth", "/api/v1/web", "/api/v1/local"), RouteAuthPolicy.OPEN_PREFIXES)
+        assertEquals(listOf("/api/v1/pairing", "/api/v2/pairing", "/api/v1/auth", "/api/v1/web", "/api/v1/local"), RouteAuthPolicy.OPEN_PREFIXES)
     }
 
     @Test

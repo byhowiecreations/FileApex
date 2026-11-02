@@ -28,7 +28,8 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
     with(inputs) {
         val state by viewModel.uiState.collectAsState()
     val toolsAvailable = target is BrowseTarget.Local && storageToolsSupported()
-    val showCopyFabs = onPickFiles == null && state.isSelectionMode && state.selectedFileIds.isNotEmpty() && !state.isMultiCopying
+    val fabMode = ExplorerFabMode.of(onPickFiles != null, state.isSelectionMode, state.selectedFileIds.size, state.isMultiCopying)
+    val showCopyFabs = fabMode != ExplorerFabMode.None
     val topBarTitle = titleOverride
         ?: if (target is BrowseTarget.Local) stringRes("local_files") else state.deviceTitle
 

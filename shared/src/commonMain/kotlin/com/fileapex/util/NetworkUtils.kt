@@ -6,7 +6,7 @@ import com.fileapex.platform.localIpv4Addresses
 
 /**
  * LAN interface selection and this-device identity.
- * Prefer stable, routable LAN IPv4 (192.168 then 10.x then 172.16–31) across heartbeats / pairing.
+ * Prefer stable, routable LAN IPv4 (192.168 then 10.x then 172.16 to 31) across heartbeats / pairing.
  */
 object NetworkUtils {
     /**

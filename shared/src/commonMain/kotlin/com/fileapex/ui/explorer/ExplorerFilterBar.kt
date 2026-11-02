@@ -87,8 +87,8 @@ internal fun ExplorerTopBarActions(
     when {
         state.isSelectionMode -> {
             if (onPickFiles != null) {
-                val chosen = viewModel.selectedItems().filter { !it.isDirectory }.map { it.absolutePath }
-                TextButton(enabled = chosen.isNotEmpty(), onClick = { onPickFiles(chosen) }) {
+                val canSend = (state.contentFiles + state.paneFiles).any { it.id in state.selectedFileIds }
+                TextButton(enabled = canSend, onClick = { viewModel.pickSelected(onPickFiles) }) {
                     Text(
                         stringRes("send"),
                         color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified

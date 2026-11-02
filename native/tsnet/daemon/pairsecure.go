@@ -21,6 +21,9 @@ import (
 // securePair is the joiner half of pairing by comparison, over the host's TLS port. This node has no screen: it
 // prints the number, and the host's user compares it with the host's screen and accepts there; the last request waits
 // for that answer. It returns the host's TLS key, which every request of the pairing had to present unchanged.
+// securePairingPrefix is pairing protocol 2. A host that answers 404 or `pairing_only` here is on the older protocol.
+const securePairingPrefix = "/api/v2/pairing/secure"
+
 func (n *Node) securePair(ctx context.Context, beacon pairingBeacon, hostID, hostPin string, tlsPort int, pin string, self deviceRecord) (string, error) {
 	if tlsPort < 1 || tlsPort > 65535 {
 		return "", errors.New("the other device offers no TLS port, so it cannot pair securely; update it")
@@ -39,7 +42,7 @@ func (n *Node) securePair(ctx context.Context, beacon pairingBeacon, hostID, hos
 	client := &http.Client{Transport: &http.Transport{
 		DisableKeepAlives: true,
 		TLSClientConfig: &tls.Config{
-			Certificates:       []tls.Certificate{n.tls.identity.cert},
+			Certificates:       []tls.Certificate{n.tls.current().cert},
 			InsecureSkipVerify: true, // identity is the key below, not a name or a CA
 			MinVersion:         tls.VersionTLS12,
 			VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
@@ -80,11 +83,14 @@ func (n *Node) securePair(ctx context.Context, beacon pairingBeacon, hostID, hos
 		return status, body, err
 	}
 
-	status, body, err := post("/api/v1/pairing/secure/offer", map[string]any{
+	status, body, err := post(securePairingPrefix+"/offer", map[string]any{
 		"commit": pairCommit(nonceB, joinerPin, self.DeviceID), "scannerDevice": self, "pin": strings.TrimSpace(pin),
 	}, 15*time.Second)
 	if err != nil {
 		return "", err
+	}
+	if hostIsOlder(status, body) {
+		return "", errors.New("the other device is on an older version of FileApex and cannot pair with this node; update it first")
 	}
 	if status != http.StatusOK {
 		return "", pairingRefusal(status, body)
@@ -96,7 +102,7 @@ func (n *Node) securePair(ctx context.Context, beacon pairingBeacon, hostID, hos
 	if err := json.Unmarshal(body, &offer); err != nil || offer.SessionID == "" || offer.NonceA == "" {
 		return "", errors.New("the other device sent a reply this node does not understand")
 	}
-	status, body, err = post("/api/v1/pairing/secure/reveal", map[string]any{"sessionId": offer.SessionID, "nonceB": nonceB}, 15*time.Second)
+	status, body, err = post(securePairingPrefix+"/reveal", map[string]any{"sessionId": offer.SessionID, "nonceB": nonceB}, 15*time.Second)
 	if err != nil {
 		return "", err
 	}
@@ -106,7 +112,7 @@ func (n *Node) securePair(ctx context.Context, beacon pairingBeacon, hostID, hos
 	code := pairSasCode(observed, joinerPin, hostID, self.DeviceID, offer.NonceA, nonceB)
 	log.Printf("Pairing number %s. It must be the same on %s's screen. Accept it there, or decline if it differs.", code, beacon.DeviceName)
 	// This node cannot look at a screen: the host's user is the one who compares, and the host decides.
-	status, body, err = post("/api/v1/pairing/secure/decide", map[string]any{"sessionId": offer.SessionID, "approved": true}, 105*time.Second)
+	status, body, err = post(securePairingPrefix+"/decide", map[string]any{"sessionId": offer.SessionID, "approved": true}, 105*time.Second)
 	if err != nil {
 		return "", err
 	}
@@ -116,9 +122,15 @@ func (n *Node) securePair(ctx context.Context, beacon pairingBeacon, hostID, hos
 	return observed, nil
 }
 
+// hostIsOlder is how a host without pairing protocol 2 answers its first step.
+func hostIsOlder(status int, body []byte) bool {
+	return status == http.StatusNotFound || strings.Contains(strings.ToLower(string(body)), "pairing_only")
+}
+
 func pairingRefusal(status int, body []byte) error {
 	text := strings.ToLower(string(body))
 	switch {
+
 	case strings.Contains(text, "pairing_declined"):
 		return errors.New("the other device declined the pairing, or did not answer in time")
 	case strings.Contains(text, "pairing_busy"):
@@ -133,4 +145,3 @@ func pairingRefusal(status int, body []byte) error {
 	}
 	return fmt.Errorf("pairing refused (HTTP %d: %s)", status, strings.TrimSpace(string(body)))
 }
-

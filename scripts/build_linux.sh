@@ -18,6 +18,12 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 1
 fi
 
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "This checkout has local changes; refusing to build."
+  git status --short
+  exit 1
+fi
+
 case "$(uname -m)" in
   x86_64) ADOPTIUM_ARCH=x64 ;;
   aarch64|arm64) ADOPTIUM_ARCH=aarch64 ;;

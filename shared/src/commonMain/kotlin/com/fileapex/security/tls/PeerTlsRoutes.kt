@@ -18,30 +18,76 @@ object PeerTlsRoutes {
     private val byEndpoint = AtomicReference<Map<String, PeerTlsRoute>>(emptyMap())
     private val tailnetPipes = java.util.concurrent.ConcurrentHashMap<Int, PeerTlsRoute>()
     private val tailnetCandidates = java.util.concurrent.ConcurrentHashMap<String, PeerTlsRoute>()
+    private val held = java.util.concurrent.ConcurrentHashMap<String, PeerTlsRoute>()
 
     /** Mac: pushes the table to the native client, which dials peers itself. */
     @Volatile
     var onChange: ((List<PeerTlsEndpoint>) -> Unit)? = null
 
-    fun snapshot(): List<PeerTlsEndpoint> = byEndpoint.get().map { (key, route) ->
+    /** Gets one line whenever the table the clients dial from changes (last octets only), so a peer missing from it shows in the log. */
+    @Volatile
+    var journal: ((String) -> Unit)? = null
+    private var lastJournaled: String? = null
+
+    private fun publish() {
+        val table = snapshot()
+        journal?.let { write ->
+            val peers = table.map { "${it.host.substring(it.host.lastIndexOf('.').coerceAtLeast(0))}:${it.httpPort}>${it.route.tlsPort}" }.sorted()
+            val line = "tls routes: ${peers.size} peers" + peers.joinToString("") { " $it" }
+            val changed = synchronized(this) { (line != lastJournaled).also { lastJournaled = line } }
+            if (changed) write(line)
+        }
+        onChange?.invoke(table)
+    }
+
+    fun snapshot(): List<PeerTlsEndpoint> = (held.toMap() + byEndpoint.get()).map { (key, route) ->
         PeerTlsEndpoint(key.substringBeforeLast(':'), key.substringAfterLast(':').toInt(), route)
     }
 
+    /** Every address a pinned peer was routed at, kept while the peer stays pinned: a peer with two addresses is reached at either. */
+    private val addressesSeen = HashMap<String, MutableSet<String>>()
+
     fun update(devices: List<PairedDeviceEntity>) {
         val map = HashMap<String, PeerTlsRoute>()
+        val current = HashMap<String, PeerTlsRoute>()
         for (device in devices) {
             if (device.isRemoved || device.tlsPin.isEmpty() || device.port <= 0) continue
             val pins = setOfNotNull(device.tlsPin, device.tlsPinAlt.ifEmpty { null })
             val ip = device.lastKnownIp.trim()
             if (ip.isNotEmpty() && device.tlsPort in 1..65535) {
-                map[key(ip, device.port)] = PeerTlsRoute(device.deviceId, pins, device.tlsPort)
+                current[key(ip, device.port)] = PeerTlsRoute(device.deviceId, pins, device.tlsPort)
             }
             // Over the tailnet the peer's TLS front answers on its share port, so a tailnet caller is pinned like a LAN one.
             val tailnetIp = device.tailnetIpv4.trim()
             if (tailnetIp.isNotEmpty()) map[key(tailnetIp, device.port)] = PeerTlsRoute(device.deviceId, pins, device.port)
         }
+        synchronized(addressesSeen) {
+            val latest = current.values.associateBy { it.deviceId }
+            addressesSeen.keys.retainAll(latest.keys)
+            for ((key, route) in current) addressesSeen.getOrPut(route.deviceId) { linkedSetOf() }.add(key)
+            for ((id, keys) in addressesSeen) {
+                val route = latest.getValue(id)
+                for (key in keys) map[key] = route
+            }
+            map.putAll(current)
+        }
         byEndpoint.set(map)
-        onChange?.invoke(snapshot())
+        publish()
+    }
+
+    /**
+     * Keeps a pinned route to a device the roster no longer lists, so the notice that removes it can still go over TLS:
+     * the removed device refuses plain HTTP from a peer it has pinned. Close the result once the notice was sent.
+     */
+    fun holdRoute(deviceId: String, pins: Set<String>, host: String, httpPort: Int, tlsPort: Int): AutoCloseable {
+        val key = key(host, httpPort)
+        val route = PeerTlsRoute(deviceId, pins, tlsPort)
+        held[key] = route
+        publish()
+        return AutoCloseable {
+            held.remove(key, route)
+            publish()
+        }
     }
 
     /**
@@ -64,7 +110,7 @@ object PeerTlsRoutes {
     fun lookup(host: String, httpPort: Int): PeerTlsRoute? = when {
         com.fileapex.iroh.irohLoopbackOrNull(host, httpPort) != null -> null
         host.trim() == "127.0.0.1" && tailnetPipes.containsKey(httpPort) -> tailnetPipes[httpPort]
-        else -> key(host, httpPort).let { byEndpoint.get()[it] ?: tailnetCandidates[it] }
+        else -> key(host, httpPort).let { byEndpoint.get()[it] ?: held[it] ?: tailnetCandidates[it] }
     }
 
     fun isPinned(host: String, httpPort: Int): Boolean = lookup(host, httpPort) != null

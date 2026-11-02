@@ -1,15 +1,9 @@
 package com.fileapex.cli
 
-import com.fileapex.cli.commands.CliCommandHandler
 import com.fileapex.cli.dash.CliDashboard
 import com.fileapex.cli.dash.IpcClusterBackend
-import com.fileapex.cli.dash.StandaloneClusterBackend
 import com.fileapex.cli.ipc.CliIpcClient
-import com.fileapex.data.db.createFileApexDatabase
-import com.fileapex.di.FileApexServices
-import com.fileapex.platform.DesktopJvmStartup
 import kotlin.system.exitProcess
-import kotlinx.coroutines.runBlocking
 
 object CliRunner {
 
@@ -23,13 +17,11 @@ object CliRunner {
 
         val cwd = System.getProperty("user.dir") ?: "."
         if (first == "dash" || first == "dashboard") {
-            val backend = if (CliIpcClient.isDaemonRunning()) {
-                IpcClusterBackend()
-            } else {
-                ensureHeadlessBootstrap()
-                StandaloneClusterBackend()
+            if (!CliIpcClient.isDaemonRunning()) {
+                System.err.println("Open FileApex before using the CLI.")
+                exitProcess(1)
             }
-            CliDashboard(backend, cwd).run()
+            CliDashboard(IpcClusterBackend(), cwd).run()
             exitProcess(0)
         }
 
@@ -37,57 +29,16 @@ object CliRunner {
         exitProcess(exitCode)
     }
 
-    fun ensureHeadlessBootstrap() {
-        DesktopJvmStartup.onMainEntry()
-
-        if (!FileApexServices.isBootstrapComplete) {
-            FileApexServices.beginBootstrap(
-                createDatabase = { createFileApexDatabase() },
-                legacyBulletinPath = com.fileapex.platform.DesktopPlatformPaths.bulletinBoardDatabaseFile().absolutePath
-            )
-            runBlocking {
-                FileApexServices.awaitBootstrap()
-            }
-        }
-    }
-
-    fun runHeadless(args: List<String>, cwd: String): Int {
-        ensureHeadlessBootstrap()
-
-        val handler = CliCommandHandler(
-            out = { println(it) },
-            err = { System.err.println(it) },
-            onProgress = { percent, speed, eta, _, _ ->
-                val barWidth = 28
-                if (percent >= 1f) {
-                    val bar = "█".repeat(barWidth)
-                    print("\r[$bar] 100%\u001b[K")
-                    System.out.flush()
-                } else {
-                    val filled = (percent * barWidth).toInt().coerceIn(0, barWidth)
-                    val empty = barWidth - filled
-                    val bar = "█".repeat(filled) + "░".repeat(empty)
-                    val pct = (percent * 100).toInt()
-                    val speedPart = if (speed.isNotBlank()) " $speed" else ""
-                    val etaPart = if (eta.isNotBlank()) " • ETA $eta" else ""
-                    print("\r[$bar] $pct%$speedPart$etaPart\u001b[K")
-                    System.out.flush()
-                }
-            },
-            prompt = { question ->
-                print(question)
-                System.out.flush()
-                kotlin.io.readLine()
-            }
-        )
-
-        return runBlocking {
-            handler.execute(args, cwd)
+    fun runHeadless(args: List<String>, cwd: String, forward: (List<String>, String) -> Int? = { input, directory -> CliIpcClient.forwardCommand(input, directory) }): Int {
+        return forward(args, cwd) ?: run {
+            System.err.println("Open FileApex before using the CLI. No standalone app was started.")
+            1
         }
     }
 
     val HELP_TEXT = """
 FileApex CLI - Local-First P2P File Explorer & Transfer
+The FileApex app must be running. Commands use its database and transfer engine.
 
 Usage:
   fileapex <command> [options] [arguments]

@@ -8,16 +8,6 @@ object PeerHttpHeaders {
     /** Latest change in the node's bulletin board, on its own clock; a peer behind it pulls the difference. */
     const val BULLETIN_VERSION = "X-FileApex-Bulletin-Version"
 
-    /** Fingerprint of the removal records a node holds, on its health answer to a proven peer (see RemovalFingerprint). */
-    const val REMOVALS = "X-FileApex-Removals"
-
-    /** One digest over the roster and the removal records (see ClusterDigest); sent beside [REMOVALS] for one release. */
-    const val CLUSTER_DIGEST = "X-FileApex-Cluster-Digest"
-
-    fun clusterDigest(headers: Map<String, String>): String? = headers[CLUSTER_DIGEST.lowercase()]
-
-    fun removals(headers: Map<String, String>): String? = headers[REMOVALS.lowercase()]
-
     fun bulletinVersion(headers: Map<String, String>): Long? =
         headers[BULLETIN_VERSION.lowercase()]?.toLongOrNull()
 

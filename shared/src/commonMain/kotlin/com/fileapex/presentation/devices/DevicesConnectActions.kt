@@ -6,6 +6,7 @@ import com.fileapex.data.identity.LocalDeviceNameStore
 import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.LanPresenceTiming
+import com.fileapex.domain.presence.PeerRefusals
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.network.PeerReachabilityMessages
@@ -74,6 +75,7 @@ internal class DevicesConnectActions(
         }.getOrElse { error ->
             DeviceConnectOutcome.Unreachable(UserFacingErrors.message(error, "unable_to_reach_device"))
         }
+        println("DevicesConnect: ${device.deviceId} -> ${outcome::class.simpleName} after ${TimeUtils.now() - startedAt} ms")
         val skipMinDelay = outcome is DeviceConnectOutcome.Unreachable && outcome.quickFail
         LanPresenceTiming.awaitConnectHandshakeMinDelay(startedAt, skipMinDelay)
         _uiState.update { it.copy(connectingDeviceId = null) }
@@ -105,6 +107,9 @@ internal class DevicesConnectActions(
                 detail = PeerReachabilityMessages.localWifiRequired(),
                 quickFail = true
             )
+        }
+        if (PeerRefusals.book.refusedRecently(device.deviceId, TimeUtils.now())) {
+            return DeviceConnectOutcome.Unreachable(AppI18n.t("error_peer_not_trusted"), quickFail = true)
         }
         val peer = repository.getDevice(device.deviceId) ?: device
         val initialEndpoint = presence.probeNow(peer)
@@ -155,7 +160,7 @@ internal class DevicesConnectActions(
                 )
             }.getOrElse { error ->
                 return DeviceConnectOutcome.Unreachable(
-                    detail = error.message ?: PeerReachabilityMessages.peerOffline()
+                    detail = UserFacingErrors.message(error, "unable_to_reach_device")
                 )
             }
         }

@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -36,18 +35,13 @@ func main() {
 	if dataDir == "" {
 		dataDir = "/app/data"
 	}
-	if *resetFlag {
-		log.Printf("Clearing cluster configuration. The device id is kept so a later pairing is the same node.")
-		clearSavedCluster(dataDir)
-	}
-
 	fmt.Println("=== FileApex Daemon (cluster joiner) ===")
 	node, err := newNode(dataDir)
 	if err != nil {
 		log.Fatalf("Startup failed: %v", err)
 	}
-	log.Printf("Saved state: identity=%t cluster=%t config=%t joined=%t removed=%t",
-		fileExists(node.identityPath), fileExists(node.clusterPath), fileExists(node.configPath), node.isJoined(), node.wasRemoved())
+	log.Printf("Saved state: identity=%t cluster=%t config=%t chain=%t joined=%t",
+		fileExists(node.identityPath), fileExists(node.clusterPath), fileExists(node.configPath), fileExists(node.chainPath), node.isJoined())
 	if err := applyEnv(node); err != nil {
 		log.Fatalf("Startup failed: %v", err)
 	}
@@ -55,6 +49,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	defer node.shutdown(2 * time.Second)
+	if *resetFlag {
+		log.Printf("Leaving the cluster and clearing its configuration. The device id is kept so a later pairing is the same node.")
+		node.resetCluster(ctx)
+	}
 
 	cfg, cfgErr := loadConfig(node.configPath)
 	if cfgErr != nil {
@@ -66,14 +64,6 @@ func main() {
 	}
 
 	switch {
-	case node.wasRemoved() && !*setupFlag:
-		if *joinFlag || wantTailscale {
-			log.Fatalf("Removed from the cluster at version %d. Start with --reset, or --setup and choose 4, before pairing again.", node.removalVersion())
-		}
-		if err := runRemoved(ctx, node); err != nil && !errors.Is(err, context.Canceled) {
-			log.Fatalf("Daemon stopped: %v", err)
-		}
-		return
 	case wantTailscale:
 		if !node.isJoined() {
 			log.Fatal("Join the local cluster first (--join). Tailscale does not learn the cluster by itself.")
@@ -132,10 +122,6 @@ func runMenu(ctx context.Context, node *Node) error {
 		}
 		switch strings.TrimSpace(input) {
 		case "1":
-			if node.wasRemoved() {
-				fmt.Println("This node was removed from the cluster. Choose 4 before pairing again.")
-				continue
-			}
 			if node.isJoined() {
 				fmt.Printf("Already paired as %s. Resuming.\n", node.deviceName())
 				return runLocal(ctx, node, true)
@@ -166,7 +152,7 @@ func runMenu(ctx context.Context, node *Node) error {
 			return runLocal(ctx, node, true)
 		case "4":
 			fmt.Println("Clearing cluster configuration. The device id is kept.")
-			node.resetCluster()
+			node.resetCluster(ctx)
 		default:
 			fmt.Println("Invalid choice.")
 		}
@@ -260,24 +246,11 @@ func kernelRelease() string {
 	return string(body)
 }
 
-func runRemoved(ctx context.Context, node *Node) error {
-	log.Printf("Removed from the cluster at version %d. This node will not pair or announce again until --reset, or --setup and choice 4.", node.removalVersion())
-	if err := node.serve(); err != nil {
-		return err
-	}
-	log.Printf("Backup folder: %s", node.inboxDir())
-	<-ctx.Done()
-	return ctx.Err()
-}
-
 func runLocal(ctx context.Context, node *Node, resumed bool) error {
-	if node.wasRemoved() {
-		return runRemoved(ctx, node)
-	}
 	if err := node.serve(); err != nil {
 		return err
 	}
-	go node.presenceLoop(ctx)
+	go node.chainLoop(ctx)
 	go node.tlsAnnounceLoop(ctx)
 	if ip := node.advertiseIP(); ip == "" {
 		log.Printf("No LAN address found. Other devices will not be able to send the roster or files back.")
@@ -292,11 +265,6 @@ func runLocal(ctx context.Context, node *Node, resumed bool) error {
 			return ctx.Err()
 		}
 		if !node.isJoined() {
-			if node.wasRemoved() {
-				log.Printf("Removed from the cluster at version %d. This node will not pair or announce again until --reset, or --setup and choice 4.", node.removalVersion())
-				<-ctx.Done()
-				return ctx.Err()
-			}
 			if err := node.listenAndJoin(ctx); err != nil {
 				return err
 			}
@@ -312,16 +280,11 @@ func runLocal(ctx context.Context, node *Node, resumed bool) error {
 		if resumed {
 			node.disambiguateAutoNameFromRoster()
 			node.logRoster()
-			go node.announceSelf(ctx, "SELF_METADATA")
+			go node.tickChain(ctx)
 			resumed = false
 		}
 		node.waitWhileJoined(ctx)
 		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if node.wasRemoved() {
-			log.Printf("Removed from the cluster at version %d. This node will not pair or announce again until --reset, or --setup and choice 4.", node.removalVersion())
-			<-ctx.Done()
 			return ctx.Err()
 		}
 		log.Printf("Left the cluster. Listening for a new pairing broadcast.")
@@ -369,17 +332,16 @@ func (n *Node) listenAndJoin(ctx context.Context) error {
 	}
 }
 
-func (n *Node) presenceLoop(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Minute)
+// chainLoop is the chain's minute tick: trade records with the peers, follow what they hold, join when asked to.
+func (n *Node) chainLoop(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if n.isJoined() {
-				n.announceSelf(ctx, "SELF_METADATA")
-			}
+			n.tickChain(ctx)
 		}
 	}
 }
@@ -396,11 +358,6 @@ func configuredTailscale(cfg *fileConfig) (mode, key string) {
 		}
 	}
 	return mode, strings.TrimSpace(cfg.AuthKey)
-}
-
-func clearSavedCluster(dataDir string) {
-	_ = os.Remove(filepath.Join(dataDir, "config.json"))
-	_ = os.Remove(filepath.Join(dataDir, "cluster.json"))
 }
 
 func bringUpTailscale(ctx context.Context, node *Node) {
