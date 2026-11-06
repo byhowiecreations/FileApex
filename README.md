@@ -2,7 +2,7 @@
 
 # FileApex
 
-**A local-first file manager and sharing hub for Android, macOS and Windows.  
+**A local-first file manager and sharing hub for Android, macOS, Windows, and Linux.  
 Browse, send and sync between your own devices without a cloud in the middle.**
 
 [![Latest release](https://img.shields.io/github/v/release/byhowiecreations/FileApex?label=Download&color=brightgreen)](https://github.com/byhowiecreations/FileApex/releases/latest)
@@ -34,7 +34,7 @@ Pair your phone, Mac and PC once, then move files, share the clipboard, send mes
 | **macOS** (Apple Silicon / Intel) | Installer from the [latest release](https://github.com/byhowiecreations/FileApex/releases/latest) |
 | **Windows** | Installer from the [latest release](https://github.com/byhowiecreations/FileApex/releases/latest) |
 | **Linux** | `.deb`, `.rpm`, or AppImage from the [latest release](https://github.com/byhowiecreations/FileApex/releases/latest) |
-| **FireFox Extension** | Installer from the [latest release](https://github.com/byhowiecreations/FileApex/releases/latest) |
+| **Firefox Extension** | Installer from the [latest release](https://github.com/byhowiecreations/FileApex/releases/latest) |
 
 Builds from GitHub can check for updates and install them from inside the app (opt-in). Play builds update through Google Play.
 
@@ -45,7 +45,7 @@ Download one file from the release page.
 **Ubuntu, Debian, ChromeOS Linux container (`.deb`):**
 
 ```bash
-sudo apt install ./FileApex-v0.17.0-amd64.deb
+sudo apt install ./FileApex-v0.20.5-amd64.deb
 ```
 
 Start FileApex from the application menu.
@@ -53,14 +53,14 @@ Start FileApex from the application menu.
 **Fedora, openSUSE (`.rpm`):**
 
 ```bash
-sudo dnf install ./FileApex-v0.17.0-x86_64.rpm
+sudo dnf install ./FileApex-v0.20.5-x86_64.rpm
 ```
 
 **Any distribution (AppImage):**
 
 ```bash
-chmod +x FileApex-v0.17.0-x86_64.AppImage
-./FileApex-v0.17.0-x86_64.AppImage
+chmod +x FileApex-v0.20.5-x86_64.AppImage
+./FileApex-v0.20.5-x86_64.AppImage
 ```
 
 Nothing is installed: the file is the app, and deleting it removes the app. The first launch adds a FileApex entry to the application menu and a shortcut on the desktop, both pointing at that file, so keep it where it is or launch it again from its new location.
@@ -82,8 +82,9 @@ Chromebook: the Linux container sits behind its own network, so other devices ca
 * **Local-first explorer:** Browse and move files between paired devices on the same network.
 * **Multi-target sending:** Push files and folders to several online devices at once.
 * **Receive folder:** Incoming files land in `Download/FileApex` on Android and `~/Downloads/FileApex` on desktop.
-* **System sharing:** macOS Finder and Share extension, Windows Share and Send To, and Android Direct Share targets for paired devices.
+* **System sharing:** macOS Finder and Share extension, Windows Share and Send To, Android Direct Share targets for paired devices, and desktop drag-and-drop (plus a menu-bar / system-tray Drop Box).
 * **Clipboard sharing (opt-in):** Send your clipboard or a link to any paired device, in any direction. Links open in the default browser.
+* **Friends and Groups:** Invite contacts for file-only sending over Iroh without pairing them into your personal device cluster.
 * **Share as a link (opt-in):** Turn one file into a link that works once, so someone without FileApex can download it in a browser. It goes from your device through a relay that stores nothing, end-to-end encrypted, and asks for your OK first.
 * **Device details:** Battery, charging state, processor, storage, RAM and network for every paired device.
 * **Locate phone:** Make a paired phone ring or show where it is from your computer.
@@ -116,8 +117,8 @@ No typing IP addresses. Generate a QR code on one device, then on the other use 
 | --- | --- |
 | **Same network** | Discovery and transfer over Wi-Fi or Ethernet, after paired. |
 | **Tailscale** | Reach paired devices across networks through your tailnet, using [Tailscale](https://tailscale.com)'s embedded `tsnet`. |
-| **Iroh** | Reach paired devices over the internet by device key, with no IP address needed, using [Iroh](https://www.iroh.computer) from [n0 computer](https://n0.computer). |
-| **Docker** | Run the FileApex daemon as an always-on node. See [DOCKER.md](https://www.google.com/search?q=./DOCKER.md). |
+| **Iroh** | Reach paired devices over the internet by device key, with no IP address needed (public or self-hosted relay), using [Iroh](https://www.iroh.computer) from [n0 computer](https://n0.computer). |
+| **Docker** | Run the FileApex daemon as an always-on node. See [DOCKER.md](DOCKER.md). |
 | **Google account (opt-in)** | Cloud presence and wake signals, plus optional Drive relay for Bulletin Board files. Files stay on your devices otherwise. |
 
 ---
@@ -135,7 +136,7 @@ Their licence notices, and those of the Go libraries behind the Tailscale bridge
 
 ## Privacy
 
-FileApex has no ads, trackers or analytics. Read the full policy, with every permission and optional service explained, in [PRIVACY.md](https://www.google.com/search?q=./PRIVACY.md).
+FileApex has no ads, trackers or analytics. Read the full policy, with every permission and optional service explained, in [PRIVACY.md](PRIVACY.md).
 
 ---
 
