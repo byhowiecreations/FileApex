@@ -21,6 +21,9 @@ object DeviceNameCoordinator {
         return null
     }
 
+    /** What to show while a name is being typed: the same rule as [validate], silent until something is typed. */
+    fun liveError(draft: String): String? = if (draft.isBlank()) null else validate(draft)
+
     suspend fun saveLocalBroadcastName(name: String) {
         val trimmed = name.trim()
         validate(trimmed)?.let { error(it) }
@@ -61,17 +64,23 @@ object DeviceNameCoordinator {
             ?: error(AppI18n.t("device_not_found"))
         val self = loadLocalIdentity()
         val selfLabel = LocalDeviceNameStore.current().ifBlank { self.deviceName }
+        // Sent by whichever route reaches the peer (LAN, Tailscale, Iroh), not its stored address; an offline peer is not tried.
         val outcome = cancellableCatching {
-            FileApexServices.client.cluster.postRemoteRename(
-                host = peer.lastKnownIp,
-                port = peer.port,
-                newName = trimmed,
-                renamedByDeviceId = self.deviceId,
-                renamedByDeviceName = selfLabel
-            )
+            val route = FileApexServices.presenceMonitor.endpointIfOnline(peer)
+            if (route == null) {
+                RenameOutcome.NotDelivered
+            } else {
+                FileApexServices.client.cluster.postRemoteRename(
+                    host = route.host,
+                    port = route.port,
+                    newName = trimmed,
+                    renamedByDeviceId = self.deviceId,
+                    renamedByDeviceName = selfLabel
+                )
+            }
         }.getOrDefault(RenameOutcome.NotDelivered)
-        // The device's own answer decides the label; an older build or an unreachable one keeps what was typed.
-        val label = (outcome as? RenameOutcome.Confirmed)?.name ?: trimmed
+        // The device owns its name: the label changes only after the device took the rename.
+        val label = PeerRenamePolicy.labelToStore(outcome, trimmed) ?: return outcome
         FileApexServices.deviceRepository.rename(deviceId, label)
         cancellableCatching {
             GoogleLinkCoordinator.publishUserRenamedDevice(deviceId, label)

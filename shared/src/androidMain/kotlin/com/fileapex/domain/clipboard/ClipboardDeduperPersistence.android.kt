@@ -9,10 +9,12 @@ actual object ClipboardDeduperPersistence {
     private const val KEY_STATE = "state"
     private const val PURPOSE = "clipboard-deduper"
 
-    actual fun load(): PersistedDeduperState {
+    actual fun load(): PersistedDeduperState? {
         val context = androidAppContextOrNull() ?: return PersistedDeduperState(null, emptyMap())
         val stored = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_STATE, "").orEmpty()
-        return DeduperStateCodec.decode(SealedText.open(PURPOSE, stored).orEmpty())
+        if (stored.isEmpty()) return PersistedDeduperState(null, emptyMap())
+        val plain = SealedText.open(PURPOSE, stored) ?: return null
+        return DeduperStateCodec.decode(plain)
     }
 
     actual fun save(lastHash: String?, seenHashes: Map<String, Long>) {

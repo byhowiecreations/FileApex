@@ -14,8 +14,15 @@
 # cluster and Tailscale setup and keeps the device id.
 
 # Stage 1: Build the Go binary
-FROM golang:1.27-alpine AS builder
+# The Go toolchain runs on the machine that builds the image (native speed, no emulation) and compiles for the image's platform
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 WORKDIR /app
+
+# Dependencies first: this layer is reused until go.mod or go.sum change, so a source or version change does not download them again
+COPY native/tsnet/go.mod native/tsnet/go.sum ./
+RUN go mod download
 
 # Copy the entire native/tsnet folder (which includes go.mod and the daemon subdirectory)
 COPY native/tsnet/ ./
@@ -25,7 +32,7 @@ COPY version.md /app/version.md
 # Change into the daemon folder where main.go lives and build
 WORKDIR /app/daemon
 RUN VNAME=$(sed -n 's/^name=//p' /app/version.md | tr -d '\r') && VCODE=$(sed -n 's/^code=//p' /app/version.md | tr -d '\r') && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.appVersionName=${VNAME} -X main.appVersionCode=${VCODE}" -o /app/fileapex-daemon .
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "-X main.appVersionName=${VNAME} -X main.appVersionCode=${VCODE}" -o /app/fileapex-daemon .
 
 # Stage 2: Runtime Image
 FROM alpine:latest

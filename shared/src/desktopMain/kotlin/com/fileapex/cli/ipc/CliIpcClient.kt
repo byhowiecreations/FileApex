@@ -15,12 +15,19 @@ object CliIpcClient {
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Attempts to forward the command to the active GUI app daemon.
-     * Returns the exit code if handled by daemon, or null if daemon is not running.
+     * Forwards the command to the running app and returns its exit code, or null when no app is reachable.
+     * A connection the app refuses, or loses before the command finished, is a failure with its own message.
      */
     fun forwardCommand(args: List<String>, cwd: String, port: Int = CLI_IPC_PORT, directory: File = DesktopPlatformPaths.applicationSupportDirectory()): Int? {
-        return runCatching {
-            val socket = connectAuthenticated(port, directory, 800)
+        val socket = try {
+            connectAuthenticated(port, directory, 800)
+        } catch (_: AppNotReachable) {
+            return null
+        } catch (_: IOException) {
+            System.err.println(REFUSED)
+            return 1
+        }
+        try {
             socket.use { s ->
                 val writer = PrintWriter(s.getOutputStream(), true, Charsets.UTF_8)
                 val reader = java.io.BufferedInputStream(s.getInputStream())
@@ -79,9 +86,13 @@ object CliIpcClient {
                         }
                     }
                 }
-                0
+                System.err.println(LOST)
+                return 1
             }
-        }.getOrNull()
+        } catch (_: IOException) {
+            System.err.println(LOST)
+            return 1
+        }
     }
 
     private fun renderProgressBar(p: CliIpcPacket.Progress) {
@@ -102,11 +113,18 @@ object CliIpcClient {
         System.out.flush()
     }
 
-    fun isDaemonRunning(port: Int = CLI_IPC_PORT, directory: File = DesktopPlatformPaths.applicationSupportDirectory()): Boolean {
-        return runCatching {
-            connectAuthenticated(port, directory, 300).use { true }
-        }.getOrDefault(false)
+    fun appStatus(port: Int = CLI_IPC_PORT, directory: File = DesktopPlatformPaths.applicationSupportDirectory()): CliAppStatus {
+        return try {
+            connectAuthenticated(port, directory, 300).use { CliAppStatus.Running }
+        } catch (_: AppNotReachable) {
+            CliAppStatus.NotRunning
+        } catch (_: IOException) {
+            CliAppStatus.Refused
+        }
     }
+
+    fun isDaemonRunning(port: Int = CLI_IPC_PORT, directory: File = DesktopPlatformPaths.applicationSupportDirectory()): Boolean =
+        appStatus(port, directory) == CliAppStatus.Running
 
     fun sendDashboardRequest(request: CliRequest, timeoutMs: Int = 4000, port: Int = CLI_IPC_PORT, directory: File = DesktopPlatformPaths.applicationSupportDirectory()): CliIpcPacket? {
         return runCatching {
@@ -122,19 +140,36 @@ object CliIpcClient {
         }.getOrNull()
     }
 
+    /** The app's handoff file is missing or nothing accepts the connection: no app is running for this user. */
+    private class AppNotReachable(cause: Throwable) : IOException(cause)
+
+    private const val REFUSED = "FileApex refused the CLI connection. Restart the app so the app and the CLI are the same version."
+    private const val LOST = "The connection to FileApex was lost before the command finished."
+
     private fun connectAuthenticated(port: Int, directory: File, timeout: Int): Socket {
-        val key = DesktopInstanceWire.readDescriptor(directory).key()
+        val key = try {
+            DesktopInstanceWire.readDescriptor(directory).key()
+        } catch (e: IOException) {
+            throw AppNotReachable(e)
+        }
         val socket = Socket()
+        var connected = false
         try {
-            socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), timeout)
+            try {
+                socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), timeout)
+            } catch (e: IOException) {
+                throw AppNotReachable(e)
+            }
             socket.soTimeout = 1500
             DesktopInstanceWire.deadline(socket) {
                 if (!DesktopInstanceWire.clientAuthenticate(socket, key, "cli")) throw IOException("App CLI authentication failed")
             }
             socket.soTimeout = 0
+            connected = true
             return socket
-        } catch (e: Exception) { socket.close(); throw e }
-        finally { key.fill(0) }
+        } finally {
+            if (!connected) socket.close()
+            key.fill(0)
+        }
     }
 }
-

@@ -60,7 +60,13 @@ internal class PeerContactRecords(
         val changed = mutex.withLock {
             val existing = deviceDao.getDevice(id)?.takeUnless { it.isRemoved } ?: return@withLock null
             val mapped = com.fileapex.domain.peer.PeerNodeStateMapper.toEntity(state, existing)
-            val incoming = if (ownProfile || DeviceDisplayNames.isPlaceholder(existing.deviceName)) mapped else mapped.copy(deviceName = existing.deviceName)
+            // A device owns its name: what it says about itself is taken as it is, even its hardware name over an older label.
+            val own = state.deviceName.trim().takeIf { it.isNotEmpty() && !DeviceDisplayNames.isPlaceholder(it) }
+            val incoming = when {
+                ownProfile -> if (own != null) mapped.copy(deviceName = own) else mapped
+                DeviceDisplayNames.isPlaceholder(existing.deviceName) -> mapped
+                else -> mapped.copy(deviceName = existing.deviceName)
+            }
             val keepEndpoint = RosterMerge.hasUsableEndpoint(existing) && incoming.lastKnownIp != existing.lastKnownIp &&
                 !com.fileapex.util.NetworkUtils.sameIpv4Slash24(incoming.lastKnownIp, existing.lastKnownIp)
             val next = RosterMerge.normalize(

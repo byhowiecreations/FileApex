@@ -44,7 +44,6 @@ internal fun Route.registerIdentityRoutes(server: FileApexServer) {
                     renamedByDeviceName = request.renamedByDeviceName
                 )
             }
-            server.onLog("Local device renamed to $trimmed via cluster request", null)
             call.respondRenamed(server.json, trimmed)
         }.onFailure { error ->
             server.onLog("POST /api/v1/identity/rename failed", error)

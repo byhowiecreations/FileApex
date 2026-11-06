@@ -19,6 +19,8 @@ class ChainTick(
     private val renewSigningKey: suspend () -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
     private val marks: PairingMarks = InMemoryPairingMarks(),
+    /** Reads peers' state fields and decides which peers still need a request; without one every peer is asked each tick. */
+    private val watch: ChainStateWatch? = null,
     /** Called after this device changed the chain itself, so the roster and the pin store follow it at once. */
     private val onChanged: suspend () -> Unit = {}
 ) {
@@ -33,7 +35,8 @@ class ChainTick(
      */
     suspend fun tick(rosterIds: Set<String>, onlineIds: Set<String>, tlsPin: String) {
         val peers = (onlineIds + rosterIds).filter { it != selfId }
-        val answering = peers.filter { replicator.reconcile(it) }.toSet()
+        val answering = watch?.tickPeers(peers) ?: peers.filter { replicator.reconcile(it) }.toSet()
+        if (watch != null && watch.safetyNetDue()) watch.runSafetyNet(peers.filter { it in onlineIds })
         if (peers.isNotEmpty()) bootstrap.createGenesisIfLowest(answering + selfId, tlsPin)
         val state = log.view().state
         announceOwnPin(state, tlsPin)
@@ -79,7 +82,7 @@ class ChainTick(
         val before = log.view().state
         val subject = before.member(subjectId) ?: return ChainVerdict.Rejected("not in the chain")
         val verdict = log.append(self, RecordKind.REMOVE, subjectId, subject.key, subject.tlsPin, MembershipReason.USER_REMOVED)
-        if (verdict is ChainVerdict.Accepted) replicator.announce(before.activeIds().filter { it != selfId })
+        if (verdict is ChainVerdict.Accepted) replicator.announce(before.activeIds().filter { it != selfId }, removed = setOf(subjectId))
         return verdict
     }
 

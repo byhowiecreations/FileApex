@@ -11,7 +11,7 @@ file src/commonMain/kotlin/com/fileapex/domain/pairing/PairingCoordinator.kt 611
 file src/commonMain/kotlin/com/fileapex/domain/presence/PeerPresenceMonitor.kt 688
 file src/commonMain/kotlin/com/fileapex/domain/transfer/TransferQueueCoordinator.kt 658
 file src/commonMain/kotlin/com/fileapex/friends/FriendsHub.kt 503
-file src/commonMain/kotlin/com/fileapex/iroh/IrohRuntime.kt 570
+file src/commonMain/kotlin/com/fileapex/iroh/IrohRuntime.kt 586
 file src/commonMain/kotlin/com/fileapex/network/FileApexServer.kt 658
 file src/commonMain/kotlin/com/fileapex/network/PeerUploadClient.kt 620
 file src/commonMain/kotlin/com/fileapex/network/routes/ServerFileRoutes.kt 663

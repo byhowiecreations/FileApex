@@ -149,6 +149,9 @@ type Node struct {
 	handledRemoval  string
 	pairedAt        time.Time
 	tickMu          sync.Mutex
+	served          chainServedCounters
+	watch           *chainWatch
+	peerHeads       map[string]string
 }
 
 func newNode(dataDir string) (*Node, error) {
@@ -198,6 +201,7 @@ func newNode(dataDir string) (*Node, error) {
 	n.chain = newChainLog(n.deviceID)
 	n.applier = newChainApplier(n.identity.DeviceID, chainEffectsOf{n}, time.Now)
 	n.loadChain()
+	n.watch = newChainWatch(n.ownChainState, n.pullPeer, time.Now)
 	return n, nil
 }
 

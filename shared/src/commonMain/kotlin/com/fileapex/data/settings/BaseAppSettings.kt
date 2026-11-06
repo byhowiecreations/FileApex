@@ -4,8 +4,7 @@ import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.domain.clipboard.ClipboardSharePolicy
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
-import com.fileapex.iroh.IrohRelayUrl
-import com.fileapex.iroh.IrohRelayUrlCheck
+import com.fileapex.iroh.IrohRelaySetting
 import com.fileapex.util.TimestampDiagnostics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -360,18 +359,12 @@ class BaseAppSettings(
     private val irohEnabledFlow = MutableStateFlow(
         store.getBoolean(KEY_IROH_ENABLED, false)
     )
-    private val irohRelayEnabledFlow = MutableStateFlow(
-        store.getBoolean(KEY_IROH_RELAY_ENABLED, false) &&
-            IrohRelayUrl.check(store.getString(KEY_IROH_RELAY_URL, "")) is IrohRelayUrlCheck.Valid
-    )
+    private val irohRelay = IrohRelaySettingsStore(store)
     private val irohRestWhenIdleFlow = MutableStateFlow(
         store.getBoolean(KEY_IROH_REST_WHEN_IDLE, true)
     )
     private val irohAdvancedDebugFlow = MutableStateFlow(
         store.getBoolean(KEY_IROH_ADVANCED_DEBUG, false)
-    )
-    private val irohRelayUrlFlow = MutableStateFlow(
-        store.getString(KEY_IROH_RELAY_URL, "")
     )
     private val tailscaleAuthKeyFlow = MutableStateFlow(
         store.getString(KEY_TAILSCALE_AUTH_KEY, "")
@@ -459,8 +452,8 @@ class BaseAppSettings(
     override val tailscaleSetupExpanded: StateFlow<Boolean> = tailscaleSetupExpandedFlow.asStateFlow()
     override val tailscaleEnabled: StateFlow<Boolean> = tailscaleEnabledFlow.asStateFlow()
     override val irohEnabled: StateFlow<Boolean> = irohEnabledFlow.asStateFlow()
-    override val irohRelayEnabled: StateFlow<Boolean> = irohRelayEnabledFlow.asStateFlow()
-    override val irohRelayUrl: StateFlow<String> = irohRelayUrlFlow.asStateFlow()
+    override val irohRelayEnabled: StateFlow<Boolean> = irohRelay.enabled
+    override val irohRelayUrl: StateFlow<String> = irohRelay.url
     override val irohAdvancedDebug: StateFlow<Boolean> = irohAdvancedDebugFlow.asStateFlow()
     override val irohRestWhenIdle: StateFlow<Boolean> = irohRestWhenIdleFlow.asStateFlow()
     override val tailscaleAuthKey: StateFlow<String> = tailscaleAuthKeyFlow.asStateFlow()
@@ -577,6 +570,7 @@ class BaseAppSettings(
     private val bulletin = BulletinSettings(store)
     override fun bulletinDeltaCursor(deviceId: String): Long = bulletin.deltaCursor(deviceId)
     override fun setBulletinDeltaCursor(deviceId: String, cursor: Long) = bulletin.setDeltaCursor(deviceId, cursor)
+    override fun clearBulletinDeltaCursors() = bulletin.clearDeltaCursors()
     override val bulletinSeenAtEpochMs: StateFlow<Long> = bulletin.seenAtEpochMs
     override fun setBulletinSeenAtEpochMs(epochMs: Long) = bulletin.setSeenAt(epochMs)
 
@@ -778,21 +772,13 @@ class BaseAppSettings(
         irohAdvancedDebugFlow.value = enabled
     }
 
-    override fun irohRelayToken(): String = store.getString(KEY_IROH_RELAY_TOKEN, "")
+    override fun irohRelayToken(): String = irohRelay.token()
 
-    override fun saveIrohRelay(enabled: Boolean, url: String, token: String): Boolean {
-        val checked = IrohRelayUrl.check(url)
-        val cleanToken = token.trim()
-        if (checked is IrohRelayUrlCheck.Valid) {
-            store.putString(KEY_IROH_RELAY_URL, checked.url)
-            irohRelayUrlFlow.value = checked.url
-            store.putString(KEY_IROH_RELAY_TOKEN, cleanToken)
-        }
-        val on = enabled && checked is IrohRelayUrlCheck.Valid
-        store.putBoolean(KEY_IROH_RELAY_ENABLED, on)
-        irohRelayEnabledFlow.value = on
-        return on
-    }
+    override fun saveIrohRelay(enabled: Boolean, url: String, token: String): Boolean = irohRelay.save(enabled, url, token)
+
+    override fun irohRelaySetting(): IrohRelaySetting = irohRelay.current()
+
+    override fun applyClusterIrohRelay(setting: IrohRelaySetting) = irohRelay.apply(setting)
 
     override fun irohSecretKeyBase64(): String = store.getString(KEY_IROH_SECRET_KEY, "")
 
@@ -815,6 +801,14 @@ class BaseAppSettings(
 
     override fun setFriendsSecretKeyBase64(value: String) {
         store.putString(KEY_FRIENDS_SECRET_KEY, value.trim())
+    }
+
+    private val guestLinkConsentFlow = MutableStateFlow(store.getInt(KEY_GUEST_LINK_CONSENT, 0))
+    override val guestLinkConsent: StateFlow<Int> = guestLinkConsentFlow.asStateFlow()
+
+    override fun setGuestLinkConsent(value: Int) {
+        store.putInt(KEY_GUEST_LINK_CONSENT, value)
+        guestLinkConsentFlow.value = value
     }
 
     override fun friendsHideIp(): Boolean = store.getBoolean(KEY_FRIENDS_HIDE_IP, false)
@@ -1398,8 +1392,7 @@ class BaseAppSettings(
         tailscaleSetupExpandedFlow.value = false
         tailscaleEnabledFlow.value = false
         irohEnabledFlow.value = false
-        irohRelayEnabledFlow.value = false
-        irohRelayUrlFlow.value = ""
+        irohRelay.reload()
         irohAdvancedDebugFlow.value = false
         irohRestWhenIdleFlow.value = true
         tailscaleAuthKeyFlow.value = ""
@@ -1525,8 +1518,6 @@ class BaseAppSettings(
         const val KEY_IROH_ENABLED = "iroh_enabled"
         const val KEY_IROH_ADVANCED_DEBUG = "iroh_advanced_debug"
         const val KEY_IROH_REST_WHEN_IDLE = "iroh_rest_when_idle"
-        const val KEY_IROH_RELAY_ENABLED = "iroh_relay_enabled"
-        const val KEY_IROH_RELAY_URL = "iroh_relay_url"
         const val KEY_IROH_RELAY_TOKEN = "iroh_relay_token"
         const val KEY_IROH_SECRET_KEY = "iroh_secret_key_b64"
         const val KEY_FRIENDS_SECRET_KEY = "friends_secret_key_b64"
@@ -1534,6 +1525,7 @@ class BaseAppSettings(
         const val KEY_CLUSTER_RECORD_KEY = "cluster_record_key_json"
         const val KEY_KICK_HANDLED_VERSION = "kick_handled_version"
         const val KEY_FRIENDS_HIDE_IP = "friends_hide_ip"
+        const val KEY_GUEST_LINK_CONSENT = "guest_link_consent"
         const val KEY_FRIENDS_MAX_FILE_MB = "friends_max_file_mb"
         const val KEY_FRIENDS_PINNED = "friends_pinned_keys"
         const val KEY_FRIENDS_INTRO_SEEN = "friends_intro_seen"

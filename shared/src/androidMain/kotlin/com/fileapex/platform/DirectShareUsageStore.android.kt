@@ -1,6 +1,7 @@
 package com.fileapex.platform
 
 import android.content.Context
+import com.fileapex.data.seal.SealedStrings
 
 /**
  * Persists per-device Direct Share usage so frequently used peers (e.g. MacBook Pro)
@@ -11,23 +12,21 @@ internal object DirectShareUsageStore {
 
     fun shareCount(context: Context, deviceId: String): Int {
         if (deviceId.isBlank()) return 0
-        return prefs(context).getInt(prefsKey(deviceId), 0)
+        return counts(context).count(deviceId)
     }
 
     fun recordShare(context: Context, deviceId: String) {
         if (deviceId.isBlank()) return
-        val key = prefsKey(deviceId)
-        val next = prefs(context).getInt(key, 0) + 1
-        prefs(context).edit().putInt(key, next).apply()
+        counts(context).record(deviceId)
     }
 
     fun clearShareCount(context: Context, deviceId: String) {
         if (deviceId.isBlank()) return
-        prefs(context).edit().remove(prefsKey(deviceId)).apply()
+        counts(context).clear(deviceId)
     }
 
-    private fun prefs(context: Context) =
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
-    private fun prefsKey(deviceId: String): String = "share_count_$deviceId"
+    private fun counts(context: Context): ShareUsageCounts {
+        val slots = PrefsStringSlots(context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE))
+        return ShareUsageCounts(SealedStrings(slots, "share-usage"), slots)
+    }
 }

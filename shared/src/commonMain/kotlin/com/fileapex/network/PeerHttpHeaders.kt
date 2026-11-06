@@ -24,6 +24,10 @@ object PeerHttpHeaders {
         return headers
     }
 
+    /** The peer's chain state, or null when it sent none or one that is not exactly a well-formed value. */
+    fun chainState(headers: Map<String, String>): com.fileapex.membership.ChainStateField? =
+        com.fileapex.membership.ChainStateField.parse(headers[com.fileapex.membership.ChainStateField.HEADER.lowercase()])
+
     fun membershipVersion(headers: Map<String, String>): Long? =
         headers[MEMBERSHIP_VERSION.lowercase()]?.toLongOrNull()
 }

@@ -35,6 +35,8 @@ import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.ThemeShapeStyle
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
+import com.fileapex.drop.ui.GuestDropDialog
+import com.fileapex.drop.ui.guestLinkOffered
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.i18n.stringRes
 import com.fileapex.ui.ExplorerIcon
@@ -62,6 +64,7 @@ internal fun ItemContextMenu(
     var infoOpen by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var moveOpen by remember { mutableStateOf(false) }
+    var shareLinkOpen by remember { mutableStateOf(false) }
     var remoteDeleteOpen by remember { mutableStateOf(false) }
     var renameText by remember(item?.id) { mutableStateOf(TextFieldValue(item?.name.orEmpty())) }
     val traits = LocalAppTheme.current.traits
@@ -122,6 +125,16 @@ internal fun ItemContextMenu(
                 onSendToDevice()
             }
         )
+        if (local && !item.isDirectory && guestLinkOffered()) {
+            DropdownMenuItem(
+                text = { Text(stringRes("share_link_action")) },
+                leadingIcon = { MenuGlyph(ExplorerIcon.SendTo) },
+                onClick = {
+                    onDismissRequest()
+                    shareLinkOpen = true
+                }
+            )
+        }
         if (isRemoteTarget) {
             DropdownMenuItem(
                 text = { Text(stringRes("download")) },
@@ -189,6 +202,9 @@ internal fun ItemContextMenu(
             )
         }
     }
+    if (shareLinkOpen && item != null) {
+        GuestDropDialog(java.io.File(item.absolutePath), onDismiss = { shareLinkOpen = false })
+    }
     if (remoteDeleteOpen && item != null && mutations != null) {
         RemoteDeleteConfirm(item.name, onDismiss = { remoteDeleteOpen = false }, onConfirm = { remoteDeleteOpen = false; mutations.delete(item) })
     }
@@ -204,22 +220,7 @@ internal fun ItemContextMenu(
             onDismiss = { moveOpen = false }
         )
     }
-    if (infoOpen && item != null) {
-        AlertDialog(
-            onDismissRequest = { infoOpen = false },
-            title = { Text(item.name) },
-            text = {
-                Text(
-                    listOf(item.absolutePath, formatBytes(item.sizeBytes), item.mimeType)
-                        .filter { it.isNotBlank() }
-                        .joinToString("\n")
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { infoOpen = false }) { Text(stringRes("close")) }
-            }
-        )
-    }
+    if (infoOpen && item != null) ItemInfoDialog(item) { infoOpen = false }
     if (renameOpen && item != null && mutations != null) {
         AlertDialog(
             onDismissRequest = { renameOpen = false },
@@ -247,4 +248,22 @@ internal fun ItemContextMenu(
             }
         )
     }
+}
+
+@Composable
+private fun ItemInfoDialog(item: RemoteFileItem, onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(item.name) },
+        text = {
+            Text(
+                listOf(item.absolutePath, formatBytes(item.sizeBytes), item.mimeType)
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n")
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onClose) { Text(stringRes("close")) }
+        }
+    )
 }

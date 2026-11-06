@@ -84,26 +84,7 @@ internal fun SettingsPageScope.PagesGeneral() {
             onBack = onBack,
             showBackNavigation = showRootBackNavigation,
             layoutMode = layoutMode,
-            onOpenCheckForUpdates = { page = SettingsPage.CheckForUpdates },
-            onOpenPinRequired = { page = SettingsPage.PinRequired },
-            onOpenBackgroundPersistence = { page = SettingsPage.BackgroundPersistence },
-            onOpenAutoLaunchOnReboot = { page = SettingsPage.AutoLaunchOnReboot },
-            onOpenDeviceName = { page = SettingsPage.DeviceName },
-            onOpenLanguage = { page = SettingsPage.Language },
-            onOpenNotifications = { page = SettingsPage.Notifications },
-            onOpenThemes = { page = SettingsPage.Themes },
-            onOpenBulletinBoard = { page = SettingsPage.BulletinBoard },
-            onOpenBackupSync = { page = SettingsPage.BackupSync },
-            onOpenClipboard = { page = SettingsPage.Clipboard },
-            onOpenDeviceDetails = { page = SettingsPage.DeviceDetails },
-            onOpenGoogleAccount = { page = SettingsPage.GoogleAccount },
-            onOpenDesktopLayout = { page = SettingsPage.DesktopLayout },
-            onOpenWindowsDesign = { page = SettingsPage.WindowsDesign },
-            onOpenLeaveClusterWipe = { page = SettingsPage.LeaveClusterWipe },
-            onOpenTailscale = { page = SettingsPage.Tailscale },
-            onOpenIroh = { page = SettingsPage.Iroh },
-            onOpenGroups = { page = SettingsPage.Groups },
-            onOpenAbout = { page = SettingsPage.About },
+            onOpenPage = { page = it },
             onToggleGeneralGroup = viewModel::toggleGeneralGroup,
             onShowAdvancedChange = viewModel::setShowAdvancedSettings,
             onToggleSystemPerformanceGroup = viewModel::toggleSystemPerformanceGroup,
@@ -115,7 +96,6 @@ internal fun SettingsPageScope.PagesGeneral() {
             exactAlarmWarningActive = exactAlarmWarningActive,
             onOpenTransferQueue = onOpenTransferQueue,
             onboardingSteps = onboardingSteps,
-            onOpenOnboardingPermissions = { page = SettingsPage.OnboardingPermissions }
         )
         SettingsPage.OnboardingPermissions -> OnboardingPermissionsSettingsPage(
             onboardingSteps = onboardingSteps,
@@ -391,6 +371,7 @@ internal fun SettingsPageScope.PagesDevice() {
         )
         SettingsPage.Iroh -> IrohSettingsPage(layoutMode, goUp)
         SettingsPage.Groups -> com.fileapex.friends.ui.GroupsSettingsPage(layoutMode, goUp)
+        SettingsPage.ShareLink -> com.fileapex.drop.ui.ShareLinkSettingsPage(layoutMode, goUp)
         SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(layoutMode, goUp)
         SettingsPage.About -> AboutSettingsPage(layoutMode, goUp)
             else -> Unit

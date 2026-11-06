@@ -27,7 +27,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class IrohEndpointLink private constructor(private val endpoint: Endpoint) : IrohLinkHandle {
+class IrohEndpointLink private constructor(
+    private val endpoint: Endpoint,
+    override val online: Boolean,
+    private val customRelayUrl: String?
+) : IrohLinkHandle {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val inbox = Channel<IrohInbound>(Channel.UNLIMITED)
     private val known = ConcurrentHashMap<String, EndpointAddr>()
@@ -81,9 +85,7 @@ class IrohEndpointLink private constructor(private val endpoint: Endpoint) : Iro
 
     override fun pathKind(peerId: String): String? {
         val connection = connections[peerId]?.takeIf { it.closeReason() == null } ?: return null
-        val selected = connection.paths().filter { it.isSelected }
-        if (selected.isEmpty()) return null
-        return if (selected.any { it.isRelay }) "relay" else "direct"
+        return IrohPathKind.of(connection.paths().filter { it.isSelected }.map { IrohPathKind.Selected(it.isRelay, it.remoteAddr) }, customRelayUrl)
     }
 
     override suspend fun accept(): IrohInbound? =
@@ -263,6 +265,8 @@ class IrohEndpointLink private constructor(private val endpoint: Endpoint) : Iro
         private const val CONNECT_TIMEOUT_MS = 30_000L
         private const val BY_ID_DELAY_MS = 1_500L
         private const val ADDRESS_POLL_MS = 30_000L
+        private const val ONLINE_WAIT_MS = 5_000L
+        private const val CUSTOM_ONLINE_WAIT_MS = 8_000L
 
         /**
          * [bindAddr] null binds all interfaces. [relay] false keeps traffic off any relay, which is
@@ -286,14 +290,17 @@ class IrohEndpointLink private constructor(private val endpoint: Endpoint) : Iro
             if (secretKey != null) builder.secretKey(secretKey)
             val endpoint = builder.bind()
             // Best effort: with a home relay in the address, a peer behind a firewall can still reach us.
+            var online = true
             if (relay) {
                 try {
-                    withTimeout(5_000L) { endpoint.online() }
+                    // A refused token or an unreachable host never completes; a healthy relay answers in under a second.
+                    withTimeout(if (customRelay != null) CUSTOM_ONLINE_WAIT_MS else ONLINE_WAIT_MS) { endpoint.online() }
                 } catch (_: TimeoutCancellationException) {
-                    // No relay within 5 s: start anyway, the address gains its relay later.
+                    // No relay in time: start anyway, the address gains its relay later.
+                    online = false
                 }
             }
-            return IrohEndpointLink(endpoint)
+            return IrohEndpointLink(endpoint, online, customRelay?.url)
         }
     }
 }

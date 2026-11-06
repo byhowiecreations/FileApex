@@ -33,10 +33,11 @@ internal fun onlineExpiryWaitMs(
     devices: List<PairedDeviceEntity>,
     online: Set<String>,
     reachabilityEpochMs: Map<String, Long>,
-    now: Long
+    now: Long,
+    routeExpiryWaitMs: Long? = null
 ): Long? {
-    val soonest = devices.filter { it.deviceId in online }.minOfOrNull {
+    val onlineWait = devices.filter { it.deviceId in online }.minOfOrNull {
         maxOf(reachabilityEpochMs[it.deviceId] ?: 0L, it.lastSeenEpochMs) + LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS
-    } ?: return null
-    return (soonest - now + 1_000L).coerceIn(1_000L, LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS)
+    }?.let { (it - now + 1_000L).coerceIn(1_000L, LanPresenceTiming.PRESENCE_READY_THRESHOLD_MS) }
+    return listOfNotNull(onlineWait, routeExpiryWaitMs).minOrNull()
 }

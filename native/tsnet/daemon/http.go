@@ -110,6 +110,13 @@ func (n *Node) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if !n.pass(w, r, "open") {
 		return
 	}
+	// A paired peer that proved who it is gets this node's chain state and may show its own; a stranger gets nothing.
+	if caller, _, ok := n.chainCaller(r); ok && n.onRoster(caller) && !n.tls.isRevoked(caller) {
+		w.Header().Set(chainStateHeader, n.ownChainState().encode())
+		if shown, ok := parseChainState(r.URL.Query().Get("cs")); ok {
+			n.watch.observe(caller, shown)
+		}
+	}
 	writeText(w, http.StatusOK, "ok")
 }
 

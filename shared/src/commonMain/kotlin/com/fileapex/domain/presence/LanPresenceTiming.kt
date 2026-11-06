@@ -76,6 +76,22 @@ object LanPresenceTiming {
     /** On a foreground sweep, skip peer if verified reachable within 45s and metadata is complete. */
     const val FOREGROUND_PEER_FRESH_MS = 45_000L
 
+    /** How long after a network transition the peers are probed over Iroh whatever their last contact was. */
+    const val ROUTE_CHANGE_WINDOW_MS = 2 * 60 * 1000L
+
+    /** A network change inside this gap of the one that opened the window is ignored. */
+    const val ROUTE_CHANGE_MIN_GAP_MS = 5 * 60 * 1000L
+
+    /** A LAN label is re-checked at most this often for a peer whose request arrives over Iroh. */
+    const val INBOUND_LAN_RECHECK_MS = 30 * 1000L
+
+    /** A remembered route nobody confirmed for this long is dropped: twice the 5 minute sweep, plus a minute. */
+    const val ROUTE_LABEL_TTL_MS = 11 * 60 * 1000L
+
+    /** Wait after a failed background Iroh probe of a peer; it doubles per failure up to the maximum. */
+    const val IROH_PROBE_BACKOFF_BASE_MS = 60 * 1000L
+    const val IROH_PROBE_BACKOFF_MAX_MS = 30 * 60 * 1000L
+
     /** In 5m background poll, skip peer if verified reachable within 4m and metadata is complete. */
     const val BACKGROUND_PEER_FRESH_MS = 4 * 60 * 1000L
 

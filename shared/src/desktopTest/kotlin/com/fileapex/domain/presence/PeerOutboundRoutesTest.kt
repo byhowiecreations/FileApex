@@ -19,10 +19,12 @@ class PeerOutboundRoutesTest {
 
     private class Host : RouteHost {
         var fetches = 0
+        val routes = mutableMapOf<String, RouteKind>()
         override suspend fun liveDevice(deviceId: String): PairedDeviceEntity? = null
         override suspend fun markReachableOverLan(deviceId: String) {}
         override suspend fun markReachableRemote(deviceId: String, via: RouteKind) {}
-        override fun noteRoute(deviceId: String, kind: RouteKind) {}
+        override fun noteRoute(deviceId: String, kind: RouteKind) { routes[deviceId] = kind }
+        override fun clearRoute(deviceId: String) { routes.remove(deviceId) }
         override suspend fun touchLastSeenEpoch(deviceId: String) {}
         override fun msSinceReached(deviceId: String): Long? = null
         override fun recordRemoteReach(deviceId: String, via: RouteKind) {}
@@ -57,5 +59,24 @@ class PeerOutboundRoutesTest {
         assertNull(routes.verifiedLanEndpoint(peer(ip = "")))
         assertNull(routes.verifiedLanEndpoint(peer(port = 0)))
         assertEquals(0, host.fetches)
+    }
+
+    @Test
+    fun aRouteTheResolverSettlesOnIsTheOneTheLabelShows() {
+        val host = Host()
+        val routes = PeerOutboundRoutes(host)
+        routes.routeChanged(peer(), PeerRoute(RouteKind.Lan, "10.0.0.2", 8080))
+        assertEquals(RouteKind.Lan, host.routes["P"])
+        routes.routeChanged(peer(), PeerRoute(RouteKind.Iroh, "127.0.0.1", 5000))
+        assertEquals(RouteKind.Iroh, host.routes["P"])
+    }
+
+    @Test
+    fun whenNoRouteReachesThePeerTheLabelForgetsTheOldOne() {
+        val host = Host()
+        val routes = PeerOutboundRoutes(host)
+        routes.routeChanged(peer(), PeerRoute(RouteKind.Lan, "10.0.0.2", 8080))
+        routes.routeChanged(peer(), null)
+        assertNull(host.routes["P"])
     }
 }

@@ -70,6 +70,11 @@ class FileApexServer(
     /** True when the device id is an active member of this node's roster. */
     internal val isRosterMember: suspend (String) -> Boolean = { false },
     internal val onListDevices: suspend () -> List<PairedDeviceEntity> = { emptyList() },
+    /** This device's chain state, shown to a peer that proved who it is; null while no chain runs. */
+    internal val chainStateOf: suspend () -> com.fileapex.membership.ChainStateField? = { FileApexServices.membershipHub?.chainState?.current() },
+    /** A proven peer showed its own chain state with its request. */
+    internal val onChainState: suspend (peerId: String, state: com.fileapex.membership.ChainStateField) -> Unit =
+        { id, state -> com.fileapex.membership.ChainStateInbox.note(id, state) },
     /** What the macOS Finder extensions ask of this app over 127.0.0.1; null where there are none. */
     internal val localExtension: LocalExtensionApi? = null,
     internal val onLog: (String, Throwable?) -> Unit = { message, error ->

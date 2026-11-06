@@ -57,8 +57,30 @@ object ChainRecords {
         return unsigned.copy(signature = signer.sign(unsigned.canonicalBytes()))
     }
 
-    fun verify(record: ChainRecord): Boolean = try {
-        record.signature.isNotEmpty() && Signature.getInstance(EcEventSigner.ALGORITHM).run {
+    /** Most records whose signature is remembered as good. A chain is a few dozen records; the bound only stops a flood of valid records from growing it. */
+    const val VERIFIED_LIMIT = 4096
+
+    private val verified = object : LinkedHashMap<String, Boolean>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) = size > VERIFIED_LIMIT
+    }
+    private val signatureChecks = java.util.concurrent.atomic.AtomicLong()
+
+    /**
+     * True when the record's signature holds. A good answer is remembered by the record's hash, which covers every signed
+     * byte and the signature, so a record is checked once per process however often the chain is read. A bad one is never remembered.
+     */
+    fun verify(record: ChainRecord): Boolean {
+        if (record.signature.isEmpty()) return false
+        val id = record.hash()
+        synchronized(verified) { if (verified[id] == true) return true }
+        val good = signatureHolds(record)
+        if (good) synchronized(verified) { verified[id] = true }
+        return good
+    }
+
+    private fun signatureHolds(record: ChainRecord): Boolean = try {
+        signatureChecks.incrementAndGet()
+        Signature.getInstance(EcEventSigner.ALGORITHM).run {
             initVerify(MembershipKeys.decode(record.actorKey))
             update(record.canonicalBytes())
             verify(Base64.getDecoder().decode(record.signature))
@@ -67,6 +89,18 @@ object ChainRecords {
         false
     } catch (_: IllegalArgumentException) {
         false
+    }
+
+    /** How many signatures were actually checked in this process; the rest were answered from memory. */
+    fun verifications(): Long = signatureChecks.get()
+
+    internal fun verificationsForTest(): Long = signatureChecks.get()
+
+    internal fun verifiedSizeForTest(): Int = synchronized(verified) { verified.size }
+
+    internal fun resetVerificationCacheForTest() {
+        synchronized(verified) { verified.clear() }
+        signatureChecks.set(0L)
     }
 }
 

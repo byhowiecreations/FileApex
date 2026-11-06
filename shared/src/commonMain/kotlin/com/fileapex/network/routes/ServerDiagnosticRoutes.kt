@@ -22,6 +22,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import com.fileapex.network.TransferTransactionJournal
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
@@ -34,6 +35,12 @@ internal fun Route.registerDiagnosticRoutes(server: FileApexServer) {
             runCatching { TransferTransactionJournal.purgeInstalledForSender(peerId) }
             runCatching { com.fileapex.di.FileApexServices.bulletinSyncEngine.latestChange() }.getOrNull()?.let { version ->
                 call.response.headers.append(com.fileapex.network.PeerHttpHeaders.BULLETIN_VERSION, version.toString())
+            }
+            cancellableCatching { server.chainStateOf() }
+                .onFailure { server.onLog("chain state unavailable for a health answer", it) }
+                .getOrNull()?.let { call.response.headers.append(com.fileapex.membership.ChainStateField.HEADER, it.encode()) }
+            com.fileapex.membership.ChainStateField.parse(call.request.queryParameters[com.fileapex.membership.ChainStateField.QUERY])?.let { shown ->
+                server.serverScope.launch { cancellableCatching { server.onChainState(peerId, shown) } }
             }
         }
         call.respondText("ok:${server.identityProvider().deviceId}", ContentType.Text.Plain)

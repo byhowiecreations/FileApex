@@ -8,11 +8,11 @@ private const val PREFS = "fileapex_device_details"
 private const val KEY = "cache_json"
 private const val PURPOSE = "device-details"
 
-internal actual fun readDeviceDetailsCacheRaw(): String {
+internal actual fun readDeviceDetailsCacheRaw(): String? {
     val prefs = androidAppContextOrNull()?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return ""
     val stored = prefs.getString(KEY, "").orEmpty()
     if (stored.isEmpty()) return ""
-    val plain = SealedText.open(PURPOSE, stored) ?: return ""
+    val plain = SealedText.open(PURPOSE, stored) ?: return null
     if (!stored.startsWith("fe1:")) writeDeviceDetailsCacheRaw(plain)
     return plain
 }

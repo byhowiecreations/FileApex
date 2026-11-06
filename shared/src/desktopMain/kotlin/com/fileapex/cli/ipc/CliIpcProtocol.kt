@@ -5,6 +5,9 @@ import kotlinx.serialization.Serializable
 
 const val CLI_IPC_PORT = 49429
 
+/** What the CLI finds when it looks for the app: nothing there, or the app answering but not accepting the CLI. */
+enum class CliAppStatus { Running, NotRunning, Refused }
+
 @Serializable
 data class CliRequest(
     val args: List<String> = emptyList(),

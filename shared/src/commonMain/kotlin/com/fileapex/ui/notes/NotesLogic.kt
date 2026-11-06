@@ -10,8 +10,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import com.fileapex.cloud.drive.DriveRelayPolicy
-import com.fileapex.cloud.drive.GoogleDriveAuth
-import com.fileapex.cloud.drive.NotesAttachmentDecision
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.UserFacingErrors
@@ -33,37 +31,6 @@ internal fun NotesScope.acceptPickedAttachment(picked: PickedLocalFile) {
         pendingAttachmentPath = picked.absolutePath
         pendingAttachmentSize = picked.sizeBytes
         attachError = null
-    } }
-}
-
-internal fun NotesScope.finishRelayGrant(picked: PickedLocalFile?) {
-    with(frame) { with(live) {
-        val settings = FileApexServices.settings
-        settings.setCellularEnabled(true)
-        settings.setGoogleDriveRelayEnabled(true)
-        settings.setCellularSendPromptAcknowledged(true)
-        settings.setCellularReceivePromptAcknowledged(true)
-        com.fileapex.cloud.drive.DriveRelayCoordinator.applySchedulerFromSettings()
-        if (GoogleDriveAuth.hasGrant()) {
-            com.fileapex.platform.DriveRelayNotifier.onDriveEnabledAndGranted()
-        }
-        picked?.let { acceptPickedAttachment(it) }
-        pendingAcceptAfterRelay = null
-        pendingRelayPick = null
-        relayOptIn = null
-        showDrivePermission = false
-    } }
-}
-
-internal fun NotesScope.beginRelayOptIn(picked: PickedLocalFile) {
-    with(frame) { with(live) {
-        FileApexServices.settings.setDriveRelayOptInPromptShown(true)
-        pendingAcceptAfterRelay = picked
-        when {
-            !FileApexServices.settings.googleAccountLinkEnabled.value -> launchSignIn()
-            !GoogleDriveAuth.hasGrant() -> showDrivePermission = true
-            else -> finishRelayGrant(picked)
-        }
     } }
 }
 
@@ -196,33 +163,6 @@ internal fun NotesScope.lockTransportTarget(dest: Rect, pending: PendingNotesTra
 
 internal fun NotesScope.doSendNote(text: String) {
     with(frame) { with(live) {
-        val attachmentPath = pendingAttachmentPath
-        if (!attachmentPath.isNullOrBlank()) {
-            when (val decision = DriveRelayPolicy.evaluateNotesAttachment(pendingAttachmentSize)) {
-                NotesAttachmentDecision.AllowLan,
-                NotesAttachmentDecision.AllowRelay -> Unit
-                is NotesAttachmentDecision.OfferRelayOptIn -> {
-                    attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
-                        "offline Notes limit. Enable Google Drive Relay to send this file."
-                    return
-                }
-                is NotesAttachmentDecision.NeedsRelayEnabled -> {
-                    attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
-                        "offline Notes limit. Enable Google Drive Relay in Settings → Cellular."
-                    return
-                }
-                is NotesAttachmentDecision.TooLargeForRelay -> {
-                    attachError = "${decision.fileLabel} is over the ${decision.relayLimitLabel} " +
-                        "Google Drive Relay limit."
-                    return
-                }
-                is NotesAttachmentDecision.TooLargeForLan -> {
-                    attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
-                        "Notes attachment limit."
-                    return
-                }
-            }
-        }
         if (!FileApexServices.settings.notesNotificationPromptShown.value) {
             pendingNoteToSend = text
             showNotesPermissionPrompt = true
@@ -262,32 +202,6 @@ internal fun NotesScope.originFromDrop(rootOffset: Offset?): Rect? {
 
 internal fun NotesScope.startDroppedAttachment(picked: PickedLocalFile, rootOffset: Offset?) {
     with(frame) { with(live) {
-        when (val decision = DriveRelayPolicy.evaluateNotesAttachment(picked.sizeBytes)) {
-            NotesAttachmentDecision.AllowLan,
-            NotesAttachmentDecision.AllowRelay -> Unit
-            is NotesAttachmentDecision.OfferRelayOptIn -> {
-                pendingRelayPick = picked
-                relayOptIn = decision
-                return
-            }
-            is NotesAttachmentDecision.NeedsRelayEnabled -> {
-                attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
-                    "offline Notes limit. Enable Google Drive Relay in Settings → Cellular " +
-                    "to send larger files."
-                return
-            }
-            is NotesAttachmentDecision.TooLargeForRelay -> {
-                attachError = "${decision.fileLabel} is over the ${decision.relayLimitLabel} " +
-                    "Google Drive Relay limit. Choose a smaller file or raise the Relay size " +
-                    "limit in Settings → Cellular."
-                return
-            }
-            is NotesAttachmentDecision.TooLargeForLan -> {
-                attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
-                    "Notes attachment limit. Choose a smaller file."
-                return
-            }
-        }
         if (pendingTransport != null || (transport != null && transport?.settled != true)) {
             dropQueue.addLast(picked)
             return

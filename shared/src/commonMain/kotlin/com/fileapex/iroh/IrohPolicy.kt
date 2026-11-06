@@ -11,6 +11,9 @@ object IrohWakePolicy {
     /** On a LAN an offline peer holds the endpoint up only if it was heard from this recently. */
     const val OFFLINE_KEEP_MS = 24 * 60 * 60_000L
 
+    /** True when any peer used us over Iroh within [SERVED_KEEP_MS]. */
+    fun servedRecently(servedAtMs: Collection<Long>, nowMs: Long): Boolean = servedAtMs.any { nowMs - it < SERVED_KEEP_MS }
+
     fun heardRecently(lastHeardAtMs: Long, nowMs: Long): Boolean =
         lastHeardAtMs > 0L && nowMs - lastHeardAtMs < OFFLINE_KEEP_MS
 
@@ -84,9 +87,10 @@ object IrohSweepPolicy {
     /** Longer than two sweep polls, so one missed LAN check does not send a probe over Iroh. */
     const val LAN_SKIP_MS = 12 * 60_000L
 
-    fun shouldProbe(canReach: Boolean, msSinceReached: Long?, freshMs: Long, onLan: Boolean): Boolean {
+    /** [routeJustChanged]: off the LAN, an earlier contact says nothing about the new route, so the peer is probed at once. */
+    fun shouldProbe(canReach: Boolean, msSinceReached: Long?, freshMs: Long, onLan: Boolean, routeJustChanged: Boolean = false): Boolean {
         if (!canReach) return false
-        val limit = if (onLan) LAN_SKIP_MS else freshMs
+        val limit = if (onLan) LAN_SKIP_MS else if (routeJustChanged) 0L else freshMs
         return msSinceReached == null || msSinceReached >= limit
     }
 }

@@ -26,6 +26,9 @@ class FileApexClient(
     /** This node's membership stamp, sent as `mv` for the peer's revocation gate. */
     var membershipVersionProvider: (() -> Long)? = null
 
+    /** This device's chain state, shown to a peer on health probes so the peer can see a difference without asking. */
+    var chainStateProvider: (suspend () -> com.fileapex.membership.ChainStateField?)? = null
+
     /** In-memory PINs for peers that require PIN this session (host:port → pin). */
     private val sessionPinsLock = Any()
     private val sessionPins = mutableMapOf<String, String>()
@@ -246,7 +249,8 @@ class FileApexClient(
         val reached: Boolean,
         val respondedAs: String? = null,
         val membershipVersion: Long? = null,
-        val bulletinVersion: Long? = null
+        val bulletinVersion: Long? = null,
+        val chainState: com.fileapex.membership.ChainStateField? = null
     )
 
     suspend fun probeHealth(
@@ -258,11 +262,12 @@ class FileApexClient(
         if (!PeerLanHttpPolicy.canRoute(host)) return HealthProbe(false)
         // The phone applies this only when the poll reached it over TLS from a paired computer.
         val healthPath = if (companion == null) "/api/v1/health" else "/api/v1/health?companion=${if (companion) 1 else 0}"
-        val health = peerHttpGet(host, port, withSenderQuery(healthPath), timeoutMs) ?: return HealthProbe(false)
+        val shown = chainStateProvider?.invoke()?.let { "&${com.fileapex.membership.ChainStateField.QUERY}=${it.encode()}" }.orEmpty()
+        val health = peerHttpGet(host, port, withSenderQuery(healthPath) + shown, timeoutMs) ?: return HealthProbe(false)
         checkRevocation(host, port, health)
         if (health.statusCode in 200..299) return HealthProbe(
             true, health.body.respondedAsId(), PeerHttpHeaders.membershipVersion(health.headers),
-            PeerHttpHeaders.bulletinVersion(health.headers)
+            PeerHttpHeaders.bulletinVersion(health.headers), PeerHttpHeaders.chainState(health.headers)
         )
         return HealthProbe(false)
     }

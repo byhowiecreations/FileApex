@@ -37,7 +37,8 @@ enum class IrohPhase { Off, Idle, NoNetwork, Unavailable, Starting, Up, Failed }
 data class IrohState(
     val phase: IrohPhase = IrohPhase.Off,
     val endpointId: String = "",
-    val message: String = ""
+    val message: String = "",
+    val relayFallback: Boolean = false
 )
 
 data class IrohProbeResult(val ok: Boolean, val millis: Long, val path: String?, val message: String)
@@ -53,6 +54,7 @@ object IrohRuntime {
     private var presenceJob: Job? = null
     private var attached = false
     private var startedRelay: IrohRelayConfig? = null
+    private val relayStarter = IrohRelayStarter(IrohRelayFallback(TimeUtils::now))
     private var reconcileJob: Job? = null
     private var notNeededSince = 0L
     private var lastHoldersText = ""
@@ -84,6 +86,7 @@ object IrohRuntime {
                         shutdown(IrohPhase.Off)
                         return@collect
                     }
+                    relayStarter.fallback.follow(currentRelay())
                     // A changed relay needs a new endpoint; it comes back at once if a device needs it.
                     if (link != null && startedRelay != currentRelay()) shutdown(IrohPhase.Idle)
                     if (state.value.phase == IrohPhase.Off) mutableState.value = IrohState(IrohPhase.Idle)
@@ -139,7 +142,7 @@ object IrohRuntime {
         if (state.value.phase == IrohPhase.NoNetwork) mutableState.value = IrohState(IrohPhase.Idle)
         if (!FileApexServices.settings.irohRestWhenIdle.value || needed()) {
             notNeededSince = 0L
-            if (link == null && state.value.phase != IrohPhase.Unavailable) start()
+            if (link == null && state.value.phase != IrohPhase.Unavailable) start() else retryCustomRelayIfDue()
             return
         }
         if (link == null) return
@@ -149,6 +152,15 @@ object IrohRuntime {
             IrohLog.add("no device needs Iroh now: going idle")
             shutdown(IrohPhase.Idle)
         }
+    }
+
+    /** On n0's relays only because the self-hosted one failed: once the wait is over and nothing is being served, try it again. */
+    private suspend fun retryCustomRelayIfDue() {
+        if (link == null || startedRelay == null || !relayStarter.fallback.retryDue()) return
+        if (IrohWakePolicy.servedRecently(servedViaIroh.values, TimeUtils.now())) return
+        IrohLog.add("trying the self-hosted relay again")
+        shutdown(IrohPhase.Idle)
+        start()
     }
 
     /** The devices that need the endpoint right now, each with why. Empty means it may rest. */
@@ -209,7 +221,8 @@ object IrohRuntime {
         try {
             ServerLifecycleManager.ensureRunning()
             val relay = currentRelay()
-            val started = engine.start(loadOrCreateSecret(), relay)
+            val result = relayStarter.start(engine, loadOrCreateSecret(), relay)
+            val started = result.link
             startedRelay = relay
             restorePeers(started)
             val newBridge = IrohBridge(
@@ -219,14 +232,14 @@ object IrohRuntime {
                 scope = scope,
                 onPeerActive = ::peerEndpointActive,
                 bridgePort = ServerLifecycleManager::bridgePort,
-                identify = ::bridgedPeerFor
+                identify = ::bridgedPeerFor, pathOf = started::pathKind, onPeerSeen = { id -> peerBook().deviceIdFor(id)?.let(FileApexServices.presenceMonitor::noteInboundIroh) }
             )
             newBridge.start()
             link = started
             bridge = newBridge
             refreshNames(started.id)
-            IrohLog.add("running as ${IrohLog.short(started.id)}" + if (relay != null) " on the self-hosted relay" else "")
-            mutableState.value = IrohState(IrohPhase.Up, endpointId = started.id)
+            IrohLog.add("running as ${IrohLog.short(started.id)}" + if (relay == null) "" else if (result.usedCustom) " on the self-hosted relay" else " on n0's relays, the self-hosted relay did not answer")
+            mutableState.value = IrohState(IrohPhase.Up, endpointId = started.id, relayFallback = relay != null && !result.usedCustom)
             presenceJob = scope.launch { exchangeWithOnlinePeers() }
             started.onAddressChanged { scope.launch { pushAddress() } }
         } catch (e: CancellationException) {
@@ -335,10 +348,12 @@ object IrohRuntime {
             sender = sender,
             localDeviceId = loadLocalIdentity().deviceId,
             ownAddress = running.address(),
-            nowMs = TimeUtils.now()
+            nowMs = TimeUtils.now(),
+            ownRelay = IrohClusterRelay.own(FileApexServices.settings)
         )
         if (answer is AddressAnswer.Reply && sender != null) {
             remember(sender.deviceId, answer.learned)
+            IrohClusterRelay.adopt(FileApexServices.settings, answer.learnedRelay, TimeUtils.now())
             // A peer that sends its address plainly has Iroh, whatever an earlier answer said.
             noteContact(sender.deviceId)
         }
@@ -397,7 +412,7 @@ object IrohRuntime {
             ?: return record(device.deviceId, "no_lan_route")
         val selfId = loadLocalIdentity().deviceId
         val stamp = IrohAddressExchange.newStamp()
-        val ask = IrohAddressExchange.buildAsk(selfId, device, running.address(), stamp, TimeUtils.now())
+        val ask = IrohAddressExchange.buildAsk(selfId, device, running.address(), stamp, TimeUtils.now(), relay = IrohClusterRelay.own(FileApexServices.settings))
             ?: return record(device.deviceId, "no_pair_key")
         val reply = try {
             FileApexServices.client.exchangeIrohAddress(endpoint.host, endpoint.port, ask)
@@ -406,9 +421,10 @@ object IrohRuntime {
         } catch (e: Exception) {
             return record(device.deviceId, "request_failed: ${e.message.orEmpty().take(80)}")
         } ?: return record(device.deviceId, PEER_WITHOUT_IROH)
-        val address = IrohAddressExchange.open(reply, device, stamp, selfId)
+        val opened = IrohAddressExchange.openAnswer(reply, device, stamp, selfId)
             ?: return record(device.deviceId, "reply_rejected")
-        remember(device.deviceId, address)
+        remember(device.deviceId, opened.address)
+        IrohClusterRelay.adopt(FileApexServices.settings, opened.relay, TimeUtils.now())
         ownAddressAtExchange[device.deviceId] = running.address()
         return record(device.deviceId, IrohExchangePolicy.OK)
     }

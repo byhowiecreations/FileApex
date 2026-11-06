@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type recordKind string
@@ -124,10 +125,61 @@ func spkiBase64(pub *ecdsa.PublicKey) string {
 	return base64.StdEncoding.EncodeToString(der)
 }
 
+// verifiedLimit bounds the set of records whose signature is remembered as good. A chain is a few dozen records; the
+// bound only stops a flood of valid records from growing the set.
+const verifiedLimit = 4096
+
+var (
+	verifiedMu     sync.Mutex
+	verifiedSet    = map[string]struct{}{}
+	signatureCount atomic.Int64
+)
+
+// verifyRecord is true when the record's signature holds. A good answer is remembered by the record's hash, which covers
+// every signed byte and the signature, so a record is checked once however often the chain is read. A bad one is never remembered.
 func verifyRecord(r chainRecord) bool {
 	if r.Signature == "" {
 		return false
 	}
+	id := r.hash()
+	verifiedMu.Lock()
+	_, known := verifiedSet[id]
+	verifiedMu.Unlock()
+	if known {
+		return true
+	}
+	good := signatureHolds(r)
+	if good {
+		verifiedMu.Lock()
+		if len(verifiedSet) >= verifiedLimit {
+			for old := range verifiedSet {
+				delete(verifiedSet, old)
+				break
+			}
+		}
+		verifiedSet[id] = struct{}{}
+		verifiedMu.Unlock()
+	}
+	return good
+}
+
+func signatureChecks() int64 { return signatureCount.Load() }
+
+func verifiedSize() int {
+	verifiedMu.Lock()
+	defer verifiedMu.Unlock()
+	return len(verifiedSet)
+}
+
+func resetVerifyCache() {
+	verifiedMu.Lock()
+	verifiedSet = map[string]struct{}{}
+	verifiedMu.Unlock()
+	signatureCount.Store(0)
+}
+
+func signatureHolds(r chainRecord) bool {
+	signatureCount.Add(1)
 	pub, err := decodeSPKI(r.ActorKey)
 	if err != nil {
 		return false
@@ -435,6 +487,23 @@ func (l *chainLog) recordsAfterLocked(seq int64) []chainRecord {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
 	return out
+}
+
+// recordsAfterHead is what came after the record whose hash is head, for a device that holds the chain up to it. It is
+// false when the asker's position cannot be told (an empty or unknown head, or one on a losing branch) and the caller
+// sends everything.
+func (l *chainLog) recordsAfterHead(head string) ([]chainRecord, bool) {
+	if head == "" {
+		return nil, false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, r := range l.viewLocked().Canonical {
+		if r.hash() == head {
+			return l.recordsAfterLocked(r.Seq), true
+		}
+	}
+	return nil, false
 }
 
 func (l *chainLog) clear() {

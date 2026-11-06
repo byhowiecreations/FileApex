@@ -21,22 +21,6 @@ class PeerBulletinClientTest {
     private val sha = { text: String -> com.fileapex.util.sha256HexFile(File(dir, "tmp").also { it.writeText(text) }.path) }
 
     @Test
-    fun retractWithoutExtrasIsJustTheIdAndAction() {
-        assertEquals(
-            """{"noteId":"n1","action":"RETRACT_MESSAGE"}""",
-            PeerBulletinClient.noteDeletePayload("n1", null, "  ", "")
-        )
-    }
-
-    @Test
-    fun extrasAreAppendedInOrderWithQuotesRemoved() {
-        assertEquals(
-            """{"noteId":"n1","action":"RETRACT_MESSAGE","driveFileId":"d1","checksum":"abc","attachmentName":"a b.txt"}""",
-            PeerBulletinClient.noteDeletePayload("n1", "d\"1", "abc", "a \"b.txt")
-        )
-    }
-
-    @Test
     fun aVerifiedPartIsMovedToItsFinalName() {
         val final = File(dir, "photo.png").path
         val path = PeerBulletinClient.finishDownload(part("pixels"), final, 6L, sha("pixels"))

@@ -132,4 +132,50 @@ class IrohAddressExchangeTest {
 
         assertEquals(IrohPeerBook.MAX_PEERS, book.size)
     }
+
+    private val relaySetting = IrohRelaySetting(true, "https://relay.example.com", "tok", now - 1_000)
+
+    @Test
+    fun theAskCarriesTheSendersRelaySettingToTheAnswerer() {
+        val sealed = IrohAddressExchange.buildAsk("B", a, addressB, IrohAddressExchange.newStamp(), now, FakeCrypto("B"), relay = relaySetting)!!
+        val answer = IrohAddressExchange.answer(sealed, b, "A", addressA, now, FakeCrypto("A")) as AddressAnswer.Reply
+        assertEquals(relaySetting, answer.learnedRelay)
+        assertEquals(addressB, answer.learned)
+    }
+
+    @Test
+    fun theReplyCarriesTheAnswerersRelaySettingBack() {
+        val stamp = IrohAddressExchange.newStamp()
+        val answer = IrohAddressExchange.answer(ask(stamp), b, "A", addressA, now, FakeCrypto("A"), ownRelay = relaySetting) as AddressAnswer.Reply
+        val opened = IrohAddressExchange.openAnswer(answer.message, a, stamp, "B", FakeCrypto("B"))!!
+        assertEquals(addressA, opened.address)
+        assertEquals(relaySetting, opened.relay)
+    }
+
+    @Test
+    fun aPeerBuiltBeforeTheRelaySettingStillExchangesAddressesAndSendsNoSetting() {
+        val stamp = IrohAddressExchange.newStamp()
+        val answer = IrohAddressExchange.answer(ask(stamp), b, "A", addressA, now, FakeCrypto("A")) as AddressAnswer.Reply
+        assertNull(answer.learnedRelay)
+        val opened = IrohAddressExchange.openAnswer(answer.message, a, stamp, "B", FakeCrypto("B"))!!
+        assertEquals(addressA, opened.address)
+        assertNull(opened.relay)
+        assertEquals(addressA, IrohAddressExchange.open(answer.message, a, stamp, "B", FakeCrypto("B")))
+    }
+
+    @Test
+    fun aPayloadWithFieldsThisBuildDoesNotKnowIsStillAccepted() {
+        val extra = """{"stamp":"${"a".repeat(32)}","sentAtUtcMs":$now,"address":"$addressB","future":{"x":1}}"""
+        val sealed = FakeCrypto("B").encrypt(extra.encodeToByteArray(), "B", "A", "pub-A")
+        val message = IrohAddressMessage("B", "pub-B", sealed)
+        val answer = IrohAddressExchange.answer(message, b, "A", addressA, now, FakeCrypto("A"))
+        assertTrue(answer is AddressAnswer.Reply)
+    }
+
+    @Test
+    fun aRelaySettingFromARemovedSenderIsNeverLearned() {
+        val sealed = IrohAddressExchange.buildAsk("B", a, addressB, IrohAddressExchange.newStamp(), now, FakeCrypto("B"), relay = relaySetting)!!
+        val answer = IrohAddressExchange.answer(sealed, device("B", removed = true), "A", addressA, now, FakeCrypto("A"))
+        assertTrue(answer is AddressAnswer.Denied)
+    }
 }

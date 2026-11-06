@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -138,7 +140,12 @@ func (n *Node) renewSigning() {
 
 // ---- the wire to a peer ----
 
-func (n *Node) chainCall(ctx context.Context, peer deviceRecord, method, path string, body any) (chainAnswer, bool) {
+// chainCall is one request to a peer's chain route; query is optional.
+func (n *Node) chainCall(ctx context.Context, peer deviceRecord, method, path string, body any, query ...url.Values) (chainAnswer, bool) {
+	var q url.Values
+	if len(query) > 0 {
+		q = query[0]
+	}
 	var reader *bytes.Reader
 	if body != nil {
 		payload, err := json.Marshal(body)
@@ -149,7 +156,7 @@ func (n *Node) chainCall(ctx context.Context, peer deviceRecord, method, path st
 	} else {
 		reader = bytes.NewReader(nil)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, peerURL(peer.LastKnownIP, peer.Port, path, nil), reader)
+	req, err := http.NewRequestWithContext(ctx, method, peerURL(peer.LastKnownIP, peer.Port, path, q), reader)
 	if err != nil {
 		return chainAnswer{}, false
 	}
@@ -174,8 +181,57 @@ func (n *Node) rosterPeer(id string) (deviceRecord, bool) {
 	return peer, ok && peer.LastKnownIP != "" && peer.Port > 0
 }
 
-func (n *Node) pushChain(ctx context.Context, peer deviceRecord) {
-	n.chainCall(ctx, peer, http.MethodPost, chainPath, chainPush{Records: n.chain.recordsAfter(0), Profiles: n.outgoingProfiles()})
+// chainServedCounters count how chain pulls and pushes were answered: with the head only, with a delta, or in full.
+type chainServedCounters struct{ empty, delta, full atomic.Int64 }
+
+type chainServed struct{ empty, delta, full int64 }
+
+func (n *Node) chainServed() chainServed {
+	return chainServed{n.served.empty.Load(), n.served.delta.Load(), n.served.full.Load()}
+}
+
+// recordsForPeer is what a peer lacks given the head it last showed: the records after it, or the whole chain when
+// that head is unknown or none was seen. The bool tells which one it is.
+func (n *Node) recordsForPeer(known string) ([]chainRecord, bool) {
+	if known != "" {
+		if records, ok := n.chain.recordsAfterHead(known); ok {
+			return records, true
+		}
+	}
+	return n.chain.recordsAfter(0), false
+}
+
+func (n *Node) peerHead(id string) string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.peerHeads[id]
+}
+
+func (n *Node) notePeerHead(id, head string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.peerHeads == nil {
+		n.peerHeads = map[string]string{}
+	}
+	n.peerHeads[id] = head
+}
+
+// pushChain sends the peer what it lacks given the head it last showed. When the answer shows the peer did not reach
+// this node's head the whole chain follows once, so a stale hint never leaves a peer behind.
+func (n *Node) pushChain(ctx context.Context, peer deviceRecord, known string) {
+	mine := n.chain.view().State.Head
+	records, delta := n.recordsForPeer(known)
+	answer, ok := n.chainCall(ctx, peer, http.MethodPost, chainPath, chainPush{Records: records, Profiles: n.outgoingProfiles(), Head: mine})
+	if !ok {
+		return
+	}
+	n.notePeerHead(peer.DeviceID, answer.Head)
+	if !delta || answer.Head == mine {
+		return
+	}
+	if again, ok := n.chainCall(ctx, peer, http.MethodPost, chainPath, chainPush{Records: n.chain.recordsAfter(0), Profiles: n.outgoingProfiles(), Head: mine}); ok {
+		n.notePeerHead(peer.DeviceID, again.Head)
+	}
 }
 
 // announceChain pushes the chain to the other active members at once; the rest catch up by pulling.
@@ -189,17 +245,29 @@ func (n *Node) announceChain(ctx context.Context, exceptIDs ...string) {
 			continue
 		}
 		if peer, ok := n.rosterPeer(id); ok {
-			n.pushChain(ctx, peer)
+			n.pushChain(ctx, peer, n.peerHead(id))
 		}
 	}
 }
 
-// reconcile: true when the peer answered. Takes in what it has and sends it what it lacks.
-func (n *Node) reconcile(ctx context.Context, peer deviceRecord) bool {
-	theirs, ok := n.chainCall(ctx, peer, http.MethodGet, chainPath, nil)
+// pullPeer is one request to a roster peer for the chain; false when it is not reachable.
+func (n *Node) pullPeer(id string) bool {
+	peer, ok := n.rosterPeer(id)
 	if !ok {
 		return false
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*chainRequestTimeout)
+	defer cancel()
+	return n.reconcile(ctx, peer)
+}
+
+// reconcile: true when the peer answered. Takes in what it has and sends it what it lacks.
+func (n *Node) reconcile(ctx context.Context, peer deviceRecord) bool {
+	theirs, ok := n.chainCall(ctx, peer, http.MethodGet, chainPath, nil, url.Values{"since": {n.chain.view().State.Head}})
+	if !ok {
+		return false
+	}
+	n.notePeerHead(peer.DeviceID, theirs.Head)
 	before := n.chain.view().State.Head
 	n.chain.ingest(theirs.Records)
 	after := n.chain.view().State.Head
@@ -209,7 +277,7 @@ func (n *Node) reconcile(ctx context.Context, peer deviceRecord) bool {
 	}
 	n.takeProfiles(theirs.Profiles)
 	if after != theirs.Head && n.isJoined() {
-		n.pushChain(ctx, peer)
+		n.pushChain(ctx, peer, theirs.Head)
 	}
 	return true
 }

@@ -39,6 +39,7 @@ internal enum class SettingsPage(val parent: SettingsPage?) {
     Tailscale(Root),
     Iroh(Root),
     Groups(Root),
+    ShareLink(Root),
     LeaveClusterWipe(Root),
     About(Root)
 }
@@ -60,4 +61,30 @@ enum class SettingsScreenLayoutMode {
     ListPane,
     /** Compact primary shell: pane title band on root, section header on sub-pages. */
     CompactShell
+}
+
+/** The page a Settings row opens, or null for a row that opens no page (Report an issue opens a dialog). */
+internal fun settingsPageFor(id: String): SettingsPage? = when (id) {
+    SettingsMenuIds.DEVICE_NAME -> SettingsPage.DeviceName
+    SettingsMenuIds.LANGUAGE -> SettingsPage.Language
+    SettingsMenuIds.CHECK_FOR_UPDATES -> SettingsPage.CheckForUpdates
+    SettingsMenuIds.BACKUP_SYNC -> SettingsPage.BackupSync
+    SettingsMenuIds.BACKGROUND_PERSISTENCE -> SettingsPage.BackgroundPersistence
+    SettingsMenuIds.AUTO_LAUNCH -> SettingsPage.AutoLaunchOnReboot
+    SettingsMenuIds.TAILSCALE -> SettingsPage.Tailscale
+    SettingsMenuIds.IROH -> SettingsPage.Iroh
+    SettingsMenuIds.DRIVE_RELAY -> SettingsPage.GoogleAccount
+    SettingsMenuIds.THEMES -> SettingsPage.Themes
+    SettingsMenuIds.BULLETIN_BOARD -> SettingsPage.BulletinBoard
+    SettingsMenuIds.NOTIFICATIONS -> SettingsPage.Notifications
+    SettingsMenuIds.CLIPBOARD -> SettingsPage.Clipboard
+    SettingsMenuIds.GROUPS -> SettingsPage.Groups
+    SettingsMenuIds.DEVICE_DETAILS -> SettingsPage.DeviceDetails
+    SettingsMenuIds.DESKTOP_LAYOUT -> SettingsPage.DesktopLayout
+    SettingsMenuIds.WINDOWS_DESIGN -> SettingsPage.WindowsDesign
+    SettingsMenuIds.PIN_REQUIRED -> SettingsPage.PinRequired
+    SettingsMenuIds.GOOGLE_ACCOUNT -> SettingsPage.GoogleAccount
+    SettingsMenuIds.SHARE_LINK -> SettingsPage.ShareLink
+    SettingsMenuIds.LEAVE_CLUSTER -> SettingsPage.LeaveClusterWipe
+    else -> null
 }

@@ -37,6 +37,7 @@ object SettingsMenuIds {
     const val WINDOWS_DESIGN = "windows_design"
     const val PIN_REQUIRED = "pin_required"
     const val GOOGLE_ACCOUNT = "google_account"
+    const val SHARE_LINK = "share_link"
     const val LEAVE_CLUSTER = "leave_cluster"
 }
 
@@ -56,6 +57,8 @@ fun settingsMenuEntries(
     iroh: Boolean = false,
     /** Friends and other groups; false where the friends engine is not built in. */
     groups: Boolean = false,
+    /** Link sharing is in this build; its page is where the owner accepts or declines the relay. */
+    shareLink: Boolean = false,
     /** Windows and Linux can start the app at sign-in; the desktop menu otherwise hides the row. */
     autoLaunchOnDesktop: Boolean = false,
     /** When false, advanced rows are left out unless they are in use (see [inUseAdvancedIds]). */
@@ -91,6 +94,7 @@ fun settingsMenuEntries(
 
     add(SettingsMenuSection.Security, SettingsMenuIds.PIN_REQUIRED)
     if (googleCloud) add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
+    if (shareLink) add(SettingsMenuSection.Security, SettingsMenuIds.SHARE_LINK)
     add(SettingsMenuSection.Security, SettingsMenuIds.LEAVE_CLUSTER)
     return entries.filter { showAdvanced || it.id !in ADVANCED_IDS || it.id in inUseAdvancedIds }
 }

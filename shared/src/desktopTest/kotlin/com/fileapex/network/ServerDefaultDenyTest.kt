@@ -72,7 +72,6 @@ class ServerDefaultDenyTest {
         listOf(
             "/api/v1/files/delete?targetPath=/tmp/x",
             "/api/v1/files/upload?targetPath=/tmp/x",
-            "/api/v1/notes/send",
             "/api/v1/devices/merge",
             "/api/v1/bulletin/sync/batch",
             "/api/v1/identity/rename"

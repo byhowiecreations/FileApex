@@ -40,4 +40,11 @@ class PeerHttpHeadersTest {
         assertEquals(emptyMap<String, String>(), PeerHttpHeaders.parseLines(""))
     }
 
+    @Test
+    fun theChainStateIsReadFromTheHeaderAndAMalformedOneIsNull() {
+        val good = "v1.4.${"c".repeat(32)}.0a0b0c0d"
+        assertEquals(4L, PeerHttpHeaders.chainState(mapOf("x-fileapex-chain-state" to good))?.seq)
+        assertNull(PeerHttpHeaders.chainState(emptyMap()))
+        assertNull(PeerHttpHeaders.chainState(mapOf("x-fileapex-chain-state" to "v1.4.zz.0a0b0c0d")))
+    }
 }

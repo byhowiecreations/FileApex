@@ -10,7 +10,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.LayoutCoordinates
-import com.fileapex.cloud.drive.NotesAttachmentDecision
 import com.fileapex.data.bulletin.BulletinRemotePurgePrompt
 import com.fileapex.data.note.NoteRecord
 import com.fileapex.platform.PickedLocalFile
@@ -29,10 +28,6 @@ internal class NotesLive {
     var pendingAttachmentSize by mutableLongStateOf(0L)
     var revealedNoteId by mutableStateOf<String?>(null)
     var highlightedNoteId by mutableStateOf<String?>(null)
-    var relayOptIn by mutableStateOf<NotesAttachmentDecision.OfferRelayOptIn?>(null)
-    var pendingRelayPick by mutableStateOf<PickedLocalFile?>(null)
-    var showDrivePermission by mutableStateOf(false)
-    var pendingAcceptAfterRelay by mutableStateOf<PickedLocalFile?>(null)
     var attachedPreview by mutableStateOf<ImageBitmap?>(null)
     var overlayCoords by mutableStateOf<LayoutCoordinates?>(null)
     var attachedChipRect by mutableStateOf<Rect?>(null)

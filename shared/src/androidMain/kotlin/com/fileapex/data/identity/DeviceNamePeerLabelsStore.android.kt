@@ -13,15 +13,16 @@ fun initAndroidDeviceNamePeerLabels(context: Context) {
     labelsContext = context.applicationContext
 }
 
-actual fun readPeerDeviceNameLabels(): List<PeerDeviceNameLabel> {
-    if (!::labelsContext.isInitialized) return emptyList()
+actual fun readPeerDeviceNameLabels(): StoredPeerLabels {
+    if (!::labelsContext.isInitialized) return StoredPeerLabels(emptyList(), false)
     val raw = labelsContext
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .getString(KEY_JSON, null)
         .orEmpty()
-    val plain = SealedText.open(PURPOSE, raw) ?: return emptyList()
-    if (raw.isNotEmpty() && !raw.startsWith("fe1:")) persistPeerDeviceNameLabels(decodePeerDeviceNameLabels(plain))
-    return decodePeerDeviceNameLabels(plain)
+    val plain = SealedText.open(PURPOSE, raw) ?: return StoredPeerLabels(emptyList(), false)
+    val labels = decodePeerDeviceNameLabels(plain)
+    if (raw.isNotEmpty() && !raw.startsWith("fe1:")) persistPeerDeviceNameLabels(labels)
+    return StoredPeerLabels(labels, true)
 }
 
 private fun decodePeerDeviceNameLabels(raw: String) = DeviceNamePeerLabelsStore.decode(raw)

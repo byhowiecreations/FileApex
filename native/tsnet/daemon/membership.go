@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -32,6 +33,8 @@ type chainAnswer struct {
 type chainPush struct {
 	Records  []chainRecord `json:"records"`
 	Profiles []nodeState   `json:"profiles"`
+	// Head is the pusher's chain head, so the answer carries only what the pusher lacks. Older builds send none.
+	Head string `json:"head,omitempty"`
 }
 
 type chainJoinRequest struct {
@@ -187,12 +190,32 @@ func (n *Node) takeProfiles(states []nodeState) {
 	n.mu.Unlock()
 }
 
-func (n *Node) answerChain(withProfiles bool) chainAnswer {
-	answer := chainAnswer{Head: n.chain.view().State.Head, Records: n.chain.recordsAfter(0), Profiles: []nodeState{}}
+// chainSincePattern is the only shape of head a peer's claim may take; anything else means "send everything".
+var chainSincePattern = regexp.MustCompile("^[0-9a-f]{64}$")
+
+// answerChain is the chain as this node holds it. since is the asker's head: a node that knows it answers with the
+// records after it, an equal head with none, anything else with the whole chain.
+func (n *Node) answerChain(withProfiles bool, since string) chainAnswer {
+	head := n.chain.view().State.Head
+	records, delta := []chainRecord(nil), false
+	if chainSincePattern.MatchString(since) {
+		records, delta = n.chain.recordsAfterHead(since)
+	}
+	switch {
+	case delta && len(records) == 0:
+		n.served.empty.Add(1)
+	case delta:
+		n.served.delta.Add(1)
+	default:
+		records = n.chain.recordsAfter(0)
+		n.served.full.Add(1)
+	}
+	answer := chainAnswer{Head: head, Records: records, Profiles: []nodeState{}}
 	if answer.Records == nil {
 		answer.Records = []chainRecord{}
 	}
-	if withProfiles {
+	// An answer that says nothing is new carries no profiles; a change or a first meeting does.
+	if withProfiles && (!delta || len(records) > 0) {
 		answer.Profiles = n.outgoingProfiles()
 	}
 	return answer
@@ -218,7 +241,7 @@ func (n *Node) handleChain(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "peer_not_paired", http.StatusForbidden)
 			return
 		}
-		writeJSON(w, http.StatusOK, n.answerChain(!revoked))
+		writeJSON(w, http.StatusOK, n.answerChain(!revoked, r.URL.Query().Get("since")))
 	case http.MethodPost:
 		if revoked {
 			w.Header().Set("X-FileApex-Status", "revoked")
@@ -236,7 +259,7 @@ func (n *Node) handleChain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		n.receiveChain(push.Records, push.Profiles)
-		writeJSON(w, http.StatusOK, n.answerChain(true))
+		writeJSON(w, http.StatusOK, n.answerChain(true, push.Head))
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -281,7 +304,7 @@ func (n *Node) handleChainJoin(w http.ResponseWriter, r *http.Request) {
 			n.takeProfiles([]nodeState{*request.Profile})
 		}
 	}
-	writeJSON(w, http.StatusOK, n.answerChain(true))
+	writeJSON(w, http.StatusOK, n.answerChain(true, ""))
 }
 
 // admit writes an ADMIT for a device of this node's roster. The chain's own rules decide whether this node may.

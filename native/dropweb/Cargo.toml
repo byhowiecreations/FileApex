@@ -1,0 +1,23 @@
+[package]
+name = "dropweb"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Browser side of a FileApex guest drop: dials the sender through the relay and streams one file to JavaScript."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+iroh = { version = "1.4", default-features = false, features = ["tls-ring"] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1

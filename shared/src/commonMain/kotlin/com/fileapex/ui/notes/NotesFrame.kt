@@ -27,8 +27,6 @@ internal class NotesFrame(
     val cardBg: Color,
     val textColor: Color,
     val subTextColor: Color,
-    val launchDriveAuth: () -> Unit,
-    val launchSignIn: () -> Unit,
     val pickAttachment: () -> Unit
 ) {
     val displayNotes get() = state.rawNotes

@@ -21,7 +21,7 @@ class RouteAuthPolicyTest {
             "/api/v1/files/list", "/api/v1/files/upload", "/api/v1/files/delete", "/api/v1/files/stream",
             "/api/v1/devices", "/api/v1/devices/merge", "/api/v1/cluster/introductions", "/api/v1/cluster/remove", "/cluster/remove",
             "/api/v1/bulletin/delta", "/api/v1/bulletin/sync/batch", "/api/v1/bulletin/file",
-            "/api/v1/notes/send", "/api/v1/notes/delete", "/api/v1/clipboard/send", "/api/v1/clipboard/current",
+            "/api/v1/clipboard/send", "/api/v1/clipboard/current",
             "/api/v1/notifications/event", "/api/v1/diagnostics", "/api/v1/battery", "/api/v1/device/beep",
             "/api/v1/iroh/address", "/api/v1/presence/digest", "/api/v1/identity/rename"
         ).forEach { assertEquals(it, RouteAccess.Peer, RouteAuthPolicy.accessFor(it)) }

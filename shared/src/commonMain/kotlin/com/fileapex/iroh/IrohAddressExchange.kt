@@ -18,12 +18,21 @@ data class IrohAddressMessage(
 )
 
 @Serializable
-internal data class IrohAddressPayload(val stamp: String, val sentAtUtcMs: Long, val address: String)
+internal data class IrohAddressPayload(
+    val stamp: String,
+    val sentAtUtcMs: Long,
+    val address: String,
+    /** Absent from builds before the shared relay setting; they ignore it when it is present. */
+    val relay: IrohRelaySetting? = null
+)
+
+/** The peer's address and, from builds that share it, its relay setting. */
+class OpenedAddress(val address: String, val relay: IrohRelaySetting?)
 
 sealed interface AddressAnswer {
     data object Denied : AddressAnswer
     data object Invalid : AddressAnswer
-    class Reply(val message: IrohAddressMessage, val learned: String) : AddressAnswer
+    class Reply(val message: IrohAddressMessage, val learned: String, val learnedRelay: IrohRelaySetting? = null) : AddressAnswer
 }
 
 /**
@@ -71,10 +80,11 @@ object IrohAddressExchange {
         ownAddress: String,
         stamp: String,
         nowMs: Long,
-        crypto: PairCrypto = ClipboardPairCrypto
+        crypto: PairCrypto = ClipboardPairCrypto,
+        relay: IrohRelaySetting? = null
     ): IrohAddressMessage? {
         if (peer.publicKey.isBlank()) return null
-        val plain = json.encodeToString(IrohAddressPayload.serializer(), IrohAddressPayload(stamp, nowMs, ownAddress))
+        val plain = json.encodeToString(IrohAddressPayload.serializer(), IrohAddressPayload(stamp, nowMs, ownAddress, relay))
         val sealed = crypto.encrypt(plain.encodeToByteArray(), localDeviceId, peer.deviceId, peer.publicKey)
         return IrohAddressMessage(localDeviceId, crypto.publicKeyBase64(), sealed)
     }
@@ -85,7 +95,8 @@ object IrohAddressExchange {
         localDeviceId: String,
         ownAddress: String,
         nowMs: Long,
-        crypto: PairCrypto = ClipboardPairCrypto
+        crypto: PairCrypto = ClipboardPairCrypto,
+        ownRelay: IrohRelaySetting? = null
     ): AddressAnswer {
         if (sender == null || sender.isRemoved || sender.deviceId != message.senderDeviceId) return AddressAnswer.Denied
         if (sender.publicKey.isBlank() || sender.publicKey != message.senderPublicKey) return AddressAnswer.Denied
@@ -101,10 +112,10 @@ object IrohAddressExchange {
 
         val payload = json.encodeToString(
             IrohAddressPayload.serializer(),
-            IrohAddressPayload(ask.stamp, nowMs, ownAddress)
+            IrohAddressPayload(ask.stamp, nowMs, ownAddress, ownRelay)
         )
         val sealed = crypto.encrypt(payload.encodeToByteArray(), localDeviceId, sender.deviceId, sender.publicKey)
-        return AddressAnswer.Reply(IrohAddressMessage(localDeviceId, crypto.publicKeyBase64(), sealed), ask.address)
+        return AddressAnswer.Reply(IrohAddressMessage(localDeviceId, crypto.publicKeyBase64(), sealed), ask.address, ask.relay)
     }
 
     /** The peer's address, or null when the reply is not from [source], not for [stamp], or malformed. */
@@ -114,7 +125,16 @@ object IrohAddressExchange {
         stamp: String,
         localDeviceId: String,
         crypto: PairCrypto = ClipboardPairCrypto
-    ): String? {
+    ): String? = openAnswer(reply, source, stamp, localDeviceId, crypto)?.address
+
+    /** Like [open], and also hands over the relay setting the peer sent. */
+    fun openAnswer(
+        reply: IrohAddressMessage,
+        source: PairedDeviceEntity,
+        stamp: String,
+        localDeviceId: String,
+        crypto: PairCrypto = ClipboardPairCrypto
+    ): OpenedAddress? {
         if (source.isRemoved || reply.senderDeviceId != source.deviceId) return null
         if (source.publicKey.isBlank() || reply.senderPublicKey != source.publicKey) return null
         val plain = runCatching {
@@ -123,8 +143,8 @@ object IrohAddressExchange {
         val payload = runCatching {
             json.decodeFromString(IrohAddressPayload.serializer(), plain.decodeToString())
         }.getOrNull() ?: return null
-        if (payload.stamp != stamp) return null
-        return payload.address.takeIf { isValidAddress(it) }
+        if (payload.stamp != stamp || !isValidAddress(payload.address)) return null
+        return OpenedAddress(payload.address, payload.relay)
     }
 }
 

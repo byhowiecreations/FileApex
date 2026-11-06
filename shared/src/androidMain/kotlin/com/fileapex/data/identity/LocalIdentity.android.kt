@@ -1,6 +1,8 @@
 package com.fileapex.data.identity
 
 import android.content.Context
+import com.fileapex.data.seal.SealedStrings
+import com.fileapex.platform.PrefsStringSlots
 import com.fileapex.platform.defaultStorageRoot
 import com.fileapex.platform.generateDeviceId
 import com.fileapex.platform.platformDeviceName
@@ -23,13 +25,14 @@ actual fun loadLocalIdentity(): LocalIdentity {
         persist = { id -> prefs.edit().putString(KEY_ID, id).apply() },
         remember = { previous -> prefs.edit().putString(KEY_PREVIOUS_ID, previous).apply() }
     )
-    val storedName = prefs.getString(KEY_NAME, null)?.trim().orEmpty()
+    val storedName = sealedName(prefs).get(KEY_NAME)?.trim().orEmpty()
     return LocalIdentity(
         deviceId = deviceId,
         deviceName = storedName.ifBlank { platformDeviceName() },
         rootPath = defaultStorageRoot(),
         sharePort = LocalIdentity.DEFAULT_SHARE_PORT,
-        previousDeviceId = prefs.getString(KEY_PREVIOUS_ID, null)?.trim().orEmpty()
+        previousDeviceId = prefs.getString(KEY_PREVIOUS_ID, null)?.trim().orEmpty(),
+        deviceNameReadable = storedName.isNotBlank() || !prefs.contains(KEY_NAME)
     )
 }
 
@@ -44,11 +47,13 @@ actual fun updateLocalDeviceName(newName: String) {
     }
     val trimmed = newName.trim()
     require(trimmed.isNotEmpty()) { com.fileapex.i18n.AppI18n.t("device_name_empty") }
-    identityContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString(KEY_NAME, trimmed)
-        .apply()
+    val saved = sealedName(identityContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)).put(KEY_NAME, trimmed)
+    check(saved) { "The device name could not be saved: the key store is locked" }
 }
+
+// The device name is sealed. The random device id and the previous id stay plain on purpose: a failed read of a sealed id
+// would make loadLocalIdentity() invent a new one and break its binding to the E2EE key.
+private fun sealedName(prefs: android.content.SharedPreferences) = SealedStrings(PrefsStringSlots(prefs), "identity")
 
 private const val PREFS = "fileapex_identity"
 private const val KEY_ID = "device_id"

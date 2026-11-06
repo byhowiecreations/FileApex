@@ -17,8 +17,6 @@ import com.fileapex.data.bulletin.hasBulletinBinaryAttachment
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
-import com.fileapex.platform.BriefToast
-import com.fileapex.ui.dialogs.GoogleDrivePermissionDialog
 
 @Composable
 internal fun NotesScope.NotesAttachDialogs() {
@@ -73,58 +71,6 @@ internal fun NotesScope.NotesAttachDialogs() {
                 text = { Text(message) },
                 confirmButton = {
                     TextButton(onClick = { attachError = null }) { Text(stringRes("ok")) }
-                }
-            )
-        }
-
-        relayOptIn?.let { offer ->
-            val picked = pendingRelayPick
-            AlertDialog(
-                onDismissRequest = {
-                    FileApexServices.settings.setDriveRelayOptInPromptShown(true)
-                    relayOptIn = null
-                    pendingRelayPick = null
-                },
-                title = { Text(stringRes("file_too_large_offline_notes")) },
-                text = {
-                    Text(
-                        stringRes(
-                            "file_over_notes_limit",
-                            offer.fileLabel,
-                            offer.lanLimitLabel,
-                            offer.relayLimitLabel
-                        )
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            relayOptIn = null
-                            if (picked != null) beginRelayOptIn(picked)
-                        }
-                    ) { Text(stringRes("enable_drive_relay")) }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            FileApexServices.settings.setDriveRelayOptInPromptShown(true)
-                            relayOptIn = null
-                            pendingRelayPick = null
-                        }
-                    ) { Text(stringRes("not_now")) }
-                }
-            )
-        }
-
-        if (showDrivePermission) {
-            GoogleDrivePermissionDialog(
-                onGrant = {
-                    showDrivePermission = false
-                    launchDriveAuth()
-                },
-                onDismiss = {
-                    showDrivePermission = false
-                    pendingAcceptAfterRelay = null
                 }
             )
         }

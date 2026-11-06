@@ -188,9 +188,9 @@ class CliCommandHandler(
             return 1
         }
 
-        CliDeviceAliasManager.setAlias(device.deviceId, shortSlug)
-        out("Alias '$shortSlug' successfully set for '${device.deviceName}'.")
-        return 0
+        val saved = CliDeviceAliasManager.setAlias(device.deviceId, shortSlug)
+        if (saved) out("Alias '$shortSlug' successfully set for '${device.deviceName}'.") else err("Could not save the alias: the app's key store is locked.")
+        return if (saved) 0 else 1
     }
 
     private suspend fun handleSend(args: List<String>, cwd: String): Int {

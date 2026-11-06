@@ -4,13 +4,10 @@ import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.network.FileApexServer
 import com.fileapex.network.SocketFileStreamer
-import com.fileapex.platform.UniqueFileNames
-import com.fileapex.platform.defaultDownloadsDir
 import com.fileapex.util.cancellableCatching
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
-import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
@@ -23,82 +20,6 @@ import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
 internal fun Route.registerBulletinRoutes(server: FileApexServer) {
-    post("/api/v1/notes/send") {
-        cancellableCatching {
-            val body = call.receiveBoundedText()
-            val record = server.json.decodeFromString(com.fileapex.data.note.NoteRecord.serializer(), body)
-            FileApexServices.noteRepository.addNote(
-                record.copy(isMine = false, attachmentLocalPath = null)
-            )
-            call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
-        }.onFailure { error ->
-            server.onLog("POST /api/v1/notes/send failed", error)
-            call.respond(HttpStatusCode.InternalServerError, "note_failed")
-        }
-    }
-
-    post("/api/v1/notes/attachment") {
-        cancellableCatching {
-            val noteId = call.request.queryParameters["noteId"].orEmpty().trim()
-            val fileName = com.fileapex.util.PathUtils.safeFileName(call.request.queryParameters["fileName"].orEmpty()).orEmpty()
-            if (noteId.isBlank() || fileName.isBlank()) {
-                call.respond(HttpStatusCode.BadRequest, "note_attachment_missing")
-                return@cancellableCatching
-            }
-            val expectedLength = call.request.headers["Content-Length"]?.toLongOrNull()
-            if (expectedLength != null &&
-                expectedLength > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
-            ) {
-                call.respond(HttpStatusCode.PayloadTooLarge, "note_attachment_too_large")
-                return@cancellableCatching
-            }
-            val dest = UniqueFileNames.resolveInDirectory(defaultDownloadsDir(), fileName)
-            val channel = call.receiveChannel()
-            val received = server.receiveUploadBytes(channel, dest, startOffset = 0L, expectedLength)
-            val complete = expectedLength == null || received == expectedLength
-            if (!complete || received <= 0L ||
-                received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES
-            ) {
-                SocketFileStreamer.deleteQuietly(dest)
-                val status = if (received > com.fileapex.cloud.drive.DriveRelayPolicy.NOTES_LAN_ATTACHMENT_MAX_BYTES) {
-                    HttpStatusCode.PayloadTooLarge
-                } else {
-                    HttpStatusCode.BadRequest
-                }
-                call.respond(status, "note_attachment_rejected")
-                return@cancellableCatching
-            }
-            FileApexServices.noteRepository.setAttachmentLocalPath(noteId, dest)
-            call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
-        }.onFailure { error ->
-            server.onLog("POST /api/v1/notes/attachment failed", error)
-            call.respond(HttpStatusCode.InternalServerError, "note_attachment_failed")
-        }
-    }
-
-    post("/api/v1/notes/delete") {
-        cancellableCatching {
-            val body = call.receiveBoundedText()
-            val jsonObj = server.json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject
-            val noteId = jsonObj?.get("noteId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
-            val driveFileId = jsonObj?.get("driveFileId")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            val checksum = jsonObj?.get("checksum")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            val attachmentName = jsonObj?.get("attachmentName")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            if (noteId.isNotBlank() || !driveFileId.isNullOrBlank() || !checksum.isNullOrBlank()) {
-                FileApexServices.noteRepository.applyRemoteRetract(
-                    noteId,
-                    driveFileId,
-                    checksum,
-                    attachmentName
-                )
-            }
-            call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
-        }.onFailure { error ->
-            server.onLog("POST /api/v1/notes/delete failed", error)
-            call.respond(HttpStatusCode.InternalServerError, "delete_failed")
-        }
-    }
-
     get("/api/v1/bulletin/delta") {
         cancellableCatching {
             val from = server.requesterDeviceId(call)

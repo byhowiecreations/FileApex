@@ -331,7 +331,7 @@ func TestEveryProfileWeSendHasAProtocolListBecauseKotlinRefusesNull(t *testing.T
 	host.peers[joiner.deviceID()] = deviceRecord{DeviceID: joiner.deviceID(), DeviceName: "stub", LastKnownIP: "127.0.0.1", Port: joiner.listenPort()}
 	host.mu.Unlock()
 
-	body, err := json.Marshal(host.answerChain(true))
+	body, err := json.Marshal(host.answerChain(true, ""))
 	if err != nil {
 		t.Fatal(err)
 	}

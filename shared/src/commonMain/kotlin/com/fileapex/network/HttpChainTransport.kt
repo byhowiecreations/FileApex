@@ -13,14 +13,17 @@ internal class HttpChainTransport(
     private val repository: DeviceRepository,
     private val http: FileApexClient
 ) : ChainTransport {
-    override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>): ChainAnswer? {
+    override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>): ChainAnswer? =
+        push(peerId, records, profiles, "")
+
+    override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>, head: String): ChainAnswer? {
         val peer = repository.getDevice(peerId)?.takeUnless { it.isRemoved } ?: return null
         return cancellableCatching {
             val response = http.boundPost(
                 host = peer.lastKnownIp,
                 port = peer.port,
                 pathWithQuery = PATH,
-                body = http.json.encodeToString(ChainPush.serializer(), ChainPush(records, profiles)),
+                body = http.json.encodeToString(ChainPush.serializer(), ChainPush(records, profiles, head)),
                 contentType = "application/json",
                 timeoutMs = FileApexClient.PEER_REQUEST_TIMEOUT_MS
             )
@@ -29,13 +32,15 @@ internal class HttpChainTransport(
         }.getOrNull()
     }
 
-    override suspend fun pull(peerId: String): ChainAnswer? {
+    override suspend fun pull(peerId: String): ChainAnswer? = pull(peerId, "")
+
+    override suspend fun pull(peerId: String, since: String): ChainAnswer? {
         val peer = repository.getDevice(peerId)?.takeUnless { it.isRemoved } ?: return null
         return cancellableCatching {
             val response = http.boundGet(
                 host = peer.lastKnownIp,
                 port = peer.port,
-                pathWithQuery = PATH,
+                pathWithQuery = if (since.isEmpty()) PATH else "$PATH?since=$since",
                 timeoutMs = FileApexClient.PEER_REQUEST_TIMEOUT_MS
             )
             http.requireSuccess(response, "Chain pull failed (${response.statusCode})")

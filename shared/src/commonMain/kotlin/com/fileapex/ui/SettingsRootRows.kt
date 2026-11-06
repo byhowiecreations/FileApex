@@ -44,40 +44,23 @@ internal class SettingsRootInputs(
     val state: SettingsUiState,
     val backgroundPersistence: BackgroundPersistenceUiState,
     val exactAlarmWarningActive: Boolean,
-    val onOpenCheckForUpdates: () -> Unit,
-    val onOpenPinRequired: () -> Unit,
-    val onOpenBackgroundPersistence: () -> Unit,
-    val onOpenAutoLaunchOnReboot: () -> Unit,
-    val onOpenDeviceName: () -> Unit,
-    val onOpenLanguage: () -> Unit,
-    val onOpenNotifications: () -> Unit,
-    val onOpenThemes: () -> Unit,
-    val onOpenBulletinBoard: () -> Unit,
-    val onOpenBackupSync: () -> Unit,
-    val onOpenClipboard: () -> Unit,
-    val onOpenDeviceDetails: () -> Unit,
-    val onOpenGoogleAccount: () -> Unit,
-    val onOpenDesktopLayout: () -> Unit,
-    val onOpenWindowsDesign: () -> Unit,
-    val onOpenLeaveClusterWipe: () -> Unit,
-    val onOpenTailscale: () -> Unit,
-    val onOpenIroh: () -> Unit,
-    val onOpenGroups: () -> Unit
+    val onOpenPage: (SettingsPage) -> Unit
 )
 
 @Composable
 internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com.fileapex.tailscale.TailscaleUiState, onReportIssue: () -> Unit) {
     with(this) {
+        val openRowPage: () -> Unit = { settingsPageFor(entry.id)?.let(onOpenPage) }
                             when (entry.id) {
                                 SettingsMenuIds.DEVICE_NAME -> SettingsNavItem(
                                     title = stringRes("device_name"),
                                     subtitle = state.deviceNameBroadcasting.ifBlank { stringRes("paired_device") },
-                                    onClick = onOpenDeviceName
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.LANGUAGE -> SettingsNavItem(
                                     title = stringRes("language"),
                                     subtitle = AppI18n.languageRowLabel(AppI18n.locale),
-                                    onClick = onOpenLanguage
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.CHECK_FOR_UPDATES -> SettingsNavItem(
                                     title = stringRes("check_for_updates"),
@@ -89,7 +72,7 @@ internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com
                                     } else {
                                         stringRes("off")
                                     },
-                                    onClick = onOpenCheckForUpdates
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.REPORT_ISSUE -> SettingsNavItem(
                                     title = stringRes("report_issue_feedback"),
@@ -103,42 +86,47 @@ internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com
                                         backgroundPersistence = backgroundPersistence,
                                         exactAlarmWarningActive = exactAlarmWarningActive
                                     ),
-                                    onClick = onOpenBackgroundPersistence
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.AUTO_LAUNCH -> SettingsNavItem(
                                     title = stringRes(if (com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart()) "auto_launch_on_signin" else "auto_launch_on_reboot"),
                                     subtitle = if (state.autoLaunchOnReboot) stringRes("on") else stringRes("off"),
-                                    onClick = onOpenAutoLaunchOnReboot
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.TAILSCALE -> SettingsNavItem(
                                     title = stringRes("tailscale_overlay"),
                                     subtitle = tailscaleRowSubtitle(tailscale),
-                                    onClick = onOpenTailscale
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.IROH -> SettingsNavItem(
                                     title = stringRes("iroh_title"),
                                     subtitle = irohRowSubtitle(),
-                                    onClick = onOpenIroh
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.GROUPS -> SettingsNavItem(
                                     title = stringRes("groups_title"),
                                     subtitle = com.fileapex.friends.ui.groupsRowSubtitle(),
-                                    onClick = onOpenGroups
+                                    onClick = openRowPage
+                                )
+                                SettingsMenuIds.SHARE_LINK -> SettingsNavItem(
+                                    title = stringRes("share_link_page_title"),
+                                    subtitle = com.fileapex.drop.ui.shareLinkRowSubtitle(),
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.THEMES -> SettingsNavItem(
                                     title = stringRes("themes"),
                                     subtitle = localizedThemeName(state.appTheme),
-                                    onClick = onOpenThemes
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.BULLETIN_BOARD -> SettingsNavItem(
                                     title = stringRes("bulletin_board"),
                                     subtitle = localizedBulletinBoardStyleName(state.bulletinBoardStyle),
-                                    onClick = onOpenBulletinBoard
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.BACKUP_SYNC -> SettingsNavItem(
                                     title = stringRes("backup_sync"),
                                     subtitle = backupSummary(),
-                                    onClick = onOpenBackupSync
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.NOTIFICATIONS -> SettingsNavItem(
                                     title = stringRes("notifications"),
@@ -148,27 +136,27 @@ internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com
                                         state.fileTransferNotificationsEnabled ||
                                         state.liveTransferCapsuleEnabled
                                     ) stringRes("on") else stringRes("off"),
-                                    onClick = onOpenNotifications
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.CLIPBOARD -> SettingsNavItem(
                                     title = stringRes("clipboard"),
                                     subtitle = clipboardSettingsSubtitle(state),
-                                    onClick = onOpenClipboard
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.DEVICE_DETAILS -> SettingsNavItem(
                                     title = stringRes("device_details"),
                                     subtitle = stringRes("peer_telemetry_fields"),
-                                    onClick = onOpenDeviceDetails
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.DESKTOP_LAYOUT -> SettingsNavItem(
                                     title = stringRes("desktop_layout"),
                                     subtitle = localizedDesktopLayout(state.desktopLayoutMode),
-                                    onClick = onOpenDesktopLayout
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.WINDOWS_DESIGN -> SettingsNavItem(
                                     title = stringRes("windows_design"),
                                     subtitle = localizedDesktopUiStyle(state.desktopUiStyle),
-                                    onClick = onOpenWindowsDesign
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.PIN_REQUIRED -> SettingsNavItem(
                                     title = stringRes("pin_required"),
@@ -177,7 +165,7 @@ internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com
                                         if (state.pinRequiredEnabled) AppI18n.t("on") else AppI18n.t("off"),
                                         localizedPinIdle(state.pinIdleTimeout)
                                     ),
-                                    onClick = onOpenPinRequired
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.DRIVE_RELAY -> SettingsNavItem(
                                     title = stringRes("drive_relay"),
@@ -186,19 +174,19 @@ internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com
                                         state.googleDriveRelayEnabled -> stringRes("on")
                                         else -> stringRes("off")
                                     },
-                                    onClick = onOpenGoogleAccount
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.GOOGLE_ACCOUNT -> SettingsNavItem(
                                     title = stringRes("google_account"),
                                     subtitle = googleAccountSubtitle(state),
-                                    onClick = onOpenGoogleAccount
+                                    onClick = openRowPage
                                 )
                                 SettingsMenuIds.LEAVE_CLUSTER -> SettingsNavItem(
                                     title = stringRes("leave_cluster_wipe_title"),
                                     subtitle = stringRes("leave_cluster_wipe_desc"),
                                     isDestructive = true,
                                     leadingIcon = Icons.Filled.Warning,
-                                    onClick = onOpenLeaveClusterWipe
+                                    onClick = openRowPage
                                 )
                             }
     }

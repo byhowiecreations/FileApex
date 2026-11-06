@@ -30,6 +30,10 @@ class MembershipHub(
     val identityChanges: IdentityChangeInbox? = null,
     /** This device's id changed and the cluster does not hold the new one: asks a member to continue under it. Returns when answered or given up. */
     val continueUnderNewId: suspend () -> Unit = {},
+    /** This device's chain state, shown to proven peers; null where no peer is talked to. */
+    val chainState: ChainStateSource? = null,
+    /** Reads the state peers show and decides which of them to ask; null where every peer is asked each tick. */
+    val chainWatch: ChainStateWatch? = null,
     val applyChain: suspend () -> Unit
 ) {
     /** This device was the joiner of an in-person pairing with [hostId]: the host's cluster wins, then the normal join follows. */

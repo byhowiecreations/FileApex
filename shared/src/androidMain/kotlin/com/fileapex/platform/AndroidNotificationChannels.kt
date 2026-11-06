@@ -34,6 +34,8 @@ object AndroidNotificationChannels {
     /** Progress of files going to or from a friend. */
     const val FRIENDS_TRANSFERS = "fileapex_friends_transfers"
     const val FOLDER_BACKUP = "fileapex_folder_backup_progress"
+    /** Ongoing notice while a file link is open ([com.fileapex.network.GuestDropForegroundService]). */
+    const val GUEST_LINK = "fileapex_guest_link"
     /** Persistent share-server FGS alert, static after first post ([ShareServerForegroundNotification]). */
     const val SHARE_SERVER_ACTIVE = "fileapex_share_server_active_v2"
     private const val LEGACY_BULLETIN_CRITICAL_CHANNEL = "fileapex_bulletin_critical_v2"
@@ -176,6 +178,17 @@ object AndroidNotificationChannels {
             com.fileapex.i18n.AppI18n.t("channel_friends_transfers"),
             NotificationManager.IMPORTANCE_LOW
         ).apply { description = com.fileapex.i18n.AppI18n.t("channel_friends_transfers_desc") }
+        context.getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
+    fun ensureGuestLinkChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            GUEST_LINK,
+            com.fileapex.i18n.AppI18n.t("channel_guest_link"),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply { description = com.fileapex.i18n.AppI18n.t("channel_guest_link_desc") }
         context.getSystemService(NotificationManager::class.java)
             ?.createNotificationChannel(channel)
     }

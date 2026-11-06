@@ -24,6 +24,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -35,9 +37,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.DownloadsPaths
+import com.fileapex.di.FileApexServices
+import com.fileapex.iroh.IrohRuntime
+import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ExplorerActionCopy
 import com.fileapex.ui.TransferProgressBlock
-import com.fileapex.util.NetworkUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,6 +128,8 @@ internal fun ExplorerScope.ExplorerMultiCopyPicker() {
     with(inputs) { with(frame) { with(live) {
     if (state.showMultiCopyPicker) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val online by FileApexServices.presenceMonitor.onlineDeviceIds.collectAsState()
+        val reachedVia by FileApexServices.presenceMonitor.reachedVia.collectAsState()
         ModalBottomSheet(
             onDismissRequest = viewModel::dismissMultiCopyPicker,
             sheetState = sheetState
@@ -174,7 +180,12 @@ internal fun ExplorerScope.ExplorerMultiCopyPicker() {
                                     text = if (option.isLocal) {
                                         stringRes("local_device")
                                     } else {
-                                        NetworkUtils.formatEndpointDisplay(option.host, option.port)
+                                        DeviceListRow.pickerStatus(
+                                            online = option.deviceId in online,
+                                            reachedBy = reachedVia[option.deviceId],
+                                            irohPath = IrohRuntime.livePath(option.deviceId),
+                                            lanHost = option.host
+                                        )
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant

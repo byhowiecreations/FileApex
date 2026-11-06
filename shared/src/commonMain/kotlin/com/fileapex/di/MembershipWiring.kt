@@ -9,11 +9,14 @@ import com.fileapex.data.db.RoomTlsPinStore
 import com.fileapex.data.identity.clearPreviousDeviceId
 import com.fileapex.data.device.DeviceRepository
 import com.fileapex.domain.pairing.KickedByPeer
+import com.fileapex.membership.ChainAckBook
 import com.fileapex.membership.ChainApplier
 import com.fileapex.membership.ChainEffects
 import com.fileapex.membership.ChainBootstrap
 import com.fileapex.membership.ChainReplicator
 import com.fileapex.membership.ChainSigning
+import com.fileapex.membership.ChainStateSource
+import com.fileapex.membership.ChainStateWatch
 import com.fileapex.membership.ChainTick
 import com.fileapex.membership.TrustedPeer
 import com.fileapex.membership.FallbackChainTransport
@@ -52,17 +55,34 @@ internal object MembershipWiring {
         )
         val chainTransport = FallbackChainTransport(HttpChainTransport(repository, client), UnpinnedChainTransport(repository, client))
         val profiles = RoomChainProfiles(repository, signer.deviceId) { FileApexServices.pairingCoordinator.ownState() }
-        val chainReplicator = ChainReplicator(chainLog, chainTransport, onChanged = { applier.apply(chainLog.view()) }, profiles = profiles)
+        val chainAcks = ChainAckBook(
+            now = TimeUtils::now,
+            descends = { change, theirHead -> chainLog.descendsOrEquals(theirHead, change) },
+            report = { com.fileapex.platform.Diagnostics.log(it) }
+        )
+        val chainReplicator = ChainReplicator(
+            chainLog, chainTransport, onChanged = { applier.apply(chainLog.view()) }, profiles = profiles,
+            acks = chainAcks, scope = teardownScope, afterAnnounce = ::pokeLan,
+            report = { com.fileapex.platform.Diagnostics.log(it) }
+        )
         val chainSigner = { ChainSigning.provider() }
         val chainRoster: suspend () -> Set<String> = { repository.listDevices().filterNot { it.isRemoved }.map { it.deviceId }.toSet() + signer.deviceId }
         val trustedPeers: suspend () -> List<TrustedPeer> = {
             trustedPeersOf(database.membershipDao().allEffective(), repository.listDevices(), signer.deviceId)
         }
+        val chainState = ChainStateSource(chainLog) { FileApexServices.pairingCoordinator.ownState() }
+        val chainWatch = ChainStateWatch(
+            own = { chainState.current() },
+            pull = { chainReplicator.reconcile(it) },
+            report = { com.fileapex.platform.Diagnostics.log(it) }
+        )
+        com.fileapex.membership.ChainStateInbox.watch = chainWatch
         val chainTick = ChainTick(
             signer.deviceId, chainLog, chainReplicator, chainTransport,
             ChainBootstrap(chainLog, chainSigner), chainSigner, trustedPeers,
             renewSigningKey = { ChainSigning.renew() },
-            marks = RoomPairingMarks(database.membershipDao())
+            marks = RoomPairingMarks(database.membershipDao()),
+            watch = chainWatch
         ) { applier.apply(chainLog.view()) }
         return MembershipHub(
             chainLog, chainReplicator, chainTick, chainRoster,
@@ -74,6 +94,8 @@ internal object MembershipWiring {
             acknowledgeHistory = { applier.acknowledgeHistory(chainLog.view()) },
             markPairedInPerson = { id, seq -> applier.pairedInPerson(id, seq) },
             applyChain = { applier.apply(chainLog.view()) },
+            chainState = chainState,
+            chainWatch = chainWatch,
             continueUnderNewId = {
                 val self = com.fileapex.data.identity.loadLocalIdentity()
                 val own = ChainSigning.provider()
@@ -121,6 +143,17 @@ internal object MembershipWiring {
 
     private val teardownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile
+    private var lastPokeAt = 0L
+
+    /** After a change the signed hello goes out on the LAN, so devices that hear it look at this device's state at once. At most once every few seconds. */
+    private fun pokeLan() {
+        val at = TimeUtils.now()
+        if (at - lastPokeAt < POKE_GAP_MS) return
+        lastPokeAt = at
+        teardownScope.launch { cancellableCatching { com.fileapex.network.sendWakeBroadcast() } }
+    }
+
     /** Waits for the signing identity, then catches up with a peer when it comes online and every minute runs the chain tick. */
     fun start(scope: CoroutineScope, hub: () -> MembershipHub?, onlineIds: StateFlow<Set<String>>) {
         scope.launch {
@@ -132,7 +165,14 @@ internal object MembershipWiring {
             }
             val running = ready ?: return@launch
             cancellableCatching { running.prepare() }.onFailure { println("MembershipWiring: preparing the roster failed - ${it::class.simpleName}") }
-            scope.launch { onlineIds.collect { ids -> ids.forEach { cancellableCatching { running.chainReplicator.reconcile(it) } } } }
+            scope.launch {
+                var known = emptySet<String>()
+                onlineIds.collect { ids ->
+                    (ids - known).forEach { cancellableCatching { running.chainReplicator.reconcile(it) } }
+                    known = ids
+                }
+            }
+            var ticks = 0
             while (true) {
                 cancellableCatching {
                     running.applyChain()
@@ -155,6 +195,7 @@ internal object MembershipWiring {
                         scope.launch { cancellableCatching { running.continueUnderNewId() } }
                     }
                 }.onFailure { println("MembershipWiring: tick failed - ${it::class.simpleName}") }
+                if (++ticks % SUMMARY_EVERY_TICKS == 0) running.chainWatch?.let { com.fileapex.platform.Diagnostics.log(it.summary()) }
                 delay(TICK_MS)
             }
         }
@@ -172,6 +213,8 @@ internal object MembershipWiring {
     private const val IDENTITY_CHANGE_POLL_MS = 2_000L
     private const val IDENTITY_CHANGE_RETRY_MS = 10L * 60_000L
     private const val TICK_MS = 60_000L
+    private const val POKE_GAP_MS = 10_000L
+    private const val SUMMARY_EVERY_TICKS = 60
 }
 
 /** The chain's effects on this device: its pins go to the pin store, its removal goes to the one self-wipe path. */

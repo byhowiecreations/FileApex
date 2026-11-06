@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
+import com.fileapex.domain.presence.PresenceProbeStats
 import com.fileapex.iroh.IrohLog
 import com.fileapex.iroh.IrohPhase
 import com.fileapex.iroh.IrohRelayUrl
@@ -251,6 +252,12 @@ internal fun IrohSettingsPage(
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Text(stringRes("iroh_log"), style = MaterialTheme.typography.titleSmall)
+                        val probes = PresenceProbeStats.shared.snapshot()
+                        Text(
+                            text = stringRes("iroh_probe_stats", probes.sent, probes.failed, probes.skipped, probes.forcedRounds),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Text(
                             text = log.takeLast(40).joinToString("\n"),
                             style = MaterialTheme.typography.bodySmall,
@@ -336,9 +343,11 @@ private fun IrohRelayCard(shape: androidx.compose.ui.graphics.Shape) {
     val settings = FileApexServices.settings
     val relayOn by settings.irohRelayEnabled.collectAsState()
     val savedUrl by settings.irohRelayUrl.collectAsState()
-    var wantsOn by remember { mutableStateOf(relayOn) }
-    var url by remember { mutableStateOf(savedUrl) }
-    var token by remember { mutableStateOf(settings.irohRelayToken()) }
+    val onFallback = IrohRuntime.state.collectAsState().value.relayFallback
+    // A change that arrives from another device of the cluster must show here, not only a save made on this screen.
+    var wantsOn by remember(relayOn) { mutableStateOf(relayOn) }
+    var url by remember(savedUrl) { mutableStateOf(savedUrl) }
+    var token by remember(savedUrl, relayOn) { mutableStateOf(settings.irohRelayToken()) }
     val check = IrohRelayUrl.check(url)
     val savedToken = settings.irohRelayToken()
     val changed = !relayOn || (check as? IrohRelayUrlCheck.Valid)?.url != savedUrl || token.trim() != savedToken
@@ -353,6 +362,7 @@ private fun IrohRelayCard(shape: androidx.compose.ui.graphics.Shape) {
                     Text(stringRes("iroh_relay_title"), style = MaterialTheme.typography.titleMedium)
                     Text(
                         text = when {
+                            relayOn && onFallback -> stringRes("iroh_relay_fallback", savedUrl)
                             relayOn -> stringRes("iroh_relay_in_use", savedUrl)
                             wantsOn -> stringRes("iroh_relay_pending")
                             else -> stringRes("iroh_relay_off")

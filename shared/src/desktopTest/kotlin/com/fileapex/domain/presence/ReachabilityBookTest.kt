@@ -53,4 +53,98 @@ class ReachabilityBookTest {
         assertFalse(book.wasRecentlyReachable("A", 1_000L))
         assertFalse(book.wasRecentlyReachable("Z", 60_000L))
     }
+
+    @Test
+    fun aClearedRouteIsForgottenSoTheLabelNeverShowsAStaleOne() {
+        val book = ReachabilityBook()
+        book.noteRoute("A", RouteKind.Lan)
+        book.noteRoute("B", RouteKind.Iroh)
+        book.clearRoute("A")
+        assertEquals(mapOf("B" to RouteKind.Iroh), book.via.value)
+        book.clearRoute("A")
+        assertEquals(mapOf("B" to RouteKind.Iroh), book.via.value)
+    }
+
+    @Test
+    fun aLanRouteThatNoCheckConfirmedWithinTheFreshWindowIsDropped() = runBlocking {
+        val book = ReachabilityBook()
+        book.record(arrayOf("A"), TimeUtils.now() - 10 * 60_000L, RouteKind.Lan)
+        book.dropStaleLanRoute("A", 45_000L)
+        assertTrue(book.via.value.isEmpty())
+    }
+
+    @Test
+    fun aLanRouteConfirmedJustNowIsKept() = runBlocking {
+        val book = ReachabilityBook()
+        book.record(arrayOf("A"), TimeUtils.now(), RouteKind.Lan)
+        book.dropStaleLanRoute("A", 45_000L)
+        assertEquals(mapOf("A" to RouteKind.Lan), book.via.value)
+    }
+
+    @Test
+    fun onlyALanRouteIsEverDroppedForStaleness() = runBlocking {
+        val book = ReachabilityBook()
+        book.record(arrayOf("A"), TimeUtils.now() - 10 * 60_000L, RouteKind.Iroh)
+        book.record(arrayOf("B"), TimeUtils.now() - 10 * 60_000L, RouteKind.Tailnet)
+        book.dropStaleLanRoute("A", 45_000L)
+        book.dropStaleLanRoute("B", 45_000L)
+        assertEquals(mapOf("A" to RouteKind.Iroh, "B" to RouteKind.Tailnet), book.via.value)
+    }
+
+    @Test
+    fun aRequestArrivingOverIrohNamesIrohWhenNoRouteIsKnownOrIrohIsAlreadyKnown() {
+        val book = ReachabilityBook()
+        book.noteInboundIroh("A")
+        assertEquals(mapOf("A" to RouteKind.Iroh), book.via.value)
+        book.noteInboundIroh("A")
+        assertEquals(mapOf("A" to RouteKind.Iroh), book.via.value)
+    }
+
+    @Test
+    fun aRequestOverIrohNeverOverridesALanOrTailscaleRouteThatIsStillKnown() {
+        val book = ReachabilityBook()
+        book.noteRoute("A", RouteKind.Lan)
+        book.noteRoute("B", RouteKind.Tailnet)
+        book.noteInboundIroh("A")
+        book.noteInboundIroh("B")
+        assertEquals(mapOf("A" to RouteKind.Lan, "B" to RouteKind.Tailnet), book.via.value)
+    }
+
+    private val ttl = 11 * 60_000L
+
+    @Test
+    fun aRouteNotConfirmedWithinTheLeaseExpires() {
+        val book = ReachabilityBook()
+        book.noteRoute("A", RouteKind.Lan, atMs = 1_000_000L)
+        assertEquals(false, book.expireRoutes(ttl, nowMs = 1_000_000L + ttl - 1))
+        assertEquals(mapOf("A" to RouteKind.Lan), book.via.value)
+        assertEquals(true, book.expireRoutes(ttl, nowMs = 1_000_000L + ttl))
+        assertTrue(book.via.value.isEmpty())
+    }
+
+    @Test
+    fun confirmingTheSameRouteAgainRenewsItsLease() {
+        val book = ReachabilityBook()
+        book.noteRoute("A", RouteKind.Lan, atMs = 1_000_000L)
+        book.noteRoute("A", RouteKind.Lan, atMs = 1_000_000L + 8 * 60_000L)
+        assertEquals(false, book.expireRoutes(ttl, nowMs = 1_000_000L + 15 * 60_000L))
+        assertEquals(mapOf("A" to RouteKind.Lan), book.via.value)
+    }
+
+    @Test
+    fun theWatcherIsToldWhenTheNextLeaseEnds() {
+        val book = ReachabilityBook()
+        assertEquals(null, book.routeExpiryWaitMs(ttl, nowMs = 1_000_000L))
+        book.noteRoute("A", RouteKind.Lan, atMs = 1_000_000L)
+        book.noteRoute("B", RouteKind.Iroh, atMs = 1_000_000L + 3 * 60_000L)
+        assertEquals(ttl - 60_000L + 1_000L, book.routeExpiryWaitMs(ttl, nowMs = 1_000_000L + 60_000L))
+    }
+
+    @Test
+    fun aClearedRouteLeavesNoLeaseBehind() {
+        val book = ReachabilityBook()
+        book.noteRoute("A", RouteKind.Lan, atMs = 1_000_000L)
+        book.clearRoute("A")
+        assertEquals(null, book.routeExpiryWaitMs(ttl, nowMs = 1_000_000L))
+    }
 }

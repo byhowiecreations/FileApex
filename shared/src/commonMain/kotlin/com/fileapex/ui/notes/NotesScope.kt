@@ -13,26 +13,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.fileapex.cloud.GoogleLinkCoordinator
-import com.fileapex.cloud.drive.DriveRelayPolicy
-import com.fileapex.cloud.drive.GoogleDriveAuth
-import com.fileapex.cloud.drive.NotesAttachmentDecision
 import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
-import com.fileapex.di.FileApexServices
-import com.fileapex.i18n.AppI18n
-import com.fileapex.i18n.UserFacingErrors
 import com.fileapex.friends.ui.rememberFriendFilePicker
 import com.fileapex.platform.PickedLocalFile
-import com.fileapex.platform.rememberGoogleDriveAuthLauncher
-import com.fileapex.platform.rememberGoogleSignInLauncher
 import com.fileapex.presentation.NotesListRow
 import com.fileapex.presentation.NotesNewDivider
 import com.fileapex.presentation.NotesViewModel
 import com.fileapex.ui.theme.FluxGlassPalette
 import com.fileapex.ui.theme.KineticPalette
-import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -72,7 +62,7 @@ internal fun rememberNotesScope(
     pendingTransport != null ||
         (transport != null && transport?.settled != true)
     }
-    val (launchDriveAuth, launchSignIn, pickAttachment) = rememberNotesLaunchers(live, holder, scope)
+    val pickAttachment = rememberNotesLaunchers(holder, scope)
     val listState = rememberLazyListState()
     val backgroundColor = when (currentTheme) {
         AppTheme.FLUX_GLASS -> Color.Transparent
@@ -88,87 +78,27 @@ internal fun rememberNotesScope(
     val subTextColor = if (isCustomGlass) Color.White.copy(alpha = 0.70f) else MaterialTheme.colorScheme.onSurfaceVariant
     val frame = NotesFrame(
         onBack, focusNoteId, onFocusNoteConsumed, viewModel, state, currentTheme, isCustomGlass, scope, density, listState,
-        visualRows, holdingTransportSlot, backgroundColor, cardBg, textColor, subTextColor, launchDriveAuth, launchSignIn, pickAttachment
+        visualRows, holdingTransportSlot, backgroundColor, cardBg, textColor, subTextColor, pickAttachment
     )
     return NotesScope(frame, live).also { holder[0] = it }
 }
 
 @Composable
 private fun rememberNotesLaunchers(
-    live: NotesLive,
     holder: Array<NotesScope?>,
     scope: CoroutineScope
-): Triple<() -> Unit, () -> Unit, () -> Unit> = with(live) {
-    val launchDriveAuth = rememberGoogleDriveAuthLauncher { granted, errorMessage ->
-        if (granted) {
-            holder[0]!!.finishRelayGrant(pendingAcceptAfterRelay)
-        } else {
-            attachError = errorMessage ?: AppI18n.t("drive_relay_not_enabled")
-            pendingAcceptAfterRelay = null
-        }
-    }
-
-    val launchSignIn = rememberGoogleSignInLauncher { idToken, email, errorMessage ->
-        if (idToken.isNullOrBlank()) {
-            attachError = errorMessage ?: AppI18n.t("google_signin_cancelled")
-            pendingAcceptAfterRelay = null
-            return@rememberGoogleSignInLauncher
-        }
-        scope.launch {
-            cancellableCatching {
-                GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, email)
-            }.onSuccess {
-                FileApexServices.settings.setCellularEnabled(true)
-                if (GoogleDriveAuth.hasGrant()) {
-                    holder[0]!!.finishRelayGrant(pendingAcceptAfterRelay)
-                } else {
-                    showDrivePermission = true
-                }
-            }.onFailure { error ->
-                attachError = UserFacingErrors.message(error, "google_link_failed")
-                pendingAcceptAfterRelay = null
-            }
-        }
-    }
-
-    fun decideAttachment(picked: PickedLocalFile) {
-        when (val decision = DriveRelayPolicy.evaluateNotesAttachment(picked.sizeBytes)) {
-            NotesAttachmentDecision.AllowLan,
-            NotesAttachmentDecision.AllowRelay -> holder[0]!!.acceptPickedAttachment(picked)
-            is NotesAttachmentDecision.OfferRelayOptIn -> {
-                pendingRelayPick = picked
-                relayOptIn = decision
-            }
-            is NotesAttachmentDecision.NeedsRelayEnabled -> {
-                attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
-                    "offline Notes limit. Enable Google Drive Relay in Settings → Cellular " +
-                    "to send larger files."
-            }
-            is NotesAttachmentDecision.TooLargeForRelay -> {
-                attachError = "${decision.fileLabel} is over the ${decision.relayLimitLabel} " +
-                    "Google Drive Relay limit. Choose a smaller file or raise the Relay size " +
-                    "limit in Settings → Cellular."
-            }
-            is NotesAttachmentDecision.TooLargeForLan -> {
-                attachError = "${decision.fileLabel} is over the ${decision.lanLimitLabel} " +
-                    "Notes attachment limit. Choose a smaller file."
-            }
-        }
-    }
-
-    // The app's own file screen, not the system picker. One file goes through the size checks and a caption;
-    // several are sent one after the other like a drop.
-    val pickAttachment = rememberFriendFilePicker(titleKey = "post_to_bulletin_board", viewModelKey = "bulletin-file-pick") { files ->
+): () -> Unit {
+    // The app's own file screen, not the system picker. One file gets a caption; several are sent one after the
+    // other like a drop. No size check: other devices pull the file when they are on the same network.
+    return rememberFriendFilePicker(titleKey = "post_to_bulletin_board", viewModelKey = "bulletin-file-pick") { files ->
         scope.launch {
             val single = files.singleOrNull()
             if (single != null) {
                 val picked = withContext(Dispatchers.IO) { PickedLocalFile(single.name, single.length(), single.absolutePath) }
-                decideAttachment(picked)
+                holder[0]!!.acceptPickedAttachment(picked)
             } else if (files.isNotEmpty()) {
                 holder[0]!!.handleDroppedPaths(files.map { it.absolutePath }, null)
             }
         }
     }
-
-    Triple(launchDriveAuth, launchSignIn, pickAttachment)
 }

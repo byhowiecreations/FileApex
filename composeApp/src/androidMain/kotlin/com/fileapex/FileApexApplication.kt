@@ -24,6 +24,7 @@ class FileApexApplication : Application(), Configuration.Provider {
         com.fileapex.di.FileApexServices.isPlayStoreBuild = BuildConfig.IS_PLAY_STORE
         com.fileapex.di.FileApexServices.isFdroidBuild = BuildConfig.IS_FDROID
         com.fileapex.di.FileApexServices.buildChannel = BuildConfig.BUILD_CHANNEL
+        com.fileapex.drop.GuestDropHub.onNotice = { com.fileapex.network.GuestDropForegroundService.apply(this, it) }
         com.fileapex.i18n.LocaleChromeRefresh.listener = {
             ShareServerForegroundNotification.refreshLocalizedCopy(this)
         }

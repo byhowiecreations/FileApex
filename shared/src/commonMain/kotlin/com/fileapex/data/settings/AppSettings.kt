@@ -3,6 +3,7 @@ package com.fileapex.data.settings
 import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.domain.diagnostics.DeviceDetailsDisplayPreferences
+import com.fileapex.iroh.IrohRelaySetting
 import kotlinx.coroutines.flow.StateFlow
 
 interface AppSettings {
@@ -16,6 +17,9 @@ interface AppSettings {
     val bulletinSeenAtEpochMs: StateFlow<Long>
     fun setBulletinSeenAtEpochMs(epochMs: Long)
     fun setBulletinDeltaCursor(deviceId: String, cursor: Long)
+
+    /** Forgets how far every peer was pulled; the next pull from each is a full snapshot. Used when cluster data is cleared. */
+    fun clearBulletinDeltaCursors()
 
     val googleAccountLinkEnabled: StateFlow<Boolean>
     val googleAccountEmail: StateFlow<String>
@@ -215,6 +219,12 @@ interface AppSettings {
      */
     fun saveIrohRelay(enabled: Boolean, url: String, token: String): Boolean
 
+    /** The relay choice as shared with the cluster, with the time it last changed (0 when never). */
+    fun irohRelaySetting(): IrohRelaySetting
+
+    /** Stores a relay choice that arrived from a paired device, keeping the sender's change time. */
+    fun applyClusterIrohRelay(setting: IrohRelaySetting)
+
     /** Base64 of the 32-byte Iroh secret key, or empty before the first start. */
     fun irohSecretKeyBase64(): String
     fun setIrohSecretKeyBase64(value: String)
@@ -233,6 +243,10 @@ interface AppSettings {
     /** The removal stamp this device already signed out of Google for, so a later sign-in on purpose is left alone. */
     fun kickHandledVersion(): Long
     fun setKickHandledVersion(value: Long)
+
+    /** The owner's answer about sharing files as links through a relay: 0 not asked, 1 accepted, 2 declined (see GuestLinkConsent). */
+    val guestLinkConsent: StateFlow<Int>
+    fun setGuestLinkConsent(value: Int)
 
     /** Friends traffic goes through the relay only, so a friend never sees this device's IP address. */
     fun friendsHideIp(): Boolean

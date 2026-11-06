@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Rebuild computer.iroh:iroh-android 1.1.0 with 16 KB aligned native libraries (Google Play needs it) and publish the
-# result as 1.1.0-16k into a local Maven folder that settings.gradle.kts picks up.
+# Rebuild computer.iroh:iroh-android 1.2.0 with 16 KB aligned native libraries (Google Play needs it) and publish the
+# result as 1.2.0-16k into a local Maven folder that settings.gradle.kts picks up.
 #
-# Same iroh-ffi source as the published 1.1.0 (tag v1.1.0), plus the linker flag upstream added in #283. Only the
+# Same iroh-ffi source as the published 1.2.0 (tag v1.2.0), plus the linker flag upstream added in #283. Only the
 # four libiroh_ffi.so files differ from the Maven Central AAR, so the Kotlin side stays as it is.
 # Needs: Rust (rustup, with cargo), cargo-ndk 3.5.4, the Android NDK (r27), curl, unzip, zip.
-# Output: ~/.fileapex/maven/computer/iroh/iroh-android/1.1.0-16k/
+# Output: ~/.fileapex/maven/computer/iroh/iroh-android/1.2.0-16k/
 set -euo pipefail
 
-TAG=v1.1.0
-VERSION=1.1.0
-OUT_VERSION=1.1.0-16k
+TAG=v1.2.0
+VERSION=1.2.0
+OUT_VERSION=1.2.0-16k
 SRC="${FILEAPEX_IROH_SRC:-$HOME/iroh-ffi-build/iroh-ffi}"
 NDK="${ANDROID_NDK_HOME:-$HOME/Library/Android/sdk/ndk/27.2.12479018}"
 MAVEN="${FILEAPEX_MAVEN:-$HOME/.fileapex/maven}"
@@ -26,6 +26,10 @@ rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-andro
 if [ ! -d "$SRC/.git" ]; then
   mkdir -p "$(dirname "$SRC")"
   git clone --depth 1 --branch "$TAG" https://github.com/n0-computer/iroh-ffi.git "$SRC"
+elif [ "$(git -C "$SRC" describe --tags --exact-match 2>/dev/null)" != "$TAG" ]; then
+  git -C "$SRC" fetch --depth 1 origin tag "$TAG"
+  rm -f "$SRC/.cargo/config.toml" # written by this script below; a newer tag may track its own
+  git -C "$SRC" checkout "$TAG"
 fi
 mkdir -p "$SRC/.cargo"
 {

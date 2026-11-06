@@ -67,6 +67,7 @@ class MacNativeTlsClientTest {
             routing {
                 get("/hdr") {
                     call.response.headers.append("X-FileApex-Bulletin-Version", "1792900000000")
+                    call.response.headers.append("X-FileApex-Chain-State", "v1.4." + "c".repeat(32) + ".0a0b0c0d")
                     call.respondText("hdr")
                 }
                 get("/who") {
@@ -165,5 +166,6 @@ class MacNativeTlsClientTest {
         lib.fileapex_lan_http_free(body.value)
         val parsed = com.fileapex.network.PeerHttpHeaders.parseLines(text)
         assertEquals(1792900000000L, com.fileapex.network.PeerHttpHeaders.bulletinVersion(parsed))
+        assertEquals(4L, com.fileapex.network.PeerHttpHeaders.chainState(parsed)?.seq)
     }
 }

@@ -143,7 +143,6 @@ class BulletinBoardSyncEngine(
         val selfId = loadLocalIdentity().deviceId
         val remotePeers = peers.filter { it.deviceId != selfId && BulletinBoardPolicy.takesPartInBulletin(it) }
         val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() && shouldQueueFor(it) }
-        val legacyPeers = remotePeers.filterNot { it.supportsBulletinSync() }
 
         if (bulletinPeers.isNotEmpty()) {
             repository.enqueueOutboxForAllPeers(
@@ -154,7 +153,6 @@ class BulletinBoardSyncEngine(
             bulletinPeers.forEach { peerBackoff.reset(it.deviceId) }
             requestDrain()
         }
-        BulletinLegacyRelay.dispatchMessage(message, legacyPeers)
     }
 
     suspend fun publishTombstone(messageId: String) {
@@ -162,7 +160,6 @@ class BulletinBoardSyncEngine(
         val selfId = loadLocalIdentity().deviceId
         val remotePeers = peers.filter { it.deviceId != selfId && BulletinBoardPolicy.takesPartInBulletin(it) }
         val bulletinPeers = remotePeers.filter { it.supportsBulletinSync() && shouldQueueFor(it) }
-        val legacyPeers = remotePeers.filterNot { it.supportsBulletinSync() }
 
         if (bulletinPeers.isNotEmpty()) {
             repository.enqueueOutboxForAllPeers(
@@ -174,8 +171,6 @@ class BulletinBoardSyncEngine(
             requestDrain()
         }
         FcmWakeCoordinator.dispatchPresenceWakeToLinkedPeers()
-        val snapshot = repository.getMessage(messageId)?.toNoteRecord()
-        BulletinLegacyRelay.dispatchTombstone(messageId, legacyPeers, snapshot)
     }
 
     /** A new or changed checklist line goes out like a flag does. */

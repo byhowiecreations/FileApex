@@ -29,7 +29,9 @@ class IrohBridge(
     private val bufferSize: Int = DEFAULT_BUFFER_BYTES,
     private val onPeerActive: (String) -> Unit = {},
     private val bridgePort: () -> Int = { 0 },
-    private val identify: suspend (String) -> BridgedPeer? = { null }
+    private val identify: suspend (String) -> BridgedPeer? = { null },
+    private val pathOf: (String) -> String? = { null },
+    private val onPeerSeen: (String) -> Unit = {}
 ) {
     private class Listener(val socket: ServerSocket, val job: Job)
 
@@ -153,6 +155,7 @@ class IrohBridge(
         val lastActivity = AtomicLong(startedAt)
         val sniffer = HttpExchangeSniffer(
             onStart = { request ->
+                if (!requestsFromSocket) onPeerSeen(peerId)
                 val what = IrohActivity.describe(request)
                 if (what != IrohActivity.PRESENCE_CHECK) {
                     IrohLog.add("$what started ($direction $label)")
@@ -161,7 +164,7 @@ class IrohBridge(
             }
         ) {
             answered = true
-            IrohLog.add("${IrohActivity.describe(it)} ($direction $label) after ${(System.nanoTime() - startedAt) / 1_000_000} ms")
+            IrohLog.add("${IrohActivity.describe(it)} ($direction $label, ${IrohPathKind.logLabel(pathOf(peerId))}) after ${(System.nanoTime() - startedAt) / 1_000_000} ms")
         }
         socket.tcpNoDelay = true
         val watchdog = scope.launch(Dispatchers.IO) {
@@ -203,7 +206,7 @@ class IrohBridge(
                             output.write(chunk)
                             output.flush()
                         }
-                        socket.shutdownOutput()
+                        finishOutput(socket)
                     }
                 }
             }
@@ -248,6 +251,20 @@ class IrohBridge(
     }
 
     companion object {
+        /**
+         * Half-closes the client side once the whole answer was copied. A client that already hung up (it got what it
+         * needed and tore the connection down, which Android reports as ENOTCONN) leaves nothing to close: that is the
+         * normal end of a request, not a dropped one.
+         */
+        internal fun finishOutput(socket: Socket) {
+            try {
+                socket.shutdownOutput()
+            } catch (_: java.io.IOException) {
+                // The connection is already gone, so the half-close has no effect to report.
+            }
+        }
+
+
         const val DEFAULT_MAX_STREAMS = 64
         private const val WATCHDOG_TICK_MS = 10_000L
         const val DEFAULT_BUFFER_BYTES = 64 * 1024

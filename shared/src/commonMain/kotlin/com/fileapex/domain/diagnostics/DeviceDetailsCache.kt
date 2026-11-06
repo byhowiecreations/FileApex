@@ -16,7 +16,15 @@ data class CachedDeviceDetails(val deviceId: String, val snapshot: PeerDeviceDia
 object DeviceDetailsCache {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val lock = Any()
-    private var entries: Map<String, CachedDeviceDetails>? = null
+    private var current: Map<String, CachedDeviceDetails> = emptyMap()
+    private var settled = false
+    private var unsaved = false
+
+    @Volatile
+    private var reader: () -> String? = { readDeviceDetailsCacheRaw() }
+
+    @Volatile
+    private var writer: (String) -> Unit = { writeDeviceDetailsCacheRaw(it) }
 
     fun get(deviceId: String): PeerDeviceDiagnostics? = synchronized(lock) { loaded()[deviceId]?.snapshot }
 
@@ -36,12 +44,34 @@ object DeviceDetailsCache {
         if (kept.size != loaded().size) save(kept)
     }
 
-    private fun loaded(): Map<String, CachedDeviceDetails> =
-        entries ?: decode(readDeviceDetailsCacheRaw()).associateBy { it.deviceId }.also { entries = it }
+    /**
+     * The stored entries, merged with answers kept while the store could not be opened yet. A store that is still locked
+     * is not an empty one: it is read again on the next call, and nothing is written until it has been read.
+     */
+    private fun loaded(): Map<String, CachedDeviceDetails> {
+        if (!settled) {
+            val raw = reader()
+            if (raw != null) {
+                current = decode(raw).associateBy { it.deviceId } + current
+                settled = true
+                if (unsaved) writer(encode(current.values.toList()))
+                unsaved = false
+            }
+        }
+        return current
+    }
 
     private fun save(next: Map<String, CachedDeviceDetails>) {
-        entries = next
-        writeDeviceDetailsCacheRaw(encode(next.values.toList()))
+        current = next
+        if (settled) writer(encode(next.values.toList())) else unsaved = true
+    }
+
+    internal fun resetForTest(reader: () -> String?, writer: (String) -> Unit) = synchronized(lock) {
+        this.reader = reader
+        this.writer = writer
+        current = emptyMap()
+        settled = false
+        unsaved = false
     }
 
     internal fun encode(list: List<CachedDeviceDetails>): String = json.encodeToString(ListSerializer(CachedDeviceDetails.serializer()), list)
@@ -90,5 +120,6 @@ object DeviceDetailsCache {
     }
 }
 
-internal expect fun readDeviceDetailsCacheRaw(): String
+/** Null when stored text exists but cannot be opened yet (sealing key not available). */
+internal expect fun readDeviceDetailsCacheRaw(): String?
 internal expect fun writeDeviceDetailsCacheRaw(raw: String)

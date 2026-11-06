@@ -9,7 +9,9 @@ data class LocalIdentity(
     val rootPath: String,
     val sharePort: Int = DEFAULT_SHARE_PORT,
     /** The id this device had before its key changed and the id followed it; empty when it never changed or the change was settled. */
-    val previousDeviceId: String = ""
+    val previousDeviceId: String = "",
+    /** False when a name is stored but could not be opened (the key is not available yet): [deviceName] is then only the fallback. */
+    val deviceNameReadable: Boolean = true
 ) {
     companion object {
         const val DEFAULT_SHARE_PORT = 8080

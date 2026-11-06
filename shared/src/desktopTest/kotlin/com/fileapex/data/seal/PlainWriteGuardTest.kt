@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * Nothing the app keeps may be written to disk in clear text by accident. Every file write and every Android
- * preferences file must either go through [SealedText] / the sealed settings store, or be listed here with the reason
+ * preferences file must either go through [SealedText] / [SealedStrings] / the sealed settings store, or be listed here with the reason
  * it holds nothing about the user and is read by something that cannot unseal it.
  */
 class PlainWriteGuardTest {
@@ -45,21 +45,16 @@ class PlainWriteGuardTest {
         "SealedText.kt" to "the sealed text helper",
         "LocalApiFile.kt" to "local-api.json: a port and a per-launch token, owner-only; the extensions cannot unseal anything and it holds nothing about the user",
         "RestoreCredentials.kt" to "expect declaration only",
+        "LocalIdentity.android.kt" to "writes the random device id and previous id in clear on purpose (the device name is sealed): a failed read of a sealed id would invent a new identity and break its binding to the E2EE key",
         "RestoreCredentials.android.kt" to "three flags; the credential itself is held by the system credential manager"
     )
 
     /** Still written in clear text and NOT acceptable: each has a roadmap row and goes when it is sealed. */
     private val open: Map<String, String> = mapOf(
-        "CliDeviceAliasManager.kt" to "device aliases in a file the CLI reads; move behind the app",
-        "LocalIdentity.android.kt" to "this device's name; read before the key can be opened, needs a startup order change",
-        "DirectShareUsageStore.android.kt" to "use counts per device id",
-        "FirebaseGate.kt" to "whether Google is linked, read at launch before the settings store opens",
-        "AndroidWorkState.kt" to "schedule memory, read before the settings store opens"
+        "FirebaseGate.kt" to "whether Google is linked, read at launch before the settings store opens"
     )
 
     private val allowed = justified + open
-
-    private val pattern = Regex("""\.(writeText|appendText|writeBytes)\(|getSharedPreferences\(|Files\.write""")
 
     @Test
     fun openEntriesNeverOverlapJustifiedOnes() {
@@ -71,7 +66,7 @@ class PlainWriteGuardTest {
         val offenders = listOf("shared/src", "composeApp/src").map { File(root, it) }.flatMap { dir ->
             dir.walkTopDown().onEnter { it.name != "build" }
                 .filter { it.isFile && it.extension == "kt" && "Test" !in it.path && "androidTest" !in it.path }.toList()
-        }.filter { file -> file.name !in allowed && file.readText().let { pattern.containsMatchIn(it) && "SealedText" !in it } }.map { it.name }.sorted()
-        assertEquals("these files write to disk in clear text; seal them with SealedText or list them with a reason", emptyList<String>(), offenders)
+        }.filter { file -> file.name !in allowed && PlainWriteScan.writesPlain(file.readText()) }.map { it.name }.sorted()
+        assertEquals("these files write to disk in clear text; seal them with SealedText or SealedStrings (a real call, not a mention) or list them with a reason", emptyList<String>(), offenders)
     }
 }

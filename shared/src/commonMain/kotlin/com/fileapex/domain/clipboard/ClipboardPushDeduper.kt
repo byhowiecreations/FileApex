@@ -15,16 +15,45 @@ object ClipboardPushDeduper {
     private val lock = Any()
     private var loaded = false
 
+    // Changes made while the stored state could not be opened yet; applied over it when it opens.
+    private var unsaved = false
+    private val forgottenWhileLocked = mutableSetOf<String>()
+
+    @Volatile
+    private var loader: () -> PersistedDeduperState? = { ClipboardDeduperPersistence.load() }
+
+    @Volatile
+    private var saver: (String?, Map<String, Long>) -> Unit = { last, seen -> ClipboardDeduperPersistence.save(last, seen) }
+
+    /** Reads the stored state; a state that is still locked is not an empty one, so it is read again on the next call. */
     private fun ensureLoaded() {
-        if (!loaded) {
-            synchronized(lock) {
-                if (!loaded) {
-                    val persisted = ClipboardDeduperPersistence.load()
-                    lastHash = persisted.lastHash
-                    seenHashes.putAll(persisted.seenHashes)
-                    loaded = true
-                }
-            }
+        if (loaded) return
+        synchronized(lock) {
+            if (loaded) return
+            val persisted = loader() ?: return
+            persisted.seenHashes.forEach { (hash, at) -> if ((seenHashes[hash] ?: Long.MIN_VALUE) < at) seenHashes[hash] = at }
+            forgottenWhileLocked.forEach { seenHashes.remove(it) }
+            if (lastHash == null) lastHash = persisted.lastHash?.takeIf { it !in forgottenWhileLocked }
+            forgottenWhileLocked.clear()
+            loaded = true
+            if (unsaved) saveLocked()
+            unsaved = false
+        }
+    }
+
+    private fun saveLocked() {
+        if (loaded) saver(lastHash, seenHashes) else unsaved = true
+    }
+
+    internal fun resetForTest(loader: () -> PersistedDeduperState?, saver: (String?, Map<String, Long>) -> Unit) {
+        synchronized(lock) {
+            this.loader = loader
+            this.saver = saver
+            lastHash = null
+            seenHashes.clear()
+            forgottenWhileLocked.clear()
+            unsaved = false
+            loaded = false
         }
     }
 
@@ -49,7 +78,7 @@ object ClipboardPushDeduper {
             lastHash = hash
             seenHashes[hash] = now
             seenHashes.entries.removeAll { now - it.value > HASH_TTL_MS }
-            ClipboardDeduperPersistence.save(lastHash, seenHashes)
+            saveLocked()
         }
     }
 
@@ -63,7 +92,8 @@ object ClipboardPushDeduper {
                 lastHash = null
             }
             seenHashes.remove(hash)
-            ClipboardDeduperPersistence.save(lastHash, seenHashes)
+            if (!loaded) forgottenWhileLocked += hash
+            saveLocked()
         }
     }
 
@@ -99,6 +129,8 @@ object ClipboardPushDeduper {
         synchronized(lock) {
             lastHash = null
             seenHashes.clear()
+            forgottenWhileLocked.clear()
+            unsaved = false
             ClipboardDeduperPersistence.clear()
             loaded = true
         }

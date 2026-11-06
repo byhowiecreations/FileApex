@@ -75,6 +75,7 @@ class PeerPresenceMonitor(
         override suspend fun markReachableOverLan(deviceId: String) = markReachable(deviceId)
         override suspend fun markReachableRemote(deviceId: String, via: RouteKind) = markReachable(deviceId, overLan = false, via = via)
         override fun noteRoute(deviceId: String, kind: RouteKind) = book.noteRoute(deviceId, kind)
+        override fun clearRoute(deviceId: String) = book.clearRoute(deviceId)
         override suspend fun touchLastSeenEpoch(deviceId: String) = mutex.withLock<Unit> { repository.touchPeerLastSeenEpoch(deviceId) }
         override fun msSinceReached(deviceId: String): Long? =
             book.epochMs.value[deviceId]?.let { TimeUtils.now() - it }
@@ -105,6 +106,9 @@ class PeerPresenceMonitor(
     val onlineSnapshotEpochMs: StateFlow<Long> = book.snapshotEpochMs
     val onlineDeviceIds: StateFlow<Set<String>> = book.onlineIds
     val reachedVia: StateFlow<Map<String, RouteKind>> = book.via
+
+    /** A peer's request arrived over Iroh, which it only uses when the LAN did not reach us. */
+    fun noteInboundIroh(deviceId: String) { scope.launch { cancellableCatching { inboundIroh.onInbound(deviceId) } } }
 
     fun setAppInForeground(inForeground: Boolean) {
         appInForeground = inForeground
@@ -140,7 +144,8 @@ class PeerPresenceMonitor(
         if (snapshotWatcherJob?.isActive == true) return
         snapshotWatcherJob = scope.launch {
             watchOnlineSnapshot(repository.observeDevices(), { refreshOnlineSnapshot() }) {
-                onlineExpiryWaitMs(mutex.withLock { repository.listDevices() }, book.onlineIds.value, book.epochMs.value, TimeUtils.now())
+                val now = TimeUtils.now()
+                onlineExpiryWaitMs(mutex.withLock { repository.listDevices() }, book.onlineIds.value, book.epochMs.value, now, book.routeExpiryWaitMs(LanPresenceTiming.ROUTE_LABEL_TTL_MS, now))
             }
         }
     }
@@ -231,7 +236,11 @@ class PeerPresenceMonitor(
         }
     }
 
+    private val inboundIroh = InboundIrohRoute(book, TimeUtils::now, LanPresenceTiming.INBOUND_LAN_RECHECK_MS) { id -> repository.getDevice(id)?.let { outbound.lanStillAnswers(it) } == true }
+    private val routeWindow = RouteChangeWindow(TimeUtils::now, LanPresenceTiming.ROUTE_CHANGE_WINDOW_MS, LanPresenceTiming.ROUTE_CHANGE_MIN_GAP_MS)
+
     suspend fun runSingleShotRevalidation() {
+        if (routeWindow.onNetworkChanged(isActiveLanConnectivity())) PresenceProbeStats.shared.forcedRound()
         announceOnNetwork()
         refreshAll(PresenceMode.Full, skipFcmDispatch = true)
     }
@@ -389,7 +398,8 @@ class PeerPresenceMonitor(
             }
             val tailnetUp = tailnetNodeUp()
             if (!isActiveLanConnectivity() && !tailnetUp) {
-                outbound.irohProbe(peer, LanPresenceTiming.BACKGROUND_PEER_FRESH_MS)
+                book.dropStaleLanRoute(deviceId, LanPresenceTiming.BACKGROUND_PEER_FRESH_MS)
+                outbound.irohProbe(peer, LanPresenceTiming.BACKGROUND_PEER_FRESH_MS, routeWindow.isOpen())
                 refreshOnlineSnapshot()
                 return
             }
@@ -402,10 +412,11 @@ class PeerPresenceMonitor(
                 if (!alreadyFresh(peer, freshMs) && digests.allowsSkip(peer, round.hints)) return
             }
             probe(peer, mode, freshMs)
+            book.dropStaleLanRoute(deviceId, freshMs)
             if (round != null && isSource) {
                 digests.collectHints(listOf(peer), freshMs).forEach { (id, at) -> round.hints.merge(id, at) { a, b -> maxOf(a, b) } }
             }
-            outbound.irohProbe(peer, freshMs)
+            outbound.irohProbe(peer, freshMs, routeWindow.isOpen())
             refreshOnlineSnapshot()
             val live = mutex.withLock { repository.getDevice(deviceId) } ?: peer
             if (mode == PresenceMode.Full && isDeviceOnline(live)) maybeBroadcastSelfIdentity(deviceId)
@@ -480,6 +491,7 @@ class PeerPresenceMonitor(
     suspend fun refreshOnlineSnapshot() {
         val peers = mutex.withLock { repository.listDevices() }
         publishStableOnlineIds(peers)
+        book.expireRoutes(LanPresenceTiming.ROUTE_LABEL_TTL_MS, TimeUtils.now())
         book.markSnapshot()
     }
 

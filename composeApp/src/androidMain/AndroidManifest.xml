@@ -250,6 +250,12 @@
             android:foregroundServiceType="connectedDevice" />
 
         <service
+            android:name=".network.GuestDropForegroundService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <service
             android:name="com.fileapex.platform.ShareServerKeepAliveJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />

@@ -32,7 +32,7 @@ func TestWriteTheWireTheKotlinCodeIsCheckedAgainst(t *testing.T) {
 	hostAdmits(t, host, joiner)
 	joiner.tickChain(t.Context())
 	own := withDocumentationAddress(joiner.selfState())
-	answer := host.answerChain(true)
+	answer := host.answerChain(true, "")
 	for i := range answer.Profiles {
 		answer.Profiles[i] = withDocumentationAddress(answer.Profiles[i])
 	}

@@ -58,7 +58,7 @@ internal fun Route.registerChainRoutes(server: FileApexServer) {
             when {
                 from.isEmpty() -> call.respond(HttpStatusCode.Unauthorized, "authentication_required")
                 hub == null -> call.respond(HttpStatusCode.ServiceUnavailable, "membership_unavailable")
-                else -> call.respondText(ChainRouteHandlers.pull(hub.chainReplicator, server.json, withProfiles = server.bridgedPeer(call)?.revokedOnly != true), ContentType.Application.Json)
+                else -> call.respondText(ChainRouteHandlers.pull(hub.chainReplicator, server.json, withProfiles = server.bridgedPeer(call)?.revokedOnly != true, since = call.request.queryParameters["since"].orEmpty()), ContentType.Application.Json)
             }
         }.onFailure { error ->
             server.onLog("GET /api/v1/membership/chain failed", error)

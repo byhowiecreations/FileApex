@@ -1,88 +1,12 @@
 package com.fileapex.network
 
 import com.fileapex.i18n.AppI18n
-import kotlinx.io.files.Path
-import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.write
 import com.fileapex.network.FileApexClient.Companion.PEER_CONNECT_TIMEOUT_MS
 import com.fileapex.network.FileApexClient.Companion.PEER_REQUEST_TIMEOUT_MS
 import com.fileapex.network.FileApexClient.Companion.TRANSFER_IDLE_TIMEOUT_MS
 
 class PeerBulletinClient internal constructor(private val http: FileApexClient) {
-    suspend fun postNote(
-        host: String,
-        port: Int,
-        note: com.fileapex.data.note.NoteRecord
-    ) {
-        val payload = http.json.encodeToString(com.fileapex.data.note.NoteRecord.serializer(), note)
-        val response = http.boundPost(
-            host = host,
-            port = port,
-            pathWithQuery = "/api/v1/notes/send",
-            body = payload,
-            contentType = "application/json",
-            timeoutMs = PEER_REQUEST_TIMEOUT_MS
-        )
-        http.requireSuccess(response, "Note dispatch failed (${response.statusCode})")
-    }
-
-    suspend fun uploadNoteAttachment(
-        host: String,
-        port: Int,
-        noteId: String,
-        fileName: String,
-        localSourcePath: String
-    ) {
-        val source = Path(localSourcePath)
-        check(SystemFileSystem.exists(source)) { "Local source missing: $localSourcePath" }
-        val contentLength = SystemFileSystem.metadataOrNull(source)?.size?.takeIf { it > 0L } ?: 0L
-        PeerLanHttpPolicy.ensureRoute(host)
-        val response = peerHttpUploadFromFile(
-            host = host,
-            port = port,
-            pathWithQuery = http.withSenderQuery(
-                http.queryPath(
-                    basePath = "/api/v1/notes/attachment",
-                    host = host,
-                    port = port,
-                    params = mapOf("noteId" to noteId, "fileName" to fileName)
-                )
-            ),
-            contentType = "application/octet-stream",
-            sourcePath = localSourcePath,
-            offset = 0L,
-            length = contentLength,
-            connectTimeoutMs = PEER_CONNECT_TIMEOUT_MS,
-            uploadIdleTimeoutMs = TRANSFER_IDLE_TIMEOUT_MS
-        ) ?: throw PeerUnreachableException(PeerLanHttpPolicy.unreachableMessage(host, port))
-        if (response.statusCode == 403) {
-            error(com.fileapex.i18n.AppI18n.t("pin_required_open_device"))
-        }
-        require(response.statusCode in 200..299) {
-            "Note attachment upload failed (${response.statusCode})"
-        }
-    }
-
-    suspend fun postNoteDelete(
-        host: String,
-        port: Int,
-        noteId: String,
-        driveFileId: String? = null,
-        checksum: String? = null,
-        attachmentName: String? = null
-    ) {
-        val payload = noteDeletePayload(noteId, driveFileId, checksum, attachmentName)
-        val response = http.boundPost(
-            host = host,
-            port = port,
-            pathWithQuery = "/api/v1/notes/delete",
-            body = payload,
-            contentType = "application/json",
-            timeoutMs = PEER_REQUEST_TIMEOUT_MS
-        )
-        http.requireSuccess(response, "Note delete failed (${response.statusCode})")
-    }
-
     suspend fun fetchBulletinDelta(
         host: String,
         port: Int,
@@ -183,20 +107,6 @@ class PeerBulletinClient internal constructor(private val http: FileApexClient) 
                 error("Bulletin file checksum mismatch")
             }
             return SocketFileStreamer.finalizePart(partPath, preferredFinal)
-        }
-
-        internal fun noteDeletePayload(noteId: String, driveFileId: String?, checksum: String?, attachmentName: String?): String {
-            val drive = driveFileId?.takeIf { it.isNotBlank() }?.replace("\"", "")
-            val hash = checksum?.takeIf { it.isNotBlank() }?.replace("\"", "")
-            val name = attachmentName?.takeIf { it.isNotBlank() }?.replace("\"", "")
-            val payload = buildString {
-                append("""{"noteId":"$noteId","action":"RETRACT_MESSAGE"""")
-                if (!drive.isNullOrBlank()) append(""","driveFileId":"$drive"""")
-                if (!hash.isNullOrBlank()) append(""","checksum":"$hash"""")
-                if (!name.isNullOrBlank()) append(""","attachmentName":"$name"""")
-                append("}")
-            }
-            return payload
         }
     }
 }

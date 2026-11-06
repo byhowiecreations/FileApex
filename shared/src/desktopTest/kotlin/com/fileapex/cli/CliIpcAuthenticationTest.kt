@@ -53,7 +53,9 @@ class CliIpcAuthenticationTest {
             val chunk = ByteArray(8192) { 'a'.code.toByte() }
             val closed = runCatching { repeat(256) { socket.getOutputStream().write(chunk); socket.getOutputStream().flush() } }
             val end = runCatching { socket.getInputStream().read() }
-            assertTrue(closed.isFailure || end.getOrNull() == -1)
+            // Closing a socket that still has unread bytes ends in a reset, so a refusal reads as a failed write, a clean end, or a
+            // reset. Only a read timeout (the line was buffered and the connection kept) or data coming back is a failure.
+            assertTrue("write=$closed read=$end", closed.isFailure || end.getOrNull() == -1 || end.exceptionOrNull() is java.net.SocketException)
         }
     }
 }

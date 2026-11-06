@@ -241,7 +241,7 @@ kotlin {
             implementation(libs.zxing.android.embedded)
             implementation(libs.androidx.work.runtime)
             if (!fileapexFdroid) {
-                if (!fileapexNoIroh && fileapexIroh16k) implementation("computer.iroh:iroh-android:1.1.0-16k") // fdroid:remove
+                if (!fileapexNoIroh && fileapexIroh16k) implementation("computer.iroh:iroh-android:1.2.0-16k") // fdroid:remove
                 if (!fileapexNoIroh && !fileapexIroh16k) implementation(libs.iroh.android) // fdroid:remove
                 // The iroh-android POM asks for jna 5.15.0, whose libjnidispatch.so crashes 16 KB devices (RELRO end).
                 if (!fileapexNoIroh) implementation("net.java.dev.jna:jna:${libs.versions.jna.get()}@aar") // fdroid:remove

@@ -184,4 +184,26 @@ class IrohPolicyTest {
     fun theServedHoldIsNoLongerThanTheIdleGrace() {
         assertTrue(IrohWakePolicy.SERVED_KEEP_MS <= IrohWakePolicy.IDLE_GRACE_MS)
     }
+
+    @Test
+    fun anyPeerServedWithinTheKeepWindowCountsAsRecentlyServed() {
+        val now = 10_000_000L
+        assertFalse(IrohWakePolicy.servedRecently(emptyList(), now))
+        assertFalse(IrohWakePolicy.servedRecently(listOf(now - IrohWakePolicy.SERVED_KEEP_MS), now))
+        assertTrue(IrohWakePolicy.servedRecently(listOf(now - IrohWakePolicy.SERVED_KEEP_MS, now - 1), now))
+    }
+
+    @Test
+    fun aPeerReachedRecentlyIsStillProbedOverIrohRightAfterTheNetworkChangedOffTheLan() {
+        val fresh = 4 * 60_000L
+        assertFalse(IrohSweepPolicy.shouldProbe(canReach = true, msSinceReached = 30_000L, freshMs = fresh, onLan = false))
+        assertTrue(IrohSweepPolicy.shouldProbe(canReach = true, msSinceReached = 30_000L, freshMs = fresh, onLan = false, routeJustChanged = true))
+    }
+
+    @Test
+    fun aRouteChangeNeverProbesAPeerWithNoIrohAddressOrOneOnTheSameLan() {
+        val fresh = 4 * 60_000L
+        assertFalse(IrohSweepPolicy.shouldProbe(canReach = false, msSinceReached = null, freshMs = fresh, onLan = false, routeJustChanged = true))
+        assertFalse(IrohSweepPolicy.shouldProbe(canReach = true, msSinceReached = 30_000L, freshMs = fresh, onLan = true, routeJustChanged = true))
+    }
 }

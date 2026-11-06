@@ -135,7 +135,7 @@ object DirectShareShortcutCoordinator {
     private fun buildFriendShortcut(friend: com.fileapex.friends.FriendShareTarget, rank: Int): ShortcutInfoCompat {
         val person = Person.Builder().setName(friend.label).setKey(FRIEND_PREFIX + friend.key).setBot(false).setImportant(true).build()
         return ShortcutInfoCompat.Builder(appContext, FRIEND_PREFIX + friend.key)
-            .setShortLabel(friend.label.take(SHORT_LABEL_MAX))
+            .setShortLabel(ShortcutLabel.of(friend.label, com.fileapex.i18n.AppI18n.t("paired_device"), SHORT_LABEL_MAX))
             .setLongLabel(com.fileapex.i18n.AppI18n.t("send_to_device", friend.label).take(LONG_LABEL_MAX))
             .setIcon(ShortcutIconRenderer.friend(appContext, friend.label, friend.group))
             .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
@@ -390,7 +390,7 @@ object DirectShareShortcutCoordinator {
         // silently drops those shortcuts from setDynamicShortcuts / addDynamicShortcuts,
         // so the platform stores nothing (share sheet then shows only "FileApex").
         return ShortcutInfoCompat.Builder(appContext, shortcutId(peer.deviceId))
-            .setShortLabel(peer.deviceName.take(SHORT_LABEL_MAX))
+            .setShortLabel(ShortcutLabel.of(peer.deviceName, com.fileapex.i18n.AppI18n.t("paired_device"), SHORT_LABEL_MAX))
             .setLongLabel(com.fileapex.i18n.AppI18n.t("send_to_device", peer.deviceName).take(LONG_LABEL_MAX))
             .setIcon(ShortcutIconRenderer.device(appContext, peer))
             .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))

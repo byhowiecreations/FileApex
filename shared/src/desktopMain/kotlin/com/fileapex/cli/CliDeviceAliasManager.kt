@@ -1,6 +1,7 @@
 package com.fileapex.cli
 
 import com.fileapex.data.db.PairedDeviceEntity
+import com.fileapex.data.seal.SealedText
 import com.fileapex.platform.DesktopPlatformPaths
 import java.io.File
 import kotlinx.serialization.Serializable
@@ -17,23 +18,25 @@ data class AliasConfig(
 
 object CliDeviceAliasManager {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private const val PURPOSE = "cli-device-aliases"
+
+    /** Tests point this at a temp folder. */
+    @Volatile
+    internal var directory: (() -> File)? = null
+
     private val aliasFile: File
-        get() = File(DesktopPlatformPaths.applicationSupportDirectory(), "cli_device_aliases.json")
+        get() = File(directory?.invoke() ?: DesktopPlatformPaths.applicationSupportDirectory(), "cli_device_aliases.json")
 
     @Synchronized
     fun load(): AliasConfig {
-        return runCatching {
-            val file = aliasFile
-            if (file.exists()) {
-                json.decodeFromString<AliasConfig>(file.readText())
-            } else {
-                AliasConfig()
-            }
-        }.getOrDefault(AliasConfig())
+        val text = SealedText.readFile(aliasFile, PURPOSE)
+        if (text.isEmpty()) return AliasConfig()
+        return runCatching { json.decodeFromString<AliasConfig>(text) }.getOrDefault(AliasConfig())
     }
 
+    /** False when the alias could not be stored because the vault key is not available. */
     @Synchronized
-    fun setAlias(deviceId: String, slug: String) {
+    fun setAlias(deviceId: String, slug: String): Boolean {
         val cleanSlug = slug.trim().lowercase()
         require(cleanSlug.isNotEmpty()) { "Alias slug cannot be empty" }
         val current = load()
@@ -53,7 +56,7 @@ object CliDeviceAliasManager {
             slugToDeviceId = nextSlugToId,
             deviceIdToSlug = nextIdToSlug
         )
-        save(updated)
+        return SealedText.writeFile(aliasFile, PURPOSE, json.encodeToString(updated))
     }
 
     @Synchronized
@@ -83,17 +86,5 @@ object CliDeviceAliasManager {
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
         return slug.ifBlank { device.deviceId.take(8) }
-    }
-
-    @Synchronized
-    private fun save(config: AliasConfig) {
-        runCatching {
-            val file = aliasFile
-            val parent = file.parentFile
-            if (parent != null && !parent.exists()) {
-                parent.mkdirs()
-            }
-            file.writeText(json.encodeToString(config))
-        }
     }
 }

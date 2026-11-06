@@ -29,7 +29,7 @@ Legend: ✅ yes · ❌ no, or not offered or not listed in the sources checked �
 
 **Pick by need**
 
-- Send a file to anyone, anywhere: DashBeam or Blip.
+- Send a file to anyone, anywhere: DashBeam or Blip. FileApex can send a one-time link that opens in any browser, with the sender's device staying on.
 - Send a file to someone in the room: LocalSend.
 - Make your phone and computer behave like one device: FileApex, KDE Connect or LinkMyMac.
 - Your own devices, with Windows and Linux support and no account: FileApex or KDE Connect.
@@ -56,7 +56,7 @@ Legend: ✅ yes · ❌ no, or not offered or not listed in the sources checked �
 | **macOS** | ✅ Apple Silicon and Intel | ✅ | ✅ | ✅ stable release, also on Homebrew | ✅ | ✅ |
 | **Windows** | ✅ | ✅ | ✅ | ✅ Microsoft Store and offline installer | ✅ | ❌ |
 | **Linux** | ✅ .deb, .rpm, AppImage | ✅ | ✅ | ✅ main target | ✅ .deb, .rpm, AppImage | ❌ |
-| **Web / browser** | ❌ | ❌ | ✅ web.localsend.org | ❌ | ✅ app.dashbeam.net | ❌ |
+| **Web / browser** | ❔ receive page for one-time links only | ❌ | ✅ web.localsend.org | ❌ | ✅ app.dashbeam.net | ❌ |
 | **Command line** | ✅ plus terminal dashboard | ❌ | ✅ via 3rd party | ✅ | ✅ | ❌ |
 | **Docker / headless node** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Browser extension** | ✅ Firefox | ❌ | ❌ | ✅ Chrome and Firefox via Plasma integration | ❌ | ❌ |

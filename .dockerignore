@@ -1,0 +1,5 @@
+# The image build needs only the Go sources and the version file. Everything else in the project folder (signing and
+# Firebase files, local.properties, keystores, build outputs, docs) stays out of the build context.
+*
+!native/tsnet
+!version.md

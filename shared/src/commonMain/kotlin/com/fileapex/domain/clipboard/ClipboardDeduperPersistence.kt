@@ -6,7 +6,8 @@ data class PersistedDeduperState(
 )
 
 expect object ClipboardDeduperPersistence {
-    fun load(): PersistedDeduperState
+    /** Null when the stored state exists but cannot be opened yet (sealing key not available). */
+    fun load(): PersistedDeduperState?
     fun save(lastHash: String?, seenHashes: Map<String, Long>)
     fun clear()
 }

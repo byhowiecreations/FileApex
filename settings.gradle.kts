@@ -65,11 +65,11 @@ val (fileapexVersionName, fileapexVersionCode, fileapexExtensionVersion) = loadF
 val fileapexFdroid = gradle.startParameter.projectProperties["fileapex.fdroid"] == "true" ||
     gradle.startParameter.taskNames.any { it.contains("fdroid", ignoreCase = true) }
 
-// The published computer.iroh:iroh-android 1.1.0 is not 16 KB aligned, which Google Play refuses. scripts/build_iroh_android.sh
-// builds a 16 KB copy (1.1.0-16k) into ~/.fileapex/maven. Without it any bundle build leaves Iroh out (an Iroh-less stub is
+// The published computer.iroh:iroh-android 1.2.0 is not 16 KB aligned, which Google Play refuses. scripts/build_iroh_android.sh
+// builds a 16 KB copy (1.2.0-16k) into ~/.fileapex/maven. Without it any bundle build leaves Iroh out (an Iroh-less stub is
 // used, as in the F-Droid build).
 val fileapexIrohMaven = File(System.getProperty("user.home"), ".fileapex/maven")
-val fileapexIroh16k = File(fileapexIrohMaven, "computer/iroh/iroh-android/1.1.0-16k/iroh-android-1.1.0-16k.aar").isFile
+val fileapexIroh16k = File(fileapexIrohMaven, "computer/iroh/iroh-android/1.2.0-16k/iroh-android-1.2.0-16k.aar").isFile
 val fileapexNoIroh = gradle.startParameter.projectProperties["fileapex.noiroh"] == "true" ||
     (!fileapexIroh16k && gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) })
 
@@ -108,7 +108,7 @@ dependencyResolutionManagement {
         if (fileapexIroh16k) {
             maven {
                 url = fileapexIrohMaven.toURI()
-                content { includeVersion("computer.iroh", "iroh-android", "1.1.0-16k") }
+                content { includeVersion("computer.iroh", "iroh-android", "1.2.0-16k") }
             }
         }
         mavenCentral()

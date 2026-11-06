@@ -2,18 +2,41 @@ package com.fileapex.cli
 
 import com.fileapex.data.db.DeviceDao
 import com.fileapex.data.db.PairedDeviceEntity
+import com.fileapex.data.db.seal.FieldSealer
 import com.fileapex.data.device.DeviceRepository
+import com.fileapex.data.seal.SealedText
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.PrintStream
+import java.nio.file.Files
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 
 class CliDeviceResolverTest {
+    private lateinit var aliasDir: File
+
+    // Aliases are stored sealed: the tests need a key and a temp folder, never the real app support folder.
+    @Before
+    fun setUp() {
+        aliasDir = Files.createTempDirectory("cli-resolver-aliases").toFile()
+        val sealer = FieldSealer(ByteArray(32) { it.toByte() })
+        SealedText.sealerProvider = { sealer }
+        CliDeviceAliasManager.directory = { aliasDir }
+    }
+
+    @After
+    fun tearDown() {
+        SealedText.sealerProvider = { null }
+        CliDeviceAliasManager.directory = null
+        aliasDir.deleteRecursively()
+    }
 
     private class FakeDeviceDao(var devices: List<PairedDeviceEntity>) : DeviceDao {
         override suspend fun forgetLocalExcept(keepId: String) = Unit

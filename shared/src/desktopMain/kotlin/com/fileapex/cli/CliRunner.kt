@@ -2,6 +2,7 @@ package com.fileapex.cli
 
 import com.fileapex.cli.dash.CliDashboard
 import com.fileapex.cli.dash.IpcClusterBackend
+import com.fileapex.cli.ipc.CliAppStatus
 import com.fileapex.cli.ipc.CliIpcClient
 import kotlin.system.exitProcess
 
@@ -17,9 +18,10 @@ object CliRunner {
 
         val cwd = System.getProperty("user.dir") ?: "."
         if (first == "dash" || first == "dashboard") {
-            if (!CliIpcClient.isDaemonRunning()) {
-                System.err.println("Open FileApex before using the CLI.")
-                exitProcess(1)
+            when (CliIpcClient.appStatus()) {
+                CliAppStatus.Running -> Unit
+                CliAppStatus.NotRunning -> { System.err.println("Open FileApex before using the CLI."); exitProcess(1) }
+                CliAppStatus.Refused -> { System.err.println("FileApex refused the CLI connection. Restart the app so the app and the CLI are the same version."); exitProcess(1) }
             }
             CliDashboard(IpcClusterBackend(), cwd).run()
             exitProcess(0)

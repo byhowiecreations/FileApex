@@ -21,6 +21,7 @@ internal interface RouteHost {
     suspend fun markReachableOverLan(deviceId: String)
     suspend fun markReachableRemote(deviceId: String, via: RouteKind)
     fun noteRoute(deviceId: String, kind: RouteKind)
+    fun clearRoute(deviceId: String)
     suspend fun touchLastSeenEpoch(deviceId: String)
     fun msSinceReached(deviceId: String): Long?
     fun recordRemoteReach(deviceId: String, via: RouteKind)
@@ -28,7 +29,13 @@ internal interface RouteHost {
     suspend fun pingHealth(host: String, port: Int, timeoutMs: Long): Boolean
 }
 
-internal class PeerOutboundRoutes(private val host: RouteHost) {
+internal class PeerOutboundRoutes(
+    private val host: RouteHost,
+    private val stats: PresenceProbeStats = PresenceProbeStats.shared,
+    private val irohBackoff: LanScanBackoff = LanScanBackoff(
+        LanPresenceTiming.IROH_PROBE_BACKOFF_BASE_MS, LanPresenceTiming.IROH_PROBE_BACKOFF_MAX_MS, TimeUtils::now
+    )
+) {
     /** deviceId to (verified on LAN, epoch ms the answer expires). */
     private val lanDirectVerdicts = ConcurrentHashMap<String, Pair<Boolean, Long>>()
     private val tailnetAnswers = IrohReachabilityCache(LAN_DIRECT_HIT_TTL_MS, LAN_DIRECT_MISS_TTL_MS, TimeUtils::now)
@@ -56,6 +63,7 @@ internal class PeerOutboundRoutes(private val host: RouteHost) {
             override suspend fun iroh(peer: PairedDeviceEntity): PeerRoute? =
                 irohVerdict(peer)?.let { PeerRoute(RouteKind.Iroh, it.host, it.port) }
         }, onRouteChange = { peer, route ->
+            routeChanged(peer, route)
             if (IrohRuntime.isEnabled()) {
                 val via = when (route?.kind) {
                     RouteKind.Lan -> "LAN"
@@ -66,6 +74,11 @@ internal class PeerOutboundRoutes(private val host: RouteHost) {
                 com.fileapex.iroh.IrohLog.add("route to ${com.fileapex.iroh.IrohLog.short(peer.deviceId)}: $via")
             }
         })
+    }
+
+    /** The label follows the route the resolver settles on, and shows none when no route reaches the peer. */
+    internal fun routeChanged(peer: PairedDeviceEntity, route: PeerRoute?) {
+        if (route == null) host.clearRoute(peer.deviceId) else host.noteRoute(peer.deviceId, route.kind)
     }
 
     suspend fun resolveOutboundEndpoint(
@@ -104,8 +117,11 @@ internal class PeerOutboundRoutes(private val host: RouteHost) {
         return if (answers) PeerRoute(RouteKind.Tailnet, endpoint.host, endpoint.port) else null
     }
 
-    /** A peer the LAN pass did not reach is tried through Iroh; this is that one peer's own attempt. */
-    suspend fun irohProbe(peer: PairedDeviceEntity, freshMs: Long) {
+    /**
+     * A peer the LAN pass did not reach is tried through Iroh; this is that one peer's own attempt. A peer that fails
+     * is not probed again for a growing wait (per network), so a peer that is off for days costs almost nothing.
+     */
+    suspend fun irohProbe(peer: PairedDeviceEntity, freshMs: Long, routeJustChanged: Boolean = false) {
         if (!IrohRuntime.isUsable()) return
         // A resting endpoint is started by the reconcile loop or an explicit request, never by a presence check.
         if (!IrohRuntime.isUp() && FileApexServices.settings.irohRestWhenIdle.value) return
@@ -113,9 +129,29 @@ internal class PeerOutboundRoutes(private val host: RouteHost) {
             canReach = IrohRuntime.canReach(peer.deviceId),
             msSinceReached = host.msSinceReached(peer.deviceId),
             freshMs = freshMs,
-            onLan = isActiveLanConnectivity()
+            onLan = isActiveLanConnectivity(),
+            routeJustChanged = routeJustChanged
         )
-        if (worth) cancellableCatching { if (tailnetRoute(peer) == null) irohVerdict(peer) }
+        if (!worth) return
+        val network = LanScanBackoff.currentNetworkKey()
+        if (!irohBackoff.shouldScan(peer.deviceId, network)) {
+            stats.skippedByBackoff()
+            return
+        }
+        stats.sent()
+        val reached = cancellableCatching { tailnetRoute(peer) != null || irohVerdict(peer) != null }.getOrDefault(false)
+        if (reached) {
+            irohBackoff.recordSuccess(peer.deviceId)
+        } else {
+            stats.failed()
+            irohBackoff.recordFailure(peer.deviceId, network)
+        }
+    }
+
+    /** True when the peer answers on its LAN address now; a remembered answer is not used. */
+    suspend fun lanStillAnswers(peer: PairedDeviceEntity): Boolean {
+        lanDirectVerdicts.remove(peer.deviceId)
+        return verifiedLanEndpoint(peer) != null
     }
 
     /**

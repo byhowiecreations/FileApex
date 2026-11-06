@@ -44,6 +44,20 @@ class StoredEndpointProbeTest {
     }
 
     @Test
+    fun aPeerThatDoesNotAnswerIsReportedUnreachedSoTheChainTickAsksItNext() = runBlocking {
+        val gone = mutableListOf<String>()
+        val before = com.fileapex.membership.ChainStateInbox.forwardUnreached
+        com.fileapex.membership.ChainStateInbox.forwardUnreached = { gone += it }
+        try {
+            val host = Host(FileApexClient.HealthProbe(reached = false))
+            StoredEndpointProbe(host, NodeStateClaims()).tryStoredEndpoint(peer(), 2, 1L, 100L)
+        } finally {
+            com.fileapex.membership.ChainStateInbox.forwardUnreached = before
+        }
+        assertEquals(listOf("P"), gone)
+    }
+
+    @Test
     fun anotherDeviceAnsweringAtTheAddressIsAMismatchNotReach() = runBlocking {
         val host = Host(FileApexClient.HealthProbe(reached = true, respondedAs = "OTHER"))
         val ok = StoredEndpointProbe(host, NodeStateClaims()).tryStoredEndpoint(peer(), 2, 1L, 100L)
@@ -87,4 +101,33 @@ class StoredEndpointProbeTest {
         assertTrue(claims.claim(peer(), 6L))
     }
 
+    private fun stateField(seq: Long, profile: String) =
+        com.fileapex.membership.ChainStateField.of(seq, "d".repeat(64), profile)
+
+    @Test
+    fun aPeersChainStateIsHandedOnWhenItAnswers() = runBlocking {
+        val seen = mutableListOf<String>()
+        val before = com.fileapex.membership.ChainStateInbox.forward
+        com.fileapex.membership.ChainStateInbox.forward = { id, state -> seen += "$id:${state.seq}" }
+        try {
+            val host = Host(FileApexClient.HealthProbe(reached = true, respondedAs = "P", chainState = stateField(7, "00000001")), nodeState("P"))
+            StoredEndpointProbe(host, NodeStateClaims()).tryStoredEndpoint(peer(), 1, 1L, 100L)
+        } finally {
+            com.fileapex.membership.ChainStateInbox.forward = before
+        }
+        assertEquals(listOf("P:7"), seen)
+    }
+
+    @Test
+    fun theProfileDigestDrivesTheNodeStateFetchWhenThePeerShowsNoVersion() = runBlocking {
+        val claims = NodeStateClaims()
+        val host = Host(FileApexClient.HealthProbe(reached = true, respondedAs = "P", chainState = stateField(7, "00000001")), nodeState("P"))
+        val probe = StoredEndpointProbe(host, claims)
+        probe.tryStoredEndpoint(peer(), 1, 1L, 100L)
+        probe.tryStoredEndpoint(peer(), 1, 1L, 100L)
+        assertEquals("one fetch while the digest stays the same", 1, host.log.count { it == "state" })
+        host.health = FileApexClient.HealthProbe(reached = true, respondedAs = "P", chainState = stateField(7, "00000002"))
+        probe.tryStoredEndpoint(peer(), 1, 1L, 100L)
+        assertEquals("a changed digest fetches again", 2, host.log.count { it == "state" })
+    }
 }

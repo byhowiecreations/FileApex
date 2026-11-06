@@ -188,6 +188,7 @@ object FileApexServices {
             com.fileapex.domain.pairing.KickedByPeer.onRevoked(peerId, revokedAt, roster, reason = reason, removedBy = removedBy)
         }
         client.membershipVersionProvider = { 0L }
+        client.chainStateProvider = { membershipHub?.chainState?.current() }
         MembershipWiring.start(bootstrapScope, { membershipHub }, presenceMonitor.onlineDeviceIds)
         // Routes must exist before the first request, or a pinned peer could be reached over HTTP.
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
@@ -308,6 +309,7 @@ object FileApexServices {
     /** A device the cluster removed keeps its friends and settings but none of the cluster's data, old Bulletin file included. */
     suspend fun purgeClusterData() {
         database?.let { com.fileapex.data.db.clearClusterData(it) }
+        settings.clearBulletinDeltaCursors()
         legacyBulletinPath?.let { BulletinBoardMerge.deleteLegacyFiles(it) }
     }
 
@@ -315,6 +317,7 @@ object FileApexServices {
         database?.let { db ->
             cancellableCatching { com.fileapex.data.db.clearClusterData(db) }
             println("FileApexServices: every table is cleared (Leave Cluster or a wipe)")
+            settings.clearBulletinDeltaCursors()
             runCatching { db.clearAllTables() }
         }
         // A wipe must not leave the old Bulletin file (or its merge backup) behind to be copied in again.

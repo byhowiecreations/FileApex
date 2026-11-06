@@ -173,4 +173,58 @@ class SettingsMenuTest {
     fun theClusterWipeIsNeverTreatedAsInUse() {
         assertFalse(menu(showAdvanced = false).any { it.id == SettingsMenuIds.LEAVE_CLUSTER })
     }
+
+    private fun shareLinkMenu(shareLink: Boolean, showAdvanced: Boolean = true) = settingsMenuEntries(
+        playStoreBuild = false,
+        desktopFileSelection = false,
+        deviceNamePage = true,
+        windowsFluent = false,
+        shareLink = shareLink,
+        showAdvanced = showAdvanced
+    )
+
+    @Test
+    fun theShareAsLinkPageIsInSecurityAndAccessControlBeforeLeaveCluster() {
+        val ids = shareLinkMenu(true).filter { it.section == SettingsMenuSection.Security }.map { it.id }
+        assertTrue(ids.contains(SettingsMenuIds.SHARE_LINK))
+        assertTrue(ids.indexOf(SettingsMenuIds.SHARE_LINK) < ids.indexOf(SettingsMenuIds.LEAVE_CLUSTER))
+    }
+
+    @Test
+    fun theShareAsLinkPageIsHiddenWhereLinksCannotBeMadeAndNeverAnAdvancedRow() {
+        assertFalse(shareLinkMenu(false).any { it.id == SettingsMenuIds.SHARE_LINK })
+        assertTrue(shareLinkMenu(true, showAdvanced = false).any { it.id == SettingsMenuIds.SHARE_LINK })
+        assertFalse(SettingsMenuIds.SHARE_LINK in ADVANCED_IDS)
+    }
+
+    private val everyRow = settingsMenuEntries(
+        playStoreBuild = false, desktopFileSelection = true, deviceNamePage = true, windowsFluent = true, backupSync = true,
+        googleCloud = true, tailscale = true, iroh = true, groups = true, shareLink = true, autoLaunchOnDesktop = true
+    )
+
+    @Test
+    fun everyMenuRowOpensAPageExceptReportAnIssue() {
+        everyRow.map { it.id }.filter { it != SettingsMenuIds.REPORT_ISSUE }.forEach {
+            assertTrue("$it has no page", settingsPageFor(it) != null)
+        }
+        assertEquals(null, settingsPageFor(SettingsMenuIds.REPORT_ISSUE))
+        assertEquals(null, settingsPageFor("no such row"))
+    }
+
+    @Test
+    fun rowsOpenThePagesTheyAlwaysOpened() {
+        assertEquals(SettingsPage.DeviceName, settingsPageFor(SettingsMenuIds.DEVICE_NAME))
+        assertEquals(SettingsPage.AutoLaunchOnReboot, settingsPageFor(SettingsMenuIds.AUTO_LAUNCH))
+        assertEquals(SettingsPage.GoogleAccount, settingsPageFor(SettingsMenuIds.GOOGLE_ACCOUNT))
+        assertEquals(SettingsPage.LeaveClusterWipe, settingsPageFor(SettingsMenuIds.LEAVE_CLUSTER))
+        assertEquals(SettingsPage.Groups, settingsPageFor(SettingsMenuIds.GROUPS))
+        assertEquals(SettingsPage.ShareLink, settingsPageFor(SettingsMenuIds.SHARE_LINK))
+    }
+
+    @Test
+    fun noTwoRowsShareAPageExceptDriveRelayWhichOpensTheGoogleAccountPage() {
+        val pages = everyRow.mapNotNull { e -> settingsPageFor(e.id)?.let { e.id to it } }
+        val shared = pages.groupBy({ it.second }, { it.first }).filter { it.value.size > 1 }
+        assertEquals(mapOf(SettingsPage.GoogleAccount to setOf(SettingsMenuIds.GOOGLE_ACCOUNT, SettingsMenuIds.DRIVE_RELAY)), shared.mapValues { it.value.toSet() })
+    }
 }

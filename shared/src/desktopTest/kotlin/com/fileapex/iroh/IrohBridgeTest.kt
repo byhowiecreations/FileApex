@@ -298,4 +298,29 @@ class IrohBridgeTest {
         val refused = runCatching { Socket(InetAddress.getLoopbackAddress(), port).close() }.isFailure
         assertTrue(refused)
     }
+
+    /** A connection the client already tore down: closing the output half then fails, as ENOTCONN does on Android. */
+    private class HungUpSocket : Socket() {
+        override fun shutdownOutput() = throw java.net.SocketException("shutdown failed: ENOTCONN (Transport endpoint is not connected)")
+    }
+
+    @Test
+    fun halfClosingAConnectionTheClientAlreadyHungUpOnIsTheNormalEndNotAFailure() {
+        val before = IrohLog.entries.value
+        IrohBridge.finishOutput(HungUpSocket())
+        assertEquals("the log must not change", before, IrohLog.entries.value)
+    }
+
+    @Test
+    fun halfClosingALiveConnectionStillHalfClosesIt() {
+        val server = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+        servers += server
+        Socket(InetAddress.getLoopbackAddress(), server.localPort).use { client ->
+            server.accept().use { accepted ->
+                IrohBridge.finishOutput(accepted)
+                assertTrue(accepted.isOutputShutdown)
+                assertEquals(-1, client.getInputStream().read())
+            }
+        }
+    }
 }

@@ -204,26 +204,7 @@ internal fun SettingsRootPage(
     onBack: () -> Unit,
     showBackNavigation: Boolean,
     layoutMode: SettingsScreenLayoutMode,
-    onOpenCheckForUpdates: () -> Unit,
-    onOpenPinRequired: () -> Unit,
-    onOpenBackgroundPersistence: () -> Unit,
-    onOpenAutoLaunchOnReboot: () -> Unit,
-    onOpenDeviceName: () -> Unit,
-    onOpenLanguage: () -> Unit,
-    onOpenNotifications: () -> Unit,
-    onOpenThemes: () -> Unit,
-    onOpenBulletinBoard: () -> Unit,
-    onOpenBackupSync: () -> Unit = {},
-    onOpenClipboard: () -> Unit,
-    onOpenDeviceDetails: () -> Unit,
-    onOpenGoogleAccount: () -> Unit,
-    onOpenDesktopLayout: () -> Unit,
-    onOpenWindowsDesign: () -> Unit,
-    onOpenLeaveClusterWipe: () -> Unit = {},
-    onOpenTailscale: () -> Unit = {},
-    onOpenIroh: () -> Unit = {},
-    onOpenGroups: () -> Unit = {},
-    onOpenAbout: () -> Unit = {},
+    onOpenPage: (SettingsPage) -> Unit,
     onToggleGeneralGroup: () -> Unit,
     onShowAdvancedChange: (Boolean) -> Unit,
     onToggleSystemPerformanceGroup: () -> Unit,
@@ -235,7 +216,6 @@ internal fun SettingsRootPage(
     exactAlarmWarningActive: Boolean,
     onOpenTransferQueue: () -> Unit = {},
     onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
-    onOpenOnboardingPermissions: () -> Unit = {}
 ) {
     var versionTapCount by remember { mutableIntStateOf(0) }
     var lastVersionTapEpochMs by remember { mutableLongStateOf(0L) }
@@ -246,25 +226,7 @@ internal fun SettingsRootPage(
         state = state,
         backgroundPersistence = backgroundPersistence,
         exactAlarmWarningActive = exactAlarmWarningActive,
-        onOpenCheckForUpdates = onOpenCheckForUpdates,
-        onOpenPinRequired = onOpenPinRequired,
-        onOpenBackgroundPersistence = onOpenBackgroundPersistence,
-        onOpenAutoLaunchOnReboot = onOpenAutoLaunchOnReboot,
-        onOpenDeviceName = onOpenDeviceName,
-        onOpenLanguage = onOpenLanguage,
-        onOpenNotifications = onOpenNotifications,
-        onOpenThemes = onOpenThemes,
-        onOpenBulletinBoard = onOpenBulletinBoard,
-        onOpenBackupSync = onOpenBackupSync,
-        onOpenClipboard = onOpenClipboard,
-        onOpenDeviceDetails = onOpenDeviceDetails,
-        onOpenGoogleAccount = onOpenGoogleAccount,
-        onOpenDesktopLayout = onOpenDesktopLayout,
-        onOpenWindowsDesign = onOpenWindowsDesign,
-        onOpenLeaveClusterWipe = onOpenLeaveClusterWipe,
-        onOpenTailscale = onOpenTailscale,
-        onOpenIroh = onOpenIroh,
-        onOpenGroups = onOpenGroups
+        onOpenPage = onOpenPage
     )
 
     SettingsPageShell(
@@ -282,7 +244,7 @@ internal fun SettingsRootPage(
             ) {
                 val ungrantedSteps = onboardingSteps.filter { !it.granted }
                 if (ungrantedSteps.isNotEmpty()) {
-                    OnboardingPermissionsCard(onOpenOnboardingPermissions)
+                    OnboardingPermissionsCard { onOpenPage(SettingsPage.OnboardingPermissions) }
                 }
                 val tailscale by TailscaleNodeRuntime.state.collectAsState()
                 val menuEntries = settingsMenuEntries(
@@ -291,6 +253,7 @@ internal fun SettingsRootPage(
                     tailscale = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     iroh = !com.fileapex.di.FileApexServices.isFdroidBuild,
                     groups = com.fileapex.friends.FriendsHub.available,
+                    shareLink = com.fileapex.drop.GuestDropHub.available,
                     desktopFileSelection = usesDesktopFileSelection(),
                     deviceNamePage = supportsDeviceNameSettingsPage(),
                     windowsFluent = supportsWindowsFluentDesign(),
@@ -326,7 +289,7 @@ internal fun SettingsRootPage(
                         }
                     }
                 }
-                SettingsAdvancedAndAboutRows(state.showAdvancedSettings, onShowAdvancedChange, onOpenAbout)
+                SettingsAdvancedAndAboutRows(state.showAdvancedSettings, onShowAdvancedChange) { onOpenPage(SettingsPage.About) }
             }
             val cleanVersion = appVersionName.removePrefix("v").removePrefix("V")
             val isAndroidGitHub = !usesDesktopFileSelection() && !com.fileapex.di.FileApexServices.managedByStore

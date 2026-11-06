@@ -93,12 +93,34 @@ data class DeviceListRow(
             null -> AppI18n.t("ready")
         }
 
+        /**
+         * The status in the Send To picker: nothing there can be tapped to wake, so an offline device says so, and a
+         * route says how it is reached (the LAN address, Tailscale, or whether Iroh is direct, relayed or on the custom relay).
+         */
+        fun pickerStatus(online: Boolean, reachedBy: RouteKind?, irohPath: String?, lanHost: String): String {
+            if (!online) return AppI18n.t("offline")
+            return when (reachedBy) {
+                RouteKind.Lan -> AppI18n.t("reach_lan_ip", lanHost)
+                RouteKind.Tailnet -> AppI18n.t("reach_tailscale")
+                RouteKind.Iroh -> when (irohPath) {
+                    "direct" -> AppI18n.t("reach_iroh_direct_short")
+                    "relay" -> AppI18n.t("reach_iroh_relay_short")
+                    "custom_relay" -> AppI18n.t("reach_iroh_custom_relay")
+                    else -> AppI18n.t("reach_iroh")
+                }
+                null -> AppI18n.t("ready")
+            }
+        }
+
         /** The long form for Device Details; [irohPath] is `direct` or `relay` while an Iroh connection is open. */
         fun reachedByDetail(reachedBy: RouteKind, irohPath: String?): String = when (reachedBy) {
             RouteKind.Lan -> AppI18n.t("reached_lan_direct")
             RouteKind.Tailnet -> AppI18n.t("reached_tailscale")
-            RouteKind.Iroh ->
-                if (irohPath == "relay") AppI18n.t("reached_iroh_relay") else AppI18n.t("reached_iroh_direct")
+            RouteKind.Iroh -> when (irohPath) {
+                "relay" -> AppI18n.t("reached_iroh_relay")
+                "custom_relay" -> AppI18n.t("reached_iroh_custom_relay")
+                else -> AppI18n.t("reached_iroh_direct")
+            }
         }
 
         @Composable

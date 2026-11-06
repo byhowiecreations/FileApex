@@ -84,6 +84,7 @@ Chromebook: the Linux container sits behind its own network, so other devices ca
 * **Receive folder:** Incoming files land in `Download/FileApex` on Android and `~/Downloads/FileApex` on desktop.
 * **System sharing:** macOS Finder and Share extension, Windows Share and Send To, and Android Direct Share targets for paired devices.
 * **Clipboard sharing (opt-in):** Send your clipboard or a link to any paired device, in any direction. Links open in the default browser.
+* **Share as a link (opt-in):** Turn one file into a link that works once, so someone without FileApex can download it in a browser. It goes from your device through a relay that stores nothing, end-to-end encrypted, and asks for your OK first.
 * **Device details:** Battery, charging state, processor, storage, RAM and network for every paired device.
 * **Locate phone:** Make a paired phone ring or show where it is from your computer.
 * **Themes and layouts:** Pick the layout that suits you, including Simple, built for one phone and one computer.

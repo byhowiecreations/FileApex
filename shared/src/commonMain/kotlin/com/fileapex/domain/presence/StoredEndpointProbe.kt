@@ -83,12 +83,13 @@ internal class StoredEndpointProbe(
             if (reached) {
                 host.markReachable(peer.deviceId)
                 probe.bulletinVersion?.let { host.onBulletinVersion(peer, it) }
+                probe.chainState?.let { com.fileapex.membership.ChainStateInbox.note(peer.deviceId, it) }
                 if (endpoint.tailnet) {
                     host.touchLastSeenEpoch(peer.deviceId)
                 } else {
                     host.touchLastSeen(peer.deviceId, endpoint.host, endpoint.port)
                 }
-                if (fetchNodeState && claims.claim(peer, probe.membershipVersion)) {
+                if (fetchNodeState && claims.claim(peer, probe.membershipVersion ?: probe.chainState?.profileVersion)) {
                     val state = cancellableCatching {
                         host.fetchNodeState(endpoint.host, endpoint.port, timeoutMs)
                     }.getOrNull()
@@ -111,6 +112,7 @@ internal class StoredEndpointProbe(
                 delay(retryMs)
             }
         }
+        com.fileapex.membership.ChainStateInbox.unreached(peer.deviceId)
         return false
     }
 }

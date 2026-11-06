@@ -8,7 +8,12 @@ class FallbackChainTransport(private val primary: ChainTransport, private val fa
     override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>): ChainAnswer? =
         primary.push(peerId, records, profiles)
 
+    override suspend fun push(peerId: String, records: List<ChainRecord>, profiles: List<com.fileapex.domain.peer.PeerNodeState>, head: String): ChainAnswer? =
+        primary.push(peerId, records, profiles, head)
+
     override suspend fun pull(peerId: String): ChainAnswer? = primary.pull(peerId) ?: fallback.pull(peerId)
+
+    override suspend fun pull(peerId: String, since: String): ChainAnswer? = primary.pull(peerId, since) ?: fallback.pull(peerId)
 
     override suspend fun join(peerId: String, key: String, tlsPin: String, profile: com.fileapex.domain.peer.PeerNodeState?): ChainAnswer? =
         primary.join(peerId, key, tlsPin, profile)

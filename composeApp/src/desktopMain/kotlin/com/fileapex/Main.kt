@@ -61,6 +61,7 @@ import kotlinx.coroutines.withContext
 import com.fileapex.domain.share.IncomingSharePayload
 import com.fileapex.domain.launch.DesktopLaunchInbox
 import com.fileapex.domain.launch.DesktopLaunchRequest
+import com.fileapex.cli.ipc.CliIpcDaemon
 import com.fileapex.platform.DesktopSingleInstance
 import com.fileapex.platform.DesktopUriHandler
 
@@ -154,6 +155,7 @@ private fun startDesktopApplication() {
 
         LaunchedEffect(servicesReady) {
             if (!servicesReady) return@LaunchedEffect
+            withContext(Dispatchers.IO) { CliIpcDaemon.start() }
             launch(Dispatchers.Default) {
                 AppUpdateCoordinator.onAppLaunch()
                 com.fileapex.notice.NoticeCoordinator.onAppLaunch()
@@ -274,6 +276,7 @@ private fun startDesktopApplication() {
             DesktopTraySupport.dispose()
             DesktopUriHandler.stop()
             DesktopSingleInstance.stopLiveForwarding()
+            CliIpcDaemon.stop()
         }
 
         fun quitDesktop() {

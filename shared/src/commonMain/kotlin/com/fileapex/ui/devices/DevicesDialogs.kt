@@ -45,27 +45,12 @@ internal fun DevicesDialogs(
     onConfirmExitChange: (Boolean) -> Unit,
     onExitApp: () -> Unit
 ) {
-    val renameId = state.renameTargetId
-    if (renameId != null) {
-        AlertDialog(
-            onDismissRequest = viewModel::cancelRename,
-            title = { Text(stringRes("rename_device")) },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { onRenameTextChange(it) },
-                    singleLine = true,
-                    label = { Text(stringRes("name")) }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.confirmRename(renameId, renameText) }) {
-                    Text(stringRes("save"))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::cancelRename) { Text(stringRes("cancel")) }
-            }
+    state.renameTargetId?.let { renameId ->
+        RenameDeviceDialog(
+            renameText = renameText,
+            onRenameTextChange = onRenameTextChange,
+            onSave = { viewModel.confirmRename(renameId, renameText) },
+            onCancel = viewModel::cancelRename
         )
     }
 

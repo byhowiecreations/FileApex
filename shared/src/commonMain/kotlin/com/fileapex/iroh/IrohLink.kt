@@ -28,6 +28,9 @@ interface IrohLinkHandle : IrohLink {
     /** Hex of the endpoint's public key. */
     val id: String
 
+    /** False when the endpoint could not reach its home relay within the start wait. */
+    val online: Boolean get() = true
+
     /** `id|relayUrl|direct,direct` for peers to dial. */
     fun address(): String
 
