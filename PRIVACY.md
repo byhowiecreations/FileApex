@@ -1,8 +1,8 @@
 # FileApex Privacy Policy
 
-**Effective Date:** Oct 29, 2026
+**Effective Date:** Nov 6, 2026
 **Developer:** ByHowieCreations
-**Application:** FileApex (Android, macOS, Windows)
+**Application:** FileApex (Android, macOS, Windows, Linux)
 **Contact:** byhowiecreations@gmail.com
 
 ## Summary
@@ -13,7 +13,7 @@ FileApex has no ads, no third-party trackers, no analytics SDKs, and does not se
 
 ## What We Collect and Why
 
-**Files (Local mode, default):** Transferred directly between paired devices over LAN via local HTTP sockets. Saved to `Download/FileApex/` (Android) or `~/Downloads/FileApex/` (macOS/Windows). Never uploaded to external servers in this mode.
+**Files (Local mode, default):** Transferred directly between paired devices over LAN via mutual TLS (mTLS) with pinned device certificates. Saved to `Download/FileApex/` (Android) or `~/Downloads/FileApex/` (macOS, Windows, Linux). Never uploaded to external servers in this mode.
 
 **Files (Cloud Relay, opt-in):** If you enable Google Drive Relay, files/attachments are stored in a `FileApex Relay` folder in your own Google Drive, and receiving devices download them directly from that folder. Access is scoped to that folder only, FileApex cannot see or modify other files in your Drive.
 
@@ -83,8 +83,9 @@ If you never sign in with Google or enable cloud relay, none of these are contac
 ## Security
 
 - Pairing requires mutual confirmation via 6-digit code or QR scan.
+- Paired devices authenticate and encrypt direct connections using mutual TLS (TLS 1.3 / 1.2) with pinned EC certificates on LAN, TLS 1.3 over QUIC on Iroh, and WireGuard on Tailscale (`tsnet`).
 - Optional PIN lock can be set to gate pairing and file browsing.
-- Clipboard content is end-to-end encrypted on-device before any transmission, local or cellular.
+- Clipboard content, mirrored phone notifications, Friends transfers, and one-time browser links (`getfileapex.com/drop`) are end-to-end encrypted on-device (AES-256-GCM).
 - Local data is protected by OS-level sandboxing and encryption (Android FBE, macOS Data Protection).
 
 ## Data Deletion
