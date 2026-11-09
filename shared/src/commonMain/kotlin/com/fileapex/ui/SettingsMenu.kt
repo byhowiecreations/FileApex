@@ -38,6 +38,7 @@ object SettingsMenuIds {
     const val PIN_REQUIRED = "pin_required"
     const val GOOGLE_ACCOUNT = "google_account"
     const val SHARE_LINK = "share_link"
+    const val FULL_DISK_ACCESS = "full_disk_access"
     const val LEAVE_CLUSTER = "leave_cluster"
 }
 
@@ -61,6 +62,8 @@ fun settingsMenuEntries(
     shareLink: Boolean = false,
     /** Windows and Linux can start the app at sign-in; the desktop menu otherwise hides the row. */
     autoLaunchOnDesktop: Boolean = false,
+    /** The Mac asks for Full Disk Access in System Settings; no other platform has it. */
+    fullDiskAccess: Boolean = false,
     /** When false, advanced rows are left out unless they are in use (see [inUseAdvancedIds]). */
     showAdvanced: Boolean = true,
     inUseAdvancedIds: Set<String> = emptySet()
@@ -95,6 +98,7 @@ fun settingsMenuEntries(
     add(SettingsMenuSection.Security, SettingsMenuIds.PIN_REQUIRED)
     if (googleCloud) add(SettingsMenuSection.Security, SettingsMenuIds.GOOGLE_ACCOUNT)
     if (shareLink) add(SettingsMenuSection.Security, SettingsMenuIds.SHARE_LINK)
+    if (fullDiskAccess) add(SettingsMenuSection.Security, SettingsMenuIds.FULL_DISK_ACCESS)
     add(SettingsMenuSection.Security, SettingsMenuIds.LEAVE_CLUSTER)
     return entries.filter { showAdvanced || it.id !in ADVANCED_IDS || it.id in inUseAdvancedIds }
 }

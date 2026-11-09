@@ -8,7 +8,7 @@ actual fun localHardwareIdRaw(): String = when (DesktopPlatformPaths.desktopOs) 
     DesktopPlatformPaths.DesktopOs.MacOs ->
         HardwareId.parseIoregUuid(run("/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"))
     DesktopPlatformPaths.DesktopOs.Windows ->
-        HardwareId.parseRegMachineGuid(run("reg", "query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"))
+        WindowsRegistry.readLocalMachineString("SOFTWARE\\Microsoft\\Cryptography", "MachineGuid").orEmpty()
     DesktopPlatformPaths.DesktopOs.Linux,
     DesktopPlatformPaths.DesktopOs.Other ->
         listOf("/etc/machine-id", "/var/lib/dbus/machine-id").firstNotNullOfOrNull { path ->

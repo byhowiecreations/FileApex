@@ -433,6 +433,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="allow_over_cellular_desc">Fuera de LAN, obtiene o comparte Detalles del dispositivo cifrados por Firebase. Ambos dispositivos deben activarlo y vincular una cuenta de Google. En la misma Wi‑Fi se usa la red local (sin cifrar).</string>
     <string name="expanded_layout_desc">Si está activado, siempre usa el diseño adaptativo de varios paneles con rail y lista-detalle, sin importar el tamaño de la ventana. Si está desactivado, usa una sola columna. El valor predeterminado es Compacto.</string>
     <string name="windows_fluent_desc">Estándar mantiene el aspecto multiplataforma (igual que Android). Moderno usa el estilo nativo de Windows y una barra de título Mica. Se guarda en este PC; se aplica de inmediato.</string>
+    <string name="graphics_renderer">Renderizador gráfico</string>
+    <string name="graphics_renderer_desc">Se aplica la próxima vez que se inicie FileApex. Direct3D puede usar menos memoria; si la ventana falla, vuelve atrás.</string>
+    <string name="graphics_auto">Automático (OpenGL)</string>
+    <string name="graphics_direct3d">Direct3D</string>
+    <string name="graphics_opengl">OpenGL</string>
     <string name="check_updates_desc">Si está activado, FileApex consulta GitHub Releases según tu programación e instala versiones más nuevas de esta plataforma. Desactivado por defecto.</string>
     <string name="require_pin_desc">Si está activado, los demás dispositivos deben introducir el PIN de este dispositivo para emparejar y explorar archivos. Enviar archivos a este dispositivo no requiere PIN. Desactivado por defecto. Solo este dispositivo guarda el PIN.</string>
     <string name="browse_unlock_idle">Tiempo de inactividad del desbloqueo al explorar</string>
@@ -579,6 +584,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="field_DisplayResolution">Resolución</string>
     <string name="field_RefreshRate">Frecuencia de actualización</string>
     <string name="field_Brightness">Brillo</string>
+    <string name="field_Graphics">Gráficos</string>
     <string name="field_BatteryLevel">Nivel de batería</string>
     <string name="field_Charging">Cargando</string>
     <string name="field_BatteryTemp">Temp. de batería</string>

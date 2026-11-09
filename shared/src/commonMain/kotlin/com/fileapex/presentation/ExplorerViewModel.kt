@@ -5,7 +5,6 @@ import com.fileapex.presentation.explorer.ExplorerMutationActions
 import com.fileapex.presentation.explorer.ExplorerCopyActions
 import com.fileapex.presentation.explorer.ExplorerSelectionActions
 import com.fileapex.presentation.explorer.ExplorerWatchActions
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fileapex.data.clipboard.TransferClipboard
@@ -18,7 +17,6 @@ import com.fileapex.domain.browse.BrowserCoordinator
 import com.fileapex.domain.model.RemoteFileItem
 import com.fileapex.domain.preview.FilePreviewManager
 import com.fileapex.domain.transfer.ExplorerTransferManager
-import com.fileapex.domain.transfer.MultiCopyDeviceOption
 import com.fileapex.platform.DownloadsPaths
 import com.fileapex.platform.decodeImageBytes
 import com.fileapex.platform.decodeLocalImageFile
@@ -45,50 +43,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
-data class ExplorerUiState(
-    val deviceTitle: String = "",
-    /** Navigated folder for list, paste, and transfers. Split-pane preview must not change this. */
-    val currentPath: String = "",
-    /** Folders shown in the wide left pane. */
-    val panePath: String = "",
-    /** Parent within the browse root only; null means back should leave the explorer. */
-    val parentPath: String? = null,
-    val canNavigateUp: Boolean = false,
-    val paneDirectories: List<RemoteFileItem> = emptyList(),
-    val paneFiles: List<RemoteFileItem> = emptyList(),
-    val contentDirectories: List<RemoteFileItem> = emptyList(),
-    val contentFiles: List<RemoteFileItem> = emptyList(),
-    val selectedFolderPath: String? = null,
-    val loadingFolderPath: String? = null,
-    val isLoading: Boolean = false,
-    val isRefreshing: Boolean = false,
-    val errorMessage: String? = null,
-    val statusMessage: String? = null,
-    /** Local paths from the last completed download, for the snackbar Open / Show-in-folder action. */
-    val lastDownloadedPaths: List<String> = emptyList(),
-    val clipboardLabel: String? = null,
-    val canPaste: Boolean = false,
-    val isSelectionMode: Boolean = false,
-    val selectedFileIds: Set<String> = emptySet(),
-    val canDownloadSelection: Boolean = false,
-    val isRemoteTarget: Boolean = false,
-    val previewItem: RemoteFileItem? = null,
-    val previewText: String? = null,
-    val previewImage: ImageBitmap? = null,
-    val isPreviewLoading: Boolean = false,
-    val canDownloadPreview: Boolean = false,
-    val isDownloading: Boolean = false,
-    val showMultiCopyIntro: Boolean = false,
-    val showMultiCopyPicker: Boolean = false,
-    val multiCopyOptions: List<MultiCopyDeviceOption> = emptyList(),
-    val selectedMultiCopyDeviceIds: Set<String> = emptySet(),
-    val isMultiCopying: Boolean = false,
-    /** When set, explorer must collect PIN before continuing navigation (idle expiry). */
-    val pendingPinUnlock: Boolean = false,
-    val pinUnlockError: String? = null,
-    val viewMode: ExplorerViewMode = ExplorerViewMode.List,
-    val sourceDeviceId: String? = null,
-)
 
 class ExplorerViewModel(
     private val target: BrowseTarget
@@ -314,6 +268,7 @@ class ExplorerViewModel(
             _uiState.update {
                 it.copy(
                     isLoading = false,
+                    firstListingSettled = true,
                     loadingFolderPath = null,
                     isRefreshing = false,
                     errorMessage = UserFacingErrors.message(error, "unable_to_open_folder")
@@ -325,7 +280,7 @@ class ExplorerViewModel(
     fun cancelPinUnlock() {
         pendingBrowseAction = null
         _uiState.update {
-            it.copy(pendingPinUnlock = false, pinUnlockError = null, isLoading = false, loadingFolderPath = null)
+            it.copy(pendingPinUnlock = false, pinUnlockError = null, isLoading = false, loadingFolderPath = null, firstListingSettled = true)
         }
     }
 
@@ -361,6 +316,7 @@ class ExplorerViewModel(
                 pendingPinUnlock = true,
                 pinUnlockError = null,
                 isLoading = false,
+                firstListingSettled = true,
                 loadingFolderPath = null,
                 isRefreshing = false
             )
@@ -392,6 +348,7 @@ class ExplorerViewModel(
                 selectedFolderPath = selectedFolderPath?.let(browser::normalizePath),
                 loadingFolderPath = null,
                 isLoading = false,
+                firstListingSettled = true,
                 isRefreshing = false
             )
         }

@@ -404,6 +404,7 @@ private fun startDesktopApplication() {
             }
 
             val desktopClipboardOptInSender by com.fileapex.platform.DesktopClipboardOptInState.pendingSender.collectAsState()
+            val desktopOpenDeviceId by com.fileapex.platform.DesktopOpenDeviceRequest.pendingDeviceId.collectAsState()
 
             App(
                 hasStoragePermission = true,
@@ -418,7 +419,9 @@ private fun startDesktopApplication() {
                 incomingShare = desktopIncomingShare,
                 onIncomingShareConsumed = { desktopIncomingShare = null },
                 pendingClipboardOptInSender = desktopClipboardOptInSender,
-                onClipboardOptInConsumed = { com.fileapex.platform.DesktopClipboardOptInState.consume() }
+                onClipboardOptInConsumed = { com.fileapex.platform.DesktopClipboardOptInState.consume() },
+                pendingOpenDeviceId = desktopOpenDeviceId,
+                onOpenDeviceRequestConsumed = { com.fileapex.platform.DesktopOpenDeviceRequest.consume() }
             )
         }
 

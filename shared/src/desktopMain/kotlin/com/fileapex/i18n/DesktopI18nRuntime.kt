@@ -20,6 +20,5 @@ internal object DesktopI18nRuntime {
             }
             DesktopMacTrayBridge.setCopyJson(json)
         }
-        DesktopAwtTrayCoordinator.rebuildLocalizedChrome()
     }
 }

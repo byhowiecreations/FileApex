@@ -259,6 +259,7 @@ internal fun SettingsRootPage(
                     windowsFluent = supportsWindowsFluentDesign(),
                     backupSync = com.fileapex.platform.backupSupported(),
                     autoLaunchOnDesktop = com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart(),
+                    fullDiskAccess = com.fileapex.platform.fullDiskAccessSupported(),
                     showAdvanced = state.showAdvancedSettings,
                     inUseAdvancedIds = rememberAdvancedSettingsInUse(state)
                 )

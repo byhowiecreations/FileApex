@@ -12,7 +12,7 @@ class BuildScriptHostGuardTest {
 
     @Test fun theWindowsHostStopsWhenFetchOrCheckoutFails() {
         val beforeBuild = windows.substringBefore("gradlew.bat")
-        assertTrue(beforeBuild.indexOf("git fetch origin") < beforeBuild.indexOf("git checkout"))
+        assertTrue(beforeBuild.indexOf("git fetch \$Remote") in 0 until beforeBuild.indexOf("git checkout"))
         assertTrue("each git step must be checked", Regex("""\${'$'}LASTEXITCODE -ne 0""").findAll(beforeBuild).count() >= 2)
     }
 
@@ -27,7 +27,7 @@ class BuildScriptHostGuardTest {
     }
 
     @Test fun aFailedWindowsBuildStopsTheRun() {
-        val call = script.substringAfter("-File build_full.ps1 -Branch").substringBefore("scp -q")
+        val call = script.substringAfter("-File build_full.ps1 -Branch").substringBefore("scp_target")
         assertTrue("the ssh call must return from the function when the build fails", call.contains("|| {") && call.contains("return 1"))
     }
 }

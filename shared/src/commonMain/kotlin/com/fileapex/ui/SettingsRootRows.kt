@@ -181,6 +181,11 @@ internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com
                                     subtitle = googleAccountSubtitle(state),
                                     onClick = openRowPage
                                 )
+                                SettingsMenuIds.FULL_DISK_ACCESS -> SettingsNavItem(
+                                    title = stringRes("full_disk_access"),
+                                    subtitle = stringRes(if (com.fileapex.platform.isFullDiskAccessGranted()) "on" else "off"),
+                                    onClick = openRowPage
+                                )
                                 SettingsMenuIds.LEAVE_CLUSTER -> SettingsNavItem(
                                     title = stringRes("leave_cluster_wipe_title"),
                                     subtitle = stringRes("leave_cluster_wipe_desc"),

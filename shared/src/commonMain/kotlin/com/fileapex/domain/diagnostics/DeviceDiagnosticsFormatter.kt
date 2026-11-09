@@ -65,6 +65,18 @@ object DeviceDiagnosticsFormatter {
         )
     }
 
+    /** One line per card, with its memory in whole gigabytes (megabytes under 1 GB), the way Windows names it. */
+    fun graphicsSummary(gpus: List<GpuDiagnostics>): String {
+        if (gpus.isEmpty()) return "-"
+        return gpus.joinToString("\n") { gpu ->
+            val memory = gpu.memoryBytes?.takeIf { it > 0 }?.let { bytes ->
+                val gib = bytes / (1024.0 * 1024.0 * 1024.0)
+                if (gib >= 1.0) "${Math.round(gib)} GB" else "${Math.round(bytes / (1024.0 * 1024.0))} MB"
+            }
+            if (memory == null) gpu.name else "${gpu.name} ($memory)"
+        }
+    }
+
     fun formatRefreshRate(hz: Float?): String =
         hz?.takeIf { it > 0f }?.let { String.format("%.1f Hz", it) } ?: "-"
 
@@ -139,6 +151,7 @@ object DeviceDiagnosticsFormatter {
             }
             DeviceDetailsFieldId.CpuFrequency -> snapshot.processor.frequencyScaling.ifBlank { "-" }
             DeviceDetailsFieldId.DisplayResolution -> snapshot.display.resolution.ifBlank { "-" }
+            DeviceDetailsFieldId.Graphics -> graphicsSummary(snapshot.display.gpus)
             DeviceDetailsFieldId.RefreshRate -> formatRefreshRate(snapshot.display.refreshRateHz)
             DeviceDetailsFieldId.Brightness -> formatPercent(snapshot.display.brightnessPercent)
             DeviceDetailsFieldId.BatteryLevel -> formatPercent(snapshot.battery.levelPercent)
@@ -168,7 +181,7 @@ object DeviceDiagnosticsFormatter {
         return preferences.visibleFieldIds()
             .filter { field ->
                 if (com.fileapex.di.FileApexServices.isPlayStoreBuild && field.cellularOnly) return@filter false
-                if (field.wifiOnly && snapshot.platform == MAC_PLATFORM) return@filter false
+                if (field.wifiOnly && DiagnosticsPlatform.family(snapshot.platform) == MAC_PLATFORM) return@filter false
                 when {
                     field.wifiOnly -> isWifi
                     field.cellularOnly -> isCellular

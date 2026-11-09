@@ -28,7 +28,7 @@ actual fun collectPlatformDeviceDiagnostics(groups: Set<DiagnosticGroup>?): Peer
     return runCatching {
         PeerDeviceDiagnostics(
             collectedAtEpochMs = 0L,
-            platform = "",
+            platform = readPlatformName(),
             device = part(DiagnosticGroup.Identity, DeviceIdentityDiagnostics(), ::readDeviceIdentity),
             processor = part(DiagnosticGroup.Processor, ProcessorDiagnostics(), ::readProcessor),
             display = part(DiagnosticGroup.Display, DisplayDiagnostics(), ::readDisplay),
@@ -52,7 +52,7 @@ actual fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics =
     runCatching {
         PeerDeviceDiagnostics(
             collectedAtEpochMs = 0L,
-            platform = "",
+            platform = readPlatformName(),
             device = readDeviceIdentity(),
             battery = readBattery(),
             storage = readStorage(),
@@ -72,6 +72,14 @@ actual fun collectFastBatteryDiagnostics(): BatteryDiagnostics {
         .getOrDefault(BatteryDiagnostics(chargingState = "Not available"))
 }
 
+/** Empty means the shared collector uses the plain platform label; Windows adds its edition. */
+private fun readPlatformName(): String =
+    if (DesktopPlatformPaths.isWindows()) {
+        WindowsDiagnostics.platformName(WindowsRegistry, System.getProperty("os.name").orEmpty())
+    } else {
+        ""
+    }
+
 private fun readDeviceIdentitySafe(): DeviceIdentityDiagnostics {
     return runCatching { readDeviceIdentity() }
         .getOrDefault(DeviceIdentityDiagnostics())
@@ -80,11 +88,10 @@ private fun readDeviceIdentitySafe(): DeviceIdentityDiagnostics {
 private fun readDeviceIdentity(): DeviceIdentityDiagnostics {
     val osName = System.getProperty("os.name").orEmpty()
     val osVersion = System.getProperty("os.version").orEmpty()
+    if (DesktopPlatformPaths.isWindows()) return WindowsDiagnostics.identity(WindowsRegistry, osName, osVersion)
     val isMac = osName.contains("Mac", ignoreCase = true)
-    val isWindows = osName.contains("Windows", ignoreCase = true)
     val make = when {
         isMac -> "Apple"
-        isWindows -> readWindowsMake()
         osName.isNotBlank() -> osName
         else -> "Unknown"
     }
@@ -92,7 +99,6 @@ private fun readDeviceIdentity(): DeviceIdentityDiagnostics {
         isMac -> readSysctl("hw.model")
             ?: readSysctl("machdep.cpu.brand_string")
             ?: System.getProperty("os.arch").orEmpty().ifBlank { "Unknown" }
-        isWindows -> readWindowsModel()
         else -> System.getProperty("os.arch").orEmpty().ifBlank { "Unknown" }
     }
     return DeviceIdentityDiagnostics(
@@ -104,23 +110,9 @@ private fun readDeviceIdentity(): DeviceIdentityDiagnostics {
     )
 }
 
-private fun readWindowsMake(): String =
-    readCommandOutput("wmic", "computersystem", "get", "manufacturer")
-        ?.lineSequence()
-        ?.map { it.trim() }
-        ?.firstOrNull { it.isNotBlank() && !it.equals("Manufacturer", ignoreCase = true) }
-        ?: "Windows"
-
-private fun readWindowsModel(): String =
-    readCommandOutput("wmic", "computersystem", "get", "model")
-        ?.lineSequence()
-        ?.map { it.trim() }
-        ?.firstOrNull { it.isNotBlank() && !it.equals("Model", ignoreCase = true) }
-        ?: System.getProperty("os.name").orEmpty().ifBlank { "Unknown" }
-
 private fun readProcessor(): ProcessorDiagnostics {
     if (isMacOs()) return readMacProcessor()
-    if (isWindowsOs()) return readWindowsProcessor()
+    if (DesktopPlatformPaths.isWindows()) return WindowsDiagnostics.processor(WindowsRegistry, readGenericProcessor())
     return readGenericProcessor()
 }
 
@@ -143,25 +135,12 @@ private fun readMacProcessor(): ProcessorDiagnostics {
     }.getOrDefault(readGenericProcessor())
 }
 
-private fun readWindowsProcessor(): ProcessorDiagnostics {
-    return cancellableCatching {
-        val name = readCommandOutput("wmic", "cpu", "get", "Name")
-            ?.lineSequence()
-            ?.map { it.trim() }
-            ?.firstOrNull { it.isNotBlank() && !it.equals("Name", ignoreCase = true) }
-            .orEmpty()
-        readGenericProcessor().copy(
-            hardware = name.ifBlank { readGenericProcessor().hardware }
-        )
-    }.getOrDefault(readGenericProcessor())
-}
-
 private fun readGenericProcessor(): ProcessorDiagnostics {
     return runCatching {
         val totalCores = Runtime.getRuntime().availableProcessors().takeIf { it > 0 }
         val os = ManagementFactory.getOperatingSystemMXBean()
         val extended = os as? OperatingSystemMXBean
-        val hardware = readSysctl("machdep.cpu.brand_string")
+        val hardware = (if (isMacOs()) readSysctl("machdep.cpu.brand_string") else null)
             ?: os.name.orEmpty()
         val loadPercent = runCatching {
             extended?.cpuLoad?.takeIf { it >= 0.0 }?.let { (it * 100.0).roundToInt() }
@@ -185,6 +164,11 @@ private fun readGenericProcessor(): ProcessorDiagnostics {
 }
 
 private fun readDisplay(): DisplayDiagnostics {
+    val base = readDisplayBase()
+    return if (DesktopPlatformPaths.isWindows()) base.copy(gpus = WindowsDiagnostics.gpus(WindowsRegistry)) else base
+}
+
+private fun readDisplayBase(): DisplayDiagnostics {
     if (isMacOs()) {
         readMacDisplayViaSystemProfiler()?.let { return it }
     }
@@ -346,12 +330,8 @@ private fun classifyInterfaceType(name: String, displayName: String?): String {
 }
 
 private fun readWifiNetwork(interfaceName: String): NetworkDiagnostics {
-    val osName = System.getProperty("os.name").orEmpty()
-    return when {
-        osName.contains("Mac", ignoreCase = true) -> NetworkDiagnostics(interfaceType = "Wi-Fi")
-        osName.contains("Windows", ignoreCase = true) -> readWindowsWifiNetwork()
-        else -> NetworkDiagnostics(interfaceType = "Wi-Fi")
-    }
+    if (DesktopPlatformPaths.isWindows()) return WindowsDiagnostics.wifi()
+    return NetworkDiagnostics(interfaceType = "Wi-Fi")
 }
 
 private fun readMacBootEpochMs(): Long? {
@@ -366,64 +346,6 @@ private fun readSysctlLong(name: String): Long? = readSysctl(name)?.toLongOrNull
 
 private fun isMacOs(): Boolean =
     System.getProperty("os.name").orEmpty().contains("Mac", ignoreCase = true)
-
-private fun isWindowsOs(): Boolean =
-    System.getProperty("os.name").orEmpty().contains("Windows", ignoreCase = true)
-
-private fun readWindowsWifiNetwork(): NetworkDiagnostics {
-    val output = readCommandOutput("netsh", "wlan", "show", "interfaces").orEmpty()
-    if (output.isBlank()) {
-        return NetworkDiagnostics(interfaceType = "Wi-Fi")
-    }
-    val values = parseKeyColonValueBlock(output.replace("\r\n", "\n"))
-    val state = values["State"].orEmpty()
-    if (!state.contains("connected", ignoreCase = true)) {
-        return NetworkDiagnostics(interfaceType = "Wi-Fi")
-    }
-    val ssid = values["SSID"].orEmpty()
-    val signalPercent = values["Signal"]?.removeSuffix("%")?.trim()?.toIntOrNull()
-    val signalDbm = signalPercent?.let { percentToDbm(it) }
-    val channel = values["Channel"]?.toIntOrNull()
-    val radioType = values["Radio type"].orEmpty()
-    val band = when {
-        radioType.contains("802.11ax", ignoreCase = true) && channel != null && channel >= 1 -> {
-            if (channel <= 14) "2.4 GHz" else if (channel >= 36) "5 GHz" else "6 GHz"
-        }
-        channel != null && channel in 1..14 -> "2.4 GHz"
-        channel != null && channel >= 36 -> "5 GHz"
-        radioType.contains("2.4", ignoreCase = true) -> "2.4 GHz"
-        radioType.contains("5", ignoreCase = true) -> "5 GHz"
-        radioType.contains("6", ignoreCase = true) -> "6 GHz"
-        else -> "Unknown"
-    }
-    val receiveRate = values["Receive rate (Mbps)"]?.toIntOrNull()
-        ?: values["Receive rate"]?.substringBefore(' ')?.toIntOrNull()
-    return NetworkDiagnostics(
-        interfaceType = "Wi-Fi",
-        ssid = ssid,
-        signalDbm = signalDbm,
-        linkSpeedMbps = receiveRate,
-        frequencyBand = band,
-        channel = channel
-    )
-}
-
-private fun parseKeyColonValueBlock(text: String): Map<String, String> {
-    return text.lineSequence()
-        .mapNotNull { line ->
-            val colon = line.indexOf(':')
-            if (colon <= 0) return@mapNotNull null
-            val key = line.substring(0, colon).trim()
-            val value = line.substring(colon + 1).trim()
-            if (key.isBlank()) null else key to value
-        }
-        .toMap()
-}
-
-private fun percentToDbm(percent: Int): Int {
-    val clamped = percent.coerceIn(0, 100)
-    return -100 + (clamped * 0.7).roundToInt()
-}
 
 private fun readUptimeSafe(): UptimeDiagnostics =
     runCatching { readUptime() }.getOrDefault(UptimeDiagnostics())
@@ -502,7 +424,7 @@ private fun readSysctl(name: String): String? {
     return readCommandOutput("/usr/sbin/sysctl", "-n", name)?.takeIf { it.isNotEmpty() }
 }
 
-private fun readCommandOutput(vararg command: String): String? {
+internal fun readCommandOutput(vararg command: String): String? {
     return cancellableCatching {
         ProcessBuilder(*command)
             .redirectErrorStream(true)

@@ -177,6 +177,10 @@ public final class DropBoxWindowManager: NSObject, NSWindowDelegate {
             defer: false
         )
         window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = NSColor(deviceRed: 0.105, green: 0.135, blue: 0.19, alpha: 1)
         window.title = AppCopy.shared.t("drop_files")
         window.isFloatingPanel = true
         window.level = .floating
@@ -454,7 +458,52 @@ struct DropBoxContentView: View {
     @ObservedObject private var copy = AppCopy.shared
     @State private var isTargeted = false
 
+    private let accent = Color(red: 0.0, green: 0.9, blue: 0.46)
+
     var body: some View {
+        VStack(spacing: 14) {
+            header
+            dropZone
+            footer
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.105, green: 0.135, blue: 0.19), Color(red: 0.075, green: 0.09, blue: 0.12)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .environment(\.colorScheme, .dark)
+    }
+
+    private var destinationText: String {
+        if state.targetDeviceCount == 1, let name = state.singleDeviceName, !name.isEmpty {
+            return name
+        }
+        return copy.plural("n_destinations", count: state.targetDeviceCount)
+    }
+
+    private var header: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(accent)
+                Text(destinationText)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(accent.opacity(0.14)))
+            .help(copy.t("dropbox_destination_tip"))
+            Spacer()
+        }
+    }
+
+    private var dropZone: some View {
         ZStack {
             DropTargetRepresentable(
                 onPathsDropped: { paths in
@@ -464,106 +513,136 @@ struct DropBoxContentView: View {
                     isTargeted = targeted
                 }
             )
-
-            VStack(spacing: 12) {
-                Image(systemName: "arrow.down.doc.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Color.accentColor)
-
-                if state.filePaths.isEmpty {
-                    Text(copy.t("drag_drop_files_here"))
-                        .font(.subheadline)
-                        .bold()
-                        .multilineTextAlignment(.center)
-                } else {
-                    Text(copy.plural("n_files_ready", count: state.filePaths.count))
-                        .font(.subheadline)
-                        .bold()
-                        .multilineTextAlignment(.center)
-
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(state.filePaths, id: \.self) { path in
-                                HStack(spacing: 6) {
-                                    Image(systemName: isDirectory(path) ? "folder.fill" : "doc.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(isDirectory(path) ? Color.blue : Color.secondary)
-                                    Text(URL(fileURLWithPath: path).lastPathComponent)
-                                        .font(.caption)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                    Spacer()
-                                    Button {
-                                        removeFile(path)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.04)))
-                            }
-                        }
-                        .padding(.horizontal, 2)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-
-                if state.targetDeviceCount == 1, let name = state.singleDeviceName, !name.isEmpty {
-                    Text(name)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else {
-                    Text(copy.plural("n_destinations", count: state.targetDeviceCount))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if !state.filePaths.isEmpty {
-                    HStack(spacing: 10) {
-                        Button(role: .cancel) {
-                            if state.isSending {
-                                onCancelSend()
-                            } else {
-                                clearFiles()
-                            }
-                        } label: {
-                            Text(copy.t("cancel"))
-                                .frame(minWidth: 60)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.regular)
-
-                        Button {
-                            guard !state.isSending else { return }
-                            state.isSending = true
-                            if !onSend() {
-                                state.isSending = false
-                            }
-                        } label: {
-                            Text(state.isSending ? copy.t("sending_short") : copy.t("send"))
-                                .frame(minWidth: 80)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.regular)
-                        .disabled(state.isSending)
-                    }
-                    .padding(.top, 2)
-                }
+            if state.filePaths.isEmpty {
+                emptyState
+            } else {
+                fileList
             }
-            .padding(14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(isTargeted ? Color.accentColor : Color.clear, lineWidth: 2)
-                .background(isTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
+            RoundedRectangle(cornerRadius: 18)
+                .fill(isTargeted ? accent.opacity(0.10) : Color.white.opacity(0.04))
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(
+                    isTargeted ? accent : Color.white.opacity(0.28),
+                    style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                )
+        )
+        .help(copy.t("dropbox_zone_tip"))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "arrow.down.doc.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(accent)
+                .frame(width: 72, height: 72)
+                .background(Circle().fill(accent.opacity(isTargeted ? 0.25 : 0.14)))
+            Text(copy.t("drag_drop_files_here"))
+                .font(.system(size: 15, weight: .bold))
+                .multilineTextAlignment(.center)
+        }
+        .padding(14)
+    }
+
+    private var fileList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(copy.plural("n_files_ready", count: state.filePaths.count))
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.leading, 4)
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(state.filePaths, id: \.self) { path in
+                        fileRow(path)
+                    }
+                }
+            }
+            if state.isSending {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(accent)
+            }
+        }
+        .padding(12)
+    }
+
+    private func fileRow(_ path: String) -> some View {
+        let folder = isDirectory(path)
+        return HStack(spacing: 10) {
+            Image(systemName: folder ? "folder.fill" : "doc.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(folder ? Color.blue : Color.secondary)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 8).fill(folder ? Color.blue.opacity(0.18) : Color.white.opacity(0.08)))
+            Text(URL(fileURLWithPath: path).lastPathComponent)
+                .font(.system(size: 13))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Button {
+                removeFile(path)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 26, height: 26)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(copy.t("dropbox_remove_tip"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.06)))
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            Button {
+                if state.isSending {
+                    onCancelSend()
+                } else {
+                    clearFiles()
+                }
+            } label: {
+                Text(copy.t("cancel"))
+                    .font(.system(size: 13))
+                    .frame(width: 96, height: 38)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2)))
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .help(copy.t("dropbox_cancel_tip"))
+
+            if !state.filePaths.isEmpty {
+                Button {
+                    guard !state.isSending else { return }
+                    state.isSending = true
+                    if !onSend() {
+                        state.isSending = false
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 13))
+                        Text(state.isSending ? copy.t("sending_short") : copy.t("send"))
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .foregroundStyle(.white)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.06, green: 0.46, blue: 0.43)))
+                    .opacity(state.isSending ? 0.6 : 1)
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(state.isSending)
+                .help(copy.t("dropbox_send_tip"))
+            }
+        }
     }
 
     private func isDirectory(_ path: String) -> Bool {

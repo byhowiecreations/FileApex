@@ -54,7 +54,11 @@ def module_dir(go: str) -> pathlib.Path:
         capture_output=True,
         text=True,
     )
-    return pathlib.Path(listed.stdout.strip())
+    printed = listed.stdout.strip()
+    # An empty module cache prints nothing, and Path("") is the current folder: the project would be copied into itself.
+    if not printed or not pathlib.Path(printed).is_dir():
+        sys.exit("The Go module cache has no tailscale.com source; run `go mod download` in native/tsnet first")
+    return pathlib.Path(printed)
 
 
 def replace_once(source: pathlib.Path, current: str, updated: str, missing: str) -> None:

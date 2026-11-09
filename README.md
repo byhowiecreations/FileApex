@@ -82,7 +82,7 @@ Chromebook: the Linux container sits behind its own network, so other devices ca
 * **Local-first explorer:** Browse and move files between paired devices on the same network.
 * **Multi-target sending:** Push files and folders to several online devices at once.
 * **Receive folder:** Incoming files land in `Download/FileApex` on Android and `~/Downloads/FileApex` on desktop.
-* **System sharing:** macOS Finder and Share extension, Windows Share and Send To, Android Direct Share targets for paired devices, and desktop drag-and-drop (plus a menu-bar / system-tray Drop Box).
+* **System sharing:** macOS Finder and Share extension, Windows Share and Send To, Android Direct Share targets for paired devices, and desktop drag-and-drop (plus a menu-bar / system-tray Drop Box). The menu-bar and tray menu lists your devices by type, sends your clipboard to one, opens its files, checks batteries when you tap, and posts to the Bulletin Board.
 * **Clipboard sharing (opt-in):** Send your clipboard or a link to any paired device, in any direction. Links open in the default browser.
 * **Friends and Groups:** Invite contacts for file-only sending over Iroh without pairing them into your personal device cluster.
 * **Share as a link (opt-in):** Turn one file into a link that works once, so someone without FileApex can download it in a browser. It goes from your device through a relay that stores nothing, end-to-end encrypted, and asks for your OK first.

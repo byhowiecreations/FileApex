@@ -75,8 +75,9 @@ private class DesktopEmbeddedTsnetEngine : TailscaleUserspaceEngine {
         return DesktopTsnetLibrary.peers(lib)
     }
 
+    /** Only passed on when the node is already loaded; [TailscaleNodeRuntime] sends the port again after every start. */
     override fun setForwardPort(port: Int) {
-        val lib = DesktopTsnetLibrary.loadOrNull() ?: return
+        val lib = DesktopTsnetLibrary.loadedOrNull() ?: return
         runCatching { lib.fileapex_tsnet_set_forward_port(port) }
     }
 }
@@ -124,6 +125,8 @@ private object DesktopTsnetLibrary {
     private var native: FileApexTsnetNative? = null
 
     fun loaded(): Boolean = native != null
+
+    fun loadedOrNull(): FileApexTsnetNative? = native
 
     fun loadOrNull(): FileApexTsnetNative? {
         if (!DesktopPlatformPaths.isMacOs() && !DesktopPlatformPaths.isWindows() && !DesktopPlatformPaths.isLinux()) return null

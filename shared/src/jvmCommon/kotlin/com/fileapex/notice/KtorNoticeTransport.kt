@@ -53,9 +53,18 @@ class KtorNoticeTransport(
             // An offline resolver surfaces as this IllegalArgumentException subtype, not as an IOException.
             println("NoticeTransport: request failed (${e::class.simpleName})")
             return NoticeHttpResponse.Failed
+        } catch (e: IllegalArgumentException) {
+            // A server that answers plain HTTP on an HTTPS address makes Ktor's TLS record parser throw this, not an
+            // IOException. Any other IllegalArgumentException is a bug and goes on to the caller.
+            if (!e.isThrownByTlsParser()) throw e
+            println("NoticeTransport: request failed (TLS record)")
+            return NoticeHttpResponse.Failed
         }
         return NoticeHttpResponse.Failed
     }
+
+    private fun IllegalArgumentException.isThrownByTlsParser() =
+        stackTrace.firstOrNull()?.className?.startsWith(KTOR_TLS_PACKAGE) == true
 
     private suspend fun readBody(response: HttpResponse): NoticeHttpResponse {
         val declared = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
@@ -74,6 +83,7 @@ class KtorNoticeTransport(
 
     companion object {
         const val MAX_REDIRECTS = 2
+        private const val KTOR_TLS_PACKAGE = "io.ktor.network.tls."
 
         fun defaultClient() = HttpClient(CIO) {
             followRedirects = false

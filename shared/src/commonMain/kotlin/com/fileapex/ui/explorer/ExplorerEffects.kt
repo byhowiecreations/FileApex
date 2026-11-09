@@ -15,6 +15,7 @@ import com.fileapex.ui.ExplorerHeaderCommands
 internal fun ExplorerScope.ExplorerEffects() {
     with(inputs) { with(frame) { with(live) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
+    AccessingDeviceSnackbar(snackbarHostState, state.isRemoteTarget, state.firstListingSettled, state.deviceTitle)
     LaunchedEffect(Unit) {
         com.fileapex.platform.StorageToolsEvents.closeRequests.collect { toolsOpen = false }
     }

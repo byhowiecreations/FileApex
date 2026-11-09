@@ -19,6 +19,7 @@ class PlainWriteGuardTest {
         "MacOsExtensionRegistrar.kt" to "registration stamp and a redacted log read by the system installer",
         "PlatformUpdateInstaller.desktop.kt" to "the updater's own shell script, no user data",
         "DesktopAutostart.kt" to "OS launcher entry read by the desktop environment",
+        "WindowsGraphicsMode.kt" to "one word (automatic, direct3d or opengl) that must be readable before Skiko loads, long before any key can open; holds nothing about the user",
         "LinuxDesktopIntegration.kt" to "OS launcher entries read by the desktop environment",
         "CliPathIntegration.kt" to "shell wrapper scripts read by the shell",
         "DesktopLifecycleLog.kt" to "redacted lifecycle log, read by the user on purpose",

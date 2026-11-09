@@ -8,7 +8,7 @@ private const val FRIEND_ID_PREFIX = "friend:"
 fun friendTraySnapshots(): List<DesktopTrayDeviceSnapshot> {
     if (!FriendsHub.available) return emptyList()
     return FriendsHub.friends.value.map {
-        DesktopTrayDeviceSnapshot(id = FRIEND_ID_PREFIX + it.friendKey, name = "${it.label} (${it.groupName})", isOnline = true)
+        DesktopTrayDeviceSnapshot(id = FRIEND_ID_PREFIX + it.friendKey, name = "${it.label} (${it.groupName})", isOnline = true, iconKind = FRIEND_ICON_KIND, iconKey = "tray_icon_friend")
     }
 }
 

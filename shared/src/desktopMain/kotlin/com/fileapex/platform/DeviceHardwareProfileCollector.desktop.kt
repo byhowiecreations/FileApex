@@ -6,40 +6,36 @@ import kotlin.text.Charsets
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.presentation.DeviceHardwareProfile
 
-actual fun localDeviceHardwareProfile(): DeviceHardwareProfile {
-    val osName = System.getProperty("os.name").orEmpty()
-    val os = when {
-        osName.contains("Mac", ignoreCase = true) -> "macos"
-        osName.contains("Windows", ignoreCase = true) -> "windows"
-        osName.contains("Linux", ignoreCase = true) -> "linux"
-        else -> osName.trim().lowercase().ifBlank { "desktop" }
-    }
-    val make = when (os) {
-        "macos" -> "Apple"
-        "windows" -> "Microsoft"
-        else -> osName.trim().ifBlank { "Desktop" }
-    }
-    val model = readDesktopHardwareModel()
-    return DeviceHardwareProfile(
-        os = os,
+actual fun localDeviceHardwareProfile(): DeviceHardwareProfile = when (DesktopPlatformPaths.desktopOs) {
+    DesktopPlatformPaths.DesktopOs.Windows -> WindowsDiagnostics.hardwareProfile(WindowsRegistry, currentPlatformLabel())
+    DesktopPlatformPaths.DesktopOs.MacOs -> DeviceHardwareProfile(
+        os = "macos",
         platform = currentPlatformLabel(),
-        deviceMake = make,
-        deviceModel = model
+        deviceMake = "Apple",
+        deviceModel = readMacHardwareModel() ?: archName()
     )
+    else -> {
+        val osName = System.getProperty("os.name").orEmpty()
+        DeviceHardwareProfile(
+            os = if (osName.contains("Linux", ignoreCase = true)) "linux" else osName.trim().lowercase().ifBlank { "desktop" },
+            platform = currentPlatformLabel(),
+            deviceMake = osName.trim().ifBlank { "Desktop" },
+            deviceModel = archName()
+        )
+    }
 }
 
-private fun readDesktopHardwareModel(): String {
-    return cancellableCatching {
-        ProcessBuilder("/usr/sbin/sysctl", "-n", "hw.model")
-            .redirectErrorStream(true)
-            .start()
-            .inputStream
-            .bufferedReader(Charsets.UTF_8)
-            .use { it.readText().trim() }
-            .takeIf { it.isNotEmpty() }
-    }.getOrNull()
-        ?: System.getProperty("os.arch").orEmpty().trim().ifBlank { "Desktop" }
-}
+private fun archName(): String = System.getProperty("os.arch").orEmpty().trim().ifBlank { "Desktop" }
+
+private fun readMacHardwareModel(): String? = cancellableCatching {
+    ProcessBuilder("/usr/sbin/sysctl", "-n", "hw.model")
+        .redirectErrorStream(true)
+        .start()
+        .inputStream
+        .bufferedReader(Charsets.UTF_8)
+        .use { it.readText().trim() }
+        .takeIf { it.isNotEmpty() }
+}.getOrNull()
 
 actual fun localHardwareFingerprint(): Map<String, String> {
     val profile = localDeviceHardwareProfile()

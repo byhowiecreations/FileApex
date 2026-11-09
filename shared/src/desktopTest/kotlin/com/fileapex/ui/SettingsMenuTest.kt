@@ -197,9 +197,20 @@ class SettingsMenuTest {
         assertFalse(SettingsMenuIds.SHARE_LINK in ADVANCED_IDS)
     }
 
+    @Test
+    fun fullDiskAccessIsASecurityRowOnlyWhereTheSystemHasIt() {
+        fun entries(on: Boolean) = settingsMenuEntries(
+            playStoreBuild = false, desktopFileSelection = true, deviceNamePage = false, windowsFluent = false, fullDiskAccess = on
+        ).filter { it.id == SettingsMenuIds.FULL_DISK_ACCESS }
+        assertTrue(entries(false).isEmpty())
+        assertEquals(listOf(SettingsMenuSection.Security), entries(true).map { it.section })
+        assertFalse(SettingsMenuIds.FULL_DISK_ACCESS in ADVANCED_IDS)
+        assertEquals(SettingsPage.FullDiskAccess, settingsPageFor(SettingsMenuIds.FULL_DISK_ACCESS))
+    }
+
     private val everyRow = settingsMenuEntries(
         playStoreBuild = false, desktopFileSelection = true, deviceNamePage = true, windowsFluent = true, backupSync = true,
-        googleCloud = true, tailscale = true, iroh = true, groups = true, shareLink = true, autoLaunchOnDesktop = true
+        googleCloud = true, tailscale = true, iroh = true, groups = true, shareLink = true, autoLaunchOnDesktop = true, fullDiskAccess = true
     )
 
     @Test

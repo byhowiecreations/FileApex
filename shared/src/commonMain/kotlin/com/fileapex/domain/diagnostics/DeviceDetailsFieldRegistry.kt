@@ -23,6 +23,7 @@ enum class DeviceDetailsFieldId(val label: String) {
     DisplayResolution("Display resolution"),
     RefreshRate("Refresh rate"),
     Brightness("Brightness"),
+    Graphics("Graphics"),
     BatteryLevel("Battery level"),
     Charging("Charging"),
     BatteryTemp("Battery temp"),
@@ -62,11 +63,11 @@ enum class DeviceDetailsFieldId(val label: String) {
 
     companion object {
         private val FIXED = setOf(
-            Platform, Make, Model, Kernel, OsBuild, Processor, CpuArchitecture, CpuHardware, DisplayResolution
+            Platform, Make, Model, Kernel, OsBuild, Processor, CpuArchitecture, CpuHardware, DisplayResolution, Graphics
         )
         private val BASIC = listOf(
             Platform, Make, Model, AppVersion, OsBuild, Kernel,
-            BatteryLevel, Storage, Memory, CpuArchitecture, CpuHardware
+            BatteryLevel, Storage, Memory, CpuArchitecture, CpuHardware, Graphics
         )
         private val WIFI_ONLY = setOf(Ssid, Signal, LinkSpeed, FrequencyBand, Channel)
         private val CELLULAR_ONLY = setOf(

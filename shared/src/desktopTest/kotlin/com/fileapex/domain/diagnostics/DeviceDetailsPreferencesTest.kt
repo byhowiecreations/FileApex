@@ -9,7 +9,8 @@ class DeviceDetailsPreferencesTest {
     private val basicOrder = listOf(
         DeviceDetailsFieldId.Platform, DeviceDetailsFieldId.Make, DeviceDetailsFieldId.Model, DeviceDetailsFieldId.AppVersion,
         DeviceDetailsFieldId.OsBuild, DeviceDetailsFieldId.Kernel, DeviceDetailsFieldId.BatteryLevel, DeviceDetailsFieldId.Storage,
-        DeviceDetailsFieldId.Memory, DeviceDetailsFieldId.CpuArchitecture, DeviceDetailsFieldId.CpuHardware
+        DeviceDetailsFieldId.Memory, DeviceDetailsFieldId.CpuArchitecture, DeviceDetailsFieldId.CpuHardware,
+        DeviceDetailsFieldId.Graphics
     )
 
     @Test
@@ -55,5 +56,12 @@ class DeviceDetailsPreferencesTest {
         assertTrue(DeviceDiagnosticsFormatter.appVersionSummary(AppDiagnostics("0.19.2", 210, "fdroid")).contains("F-Droid"))
         assertTrue(DeviceDiagnosticsFormatter.appVersionSummary(AppDiagnostics("0.19.2", 210, "play")).contains("Play Store"))
         assertEquals("0.19.6a (Docker, build 214)", DeviceDiagnosticsFormatter.appVersionSummary(AppDiagnostics("0.19.6a", 214, "docker")))
+    }
+
+    @Test
+    fun anExistingUserWhoNeverSawGraphicsGetsItOnLikeAnyNewBasicField() {
+        val old = (DeviceDetailsFieldId.entries.filter { it != DeviceDetailsFieldId.Graphics }).map { DeviceDetailsFieldPreference(it.name, visible = it.isBasic) }
+        val prefs = DeviceDetailsDisplayPreferences(old).normalized()
+        assertTrue(prefs.fields.first { it.id == DeviceDetailsFieldId.Graphics.name }.visible)
     }
 }

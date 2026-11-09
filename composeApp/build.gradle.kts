@@ -8,6 +8,7 @@ import java.nio.file.StandardCopyOption
 import java.time.Year
 import java.time.ZoneOffset
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 private fun isMacHost(): Boolean =
@@ -93,6 +94,8 @@ val fileapexVersionName = extra["fileapex.version.name"] as String
 val fileapexVersionCode = extra["fileapex.version.code"] as String
 val fileapexExtensionVersion = extra["fileapex.extension.version"] as String
 val fileapexFdroid = extra["fileapex.fdroid"] as Boolean
+val toolchainJdk: String = Regex("(?m)^jdk=(\\S+)$")
+    .find(rootProject.file("toolchain.properties").readText())!!.groupValues[1]
 
 // The F-Droid build carries no Firebase, so the Google Services plugin stays off for it.
 if (!fileapexFdroid) {
@@ -139,7 +142,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.swing)
                 // Icons, Icons.Sharp and the core icons reached the runtime only through the extended module that desktop-slim-jars replaces.
                 runtimeOnly("org.jetbrains.compose.material:material-icons-core:1.7.3")
-                runtimeOnly(files(tasks.named("slimMaterialIconsJar"), tasks.named("slimIrohJar")))
+                runtimeOnly(files(tasks.named("slimMaterialIconsJar"), tasks.named("slimIrohJar"), tasks.named("slimSqliteJar")))
             }
         }
     }
@@ -493,6 +496,34 @@ afterEvaluate {
     }
 }
 
+/**
+ * ProGuard rewrites classes inside signed jars (BouncyCastle) but copies their signature files, so the JVM then refuses
+ * to load the rewritten classes ("SHA-256 digest error"). The signatures are dropped from the jars it writes.
+ */
+fun stripJarSignatures(jar: File) {
+    val signature = Regex("META-INF/[^/]+\\.(SF|DSA|RSA|EC)", RegexOption.IGNORE_CASE)
+    val temp = File(jar.parentFile, jar.name + ".unsigned")
+    ZipFile(jar).use { zip ->
+        ZipOutputStream(temp.outputStream().buffered()).use { out ->
+            for (entry in zip.entries()) {
+                if (signature.matches(entry.name)) continue
+                out.putNextEntry(ZipEntry(entry.name).apply { time = entry.time })
+                if (!entry.isDirectory) zip.getInputStream(entry).use { it.copyTo(out) }
+                out.closeEntry()
+            }
+        }
+    }
+    check(jar.delete() && temp.renameTo(jar)) { "could not replace ${jar.name}" }
+}
+
+tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
+    doLast {
+        outputs.files.files.filter { it.isDirectory }
+            .flatMap { dir -> dir.walkTopDown().filter { it.isFile && it.extension == "jar" }.toList() }
+            .forEach { stripJarSignatures(it) }
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.fileapex.MainKt"
@@ -518,12 +549,13 @@ compose.desktop {
             jvmArgs += listOf("--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")
         }
         if (isWindowsHost()) {
-            // Belt-and-suspenders for packaged/run launches; [DesktopJvmStartup] also sets this in main().
-            jvmArgs += listOf("-Dskiko.renderApi=OPENGL")
+            // Java2D's own Direct3D pipeline is not used (Skia draws the window); switching it off saves a thread pool and
+            // about 60 MB. The Skia renderer is chosen in DesktopJvmStartup from the user's saved choice.
+            jvmArgs += listOf("-Dsun.java2d.d3d=false")
         }
 
         buildTypes.release.proguard {
-            if (isWindowsHost() || isLinuxHost()) {
+            if (isLinuxHost()) {
                 isEnabled.set(false)
             } else {
                 obfuscate.set(false)
@@ -553,7 +585,7 @@ compose.desktop {
             // plugin from auto-discovering jdk-21-x64 alphabetically and bundling an x86_64 JRE
             // into the Silicon .app / DMG.
             val envJavaHome = System.getenv("JAVA_HOME")
-            val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+            val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-$toolchainJdk/Contents/Home")
             val x64Jdk  = File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
             val pinnedJdk = when {
                 // Intel build: JAVA_HOME already points at the x64 JDK.
@@ -657,7 +689,7 @@ tasks.register("buildMacTrayBridge") {
 
 /** The in-process library does not use the Docker daemon sources or the AAR output kept under native/tsnet/build. */
 val tsnetLibraryInputs = rootProject.fileTree(rootProject.layout.projectDirectory.dir("native/tsnet")) {
-    exclude("daemon/**", "build/**")
+    exclude("daemon/**", "build/**", "**/.DS_Store")
 }
 
 tasks.register("buildMacTsnet") {
@@ -786,7 +818,7 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
         // Wrong arch, rebuild using the correct JDK's jlink directly.
         logger.lifecycle("Runtime image is $producedArch but need $needsArch - rebuilding with correct jlink")
         val correctJdkHome = when (needsArch) {
-            "arm64"  -> File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+            "arm64"  -> File(System.getProperty("user.home"), ".jdks/jdk-$toolchainJdk/Contents/Home")
             "x86_64" -> File(System.getProperty("user.home"), ".jdks/jdk-21-x64/Contents/Home")
             else -> null
         }
@@ -829,7 +861,7 @@ private fun Project.embedMacTrayBridgeIn(appBundle: File) {
     frameworksDir.mkdirs()
     val dest = frameworksDir.resolve("libFileApexTray.dylib")
     Files.copy(dylib.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
-    ProcessBuilder("/usr/bin/codesign", "--force", "--sign", "-", dest.absolutePath)
+    ProcessBuilder(listOf("/usr/bin/codesign", "--force") + macSignArgs() + dest.absolutePath)
         .inheritIO()
         .start()
         .waitFor()
@@ -844,7 +876,7 @@ private fun Project.embedMacTsnetIn(appBundle: File) {
     frameworksDir.mkdirs()
     val dest = frameworksDir.resolve("libFileApexTsnet.dylib")
     Files.copy(dylib.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
-    ProcessBuilder("/usr/bin/codesign", "--force", "--sign", "-", dest.absolutePath)
+    ProcessBuilder(listOf("/usr/bin/codesign", "--force") + macSignArgs() + dest.absolutePath)
         .inheritIO()
         .start()
         .waitFor()
@@ -985,6 +1017,73 @@ private fun Project.setDmgVolumeIcon(dmg: File) {
     runOrFail("hdiutil", "convert", rwDmg.absolutePath, "-format", "UDZO", "-imagekey", "zlib-level=9", "-o", dmg.absolutePath)
     rwDmg.delete()
     logger.lifecycle("Set FileApex volume icon on ${dmg.name}")
+}
+
+/** The CDHash line of `codesign -dvvv`, which differs for any two different builds of an app. */
+private fun cdHash(app: File): String {
+    val process = ProcessBuilder("/usr/bin/codesign", "-dvvv", app.absolutePath).redirectErrorStream(true).start()
+    val out = process.inputStream.bufferedReader().readText()
+    process.waitFor()
+    return out.lineSequence().firstOrNull { it.startsWith("CDHash=") }?.removePrefix("CDHash=").orEmpty()
+}
+
+/**
+ * jpackage signs the app inside the DMG ad-hoc, which changes every build and makes macOS forget the user's privacy
+ * grants. Swap in the app signed with the stable identity, keeping the DMG's Finder layout, background and icon.
+ */
+private fun Project.replaceAppInDmg(dmg: File, signedApp: File) {
+    val work = Files.createTempDirectory("fileapex-dmg-swap-").toFile()
+    val rw = File(work, "rw.dmg")
+    val mount = File(work, "mnt").also { it.mkdirs() }
+    try {
+        runOrFail("hdiutil", "convert", dmg.absolutePath, "-format", "UDRW", "-o", rw.absolutePath, "-quiet")
+        runOrFail("hdiutil", "attach", rw.absolutePath, "-nobrowse", "-noautoopen", "-mountpoint", mount.absolutePath, "-quiet")
+        try {
+            val inDmg = File(mount, signedApp.name)
+            check(inDmg.isDirectory) { "${signedApp.name} is not in ${dmg.name}" }
+            inDmg.deleteRecursively()
+            runOrFail("ditto", signedApp.absolutePath, inDmg.absolutePath)
+            runOrFail("/usr/bin/codesign", "--verify", "--deep", "--strict", inDmg.absolutePath)
+            check(cdHash(inDmg) == cdHash(signedApp)) { "The app in ${dmg.name} differs from the signed app" }
+        } finally {
+            runOrFail("hdiutil", "detach", mount.absolutePath, "-quiet")
+        }
+        check(dmg.delete()) { "Could not replace ${dmg.absolutePath}" }
+        runOrFail("hdiutil", "convert", rw.absolutePath, "-format", "UDZO", "-imagekey", "zlib-level=9", "-o", dmg.absolutePath, "-quiet")
+    } finally {
+        work.deleteRecursively()
+    }
+    logger.lifecycle("Signed app placed in ${dmg.name}")
+}
+
+/**
+ * Last gate before a DMG is shipped: mount it read-only and require that its app verifies and, for a signed build, that its
+ * designated requirement names the pinned certificate. This catches any step that re-signs the app ad-hoc.
+ */
+private fun Project.verifyDmgSignature(dmg: File) {
+    val work = Files.createTempDirectory("fileapex-dmg-verify-").toFile()
+    val mount = File(work, "mnt").also { it.mkdirs() }
+    try {
+        runOrFail("hdiutil", "attach", dmg.absolutePath, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount.absolutePath, "-quiet")
+        try {
+            val app = File(mount, "FileApex.app")
+            check(app.isDirectory) { "FileApex.app is not in ${dmg.name}" }
+            runOrFail("/usr/bin/codesign", "--verify", "--deep", "--strict", app.absolutePath)
+            if (System.getenv("FILEAPEX_MAC_UNSIGNED") != "1") {
+                val process = ProcessBuilder("/usr/bin/codesign", "-dr", "-", app.absolutePath).redirectErrorStream(true).start()
+                val requirement = process.inputStream.bufferedReader().readText()
+                process.waitFor()
+                check(requirement.contains("certificate root = H\"${pinnedSigningHash().lowercase()}\"")) {
+                    "${dmg.name} is not signed with the pinned identity:\n$requirement"
+                }
+            }
+        } finally {
+            runOrFail("hdiutil", "detach", mount.absolutePath, "-quiet")
+        }
+    } finally {
+        work.deleteRecursively()
+    }
+    logger.lifecycle("Verified signing identity inside ${dmg.name}")
 }
 
 /** Runs after [packageDmg] so `current/`-bound DMGs mount with the real FileApex icon, not jpackage's generic one. */
@@ -1200,6 +1299,40 @@ private fun Project.packageFirefoxExtensionXpi(output: File) {
     zipDirectoryContents(stageDir, output)
 }
 
+/**
+ * Identity args for every Mac codesign call. With FILEAPEX_MAC_SIGN_IDENTITY set (signing.local.env) the app is signed
+ * with that certificate from FILEAPEX_MAC_SIGN_KEYCHAIN, so macOS keeps the user's privacy grants across updates, and
+ * the keychain must hold the certificate pinned in macos/signing-identity.sha1. A configured identity that cannot be
+ * used fails the build: an ad-hoc fallback would reset every user's grants. With no identity the build stops unless
+ * FILEAPEX_MAC_UNSIGNED=1 (build-fileapex.sh -unsigned) asked for an ad-hoc signature.
+ */
+private fun macSignArgs(): List<String> {
+    val identity = System.getenv("FILEAPEX_MAC_SIGN_IDENTITY")?.takeIf { it.isNotBlank() }
+    if (identity == null) {
+        check(System.getenv("FILEAPEX_MAC_UNSIGNED") == "1") {
+            "No Mac signing identity is configured. Run scripts/build-fileapex.sh -doctor, or add -unsigned for a build " +
+                "whose privacy grants reset on every update."
+        }
+        return listOf("--sign") + "-"
+    }
+    val keychain = System.getenv("FILEAPEX_MAC_SIGN_KEYCHAIN")?.takeIf { it.isNotBlank() }
+    check(keychain != null && File(keychain).isFile) { "FILEAPEX_MAC_SIGN_IDENTITY is set but its keychain file is missing" }
+    runCodesign("/usr/bin/security", "unlock-keychain", "-p", "", keychain)
+    val found = ProcessBuilder("/usr/bin/security", "find-identity", "-p", "codesigning", keychain)
+        .redirectErrorStream(true).start().let { p -> p.inputStream.bufferedReader().readText().also { p.waitFor() } }
+    check(found.contains(pinnedSigningHash())) {
+        "The signing keychain does not hold the certificate pinned in macos/signing-identity.sha1. " +
+            "Restore it with scripts/build-fileapex.sh -restore-signing <backup p12>; never create a new one."
+    }
+    return listOf("--sign", identity, "--keychain", keychain)
+}
+
+private fun pinnedSigningHash(): String {
+    val pin = rootProject.layout.projectDirectory.file("macos/signing-identity.sha1").asFile
+    check(pin.isFile) { "Missing ${pin.absolutePath}" }
+    return pin.readText().trim().uppercase()
+}
+
 private fun runCodesign(vararg args: String) {
     val process = ProcessBuilder(*args).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().readText()
@@ -1226,28 +1359,28 @@ private fun signMacAppWithPluginEntitlements(
     check(bulletinEnts.isFile) { "Missing $bulletinEnts" }
     check(hostEnts.isFile) { "Missing $hostEnts" }
     runCodesign(
-        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+        "/usr/bin/codesign", "--force", *macSignArgs().toTypedArray(), "--timestamp=none",
         "--entitlements", shareEnts.absolutePath, share.absolutePath
     )
     runCodesign(
-        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+        "/usr/bin/codesign", "--force", *macSignArgs().toTypedArray(), "--timestamp=none",
         "--entitlements", bulletinEnts.absolutePath, bulletin.absolutePath
     )
     if (tray.isFile) {
         runCodesign(
-            "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+            "/usr/bin/codesign", "--force", *macSignArgs().toTypedArray(), "--timestamp=none",
             tray.absolutePath
         )
     }
     val tsnet = appBundle.resolve("Contents/Frameworks/libFileApexTsnet.dylib")
     if (tsnet.isFile) {
         runCodesign(
-            "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+            "/usr/bin/codesign", "--force", *macSignArgs().toTypedArray(), "--timestamp=none",
             tsnet.absolutePath
         )
     }
     runCodesign(
-        "/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none",
+        "/usr/bin/codesign", "--force", *macSignArgs().toTypedArray(), "--timestamp=none",
         "--entitlements", hostEnts.absolutePath, appBundle.absolutePath
     )
     logger.lifecycle("Signed FileApex.app PlugIns with sandbox entitlements")
@@ -2156,7 +2289,7 @@ tasks.register("packageSiliconApp") {
     onlyIf { isMacHost() }
     dependsOn("buildMacTrayBridge")
     doLast {
-        val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+        val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-$toolchainJdk/Contents/Home")
         check(arm64Jdk.isDirectory) { "arm64 JDK not found at ${arm64Jdk.absolutePath}" }
 
         val stagingAppDir = layout.buildDirectory.dir("compose/binaries/main/app").get().asFile
@@ -2215,7 +2348,7 @@ tasks.register("packageSiliconDmg") {
     onlyIf { isMacHost() }
     dependsOn("buildMacTrayBridge")
     doLast {
-        val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-21.0.11+10/Contents/Home")
+        val arm64Jdk = File(System.getProperty("user.home"), ".jdks/jdk-$toolchainJdk/Contents/Home")
         check(arm64Jdk.isDirectory) { "arm64 JDK not found at ${arm64Jdk.absolutePath}" }
 
         // Clear any stale x86_64 runtime that a cached checkRuntime task may have restored.
@@ -2281,6 +2414,8 @@ tasks.register("packageSiliconDmg") {
             .firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
         val dest = currentBuildsDest()
         if (siliconDmg != null) {
+            replaceAppInDmg(siliconDmg, stagingApp)
+            verifyDmgSignature(siliconDmg)
             moveToCurrent(dest, siliconDmg, destName = "FileApex-v$fileapexVersionName-Silicon.dmg", logger = logger)
         }
         moveToCurrent(dest, stagingApp, logger = logger)
@@ -2331,6 +2466,11 @@ tasks.register("packageIntelDmg") {
         val x64Dmg = dmgDir.listFiles().orEmpty()
             .firstOrNull { it.isFile && it.extension.equals("dmg", ignoreCase = true) }
         if (x64Dmg != null) {
+            val intelApp = stagingApp.resolve("FileApex.app")
+            check(intelApp.isDirectory) { "Intel .app missing at ${intelApp.absolutePath}" }
+            finalizeMacAppSignature(intelApp)
+            replaceAppInDmg(x64Dmg, intelApp)
+            verifyDmgSignature(x64Dmg)
             moveToCurrent(
                 currentBuildsDest(), x64Dmg,
                 destName = "FileApex-v$fileapexVersionName-Intel.dmg",

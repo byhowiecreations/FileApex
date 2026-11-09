@@ -439,6 +439,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="allow_over_cellular_desc">When off-LAN, fetch or share encrypted Device Details via Firebase. Both devices must enable this and link a Google Account. Same Wi-Fi still uses local network (not encrypted).</string>
     <string name="expanded_layout_desc">When on, always uses the adaptive multi-pane layout with navigation rail and list-detail, regardless of window size. When off, uses the compact single-column layout. Default is Compact.</string>
     <string name="windows_fluent_desc">Standard keeps the cross-platform look (same as Android). Modern uses native Windows styling and a Mica title bar. Saved on this PC; applies immediately.</string>
+    <string name="graphics_renderer">Graphics renderer</string>
+    <string name="graphics_renderer_desc">Applies the next time FileApex starts. Direct3D can use less memory; if the window misbehaves, switch back.</string>
+    <string name="graphics_auto">Automatic (OpenGL)</string>
+    <string name="graphics_direct3d">Direct3D</string>
+    <string name="graphics_opengl">OpenGL</string>
     <string name="check_updates_desc">When on, FileApex checks GitHub Releases on your schedule and installs newer builds for this platform. Default is off.</string>
     <string name="require_pin_desc">When on, other devices must enter this device\'s PIN to pair and to browse files. Sending files to this device does not require PIN. Default is off. Only this device stores the PIN.</string>
     <string name="browse_unlock_idle">Browse unlock idle timeout</string>
@@ -588,6 +593,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="field_DisplayResolution">Display resolution</string>
     <string name="field_RefreshRate">Refresh rate</string>
     <string name="field_Brightness">Brightness</string>
+    <string name="field_Graphics">Graphics</string>
     <string name="field_BatteryLevel">Battery level</string>
     <string name="field_Charging">Charging</string>
     <string name="field_BatteryTemp">Battery temp</string>

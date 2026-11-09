@@ -51,7 +51,16 @@ data class ProcessorDiagnostics(
 data class DisplayDiagnostics(
     val resolution: String = "",
     val refreshRateHz: Float? = null,
-    val brightnessPercent: Int? = null
+    val brightnessPercent: Int? = null,
+    /** Graphics cards; empty from a device or platform that does not report them yet. */
+    val gpus: List<GpuDiagnostics> = emptyList()
+)
+
+@Serializable
+data class GpuDiagnostics(
+    val name: String = "",
+    /** Dedicated video memory, or null when the driver does not say. */
+    val memoryBytes: Long? = null
 )
 
 @Serializable

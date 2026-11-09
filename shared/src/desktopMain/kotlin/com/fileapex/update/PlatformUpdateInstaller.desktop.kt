@@ -139,8 +139,14 @@ actual object PlatformUpdateInstaller {
             appendLine("cleanup() { rm -rf \"${d}TMP_DIR\"; }")
             appendLine("trap cleanup EXIT")
             appendLine()
+            appendLine(macUpdateIdentityGuardShell())
+            appendLine()
             appendLine("verify_app() {")
             appendLine("  codesign --verify --deep --strict \"${d}1\" || { echo \"FileApex update: signature check failed\" >&2; return 1; }")
+            appendLine(
+                "  identity_allowed \"${d}(installed_identity \"${d}TARGET\")\" \"${d}(installed_identity \"${d}1\")\" " +
+                    "|| { echo \"FileApex update: signed by a different identity\" >&2; return 1; }"
+            )
             appendLine(
                 "  [[ \"${d}(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"${d}1/Contents/Info.plist\")\" == \"com.fileapex\" ]] " +
                     "|| { echo \"FileApex update: not a FileApex bundle\" >&2; return 1; }"
@@ -151,7 +157,7 @@ actual object PlatformUpdateInstaller {
             appendLine("  ATTACH_OUT=\"${d}(hdiutil attach -nobrowse -readonly \"${d}ASSET\")\"")
             appendLine(
                 "  MOUNT=\"${d}(printf '%s\\n' \"${d}ATTACH_OUT\" | " +
-                    "awk -F'\\t' '/\\/Volumes\\/{print ${d}NF; exit}')\""
+                    "awk -F'\\t' '/\\/Volumes\\//{print ${d}NF; exit}')\""
             )
             appendLine("  if [[ -z \"${d}MOUNT\" ]]; then")
             appendLine(

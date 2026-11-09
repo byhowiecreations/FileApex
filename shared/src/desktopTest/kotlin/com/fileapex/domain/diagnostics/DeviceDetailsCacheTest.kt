@@ -16,39 +16,52 @@ class DeviceDetailsCacheTest {
         memory = MemoryDiagnostics(totalBytes = 16, availableBytes = 8, usedBytes = 8)
     )
 
+    private fun cache(): DeviceDetailsCache {
+        DeviceDetailsCache.resetForTest(reader = { "" }, writer = {})
+        return DeviceDetailsCache
+    }
+
     @Test
     fun anAnswerWithNothingSavedIsKeptAsIs() {
-        assertSame(full, DeviceDetailsCache.merge(null, full))
+        assertSame(full, cache().remember("a", full))
     }
 
     @Test
-    fun whatNeverChangesSurvivesAThinnerAnswerAndWhatChangesIsTakenFromTheNewOne() {
-        val thin = PeerDeviceDiagnostics(
-            collectedAtEpochMs = 200,
-            battery = BatteryDiagnostics(levelPercent = 55, chargingState = "AC"),
-            storage = StorageDiagnostics(usedBytes = 40),
-            memory = MemoryDiagnostics(availableBytes = 2, usedBytes = 14)
+    fun theSavedCopyIsThereToShowAtOnceBeforeTheAnswerArrives() {
+        cache().remember("a", full)
+        assertEquals("Dell", DeviceDetailsCache.get("a")?.device?.make)
+    }
+
+    @Test
+    fun aFreshAnswerReplacesEverySavedValueIncludingTheFixedFacts() {
+        cache().remember("a", full)
+        val updated = full.copy(
+            collectedAtEpochMs = 300,
+            device = DeviceIdentityDiagnostics(make = "MSI", model = "MS-7D75", kernelVersion = "10.0.26200", osBuildVersion = "26.10"),
+            processor = ProcessorDiagnostics(architecture = "amd64", hardware = "Ryzen", totalCoreCount = 16),
+            display = DisplayDiagnostics(resolution = "1x1", gpus = listOf(GpuDiagnostics("RX 6800", 1L)))
         )
-        val merged = DeviceDetailsCache.merge(full, thin)
-        assertEquals("Linux", merged.platform)
-        assertEquals("Dell", merged.device.make)
-        assertEquals("6.8", merged.device.kernelVersion)
-        assertEquals("x86_64", merged.processor.architecture)
-        assertEquals(8, merged.processor.totalCoreCount)
-        assertEquals("2560x1440", merged.display.resolution)
-        assertEquals(100L, merged.storage.totalBytes)
-        assertEquals(16L, merged.memory.totalBytes)
-        assertEquals(200L, merged.collectedAtEpochMs)
-        assertEquals(55, merged.battery.levelPercent)
-        assertEquals(40L, merged.storage.usedBytes)
-        assertEquals(2L, merged.memory.availableBytes)
-        assertEquals(null, merged.processor.activeCoreCount)
+        val shown = DeviceDetailsCache.remember("a", updated, null)
+        assertEquals(updated, shown)
+        assertEquals(updated, DeviceDetailsCache.get("a"))
     }
 
     @Test
-    fun aNewValueReplacesAnOldOneEvenForTheStableFields() {
-        val updated = full.copy(device = full.device.copy(osBuildVersion = "26.10"), collectedAtEpochMs = 300)
-        assertEquals("26.10", DeviceDetailsCache.merge(full, updated).device.osBuildVersion)
+    fun aBlankFreshValueIsNotPatchedFromTheOldCopy() {
+        cache().remember("a", full)
+        val shown = DeviceDetailsCache.remember("a", full.copy(device = DeviceIdentityDiagnostics(make = "", model = "")), setOf(DiagnosticGroup.Identity))
+        assertEquals("", shown.device.make)
+        assertEquals("", shown.device.model)
+    }
+
+    @Test
+    fun aGroupNotAskedForKeepsItsSavedValuesWhileTheAskedOnesAreReplaced() {
+        cache().remember("a", full)
+        val partial = PeerDeviceDiagnostics(collectedAtEpochMs = 300, platform = "Linux", battery = BatteryDiagnostics(levelPercent = 40))
+        val shown = DeviceDetailsCache.remember("a", partial, setOf(DiagnosticGroup.Battery))
+        assertEquals(40, shown.battery.levelPercent)
+        assertEquals("Dell", shown.device.make)
+        assertEquals(8, shown.processor.totalCoreCount)
     }
 
     @Test

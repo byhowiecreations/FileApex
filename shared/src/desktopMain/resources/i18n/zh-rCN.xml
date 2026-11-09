@@ -440,6 +440,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="allow_over_cellular_desc">离开局域网时，通过 Firebase 获取或共享加密的设备详情。双方都必须启用此选项并关联 Google 账号。同一 Wi‑Fi 仍使用本地网络（不加密）。</string>
     <string name="expanded_layout_desc">开启后，无论窗口大小如何，始终使用带导航栏和列表-详情的自适应多栏布局。关闭则使用紧凑单列布局。默认为紧凑。</string>
     <string name="windows_fluent_desc">标准保持跨平台外观（与 Android 相同）。现代使用原生 Windows 样式和 Mica 标题栏。保存在本机，立即生效。</string>
+    <string name="graphics_renderer">图形渲染器</string>
+    <string name="graphics_renderer_desc">下次启动 FileApex 时生效。Direct3D 可能占用更少内存;如果窗口出现问题,请切换回来。</string>
+    <string name="graphics_auto">自动 (OpenGL)</string>
+    <string name="graphics_direct3d">Direct3D</string>
+    <string name="graphics_opengl">OpenGL</string>
     <string name="check_updates_desc">开启后，FileApex 会检查 GitHub Releases 上是否有更新版本，并下载供您安装（不会自动安装）。默认关闭。</string>
     <string name="require_pin_desc">开启后，其他设备必须输入本设备 PIN 才能配对和浏览文件。向本设备发送文件不需要 PIN。默认关闭。PIN 仅保存在本设备。</string>
     <string name="browse_unlock_idle">浏览解锁空闲超时</string>
@@ -586,6 +591,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="field_DisplayResolution">显示分辨率</string>
     <string name="field_RefreshRate">刷新率</string>
     <string name="field_Brightness">亮度</string>
+    <string name="field_Graphics">显卡</string>
     <string name="field_BatteryLevel">电量</string>
     <string name="field_Charging">充电</string>
     <string name="field_BatteryTemp">电池温度</string>
@@ -807,6 +813,31 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="quit">退出</string>
     <string name="quit_application">退出应用</string>
     <string name="launch_full_app">打开完整应用</string>
+    <string name="accessing_device">正在访问 %1$s</string>
+    <string name="dropbox_zone_tip">从文件管理器将文件或文件夹拖到这里</string>
+    <string name="dropbox_destination_tip">文件将发送到这里</string>
+    <string name="dropbox_remove_tip">从列表中移除</string>
+    <string name="dropbox_cancel_tip">清空列表，或停止正在进行的发送</string>
+    <string name="dropbox_send_tip">将文件发送到目标</string>
+    <string name="tray_quit">退出</string>
+    <string name="tray_open">打开</string>
+    <string name="tray_send_clipboard_tip">将剪贴板发送到此设备</string>
+    <string name="tray_post">发布</string>
+    <string name="tray_post_tip">向公告板发布一条笔记，它会显示在你所有的设备上。</string>
+    <string name="tray_post_hint">为你所有的设备写一条笔记</string>
+    <string name="tray_post_unavailable">公告板尚未就绪，请稍后再试。</string>
+    <string name="tray_app_tip">FileApex：你的设备，一个文件管理器</string>
+    <string name="tray_row_tip">点击向 %1$s 发送文件</string>
+    <string name="tray_online_tip">在线：现在可以连接此设备</string>
+    <string name="tray_offline_tip">离线：目前无法连接此设备</string>
+    <string name="tray_battery_tip">电量和读取时间。点击“查看电量”可重新读取。</string>
+    <string name="tray_send_clipboard_offline_tip">离线：目前无法发送剪贴板</string>
+    <string name="tray_browse_tip">浏览此设备的文件</string>
+    <string name="tray_browse_offline_tip">离线：目前无法浏览此设备的文件</string>
+    <string name="tray_check_batteries_tip">向每台在线设备询问电量。在你点击之前不会检查任何内容。</string>
+    <string name="tray_send_multi_tip">打开投放框，向所选设备发送文件</string>
+    <string name="tray_multi_select_tip">点击设备即可向其发送文件。按住 Ctrl（Mac 上为 Command）并点击可选择多台设备，然后按发送按钮。</string>
+    <string name="tray_icon_friend">好友（只能发送和接收文件）</string>
     <string name="drag_drop_files_here">请将文件拖放到此处</string>
     <string name="drop_files">投放文件</string>
     <string name="drop_files_first">请先拖放一个或多个文件</string>
@@ -1555,5 +1586,8 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="share_link_page_off">已关闭</string>
     <string name="share_link_page_unasked">首次分享文件时询问</string>
     <string name="share_link_page_about">以链接分享会生成只能使用一次的链接，让没有 FileApex 的人在浏览器中下载文件。它使用不保存任何内容的中继服务器，传输为端到端加密。关闭后，文件菜单中不再显示“以链接分享”，已打开的链接会被停止。</string>
+    <string name="mac_full_disk_body">FileApex 需要完全磁盘访问权限，这样 macOS 就不会再逐个文件夹询问，也便于远程使用这台 Mac。请在“系统设置”的“隐私与安全性”中打开“完全磁盘访问权限”里的 FileApex，然后退出并重新打开 FileApex。</string>
+    <string name="mac_full_disk_open">打开系统设置</string>
+    <string name="full_disk_access">完全磁盘访问权限</string>
 </resources>
 

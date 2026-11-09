@@ -31,6 +31,7 @@ object DesktopMacTrayCoordinator {
     private var nativeMainWindowBound = false
     private var onShowWindow: (() -> Unit)? = null
     private var onHideWindow: (() -> Unit)? = null
+    private var lastSnapshots: List<DesktopTrayDeviceSnapshot> = emptyList()
 
     fun isInstalled(): Boolean = installed
 
@@ -76,6 +77,10 @@ object DesktopMacTrayCoordinator {
                 },
                 onRefreshDevices = { refreshDeviceSnapshotFromTray() },
                 onPrepareDropBox = { DesktopMacTrayBridge.resyncDropBoxFrame() },
+                onSendClipboard = { deviceId -> sendClipboardFromTray(deviceId) },
+                onBrowseDevice = { deviceId -> browseFromTray(deviceId) },
+                onPostNote = { text -> postNoteFromTray(text) },
+                onCheckBatteries = { checkBatteriesFromTray() },
                 onQuit = { dispatchToSwing(onQuit) },
                 onShowMainWindow = { syncMainWindowOnSwing() }
             )
@@ -171,36 +176,66 @@ object DesktopMacTrayCoordinator {
         observeJob?.cancel()
         observeJob = scope.launch {
             combine(
-                FileApexServices.deviceRepository.observeDevices(),
-                FileApexServices.presenceMonitor.reachabilityEpochMs,
-                FileApexServices.presenceMonitor.onlineDeviceIds,
-                FileApexServices.presenceMonitor.onlineSnapshotEpochMs,
-                com.fileapex.friends.FriendsHub.friends
-            ) { devices, _, _, _, _ ->
-                devices.map { device ->
-                    DesktopTrayDeviceSnapshot(
-                        id = device.deviceId,
-                        name = device.deviceName,
-                        isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
-                    )
-                } + friendTraySnapshots()
-            }.collect { snapshots ->
+                combine(
+                    FileApexServices.deviceRepository.observeDevices(),
+                    FileApexServices.presenceMonitor.reachabilityEpochMs,
+                    FileApexServices.presenceMonitor.onlineDeviceIds,
+                    FileApexServices.presenceMonitor.onlineSnapshotEpochMs,
+                    com.fileapex.friends.FriendsHub.friends
+                ) { devices, _, _, _, _ -> devices },
+                DesktopTrayBatteries.readings
+            ) { devices, readings -> snapshotsOf(devices, readings) }.collect { snapshots ->
                 publishLocalApi()
+                lastSnapshots = snapshots
                 DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
             }
         }
     }
 
+    private fun snapshotsOf(
+        devices: List<com.fileapex.data.db.PairedDeviceEntity>,
+        readings: Map<String, TrayBatteryReading>
+    ): List<DesktopTrayDeviceSnapshot> = withTrayBatteries(
+        orderTrayDevices(
+            devices.map { device -> trayDeviceSnapshot(device, FileApexServices.presenceMonitor.isDeviceOnline(device)) } +
+                friendTraySnapshots()
+        ),
+        readings
+    )
+
     private suspend fun pushDeviceSnapshot() {
         val devices = FileApexServices.deviceRepository.listDevices()
-        val snapshots = devices.map { device ->
-            DesktopTrayDeviceSnapshot(
-                id = device.deviceId,
-                name = device.deviceName,
-                isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
-            )
-        } + friendTraySnapshots()
+        val snapshots = snapshotsOf(devices, DesktopTrayBatteries.readings.value)
+        lastSnapshots = snapshots
         DesktopMacTrayBridge.updateDevices(json.encodeToString(snapshots))
+    }
+
+    private fun sendClipboardFromTray(deviceId: String) {
+        scope.launch {
+            DesktopMacTrayBridge.showToast(sendTrayClipboard(listOf(deviceId)).text)
+        }
+    }
+
+    private fun browseFromTray(deviceId: String) {
+        DesktopOpenDeviceRequest.request(deviceId)
+        showMainWindowFromTray()
+    }
+
+    private fun postNoteFromTray(text: String) {
+        scope.launch {
+            DesktopMacTrayBridge.showToast(postTrayNote(text).text)
+        }
+    }
+
+    private fun checkBatteriesFromTray() {
+        scope.launch {
+            DesktopMacTrayBridge.setCheckingBatteries(true)
+            try {
+                DesktopTrayBatteries.check(lastSnapshots)
+            } finally {
+                DesktopMacTrayBridge.setCheckingBatteries(false)
+            }
+        }
     }
 
     private fun publishLocalApi() {

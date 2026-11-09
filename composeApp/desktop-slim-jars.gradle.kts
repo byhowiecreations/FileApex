@@ -86,7 +86,42 @@ val slimIroh = tasks.register<Jar>("slimIrohJar") {
     }
 }
 
+val sqliteJar = resolveJar("androidx.sqlite:sqlite-bundled-jvm:${catalog.findVersion("sqlite").get()}")
+// androidx.sqlite 2.7.0 and 2.7.1 ship no natives/osx_x64, so an Intel Mac could not open the database ("Cannot find a suitable
+// SQLite binary for mac os x | x86_64"). 2.6.2 is the last with it: same 22 native methods, same SQLite 3.50.1 inside.
+val sqliteIntelMacJar = resolveJar("androidx.sqlite:sqlite-bundled-jvm:2.6.2")
+val isIntelMac = ("mac" in hostOs || "darwin" in hostOs) && (hostArch == "x86_64" || hostArch == "amd64")
+val sqliteNatives = when {
+    isIntelMac -> listOf("natives/osx_x64/")
+    "mac" in hostOs || "darwin" in hostOs -> listOf("natives/osx_arm64/")
+    "win" in hostOs -> listOf("natives/windows_")
+    hostArch == "aarch64" || hostArch == "arm64" -> listOf("natives/linux_arm64/")
+    else -> listOf("natives/linux_x64/")
+}
+
+val slimSqlite = tasks.register<Jar>("slimSqliteJar") {
+    archiveFileName.set("sqlite-bundled-jvm-${catalog.findVersion("sqlite").get()}-${hostOs.take(3)}.jar")
+    destinationDirectory.set(slimDir)
+    from(provider { sqliteJar.files.map { zipTree(it) } }) {
+        exclude { element ->
+            val path = element.relativePath.pathString
+            path.startsWith("natives/") && sqliteNatives.none { path.startsWith(it) }
+        }
+    }
+    if (isIntelMac) {
+        from(provider { sqliteIntelMacJar.files.map { zipTree(it) } }) { include("natives/osx_x64/**") }
+    }
+    doLast {
+        val names = ZipFile(archiveFile.get().asFile).use { zip -> zip.entries().asSequence().map { it.name }.toList() }
+        check(names.any { name -> !name.endsWith("/") && sqliteNatives.any { name.startsWith(it) } }) {
+            "The SQLite jar has no SQLite native for this machine (${sqliteNatives.joinToString()}); the app could not open its database."
+        }
+    }
+}
+
 configurations.matching { it.name == "desktopRuntimeClasspath" }.configureEach {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    exclude(group = "androidx.sqlite", module = "sqlite-bundled-jvm")
     exclude(group = "org.jetbrains.compose.material", module = "material-icons-extended-desktop")
     exclude(group = "org.jetbrains.compose.material", module = "material-icons-extended")
     exclude(group = "computer.iroh", module = "iroh")

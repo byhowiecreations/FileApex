@@ -88,8 +88,7 @@ internal class DevicesDetailsActions(
                 _uiState.update { it.copy(detailsHint = AppI18n.t("getting_device_details", device.deviceName)) }
             } else null
             val groups = DiagnosticGroups.toRequest(
-                FileApexServices.settings.deviceDetailsDisplayPreferences.first().visibleFieldIds(),
-                saved
+                FileApexServices.settings.deviceDetailsDisplayPreferences.first().visibleFieldIds()
             )
             cancellableCatching {
                 withContext(Dispatchers.IO) {

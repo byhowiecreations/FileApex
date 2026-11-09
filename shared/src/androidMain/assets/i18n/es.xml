@@ -441,6 +441,11 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="allow_over_cellular_desc">Fuera de LAN, obtiene o comparte Detalles del dispositivo cifrados por Firebase. Ambos dispositivos deben activarlo y vincular una cuenta de Google. En la misma Wi‑Fi se usa la red local (sin cifrar).</string>
     <string name="expanded_layout_desc">Si está activado, siempre usa el diseño adaptativo de varios paneles con rail y lista-detalle, sin importar el tamaño de la ventana. Si está desactivado, usa una sola columna. El valor predeterminado es Compacto.</string>
     <string name="windows_fluent_desc">Estándar mantiene el aspecto multiplataforma (igual que Android). Moderno usa el estilo nativo de Windows y una barra de título Mica. Se guarda en este PC; se aplica de inmediato.</string>
+    <string name="graphics_renderer">Renderizador gráfico</string>
+    <string name="graphics_renderer_desc">Se aplica la próxima vez que se inicie FileApex. Direct3D puede usar menos memoria; si la ventana falla, vuelve atrás.</string>
+    <string name="graphics_auto">Automático (OpenGL)</string>
+    <string name="graphics_direct3d">Direct3D</string>
+    <string name="graphics_opengl">OpenGL</string>
     <string name="check_updates_desc">Si está activado, FileApex busca versiones más nuevas en GitHub Releases y las descarga para que las instales (no se instalan automáticamente). Desactivado por defecto.</string>
     <string name="require_pin_desc">Si está activado, los demás dispositivos deben introducir el PIN de este dispositivo para emparejar y explorar archivos. Enviar archivos a este dispositivo no requiere PIN. Desactivado por defecto. Solo este dispositivo guarda el PIN.</string>
     <string name="browse_unlock_idle">Tiempo de inactividad del desbloqueo al explorar</string>
@@ -587,6 +592,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="field_DisplayResolution">Resolución</string>
     <string name="field_RefreshRate">Frecuencia de actualización</string>
     <string name="field_Brightness">Brillo</string>
+    <string name="field_Graphics">Gráficos</string>
     <string name="field_BatteryLevel">Nivel de batería</string>
     <string name="field_Charging">Cargando</string>
     <string name="field_BatteryTemp">Temp. de batería</string>
@@ -810,6 +816,31 @@ Toca el hub central (+) para emparejar</string>
     <string name="quit">Salir</string>
     <string name="quit_application">Salir de la aplicación</string>
     <string name="launch_full_app">Abrir la app completa</string>
+    <string name="accessing_device">Accediendo a %1$s</string>
+    <string name="dropbox_zone_tip">Arrastra aquí archivos o carpetas desde tu gestor de archivos</string>
+    <string name="dropbox_destination_tip">Adónde se enviarán los archivos</string>
+    <string name="dropbox_remove_tip">Quitar de la lista</string>
+    <string name="dropbox_cancel_tip">Vacía la lista o detiene un envío en curso</string>
+    <string name="dropbox_send_tip">Enviar los archivos al destino</string>
+    <string name="tray_quit">Salir</string>
+    <string name="tray_open">Abrir</string>
+    <string name="tray_send_clipboard_tip">Enviar el portapapeles a este dispositivo</string>
+    <string name="tray_post">Publicar</string>
+    <string name="tray_post_tip">Publica una nota en el tablón. Aparece en todos tus dispositivos.</string>
+    <string name="tray_post_hint">Escribe una nota para todos tus dispositivos</string>
+    <string name="tray_post_unavailable">El tablón aún no está listo. Inténtalo de nuevo en un momento.</string>
+    <string name="tray_app_tip">FileApex: tus dispositivos, un solo gestor de archivos</string>
+    <string name="tray_row_tip">Haz clic para enviar archivos a %1$s</string>
+    <string name="tray_online_tip">En línea: este dispositivo está disponible ahora</string>
+    <string name="tray_offline_tip">Sin conexión: este dispositivo no está disponible ahora</string>
+    <string name="tray_battery_tip">Nivel de batería y la hora de la lectura. Pulsa Comprobar baterías para leerlo de nuevo.</string>
+    <string name="tray_send_clipboard_offline_tip">Sin conexión: no se puede enviar el portapapeles ahora</string>
+    <string name="tray_browse_tip">Explorar los archivos de este dispositivo</string>
+    <string name="tray_browse_offline_tip">Sin conexión: no se pueden explorar los archivos de este dispositivo ahora</string>
+    <string name="tray_check_batteries_tip">Pide a cada dispositivo en línea su nivel de batería. No se comprueba nada hasta que pulses esto.</string>
+    <string name="tray_send_multi_tip">Abre la bandeja para enviar archivos a los dispositivos seleccionados</string>
+    <string name="tray_multi_select_tip">Haz clic en un dispositivo para enviarle archivos. Mantén Ctrl (Comando en Mac) y haz clic para seleccionar varios, y luego pulsa el botón Enviar.</string>
+    <string name="tray_icon_friend">Amigo (solo puede enviar y recibir archivos)</string>
     <string name="drag_drop_files_here">Arrastra y suelta archivos aquí</string>
     <string name="drop_files">Soltar archivos</string>
     <string name="drop_files_first">Suelta uno o más archivos primero</string>
@@ -1570,5 +1601,8 @@ Toca el hub central (+) para emparejar</string>
     <string name="share_link_page_off">Desactivado</string>
     <string name="share_link_page_unasked">Se pregunta la primera vez que compartes un archivo</string>
     <string name="share_link_page_about">Compartir como enlace crea un enlace que funciona una sola vez, para que alguien sin FileApex descargue un archivo en el navegador. Usa un servidor de relé que no guarda nada y la transferencia está cifrada de extremo a extremo. Desactívalo para quitar Compartir como enlace del menú de archivos; se detiene cualquier enlace abierto.</string>
+    <string name="mac_full_disk_body">FileApex necesita acceso total al disco para que macOS deje de pedir permiso carpeta por carpeta, lo que también permite usar este Mac de forma remota. Activa FileApex en Ajustes del Sistema, Privacidad y seguridad, Acceso total al disco, y después cierra y vuelve a abrir FileApex.</string>
+    <string name="mac_full_disk_open">Abrir Ajustes del Sistema</string>
+    <string name="full_disk_access">Acceso total al disco</string>
 </resources>
 

@@ -16,6 +16,6 @@ actual object BootLaunchPreference {
     /** Re-applies the saved choice at launch, so a moved install or AppImage keeps a working entry. */
     actual fun syncFromSettings() {
         if (!usesDesktopAutostart()) return
-        onPreferenceChanged(FileApexServices.settings.desktopAutostart.value)
+        if (!DesktopAutostart.sync(FileApexServices.settings.desktopAutostart.value)) println("BootLaunchPreference: sign-in start could not be checked")
     }
 }

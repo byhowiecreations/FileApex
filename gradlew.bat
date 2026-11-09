@@ -35,6 +35,13 @@ for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
+set "TOOLCHAIN_JDK="
+if exist "%APP_HOME%toolchain.properties" (
+  for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%APP_HOME%toolchain.properties") do (
+    if /I "%%~A"=="jdk" set "TOOLCHAIN_JDK=%%~B"
+  )
+)
+
 @rem Prefer JDK 21 from gradle.properties when JAVA_HOME is unset (Kotlin/AGP do not support JDK 26 yet).
 if not defined JAVA_HOME (
   set "FILEAPEX_JAVA_HOME="
@@ -53,8 +60,8 @@ if not defined JAVA_HOME (
     set "JAVA_HOME=!FILEAPEX_JAVA_HOME!"
   ) else if exist "C:\Program Files\Java\jdk-21\bin\java.exe" (
     set "JAVA_HOME=C:\Program Files\Java\jdk-21"
-  ) else if exist "%APP_HOME%\.build-jdk\jdk-21.0.11+10\bin\java.exe" (
-    set "JAVA_HOME=%APP_HOME%\.build-jdk\jdk-21.0.11+10"
+  ) else if exist "%APP_HOME%\.build-jdk\jdk-!TOOLCHAIN_JDK!\bin\java.exe" (
+    set "JAVA_HOME=%APP_HOME%\.build-jdk\jdk-!TOOLCHAIN_JDK!"
   ) else if exist "%ProgramFiles%\Android\Android Studio\jbr\bin\java.exe" (
     set "JAVA_HOME=%ProgramFiles%\Android\Android Studio\jbr"
   )

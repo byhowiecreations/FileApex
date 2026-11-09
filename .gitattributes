@@ -30,3 +30,4 @@ gradlew text eol=lf
 *.so binary
 notice/notice.json -text
 notice/notices.src.json -text
+*.cmd text eol=crlf

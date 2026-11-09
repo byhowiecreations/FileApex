@@ -7,6 +7,7 @@ public typealias FileApexBoolCallback = @convention(c) (Bool) -> Void
 public typealias FileApexVoidCallback = @convention(c) () -> Void
 public typealias FileApexSaveDropBoxFrameCallback = @convention(c) (Double, Double, Double, Double) -> Void
 public typealias FileApexClipboardCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
+public typealias FileApexTextCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 
 private var sendCallback: FileApexSendCallback?
 private var popoverCallback: FileApexBoolCallback?
@@ -17,6 +18,10 @@ private var saveDropBoxFrameCallback: FileApexSaveDropBoxFrameCallback?
 private var refreshDevicesCallback: FileApexVoidCallback?
 private var prepareDropBoxCallback: FileApexVoidCallback?
 private var cancelSendCallback: FileApexVoidCallback?
+private var sendClipboardCallback: FileApexTextCallback?
+private var checkBatteriesCallback: FileApexVoidCallback?
+private var browseDeviceCallback: FileApexTextCallback?
+private var postNoteCallback: FileApexTextCallback?
 private var backgroundActivityToken: NSObjectProtocol?
 private var clipboardCallback: FileApexClipboardCallback?
 private var clipboardTimer: Timer?
@@ -70,6 +75,18 @@ private func wireTrayManagerCallbacks() {
     MacTrayManager.shared.onPrepareDropBox = {
         prepareDropBoxCallback?()
     }
+    MacTrayManager.shared.onSendClipboard = { deviceId in
+        deviceId.withCString { sendClipboardCallback?($0) }
+    }
+    MacTrayManager.shared.onCheckBatteries = {
+        checkBatteriesCallback?()
+    }
+    MacTrayManager.shared.onBrowseDevice = { deviceId in
+        deviceId.withCString { browseDeviceCallback?($0) }
+    }
+    MacTrayManager.shared.onPostNote = { text in
+        text.withCString { postNoteCallback?($0) }
+    }
 }
 
 @_cdecl("fileapex_tray_register_callbacks")
@@ -121,6 +138,31 @@ public func fileapex_tray_set_refresh_devices_callback(_ callback: FileApexVoidC
             refreshDevicesCallback?()
         }
     }
+}
+
+@_cdecl("fileapex_tray_set_send_clipboard_callback")
+public func fileapex_tray_set_send_clipboard_callback(_ callback: FileApexTextCallback?) {
+    sendClipboardCallback = callback
+}
+
+@_cdecl("fileapex_tray_set_check_batteries_callback")
+public func fileapex_tray_set_check_batteries_callback(_ callback: FileApexVoidCallback?) {
+    checkBatteriesCallback = callback
+}
+
+@_cdecl("fileapex_tray_set_browse_device_callback")
+public func fileapex_tray_set_browse_device_callback(_ callback: FileApexTextCallback?) {
+    browseDeviceCallback = callback
+}
+
+@_cdecl("fileapex_tray_set_post_note_callback")
+public func fileapex_tray_set_post_note_callback(_ callback: FileApexTextCallback?) {
+    postNoteCallback = callback
+}
+
+@_cdecl("fileapex_tray_set_checking_batteries")
+public func fileapex_tray_set_checking_batteries(_ checking: Bool) {
+    TrayDeviceBridge.shared.setCheckingBatteries(checking)
 }
 
 @_cdecl("fileapex_tray_set_cancel_send_callback")

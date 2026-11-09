@@ -11,7 +11,7 @@ val DeviceDetailsFieldId.group: DiagnosticGroup?
         DeviceDetailsFieldId.Processor, DeviceDetailsFieldId.CpuArchitecture, DeviceDetailsFieldId.CpuHardware,
         DeviceDetailsFieldId.CpuCores, DeviceDetailsFieldId.CpuFrequency -> DiagnosticGroup.Processor
         DeviceDetailsFieldId.DisplayResolution, DeviceDetailsFieldId.RefreshRate,
-        DeviceDetailsFieldId.Brightness -> DiagnosticGroup.Display
+        DeviceDetailsFieldId.Brightness, DeviceDetailsFieldId.Graphics -> DiagnosticGroup.Display
         DeviceDetailsFieldId.BatteryLevel, DeviceDetailsFieldId.Charging,
         DeviceDetailsFieldId.BatteryTemp -> DiagnosticGroup.Battery
         DeviceDetailsFieldId.Storage -> DiagnosticGroup.Storage
@@ -26,26 +26,9 @@ val DeviceDetailsFieldId.group: DiagnosticGroup?
     }
 
 object DiagnosticGroups {
-    /**
-     * The groups worth asking a peer for: those holding a shown field that changes, plus a shown fixed field
-     * the saved copy has no value for yet.
-     */
-    fun toRequest(shown: List<DeviceDetailsFieldId>, saved: PeerDeviceDiagnostics?): Set<DiagnosticGroup> =
-        shown.filter { field -> field.group != null && (field.changesOverTime || saved == null || !hasFixedValue(field, saved)) }
-            .mapNotNull { it.group }
-            .toSet()
-
-    private fun hasFixedValue(field: DeviceDetailsFieldId, saved: PeerDeviceDiagnostics): Boolean = when (field) {
-        DeviceDetailsFieldId.Make -> saved.device.make.isNotBlank()
-        DeviceDetailsFieldId.Model -> saved.device.model.isNotBlank()
-        DeviceDetailsFieldId.Kernel -> saved.device.kernelVersion.isNotBlank()
-        DeviceDetailsFieldId.OsBuild -> saved.device.osBuildVersion.isNotBlank()
-        DeviceDetailsFieldId.Processor -> saved.processor.hardware.isNotBlank() || saved.processor.architecture.isNotBlank()
-        DeviceDetailsFieldId.CpuArchitecture -> saved.processor.architecture.isNotBlank()
-        DeviceDetailsFieldId.CpuHardware -> saved.processor.hardware.isNotBlank()
-        DeviceDetailsFieldId.DisplayResolution -> saved.display.resolution.isNotBlank()
-        else -> false
-    }
+    /** The groups of every shown field. Fixed facts are asked every time too: the saved copy only fills the screen until the answer arrives. */
+    fun toRequest(shown: List<DeviceDetailsFieldId>): Set<DiagnosticGroup> =
+        shown.mapNotNull { it.group }.toSet()
 
     fun queryParams(summaryOnly: Boolean, groups: Set<DiagnosticGroup>?): Map<String, String> = when {
         summaryOnly -> mapOf("detail" to "summary")

@@ -107,15 +107,17 @@ resolve_fileapex_java_home() {
     esac
 }
 
+toolchain_jdk=$(sed -n 's/^jdk=//p' "$APP_HOME/toolchain.properties" 2>/dev/null | head -n 1 | tr -d ' \r')
+
 # Prefer JDK 21 from gradle.properties when JAVA_HOME is unset (Kotlin/AGP do not support JDK 26 yet).
 if [ -z "$JAVA_HOME" ] ; then
     resolved_home=$(resolve_fileapex_java_home) || true
     if [ -n "$resolved_home" ] ; then
         JAVA_HOME="$resolved_home"
-    elif [ -x "$APP_HOME/.build-jdk/jdk-21.0.11+10/Contents/Home/bin/java" ] ; then
-        JAVA_HOME="$APP_HOME/.build-jdk/jdk-21.0.11+10/Contents/Home"
-    elif [ -x "$APP_HOME/.build-jdk/jdk-21.0.11+10/bin/java" ] ; then
-        JAVA_HOME="$APP_HOME/.build-jdk/jdk-21.0.11+10"
+    elif [ -x "$APP_HOME/.build-jdk/jdk-$toolchain_jdk/Contents/Home/bin/java" ] ; then
+        JAVA_HOME="$APP_HOME/.build-jdk/jdk-$toolchain_jdk/Contents/Home"
+    elif [ -x "$APP_HOME/.build-jdk/jdk-$toolchain_jdk/bin/java" ] ; then
+        JAVA_HOME="$APP_HOME/.build-jdk/jdk-$toolchain_jdk"
     fi
 fi
 

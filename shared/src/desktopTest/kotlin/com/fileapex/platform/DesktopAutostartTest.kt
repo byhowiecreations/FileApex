@@ -105,4 +105,37 @@ class DesktopAutostartTest {
         assertEquals(1, calls.size)
         assertEquals("query", calls.single()[1])
     }
+
+    private fun regQuery(path: String) = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\r\n    FileApex    REG_SZ    \"$path\" --autostart\r\n"
+
+    private fun syncCalls(queryExit: Int, queryOut: String, installedExists: (String) -> Boolean): List<List<String>> {
+        val calls = mutableListOf<List<String>>()
+        val runner = CommandRunner { args, _ -> calls += args; if (args[1] == "query") queryExit to queryOut else 0 to "" }
+        assertTrue(DesktopAutostart.syncWindows(true, "C:\\Apps\\FileApex.exe", runner, installedExists))
+        return calls
+    }
+
+    @Test
+    fun aLaunchLeavesAnEntryThatAlreadyPointsAtThisInstall() {
+        val calls = syncCalls(0, regQuery("c:\\apps\\fileapex.exe")) { true }
+        assertTrue(calls.none { it[1] == "add" })
+    }
+
+    @Test
+    fun aLaunchRegistersWhenNothingIsRegistered() {
+        val calls = syncCalls(1, "") { true }
+        assertTrue(calls.any { it[1] == "add" })
+    }
+
+    @Test
+    fun aLaunchFromACopyDoesNotTakeOverAnEntryForAnotherInstallThatStillExists() {
+        val calls = syncCalls(0, regQuery("C:\\Other\\FileApex.exe")) { path -> path == "C:\\Other\\FileApex.exe" }
+        assertTrue(calls.none { it[1] == "add" })
+    }
+
+    @Test
+    fun aLaunchRepairsAnEntryWhoseFileIsGone() {
+        val calls = syncCalls(0, regQuery("C:\\Moved\\FileApex.exe")) { false }
+        assertTrue(calls.any { it[1] == "add" })
+    }
 }

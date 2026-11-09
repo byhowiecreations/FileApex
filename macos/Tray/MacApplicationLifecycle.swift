@@ -35,6 +35,10 @@ import AppKit
             NSLog("FileApex MacApplicationLifecycle: applicationShouldTerminate -> NOW (explicit quit)")
             return .terminateNow
         }
+        if currentQuitIsSystemSessionEnd() {
+            NSLog("FileApex MacApplicationLifecycle: applicationShouldTerminate -> NOW (shutdown, restart or logout)")
+            return .terminateNow
+        }
         NSLog("FileApex MacApplicationLifecycle: applicationShouldTerminate -> CANCEL (tray mode)")
         return .terminateCancel
     }

@@ -4,6 +4,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DevicesUiState
 
 /** Shows the Devices view model's status, error and details-hint messages on the screen's snackbar. */
@@ -23,6 +24,11 @@ fun DevicesSnackbars(
             host.showSnackbar(it)
             onShown()
         }
+    }
+    // The connection to a device is being made: the snackbar stays until the effect is cancelled by the name clearing.
+    val accessing = state.connectingDeviceName?.let { stringRes("accessing_device", it) }
+    LaunchedEffect(accessing) {
+        accessing?.let { host.showSnackbar(it, duration = SnackbarDuration.Indefinite) }
     }
     // Cancelling this effect when the hint clears is what takes the snackbar down.
     LaunchedEffect(state.detailsHint) {

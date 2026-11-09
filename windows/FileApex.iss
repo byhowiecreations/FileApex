@@ -36,9 +36,17 @@ ChangesEnvironment=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+ApplicationsFound=The following applications are using files that need to be updated by Setup. FileApex is listed twice because it runs as the app and its helper process, and both belong to FileApex. It is recommended that you allow Setup to automatically close these applications.
+ApplicationsFound2=The following applications are using files that need to be updated by Setup. FileApex is listed twice because it runs as the app and its helper process, and both belong to FileApex. It is recommended that you allow Setup to automatically close these applications. After the installation has completed, Setup will attempt to restart the applications.
+
 [Tasks]
 Name: "desktopshortcut"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 Name: "sendtoshortcut"; Description: "Add FileApex to Windows 'Send to' right-click menu"; GroupDescription: "Integration:"
+
+[InstallDelete]
+; Library jars carry a content hash in their names, so an update would leave the old ones beside the new.
+Type: filesandordirs; Name: "{app}\app"
 
 [Files]
 Source: "..\composeApp\build\compose\binaries\main-release\app\FileApex\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

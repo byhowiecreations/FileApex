@@ -139,7 +139,7 @@ fun deviceIconVector(kind: DeviceIconKind): ImageVector = when (kind) {
     DeviceIconKind.GenericDesktop -> Icons.Filled.Computer
 }
 
-private fun deviceIconDescriptionKey(kind: DeviceIconKind): String = when (kind) {
+internal fun deviceIconDescriptionKey(kind: DeviceIconKind): String = when (kind) {
     DeviceIconKind.MacDesktop -> "icon_mac"
     DeviceIconKind.WindowsPc -> "icon_windows_pc"
     DeviceIconKind.Docker -> "icon_docker"

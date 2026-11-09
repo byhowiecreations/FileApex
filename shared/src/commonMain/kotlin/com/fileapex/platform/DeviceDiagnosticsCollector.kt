@@ -18,20 +18,22 @@ expect fun collectPlatformDeviceSummary(): PeerDeviceDiagnostics
 expect fun collectFastBatteryDiagnostics(): BatteryDiagnostics
 
 fun collectDeviceDiagnostics(groups: Set<DiagnosticGroup>? = null): PeerDeviceDiagnostics {
-    return collectPlatformDeviceDiagnostics(groups)
+    val collected = collectPlatformDeviceDiagnostics(groups)
+    return collected
         .copy(
             collectedAtEpochMs = TimeUtils.now(),
-            platform = currentPlatformLabel(),
+            platform = collected.platform.ifBlank { currentPlatformLabel() },
             app = collectAppDiagnostics()
         )
         .normalizedForTransport()
 }
 
 fun collectDeviceSummary(): PeerDeviceDiagnostics {
-    return collectPlatformDeviceSummary()
+    val collected = collectPlatformDeviceSummary()
+    return collected
         .copy(
             collectedAtEpochMs = TimeUtils.now(),
-            platform = currentPlatformLabel(),
+            platform = collected.platform.ifBlank { currentPlatformLabel() },
             app = collectAppDiagnostics()
         )
         .normalizedForTransport()

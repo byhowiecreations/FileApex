@@ -37,4 +37,15 @@ class TailscaleDialPathTest {
         assertNull(tailscaleLoopbackOrNull("100.64.1.2", 8080))
         assertFalse(tsnetNativeLibraryLoaded())
     }
+
+    @Test
+    fun startingTheTlsFrontDoesNotLoadTheNativeLibraryWhileTailscaleIsOff() {
+        val library = File("macos/build/Tsnet/libFileApexTsnet.dylib").takeIf { it.isFile }
+            ?: File("../macos/build/Tsnet/libFileApexTsnet.dylib")
+        assertTrue(library.isFile)
+        assertEquals(TailscalePhase.Off, TailscaleNodeRuntime.state.value.phase)
+        TailscaleNodeRuntime.forwardTailnetTo(8443)
+        TailscaleNodeRuntime.forwardTailnetTo(0)
+        assertFalse(tsnetNativeLibraryLoaded())
+    }
 }

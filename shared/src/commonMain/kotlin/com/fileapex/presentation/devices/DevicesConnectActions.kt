@@ -63,6 +63,7 @@ internal class DevicesConnectActions(
         _uiState.update {
             it.copy(
                 connectingDeviceId = device.deviceId,
+                connectingDeviceName = device.deviceName,
                 statusMessage = null,
                 errorMessage = null
             )
@@ -78,7 +79,7 @@ internal class DevicesConnectActions(
         println("DevicesConnect: ${device.deviceId} -> ${outcome::class.simpleName} after ${TimeUtils.now() - startedAt} ms")
         val skipMinDelay = outcome is DeviceConnectOutcome.Unreachable && outcome.quickFail
         LanPresenceTiming.awaitConnectHandshakeMinDelay(startedAt, skipMinDelay)
-        _uiState.update { it.copy(connectingDeviceId = null) }
+        _uiState.update { it.copy(connectingDeviceId = null, connectingDeviceName = null) }
         when (outcome) {
             is DeviceConnectOutcome.Open -> open(outcome.target)
             is DeviceConnectOutcome.NeedsPin -> {

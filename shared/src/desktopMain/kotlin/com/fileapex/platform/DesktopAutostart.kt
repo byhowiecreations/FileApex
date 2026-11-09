@@ -39,6 +39,14 @@ object DesktopAutostart {
         appImagePath: String = System.getenv("APPIMAGE").orEmpty()
     ): String? = appImagePath.ifBlank { jpackagePath }.takeIf { it.isNotBlank() }
 
+    /** The launch-time version of [apply]: it never replaces a working entry that belongs to another install. */
+    fun sync(enabled: Boolean): Boolean =
+        if (DesktopPlatformPaths.desktopOs == DesktopPlatformPaths.DesktopOs.Windows) {
+            syncWindows(enabled, executablePath(), ProcessCommandRunner)
+        } else {
+            apply(enabled)
+        }
+
     /** Applies the user's choice for this OS; returns false only when it could not be applied. */
     fun apply(enabled: Boolean): Boolean {
         val executable = executablePath()
@@ -59,6 +67,18 @@ object DesktopAutostart {
         return runner.run(
             listOf("reg", "add", RUN_KEY, "/v", VALUE_NAME, "/t", "REG_SZ", "/d", windowsRunValue(executable), "/f"), null
         ).first == 0
+    }
+
+    /**
+     * The check at every launch. It only registers when nothing is registered or the registered file is gone, so a copy
+     * of the app run from another folder never takes over the entry of an install that still exists.
+     */
+    fun syncWindows(enabled: Boolean, executable: String?, runner: CommandRunner, fileExists: (String) -> Boolean = { File(it).isFile }): Boolean {
+        if (!enabled || executable == null) return setWindows(enabled, executable, runner)
+        val (status, output) = runner.run(listOf("reg", "query", RUN_KEY, "/v", VALUE_NAME), null)
+        val registered = if (status == 0) Regex("REG_SZ\\s+\"([^\"]+)\"").find(output)?.groupValues?.get(1) else null
+        if (registered != null && (registered.equals(executable, ignoreCase = true) || fileExists(registered))) return true
+        return setWindows(true, executable, runner)
     }
 
     fun setLinux(enabled: Boolean, executable: String?, home: File): Boolean {

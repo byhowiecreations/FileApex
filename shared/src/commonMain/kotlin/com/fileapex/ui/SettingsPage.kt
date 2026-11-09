@@ -40,6 +40,7 @@ internal enum class SettingsPage(val parent: SettingsPage?) {
     Iroh(Root),
     Groups(Root),
     ShareLink(Root),
+    FullDiskAccess(Root),
     LeaveClusterWipe(Root),
     About(Root)
 }
@@ -85,6 +86,7 @@ internal fun settingsPageFor(id: String): SettingsPage? = when (id) {
     SettingsMenuIds.PIN_REQUIRED -> SettingsPage.PinRequired
     SettingsMenuIds.GOOGLE_ACCOUNT -> SettingsPage.GoogleAccount
     SettingsMenuIds.SHARE_LINK -> SettingsPage.ShareLink
+    SettingsMenuIds.FULL_DISK_ACCESS -> SettingsPage.FullDiskAccess
     SettingsMenuIds.LEAVE_CLUSTER -> SettingsPage.LeaveClusterWipe
     else -> null
 }

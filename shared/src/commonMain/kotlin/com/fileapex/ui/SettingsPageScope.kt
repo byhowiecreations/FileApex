@@ -40,6 +40,7 @@ import com.fileapex.ui.settings.IrohSettingsPage
 import com.fileapex.ui.settings.LanguageSettingsPage
 import com.fileapex.ui.settings.NotificationsSettingsPage
 import com.fileapex.ui.settings.OnboardingPermissionsSettingsPage
+import com.fileapex.ui.settings.FullDiskAccessSettingsPage
 import com.fileapex.ui.settings.PinRequiredSettingsPage
 import com.fileapex.ui.settings.RemoteFileDeletionSettingsPage
 import com.fileapex.ui.settings.TailscaleSettingsPage
@@ -372,6 +373,7 @@ internal fun SettingsPageScope.PagesDevice() {
         SettingsPage.Iroh -> IrohSettingsPage(layoutMode, goUp)
         SettingsPage.Groups -> com.fileapex.friends.ui.GroupsSettingsPage(layoutMode, goUp)
         SettingsPage.ShareLink -> com.fileapex.drop.ui.ShareLinkSettingsPage(layoutMode, goUp)
+        SettingsPage.FullDiskAccess -> FullDiskAccessSettingsPage(layoutMode, goUp)
         SettingsPage.LeaveClusterWipe -> LeaveClusterWipeSettingsPage(layoutMode, goUp)
         SettingsPage.About -> AboutSettingsPage(layoutMode, goUp)
             else -> Unit

@@ -1,14 +1,23 @@
 package com.fileapex.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import com.fileapex.platform.graphicsRendererChoice
+import com.fileapex.platform.setGraphicsRendererChoice
 import com.fileapex.data.settings.DesktopUiStyle
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.SettingsUiState
@@ -44,6 +53,31 @@ internal fun WindowsDesignSettingsPage(
                     )
                 }
             )
+            GraphicsRendererChoice()
         }
+    }
+}
+
+@Composable
+private fun GraphicsRendererChoice() {
+    var choice by remember { mutableStateOf(graphicsRendererChoice()) }
+    ListItem(
+        headlineContent = { Text(stringRes("graphics_renderer"), softWrap = true) },
+        supportingContent = { Text(stringRes("graphics_renderer_desc"), softWrap = true) }
+    )
+    listOf(
+        "automatic" to "graphics_auto",
+        "direct3d" to "graphics_direct3d",
+        "opengl" to "graphics_opengl"
+    ).forEach { (value, label) ->
+        val select = {
+            choice = value
+            setGraphicsRendererChoice(value)
+        }
+        ListItem(
+            modifier = Modifier.clickable(onClick = select),
+            headlineContent = { Text(stringRes(label)) },
+            trailingContent = { RadioButton(selected = choice == value, onClick = select) }
+        )
     }
 }

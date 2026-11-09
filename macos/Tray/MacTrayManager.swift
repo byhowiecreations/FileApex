@@ -17,6 +17,10 @@ import SwiftUI
     public var onShowMainWindow: (() -> Void)?
     public var onRefreshDevices: (() -> Void)?
     public var onPrepareDropBox: (() -> Void)?
+    public var onSendClipboard: ((String) -> Void)?
+    public var onCheckBatteries: (() -> Void)?
+    public var onBrowseDevice: ((String) -> Void)?
+    public var onPostNote: ((String) -> Void)?
 
     private override init() {
         super.init()
@@ -73,6 +77,21 @@ import SwiftUI
             },
             onRefreshDevices: { [weak self] in
                 self?.onRefreshDevices?()
+            },
+            onSendClipboard: { [weak self] deviceId in
+                self?.closePopover()
+                self?.onSendClipboard?(deviceId)
+            },
+            onBrowse: { [weak self] deviceId in
+                self?.closePopover()
+                self?.onBrowseDevice?(deviceId)
+            },
+            onPostNote: { [weak self] text in
+                self?.closePopover()
+                self?.onPostNote?(text)
+            },
+            onCheckBatteries: { [weak self] in
+                self?.onCheckBatteries?()
             }
         )
         popover?.contentViewController = TrayHostingController(rootView: trayView)

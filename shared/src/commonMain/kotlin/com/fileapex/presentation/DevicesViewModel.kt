@@ -66,6 +66,8 @@ data class DevicesUiState(
     val detailsHint: String? = null,
     /** 2s connecting handshake on the device card. */
     val connectingDeviceId: String? = null,
+    /** Name of the device behind [connectingDeviceId], for the Accessing snackbar. */
+    val connectingDeviceName: String? = null,
     val pendingPinPairing: PairingPayload? = null,
     val pendingPinUnlock: PendingPinUnlock? = null,
     val deviceOrderEditMode: Boolean = false,

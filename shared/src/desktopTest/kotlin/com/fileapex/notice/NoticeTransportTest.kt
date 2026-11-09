@@ -172,6 +172,19 @@ class NoticeTransportTest {
     }
 
     @Test
+    fun anIllegalArgumentFromOutsideTheTlsParserIsNotMaskedAsAnOfflineFailure() {
+        val boom = createClientPlugin("boom") { onRequest { _, _ -> throw IllegalArgumentException("bug") } }
+        val client = HttpClient(CIO) { install(boom) }
+        route("/n") { it.reply(200, "x".encodeToByteArray()) }
+        try {
+            runBlocking { KtorNoticeTransport(NoticeUrlPolicy("127.0.0.1", httpsOnly = false), client).get("$base/n", null) }
+            fail("an IllegalArgumentException from the client is a bug and must reach the caller")
+        } catch (e: IllegalArgumentException) {
+            assertEquals("bug", e.message)
+        }
+    }
+
+    @Test
     fun aProgrammingErrorIsNotMaskedAsAnOfflineFailure() {
         val boom = createClientPlugin("boom") { onRequest { _, _ -> throw IllegalStateException("bug") } }
         val client = HttpClient(CIO) { install(boom) }

@@ -59,5 +59,31 @@ class PatchedCopyTest(unittest.TestCase):
             self.assertNotIn("replace", go_mod.read_text())
 
 
+def fake_go(root: pathlib.Path, printed: str) -> str:
+    script = root / "go"
+    script.write_text(f"#!/bin/sh\necho '{printed}'\n")
+    script.chmod(0o755)
+    return str(script)
+
+
+class ModuleDirTest(unittest.TestCase):
+    def test_an_empty_module_cache_stops_the_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit) as stopped:
+                prepare_tsnet.module_dir(fake_go(pathlib.Path(tmp), ""))
+            self.assertIn("go mod download", str(stopped.exception))
+
+    def test_a_module_folder_that_does_not_exist_stops_the_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            with self.assertRaises(SystemExit):
+                prepare_tsnet.module_dir(fake_go(root, str(root / "missing")))
+
+    def test_a_real_module_folder_is_returned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            self.assertEqual(root.resolve(), prepare_tsnet.module_dir(fake_go(root, str(root))).resolve())
+
+
 if __name__ == "__main__":
     unittest.main()

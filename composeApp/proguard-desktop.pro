@@ -1,4 +1,4 @@
-# Used by Mac desktop release. Windows release has ProGuard disabled.
+# Used by the Mac and Windows desktop releases. The Linux release has ProGuard disabled.
 -dontwarn **
 
 -dontwarn io.github.alexzhirkevich.qrose.**
@@ -46,3 +46,15 @@
 }
 
 -keep class org.bouncycastle.** { *; }
+
+# JNA binds interfaces, structures and callbacks by reflection; the Windows tray, DWM, registry and notification calls depend on it.
+-keep class com.sun.jna.** { *; }
+-keep interface * extends com.sun.jna.Library { *; }
+-keep interface * extends com.sun.jna.Callback { *; }
+-keep class * extends com.sun.jna.Structure { *; }
+
+# EnumMap and EnumSet read values() by reflection (JmDNS uses them); shrinking it away leaves them with a null key universe.
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}

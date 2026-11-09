@@ -1,12 +1,12 @@
 package com.fileapex.platform
 
+import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.presence.PresenceForegroundRefresh
 import com.fileapex.i18n.AppI18n
 import com.fileapex.util.cancellableCatching
-import java.awt.MenuItem
+import java.awt.MouseInfo
 import java.awt.Point
-import java.awt.PopupMenu
 import java.awt.SystemTray
 import java.awt.TrayIcon
 import java.awt.Window
@@ -14,7 +14,6 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import javax.swing.SwingUtilities
-import javax.swing.UIManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,10 +25,9 @@ import kotlinx.coroutines.swing.Swing
 import kotlinx.coroutines.withContext
 
 /**
- * Windows system-tray using AWT [SystemTray].
+ * Windows system-tray coordinator using AWT [SystemTray] and Compose tray flyout.
  *
- * Left-click: Mac-parity device popover (Ctrl multi-select → Drop Files panel).
- * Right-click: Show FileApex + Exit.
+ * Click (left or right): Mac-parity dark Compose device popover (Ctrl multi-select -> Drop Files panel).
  */
 object DesktopAwtTrayCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -43,21 +41,9 @@ object DesktopAwtTrayCoordinator {
     private var onHideWindow: (() -> Unit)? = null
     private var onQuitApp: (() -> Unit)? = null
     private var devices: List<DesktopTrayDeviceSnapshot> = emptyList()
-    private var trayPopover: DesktopWindowsTrayPopover? = null
-    private var showMenuItem: MenuItem? = null
-    private var exitMenuItem: MenuItem? = null
+    private var trayFlyout: DesktopWindowsTrayFlyout? = null
 
     fun isInstalled(): Boolean = installed
-
-    fun rebuildLocalizedChrome() {
-        if (!DesktopPlatformPaths.isWindows() || !installed) return
-        SwingUtilities.invokeLater {
-            showMenuItem?.label = AppI18n.t("show_fileapex")
-            exitMenuItem?.label = AppI18n.t("exit")
-            trayPopover?.applyLocalizedCopy()
-            DesktopWindowsDropBox.applyLocalizedCopy()
-        }
-    }
 
     fun attachMainWindow(
         window: Window,
@@ -99,19 +85,22 @@ object DesktopAwtTrayCoordinator {
     }
 
     fun hideMainWindow() {
-        // Compose Window must use the `visible` parameter, raw isVisible breaks show (CMP #2928).
+        // Compose Window must use the visible parameter, raw isVisible breaks show (CMP #2928).
         onHideWindow?.invoke()
     }
 
     fun showMainWindow() {
-        trayPopover?.hide()
+        val startedAt = System.nanoTime()
+        trayFlyout?.dismissFlyout()
         onShowWindow?.invoke()
         SwingUtilities.invokeLater {
             requestForeground()
             mainWindow?.toFront()
             mainWindow?.requestFocus()
         }
-        PresenceForegroundRefresh.onAppForegrounded()
+        // The refresh can wait on the network; on the UI thread it froze the window for seconds.
+        scope.launch { PresenceForegroundRefresh.onAppForegrounded() }
+        DesktopLifecycleLog.log("DesktopAwtTrayCoordinator: showMainWindow returned after ${(System.nanoTime() - startedAt) / 1_000_000L}ms")
     }
 
     private fun requestForeground() {
@@ -137,8 +126,8 @@ object DesktopAwtTrayCoordinator {
         if (!installed) return
         observeJob?.cancel()
         observeJob = null
-        trayPopover?.dispose()
-        trayPopover = null
+        trayFlyout?.dispose()
+        trayFlyout = null
         DesktopWindowsDropBox.dispose()
         cancellableCatching {
             val tray = SystemTray.getSystemTray()
@@ -156,40 +145,25 @@ object DesktopAwtTrayCoordinator {
     }
 
     private fun installTrayIcon() {
-        runCatching {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
-        }
-
-        trayPopover = DesktopWindowsTrayPopover(
+        trayFlyout = DesktopWindowsTrayFlyout(
             onLaunchApp = { showMainWindow() },
             onQuitApp = { quitFromTray() },
             onOpenDropBox = { deviceIds -> openDropBox(deviceIds) },
-            onRefreshDevices = { refreshDevicesFromTray() }
+            onRefreshDevices = { refreshDevicesFromTray() },
+            onSendClipboard = { deviceId -> sendClipboardFromTray(deviceId) },
+            onBrowse = { deviceId -> browseFromTray(deviceId) },
+            onPostNote = { text -> postNoteFromTray(text) },
+            onCheckBatteries = { checkBatteriesFromTray() }
         )
 
-        val popup = PopupMenu()
-        val showItem = MenuItem(AppI18n.t("show_fileapex")).apply {
-            addActionListener { showMainWindow() }
-        }
-        val exitItem = MenuItem(AppI18n.t("exit")).apply {
-            addActionListener { quitFromTray() }
-        }
-        popup.add(showItem)
-        popup.add(exitItem)
-        showMenuItem = showItem
-        exitMenuItem = exitItem
-
-        val icon = TrayIcon(createTrayImage(), "FileApex", popup).apply {
+        val icon = TrayIcon(createTrayImage(), "FileApex").apply {
             isImageAutoSize = true
-            // Windows: ActionEvent is typically double-click; single left-click is MouseListener.
-            addActionListener { showMainWindow() }
             addMouseListener(
                 object : MouseAdapter() {
                     override fun mouseReleased(event: MouseEvent) {
-                        if (!SwingUtilities.isLeftMouseButton(event) || event.isPopupTrigger) {
-                            return
-                        }
-                        showLeftClickPopover(event.xOnScreen, event.yOnScreen)
+                        val anchor = MouseInfo.getPointerInfo()?.location
+                            ?: Point(event.xOnScreen, event.yOnScreen)
+                        toggleTrayFlyout(anchor)
                     }
                 }
             )
@@ -201,25 +175,20 @@ object DesktopAwtTrayCoordinator {
     private fun startDeviceSync() {
         observeJob?.cancel()
         observeJob = scope.launch {
-            if (!FileApexServices.isDatabaseReady()) return@launch
+            awaitDatabase()
             combine(
-                FileApexServices.deviceRepository.observeDevices(),
-                FileApexServices.presenceMonitor.reachabilityEpochMs,
-                FileApexServices.presenceMonitor.onlineDeviceIds,
-                FileApexServices.presenceMonitor.onlineSnapshotEpochMs,
-                com.fileapex.friends.FriendsHub.friends
-            ) { roster, _, _, _, _ ->
-                roster.map { device ->
-                    DesktopTrayDeviceSnapshot(
-                        id = device.deviceId,
-                        name = device.deviceName,
-                        isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
-                    )
-                } + friendTraySnapshots()
-            }.collect { snapshots ->
+                combine(
+                    FileApexServices.deviceRepository.observeDevices(),
+                    FileApexServices.presenceMonitor.reachabilityEpochMs,
+                    FileApexServices.presenceMonitor.onlineDeviceIds,
+                    FileApexServices.presenceMonitor.onlineSnapshotEpochMs,
+                    com.fileapex.friends.FriendsHub.friends
+                ) { roster, _, _, _, _ -> roster },
+                DesktopTrayBatteries.readings
+            ) { roster, _ -> snapshotsOf(roster) }.collect { snapshots ->
                 devices = snapshots
                 withContext(Dispatchers.Swing) {
-                    trayPopover?.updateDevices(snapshots)
+                    trayFlyout?.updateDevices(snapshots)
                 }
             }
         }
@@ -227,36 +196,64 @@ object DesktopAwtTrayCoordinator {
 
     private fun refreshDevicesFromTray() {
         scope.launch {
-            if (!FileApexServices.isDatabaseReady()) return@launch
-            FileApexServices.presenceMonitor.refreshOnlineSnapshot()
-            devices = FileApexServices.deviceRepository.listDevices().map { device ->
-                DesktopTrayDeviceSnapshot(
-                    id = device.deviceId,
-                    name = device.deviceName,
-                    isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
-                )
-            } + friendTraySnapshots()
+            devices = loadDeviceSnapshots()
             withContext(Dispatchers.Swing) {
-                trayPopover?.updateDevices(devices)
+                trayFlyout?.updateDevices(devices)
             }
         }
     }
 
-    private fun showLeftClickPopover(screenX: Int, screenY: Int) {
+    private fun toggleTrayFlyout(anchor: Point) {
         scope.launch {
-            if (FileApexServices.isDatabaseReady()) {
-                FileApexServices.presenceMonitor.refreshOnlineSnapshot()
-                devices = FileApexServices.deviceRepository.listDevices().map { device ->
-                    DesktopTrayDeviceSnapshot(
-                        id = device.deviceId,
-                        name = device.deviceName,
-                        isOnline = FileApexServices.presenceMonitor.isDeviceOnline(device)
-                    )
-                } + friendTraySnapshots()
-            }
+            devices = loadDeviceSnapshots()
             withContext(Dispatchers.Swing) {
-                trayPopover?.toggleOrShow(Point(screenX, screenY), devices)
+                trayFlyout?.toggleOrShow(anchor, devices)
             }
+        }
+    }
+
+    private suspend fun awaitDatabase() {
+        if (!FileApexServices.isDatabaseReady()) {
+            FileApexServices.awaitBootstrap()
+        }
+    }
+
+    private suspend fun loadDeviceSnapshots(): List<DesktopTrayDeviceSnapshot> {
+        awaitDatabase()
+        FileApexServices.presenceMonitor.refreshOnlineSnapshot()
+        return snapshotsOf(FileApexServices.deviceRepository.listDevices())
+    }
+
+    private fun snapshotsOf(roster: List<PairedDeviceEntity>): List<DesktopTrayDeviceSnapshot> =
+        withTrayBatteries(
+            orderTrayDevices(
+                roster.map { device -> trayDeviceSnapshot(device, FileApexServices.presenceMonitor.isDeviceOnline(device)) } +
+                    friendTraySnapshots()
+            ),
+            DesktopTrayBatteries.readings.value
+        )
+
+    private fun sendClipboardFromTray(deviceId: String) {
+        scope.launch {
+            showBalloon(sendTrayClipboard(listOf(deviceId)).text)
+        }
+    }
+
+    private fun browseFromTray(deviceId: String) {
+        DesktopOpenDeviceRequest.request(deviceId)
+        showMainWindow()
+    }
+
+    private fun postNoteFromTray(text: String) {
+        scope.launch {
+            showBalloon(postTrayNote(text).text)
+        }
+    }
+
+    private fun checkBatteriesFromTray() {
+        scope.launch {
+            DesktopTrayBatteries.check(devices)
+            withContext(Dispatchers.Swing) { trayFlyout?.batteryCheckFinished() }
         }
     }
 
