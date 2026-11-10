@@ -31,7 +31,7 @@ internal fun Route.registerTlsRoutes(server: FileApexServer) {
                 TlsAnnouncementOutcome.Invalid -> call.respond(HttpStatusCode.BadRequest, "tls_pin_invalid")
                 else -> {
                     val peer = repository.getDevice(announcement.senderDeviceId)
-                    val reply = peer?.let { TlsPinAnnouncements.build(localId, it, now) }
+                    val reply = peer?.let { TlsPinAnnouncements.build(localId, it, now, com.fileapex.cloud.seal.ClusterKeyHandover.forRecipient(it.deviceId)) }
                     if (reply == null) {
                         call.respond(HttpStatusCode.NoContent)
                     } else {

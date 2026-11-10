@@ -253,6 +253,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shown_when_wifi">Shown when peer is on Wi-Fi</string>
     <string name="shown_when_cellular">Shown when peer is on cellular</string>
     <string name="link_google_account">Link Google Account</string>
+    <string name="start_over_title">This Google account is linked to an older FileApex setup</string>
+    <string name="start_over_desc">These devices were set up again, so they cannot use the Google-linked features yet. Start over to use them with this setup. The older devices lose those features until they are paired into it.</string>
+    <string name="start_over_button">Start over with these devices</string>
+    <string name="start_over_confirm_title">Start over?</string>
+    <string name="start_over_confirm_text">You will sign in to Google again. Every older device of this Google account loses its Google-linked features until you pair it into this setup. Files and settings stay on every device.</string>
+    <string name="start_over_confirm">Start over</string>
     <string name="enable_drive_relay">Enable Drive Relay</string>
     <string name="delete_relay_now">Delete relay files now</string>
     <string name="purge_after_72h">Purge File(s) after 72 hours</string>
@@ -1022,7 +1028,6 @@ Tap Central Hub (+) to Pair</string>
     <string name="all_permissions_granted">All permissions granted</string>
     <string name="all_permissions_granted_desc">FileApex has all required permissions to transfer files and discover nearby devices.</string>
     <string name="back_to_settings">Back to Settings</string>
-    <string name="peer_revoked_this_device">%1$s no longer recognizes this device: pair again to rejoin</string>
     <string name="removed_signed_out_google">This device was removed from the cluster and signed out of Google in FileApex. Pair again to rejoin.</string>
     <string name="removed_from_cluster">This device was removed from the cluster. Pair again to rejoin.</string>
     <string name="transfer_cancelled">Transfer cancelled</string>

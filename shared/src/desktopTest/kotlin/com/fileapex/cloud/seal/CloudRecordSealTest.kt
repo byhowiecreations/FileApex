@@ -150,12 +150,13 @@ class CloudRecordSealTest {
 
     @Test
     fun rotatingRaisesTheEpochAndOnlyWhenAKeyExists() {
-        ClusterRecordKeys.rotate()
+        ClusterRecordKeys.rotate(4L)
         assertNull(ClusterRecordKeys.current())
         val first = ClusterRecordKeys.ensure()!!
-        ClusterRecordKeys.rotate()
+        ClusterRecordKeys.rotate(4L)
         assertEquals(first.epoch + 1, ClusterRecordKeys.current()!!.epoch)
         assertNotEquals(first.id, ClusterRecordKeys.current()!!.id)
+        assertEquals(4L, ClusterRecordKeys.current()!!.chainSeq)
     }
 
     @Test

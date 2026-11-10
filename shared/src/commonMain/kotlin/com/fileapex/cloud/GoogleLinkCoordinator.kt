@@ -1,5 +1,7 @@
 package com.fileapex.cloud
 
+import com.fileapex.cloud.device.DeviceIdentity
+import com.fileapex.domain.clipboard.ClipboardE2ee
 import com.fileapex.cloud.diagnostics.DiagnosticsCloudRelay
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.data.device.CloudSeedOutcome
@@ -41,6 +43,7 @@ import kotlinx.coroutines.sync.withLock
  * or before a replacement session starts (avoids Firebase/SQLite "destroyed mutex" races).
  */
 object GoogleLinkCoordinator {
+    // Google sessions reach no Firestore path: enrol first; a refused device waits for a pairing (DeviceIdentity.onPaired).
     private val gate = Mutex()
     private val applyMutex = Mutex()
 
@@ -228,7 +231,7 @@ object GoogleLinkCoordinator {
      * Complete link after platform OAuth / Credential Manager yields a Google ID token.
      * Android also stores a restore key for zero-tap sign-in on a new device.
      */
-    suspend fun linkWithGoogleIdToken(idToken: String, emailHint: String?): GoogleAuthSession {
+    suspend fun linkWithGoogleIdToken(idToken: String, emailHint: String?, startOver: Boolean = false): GoogleAuthSession {
         gate.withLock {
             require(CloudAuthBackend.isConfigured()) {
                 "Set fileapex.google.web.client.id in ~/.gradle/gradle.properties (Google Web OAuth client ID)"
@@ -242,11 +245,15 @@ object GoogleLinkCoordinator {
             settings.setGoogleAccountEmail(email)
             settings.setGoogleAccountUid(session.firebaseUid)
             settings.setGoogleAccountLinkEnabled(true)
-            registerSelf(session.firebaseUid)
-            startCloudSessionLocked(session.firebaseUid)
+            if (startOver) DeviceIdentity.startOver()
+            val outcome = DeviceIdentity.ensureEnrolled(force = true)
+            if (outcome.allowsCloud) {
+                registerSelf(session.firebaseUid)
+                startCloudSessionLocked(session.firebaseUid)
+                _status.value = "Linked as ${email.ifBlank { session.firebaseUid }}"
+            } else _status.value = DeviceIdentity.closedReason(outcome)
             RestoreCredentials.markProbedThisInstall()
             RestoreCredentials.createForSignedInUser(session.firebaseUid, email)
-            _status.value = "Linked as ${email.ifBlank { session.firebaseUid }}"
             return session.copy(email = email)
         }
     }
@@ -290,7 +297,7 @@ object GoogleLinkCoordinator {
         val uid = FileApexServices.settings.googleAccountUid.value
         if (uid.isBlank()) return
         val cloudId = resolveCloudDeviceId(deviceId)
-        com.fileapex.cloud.device.DeviceIdentity.announceRemoval(cloudId)
+        DeviceIdentity.announceRemoval(cloudId)
         cancellableCatching { CloudAuthBackend.deleteDevice(uid, cloudId) }
             .onFailure { error -> println("GoogleLinkCoordinator: cloud remove failed - ${error.message}") }
     }
@@ -391,12 +398,14 @@ object GoogleLinkCoordinator {
             }
             settings.setGoogleAccountUid(session.firebaseUid)
             shutdownCloudSessionLocked()
+            DeviceIdentity.ensureEnrolled().takeUnless { it.allowsCloud }?.let { return@withLock run { _status.value = DeviceIdentity.closedReason(it) } }
             // Presence only on restore, never overwrite remote deviceName with stale local memory.
             cancellableCatching { patchSelfPresence(session.firebaseUid) }
             startCloudSessionLocked(session.firebaseUid)
             _status.value = "Cloud registry active"
         }
     }
+
 
     /**
      * Invalidate epoch, detach Firestore listener, and join all session work
@@ -431,16 +440,7 @@ object GoogleLinkCoordinator {
         val selfId = loadLocalIdentity().deviceId
         val scope = sessionScope
 
-        scope.launch {
-            if (!isSessionLive(epoch)) return@launch
-            cancellableCatching {
-                val key = com.fileapex.domain.clipboard.ClipboardE2ee.publicKeyBase64()
-                CloudAuthBackend.patchDeviceClipboardPublicKey(uid, selfId, key)
-            }.onFailure { error ->
-                println("GoogleLinkCoordinator: clipboard key publish failed - ${error.message}")
-            }
-            if (isSessionLive(epoch)) com.fileapex.cloud.device.DeviceIdentity.ensureEnrolled()
-        }
+        scope.launch { if (isSessionLive(epoch)) publishClipboardPublicKey(ClipboardE2ee.publicKeyBase64()) }
 
         scope.launch {
             if (!isSessionLive(epoch)) return@launch

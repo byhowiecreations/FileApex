@@ -162,4 +162,48 @@ class RosterMergeTest {
         assertFalse(RosterMerge.areAliases(a, b))
         assertTrue(RosterMerge.areAliases(device("c", name = "Pixel", ip = ""), device("d", name = "Pixel", ip = "10.0.0.5")))
     }
+
+    // 0.20.10 (one trust path): a peer's E2EE key comes from pairing. A merge never replaces a stored key, and fills a
+    // blank one only with the key a derived id comes from, so a cloud record or a relayed profile cannot swap it.
+
+    private fun keyPair(): Pair<String, String> {
+        val raw = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val key = java.util.Base64.getEncoder().encodeToString(raw)
+        return com.fileapex.security.IdentityBinding.deriveDeviceId(key) to key
+    }
+
+    @Test
+    fun aMergeNeverReplacesAStoredE2eeKey() {
+        val (id, key) = keyPair()
+        val (_, other) = keyPair()
+        val stored = device(id).copy(publicKey = key)
+        val offered = device(id).copy(publicKey = other, publicKeyHash = "ffffffffffffffff")
+        assertEquals(key, RosterMerge.preferRicher(stored, offered).publicKey)
+        assertEquals(key, RosterMerge.normalize(offered, stored).publicKey)
+    }
+
+    @Test
+    fun aBlankKeyIsFilledOnlyWithTheKeyTheIdComesFrom() {
+        val (id, key) = keyPair()
+        val (_, other) = keyPair()
+        val stub = device(id)
+        assertEquals("", RosterMerge.normalize(device(id).copy(publicKey = other), stub).publicKey)
+        assertEquals("", RosterMerge.preferRicher(stub, device(id).copy(publicKey = other)).publicKey)
+        assertEquals(key, RosterMerge.normalize(device(id).copy(publicKey = key), stub).publicKey)
+    }
+
+    @Test
+    fun anOlderRandomIdNeverTakesAKeyThroughAMerge() {
+        val (_, key) = keyPair()
+        val id = "77d4304a-ba16-4c8e-a86d-96f884b334a9"
+        assertEquals("", RosterMerge.normalize(device(id).copy(publicKey = key), device(id)).publicKey)
+        assertEquals("kept", RosterMerge.preferRicher(device(id).copy(publicKey = "kept"), device(id).copy(publicKey = key)).publicKey)
+    }
+
+    @Test
+    fun aRowMadeByPairingKeepsTheKeyPairingGaveIt() {
+        val id = "77d4304a-ba16-4c8e-a86d-96f884b334a9"
+        assertEquals("paired", RosterMerge.normalize(device(id).copy(publicKey = "paired")).publicKey)
+    }
 }
+

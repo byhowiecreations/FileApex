@@ -18,3 +18,10 @@ fun ChainState.memberCanCommandMembership(deviceId: String): Boolean {
     val held = member(deviceId) ?: return false
     return held.active && !held.isLegacyAdmit
 }
+
+/**
+ * Whether the Remove button may take [subjectId] off this device's roster, given the [verdict] of the signed removal.
+ * A member the chain names leaves only through an accepted `REMOVE`; a peer the chain never named is a pairwise unpair.
+ */
+fun ChainState.localRemovalAllowed(subjectId: String, verdict: ChainVerdict?): Boolean =
+    member(subjectId) == null || verdict is ChainVerdict.Accepted

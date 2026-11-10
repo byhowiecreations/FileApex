@@ -9,9 +9,13 @@ use std::cell::Cell;
 use std::rc::Rc;
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 
+mod guestkey;
+mod pump;
+
+use crate::pump::{pump, Sink, Source};
+
 const ALPN: &[u8] = b"fileapex/drop/1";
 const MAX_FRAME: usize = 4096;
-const CHUNK: usize = 256 * 1024;
 /// How long the sender has to answer (connect and first reply) before the attempt is given up.
 const ANSWER_LIMIT_MS: i32 = 30_000;
 
@@ -35,19 +39,44 @@ fn fail(msg: impl std::fmt::Display) -> JsError {
 }
 
 /// Calls a JS callback and waits for it when it returns a promise, so a slow disk slows the transfer instead of filling memory.
-async fn call(f: &Function, args: &[JsValue]) -> Result<(), JsError> {
+async fn call(f: &Function, args: &[JsValue]) -> Result<(), String> {
     let arr = js_sys::Array::new();
     for a in args {
         arr.push(a);
     }
-    let out = f.apply(&JsValue::NULL, &arr).map_err(|e| fail(format!("{e:?}")))?;
+    let out = f.apply(&JsValue::NULL, &arr).map_err(|e| format!("{e:?}"))?;
     if out.is_instance_of::<Promise>() {
-        JsFuture::from(Promise::from(out)).await.map_err(|e| fail(format!("{e:?}")))?;
+        JsFuture::from(Promise::from(out)).await.map_err(|e| format!("{e:?}"))?;
     }
     Ok(())
 }
 
+/// The connection's receive side as the download loop's source.
+struct RecvSource<'a>(&'a mut iroh::endpoint::RecvStream);
+
+impl Source for RecvSource<'_> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, String> {
+        match self.0.read(buf).await {
+            Ok(Some(n)) => Ok(n),
+            Ok(None) => Ok(0),
+            Err(e) => Err(format!("connection lost: read {e}")),
+        }
+    }
+}
+
+/// The page's callback as the download loop's sink; the bytes are copied into a JS array for each call.
+struct JsSink<'a>(&'a Function);
+
+impl Sink for JsSink<'_> {
+    async fn write(&mut self, data: &[u8]) -> Result<(), String> {
+        call(self.0, &[Uint8Array::from(data).into()]).await
+    }
+}
+
 /// Dials the drop endpoint and downloads its file.
+///
+/// `guest_keys` is 0 for a link made before guest keys existed (the endpoint gets a random key); otherwise the page connects with
+/// one of the keys derived from the secret, chosen at random, which the sender has listed with the drop relay.
 ///
 /// `on_head(size, name)` runs once when the sender accepts. `on_data(bytes)` runs for every chunk, in order.
 /// Errors carry the sender's reason in plain words: `denied`, `expired`, `used`, `busy`, `gone`, or a connection problem.
@@ -57,6 +86,7 @@ pub async fn pull(
     relay_url: String,
     drop_id: String,
     secret: String,
+    guest_keys: u32,
     on_head: Function,
     on_data: Function,
 ) -> Result<(), JsError> {
@@ -64,11 +94,14 @@ pub async fn pull(
     let relay: RelayUrl = relay_url.parse().map_err(|_| fail("bad link"))?;
     // Only the relay named in the link: no address lookup service and no speed checks against other relays, so the
     // visitor's address reaches the relay of this link and nothing else.
-    let endpoint = Endpoint::builder(presets::Minimal)
-        .relay_mode(RelayMode::custom([relay.clone()]))
-        .bind()
-        .await
-        .map_err(|e| fail(format!("start: {e}")))?;
+    let mut builder = Endpoint::builder(presets::Minimal).relay_mode(RelayMode::custom([relay.clone()]));
+    if guest_keys > 0 {
+        let mut pick = [0u8; 1];
+        getrandom::fill(&mut pick).map_err(|e| fail(format!("start: {e}")))?;
+        let index = pick[0] % guest_keys.min(u32::from(u8::MAX)) as u8;
+        builder = builder.secret_key(iroh::SecretKey::from_bytes(&guestkey::guest_seed(&secret, index)));
+    }
+    let endpoint = builder.bind().await.map_err(|e| fail(format!("start: {e}")))?;
     let addr = EndpointAddr::new(id).with_relay_url(relay);
 
     // A sender that is gone never answers, and a connect to it can run for minutes. Closing the endpoint ends it at once
@@ -104,19 +137,8 @@ pub async fn pull(
     match (parts.next(), parts.next(), parts.next()) {
         (Some("ok"), Some(size), Some(name)) => {
             let size: u64 = size.parse().map_err(|_| fail("bad reply"))?;
-            call(&on_head, &[JsValue::from_f64(size as f64), JsValue::from_str(name)]).await?;
-            let mut left = size;
-            let mut buf = vec![0u8; CHUNK];
-            while left > 0 {
-                let want = CHUNK.min(left as usize);
-                let n = match recv.read(&mut buf[..want]).await {
-                    Ok(Some(n)) => n,
-                    Ok(None) => return Err(fail("connection lost: ended early")),
-                    Err(e) => return Err(fail(format!("connection lost: read {e}"))),
-                };
-                left -= n as u64;
-                call(&on_data, &[Uint8Array::from(&buf[..n]).into()]).await?;
-            }
+            call(&on_head, &[JsValue::from_f64(size as f64), JsValue::from_str(name)]).await.map_err(fail)?;
+            pump(&mut RecvSource(&mut recv), &mut JsSink(&on_data), size).await.map_err(fail)?;
             send.write_all(b"k").await.map_err(|e| fail(format!("connection lost: receipt {e}")))?;
             send.finish().map_err(|e| fail(format!("connection lost: finish {e}")))?;
             let _ = send.stopped().await;

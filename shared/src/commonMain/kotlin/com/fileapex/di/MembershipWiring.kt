@@ -165,6 +165,7 @@ internal object MembershipWiring {
             }
             val running = ready ?: return@launch
             cancellableCatching { running.prepare() }.onFailure { println("MembershipWiring: preparing the roster failed - ${it::class.simpleName}") }
+            com.fileapex.cloud.device.DeviceIdentity.onChainReady()
             scope.launch {
                 var known = emptySet<String>()
                 onlineIds.collect { ids ->
@@ -259,6 +260,10 @@ internal class RoomChainEffects(
         invalidateTombstones()
         onPeerRemoved(deviceId)
     }
+
+    override suspend fun clusterKeySeq(): Long? = com.fileapex.cloud.seal.ClusterRecordKeys.current()?.chainSeq
+
+    override suspend fun rotateClusterKey(chainSeq: Long) = com.fileapex.cloud.seal.ClusterRecordKeys.rotate(chainSeq)
 
     override suspend fun handledRemoval(): String = dao.meta(HANDLED_KEY).orEmpty()
 

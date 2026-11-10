@@ -1,5 +1,6 @@
 package com.fileapex.cloud.device
 
+import com.fileapex.membership.ChainRecord
 import com.fileapex.util.cancellableCatching
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -26,19 +27,21 @@ internal sealed interface RelayAnswer {
     data object Unreachable : RelayAnswer
 }
 
-internal data class AdmitEntry(val deviceId: String, val publicKeyHash: String, val version: Long)
-
-internal data class RevokeEntry(val deviceId: String, val version: Long)
+/** What the relay holds of the account's membership chain: its root genesis hash, and the seq and hash of its head. */
+internal data class RelayChainHead(val root: String, val seq: Long, val head: String)
 
 internal interface DeviceRelay {
     suspend fun relayKey(): String?
-    suspend fun enrol(deviceId: String, ts: Long, nonce: String, tag: String): RelayAnswer
-    suspend fun sync(admit: List<AdmitEntry>, revoke: List<RevokeEntry>): RelayAnswer
+    suspend fun enrol(deviceId: String, ts: Long, nonce: String, tag: String, clipboardPublicKey: String, records: List<ChainRecord>): RelayAnswer
+    suspend fun chainHead(): RelayChainHead?
+    /** [startOver]: replace an older setup of this account (needs a Google sign-in from the last five minutes). */
+    suspend fun uploadChain(records: List<ChainRecord>, startOver: Boolean = false): RelayAnswer
 }
 
 /**
- * Calls the per-device identity endpoints of the FileApex relay (`/api/device/...`): the relay key, enrol, admit and
- * revoke. Plan: docs/planning/per-device-firebase-identity-plan.md.
+ * Calls the per-device identity endpoints of the FileApex relay (`/api/device/...`): the relay key, enrol and the signed
+ * membership chain the relay decides by. Plans: docs/planning/per-device-firebase-identity-plan.md,
+ * docs/planning/one-trust-path-plan.md.
  */
 internal class DeviceRelayClient(
     private val httpClient: () -> HttpClient,
@@ -47,11 +50,18 @@ internal class DeviceRelayClient(
 ) : DeviceRelay {
     override suspend fun relayKey(): String? = cancellableCatching {
         val response = httpClient().get("$base/key")
-        if (response.status.value != 200) return@cancellableCatching null
+        if (response.status.value != 200) {
+            com.fileapex.platform.Diagnostics.log("DeviceIdentity: relay key answered ${response.status.value}")
+            return@cancellableCatching null
+        }
         Json.parseToJsonElement(response.bodyAsText()).jsonObject["key"]?.jsonPrimitive?.contentOrNull
-    }.getOrNull()
+    }.onFailure { com.fileapex.platform.Diagnostics.log("DeviceIdentity: relay key failed ${it::class.simpleName}") }.getOrNull()
 
-    override suspend fun enrol(deviceId: String, ts: Long, nonce: String, tag: String): RelayAnswer =
+    /**
+     * [clipboardPublicKey] lets a device with no cloud record enrol (the relay prefers the key in the record), and
+     * [records] carry the chain so a device the relay does not know yet is found on it.
+     */
+    override suspend fun enrol(deviceId: String, ts: Long, nonce: String, tag: String, clipboardPublicKey: String, records: List<ChainRecord>): RelayAnswer =
         post(
             "enrol",
             buildJsonObject {
@@ -59,27 +69,41 @@ internal class DeviceRelayClient(
                 put("ts", ts)
                 put("nonce", nonce)
                 put("tag", tag)
+                put("clipboardPublicKey", clipboardPublicKey)
+                put("records", recordsJson(records))
             }
         )
 
-    override suspend fun sync(admit: List<AdmitEntry>, revoke: List<RevokeEntry>): RelayAnswer =
-        post(
-            "sync",
+    override suspend fun chainHead(): RelayChainHead? {
+        val token = idToken() ?: return null
+        return cancellableCatching {
+            val response = httpClient().get("$base/chain") { header(HttpHeaders.Authorization, "Bearer $token") }
+            if (response.status.value != 200) return@cancellableCatching null
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            RelayChainHead(
+                root = body["root"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                seq = body["seq"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                head = body["head"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            )
+        }.getOrNull()
+    }
+
+    override suspend fun uploadChain(records: List<ChainRecord>, startOver: Boolean): RelayAnswer =
+        post("chain", buildJsonObject { put("records", recordsJson(records)); if (startOver) put("startOver", true) })
+
+    /** Field by field: [ChainRecord] keeps its companion private, so its generated serializer cannot be looked up from here. */
+    internal fun recordsJson(records: List<ChainRecord>): JsonArray = JsonArray(
+        records.map { r ->
             buildJsonObject {
-                put(
-                    "admit",
-                    JsonArray(
-                        admit.map {
-                            buildJsonObject { put("deviceId", it.deviceId); put("publicKeyHash", it.publicKeyHash); put("version", it.version) }
-                        }
-                    )
-                )
-                put("revoke", JsonArray(revoke.map { buildJsonObject { put("deviceId", it.deviceId); put("version", it.version) } }))
+                put("seq", r.seq); put("parentHash", r.parentHash); put("kind", r.kind.name); put("actor", r.actor)
+                put("actorKey", r.actorKey); put("subject", r.subject); put("subjectKey", r.subjectKey); put("tlsPin", r.tlsPin)
+                put("reason", r.reason); put("signature", r.signature)
             }
-        )
+        }
+    )
 
     private suspend fun post(action: String, body: JsonObject): RelayAnswer {
-        val token = idToken() ?: return RelayAnswer.Unreachable
+        val token = idToken() ?: return RelayAnswer.Unreachable.also { com.fileapex.platform.Diagnostics.log("DeviceIdentity: relay $action has no token") }
         return cancellableCatching {
             val response = httpClient().post("$base/$action") {
                 header(HttpHeaders.Authorization, "Bearer $token")
@@ -93,7 +117,10 @@ internal class DeviceRelayClient(
             } else {
                 RelayAnswer.Refused(response.status.value, parsed["error"]?.jsonPrimitive?.contentOrNull.orEmpty())
             }
-        }.getOrElse { RelayAnswer.Unreachable }
+        }.getOrElse { com.fileapex.platform.Diagnostics.log("DeviceIdentity: relay $action failed ${it::class.simpleName}"); RelayAnswer.Unreachable }.also { answer ->
+            // Outcome and the relay's short reason only: never a token, an id or a key.
+            if (answer !is RelayAnswer.Ok) com.fileapex.platform.Diagnostics.log("DeviceIdentity: relay $action answered $answer")
+        }
     }
 
     companion object {

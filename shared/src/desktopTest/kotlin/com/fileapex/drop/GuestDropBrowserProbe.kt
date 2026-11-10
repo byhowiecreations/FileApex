@@ -24,7 +24,13 @@ class GuestDropBrowserProbe {
         file.outputStream().buffered().use { out -> repeat(megabytes) { i -> out.write(ByteArray(1024 * 1024) { ((it + i) % 251).toByte() }) } }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val drops = GuestDrops(maxLive = 1)
-        val service = GuestDropService({ embeddedGuestDropEngine() }, scope, drops)
+        // FILEAPEX_DROP_PROBE_REGISTER=1 registers the link with the live Worker and uses the FileApex drop relay, like the apps do.
+        val registrar = if (System.getenv("FILEAPEX_DROP_PROBE_REGISTER") == "1") {
+            KtorDropRelayRegistrar({ io.ktor.client.HttpClient(io.ktor.client.engine.cio.CIO) })
+        } else {
+            DropRelayRegistrar.None
+        }
+        val service = GuestDropService({ embeddedGuestDropEngine() }, scope, drops, registrar = registrar)
         try {
             val result = service.share(file, 15 * 60_000L) as ShareResult.Ready
             File(folder, "link.txt").writeText(result.url)

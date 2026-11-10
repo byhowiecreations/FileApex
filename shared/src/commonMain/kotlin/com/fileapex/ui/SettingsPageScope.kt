@@ -319,6 +319,7 @@ internal fun SettingsPageScope.PagesDevice() {
             onBack = goUp,
             onDisable = viewModel::disableGoogleAccountLink,
             onIdToken = viewModel::onGoogleIdToken,
+            onStartOverIdToken = { token, email, error -> viewModel.onGoogleIdToken(token, email, error, startOver = true) },
             onCellularChange = viewModel::setCellularEnabled,
             onDriveRelayChange = viewModel::setGoogleDriveRelayEnabled,
             onDriveRelayMaxMbSelected = viewModel::setDriveRelayMaxMb,

@@ -81,7 +81,7 @@ class PairingCoordinator(
      * Scanner path: local upsert of broadcaster already done; emit one-time pairing deltas.
      */
     suspend fun afterOutboundPair(peer: PairedDeviceEntity, preexistingDeviceIds: Set<String>? = null) {
-        com.fileapex.cloud.device.DeviceIdentity.onPaired(peer.deviceId)
+        com.fileapex.cloud.device.DeviceIdentity.onPaired()
         com.fileapex.domain.clipboard.ClipboardShareCoordinator.checkAndApplyAutoDefaultTarget()
         cancellableCatching { FileApexServices.bulletinSyncEngineOrNull()?.onDevicePairingComplete(peer) }
     }

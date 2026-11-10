@@ -606,4 +606,17 @@ exit 0
         val out = call(b, "doctor", withFakes(b) + mapOf("FILEAPEX_UNAME" to "Linux")).out
         assertTrue(out, out.contains("Android over SSH") && out.contains("Android signing settings"))
     }
+
+    @Test fun aChangedReadmeDoesNotStopARemoteBuildButAChangedSourceFileDoes() {
+        val b = box()
+        File(b.project, "README.md").writeText("readme\n")
+        File(b.project, "app.kt").writeText("fun main() {}\n")
+        val git = "git -c user.name=t -c user.email=t@t -c commit.gpgsign=false"
+        assertEquals(0, sh("git init -q && $git add -A && $git commit -q -m init", dir = b.project).code)
+        File(b.project, "README.md").writeText("edited\n")
+        assertEquals("", call(b, "build_relevant_changes").out.trim())
+        File(b.project, "app.kt").writeText("fun main() { println() }\n")
+        assertEquals("app.kt", call(b, "build_relevant_changes").out.trim())
+    }
 }
+

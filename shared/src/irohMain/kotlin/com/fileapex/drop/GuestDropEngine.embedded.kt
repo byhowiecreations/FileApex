@@ -5,6 +5,9 @@ import computer.iroh.BiStream
 import computer.iroh.Connection
 import computer.iroh.Endpoint
 import computer.iroh.EndpointBuilder
+import computer.iroh.RelayConfig
+import computer.iroh.RelayMap
+import computer.iroh.RelayMode
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -22,8 +25,8 @@ object GuestDropIroh {
 }
 
 actual fun embeddedGuestDropEngine(): GuestDropEngine? = object : GuestDropEngine {
-    override suspend fun start(secretKey: ByteArray, useRelay: Boolean): GuestDropEndpoint =
-        GuestDropIrohEndpoint.bind(secretKey, useRelay)
+    override suspend fun start(secretKey: ByteArray, useRelay: Boolean, relayUrl: String?): GuestDropEndpoint =
+        GuestDropIrohEndpoint.bind(secretKey, useRelay, relayUrl)
 }
 
 /** Drop ALPN only, loopback sockets only, so a visitor can reach this device through the relay and nothing else. */
@@ -148,10 +151,16 @@ internal class GuestDropIrohEndpoint private constructor(val raw: Endpoint, priv
         private const val BUSY = 2L
         private const val NO_STREAM = 3L
 
-        suspend fun bind(secretKey: ByteArray, useRelay: Boolean, streamWaitMs: Long = STREAM_WAIT_MS): GuestDropIrohEndpoint {
+        suspend fun bind(secretKey: ByteArray, useRelay: Boolean, relayUrl: String? = null, streamWaitMs: Long = STREAM_WAIT_MS): GuestDropIrohEndpoint {
             val endpoint = try {
                 val builder = EndpointBuilder()
                 if (useRelay) builder.applyN0() else builder.applyN0DisableRelay()
+                if (useRelay && relayUrl != null) {
+                    // Our own relay alone, with no token: it lets in the endpoint ids the Worker lists for live drops.
+                    val map = RelayMap.empty()
+                    map.insert(RelayConfig(relayUrl, null, null))
+                    builder.relayMode(RelayMode.custom(map))
+                }
                 builder.alpns(listOf(GuestDropIroh.ALPN))
                 builder.bindAddr("127.0.0.1:0")
                 builder.secretKey(secretKey)

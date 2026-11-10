@@ -529,7 +529,7 @@ class SettingsViewModel : ViewModel() {
     fun saveDeviceName() = deviceName.saveDeviceName()
 
     /** Credential Manager / desktop OAuth returned a Google ID token. */
-    fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?) = google.onGoogleIdToken(idToken, emailHint, errorMessage)
+    fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?, startOver: Boolean = false) = google.onGoogleIdToken(idToken, emailHint, errorMessage, startOver)
 
     fun disableGoogleAccountLink() = google.disableGoogleAccountLink()
 }

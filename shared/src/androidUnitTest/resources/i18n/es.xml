@@ -247,6 +247,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shown_when_wifi">Se muestra si el dispositivo está en Wi‑Fi</string>
     <string name="shown_when_cellular">Se muestra si el dispositivo está en datos móviles</string>
     <string name="link_google_account">Vincular cuenta de Google</string>
+    <string name="start_over_title">Esta cuenta de Google está vinculada a una configuración anterior de FileApex</string>
+    <string name="start_over_desc">Estos dispositivos se configuraron de nuevo, así que aún no pueden usar las funciones vinculadas a Google. Empieza de nuevo para usarlas con esta configuración. Los dispositivos anteriores pierden esas funciones hasta que los emparejes en ella.</string>
+    <string name="start_over_button">Empezar de nuevo con estos dispositivos</string>
+    <string name="start_over_confirm_title">¿Empezar de nuevo?</string>
+    <string name="start_over_confirm_text">Volverás a iniciar sesión en Google. Cada dispositivo anterior de esta cuenta de Google pierde sus funciones vinculadas a Google hasta que lo emparejes en esta configuración. Los archivos y los ajustes se quedan en cada dispositivo.</string>
+    <string name="start_over_confirm">Empezar de nuevo</string>
     <string name="enable_drive_relay">Activar relé de Drive</string>
     <string name="delete_relay_now">Borrar archivos del relé ahora</string>
     <string name="purge_after_72h">Purgar archivos a las 72 horas</string>
@@ -1012,7 +1018,6 @@ Toca el hub central (+) para emparejar</string>
     <string name="all_permissions_granted">Todos los permisos concedidos</string>
     <string name="all_permissions_granted_desc">FileApex tiene todos los permisos necesarios para transferir archivos y detectar dispositivos cercanos.</string>
     <string name="back_to_settings">Volver a Configuración</string>
-    <string name="peer_revoked_this_device">%1$s ya no reconoce este dispositivo: vuelve a emparejarlo para unirte</string>
     <string name="removed_signed_out_google">Este dispositivo fue eliminado del clúster y se cerró su sesión de Google en FileApex. Vuelve a emparejarlo para unirte.</string>
     <string name="removed_from_cluster">Este dispositivo fue eliminado del clúster. Vuelve a emparejarlo para unirte.</string>
     <string name="transfer_cancelled">Transferencia cancelada</string>

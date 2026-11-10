@@ -64,7 +64,8 @@ object GuestDropHub {
     val service: GuestDropService by lazy {
         GuestDropService(
             { embeddedGuestDropEngine() }, scope, GuestDrops(maxLive = if (currentPlatformLabel() == "Android") 1 else 3),
-            allowed = { consent().allowed }
+            allowed = { consent().allowed },
+            registrar = KtorDropRelayRegistrar({ FileApexServices.httpClient })
         )
             .also { GuestDropNoticeWatcher(scope, it.active) { notice -> onNotice(notice) } }
     }

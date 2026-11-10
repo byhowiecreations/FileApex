@@ -31,7 +31,11 @@ class TlsPinAnnouncer(
     private val client: FileApexClient,
     private val onlineDeviceIds: () -> Set<String>,
     private val scope: CoroutineScope,
-    private val now: () -> Long = TimeUtils::now
+    private val now: () -> Long = TimeUtils::now,
+    /** True for an active member with a real chain key: its pin comes only from its signed chain records. */
+    private val chainOwnsPin: suspend (String) -> Boolean = { TlsPinAnnouncements.chainOwnsPin(it) },
+    /** Pulls the chain from that device (pinned, else unpinned); a signed pin record found there updates the pin store. */
+    private val pullChain: suspend (String) -> Unit = { id -> com.fileapex.di.FileApexServices.membershipHub?.chainReplicator?.reconcile(id) }
 ) {
     private var job: Job? = null
     private val nextAttempt = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -167,6 +171,7 @@ class TlsPinAnnouncer(
         return when (result.outcome) {
             TlsAnnouncementOutcome.Recorded,
             TlsAnnouncementOutcome.Unchanged,
+            TlsAnnouncementOutcome.ChainOwned,
             TlsAnnouncementOutcome.Rotated -> DONE_MS
             null -> result.retryMs
             else -> RETRY_MS
@@ -178,7 +183,7 @@ class TlsPinAnnouncer(
     /** Sends this device's key to [device] and applies the key it answers with; no outcome when no answer came. */
     private suspend fun exchange(device: PairedDeviceEntity): Exchange {
         val localId = loadLocalIdentity().deviceId
-        val announcement = TlsPinAnnouncements.build(localId, device, now()) ?: return Exchange(null)
+        val announcement = TlsPinAnnouncements.build(localId, device, now(), com.fileapex.cloud.seal.ClusterKeyHandover.forRecipient(device.deviceId)) ?: return Exchange(null)
         return try {
             val reply = client.announceTlsPin(device.lastKnownIp, device.port, announcement)
                 ?: return Exchange(null, OLD_PEER_MS)
@@ -202,6 +207,12 @@ class TlsPinAnnouncer(
         val id = prompt.deviceId
         val device = repository.getDevice(id)
         if (device == null || device.isRemoved || device.tlsPin.equals(observed, ignoreCase = true)) return true
+        // A chain member's new key arrives as its signed pin record: the chain is pulled, nothing is adopted here and
+        // nothing is asked; until the record arrives the connection stays refused.
+        if (chainOwnsPin(id)) {
+            cancellableCatching { pullChain(id) }
+            return true
+        }
         if (TlsVouches.voucherFor(id, observed, now()) != null) return adopt(id, observed, prompt.port)
         val reachable = NetworkUtils.isUsableLanIpv4(device.lastKnownIp) && device.port > 0
         if (device.publicKey.isNotBlank() && reachable) {
@@ -236,6 +247,7 @@ class TlsPinAnnouncer(
         val online = onlineDeviceIds()
         for (recipient in repository.listDevices()) {
             if (recipient.isRemoved || recipient.deviceId == prompt.deviceId || recipient.deviceId == localId) continue
+            if (chainOwnsPin(prompt.deviceId)) return
             if (recipient.deviceId !in online || !NetworkUtils.isUsableLanIpv4(recipient.lastKnownIp) || recipient.port <= 0) continue
             val vouch = TlsPinAnnouncements.buildVouch(localId, recipient, prompt.deviceId, prompt.pin, prompt.port, now()) ?: continue
             cancellableCatching { client.announceTlsPin(recipient.lastKnownIp, recipient.port, vouch) }
@@ -245,6 +257,7 @@ class TlsPinAnnouncer(
 
     /** No shared key to authenticate with: surface the peer's claimed pin for the user to verify. */
     private suspend fun offerFingerprint(device: PairedDeviceEntity): Long {
+        if (chainOwnsPin(device.deviceId)) return OLD_PEER_MS
         val state = cancellableCatching { client.fetchPeerNodeState(device.lastKnownIp, device.port) }.getOrNull()
             ?: return RETRY_MS
         if (state.deviceId.trim() == device.deviceId &&

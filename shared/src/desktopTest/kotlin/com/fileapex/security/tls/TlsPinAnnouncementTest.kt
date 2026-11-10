@@ -215,7 +215,7 @@ class TlsPinAnnouncementTest {
     @Test
     fun buildSealsOwnPinForThePeerAndRoundTrips() = runBlocking {
         repo.adoptFromPairing(peer())
-        val built = TlsPinAnnouncements.build("me", repo.getDevice("peer")!!, now, FakeCrypto("my-key"))
+        val built = TlsPinAnnouncements.build("me", repo.getDevice("peer")!!, now, "", FakeCrypto("my-key"))
         assertNotNull(built)
         assertEquals("my-key", built!!.senderPublicKey)
         assertTrue(built.ciphertext.contains(pinA))
@@ -224,10 +224,10 @@ class TlsPinAnnouncementTest {
     @Test
     fun buildNeedsALocalIdentityAndAPeerKey() = runBlocking {
         repo.adoptFromPairing(peer(key = ""))
-        assertNull(TlsPinAnnouncements.build("me", repo.getDevice("peer")!!, now, FakeCrypto("my-key")))
+        assertNull(TlsPinAnnouncements.build("me", repo.getDevice("peer")!!, now, "", FakeCrypto("my-key")))
         LocalTlsInfo.pin = ""
         repo.adoptFromPairing(peer(key = "k"))
-        assertNull(TlsPinAnnouncements.build("me", repo.getDevice("peer")!!, now, FakeCrypto("my-key")))
+        assertNull(TlsPinAnnouncements.build("me", repo.getDevice("peer")!!, now, "", FakeCrypto("my-key")))
     }
 
     @Test
@@ -306,4 +306,41 @@ class TlsPinAnnouncementTest {
             ClusterRecordKeys.forgetForTests()
         }
     }
+
+    // 0.20.10 (one trust path): the pin of a member that holds a real chain key comes only from its signed chain records.
+
+    @Test
+    fun anAnnouncementNeverChangesThePinOfAChainMember() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        val outcome = TlsPinAnnouncements.accept(repo, fromPeer(pinB), "me", now, FakeCrypto("my-key"), chainOwnsPin = { it == "peer" })
+        assertEquals(TlsAnnouncementOutcome.ChainOwned, outcome)
+        assertEquals(pinA, repo.getDevice("peer")!!.tlsPin)
+    }
+
+    @Test
+    fun aVouchAboutAChainMemberChangesNothing() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        repo.adoptFromPairing(other())
+        val outcome = TlsPinAnnouncements.accept(repo, vouchFrom("other", "peer", pinB, "other-key"), "me", now, FakeCrypto("my-key"), chainOwnsPin = { it == "peer" })
+        assertEquals(TlsAnnouncementOutcome.ChainOwned, outcome)
+        assertNull(TlsVouches.voucherFor("peer", pinB, now))
+    }
+
+    @Test
+    fun aKeyChangeOfAChainMemberIsLeftToTheChainNeverAdoptedAndNeverAsked() = runBlocking {
+        repo.adoptFromPairing(peer())
+        repo.recordTlsPin("peer", pinA, 9443)
+        TlsVouches.add("peer", pinB, "other", now)
+        val pulls = mutableListOf<String>()
+        val announcer = TlsPinAnnouncer(
+            repo, com.fileapex.network.FileApexClient(), { emptySet() }, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+            { now }, chainOwnsPin = { it == "peer" }, pullChain = { pulls += it }
+        )
+        assertTrue(announcer.resolveKeyChange(TlsPinPrompt("peer", TlsPromptKind.KEY_CHANGED, pinB, 9443)))
+        assertEquals(pinA, repo.getDevice("peer")!!.tlsPin)
+        assertEquals(listOf("peer"), pulls)
+    }
 }
+

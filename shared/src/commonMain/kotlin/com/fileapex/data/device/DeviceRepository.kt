@@ -84,15 +84,6 @@ class DeviceRepository(
         return deviceDao.getAllDevicesOnce().filter { !it.isRemoved && it.hardwareHash == wanted && it.deviceId != exceptDeviceId }
     }
 
-    /** Every device this one knows to be removed, with the cluster version of its removal; the relay denies them. */
-    suspend fun removedDeviceVersions(): Map<String, Long> {
-        val out = HashMap<String, Long>()
-        for (row in deviceDao.getAllRemovedDevices()) out.merge(row.deviceId.trim(), row.removedAtEpochMs.coerceAtLeast(1L), ::maxOf)
-        for (row in deviceDao.getTombstonedDevices()) out.merge(row.deviceId.trim(), row.membershipVersion().coerceAtLeast(1L), ::maxOf)
-        out.remove("")
-        return out
-    }
-
     /** Removed rows (tombstones) that carry this hardware hash. */
     suspend fun removedDevicesWithHardware(hash: String): List<PairedDeviceEntity> {
         val wanted = hash.trim()

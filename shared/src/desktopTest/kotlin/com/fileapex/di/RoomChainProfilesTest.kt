@@ -56,7 +56,8 @@ class RoomChainProfilesTest {
         effects.ensureProfile("phone")
         profiles.incoming(listOf(state("phone")), setOf("phone"), from = "phone")
         val device = repo.getDevice("phone")!!
-        assertEquals(listOf("Honor", "192.168.1.50", 8081, 8443, "e2ee-phone"), listOf(device.deviceName, device.lastKnownIp, device.port, device.tlsPort, device.publicKey))
+        // 0.20.10 (one trust path): a profile never brings an E2EE key that does not derive the id; the key comes from pairing.
+        assertEquals(listOf("Honor", "192.168.1.50", 8081, 8443, ""), listOf(device.deviceName, device.lastKnownIp, device.port, device.tlsPort, device.publicKey))
     }
 
     @Test

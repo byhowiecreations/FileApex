@@ -178,14 +178,10 @@ object FileApexServices {
             },
             pins = com.fileapex.data.db.RoomTlsPinStore(database.tlsPinDao())
         )
-        client.onRevocationDetected = { host, port, revokedAt, reason, removedBy ->
-            com.fileapex.session.DeviceSessionManager.clearAllSessions()
-            presenceMonitor.refreshOnlineSnapshot()
-            RevokedByPeerNotice.onRevoked(host, deviceRepository.listDevices())
-            val roster = deviceRepository.listDevices()
+        // A "401 revoked" answer is a hint: only a pinned peer (tied by its TLS route, never by an address) is asked for the chain.
+        client.onRevocationDetected = { host, port ->
             val peerId = com.fileapex.security.tls.PeerTlsRoutes.lookup(host, port)?.deviceId
-                ?: roster.firstOrNull { it.lastKnownIp.trim() == host.trim() }?.deviceId
-            com.fileapex.domain.pairing.KickedByPeer.onRevoked(peerId, revokedAt, roster, reason = reason, removedBy = removedBy)
+            com.fileapex.domain.pairing.KickedByPeer.onRevoked(peerId, deviceRepository.listDevices())
         }
         client.membershipVersionProvider = { 0L }
         client.chainStateProvider = { membershipHub?.chainState?.current() }

@@ -91,8 +91,8 @@ internal object RosterMerge {
                 hasUsableEndpoint(secondary) -> secondary.port
                 else -> primary.port
             },
-            publicKeyHash = primary.publicKeyHash.ifBlank { secondary.publicKeyHash },
-            publicKey = firstNonBlank(incoming.publicKey, primary.publicKey, secondary.publicKey),
+            publicKeyHash = keptKeyHash(existing, primary.publicKeyHash.ifBlank { secondary.publicKeyHash }),
+            publicKey = keptPublicKey(primary.deviceId, existing.publicKey, incoming.publicKey),
             e2eeEnabled = incoming.e2eeEnabled || primary.e2eeEnabled || secondary.e2eeEnabled,
             rootPath = primary.rootPath.ifBlank {
                 secondary.rootPath.ifBlank { "/" }
@@ -228,6 +228,8 @@ internal object RosterMerge {
             }
         )
         return trimmed.copy(
+            publicKey = if (preserveFrom == null) trimmed.publicKey else keptPublicKey(trimmed.deviceId, preserveFrom.publicKey, trimmed.publicKey),
+            publicKeyHash = if (preserveFrom == null) trimmed.publicKeyHash else keptKeyHash(preserveFrom, trimmed.publicKeyHash),
             lastKnownIp = trimmed.lastKnownIp.ifBlank { preserveFrom?.lastKnownIp.orEmpty() },
             port = trimmed.port.takeIf { it > 0 } ?: preserveFrom?.port ?: 0,
             rootPath = trimmed.rootPath.takeIf { it.isNotEmpty() && it != "/" } ?: preservedRoot ?: defaultRoot,
@@ -250,6 +252,21 @@ internal object RosterMerge {
             tileMenuOrder = preserveFrom?.tileMenuOrder?.takeIf { it.isNotBlank() } ?: trimmed.tileMenuOrder
         )
     }
+
+    /**
+     * A peer's E2EE key comes from pairing (a new row takes the key pairing gave it). A merge keeps a [stored] key, and
+     * fills a blank one only with the key a derived [deviceId] comes from, so no other source can swap it.
+     */
+    internal fun keptPublicKey(deviceId: String, stored: String, offered: String): String {
+        val have = stored.trim()
+        if (have.isNotEmpty()) return have
+        val offer = offered.trim()
+        return if (com.fileapex.security.IdentityBinding.matches(deviceId, offer)) offer else ""
+    }
+
+    /** The key hash follows the kept key: a stored hash stays, otherwise the offered one. */
+    private fun keptKeyHash(stored: PairedDeviceEntity, offered: String): String =
+        stored.publicKeyHash.trim().ifBlank { offered.trim() }
 
     internal fun normalizeName(name: String): String = name.trim().lowercase()
 

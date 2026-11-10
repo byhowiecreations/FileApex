@@ -64,4 +64,25 @@ class GuestDropLinkTest {
         assertFalse(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+").containsMatchIn(text))
         assertFalse(text.contains("/Users") || text.contains("/storage"))
     }
+
+    private val keyed = link.copy(guestKeys = 2)
+
+    @Test fun aLinkWithGuestKeysUsesTheSecondFormatAndReadsBackExactly() {
+        val url = keyed.toUrl()
+        assertTrue(url.startsWith("https://getfileapex.com/drop/#v2."))
+        assertEquals(keyed, GuestDropLink.parse(url))
+        assertEquals(0, GuestDropLink.parse(link.toUrl())!!.guestKeys)
+        assertTrue(link.toUrl().startsWith("https://getfileapex.com/drop/#v1."))
+    }
+
+    @Test fun theSecondFormatNeedsAGuestKeyCountInRange() {
+        fun encode(vararg fields: String) = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(fields.joinToString("\n").encodeToByteArray())
+        fun v2(count: String) = "https://getfileapex.com/drop/#v2." + encode(
+            keyed.endpointId, keyed.relayUrl, keyed.dropId, keyed.secret, keyed.expiresAtMs.toString(), keyed.sizeBytes.toString(), count, keyed.name
+        )
+        assertEquals(keyed, GuestDropLink.parse(v2("2")))
+        for (bad in listOf("0", "9", "-1", "two", "")) assertNull(bad, GuestDropLink.parse(v2(bad)))
+    }
 }
+

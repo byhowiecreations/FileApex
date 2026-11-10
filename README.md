@@ -87,7 +87,7 @@ Chromebook: the Linux container sits behind its own network, so other devices ca
 * **Friends and Groups:** Invite contacts for file-only sending over Iroh without pairing them into your personal device cluster.
 * **Share as a link (opt-in):** Turn one file into a link that works once, so someone without FileApex can download it in a browser. It goes from your device through a relay that stores nothing, end-to-end encrypted, and asks for your OK first.
 * **Device details:** Battery, charging state, processor, storage, RAM and network for every paired device.
-* **Locate phone:** Make a paired phone ring or show where it is from your computer.
+* **Locate phone:** Make a paired phone ring from your computer.
 * **Themes and layouts:** Pick the layout that suits you, including Simple, built for one phone and one computer.
 * **Background persistence (Android):** Keeps the share server reachable, with battery guidance, a watchdog and optional restart after reboot.
 * **Command line:** A CLI and terminal dashboard on desktop for scripting and headless use.

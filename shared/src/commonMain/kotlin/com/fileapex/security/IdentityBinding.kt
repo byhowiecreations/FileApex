@@ -25,7 +25,11 @@ object IdentityBinding {
 
     /** True when [deviceId] is key-derived and [publicKeyBase64] is the key it was derived from. */
     fun matches(deviceId: String, publicKeyBase64: String): Boolean =
-        publicKeyBase64.isNotBlank() && deriveDeviceId(publicKeyBase64) == deviceId.trim()
+        publicKeyBase64.isNotBlank() && try {
+            deriveDeviceId(publicKeyBase64) == deviceId.trim()
+        } catch (_: IllegalArgumentException) {
+            false
+        }
 
     /**
      * The `publicKeyHash` a node with [deviceId] and [publicKeyBase64] advertises: the key digest for

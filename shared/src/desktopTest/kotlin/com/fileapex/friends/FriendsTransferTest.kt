@@ -159,7 +159,9 @@ class FriendsTransferTest {
         val rx = async(start = CoroutineStart.UNDISPATCHED) {
             runCatching { FriendsReceiver(q, 10_000_000) { true }.handle(CancelOnOk(r), "k") }.exceptionOrNull()
         }
-        launch { FriendsSender.send(s, src, id) }
+        val tx = launch { FriendsSender.send(s, src, id) }
         assertTrue(withTimeout(5_000L) { rx.await() } is CancellationException)
+        // The sender is left waiting for an acknowledgement that never comes; without this the test waits out its 300 s timeout.
+        tx.cancel()
     }
 }

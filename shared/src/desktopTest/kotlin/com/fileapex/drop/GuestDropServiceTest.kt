@@ -37,22 +37,24 @@ class GuestDropServiceTest {
         override suspend fun close() { closed = true; streams.close() }
     }
 
-    private class FakeEngine(val relay: String? = "https://relay.example/") : GuestDropEngine {
+    private class FakeEngine(val relay: String? = "https://relay.example/", val dropRelayRefuses: Boolean = false) : GuestDropEngine {
         val started = mutableListOf<FakeEndpoint>()
         val keys = mutableListOf<ByteArray>()
-        override suspend fun start(secretKey: ByteArray, useRelay: Boolean): GuestDropEndpoint {
+        val relayUrls = mutableListOf<String?>()
+        override suspend fun start(secretKey: ByteArray, useRelay: Boolean, relayUrl: String?): GuestDropEndpoint {
             keys += secretKey
-            return FakeEndpoint(started.size.toString(16).padStart(64, '0'), relay).also { started += it }
+            relayUrls += relayUrl
+            return FakeEndpoint(started.size.toString(16).padStart(64, '0'), if (dropRelayRefuses && relayUrl != null) null else relay).also { started += it }
         }
     }
 
     private class FailingEngine : GuestDropEngine {
-        override suspend fun start(secretKey: ByteArray, useRelay: Boolean): GuestDropEndpoint = throw java.io.IOException("no network")
+        override suspend fun start(secretKey: ByteArray, useRelay: Boolean, relayUrl: String?): GuestDropEndpoint = throw java.io.IOException("no network")
     }
 
     private class HangingEngine : GuestDropEngine {
         val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
-        override suspend fun start(secretKey: ByteArray, useRelay: Boolean): GuestDropEndpoint {
+        override suspend fun start(secretKey: ByteArray, useRelay: Boolean, relayUrl: String?): GuestDropEndpoint {
             entered.complete(Unit)
             kotlinx.coroutines.awaitCancellation()
         }
@@ -60,8 +62,22 @@ class GuestDropServiceTest {
 
     @After fun tearDown() { scope.cancel() }
 
-    private fun service(engine: GuestDropEngine?, maxLive: Int = 3, drops: GuestDrops = GuestDrops(now = { clock }, maxLive = maxLive), allowed: () -> Boolean = { true }) =
-        GuestDropService({ engine }, scope, drops, { clock }, allowed)
+    private fun service(
+        engine: GuestDropEngine?,
+        maxLive: Int = 3,
+        drops: GuestDrops = GuestDrops(now = { clock }, maxLive = maxLive),
+        allowed: () -> Boolean = { true },
+        registrar: DropRelayRegistrar = DropRelayRegistrar.None
+    ) = GuestDropService({ engine }, scope, drops, { clock }, allowed, registrar, "https://drop-relay.example")
+
+    private class RecordingRegistrar(private val answers: MutableList<Boolean> = mutableListOf()) : DropRelayRegistrar {
+        val calls = mutableListOf<Pair<List<String>, Long>>()
+        fun willAnswer(vararg results: Boolean) = apply { answers += results.toList() }
+        override suspend fun register(ids: List<String>, expiresAtMs: Long): Boolean {
+            calls += ids to expiresAtMs
+            return if (answers.isEmpty()) true else answers.removeAt(0)
+        }
+    }
 
     private fun file(size: Int = 100, name: String? = null) = (if (name == null) temp.newFile() else temp.newFile(name)).apply { writeBytes(ByteArray(size) { 1 }) }
 
@@ -299,5 +315,66 @@ class GuestDropServiceTest {
         accepted = true
         ready(svc.share(file(), 60_000L))
         assertEquals(1, engine.started.size)
+    }
+
+    @Test fun aRegisteredLinkUsesTheDropRelayAndListsTheSenderAndTheGuestIds() = runBlocking {
+        val engine = FakeEngine()
+        val registrar = RecordingRegistrar()
+        val r = ready(service(engine, registrar = registrar).share(file(), 3_600_000L))
+        val link = checkNotNull(GuestDropLink.parse(r.url))
+        assertEquals(listOf<String?>("https://drop-relay.example"), engine.relayUrls)
+        assertEquals(GuestDropKeys.COUNT, link.guestKeys)
+        assertTrue(r.url.contains("#v2."))
+        assertEquals(1, registrar.calls.size)
+        val (ids, expires) = registrar.calls[0]
+        assertEquals(GuestDropKeys.endpointId(engine.keys[0]), ids[0])
+        assertEquals(GuestDropKeys.guestIds(link.secret), ids.drop(1))
+        assertEquals(clock + 3_600_000L, expires)
+    }
+
+    @Test fun whenTheRegistryCannotBeReachedTheLinkFallsBackToTheOrdinaryRelay() = runBlocking {
+        val engine = FakeEngine()
+        val r = ready(service(engine, registrar = RecordingRegistrar().willAnswer(false)).share(file(), 60_000L))
+        assertEquals(listOf<String?>(null), engine.relayUrls)
+        assertEquals(0, checkNotNull(GuestDropLink.parse(r.url)).guestKeys)
+        assertTrue(r.url.contains("#v1."))
+    }
+
+    @Test fun withoutARegistrarLinksUseTheOrdinaryRelay() = runBlocking {
+        val engine = FakeEngine()
+        val r = ready(service(engine).share(file(), 60_000L))
+        assertEquals(listOf<String?>(null), engine.relayUrls)
+        assertTrue(r.url.contains("#v1."))
+    }
+
+    @Test fun aSecondLinkListsItsOwnGuestIdsAndTheSameSenderId() = runBlocking {
+        val engine = FakeEngine()
+        val registrar = RecordingRegistrar()
+        val svc = service(engine, registrar = registrar)
+        ready(svc.share(file(), 60_000L))
+        ready(svc.share(file(), 7_200_000L))
+        assertEquals(1, engine.started.size)
+        assertEquals(2, registrar.calls.size)
+        assertEquals(registrar.calls[0].first[0], registrar.calls[1].first[0])
+        assertTrue(registrar.calls[0].first.drop(1).intersect(registrar.calls[1].first.drop(1).toSet()).isEmpty())
+        assertEquals(clock + 7_200_000L, registrar.calls[1].second)
+    }
+
+    @Test fun aSecondLinkOnTheDropRelayWhoseRegistrationFailsIsRefusedAndNotKept() = runBlocking {
+        val engine = FakeEngine()
+        val svc = service(engine, registrar = RecordingRegistrar().willAnswer(true, false))
+        ready(svc.share(file(), 60_000L))
+        val second = svc.share(file(), 60_000L)
+        assertEquals(ShareResult.Failed(ShareFailure.CouldNotStart), second)
+        assertEquals(1, svc.active.value.size)
+    }
+
+    @Test fun aDropRelayThatDoesNotTakeTheEndpointFallsBackToTheOrdinaryRelay() = runBlocking {
+        val engine = FakeEngine(dropRelayRefuses = true)
+        val r = ready(service(engine, registrar = RecordingRegistrar()).share(file(), 60_000L))
+        assertEquals(listOf<String?>("https://drop-relay.example", null), engine.relayUrls)
+        assertTrue(engine.started[0].closed)
+        assertFalse(engine.started[1].closed)
+        assertTrue(r.url.contains("#v1."))
     }
 }

@@ -10,10 +10,13 @@ import kotlinx.serialization.json.Json
  * The key that seals the personal fields of this user's cloud device records (name, address, port). Every device of
  * the cluster holds the same one and hands it to its paired peers over the pinned, end-to-end encrypted pin exchange.
  * The higher [epoch] wins (a rotation raises it); for equal epochs the lower [id] wins, so devices that each made a
- * key before they met all settle on the same one.
+ * key before they met all settle on the same one. [chainSeq] is the membership chain's seq when the key was made for a
+ * removal (0 before that): a device passes the key on only once its own chain has reached it (see [ClusterKeyHandover]).
  */
 @Serializable
-class ClusterRecordKey(val epoch: Int, val id: String, private val keyBase64: String) {
+class ClusterRecordKey(val epoch: Int, val id: String, private val keyBase64: String, val chainSeq: Long = 0L) {
+    fun withChainSeq(seq: Long): ClusterRecordKey = ClusterRecordKey(epoch, id, keyBase64, seq)
+
     fun bytes(): ByteArray = Base64.getDecoder().decode(keyBase64)
 
     fun sealer(): FieldSealer {

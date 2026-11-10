@@ -42,6 +42,8 @@ enum class TlsAnnouncementOutcome {
     /** Another device of the cluster confirmed a peer's new key; kept until that peer shows the key. */
     Vouched,
     UnknownPeer,
+    /** The device holds a real chain key: its pin comes only from its signed chain records, so nothing here changes it. */
+    ChainOwned,
     SenderKeyMismatch,
     Undecryptable,
     Invalid
@@ -75,10 +77,12 @@ object TlsPinAnnouncements {
     internal fun forgetSeenForTests() = lastIssued.clear()
 
     /** Null when this device has no TLS identity or the peer has no clipboard key to seal with. */
+    /** [clusterKey] is what [com.fileapex.cloud.seal.ClusterKeyHandover.forRecipient] allows for [peer], blank otherwise. */
     fun build(
         localDeviceId: String,
         peer: PairedDeviceEntity,
         nowMs: Long,
+        clusterKey: String,
         crypto: PairCrypto = ClipboardPairCrypto
     ): TlsPinAnnouncement? {
         val pin = LocalTlsInfo.pin
@@ -86,7 +90,7 @@ object TlsPinAnnouncements {
         if (pin.isEmpty() || port !in 1..65535 || peer.publicKey.isBlank()) return null
         val payload = json.encodeToString(
             TlsPinPayload.serializer(),
-            TlsPinPayload(pin, port, nowMs, rotation = LocalTlsInfo.rotation, clusterKey = ClusterRecordKeys.current()?.toJson().orEmpty())
+            TlsPinPayload(pin, port, nowMs, rotation = LocalTlsInfo.rotation, clusterKey = clusterKey)
         )
         val ciphertext = crypto.encrypt(
             plaintext = payload.encodeToByteArray(),
@@ -119,6 +123,7 @@ object TlsPinAnnouncements {
         localDeviceId: String,
         nowMs: Long,
         crypto: PairCrypto = ClipboardPairCrypto,
+        chainOwnsPin: suspend (String) -> Boolean = { TlsPinAnnouncements.chainOwnsPin(it) },
         senderMayCommand: suspend (String) -> Boolean = { senderMayCommandMembership(it) }
     ): TlsAnnouncementOutcome {
         val device = repository.getDevice(announcement.senderDeviceId) ?: return TlsAnnouncementOutcome.UnknownPeer
@@ -149,11 +154,17 @@ object TlsPinAnnouncements {
         }
         if (payload.subjectDeviceId.isNotBlank()) {
             if (!mayCommand) return TlsAnnouncementOutcome.NoAuthority
+            if (chainOwnsPin(payload.subjectDeviceId.trim())) return TlsAnnouncementOutcome.ChainOwned
             return acceptVouch(repository, device, payload.subjectDeviceId, pin, payload.tlsPort, nowMs)
         }
+        if (chainOwnsPin(device.deviceId) && device.tlsPin != pin) return TlsAnnouncementOutcome.ChainOwned
         if (device.tlsPin.isNotEmpty() && device.tlsPin != pin && !mayCommand) return TlsAnnouncementOutcome.NoAuthority
         return applyAuthenticatedPin(repository, device, pin, payload.tlsPort)
     }
+
+    /** True when [deviceId] is an active member with a real chain key: its pin comes only from its signed chain records. */
+    internal suspend fun chainOwnsPin(deviceId: String): Boolean =
+        com.fileapex.di.FileApexServices.membershipHub?.chainLog?.view()?.state?.memberCanCommandMembership(deviceId) == true
 
     /** No chain yet: pairing still works. A leftover `legacy:` member cannot rotate a pin or hand over the cluster key. */
     internal suspend fun senderMayCommandMembership(deviceId: String): Boolean {

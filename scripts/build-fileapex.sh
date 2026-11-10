@@ -786,12 +786,20 @@ run_linux_target() {
     esac
 }
 
+# Changed tracked files that can change a build, one per line. The document-only files in the project root (README.md and the
+# like) are not part of any build, so editing them never stops one.
+build_relevant_changes() {
+    git -C "$PROJECT_DIR" status --porcelain --untracked-files=no 2>/dev/null | cut -c4- | grep -v -E '^(README|PRIVACY|DOCKER|SECURITY|comparison|screenshots|rules)\.md$' || true
+}
+
 # Verify clean working tree and pushed HEAD on the configured git remote before remote SSH builds.
 verify_git_pushed_for_remote() {
-    local branch="$1" remote
+    local branch="$1" remote ignored
     remote="$(git_remote_name)"
-    if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
-        fail "Uncommitted tracked changes in repository."
+    ignored="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=no 2>/dev/null | cut -c4- | grep -E '^(README|PRIVACY|DOCKER|SECURITY|comparison|screenshots|rules)\.md$' | tr '\n' ' ')"
+    [[ -n "$ignored" ]] && warn "Not part of any build, left uncommitted: $ignored"
+    if [[ -n "$(build_relevant_changes)" ]]; then
+        fail "Uncommitted tracked changes in repository: $(build_relevant_changes | tr '\n' ' ')"
         warn "Commit and push to $remote/$branch first so remote hosts build the same commit."
         after_build "" 1
         return 1
@@ -975,6 +983,67 @@ execute_complete_build() {
         run_complete_all_platforms "$version" "$branch"
 }
 
+# ---------- container builds (Rust and Node run in Docker, never on the host) ----------
+# A Rust build compiles and runs hundreds of unsigned programs; on a Mac each one raises an Apple "could not verify" prompt.
+# The drop relay, the browser client and the website (with its tests) therefore build in Linux containers.
+
+docker_bin() {
+    command -v docker 2>/dev/null && return 0
+    [[ -x "$HOME/.docker/bin/docker" ]] && echo "$HOME/.docker/bin/docker"
+}
+
+# Finds Docker, starts Docker Desktop in the background on a Mac when it is not running, and waits for the engine.
+require_docker() {
+    local docker i
+    docker="$(docker_bin)"
+    if [[ -z "$docker" ]]; then
+        fail "Docker Desktop is needed: the Rust and Node builds run in containers. Install it from docker.com."
+        return 1
+    fi
+    PATH="$(dirname "$docker"):$PATH"
+    if ! docker info >/dev/null 2>&1; then
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            step "Starting Docker Desktop in the background"
+            open -g -a Docker >/dev/null 2>&1
+        fi
+        for i in $(seq 1 60); do
+            docker info >/dev/null 2>&1 && return 0
+            sleep 3
+        done
+        fail "Docker did not start. Open Docker Desktop and run this again."
+        return 1
+    fi
+}
+
+# The drop relay for the Oracle VM (Linux aarch64, static): runs its tests in the container, writes native/droprelay/out/.
+build_relay() {
+    require_docker || return 1
+    step "Building the drop relay in Docker (tests first)"
+    "$PROJECT_DIR/native/droprelay/build.sh" || { fail "Drop relay build failed"; return 1; }
+    ok "Drop relay: native/droprelay/out/droprelay-linux-arm64"
+}
+
+# The browser client of a guest drop (WebAssembly): runs its tests in the container, writes docs/website/drop/wasm/.
+build_wasm() {
+    require_docker || return 1
+    step "Building the browser client in Docker (tests first)"
+    "$PROJECT_DIR/native/dropweb/build-docker.sh" || { fail "Browser client build failed"; return 1; }
+    ok "Browser client: docs/website/drop/wasm/"
+}
+
+# The website: runs the Worker tests, regenerates _worker.js, and packs docs/website into one zip for Cloudflare.
+build_site() {
+    require_docker || return 1
+    step "Testing the Worker and generating _worker.js in Docker"
+    docker run --rm -v "$PROJECT_DIR/docs:/docs" -v "$PROJECT_DIR/native/tsnet/daemon/testdata:/vectors:ro" -w /docs/website-worker node:22-alpine \
+        sh -c 'node --test && node build-worker.mjs' || { fail "Worker tests or build failed"; return 1; }
+    mkdir -p "$PROJECT_DIR/current"
+    rm -f "$PROJECT_DIR/current/fileapex-site.zip"
+    (cd "$PROJECT_DIR/docs/website" && zip -r -X -q "$PROJECT_DIR/current/fileapex-site.zip" . -x '*.DS_Store' -x '__MACOSX/*' -x 'Archive.zip') \
+        || { fail "Could not make the site zip"; return 1; }
+    ok "Website zip for Cloudflare (drag it into Create deployment): current/fileapex-site.zip"
+}
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [flag ...]
@@ -996,6 +1065,9 @@ With one or more flags, runs the requested build(s) directly and exits:
   -windows, -win    Build Windows .exe (on this machine or over SSH, as set up)
   -linux            Build Linux .deb, .rpm, and .AppImage (on this machine or over SSH, as set up)
   -xpi, -firefox    Build Firefox extension (.xpi)
+  -relay            Build the drop relay for the Oracle VM in Docker (Linux aarch64, tests included)
+  -wasm             Build the drop page's browser client in Docker (tests included)
+  -site             Test the Worker in Docker, regenerate _worker.js and zip the website into current/fileapex-site.zip
   -initialize       First run: check this machine, save tool locations, ask which machines build Windows and Linux
   -machines         Add or change the Windows and Linux build machines (-machines --show prints the settings)
   -doctor           Check this machine has everything the builds need (read-only; names what is missing and how to fix it)
@@ -1174,8 +1246,10 @@ doctor_mac() {
         "download Go ${go_version:-from go.mod} for macOS from go.dev into ~/Library/FileApex-build/go"
     doctor_check "Go module cache" "$(compgen -G "$HOME/Library/FileApex-build/gomodcache/tailscale.com@*" >/dev/null && echo 1 || echo 0)" "tailscale.com sources" \
         "cd native/tsnet and run go mod download with GOMODCACHE=~/Library/FileApex-build/gomodcache"
-    doctor_check "Rust" "$([[ -x "$HOME/.cargo/bin/cargo" && -x "$HOME/.cargo/bin/wasm-bindgen" ]] && echo 1 || echo 0)" "cargo and wasm-bindgen" \
-        "install rustup, add target wasm32-unknown-unknown and llvm-tools, cargo install wasm-bindgen-cli at the Cargo.lock version"
+    doctor_check "Docker" "$([[ -n "$(docker_bin)" ]] && echo 1 || echo 0)" "Docker Desktop: the drop relay, the browser client and the website build in containers (-relay, -wasm, -site)" \
+        "install Docker Desktop from docker.com; do not install Rust or Node on this Mac, their builds raise Apple malware prompts"
+    doctor_check "Rust (optional)" "$(command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)" "cargo; only for rebuilding Iroh for Android (scripts/build_iroh_android.sh); never run it for the relay, the browser client or the website, those build in Docker" \
+        "install rustup from rustup.rs only if you rebuild Iroh"
     doctor_check "Rosetta" "$(/usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null && echo 1 || echo 0)" "needed for the Intel DMG" \
         "sudo softwareupdate --install-rosetta --agree-to-license"
     doctor_check "Xcode tools" "$(command -v swiftc >/dev/null && command -v codesign >/dev/null && echo 1 || echo 0)" "swiftc and codesign" \
@@ -1203,8 +1277,8 @@ doctor_linux() {
         "nothing to do: scripts/build_linux.sh downloads Temurin 21 on its first run, or set LIN_JDK to your own"
     doctor_check "Go" "$([[ -x "$go" ]] && echo 1 || echo 0)" "${go:-not found}" \
         "install Go (version in native/tsnet/go.mod) from go.dev and set LIN_GO to its folder"
-    doctor_check "Rust (optional)" "$(flag command -v cargo)" "cargo; used by native/dropweb and the Iroh rebuild, not by this machine's packages" \
-        "install rustup from rustup.rs when you work on those"
+    doctor_check "Rust (optional)" "$(flag command -v cargo)" "cargo; only for rebuilding Iroh for Android (scripts/build_iroh_android.sh), not by these packages" \
+        "install rustup from rustup.rs only if you rebuild Iroh"
     doctor_check "appimagetool" "$(flag command -v appimagetool)" "on PATH" \
         "download appimagetool from the AppImageKit releases and put it on PATH"
     doctor_check "rpm tools" "$(flag command -v rpmbuild)" "rpmbuild" "install the rpm package (apt install rpm)"
@@ -1224,8 +1298,8 @@ doctor_windows() {
         "install Temurin 21 from adoptium.net and add it to PATH"
     doctor_check "Go" "$([[ -x "$go" ]] && echo 1 || echo 0)" "${go:-not found}" \
         "install Go (version in native/tsnet/go.mod) from go.dev"
-    doctor_check "Rust (optional)" "$(flag command -v cargo)" "cargo; used by native/dropweb and the Iroh rebuild, not by this machine's packages" \
-        "install rustup from rustup.rs when you work on those"
+    doctor_check "Rust (optional)" "$(flag command -v cargo)" "cargo; only for rebuilding Iroh for Android (scripts/build_iroh_android.sh), not by these packages" \
+        "install rustup from rustup.rs only if you rebuild Iroh"
     doctor_check "MSYS2 gcc" "$([[ -f "$msys/gcc.exe" ]] && echo 1 || echo 0)" "$msys/gcc.exe" \
         "install MSYS2 from msys2.org, then run pacman -S mingw-w64-ucrt-x86_64-gcc in the UCRT64 shell"
     doctor_check "Inno Setup" "$([[ -f "$inno" ]] && echo 1 || echo 0)" "$inno" \
@@ -1620,6 +1694,15 @@ if (($# > 0)); then
                 execute_build "Full Build (Mac + Android)" \
                     "shipGithubRelease packageBothDmg verifyReleaseSigning verifyReleaseApkSigned :verifyGitExecutableScripts" \
                     ":composeApp:bundlePlayRelease -PbundleBuild=true" || exit $?
+                ;;
+            -relay|relay)
+                build_relay || exit $?
+                ;;
+            -wasm|wasm)
+                build_wasm || exit $?
+                ;;
+            -site|site)
+                build_site || exit $?
                 ;;
             -complete|complete|-all|all)
                 execute_complete_build || exit $?

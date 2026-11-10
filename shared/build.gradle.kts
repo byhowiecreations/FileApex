@@ -455,6 +455,8 @@ val themeGoldenDir = layout.projectDirectory.dir("src/desktopTest/resources/them
 val recordThemeGoldens = providers.gradleProperty("recordThemeGoldens").getOrElse("false")
 
 tasks.withType<Test>().matching { it.name == "desktopTest" }.configureEach {
+    // Test classes run in up to four JVMs at once; each JVM has its own singletons, so they do not share state.
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
     // No Dock icon, no window and no focus change on the Mac while tests run.
     systemProperty("java.awt.headless", "true")
     jvmArgs("-Dapple.awt.UIElement=true")

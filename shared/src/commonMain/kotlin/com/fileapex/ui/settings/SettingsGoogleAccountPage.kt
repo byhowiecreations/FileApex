@@ -200,6 +200,7 @@ internal fun GoogleAccountSettingsPage(
     onBack: () -> Unit,
     onDisable: () -> Unit,
     onIdToken: (idToken: String?, email: String?, errorMessage: String?) -> Unit,
+    onStartOverIdToken: (idToken: String?, email: String?, errorMessage: String?) -> Unit,
     onCellularChange: (Boolean) -> Unit,
     onDriveRelayChange: (Boolean) -> Unit,
     onDriveRelayMaxMbSelected: (DriveRelayMaxMb) -> Unit,
@@ -254,6 +255,7 @@ internal fun GoogleAccountSettingsPage(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+            StartOverSection(onStartOverIdToken)
             state.googleAccountError?.let { err ->
                 Text(
                     text = err,

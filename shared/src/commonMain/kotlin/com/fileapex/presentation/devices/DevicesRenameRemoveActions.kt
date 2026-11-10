@@ -1,5 +1,6 @@
 package com.fileapex.presentation.devices
 
+import com.fileapex.membership.localRemovalAllowed
 import androidx.lifecycle.viewModelScope
 import com.fileapex.cloud.GoogleLinkCoordinator
 import com.fileapex.data.identity.LocalIdentity
@@ -99,9 +100,14 @@ internal class DevicesRenameRemoveActions(
             cancellableCatching {
                 val selfId = com.fileapex.data.identity.loadLocalIdentity().deviceId
                 val hub = FileApexServices.membershipHub
-                val clusterKick = hub?.chainLog?.view()?.state?.removalIsClusterKick(selfId, deviceId) == true
-                // The signed removal comes first, while the device is still an active member of the master roster.
-                hub?.chainTick?.removeMember(deviceId)
+                val before = hub?.chainLog?.view()?.state ?: com.fileapex.membership.ChainState.EMPTY
+                val clusterKick = before.removalIsClusterKick(selfId, deviceId)
+                // The signed removal comes first, while the device is still an active member of the master roster. A
+                // member the chain names leaves only through an accepted removal; a refusal changes nothing here.
+                val verdict = hub?.chainTick?.removeMember(deviceId)
+                check(before.localRemovalAllowed(deviceId, verdict)) {
+                    (verdict as? com.fileapex.membership.ChainVerdict.Rejected)?.why ?: "Could not remove device"
+                }
                 val removed = repository.removePermanently(
                     deviceId,
                     reason = com.fileapex.domain.pairing.RemovalReason.USER_REMOVED.code,
@@ -110,10 +116,7 @@ internal class DevicesRenameRemoveActions(
                 check(removed) { "Could not remove device" }
                 DeviceSessionManager.clearSession(deviceId)
                 purgeDirectShareTarget(deviceId)
-                if (clusterKick) {
-                    GoogleLinkCoordinator.publishRemovedPeer(deviceId)
-                    com.fileapex.cloud.seal.ClusterRecordKeys.rotate()
-                }
+                if (clusterKick) GoogleLinkCoordinator.publishRemovedPeer(deviceId)
                 presence.refreshOnlineSnapshot()
             }.fold(
                 onSuccess = {

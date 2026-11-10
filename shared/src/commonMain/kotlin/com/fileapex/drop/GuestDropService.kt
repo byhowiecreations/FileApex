@@ -36,11 +36,18 @@ class GuestDropService(
     private val drops: GuestDrops,
     private val now: () -> Long = TimeUtils::now,
     /** False until the owner accepted that links go through a relay; no link is made before that. */
-    private val allowed: () -> Boolean = { true }
+    private val allowed: () -> Boolean = { true },
+    /** Lists the ids the drop relay lets in. Without it, or when it cannot be reached, links use the ordinary relay. */
+    private val registrar: DropRelayRegistrar = DropRelayRegistrar.None,
+    private val dropRelayUrl: String = DROP_RELAY_URL
 ) {
     private val lock = Mutex()
     private var endpoint: GuestDropEndpoint? = null
     private var serving: Job? = null
+
+    /** True while the running endpoint is on the drop relay; [senderId] is the id the relay's registry lists for it. */
+    private var endpointOnDropRelay = false
+    private var senderId = ""
     private val activeInternal = MutableStateFlow<List<DropInfo>>(emptyList())
     private val serveSlots = Semaphore(MAX_SERVES)
 
@@ -60,18 +67,48 @@ class GuestDropService(
         val name = FriendsWire.safeName(file.name)
         val created = drops.create(file.path, name, facts.sizeBytes, ttlMs, facts.lastModifiedMs) ?: return ShareResult.Failed(ShareFailure.TooMany)
         try {
-            val ep = try {
-                endpoint?.takeIf { it.isAlive } ?: start(started)
-            } catch (_: java.io.IOException) {
-                abandon(created.id)
-                return ShareResult.Failed(ShareFailure.CouldNotStart)
+            val guestIds = GuestDropKeys.guestIds(created.secret)
+            val running = endpoint?.takeIf { it.isAlive }
+            var keyed = false
+            val ep = if (running != null) {
+                if (endpointOnDropRelay) {
+                    // The endpoint is already on the drop relay, so this link needs its guest ids listed or its visitors are turned away.
+                    if (!registrar.register(listOf(senderId) + guestIds, created.expiresAtMs)) {
+                        abandon(created.id)
+                        return ShareResult.Failed(ShareFailure.CouldNotStart)
+                    }
+                    keyed = true
+                }
+                running
+            } else {
+                val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
+                val id = GuestDropKeys.endpointId(key)
+                keyed = registrar.register(listOf(id) + guestIds, created.expiresAtMs)
+                try {
+                    var bound = start(started, key, if (keyed) dropRelayUrl else null)
+                    if (keyed && bound.relayUrl() == null) {
+                        // The drop relay did not take the endpoint (not reachable, or not the relay that lists ids): use the ordinary relay.
+                        closeEndpoint()
+                        keyed = false
+                        bound = start(started, key, null)
+                    }
+                    endpointOnDropRelay = keyed
+                    senderId = id
+                    bound
+                } catch (_: java.io.IOException) {
+                    abandon(created.id)
+                    return ShareResult.Failed(ShareFailure.CouldNotStart)
+                }
             }
             val relay = ep.relayUrl()
             if (relay == null) {
                 abandon(created.id)
                 return ShareResult.Failed(ShareFailure.NoRelay)
             }
-            val url = GuestDropLink(ep.id, relay, created.id, created.secret, created.expiresAtMs, name, facts.sizeBytes).toUrl()
+            val url = GuestDropLink(
+                ep.id, relay, created.id, created.secret, created.expiresAtMs, name, facts.sizeBytes,
+                guestKeys = if (keyed) GuestDropKeys.COUNT else 0
+            ).toUrl()
             val info = DropInfo(created.id, name, facts.sizeBytes, created.expiresAtMs, downloading = false)
             activeInternal.value = drops.list()
             scope.launch { delay((created.expiresAtMs - now()).coerceAtLeast(0L) + EXPIRY_GRACE_MS); refresh() }
@@ -105,9 +142,8 @@ class GuestDropService(
         lock.withLock { closeIfIdle() }
     }
 
-    private suspend fun start(engine: GuestDropEngine): GuestDropEndpoint {
-        val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        val ep = engine.start(key)
+    private suspend fun start(engine: GuestDropEngine, key: ByteArray, relayUrl: String?): GuestDropEndpoint {
+        val ep = engine.start(key, relayUrl = relayUrl)
         endpoint = ep
         serving = scope.launch {
             while (true) {
@@ -132,8 +168,14 @@ class GuestDropService(
     /** Stops the endpoint once no link is live and no stream is still being answered, so a finished download keeps its connection until its receipt. */
     private suspend fun closeIfIdle() {
         if (drops.list().isNotEmpty() || serveSlots.availablePermits < MAX_SERVES) return
+        closeEndpoint()
+    }
+
+    private suspend fun closeEndpoint() {
         val ep = endpoint ?: return
         endpoint = null
+        endpointOnDropRelay = false
+        senderId = ""
         serving?.cancel()
         serving = null
         ep.close()
@@ -143,5 +185,8 @@ class GuestDropService(
         /** Streams read at once; a visitor beyond this is turned away without waiting. */
         const val MAX_SERVES = 16
         private const val EXPIRY_GRACE_MS = 1_000L
+
+        /** The relay that carries guest drops; the same host as the paired-device relay, which tells the two apart by token. */
+        const val DROP_RELAY_URL = "https://relay.getfileapex.com"
     }
 }

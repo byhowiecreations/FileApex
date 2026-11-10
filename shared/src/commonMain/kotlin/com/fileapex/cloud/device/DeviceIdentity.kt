@@ -5,31 +5,41 @@ import com.fileapex.cloud.FcmWakeBackend
 import com.fileapex.data.identity.loadLocalIdentity
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.clipboard.ClipboardE2ee
-import com.fileapex.security.IdentityBinding
 import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * App wiring for the per-device Firebase identity (plan: docs/planning/per-device-firebase-identity-plan.md). Every
- * call is best effort: a device the relay will not enrol yet stays on its Google session, which still works. The relay's
- * allow-list is rebuilt from the local roster and removal records on every call, so a missed call heals on the next one.
+ * App wiring for the per-device Firebase identity (plans: docs/planning/per-device-firebase-identity-plan.md,
+ * docs/planning/one-trust-path-plan.md). Every call is best effort. The relay decides by the signed membership chain,
+ * which this device sends it; a missed upload heals on the next one, because the relay asks only for what it lacks.
  */
 object DeviceIdentity {
-    private const val ATTEMPT_GAP_MS = 10 * 60_000L
-    private const val PAIRING_RETRY_MS = 20_000L
-    private const val KEY_HASH_CHARS = 16
+    private const val ATTEMPT_GAP_SECONDS = 10 * 60L
+    private val APPROVAL_RECHECKS_MS = listOf(20_000L, 60_000L, 180_000L, 600_000L)
     private const val ANNOUNCE_TIMEOUT_MS = 10_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private val olderSetup = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /** True while the relay holds an older setup of this Google account; the Google account page then offers to start over. */
+    val otherSetup: kotlinx.coroutines.flow.StateFlow<Boolean> = olderSetup
+
     @Volatile
-    private var lastAttemptMs = 0L
+    private var startOverWaits = false
+
+    /** What the user is told while the cloud stays closed after [outcome]. */
+    internal suspend fun closedReason(outcome: EnrolOutcome): String = when {
+        outcome == EnrolOutcome.OTHER_SETUP && startOverWaits -> "Start over is possible one day after the older setup was last used"
+        outcome == EnrolOutcome.OTHER_SETUP -> "This Google account is linked to an older FileApex setup"
+        (FileApexServices.membershipHub?.chainLog?.view()?.state?.seq ?: 0L) == 0L -> "Pair a second device to use your Google account across devices"
+        else -> "Waiting for a paired device to approve this device"
+    }
 
     private val service by lazy {
         DeviceIdentityService(
@@ -42,64 +52,91 @@ object DeviceIdentity {
             authenticate = { data, relayKey ->
                 ClipboardE2ee.authenticate(data, selfId(), EnrolProof.RELAY_ID, relayKey)
             },
-            nowSeconds = { TimeUtils.now() / 1000L }
+            publicKey = { ClipboardE2ee.publicKeyBase64() },
+            chain = { FileApexServices.membershipHub?.chainLog?.view()?.canonical.orEmpty() },
+            nowSeconds = { TimeUtils.now() / 1000L },
+            attemptGapSeconds = ATTEMPT_GAP_SECONDS
         )
     }
 
     private fun selfId(): String = loadLocalIdentity().deviceId
 
-    /** A key-derived id is `fx-` plus 32 hex digits of the key digest, and the key hash is the first 16 of those. */
-    private fun keyHashOf(deviceId: String): String? =
-        deviceId.takeIf { IdentityBinding.isDerived(it) }?.removePrefix(IdentityBinding.DERIVED_PREFIX)?.take(KEY_HASH_CHARS)
-            ?.takeIf { it.length == KEY_HASH_CHARS }
-
     /**
-     * Called once the cloud record (with its clipboard key) is published and after a pairing; at most every ten
-     * minutes unless [force]. Enrols this device if needed, then reconciles the relay's list. Nothing runs on a timer.
+     * Called before the first Firestore call of a cloud session and after a pairing; the relay is asked at most every
+     * ten minutes unless [force]. Enrols this device if needed (it hands its own key, so no cloud record is needed
+     * first, and its chain goes with it), then sends the relay the chain records it lacks. Nothing runs on a timer.
      */
     internal suspend fun ensureEnrolled(force: Boolean = false): EnrolOutcome {
-        val now = TimeUtils.now()
-        if (!force && now - lastAttemptMs < ATTEMPT_GAP_MS) return EnrolOutcome.ALREADY
-        lastAttemptMs = now
-        val outcome = cancellableCatching { service.ensureEnrolled(selfId()) }.getOrElse {
+        val outcome = cancellableCatching { service.ensureEnrolled(selfId(), force) }.getOrElse {
+            com.fileapex.platform.Diagnostics.log("DeviceIdentity: enrol failed on this device: ${it::class.qualifiedName}")
             EnrolOutcome.UNREACHABLE
         }
-        if (outcome == EnrolOutcome.ENROLLED || outcome == EnrolOutcome.ALREADY) reconcile()
+        com.fileapex.platform.Diagnostics.log("DeviceIdentity: enrol $outcome")
+        if (outcome == EnrolOutcome.OTHER_SETUP) olderSetup.value = true
+        if (outcome == EnrolOutcome.ENROLLED || outcome == EnrolOutcome.ALREADY) uploadChain()
         return outcome
     }
 
-    /** Sends the paired peers (admit) and the removed ones (revoke) with their cluster versions; [extraAdmit] adds a fresh pairing. */
-    internal suspend fun reconcile(extraAdmit: List<AdmitEntry> = emptyList()) {
-        val repository = FileApexServices.deviceRepositoryOrNull() ?: return
-        cancellableCatching {
-            val self = selfId()
-            val admit = (
-                repository.listDevices().mapNotNull { peer ->
-                    val hash = keyHashOf(peer.deviceId)
-                    if (hash == null || peer.clusterVersion <= 0L) null else AdmitEntry(peer.deviceId, hash, peer.clusterVersion)
-                } + extraAdmit
-                ).filter { it.deviceId != self }.groupBy { it.deviceId }.map { (_, entries) -> entries.maxBy { it.version } }
-            val revoke = repository.removedDeviceVersions().filterKeys { it != self }
-                .map { RevokeEntry(it.key, it.value) }.sortedByDescending { it.version }
-            service.reconcile(self, admit, revoke)
+    /** Sends the relay the records of this device's chain it lacks; the relay switches removed members off from them. */
+    internal suspend fun uploadChain() {
+        val outcome = cancellableCatching { service.uploadChain() }.getOrNull()
+        com.fileapex.platform.Diagnostics.log("DeviceIdentity: chain upload ${outcome ?: SyncOutcome.FAILED}")
+        if (outcome == SyncOutcome.OTHER_SETUP) olderSetup.value = true
+        if (outcome == SyncOutcome.SENT) olderSetup.value = false
+    }
+
+    /**
+     * The user chose to start over, right after a fresh Google sign-in: the relay replaces the older setup of this
+     * account with this device's chain and switches every older device off.
+     */
+    internal suspend fun startOver(): SyncOutcome {
+        val outcome = cancellableCatching { service.startOver() }.getOrElse { SyncOutcome.FAILED }
+        com.fileapex.platform.Diagnostics.log("DeviceIdentity: start over $outcome")
+        startOverWaits = outcome == SyncOutcome.SETUP_IN_USE
+        if (outcome == SyncOutcome.SENT) olderSetup.value = false
+        return outcome
+    }
+
+    /**
+     * A device was paired: the chain that admits it goes to the relay, and this device enrols if it is not yet. The
+     * admit may reach this device a little later, so a waiting device checks again a few times over about fifteen
+     * minutes; nothing runs without a pairing.
+     */
+    fun onPaired() {
+        scope.launch {
+            uploadChain()
+            enrolAfterPairing()
+            approvalWatch.run()
         }
     }
 
-    /** A device was paired: admit it with a fresh version, and try to enrol this device now that a peer is there to vouch for it. */
-    fun onPaired(peerId: String) {
-        scope.launch {
-            keyHashOf(peerId)?.let { reconcile(listOf(AdmitEntry(peerId, it, TimeUtils.now()))) }
-            if (ensureEnrolled(force = true) == EnrolOutcome.REFUSED) {
-                delay(PAIRING_RETRY_MS)
-                ensureEnrolled(force = true)
-            }
-        }
+    /**
+     * The membership chain finished loading at start-up. A cloud session that started before it had no chain to send,
+     * so this device enrols and uploads again now (only when Google is linked).
+     */
+    fun onChainReady() {
+        if (!FileApexServices.settings.googleAccountLinkEnabled.value) return
+        scope.launch { enrolAfterPairing() }
+    }
+
+    @Volatile
+    private var awaitingApproval = false
+
+    /** Enrols now; once enrolled, a device that waited for approval opens its cloud session. */
+    private suspend fun enrolAfterPairing() {
+        val outcome = ensureEnrolled(force = true)
+        awaitingApproval = outcome == EnrolOutcome.REFUSED || outcome == EnrolOutcome.UNREACHABLE
+        if (outcome == EnrolOutcome.ENROLLED) com.fileapex.cloud.GoogleLinkCoordinator.refreshCloudRegistry()
+    }
+
+    private val approvalWatch by lazy {
+        RecheckWatch(check = { enrolAfterPairing() }, keepGoing = { awaitingApproval }, delaysMs = APPROVAL_RECHECKS_MS, quietMs = 0L)
     }
 
     private val kickWatch by lazy {
-        KickWatch(
+        RecheckWatch(
             check = { CloudAuthBackend.firebaseIdToken(forceRefresh = true) },
-            stillLinked = { FileApexServices.settings.googleAccountLinkEnabled.value }
+            keepGoing = { FileApexServices.settings.googleAccountLinkEnabled.value }
         )
     }
 
@@ -108,7 +145,7 @@ object DeviceIdentity {
             pushTokenOf = { cloudId ->
                 CloudAuthBackend.fetchCloudDeviceRecord(FileApexServices.settings.googleAccountUid.value, cloudId)?.fcmToken
             },
-            revoke = { reconcile() },
+            revoke = { uploadChain() },
             push = { FcmWakeBackend.sendDeviceRemovedWake(it, selfId()) }
         )
     }

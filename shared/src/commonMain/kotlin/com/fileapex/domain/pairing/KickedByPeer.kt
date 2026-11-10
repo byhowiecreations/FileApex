@@ -6,7 +6,6 @@ import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.platform.BriefToast
-import com.fileapex.util.TimeUtils
 import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,12 +13,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * A removed device that reaches a roster peer is answered `401 revoked` with the stamp of the peer's tombstone. Only an
- * answer that says `user_removed` is acted on; one without a reason (an old build) or with another reason is logged.
- * Then this device signs out of Google inside FileApex, as the Unlink button does, drops the cluster
- * key and lets go of its old roster and the cluster's data (Bulletin Board, transfers), so pairing again joins fresh instead
- * of announcing itself to peers that dropped it. Friends and settings are kept, and the Android account is never touched. Each stamp is acted on once, so signing in again
- * on purpose is not undone.
+ * The one self-wipe of this device, run only for a verified `REMOVE` of this device on the chain that counts
+ * ([onUserRemoved], called by the chain effects). It signs out of Google inside FileApex, as the Unlink button does,
+ * drops the cluster key and lets go of its old roster and the cluster's data (Bulletin Board, transfers), then takes a
+ * new TLS key. Friends and settings are kept, and the Android account is never touched. Each removal is acted on once.
+ *
+ * Everything else that says "you were removed" is a hint: a `401 revoked` answer and a disabled Firebase user only make
+ * this device pull the chain, where a real removal is a signed record (docs/planning/one-trust-path-plan.md).
  */
 object KickedByPeer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -43,53 +43,37 @@ object KickedByPeer {
     internal var renewTlsIdentity: suspend () -> Unit = { com.fileapex.security.tls.TlsIdentityRenewal.renew() }
     internal var announceForgot: () -> Unit = { BriefToast.show(AppI18n.t("removed_from_cluster")) }
 
+    /** Pulls the chain from one peer; a removal of this device in it reaches [onUserRemoved] through the applier. */
+    internal var pullChainFrom: suspend (peerId: String) -> Unit = { id -> FileApexServices.membershipHub?.chainReplicator?.reconcile(id) }
+
+    /** Pulls the chain from every roster peer. */
+    internal var pullChainFromRoster: suspend () -> Unit = {
+        FileApexServices.membershipHub?.let { hub -> hub.chainRoster().forEach { cancellableCatching { hub.chainReplicator.reconcile(it) } } }
+    }
+
     /**
-     * [peerId] is the pinned peer the answer came from, whatever route it was reached by, or null when the route
-     * could not be tied to one. [revokedAt] is 0 when the answer carried no stamp (a route that does not read
-     * headers): nothing is done then.
+     * A pinned roster peer ([peerId], tied to the answer by its TLS route) answered `401 revoked`. Its headers prove
+     * nothing, so they are not read: this device pulls the chain from that peer, and only a signed removal found there
+     * lets it go. An answer that cannot be tied to a pinned, active roster peer is ignored.
      */
-    fun onRevoked(
-        peerId: String?,
-        revokedAt: Long,
-        roster: List<PairedDeviceEntity>,
-        nowMs: Long = TimeUtils.now(),
-        reason: String = "",
-        removedBy: String = ""
-    ) {
+    fun onRevoked(peerId: String?, roster: List<PairedDeviceEntity>) {
         val peer = roster.firstOrNull { !it.isRemoved && it.tlsPin.isNotEmpty() && it.deviceId == peerId } ?: return
-        decide(peer, revokedAt, reason, removedBy, nowMs)
+        println("KickedByPeer: ${peer.deviceId} refuses this device: pulling the chain from it")
+        scope.launch { cancellableCatching { pullChainFrom(peer.deviceId) } }
     }
 
     /**
-     * A removal is acted on only when it says `user_removed`. An answer with another reason, or none (an old build,
-     * which cannot sign), is a hint that is logged and changes nothing.
-     */
-    private fun decide(peer: PairedDeviceEntity, stamp: Long, reason: String, removedBy: String, nowMs: Long) {
-        if (reason == RemovalReason.USER_REMOVED.code) {
-            com.fileapex.cloud.device.DeviceIdentity.onKicked()
-            onUserRemoved(peer.deviceName, stamp)
-            return
-        }
-        println(
-            "KickedByPeer: ${peer.deviceId} says this device was removed (reason ${reason.ifBlank { "none" }}, by ${removedBy.ifBlank { "unknown" }}): hint only"
-        )
-    }
-
-    /**
-     * Firebase itself says this device's user is disabled: a roster device removed it through the relay. That needs no
-     * second opinion from the peers, so this device signs out of Google inside FileApex at once. Signing in again on
-     * purpose is not undone: the sign-in goes through a new enrol, and a disabled user cannot ask a second time.
+     * Firebase says this device's cloud user is disabled. That ends the cloud session only: the Google link inside
+     * FileApex is set aside, and the chain is pulled from the roster, where a real removal would be a signed record.
      */
     fun onFirebaseUserDisabled() {
-        println("KickedByPeer: Firebase user is disabled, revoked by a roster device (counted as user removed)")
-        dropClusterKey()
+        println("KickedByPeer: Firebase user is disabled: ending the cloud session and pulling the chain")
         if (!googleLinked() || !signingOut.compareAndSet(false, true)) return
         scope.launch {
             try {
-                letGoOfCluster()
                 cancellableCatching { signOut() }
-                    .onSuccess { announce() }
                     .onFailure { println("KickedByPeer: Google sign-out failed - ${it::class.simpleName}") }
+                cancellableCatching { pullChainFromRoster() }
             } finally {
                 signingOut.set(false)
             }
@@ -98,10 +82,7 @@ object KickedByPeer {
 
     private val signingOut = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    /**
-     * The user pressed Remove for this device on a roster device that reached it directly ([RemovalNotice.judge] already
-     * checked that). It is believed without a second opinion, once per removal stamp, and [by] is shown in the log.
-     */
+    /** The chain that counts holds a signed `REMOVE` of this device by [by]: acted on once per [stamp]. */
     fun onUserRemoved(by: String, stamp: Long) {
         if (stamp <= 0L || stamp <= handledVersion()) return
         println("KickedByPeer: removed by ${by.ifBlank { "a roster device" }}: user removed")

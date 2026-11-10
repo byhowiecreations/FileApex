@@ -51,11 +51,11 @@ object ClusterRecordKeys {
     /** Drops the held key, for a device that was removed from the cluster. */
     fun forget() = synchronized(lock) { write(""); held = null; loaded = false }
 
-    /** A new epoch after a device left the cluster: the removed device's copy of the old key stops matching. */
-    fun rotate() {
+    /** A new epoch for the removal recorded at [chainSeq]: the removed device's copy of the old key stops matching. */
+    fun rotate(chainSeq: Long) {
         synchronized(lock) {
             val old = current() ?: return
-            store(ClusterRecordKey.generate(old.epoch + 1))
+            store(ClusterRecordKey.generate(old.epoch + 1).withChainSeq(chainSeq))
         }
         onChanged()
     }

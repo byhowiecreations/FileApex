@@ -29,6 +29,12 @@ interface ChainEffects {
 
     /** The chain removed or released [deviceId] ([by] made the record, [reason] is `user_removed` or `left_cluster`, [tlsPin] is the pin the record names, kept as a revoked pin so the device can still connect and read its removal): the roster follows. */
     suspend fun markRemoved(deviceId: String, by: String, reason: String, tlsPin: String)
+
+    /** The chain seq the cloud record key was made at, or null when this device holds no key. */
+    suspend fun clusterKeySeq(): Long? = null
+
+    /** Makes a new cloud record key for the removal recorded at [chainSeq]. */
+    suspend fun rotateClusterKey(chainSeq: Long) {}
 }
 
 /**
@@ -50,6 +56,20 @@ class ChainApplier(private val selfId: String, private val effects: ChainEffects
         effects.markHandled(removal.hash())
     }
 
+    /**
+     * The device responsible for a removal makes a new cloud record key once: the author of a `REMOVE`, and for a
+     * `LEAVE` the lowest active id. The key records the seq it was made at, so nothing else needs to be stored.
+     */
+    private suspend fun rotateClusterKeyIfDue(view: ChainView) {
+        if (view.state.member(selfId)?.active != true) return
+        val lowest = view.state.activeIds().minOrNull()
+        val due = view.canonical.filter {
+            (it.kind == RecordKind.REMOVE && it.actor == selfId) || (it.kind == RecordKind.LEAVE && lowest == selfId)
+        }.maxOfOrNull { it.seq } ?: return
+        val held = effects.clusterKeySeq() ?: return
+        if (held < due) effects.rotateClusterKey(due)
+    }
+
     suspend fun apply(view: ChainView) {
         // Decided before anything is applied: setting a pin rebuilds the roster, and a removal must still be news here.
         val removals = view.state.members.filter { (id, member) -> id != selfId && !member.active && !effects.knownRemoved(id) }.keys.mapNotNull { id ->
@@ -64,6 +84,7 @@ class ChainApplier(private val selfId: String, private val effects: ChainEffects
             effects.ensureProfile(id)
         }
         for (record in removals) effects.markRemoved(record.subject, record.actor, record.reason, record.tlsPin)
+        rotateClusterKeyIfDue(view)
         val me = view.state.member(selfId) ?: return
         if (me.active) return
         val removal = view.canonical.lastOrNull { it.subject == selfId && it.kind == RecordKind.REMOVE } ?: return

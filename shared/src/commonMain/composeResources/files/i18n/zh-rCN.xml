@@ -247,6 +247,12 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="shown_when_wifi">对端在 Wi‑Fi 时显示</string>
     <string name="shown_when_cellular">对端在移动网络时显示</string>
     <string name="link_google_account">关联 Google 账号</string>
+    <string name="start_over_title">此 Google 帐号关联的是较早的 FileApex 设置</string>
+    <string name="start_over_desc">这些设备已重新设置，因此暂时无法使用与 Google 关联的功能。重新开始即可在此设置中使用。较早的设备在配对到此设置之前将失去这些功能。</string>
+    <string name="start_over_button">用这些设备重新开始</string>
+    <string name="start_over_confirm_title">重新开始？</string>
+    <string name="start_over_confirm_text">你将再次登录 Google。此 Google 帐号的每台较早设备在你将其配对到此设置之前都会失去与 Google 关联的功能。文件和设置会保留在每台设备上。</string>
+    <string name="start_over_confirm">重新开始</string>
     <string name="enable_drive_relay">启用云盘中继</string>
     <string name="delete_relay_now">立即删除中继文件</string>
     <string name="purge_after_72h">72 小时后清除文件</string>
@@ -1047,7 +1053,6 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="all_permissions_granted">已授予所有权限</string>
     <string name="all_permissions_granted_desc">FileApex 已拥有传输文件和发现附近设备所需的全部权限。</string>
     <string name="back_to_settings">返回设置</string>
-    <string name="peer_revoked_this_device">%1$s 已不再识别此设备: 请重新配对以加入</string>
     <string name="removed_signed_out_google">此设备已从集群中移除，并已在 FileApex 中退出 Google 账号。请重新配对以加入。</string>
     <string name="removed_from_cluster">此设备已从集群中移除。请重新配对以加入。</string>
     <string name="transfer_cancelled">传输已取消</string>

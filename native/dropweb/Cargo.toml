@@ -15,9 +15,15 @@ js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
+hkdf = "0.12"
+futures-util = { version = "0.3", default-features = false }
+sha2 = "0.10"
 
 [profile.release]
 opt-level = "z"
 lto = true
 panic = "abort"
 codegen-units = 1
+
+[dev-dependencies]
+futures-executor = "0.3"

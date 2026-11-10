@@ -22,7 +22,8 @@ class FileApexClient(
     internal val json: Json = FileApexHttpClientFactory.defaultJson,
     internal val localDeviceId: () -> String = { loadLocalIdentity().deviceId }
 ) {
-    var onRevocationDetected: (suspend (host: String, port: Int, revokedAt: Long, reason: String, removedBy: String) -> Unit)? = null
+    /** A peer answered `401 revoked`: a hint only; the headers of such an answer prove nothing and are not passed on. */
+    var onRevocationDetected: (suspend (host: String, port: Int) -> Unit)? = null
     /** This node's membership stamp, sent as `mv` for the peer's revocation gate. */
     var membershipVersionProvider: (() -> Long)? = null
 
@@ -328,13 +329,7 @@ class FileApexClient(
     private suspend fun checkRevocation(host: String, port: Int, response: PeerBoundHttpResponse) {
         if (response.statusCode == 401 && response.body.contains("revoked", ignoreCase = true)) {
             try {
-                onRevocationDetected?.invoke(
-                    host,
-                    port,
-                    response.headers["x-fileapex-revoked-at"]?.trim()?.toLongOrNull() ?: 0L,
-                    response.headers["x-fileapex-revoked-reason"]?.trim().orEmpty(),
-                    response.headers["x-fileapex-revoked-by"]?.trim().orEmpty()
-                )
+                onRevocationDetected?.invoke(host, port)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

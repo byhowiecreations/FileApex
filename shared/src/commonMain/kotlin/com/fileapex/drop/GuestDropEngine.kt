@@ -22,8 +22,11 @@ interface GuestDropEndpoint {
 }
 
 interface GuestDropEngine {
-    /** [useRelay] is false only in tests that dial over loopback. */
-    suspend fun start(secretKey: ByteArray, useRelay: Boolean = true): GuestDropEndpoint
+    /**
+     * [useRelay] is false only in tests that dial over loopback. [relayUrl] null uses the ordinary relays; a value makes the
+     * endpoint use that relay alone, with no token (the relay lets in the ids the registry lists).
+     */
+    suspend fun start(secretKey: ByteArray, useRelay: Boolean = true, relayUrl: String? = null): GuestDropEndpoint
 }
 
 /** Null in builds without Iroh's native library. */

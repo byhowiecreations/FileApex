@@ -39,6 +39,10 @@ class ChainApplierTest {
         override suspend fun ensureProfile(deviceId: String) { ensured += deviceId }
         val markedPins = mutableMapOf<String, String>()
         override suspend fun markRemoved(deviceId: String, by: String, reason: String, tlsPin: String) { marked += Triple(deviceId, by, reason); markedPins[deviceId] = tlsPin; removedLocally += deviceId }
+        var keySeq: Long? = 0L
+        val rotations = mutableListOf<Long>()
+        override suspend fun clusterKeySeq(): Long? = keySeq
+        override suspend fun rotateClusterKey(chainSeq: Long) { rotations += chainSeq; keySeq = chainSeq }
     }
 
     private suspend fun chain(): MembershipChainLog {
@@ -242,4 +246,55 @@ class ChainApplierTest {
         ChainApplier("mac", fx).apply(log.view())
         assertEquals(listOf("phone"), fx.ensured)
     }
+
+    // 0.20.10 (one trust path): the cloud record key is rotated by the device responsible for a removal, once per removal.
+
+    private suspend fun threeDevices(): MembershipChainLog = chain().also {
+        it.append(mac.signer, RecordKind.ADMIT, tablet.id, tablet.key, tablet.pin, "paired")
+    }
+
+    @Test
+    fun theAuthorOfARemovalRotatesTheClusterKeyOnceAtThatRecord() = runBlocking {
+        val log = threeDevices()
+        log.append(mac.signer, RecordKind.REMOVE, phone.id, phone.key, phone.pin, MembershipReason.USER_REMOVED)
+        val effects = Effects()
+        val applier = ChainApplier(mac.id, effects)
+        applier.apply(log.view())
+        applier.apply(log.view())
+        assertEquals(listOf(log.view().state.seq), effects.rotations)
+    }
+
+    @Test
+    fun aDeviceThatDidNotMakeTheRemovalDoesNotRotate() = runBlocking {
+        val log = threeDevices()
+        log.append(mac.signer, RecordKind.REMOVE, phone.id, phone.key, phone.pin, MembershipReason.USER_REMOVED)
+        val effects = Effects()
+        ChainApplier(tablet.id, effects).apply(log.view())
+        assertEquals(emptyList<Long>(), effects.rotations)
+    }
+
+    @Test
+    fun aLeaveIsRotatedForByTheLowestActiveId() = runBlocking {
+        val log = threeDevices()
+        log.append(tablet.signer, RecordKind.LEAVE, tablet.id, tablet.key, tablet.pin, MembershipReason.LEFT_CLUSTER)
+        val lowest = Effects()
+        ChainApplier(mac.id, lowest).apply(log.view())
+        val other = Effects()
+        ChainApplier(phone.id, other).apply(log.view())
+        assertEquals(listOf(log.view().state.seq), lowest.rotations)
+        assertEquals(emptyList<Long>(), other.rotations)
+    }
+
+    @Test
+    fun aKeyAlreadyMadeAtOrAfterTheRemovalIsNotRotatedAgainAndNoKeyMeansNoRotation() = runBlocking {
+        val log = threeDevices()
+        log.append(mac.signer, RecordKind.REMOVE, phone.id, phone.key, phone.pin, MembershipReason.USER_REMOVED)
+        val newer = Effects().apply { keySeq = log.view().state.seq + 3 }
+        ChainApplier(mac.id, newer).apply(log.view())
+        val none = Effects().apply { keySeq = null }
+        ChainApplier(mac.id, none).apply(log.view())
+        assertEquals(emptyList<Long>(), newer.rotations)
+        assertEquals(emptyList<Long>(), none.rotations)
+    }
 }
+

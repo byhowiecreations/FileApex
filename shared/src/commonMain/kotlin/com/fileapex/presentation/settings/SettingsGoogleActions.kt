@@ -18,8 +18,8 @@ internal class SettingsGoogleActions(
 ) {
     private val settings = FileApexServices.settings
 
-    /** Credential Manager / desktop OAuth returned a Google ID token. */
-    fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?) {
+    /** Credential Manager / desktop OAuth returned a Google ID token; [startOver] replaces an older setup of the account. */
+    fun onGoogleIdToken(idToken: String?, emailHint: String?, errorMessage: String?, startOver: Boolean = false) {
         if (idToken.isNullOrBlank()) {
             _uiState.update {
                 it.copy(googleAccountError = errorMessage ?: AppI18n.t("google_signin_cancelled"))
@@ -28,7 +28,7 @@ internal class SettingsGoogleActions(
         }
         viewModelScope.launch {
             cancellableCatching {
-                GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, emailHint)
+                GoogleLinkCoordinator.linkWithGoogleIdToken(idToken, emailHint, startOver)
             }.onSuccess { session ->
                 _uiState.update {
                     it.copy(
