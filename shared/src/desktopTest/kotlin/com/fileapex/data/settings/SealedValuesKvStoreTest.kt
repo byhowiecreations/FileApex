@@ -182,4 +182,26 @@ class SealedValuesKvStoreTest {
         assertEquals(listOf(1, 1, 1), listOf(health.openable, health.unreadable, health.clearText))
         assertEquals("only the names of what cannot be opened, never a value", listOf("under_old_key"), health.unreadableKeys)
     }
+
+    @Test
+    fun legacyNestedSealedValueUnwrapsCleanly() {
+        val inner = TextStore()
+        val dummyWrapper = object : SecretSealer {
+            override fun seal(plain: ByteArray) = plain
+            override fun open(sealed: ByteArray) = sealed
+        }
+        val s = SealedValuesKvStore(
+            inner,
+            { if (unlocked) sealer else null },
+            excluded,
+            log = {},
+            secretSealer = { dummyWrapper }
+        )
+        val innerFe = sealer.seal("settings", "kno:test", "s:0.87|0.35")
+        val b64 = java.util.Base64.getEncoder().encodeToString(innerFe.toByteArray(Charsets.UTF_8))
+        val outerFe = sealer.seal("settings", "kno:test", "s:sealed:1:$b64")
+        inner.values["kno:test"] = outerFe
+
+        assertEquals("0.87|0.35", s.getString("kno:test", ""))
+    }
 }

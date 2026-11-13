@@ -618,5 +618,50 @@ exit 0
         File(b.project, "app.kt").writeText("fun main() { println() }\n")
         assertEquals("app.kt", call(b, "build_relevant_changes").out.trim())
     }
+
+    @Test fun theInteractiveMenuHasWindowsSixLinuxSevenFirefoxEightDoctorSetupAndQuit() {
+        val b = box()
+        val stubs = """
+            execute_windows_build() { echo "RAN_WINDOWS"; }
+            execute_linux_build() { echo "RAN_LINUX"; }
+            execute_build() { echo "RAN_BUILD:$1:$2"; }
+            doctor() { echo "RAN_DOCTOR"; }
+            machines_show() { echo "RAN_MACHINES_SHOW"; }
+        """.trimIndent()
+        val win = call(b, "$stubs; printf '6\nq\n' | main_menu")
+        assertEquals(win.out, 0, win.code)
+        assertTrue(win.out, win.out.contains("RAN_WINDOWS") && win.out.contains("Goodbye!"))
+
+        val lin = call(b, "$stubs; printf '7\nQ\n' | main_menu")
+        assertEquals(lin.out, 0, lin.code)
+        assertTrue(lin.out, lin.out.contains("RAN_LINUX") && lin.out.contains("Goodbye!"))
+
+        val xpi = call(b, "$stubs; printf '8\n9\n' | main_menu")
+        assertEquals(xpi.out, 0, xpi.code)
+        assertTrue(xpi.out, xpi.out.contains("RAN_BUILD:Firefox Extension::composeApp:shipFirefoxExtension") && xpi.out.contains("Goodbye!"))
+
+        val doc = call(b, "$stubs; printf 'd\n \nq\n' | main_menu")
+        assertEquals(doc.out, 0, doc.code)
+        assertTrue(doc.out, doc.out.contains("RAN_DOCTOR"))
+
+        val setup = call(b, "$stubs; printf 'S\n4\n \nq\n' | main_menu")
+        assertEquals(setup.out, 0, setup.code)
+        assertTrue(setup.out, setup.out.contains("RAN_MACHINES_SHOW"))
+    }
+
+    @Test fun generateChecksumsCreatesSha256SumsFileForShippedArtifacts() {
+        val b = box()
+        File(b.project, "current").mkdirs()
+        File(b.project, "current/FileApex-v1.0.apk").writeText("apk-contents")
+        File(b.project, "current/FileApex-v1.0.exe").writeText("exe-contents")
+        val r = call(b, "generate_checksums")
+        assertEquals(r.out, 0, r.code)
+        val sumFile = File(b.project, "current/FileApex-v1.0-sha256sums.txt")
+        assertTrue("checksum file must be created", sumFile.isFile)
+        val text = sumFile.readText()
+        assertTrue("contains apk checksum", text.contains("FileApex-v1.0.apk"))
+        assertTrue("contains exe checksum", text.contains("FileApex-v1.0.exe"))
+        assertFalse("checksum file itself must not be included", text.contains("sha256sums.txt"))
+    }
 }
 

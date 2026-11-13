@@ -39,8 +39,14 @@ internal class DesktopSettingsKvStore(
 
 /** Every value sealed with the settings key, the secrets (PIN, private keys, tokens) sealed on their own by the platform. */
 private fun sealedSettingsStore(base: SettingsKvStore): SettingsKvStore {
-    val master = SettingsMasterKey(base, DesktopSettingsSecrets.sealer())
-    val values = SealedValuesKvStore(base, { master.sealer() }, BaseAppSettings.SECRET_KEYS + SettingsMasterKey.KEY)
+    val secretSealer = DesktopSettingsSecrets.sealer()
+    val master = SettingsMasterKey(base, secretSealer)
+    val values = SealedValuesKvStore(
+        inner = base,
+        sealer = { master.sealer() },
+        excluded = BaseAppSettings.SECRET_KEYS + SettingsMasterKey.KEY,
+        secretSealer = { secretSealer }
+    )
     values.sealAll()
     // Counts only, no keys and no values: lets a lost theme or layout be told apart from a store that never opened.
     val health = values.health()
@@ -48,7 +54,7 @@ private fun sealedSettingsStore(base: SettingsKvStore): SettingsKvStore {
     if (health.unreadableKeys.isNotEmpty()) {
         com.fileapex.platform.DesktopLifecycleLog.log("settings: cannot be opened (names only): ${health.unreadableKeys.joinToString(", ")}")
     }
-    return SealingKvStore(values, DesktopSettingsSecrets.sealer(), BaseAppSettings.SECRET_KEYS)
+    return SealingKvStore(values, secretSealer, BaseAppSettings.SECRET_KEYS)
 }
 
 /** Built once: two threads asking for the settings together must not each open and key the store. */

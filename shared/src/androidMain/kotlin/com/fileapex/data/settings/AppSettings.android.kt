@@ -57,12 +57,18 @@ private class AndroidSettingsKvStore(
 /** Every setting value sealed with the settings key, the secrets (PIN, private keys, tokens) sealed on their own by the Android Keystore. */
 private fun sealedSettingsStore(prefs: SharedPreferences, googleBackup: SharedPreferences): SettingsKvStore {
     val base = AndroidSettingsKvStore(prefs, googleBackup)
-    val master = SettingsMasterKey(base, AndroidSettingsSecrets.sealer())
+    val secretSealer = AndroidSettingsSecrets.sealer()
+    val master = SettingsMasterKey(base, secretSealer)
     // The Google link flag, email and uid are mirrored in clear text into the backup file so a restore on a new phone can find them.
     val mirrored = setOf(BaseAppSettings.KEY_GOOGLE, BaseAppSettings.KEY_GOOGLE_EMAIL, BaseAppSettings.KEY_GOOGLE_UID)
-    val values = SealedValuesKvStore(base, { master.sealer() }, BaseAppSettings.SECRET_KEYS + SettingsMasterKey.KEY + mirrored)
+    val values = SealedValuesKvStore(
+        inner = base,
+        sealer = { master.sealer() },
+        excluded = BaseAppSettings.SECRET_KEYS + SettingsMasterKey.KEY + mirrored,
+        secretSealer = { secretSealer }
+    )
     values.sealAll()
-    return SealingKvStore(values, AndroidSettingsSecrets.sealer(), BaseAppSettings.SECRET_KEYS)
+    return SealingKvStore(values, secretSealer, BaseAppSettings.SECRET_KEYS)
 }
 
 private lateinit var androidAppContext: Context

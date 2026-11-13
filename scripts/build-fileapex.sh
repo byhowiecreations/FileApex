@@ -109,28 +109,46 @@ banner() {
     echo ""
 }
 
-# menu "Title" "Option 1" "Option 2" ...  -> sets MENU_CHOICE to the 1-based number
-# The last option is treated as the back/quit entry by the caller.
+# menu "Title" "Option 1" ... -> sets MENU_CHOICE to the 1-based number or uppercase letter key.
+# Options prefixed with "X:" (e.g. "S:Setup") use that letter; the last option is the back/quit entry (also Q/q).
 menu() {
     local title="$1"; shift
-    local opts=("$@") n=${#opts[@]} i
+    local opts=("$@") n=${#opts[@]} i num=0 letters="" key label upper
     while true; do
         banner
         echo "  ${BOLD}${title}${RESET}"
         echo ""
+        num=0
+        letters=""
         for ((i = 0; i < n; i++)); do
-            if ((i == n - 1)); then
-                echo "   ${DIM}$((i + 1))${RESET}  ${DIM}${opts[i]}${RESET}"
+            if [[ "${opts[i]}" =~ ^([A-Za-z]):(.*)$ ]]; then
+                key="${BASH_REMATCH[1]}"
+                label="${BASH_REMATCH[2]}"
+                letters="${letters}, ${key}"
+                echo "   ${CYAN}${BOLD}${key}${RESET}  ${label}"
+            elif ((i == n - 1)); then
+                num=$((num + 1))
+                echo "   ${DIM}${num}${RESET}  ${DIM}${opts[i]}${RESET}"
             else
-                echo "   ${CYAN}${BOLD}$((i + 1))${RESET}  ${opts[i]}"
+                num=$((num + 1))
+                echo "   ${CYAN}${BOLD}${num}${RESET}  ${opts[i]}"
             fi
         done
         echo ""
-        read -r -p "  ${BOLD}›${RESET} Choose [1-$n]: " MENU_CHOICE
-        if [[ "$MENU_CHOICE" =~ ^[0-9]+$ ]] && ((MENU_CHOICE >= 1 && MENU_CHOICE <= n)); then
+        read -r -p "  ${BOLD}›${RESET} Choose [1-${num}${letters}, Q]: " MENU_CHOICE || { MENU_CHOICE="$num"; return 0; }
+        if [[ "$MENU_CHOICE" =~ ^[0-9]+$ ]] && ((MENU_CHOICE >= 1 && MENU_CHOICE <= num)); then
             return 0
         fi
-        echo "  ${RED}Please enter a number from 1 to $n.${RESET}"
+        upper="$(printf '%s' "$MENU_CHOICE" | tr '[:lower:]' '[:upper:]')"
+        if [[ "$upper" == "Q" ]]; then
+            MENU_CHOICE="$num"
+            return 0
+        fi
+        if [[ -n "$upper" && "${letters}, " == *", ${upper}, "* ]]; then
+            MENU_CHOICE="$upper"
+            return 0
+        fi
+        echo "  ${RED}Please enter a number from 1 to ${num}${letters}, or Q.${RESET}"
         sleep 1
     done
 }
@@ -345,6 +363,29 @@ verify_shipped_app() {
     fi
 }
 
+# Generate a SHA-256 checksums file for all artifacts present in current/
+generate_checksums() {
+    local v
+    v="$(get_version)"
+    [[ -n "$v" ]] || return 0
+
+    local sum_file="$CURRENT_DIR/FileApex-v$v-sha256sums.txt"
+    rm -f "$sum_file"
+
+    if compgen -G "$CURRENT_DIR/*" >/dev/null 2>&1; then
+        step "Generating SHA-256 checksums..."
+        (
+            cd "$CURRENT_DIR" || exit 1
+            find . -maxdepth 1 -type f ! -name "*-sha256sums.txt" ! -name ".*" -print0 | sort -z | xargs -0 shasum -a 256 > "FileApex-v$v-sha256sums.txt"
+        )
+        if [[ -s "$sum_file" ]]; then
+            ok "generated current/FileApex-v$v-sha256sums.txt"
+        else
+            rm -f "$sum_file"
+        fi
+    fi
+}
+
 cleanup_build_dir() {
     echo ""
     step "Cleaning up…"
@@ -361,6 +402,7 @@ cleanup_build_dir() {
         rm -rf "$BUILD_DIR" && ok "deleted composeApp/build (freed ${size// /})"
     fi
     verify_shipped_app
+    generate_checksums
 }
 
 show_current() {
@@ -1611,6 +1653,86 @@ initialize() {
     ok "Setup saved in $CONFIG_FILE. Run -doctor any time to re-check."
 }
 
+main_menu() {
+    while true; do
+        menu "What would you like to build?" \
+            "🖥   Mac" \
+            "🤖  Android" \
+            "⚡  Quick Test (.app/.apk only)" \
+            "📦  Full Build (All Mac/Android)" \
+            "🌐  Complete Build (inc. Windows/Linux)" \
+            "🪟  Windows (.exe)" \
+            "🐧  Linux (.deb, .rpm, AppImage)" \
+            "🦊  Firefox Extension" \
+            "S:⚙   Setup and machines" \
+            "D:🩺  Doctor (check this machine)" \
+            "Quit (or Q)"
+        case "$MENU_CHOICE" in
+            1)
+                menu "Mac builds" \
+                    "App file (Silicon)" "DMG (Intel)" "DMG (Silicon)" "Both DMGs" "← Back"
+                case "$MENU_CHOICE" in
+                    1) execute_build "Mac app (Silicon)" ":composeApp:packageSiliconApp" ;;
+                    2) execute_build "Mac DMG (Intel)" ":composeApp:packageIntelDmg" ;;
+                    3) execute_build "Mac DMG (Silicon)" ":composeApp:packageSiliconDmg" ;;
+                    4) execute_build "Mac DMGs (Silicon + Intel)" ":composeApp:packageBothDmg" ;;
+                esac
+                ;;
+            2)
+                menu "Android builds" \
+                    "GitHub APK" "Play Store bundle (AAB)" "Both (GitHub APK + Play AAB)" "GitHub debug APK (no keystore)" "← Back"
+                case "$MENU_CHOICE" in
+                    1) execute_build "GitHub APK" ":composeApp:shipGithubRelease" ;;
+                    2) execute_build "Play Store AAB" ":composeApp:bundlePlayRelease -PbundleBuild=true" ;;
+                    3) execute_build "Android (GitHub APK + Play AAB)" \
+                        ":composeApp:shipGithubRelease" \
+                        ":composeApp:bundlePlayRelease -PbundleBuild=true" ;;
+                    4) execute_build "GitHub debug APK" ":composeApp:assembleGithubDebug" ;;
+                esac
+                ;;
+            3)
+                execute_build "Quick Test (GitHub APK + Silicon .app)" \
+                    ":composeApp:shipGithubRelease :composeApp:packageSiliconApp"
+                ;;
+            4)
+                execute_build "Full Build (Mac + Android)" \
+                    "shipGithubRelease packageBothDmg verifyReleaseSigning verifyReleaseApkSigned :verifyGitExecutableScripts" \
+                    ":composeApp:bundlePlayRelease -PbundleBuild=true"
+                ;;
+            5)
+                execute_complete_build
+                ;;
+            6)
+                execute_windows_build
+                ;;
+            7)
+                execute_linux_build
+                ;;
+            8)
+                execute_build "Firefox Extension" ":composeApp:shipFirefoxExtension"
+                ;;
+            S)
+                menu "Setup and machines" "Check this machine (doctor)" "First-time setup (initialize)" \
+                    "Change Windows and Linux machines" "Show saved settings" "← Back"
+                case "$MENU_CHOICE" in
+                    1) banner; migrate_legacy_hosts; doctor; read -r -n1 -s -p "  Press any key to go back " _ || true; echo ;;
+                    2) banner; initialize; read -r -n1 -s -p "  Press any key to go back " _ || true; echo ;;
+                    3) banner; machines; read -r -n1 -s -p "  Press any key to go back " _ || true; echo ;;
+                    4) banner; machines_show; read -r -n1 -s -p "  Press any key to go back " _ || true; echo ;;
+                esac
+                ;;
+            D)
+                banner; migrate_legacy_hosts; doctor; read -r -n1 -s -p "  Press any key to go back " _ || true; echo
+                ;;
+            9)
+                [[ -t 1 ]] && clear
+                echo "Goodbye!"
+                exit 0
+                ;;
+        esac
+    done
+}
+
 # ---------- main ----------
 [[ "${FILEAPEX_SOURCE_ONLY:-}" == 1 ]] && return 0
 
@@ -1727,74 +1849,4 @@ if (($# > 0)); then
     exit 0
 fi
 
-while true; do
-    menu "What would you like to build?" \
-        "🖥   Mac" \
-        "🤖  Android" \
-        "⚡  Quick Test" \
-        "📦  Full Build (Mac/Android)" \
-        "🌐  Complete Build (inc. Windows/Linux)" \
-        "🦊  Firefox Extension" \
-        "🪟  Windows or Linux only" \
-        "⚙   Setup and machines" \
-        "Quit"
-    case "$MENU_CHOICE" in
-        1)
-            menu "Mac builds" \
-                "App file (Silicon)" "DMG (Intel)" "DMG (Silicon)" "Both DMGs" "← Back"
-            case "$MENU_CHOICE" in
-                1) execute_build "Mac app (Silicon)" ":composeApp:packageSiliconApp" ;;
-                2) execute_build "Mac DMG (Intel)" ":composeApp:packageIntelDmg" ;;
-                3) execute_build "Mac DMG (Silicon)" ":composeApp:packageSiliconDmg" ;;
-                4) execute_build "Mac DMGs (Silicon + Intel)" ":composeApp:packageBothDmg" ;;
-            esac
-            ;;
-        2)
-            menu "Android builds" \
-                "GitHub APK" "Play Store bundle (AAB)" "Both (GitHub APK + Play AAB)" "GitHub debug APK (no keystore)" "← Back"
-            case "$MENU_CHOICE" in
-                1) execute_build "GitHub APK" ":composeApp:shipGithubRelease" ;;
-                2) execute_build "Play Store AAB" ":composeApp:bundlePlayRelease -PbundleBuild=true" ;;
-                3) execute_build "Android (GitHub APK + Play AAB)" \
-                    ":composeApp:shipGithubRelease" \
-                    ":composeApp:bundlePlayRelease -PbundleBuild=true" ;;
-                4) execute_build "GitHub debug APK" ":composeApp:assembleGithubDebug" ;;
-            esac
-            ;;
-        3)
-            execute_build "Quick Test (GitHub APK + Silicon .app)" \
-                ":composeApp:shipGithubRelease :composeApp:packageSiliconApp"
-            ;;
-        4)
-            execute_build "Full Build (Mac + Android)" \
-                "shipGithubRelease packageBothDmg verifyReleaseSigning verifyReleaseApkSigned :verifyGitExecutableScripts" \
-                ":composeApp:bundlePlayRelease -PbundleBuild=true"
-            ;;
-        5)
-            execute_complete_build
-            ;;
-        6)
-            execute_build "Firefox Extension" ":composeApp:shipFirefoxExtension"
-            ;;
-        7)
-            menu "Windows or Linux" "Windows (.exe)" "Linux (.deb, .rpm, AppImage)" "← Back"
-            case "$MENU_CHOICE" in
-                1) execute_windows_build ;;
-                2) execute_linux_build ;;
-            esac
-            ;;
-        8)
-            menu "Setup and machines" "Check this machine (doctor)" "First-time setup (initialize)" \
-                "Change Windows and Linux machines" "Show saved settings" "← Back"
-            case "$MENU_CHOICE" in
-                1) banner; migrate_legacy_hosts; doctor; read -r -n1 -s -p "  Press any key to go back " _; echo ;;
-                2) banner; initialize; read -r -n1 -s -p "  Press any key to go back " _; echo ;;
-                3) banner; machines; read -r -n1 -s -p "  Press any key to go back " _; echo ;;
-                4) banner; machines_show; read -r -n1 -s -p "  Press any key to go back " _; echo ;;
-            esac
-            ;;
-        9)
-            clear; echo "Goodbye!"; exit 0
-            ;;
-    esac
-done
+main_menu

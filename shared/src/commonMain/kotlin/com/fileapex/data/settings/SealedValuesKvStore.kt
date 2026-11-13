@@ -84,7 +84,8 @@ class SealedValuesKvStore(
     private val inner: SettingsKvStore,
     private val sealer: () -> FieldSealer?,
     private val excluded: Set<String>,
-    private val log: (String) -> Unit = { println(it) }
+    private val log: (String) -> Unit = { println(it) },
+    private val secretSealer: (() -> SecretSealer?)? = null
 ) : SettingsKvStore {
     private val pending = ConcurrentHashMap<String, String>()
 
@@ -148,12 +149,33 @@ class SealedValuesKvStore(
 
     /** Seals every key that is still in clear text. Returns how many were sealed; keys that cannot be sealed now stay as they are. */
     fun sealAll(): Int {
-        if (sealer() == null) return 0
+        val field = sealer() ?: return 0
         var sealed = 0
         for (key in inner.keys("")) {
-            if (key in excluded || pending.containsKey(key) || isSealed(key)) continue
-            val legacy = readLegacy(key) ?: continue
-            if (seal(key, legacy.tag, legacy.text)) sealed++
+            if (key in excluded || pending.containsKey(key)) continue
+            if (!isSealed(key)) {
+                val legacy = readLegacy(key) ?: continue
+                var text = legacy.text
+                if (text.startsWith(PREFIX_SEALED) || text.startsWith(FieldSealer.PREFIX)) {
+                    text = unwrapLegacyNested(key, text, field)
+                }
+                if (seal(key, legacy.tag, text)) sealed++
+            } else {
+                val raw = rawString(key)
+                if (raw != null) {
+                    val opened = field.open(TABLE, key, raw)
+                    if (opened != null && opened.length >= 2 && opened[1] == ':') {
+                        val tag = opened[0]
+                        val text = opened.substring(2)
+                        if (text.startsWith(PREFIX_SEALED) || text.startsWith(FieldSealer.PREFIX)) {
+                            val clean = unwrapLegacyNested(key, text, field)
+                            if (clean != text) {
+                                if (seal(key, tag, clean)) sealed++
+                            }
+                        }
+                    }
+                }
+            }
         }
         return sealed
     }
@@ -190,11 +212,52 @@ class SealedValuesKvStore(
                 log("SealedValuesKvStore: a stored setting could not be opened; it reads as missing")
                 return null
             }
-            return payload[0] to payload.substring(2)
+            val tag = payload[0]
+            var text = payload.substring(2)
+            if (text.startsWith(PREFIX_SEALED) || text.startsWith(FieldSealer.PREFIX)) {
+                val clean = unwrapLegacyNested(key, text, field)
+                if (clean != text) {
+                    text = clean
+                    seal(key, tag, text)
+                }
+            }
+            return tag to text
         }
         val legacy = readLegacy(key) ?: return null
-        seal(key, legacy.tag, legacy.text)
-        return legacy.tag to legacy.text
+        val field = sealer()
+        var text = legacy.text
+        if (field != null && (text.startsWith(PREFIX_SEALED) || text.startsWith(FieldSealer.PREFIX))) {
+            text = unwrapLegacyNested(key, text, field)
+        }
+        seal(key, legacy.tag, text)
+        return legacy.tag to text
+    }
+
+    private fun unwrapLegacyNested(key: String, initial: String, field: FieldSealer): String {
+        var cur = initial
+        var rounds = 0
+        val wrapper = secretSealer?.invoke()
+        while (rounds < 8) {
+            rounds++
+            if (cur.startsWith(FieldSealer.PREFIX)) {
+                val opened = field.open(TABLE, key, cur)
+                if (opened != null) {
+                    cur = if (opened.length >= 2 && opened[1] == ':') opened.substring(2) else opened
+                    continue
+                }
+            }
+            if (wrapper != null && cur.startsWith(PREFIX_SEALED)) {
+                val b64 = cur.removePrefix(PREFIX_SEALED)
+                val blob = runCatching { Base64.getDecoder().decode(b64) }.getOrNull()
+                val opened = if (blob != null) runCatching { String(wrapper.open(blob), Charsets.UTF_8) }.getOrNull() else null
+                if (opened != null) {
+                    cur = opened
+                    continue
+                }
+            }
+            break
+        }
+        return cur
     }
 
     private fun write(key: String, tag: Char, text: String) {
@@ -212,5 +275,6 @@ class SealedValuesKvStore(
 
     private companion object {
         const val TABLE = "settings"
+        const val PREFIX_SEALED = "sealed:1:"
     }
 }

@@ -217,23 +217,17 @@ internal fun KineticScope.KineticNode(index: Int, row: DeviceListRow) {
                     var dragged = false
                     fun saveDrag(persist: Boolean) {
                         if (!dragged || widthPx <= 1f || heightPx <= 1f) return
-                        val edge = with(density) { 70.dp.toPx() }
-                        val top = with(density) { 55.dp.toPx() }
+                        val edge = with(density) { 64.dp.toPx() }.coerceAtMost(widthPx * 0.16f)
+                        val top = with(density) { 55.dp.toPx() }.coerceAtMost(heightPx * 0.12f)
+                        val bottom = with(density) { 76.dp.toPx() }.coerceAtMost(heightPx * 0.15f)
                         val maxX = (widthPx - edge).coerceAtLeast(edge)
-                        val maxY = (heightPx - edge).coerceAtLeast(top)
+                        val maxY = (heightPx - bottom).coerceAtLeast(top)
                         val px = dragX.coerceIn(edge, maxX).roundToInt().toFloat().coerceIn(edge, maxX)
                         val py = dragY.coerceIn(top, maxY).roundToInt().toFloat().coerceIn(top, maxY)
-                        val pixelKey = if (layoutBucket.endsWith("-cmp")) {
-                            "pos:cmp:${row.deviceId}"
-                        } else {
-                            "pos:exp:${row.deviceId}"
-                        }
                         FileApexServices.settings.setKineticNodeOffsets(
                             mapOf(
                                 kineticFractionKey(layoutBucket, row.deviceId) to
-                                    Pair((px / widthPx).coerceIn(0f, 1f), (py / heightPx).coerceIn(0f, 1f)),
-                                pixelKey to Pair(px, py),
-                                "pos:${row.deviceId}" to Pair(px, py)
+                                    Pair((px / widthPx).coerceIn(0f, 1f), (py / heightPx).coerceIn(0f, 1f))
                             ),
                             persist = persist
                         )

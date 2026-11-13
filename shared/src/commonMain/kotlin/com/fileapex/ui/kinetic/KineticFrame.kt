@@ -1,12 +1,9 @@
 package com.fileapex.ui.kinetic
 
-import com.fileapex.presentation.DeviceListRow
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -14,11 +11,14 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.di.FileApexServices
+import com.fileapex.presentation.DeviceListRow
 import com.fileapex.ui.EllipticalOrbitConfig
 import com.fileapex.ui.deviceLayoutBucket
 import com.fileapex.ui.kineticStoredNode
 import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
 
 internal class KineticFrame(
@@ -69,7 +69,6 @@ internal fun rememberKineticFrame(inputs: KineticInputs, density: Density, maxWi
         }
 
         val layoutBucket = deviceLayoutBucket(maxWidth, maxHeight)
-
         val persistedNodeOffsets by FileApexServices.settings.kineticNodeOffsets.collectAsState()
 
         val effectiveNodePositions = remember(
@@ -81,118 +80,225 @@ internal fun rememberKineticFrame(inputs: KineticInputs, density: Density, maxWi
             layoutBucket,
             baseRadiusPx
         ) {
-            val marginPx = with(density) { 70.dp.toPx() }
-            val topMarginPx = with(density) { 55.dp.toPx() }
-            val minDistancePx = with(density) { 135.dp.toPx() }
-            val minHubDistancePx = with(density) { 138.dp.toPx() }
-
-            val placedPositions = arrayOfNulls<Offset>(deviceRows.size)
-
-            // Place all devices with user-assigned or persisted offsets first
-            deviceRows.forEachIndexed { index, row ->
-                val stored = kineticStoredNode(
-                    offsets = persistedNodeOffsets,
-                    bucket = layoutBucket,
-                    deviceId = row.deviceId,
-                    widthPx = widthPx,
-                    heightPx = heightPx,
-                    marginPx = marginPx,
-                    topMarginPx = topMarginPx
-                )
-                if (stored != null) {
-                    val rawX = if (stored.fractional) stored.x * widthPx else stored.x
-                    val rawY = if (stored.fractional) stored.y * heightPx else stored.y
-                    val clampedX = if (widthPx > marginPx * 2) rawX.coerceIn(marginPx, widthPx - marginPx) else rawX
-                    val clampedY = if (heightPx > topMarginPx + marginPx) rawY.coerceIn(topMarginPx, heightPx - marginPx) else rawY
-                    placedPositions[index] = Offset(clampedX, clampedY)
-                } else if (layoutBucket.startsWith("land-")) {
-                    val deltaKey = if (layoutBucket.endsWith("-cmp")) "cmp:${row.deviceId}" else "exp:${row.deviceId}"
-                    val legacy = persistedNodeOffsets[deltaKey] ?: persistedNodeOffsets[row.deviceId]
-                    if (legacy != null) {
-                        val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
-                        placedPositions[index] = Offset(
-                            (staticPos.x + legacy.first).coerceIn(marginPx, widthPx - marginPx),
-                            (staticPos.y + legacy.second).coerceIn(topMarginPx, heightPx - marginPx)
-                        )
-                    }
-                }
-            }
-
-            // Next, place unassigned or newly joined devices into non-overlapping areas
-            deviceRows.indices.map { index ->
-                val existing = placedPositions[index]
-                if (existing != null) return@map existing
-
-                val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
-                val currentPlaced = placedPositions.filterNotNull()
-
-                fun isClear(pos: Offset): Boolean {
-                    val hubDx = pos.x - centerX
-                    val hubDy = pos.y - centerY
-                    if (kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy) < minHubDistancePx) return false
-                    return currentPlaced.none { placed ->
-                        val dx = pos.x - placed.x
-                        val dy = pos.y - placed.y
-                        kotlin.math.sqrt(dx * dx + dy * dy) < minDistancePx
-                    }
-                }
-
-                val resolvedPos = if (isClear(staticPos)) {
-                    staticPos
-                } else {
-                    var bestCandidate: Offset = staticPos
-                    var maxMinDistance = -1f
-                    val candidateRadii = listOf(baseRadiusPx, baseRadiusPx * 0.82f, baseRadiusPx * 1.25f, baseRadiusPx * 1.45f)
-                    val steps = 24
-                    var foundNonOverlapping = false
-
-                    for (r in candidateRadii) {
-                        if (foundNonOverlapping) break
-                        for (s in 0 until steps) {
-                            val angle = (2.0 * PI * s / steps) - (PI / 2.0)
-                            val candX = (centerX + (r * cos(angle)).toFloat()).coerceIn(marginPx, widthPx - marginPx)
-                            val candY = (centerY + (r * sin(angle)).toFloat()).coerceIn(topMarginPx, heightPx - marginPx)
-                            val candidate = Offset(candX, candY)
-
-                            val hubDx = candX - centerX
-                            val hubDy = candY - centerY
-                            val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
-                            if (hubDist < minHubDistancePx) continue
-
-                            val minOtherDist = if (currentPlaced.isEmpty()) Float.MAX_VALUE else {
-                                currentPlaced.minOf { placed ->
-                                    val dx = candidate.x - placed.x
-                                    val dy = candidate.y - placed.y
-                                    kotlin.math.sqrt(dx * dx + dy * dy)
-                                }
-                            }
-
-                            if (minOtherDist >= minDistancePx) {
-                                bestCandidate = candidate
-                                foundNonOverlapping = true
-                                break
-                            } else if (minOtherDist > maxMinDistance) {
-                                maxMinDistance = minOtherDist
-                                bestCandidate = candidate
-                            }
-                        }
-                    }
-                    bestCandidate
-                }
-
-                placedPositions[index] = resolvedPos
-                resolvedPos
-            }
+            resolveKineticNodePositions(
+                density = density,
+                deviceRows = deviceRows,
+                widthPx = widthPx,
+                heightPx = heightPx,
+                layoutBucket = layoutBucket,
+                persistedNodeOffsets = persistedNodeOffsets
+            )
         }
 
         val showConnectedLines by FileApexServices.settings.kineticSphereConnectedLinesEnabled.collectAsState()
         val kineticStyle = LocalKineticStyle.current
         val hubSizeDp = 110.dp
         val hubPx = with(density) { hubSizeDp.toPx() }
-        return KineticFrame(widthPx, heightPx, centerX, centerY, hubCenter, nodeCount, baseRadiusPx, orbitConfigs, staticNodePositions, layoutBucket, persistedNodeOffsets, effectiveNodePositions, showConnectedLines, kineticStyle, hubSizeDp, hubPx, density)
+        return KineticFrame(
+            widthPx,
+            heightPx,
+            centerX,
+            centerY,
+            hubCenter,
+            nodeCount,
+            baseRadiusPx,
+            orbitConfigs,
+            staticNodePositions,
+            layoutBucket,
+            persistedNodeOffsets,
+            effectiveNodePositions,
+            showConnectedLines,
+            kineticStyle,
+            hubSizeDp,
+            hubPx,
+            density
+        )
     }
 }
 
+internal fun resolveKineticNodePositions(
+    density: Density,
+    deviceRows: List<DeviceListRow>,
+    widthPx: Float,
+    heightPx: Float,
+    layoutBucket: String,
+    persistedNodeOffsets: Map<String, Pair<Float, Float>>,
+    hasFriendsChip: Boolean = false
+): List<Offset> {
+    val nodeCount = deviceRows.size
+    if (nodeCount == 0) return emptyList()
+
+    val centerX = widthPx / 2f
+    val centerY = heightPx * 0.50f
+    val hubCenter = Offset(centerX, centerY)
+    val minR = with(density) { 120.dp.toPx() }
+    val maxR = with(density) { 240.dp.toPx() }
+    val baseRadiusPx = (minOf(widthPx, heightPx) * 0.36f).coerceIn(minR, maxR)
+
+    val staticNodePositions = kineticStaticNodePositions(
+        density = density,
+        deviceRows = deviceRows,
+        widthPx = widthPx,
+        heightPx = heightPx,
+        baseRadiusPx = baseRadiusPx,
+        orbitConfigs = emptyList(),
+        nodeCount = nodeCount,
+        centerX = centerX,
+        centerY = centerY,
+        hubCenter = hubCenter
+    )
+
+    val marginPx = with(density) { 64.dp.toPx() }.coerceAtMost(widthPx * 0.16f)
+    val topMarginPx = with(density) { 55.dp.toPx() }.coerceAtMost(heightPx * 0.12f)
+    val bottomMarginPx = with(density) { 76.dp.toPx() }.coerceAtMost(heightPx * 0.15f)
+    val maxX = (widthPx - marginPx).coerceAtLeast(marginPx)
+    val maxY = (heightPx - bottomMarginPx).coerceAtLeast(topMarginPx)
+
+    val maxRx = (centerX - marginPx).coerceAtLeast(1f)
+    val maxRy = minOf(centerY - topMarginPx, maxY - centerY).coerceAtLeast(1f)
+    val minHubDistancePx = with(density) { 122.dp.toPx() }.coerceAtMost(minOf(maxRx, maxRy) * 0.92f)
+    val orbitRx = (minOf(maxRx, with(density) { 330.dp.toPx() }) * 0.85f).coerceIn(minOf(maxRx, minHubDistancePx), maxRx)
+    val orbitRy = (minOf(maxRy, with(density) { 290.dp.toPx() }) * 0.85f).coerceIn(minOf(maxRy, minHubDistancePx), maxRy)
+
+    val defaultSeparation = if (nodeCount > 1) {
+        (2f * minOf(orbitRx, orbitRy) * sin(PI / nodeCount).toFloat()) * 0.85f
+    } else {
+        minOf(widthPx, heightPx) * 0.25f
+    }
+    val minDistancePx = minOf(
+        with(density) { 88.dp.toPx() },
+        defaultSeparation
+    ).coerceAtLeast(with(density) { 44.dp.toPx() })
+
+    val placedPositions = arrayOfNulls<Offset>(nodeCount)
+
+    fun isClear(pos: Offset, placed: List<Offset>, requiredDist: Float = minDistancePx): Boolean {
+        if (hypot((pos.x - centerX).toDouble(), (pos.y - centerY).toDouble()) < minHubDistancePx) return false
+        return placed.none { other ->
+            hypot((pos.x - other.x).toDouble(), (pos.y - other.y).toDouble()) < requiredDist
+        }
+    }
+
+    fun findClearPosition(preferred: Offset, placed: List<Offset>): Offset {
+        if (isClear(preferred, placed)) return preferred
+
+        val preferredAngle = atan2((preferred.y - centerY).toDouble(), (preferred.x - centerX).toDouble())
+        val radiusMultipliers = listOf(1.0f, 0.86f, 1.12f, 0.74f)
+        val steps = 36
+        var bestCandidate = preferred
+        var maxMinDistance = -1f
+
+        for (mult in radiusMultipliers) {
+            val rx = (orbitRx * mult).coerceIn(minOf(maxRx, minHubDistancePx), maxRx)
+            val ry = (orbitRy * mult).coerceIn(minOf(maxRy, minHubDistancePx), maxRy)
+            for (step in 0..steps / 2) {
+                val signs = if (step == 0 || step == steps / 2) listOf(1) else listOf(1, -1)
+                for (sign in signs) {
+                    val angle = preferredAngle + sign * (2.0 * PI * step / steps)
+                    val candX = (centerX + (rx * cos(angle)).toFloat()).coerceIn(marginPx, maxX)
+                    val candY = (centerY + (ry * sin(angle)).toFloat()).coerceIn(topMarginPx, maxY)
+                    val candidate = Offset(candX, candY)
+                    val hubDist = hypot((candX - centerX).toDouble(), (candY - centerY).toDouble()).toFloat()
+                    if (hubDist < minHubDistancePx) continue
+
+                    val minOtherDist = if (placed.isEmpty()) Float.MAX_VALUE else {
+                        placed.minOf { other ->
+                            hypot((candidate.x - other.x).toDouble(), (candidate.y - other.y).toDouble()).toFloat()
+                        }
+                    }
+                    if (minOtherDist >= minDistancePx) {
+                        return candidate
+                    }
+                    if (minOtherDist > maxMinDistance) {
+                        maxMinDistance = minOtherDist
+                        bestCandidate = candidate
+                    }
+                }
+            }
+        }
+        return bestCandidate
+    }
+
+    // Place devices with user-assigned offsets for this bucket first, separating any saved collisions
+    deviceRows.forEachIndexed { index, row ->
+        val stored = kineticStoredNode(
+            offsets = persistedNodeOffsets,
+            bucket = layoutBucket,
+            deviceId = row.deviceId,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            marginPx = marginPx,
+            topMarginPx = topMarginPx
+        )
+        val rawStored = when {
+            stored != null -> {
+                val rawX = if (stored.fractional) stored.x * widthPx else stored.x
+                val rawY = if (stored.fractional) stored.y * heightPx else stored.y
+                Offset(
+                    rawX.coerceIn(marginPx, maxX),
+                    rawY.coerceIn(topMarginPx, maxY)
+                )
+            }
+            layoutBucket == "desktop" || layoutBucket.endsWith("-land") || layoutBucket.startsWith("land-") -> {
+                val hasBucketFraction = persistedNodeOffsets.keys.any {
+                    it.startsWith("frac:") && it.endsWith(":${row.deviceId}")
+                }
+                if (hasBucketFraction) {
+                    null
+                } else {
+                    val isExp = layoutBucket == "desktop" || layoutBucket.startsWith("inner-") || layoutBucket.endsWith("-exp") || layoutBucket.endsWith("-med")
+                    val deltaKey = if (isExp) "exp:${row.deviceId}" else "cmp:${row.deviceId}"
+                    val legacy = persistedNodeOffsets[deltaKey] ?: persistedNodeOffsets[row.deviceId]
+                    legacy?.let {
+                        val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
+                        Offset(
+                            (staticPos.x + it.first).coerceIn(marginPx, maxX),
+                            (staticPos.y + it.second).coerceIn(topMarginPx, maxY)
+                        )
+                    }
+                }
+            }
+            else -> null
+        }
+
+        if (rawStored != null) {
+            val currentPlaced = placedPositions.filterNotNull()
+            val minSeparation = minDistancePx * 0.92f
+            val isOverlappingEarlierPlaced = currentPlaced.any { other ->
+                hypot((rawStored.x - other.x).toDouble(), (rawStored.y - other.y).toDouble()) < minSeparation
+            }
+            val minHubDist = with(density) { 90.dp.toPx() }
+            val isInsideHub = hypot((rawStored.x - centerX).toDouble(), (rawStored.y - centerY).toDouble()) < minHubDist
+
+            placedPositions[index] = when {
+                !isOverlappingEarlierPlaced && !isInsideHub -> rawStored
+                isInsideHub && !isOverlappingEarlierPlaced -> {
+                    val angle = atan2((rawStored.y - centerY).toDouble(), (rawStored.x - centerX).toDouble())
+                    Offset(
+                        (centerX + (minHubDist + 4f) * cos(angle).toFloat()).coerceIn(marginPx, maxX),
+                        (centerY + (minHubDist + 4f) * sin(angle).toFloat()).coerceIn(topMarginPx, maxY)
+                    )
+                }
+                else -> findClearPosition(rawStored, currentPlaced)
+            }
+        }
+    }
+
+    // Place unassigned devices on the equally spaced orbit, shifting along the orbit only if a user-placed node occupies the slot
+    return deviceRows.indices.map { index ->
+        val existing = placedPositions[index]
+        if (existing != null) return@map existing
+
+        val staticPos = staticNodePositions.getOrElse(index) { Offset(centerX, centerY) }
+        val resolved = if (isClear(staticPos, placedPositions.filterNotNull())) {
+            staticPos
+        } else {
+            findClearPosition(staticPos, placedPositions.filterNotNull())
+        }
+        placedPositions[index] = resolved
+        resolved
+    }
+}
 
 internal fun kineticStaticNodePositions(
     density: Density,
@@ -206,65 +312,40 @@ internal fun kineticStaticNodePositions(
     centerY: Float,
     hubCenter: Offset
 ): List<Offset> {
-    val marginPx = with(density) { 70.dp.toPx() }
-    val topMarginPx = with(density) { 55.dp.toPx() }
-    val minDistancePx = with(density) { 135.dp.toPx() }
-    val minHubDistancePx = with(density) { 138.dp.toPx() }
+    if (nodeCount <= 0) return emptyList()
 
-    val rawPositions = deviceRows.mapIndexed { index, _ ->
-        val config = orbitConfigs[index % orbitConfigs.size]
-        val radiusMultiplier = if (nodeCount <= 4) 1.0f else (if (index % 2 == 0) 0.85f else 1.38f)
-        val angleStep = (2.0 * PI / nodeCount)
-        val baseAngle = (angleStep * index) - (PI / 2.0)
+    val marginPx = with(density) { 64.dp.toPx() }.coerceAtMost(widthPx * 0.16f)
+    val topMarginPx = with(density) { 55.dp.toPx() }.coerceAtMost(heightPx * 0.12f)
+    val bottomMarginPx = with(density) { 76.dp.toPx() }.coerceAtMost(heightPx * 0.15f)
+    val maxX = (widthPx - marginPx).coerceAtLeast(marginPx)
+    val maxY = (heightPx - bottomMarginPx).coerceAtLeast(topMarginPx)
 
-        val rx = baseRadiusPx * config.scaleX * radiusMultiplier
-        val ry = baseRadiusPx * config.scaleY * radiusMultiplier
+    val maxRx = (centerX - marginPx).coerceAtLeast(1f)
+    val maxRy = minOf(centerY - topMarginPx, maxY - centerY).coerceAtLeast(1f)
+    val minHubDist = with(density) { 128.dp.toPx() }.coerceAtMost(minOf(maxRx, maxRy) * 0.92f)
 
-        val localX = rx * cos(baseAngle)
-        val localY = ry * sin(baseAngle)
-
-        val rad = config.rotationDeg * (PI / 180.0)
-        val rotX = (localX * cos(rad) - localY * sin(rad)).toFloat()
-        val rotY = (localX * sin(rad) + localY * cos(rad)).toFloat()
-
-        var cx = centerX + rotX
-        var cy = centerY + rotY
-
-        val hubDx = cx - centerX
-        val hubDy = cy - centerY
-        val hubDist = kotlin.math.sqrt(hubDx * hubDx + hubDy * hubDy)
-        if (hubDist < minHubDistancePx && hubDist > 0.001f) {
-            val factor = minHubDistancePx / hubDist
-            cx = centerX + (hubDx * factor)
-            cy = centerY + (hubDy * factor)
-        }
-
-        cx = cx.coerceIn(marginPx, widthPx - marginPx)
-        cy = cy.coerceIn(topMarginPx, heightPx - marginPx)
-        Offset(cx, cy)
-    }.toMutableList()
-
-    for (iter in 0 until 6) {
-        for (i in 0 until rawPositions.size) {
-            for (j in i + 1 until rawPositions.size) {
-                val posI = rawPositions[i]
-                val posJ = rawPositions[j]
-                val dx = posJ.x - posI.x
-                val dy = posJ.y - posI.y
-                val dist = kotlin.math.sqrt(dx * dx + dy * dy)
-                if (dist < minDistancePx && dist > 0.001f) {
-                    val overlap = (minDistancePx - dist) / 2f
-                    val nx = dx / dist
-                    val ny = dy / dist
-                    val newIx = (posI.x - nx * overlap).coerceIn(marginPx, widthPx - marginPx)
-                    val newIy = (posI.y - ny * overlap).coerceIn(topMarginPx, heightPx - marginPx)
-                    val newJx = (posJ.x + nx * overlap).coerceIn(marginPx, widthPx - marginPx)
-                    val newJy = (posJ.y + ny * overlap).coerceIn(topMarginPx, heightPx - marginPx)
-                    rawPositions[i] = Offset(newIx, newIy)
-                    rawPositions[j] = Offset(newJx, newJy)
-                }
-            }
-        }
+    val capRx = with(density) { 330.dp.toPx() }
+    val capRy = with(density) { 290.dp.toPx() }
+    val scale = when {
+        nodeCount <= 2 -> 0.72f
+        nodeCount <= 4 -> 0.78f
+        nodeCount <= 6 -> 0.85f
+        else -> 0.92f
     }
-    return rawPositions
+
+    val rx = (minOf(maxRx, capRx) * scale).coerceIn(minOf(maxRx, minHubDist), maxRx)
+    val ry = (minOf(maxRy, capRy) * scale).coerceIn(minOf(maxRy, minHubDist), maxRy)
+
+    val startAngle = when {
+        nodeCount == 2 -> PI
+        else -> -PI / 2.0
+    }
+    val angleStep = (2.0 * PI) / nodeCount
+
+    return List(nodeCount) { index ->
+        val angle = startAngle + (angleStep * index)
+        val cx = (centerX + (rx * cos(angle)).toFloat()).coerceIn(marginPx, maxX)
+        val cy = (centerY + (ry * sin(angle)).toFloat()).coerceIn(topMarginPx, maxY)
+        Offset(cx, cy)
+    }
 }

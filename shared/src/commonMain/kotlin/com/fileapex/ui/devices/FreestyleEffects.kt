@@ -27,19 +27,33 @@ internal fun FreestyleScope.FreestyleEffects() {
                 if (activeDeviceId == null && deviceRows.isNotEmpty()) {
                     val optCenterX = liveOptionsPos.x + (optionsButtonWidthPx / 2f)
                     val optCenterY = liveOptionsPos.y + (optionsButtonHeightPx / 2f)
+                    val primaryOffsets = when (freestyleMode) {
+                        FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets
+                        FreestyleLayoutMode.CARDS_VERTICAL -> persistedCardVerticalNodeOffsets
+                        FreestyleLayoutMode.TILES -> persistedTileNodeOffsets
+                    }
+                    val fallbackOffsets = if (freestyleMode == FreestyleLayoutMode.CARDS_VERTICAL) {
+                        persistedCardNodeOffsets
+                    } else {
+                        emptyMap()
+                    }
+                    val resolved = resolveFreestyleNodePositions(
+                        density = density,
+                        deviceRows = deviceRows,
+                        widthPx = widthPx,
+                        heightPx = heightPx,
+                        layoutScopePrefix = layoutScopePrefix,
+                        legacyScopePrefix = legacyScopePrefix,
+                        persistedOffsets = primaryOffsets,
+                        useTileRowFallback = freestyleMode == FreestyleLayoutMode.TILES,
+                        optionsPos = liveOptionsPos,
+                        pinnedActions = currentPinnedActionsMap,
+                        fallbackOffsets = fallbackOffsets
+                    )
                     val farthest = deviceRows.maxByOrNull { row ->
-                        val savedX = when (freestyleMode) {
-                            FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[row.deviceId]?.first
-                            FreestyleLayoutMode.CARDS_VERTICAL -> (persistedCardVerticalNodeOffsets[row.deviceId] ?: persistedCardNodeOffsets[row.deviceId])?.first
-                            FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[row.deviceId]?.first
-                        }
-                        val savedY = when (freestyleMode) {
-                            FreestyleLayoutMode.CARDS_HORIZONTAL -> persistedCardNodeOffsets[row.deviceId]?.second
-                            FreestyleLayoutMode.CARDS_VERTICAL -> (persistedCardVerticalNodeOffsets[row.deviceId] ?: persistedCardNodeOffsets[row.deviceId])?.second
-                            FreestyleLayoutMode.TILES -> persistedTileNodeOffsets[row.deviceId]?.second
-                        }
-                        val pxX = savedX?.let { it * widthPx } ?: (widthPx / 2f)
-                        val pxY = savedY?.let { it * heightPx } ?: (heightPx / 2f)
+                        val topLeft = resolved["$layoutScopePrefix${row.deviceId}"]
+                        val pxX = (topLeft?.x ?: (widthPx / 2f)) + (deviceButtonSizePx / 2f)
+                        val pxY = (topLeft?.y ?: (heightPx / 2f)) + (deviceButtonSizePx / 2f)
                         val dx = pxX - optCenterX
                         val dy = pxY - optCenterY
                         dx * dx + dy * dy
