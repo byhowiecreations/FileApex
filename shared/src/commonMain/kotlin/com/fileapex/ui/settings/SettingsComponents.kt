@@ -45,12 +45,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.traits
 import com.fileapex.domain.clipboard.ClipboardShareMode
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
+import com.fileapex.platform.isDesktopHost
 import com.fileapex.presentation.SettingsUiState
 import com.fileapex.ui.SettingsScreenLayoutMode
 import com.fileapex.ui.adaptive.CompactHomeTitleBand
@@ -264,6 +266,7 @@ internal fun SettingsPageShell(
                         secondaryLine = title,
                         style = CompactHomeTitleStyle.Prominent,
                         onOpenTransferQueue = onOpenTransferQueue,
+                        showNavPositionToggle = DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost()),
                         showCloseService = onExit != null,
                         onCloseService = onExit,
                         actions = homeAction

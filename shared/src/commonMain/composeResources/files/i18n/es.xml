@@ -1659,7 +1659,7 @@ Toca el hub central (+) para emparejar</string>
     <string name="tooltip_nav_pos_bottom">Mover barra de navegación abajo</string>
     <string name="tooltip_nav_pos_right">Mover barra de navegación a la derecha</string>
     <string name="nav_position_title">Posición de la barra de navegación</string>
-    <string name="nav_position_desc">Elige dónde aparece la barra de navegación en el tema Simple y redimensiona la ventana libremente.</string>
+    <string name="nav_position_desc">Elige dónde aparece la barra de navegación y redimensiona la ventana libremente.</string>
     <string name="nav_position_left">Izquierda</string>
     <string name="nav_position_left_desc">Barra vertical en el borde izquierdo</string>
     <string name="nav_position_bottom">Abajo</string>

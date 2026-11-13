@@ -1659,7 +1659,7 @@ Tap Central Hub (+) to Pair</string>
     <string name="tooltip_nav_pos_bottom">Move navigation bar to Bottom</string>
     <string name="tooltip_nav_pos_right">Move navigation bar to Right</string>
     <string name="nav_position_title">Navigation Bar Position</string>
-    <string name="nav_position_desc">Choose where the navigation bar appears in Simple theme and resize freely anytime.</string>
+    <string name="nav_position_desc">Choose where the navigation bar appears and resize freely anytime.</string>
     <string name="nav_position_left">Left</string>
     <string name="nav_position_left_desc">Vertical rail on the left edge</string>
     <string name="nav_position_bottom">Bottom</string>

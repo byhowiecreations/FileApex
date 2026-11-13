@@ -1,7 +1,9 @@
 package com.fileapex.ui.adaptive.simple
 
 import androidx.compose.ui.graphics.Color
+import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.DesktopNavPosition
+import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.ui.adaptive.SimpleDestination
 import com.fileapex.ui.adaptive.SimpleRailEntry
@@ -58,13 +60,12 @@ object SimpleNavPlacementPolicy {
         isDesktop: Boolean,
         windowIsWide: Boolean,
         desktopPosition: DesktopNavPosition
-    ): DesktopNavPosition = if (isDesktop) {
-        desktopPosition
-    } else if (windowIsWide) {
-        DesktopNavPosition.Left
-    } else {
-        DesktopNavPosition.Bottom
-    }
+    ): DesktopNavPosition = DesktopNavPositionPolicy.resolve(
+        theme = AppTheme.SIMPLE,
+        isDesktop = isDesktop,
+        windowIsWide = windowIsWide,
+        desktopPosition = desktopPosition
+    )
 }
 
 object SimpleSplitViewPolicy {

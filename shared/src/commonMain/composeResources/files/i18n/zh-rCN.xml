@@ -1644,7 +1644,7 @@ Would you like to use English? / 您想使用英语吗？</string>
     <string name="tooltip_nav_pos_bottom">将导航栏移至底部</string>
     <string name="tooltip_nav_pos_right">将导航栏移至右侧</string>
     <string name="nav_position_title">导航栏位置</string>
-    <string name="nav_position_desc">选择简约主题中导航栏的显示位置，并可随时自由调整窗口大小。</string>
+    <string name="nav_position_desc">选择导航栏的显示位置，并可随时自由调整窗口大小。</string>
     <string name="nav_position_left">左侧</string>
     <string name="nav_position_left_desc">位于左边缘的垂直导航栏</string>
     <string name="nav_position_bottom">底部</string>

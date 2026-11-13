@@ -260,8 +260,8 @@ internal fun SettingsRootPage(
                     backupSync = com.fileapex.platform.backupSupported(),
                     autoLaunchOnDesktop = com.fileapex.platform.BootLaunchPreference.usesDesktopAutostart(),
                     fullDiskAccess = com.fileapex.platform.fullDiskAccessSupported(),
-                    showAdvanced = state.showAdvancedSettings,
-                    inUseAdvancedIds = rememberAdvancedSettingsInUse(state)
+                    showAdvanced = state.showAdvancedSettings, inUseAdvancedIds = rememberAdvancedSettingsInUse(state),
+                    navPosition = com.fileapex.data.settings.DesktopNavPositionPolicy.supportsTheme(LocalAppTheme.current)
                 )
                 SettingsMenuSection.entries.forEach { section ->
                     val rows = menuEntries.filter { it.section == section }

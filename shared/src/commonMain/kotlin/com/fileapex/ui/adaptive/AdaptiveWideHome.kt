@@ -100,8 +100,9 @@ import com.fileapex.ui.theme.fileApexNavUnselectedIconColor
 import com.fileapex.ui.theme.fileApexNavUnselectedTextColor
 import com.fileapex.ui.theme.fileApexNavigationRailItemColors
 
+import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.platform.isDesktopHost
-import com.fileapex.ui.DesktopLayoutToggle
+import com.fileapex.ui.NavDockPositionToggle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -192,29 +193,20 @@ fun AdaptiveWideHome(
             explorerHeaderCommands = if (explorerChromeVisible) explorerHeaderCommands else null,
             deviceOrderHeaderActions = deviceOrderHeaderActions
         )
-        val noRail = LocalAppTheme.current.traits.let { it.canvasHome || it.dockHome }
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (!noRail) {
-                FileApexNavigationRail(
-                    selected = selectedTab,
-                    onMainHomeScreen = isMainHomeScreen(
-                        selectedTab = selectedTab,
-                        hasActiveDetail = selectedTarget != null
-                    ),
-                    onDevices = {
-                        onSelectTab(HomeTab.Devices)
-                        if (selectedTarget != null) {
-                            onClearDetail()
-                        }
-                    },
-                    onFiles = {
-                        com.fileapex.platform.StorageToolsEvents.closeRequests.tryEmit(Unit)
-                        onSelectTab(HomeTab.Files)
-                        onOpenLocalFiles()
-                    },
-                    onSettings = { onSelectTab(HomeTab.Settings) }
-                )
-            }
+        val currentTheme = LocalAppTheme.current
+        val noRail = currentTheme.traits.let { it.canvasHome || it.dockHome }
+        val navPositionPref by FileApexServices.settings.desktopNavPosition.collectAsState()
+        val navPosition = DesktopNavPositionPolicy.resolve(currentTheme, isDesktop = isDesktopHost(), windowIsWide = true, desktopPosition = navPositionPref)
+        ThemeNavContainer(
+            navPosition = navPosition,
+            selected = selectedTab,
+            onMainHomeScreen = isMainHomeScreen(selectedTab = selectedTab, hasActiveDetail = selectedTarget != null),
+            onDevices = { onSelectTab(HomeTab.Devices); if (selectedTarget != null) onClearDetail() },
+            onFiles = { onSelectTab(HomeTab.Files); onOpenLocalFiles() },
+            onSettings = { onSelectTab(HomeTab.Settings) },
+            showNav = !noRail,
+            modifier = Modifier.weight(1f)
+        ) {
             // Registered before SettingsScreen's own handler, so sub-pages still step back first.
             FileApexBackHandler(enabled = selectedTab == HomeTab.Settings) { onSelectTab(HomeTab.Devices) }
             val isSpatialTheme = LocalAppTheme.current.traits.spatialHome
@@ -473,8 +465,8 @@ private fun WideTopBar(
                     )
                 }
             }
-            if (isDesktopHost() && !LocalAppTheme.current.traits.dockHome) {
-                DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
+            if (DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost())) {
+                NavDockPositionToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
             }
             if (showDevicesViewToggle) {
                 deviceOrderHeaderActions()
@@ -490,12 +482,14 @@ private fun WideTopBar(
                 iconTint = headerIconTint,
                 modifier = Modifier.size(40.dp)
             )
-            if (isDesktopHost() && !LocalAppTheme.current.traits.dockHome) {
-                DesktopLayoutToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
+            if (DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost())) {
+                NavDockPositionToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
             }
             if (onRefreshExplorer != null) {
                 RefreshExplorerButton(onRefreshExplorer, isExplorerRefreshing, headerIconTint)
             }
+        } else if (DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost())) {
+            NavDockPositionToggle(modifier = Modifier.size(40.dp), iconTint = headerIconTint)
         }
         FileApexPowerButton(onClick = onExitClick)
     }
@@ -507,12 +501,17 @@ fun FileApexNavigationRail(
     onMainHomeScreen: Boolean = true,
     onDevices: () -> Unit,
     onFiles: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onRightEdge: Boolean = false
 ) {
     val devicesLabel = devicesNavLabel(onMainHomeScreen)
     val jadedRail = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
-    val jadedRailShape = RoundedCornerShape(topStart = 0.dp, topEnd = 28.dp, bottomEnd = 28.dp, bottomStart = 0.dp)
+    val jadedRailShape = if (onRightEdge) {
+        RoundedCornerShape(topStart = 28.dp, topEnd = 0.dp, bottomEnd = 0.dp, bottomStart = 28.dp)
+    } else {
+        RoundedCornerShape(topStart = 0.dp, topEnd = 28.dp, bottomEnd = 28.dp, bottomStart = 0.dp)
+    }
     BoxWithConstraints(modifier = Modifier.fillMaxHeight()) {
         val isPortrait = maxHeight > maxWidth
         NavigationRail(

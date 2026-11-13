@@ -66,7 +66,9 @@ fun settingsMenuEntries(
     fullDiskAccess: Boolean = false,
     /** When false, advanced rows are left out unless they are in use (see [inUseAdvancedIds]). */
     showAdvanced: Boolean = true,
-    inUseAdvancedIds: Set<String> = emptySet()
+    inUseAdvancedIds: Set<String> = emptySet(),
+    /** True when the active theme renders a movable desktop navigation bar (rail or bottom bar). */
+    navPosition: Boolean = true
 ): List<SettingsMenuEntry> {
     val entries = mutableListOf<SettingsMenuEntry>()
     fun add(section: SettingsMenuSection, id: String) {
@@ -92,7 +94,7 @@ fun settingsMenuEntries(
     add(SettingsMenuSection.Appearance, SettingsMenuIds.CLIPBOARD)
     if (groups) add(SettingsMenuSection.Appearance, SettingsMenuIds.GROUPS)
     add(SettingsMenuSection.Appearance, SettingsMenuIds.DEVICE_DETAILS)
-    if (desktopFileSelection) add(SettingsMenuSection.Appearance, SettingsMenuIds.DESKTOP_LAYOUT)
+    if (desktopFileSelection && navPosition) add(SettingsMenuSection.Appearance, SettingsMenuIds.DESKTOP_LAYOUT)
     if (windowsFluent) add(SettingsMenuSection.Appearance, SettingsMenuIds.WINDOWS_DESIGN)
 
     add(SettingsMenuSection.Security, SettingsMenuIds.PIN_REQUIRED)

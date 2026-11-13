@@ -1,11 +1,15 @@
 package com.fileapex.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -17,6 +21,9 @@ import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.DesktopNavPosition
 import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.stringRes
+import com.fileapex.ui.adaptive.JadedRaisedTile
+import com.fileapex.ui.theme.fileApexTileTint
+import com.fileapex.ui.theme.isFileApexTiledChrome
 
 /**
  * Custom panel-position icon displaying the Left / Bottom / Right bar location that the next click activates.
@@ -91,15 +98,33 @@ fun NavDockPositionToggle(
         }
     )
     DesktopHoverTooltip(text = tooltipText) {
-        IconButton(
-            onClick = { FileApexServices.settings.setDesktopNavPosition(next) },
-            modifier = modifier
-        ) {
-            Icon(
-                imageVector = navDockPositionIcon(next),
-                contentDescription = tooltipText,
-                tint = iconTint
-            )
+        if (isFileApexTiledChrome()) {
+            Box(
+                modifier = modifier
+                    .size(40.dp)
+                    .clickable { FileApexServices.settings.setDesktopNavPosition(next) },
+                contentAlignment = Alignment.Center
+            ) {
+                JadedRaisedTile(tileSize = 28.dp) {
+                    Icon(
+                        imageVector = navDockPositionIcon(next),
+                        contentDescription = tooltipText,
+                        tint = fileApexTileTint(),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        } else {
+            IconButton(
+                onClick = { FileApexServices.settings.setDesktopNavPosition(next) },
+                modifier = modifier
+            ) {
+                Icon(
+                    imageVector = navDockPositionIcon(next),
+                    contentDescription = tooltipText,
+                    tint = iconTint
+                )
+            }
         }
     }
 }

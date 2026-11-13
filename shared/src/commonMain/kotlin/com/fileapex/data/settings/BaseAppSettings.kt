@@ -190,7 +190,10 @@ class BaseAppSettings(
         if (!store.getBoolean(KEY_THEME_DEFAULT_MIGRATED, false)) {
             store.putBoolean(KEY_THEME_DEFAULT_MIGRATED, true)
             val hasStoredTheme = store.contains(KEY_APP_THEME)
-            if (existingInstall && !hasStoredTheme) store.putString(KEY_APP_THEME, AppTheme.CLEAN.name)
+            if (existingInstall && !hasStoredTheme) {
+                val current = AppTheme.fromStorage(store.getString(KEY_APP_THEME, AppTheme.DEFAULT.name))
+                store.putString(KEY_APP_THEME, current.name)
+            }
             if (existingInstall || hasStoredTheme) store.putBoolean(KEY_OTHER_THEMES_HINT_SHOWN, true)
         }
     }

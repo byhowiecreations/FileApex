@@ -47,7 +47,6 @@ import com.fileapex.ui.HomeTab
 import com.fileapex.ui.NoteHeaderButton
 import com.fileapex.ui.NoteIconKind
 import com.fileapex.ui.QueuedFilesButton
-import com.fileapex.ui.devices.FileApexBottomBar
 import com.fileapex.ui.theme.FileApexTeal
 import com.fileapex.ui.theme.fileApexFloatingChrome
 import com.fileapex.ui.theme.isFileApexCleanCurved
@@ -63,12 +62,14 @@ import androidx.compose.material.icons.filled.GridView
 import com.fileapex.ui.FileApexIcons
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.fileapex.data.settings.DesktopNavPosition
+import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.GridView
 import com.fileapex.platform.isDesktopHost
-import com.fileapex.ui.DesktopLayoutToggle
+import com.fileapex.ui.NavDockPositionToggle
 
 /** Shared compact home header metrics, keeps Devices, Settings, and explorer bands aligned. */
 object CompactHomeChrome {
@@ -94,34 +95,14 @@ fun CompactPrimaryShell(
     tealStripActions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit
 ) {
-    val currentTheme = LocalAppTheme.current
-    val isCustomGlass = currentTheme.traits.glassChrome
-    Scaffold(
-        containerColor = if (isCustomGlass) Color.Transparent else MaterialTheme.colorScheme.background,
-        bottomBar = {
-            if (!currentTheme.traits.canvasHome) {
-                FileApexBottomBar(
-                    selected = selectedTab,
-                    onMainHomeScreen = onMainHomeScreen,
-                    onDevices = onDevices,
-                    onFiles = {
-                        com.fileapex.platform.StorageToolsEvents.closeRequests.tryEmit(Unit)
-                        onFiles()
-                    },
-                    onSettings = onSettings
-                )
-            }
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (currentTheme.traits.canvasHome) Modifier else Modifier.padding(padding))
-        ) {
-            // Omit separate top teal strip so Default theme matches Flux Glass unified header structure.
-            content()
-        }
-    }
+    ThemeCompactNavScaffold(
+        selectedTab = selectedTab,
+        onMainHomeScreen = onMainHomeScreen,
+        onDevices = onDevices,
+        onFiles = onFiles,
+        onSettings = onSettings,
+        content = content
+    )
 }
 
 enum class CompactHomeTitleStyle {
@@ -287,8 +268,8 @@ fun FluxGlassHeader(
                 }
             }
 
-            if (showDesktopLayoutToggle && isDesktopHost()) {
-                DesktopLayoutToggle(
+            if (showDesktopLayoutToggle && DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost())) {
+                NavDockPositionToggle(
                     modifier = Modifier.size(40.dp),
                     iconTint = headerIconTint
                 )
@@ -320,7 +301,7 @@ fun CompactDevicesTitleBand(
         secondaryTitle = stringRes("paired_devices_title"),
         showLayoutView = allowLayoutView,
         onToggleLayoutView = if (allowLayoutView) onToggleLayoutView else null,
-        showDesktopLayoutToggle = isDesktopHost(),
+        showDesktopLayoutToggle = DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost()),
         showCloseService = showCloseService,
         onCloseService = onCloseService,
         onOpenNotes = onOpenNotes,
@@ -336,6 +317,7 @@ fun CompactHomeTitleBand(
     style: CompactHomeTitleStyle = CompactHomeTitleStyle.Detail,
     modifier: Modifier = Modifier,
     onOpenTransferQueue: (() -> Unit)? = null,
+    showNavPositionToggle: Boolean = false,
     showCloseService: Boolean = false,
     onCloseService: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
@@ -344,6 +326,7 @@ fun CompactHomeTitleBand(
     val isCustomGlass = currentTheme.traits.glassChrome
     val jadedHeader = isFileApexJadedSteel()
     val lightText = isCustomGlass || isFileApexCleanCurved()
+    val allowNavToggle = showNavPositionToggle && DesktopNavPositionPolicy.showHeaderToggle(currentTheme, isDesktopHost())
     if (isCustomGlass && style == CompactHomeTitleStyle.Prominent) {
         FluxGlassHeader(
             primaryTitle = "FileApex",
@@ -352,6 +335,7 @@ fun CompactHomeTitleBand(
             } else {
                 primaryLine
             },
+            showDesktopLayoutToggle = allowNavToggle,
             onOpenTransferQueue = onOpenTransferQueue,
             showCloseService = showCloseService,
             onCloseService = onCloseService,
@@ -362,6 +346,12 @@ fun CompactHomeTitleBand(
             modifier = modifier,
             onOpenTransferQueue = onOpenTransferQueue,
             actions = {
+                if (allowNavToggle) {
+                    NavDockPositionToggle(
+                        modifier = Modifier.size(40.dp),
+                        iconTint = fileApexHeaderActionTint()
+                    )
+                }
                 actions()
                 if (showCloseService && onCloseService != null) {
                     FileApexPowerButton(onClick = onCloseService)

@@ -52,6 +52,7 @@ import com.fileapex.data.settings.AppTheme
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
+import com.fileapex.data.settings.DesktopNavPositionPolicy
 import com.fileapex.data.settings.traits
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.isDesktopHost
@@ -127,7 +128,7 @@ internal fun ExplorerTopBarActions(
                     }
                 }
             }
-            if (embeddedInCompactShell && isDesktopHost()) {
+            if (embeddedInCompactShell && DesktopNavPositionPolicy.showHeaderToggle(com.fileapex.data.settings.LocalAppTheme.current, isDesktopHost())) {
                 NavDockPositionToggle()
             }
         }
@@ -181,7 +182,7 @@ internal fun ExplorerTopBarActions(
                     onToggle = { viewModel.toggleViewMode(includeSplit = false) },
                     includeSplit = false
                 )
-                if (isDesktopHost() && splitAllowed) {
+                if (DesktopNavPositionPolicy.showHeaderToggle(com.fileapex.data.settings.LocalAppTheme.current, isDesktopHost()) && splitAllowed) {
                     NavDockPositionToggle()
                 }
             }

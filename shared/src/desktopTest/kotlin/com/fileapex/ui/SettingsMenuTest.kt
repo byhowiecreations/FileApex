@@ -233,6 +233,20 @@ class SettingsMenuTest {
     }
 
     @Test
+    fun navigationPositionRowRespectsThemeSupportOnDesktop() {
+        fun hasNavPosition(navPosition: Boolean) = settingsMenuEntries(
+            playStoreBuild = false,
+            desktopFileSelection = true,
+            deviceNamePage = false,
+            windowsFluent = false,
+            navPosition = navPosition
+        ).any { it.id == SettingsMenuIds.DESKTOP_LAYOUT }
+
+        assertTrue(hasNavPosition(true))
+        assertFalse(hasNavPosition(false))
+    }
+
+    @Test
     fun noTwoRowsShareAPageExceptDriveRelayWhichOpensTheGoogleAccountPage() {
         val pages = everyRow.mapNotNull { e -> settingsPageFor(e.id)?.let { e.id to it } }
         val shared = pages.groupBy({ it.second }, { it.first }).filter { it.value.size > 1 }

@@ -31,10 +31,24 @@ class ThemeMigrationTest {
     }
 
     @Test
-    fun upgradedInstallWithNoStoredThemeIsOnCleanFromTheFirstRead() {
-        val settings = BaseAppSettings(MapStore(), existingInstall = true)
-        assertEquals(AppTheme.CLEAN, settings.appTheme.value)
+    fun existingInstallWithNoStoredThemeSavesCurrentDefaultNeverClean() {
+        val store = MapStore()
+        val settings = BaseAppSettings(store, existingInstall = true)
+        assertEquals(AppTheme.SIMPLE, settings.appTheme.value)
+        assertEquals(AppTheme.SIMPLE.name, store.getString(BaseAppSettings.KEY_APP_THEME, ""))
         assertTrue(settings.otherThemesHintShown.value)
+    }
+
+    @Test
+    fun existingInstallKeepsCurrentSelectedThemeWithoutSwitchingToClean() {
+        AppTheme.entries.forEach { selected ->
+            val store = MapStore()
+            store.putString(BaseAppSettings.KEY_APP_THEME, selected.name)
+            val settings = BaseAppSettings(store, existingInstall = true)
+            assertEquals(selected, settings.appTheme.value)
+            assertEquals(selected.name, store.getString(BaseAppSettings.KEY_APP_THEME, ""))
+            assertTrue(settings.otherThemesHintShown.value)
+        }
     }
 
     @Test
