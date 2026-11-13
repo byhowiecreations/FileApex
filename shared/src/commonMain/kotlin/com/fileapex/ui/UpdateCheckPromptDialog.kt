@@ -22,19 +22,27 @@ import com.fileapex.update.AppUpdateCoordinator
 fun UpdateCheckPromptHost() {
     if (FileApexServices.managedByStore) return
     val settings = FileApexServices.settings
+    val welcomeTutorialShown by settings.welcomeTutorialShown.collectAsState()
     val answered by settings.updateCheckPromptShown.collectAsState()
     val enabled by settings.checkForUpdatesEnabled.collectAsState()
     var declined by remember { mutableStateOf(false) }
     // A wipe clears the answer; the question belongs to the fresh start after it, not to the wipe itself.
     val wiping by com.fileapex.domain.reset.ClusterResetManager.inProgress.collectAsState()
     val wipeResult by com.fileapex.domain.reset.ClusterResetManager.outcome.collectAsState()
-    if (wiping || wipeResult != null) return
 
     // Someone who already turned checking on in Settings has nothing to be asked.
     LaunchedEffect(answered, enabled) {
         if (!answered && enabled) settings.setUpdateCheckPromptShown(true)
     }
-    if (!declined && (answered || enabled)) return
+    if (!declined && !StartupPromptGate.canShowUpdatePrompt(
+            welcomeTutorialShown = welcomeTutorialShown,
+            managedByStore = FileApexServices.managedByStore,
+            answered = answered,
+            enabled = enabled,
+            wiping = wiping,
+            wipeOutcomePending = wipeResult != null
+        )
+    ) return
 
     if (declined) {
         AlertDialog(

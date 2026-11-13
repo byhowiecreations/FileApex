@@ -37,7 +37,6 @@ import androidx.compose.ui.zIndex
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.DeviceListRow
 import com.fileapex.presentation.ExplorerViewMode
-import com.fileapex.ui.DemoModeBanner
 import com.fileapex.ui.DeviceOrderDragHandle
 import com.fileapex.ui.DeviceOrderEdgeAutoScrollEffect
 import com.fileapex.ui.DeviceOrderItemPlacementSpec
@@ -351,13 +350,6 @@ private fun PairedDevicesBrowseList(
         ),
         verticalArrangement = Arrangement.spacedBy(itemSpacing)
     ) {
-        if (isDemoActive) {
-            item(key = "demo_banner") {
-                DemoModeBanner(
-                    onExitDemo = { com.fileapex.domain.demo.DemoModeState.exitDemo() }
-                )
-            }
-        }
         if (isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive) {
             item(
                 key = "empty",
@@ -436,13 +428,6 @@ private fun PairedDevicesGridBrowseList(
             horizontalArrangement = Arrangement.spacedBy(grid.cellSpacing),
             verticalArrangement = Arrangement.spacedBy(grid.cellSpacing)
         ) {
-            if (isDemoActive) {
-                item(key = "demo_banner", span = { GridItemSpan(grid.columnCount) }) {
-                    DemoModeBanner(
-                        onExitDemo = { com.fileapex.domain.demo.DemoModeState.exitDemo() }
-                    )
-                }
-            }
             if (isInitialLoadComplete && deviceRows.isEmpty() && !isDemoActive) {
                 item(key = "empty", span = { GridItemSpan(grid.columnCount) }) {
                     EmptyDevicesQuickStartCard(

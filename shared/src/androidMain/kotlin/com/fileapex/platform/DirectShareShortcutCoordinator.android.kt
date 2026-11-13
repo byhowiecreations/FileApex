@@ -9,6 +9,7 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import com.fileapex.data.db.PairedDeviceEntity
 import com.fileapex.di.FileApexServices
+import com.fileapex.util.cancellableCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -102,8 +103,8 @@ object DirectShareShortcutCoordinator {
             val peers = rankPeersForShare(FileApexServices.deviceRepository.listDevices())
             publishShortcuts(peers)
             val peer = peers.firstOrNull { it.deviceId == deviceId } ?: return@launch
-            runCatching {
-                ShortcutManagerCompat.pushDynamicShortcut(appContext, buildShortcut(peer, rank = 0))
+            cancellableCatching {
+                ShortcutManagerCompat.pushDynamicShortcut(appContext, buildShortcut(appContext, peer, rank = 0))
             }.onFailure { error ->
                 println("DirectShareShortcutCoordinator: pushDynamicShortcut failed - ${error.message}")
             }
@@ -132,14 +133,18 @@ object DirectShareShortcutCoordinator {
     fun friendKeyFromShortcutId(shortcutId: String?): String? =
         shortcutId?.takeIf { it.startsWith(FRIEND_PREFIX) }?.removePrefix(FRIEND_PREFIX)?.takeIf { it.isNotBlank() }
 
-    private fun buildFriendShortcut(friend: com.fileapex.friends.FriendShareTarget, rank: Int): ShortcutInfoCompat {
+    private fun buildFriendShortcut(
+        context: Context,
+        friend: com.fileapex.friends.FriendShareTarget,
+        rank: Int
+    ): ShortcutInfoCompat {
         val person = Person.Builder().setName(friend.label).setKey(FRIEND_PREFIX + friend.key).setBot(false).setImportant(true).build()
-        return ShortcutInfoCompat.Builder(appContext, FRIEND_PREFIX + friend.key)
+        return ShortcutInfoCompat.Builder(context, FRIEND_PREFIX + friend.key)
             .setShortLabel(ShortcutLabel.of(friend.label, com.fileapex.i18n.AppI18n.t("paired_device"), SHORT_LABEL_MAX))
             .setLongLabel(com.fileapex.i18n.AppI18n.t("send_to_device", friend.label).take(LONG_LABEL_MAX))
-            .setIcon(ShortcutIconRenderer.friend(appContext, friend.label, friend.group))
-            .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
-            .setIntent(Intent(Intent.ACTION_MAIN).setClassName(appContext, MAIN_ACTIVITY_CLASS))
+            .setIcon(ShortcutIconRenderer.friend(context, friend.label, friend.group))
+            .setActivity(ComponentName(context.packageName, MAIN_ACTIVITY_CLASS))
+            .setIntent(Intent(Intent.ACTION_MAIN).setClassName(context, MAIN_ACTIVITY_CLASS))
             .setCategories(setOf(CATEGORY_SHARE_TARGET))
             .setPerson(person)
             .setLongLived(true)
@@ -255,9 +260,13 @@ object DirectShareShortcutCoordinator {
             scheduleRateLimitRetry(REORDER_MIN_INTERVAL_MS - sinceLastPublishMs)
             return
         }
-        val bulletinShortcut = buildBulletinBoardShortcut()
-        val friendShortcuts = friendsToPublish.mapIndexed { index, friend -> buildFriendShortcut(friend, rank = peersToPublish.size + 1 + index) }
-        val targetIds = peersToPublish.map { shortcutId(it.deviceId) }.toSet() + BULLETIN_SHORTCUT_ID + friendsToPublish.map { FRIEND_PREFIX + it.key }
+        val shortcuts = buildShortcutsForPublish(
+            context = appContext,
+            peersToPublish = peersToPublish,
+            friendsToPublish = friendsToPublish
+        )
+        val expectedPeerCount = shortcuts.count { it.id.startsWith(SHORTCUT_PREFIX) }
+        val targetIds = shortcuts.map { it.id }.toSet()
 
         val staleIds = ShortcutManagerCompat.getDynamicShortcuts(appContext)
             .map { it.id }
@@ -266,29 +275,7 @@ object DirectShareShortcutCoordinator {
             ShortcutManagerCompat.removeDynamicShortcuts(appContext, staleIds)
         }
 
-        if (peersToPublish.isEmpty()) {
-            val ok = runCatching {
-                ShortcutManagerCompat.setDynamicShortcuts(appContext, listOf(bulletinShortcut) + friendShortcuts)
-            }.getOrElse { error ->
-                println("DirectShareShortcutCoordinator: setDynamicShortcuts threw - ${error.message}")
-                false
-            }
-            if (ok) {
-                pendingPublishPeers = null
-                rateLimitRetryJob?.cancel()
-                markPublished(signature, membership)
-                println("DirectShareShortcutCoordinator: published Bulletin Board share shortcut only")
-            } else {
-                pendingPublishPeers = peers
-                scheduleRateLimitRetry()
-            }
-            return
-        }
-
-        val shortcuts = listOf(bulletinShortcut) + peersToPublish.mapIndexed { index, peer ->
-            buildShortcut(peer, rank = index + 1)
-        } + friendShortcuts
-        val ok = runCatching {
+        val ok = cancellableCatching {
             ShortcutManagerCompat.setDynamicShortcuts(appContext, shortcuts)
         }.getOrElse { error ->
             println("DirectShareShortcutCoordinator: setDynamicShortcuts threw - ${error.message}")
@@ -297,10 +284,10 @@ object DirectShareShortcutCoordinator {
         val publishedIds = ShortcutManagerCompat.getDynamicShortcuts(appContext).map { it.id }
         val hasBulletin = BULLETIN_SHORTCUT_ID in publishedIds
         val deviceCount = publishedIds.count { it.startsWith(SHORTCUT_PREFIX) }
-        if (!ok || !hasBulletin) {
+        if (!isPublishComplete(ok = ok, publishedIds = publishedIds, expectedPeerCount = expectedPeerCount)) {
             println(
                 "DirectShareShortcutCoordinator: publish failed " +
-                    "(ok=$ok, bulletin=$hasBulletin, devices=$deviceCount/${peersToPublish.size}) - retry later"
+                    "(ok=$ok, bulletin=$hasBulletin, devices=$deviceCount/$expectedPeerCount) - retry later"
             )
             pendingPublishPeers = peersToPublish
             scheduleRateLimitRetry()
@@ -319,14 +306,75 @@ object DirectShareShortcutCoordinator {
         }
 
         println(
-            "DirectShareShortcutCoordinator: published Bulletin Board + ${peersToPublish.size} device shortcut(s) " +
+            "DirectShareShortcutCoordinator: published $expectedPeerCount device shortcut(s) + Bulletin Board " +
                 "(system bulletin=$hasBulletin, devices=$deviceCount): " +
                 peersToPublish.joinToString { it.deviceName }
         )
     }
 
-    private fun buildBulletinBoardShortcut(): ShortcutInfoCompat {
-        val launchIntent = launcherOpenIntent(bulletinOpenUri()) {
+    internal fun buildPublishShortcutsForTest(
+        context: Context,
+        peers: List<PairedDeviceEntity>,
+        friends: List<com.fileapex.friends.FriendShareTarget>
+    ): List<ShortcutInfoCompat> = buildShortcutsForPublish(
+        context = context.applicationContext,
+        peersToPublish = peers,
+        friendsToPublish = friends
+    )
+
+    internal fun buildShortcutForTest(
+        context: Context,
+        peer: PairedDeviceEntity,
+        rank: Int
+    ): ShortcutInfoCompat = buildShortcut(context.applicationContext, peer, rank)
+
+    internal fun isPublishComplete(
+        ok: Boolean,
+        publishedIds: List<String>,
+        expectedPeerCount: Int
+    ): Boolean {
+        if (!ok || BULLETIN_SHORTCUT_ID !in publishedIds) return false
+        return expectedPeerCount == 0 || publishedIds.any { it.startsWith(SHORTCUT_PREFIX) }
+    }
+
+    internal fun buildPeerShortcutsSafely(
+        peers: List<PairedDeviceEntity>,
+        builder: (PairedDeviceEntity, Int) -> ShortcutInfoCompat
+    ): List<ShortcutInfoCompat> {
+        val result = ArrayList<ShortcutInfoCompat>(peers.size)
+        for (peer in peers) {
+            cancellableCatching {
+                builder(peer, result.size)
+            }.onSuccess { shortcut ->
+                result += shortcut
+            }.onFailure { error ->
+                println("DirectShareShortcutCoordinator: skipped peer shortcut - ${error.message}")
+            }
+        }
+        return result
+    }
+
+    private fun buildShortcutsForPublish(
+        context: Context,
+        peersToPublish: List<PairedDeviceEntity>,
+        friendsToPublish: List<com.fileapex.friends.FriendShareTarget>
+    ): List<ShortcutInfoCompat> {
+        val peerShortcuts = buildPeerShortcutsSafely(peersToPublish) { peer, rank ->
+            buildShortcut(context, peer, rank)
+        }
+        val bulletinShortcut = buildBulletinBoardShortcut(context, rank = peerShortcuts.size)
+        val friendShortcuts = friendsToPublish.mapIndexedNotNull { index, friend ->
+            cancellableCatching {
+                buildFriendShortcut(context, friend, rank = peerShortcuts.size + 1 + index)
+            }.onFailure { error ->
+                println("DirectShareShortcutCoordinator: skipped friend shortcut - ${error.message}")
+            }.getOrNull()
+        }
+        return peerShortcuts + bulletinShortcut + friendShortcuts
+    }
+
+    private fun buildBulletinBoardShortcut(context: Context, rank: Int): ShortcutInfoCompat {
+        val launchIntent = launcherOpenIntent(context, bulletinOpenUri()) {
             putExtra(EXTRA_OPEN_BULLETIN, true)
         }
         val person = Person.Builder()
@@ -335,16 +383,16 @@ object DirectShareShortcutCoordinator {
             .setBot(false)
             .setImportant(true)
             .build()
-        return ShortcutInfoCompat.Builder(appContext, BULLETIN_SHORTCUT_ID)
+        return ShortcutInfoCompat.Builder(context, BULLETIN_SHORTCUT_ID)
             .setShortLabel(com.fileapex.i18n.AppI18n.t("bulletin_board"))
             .setLongLabel(com.fileapex.i18n.AppI18n.t("post_to_bulletin_board"))
-            .setIcon(ShortcutIconRenderer.bulletinBoard(appContext))
-            .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
+            .setIcon(ShortcutIconRenderer.bulletinBoard(context))
+            .setActivity(ComponentName(context.packageName, MAIN_ACTIVITY_CLASS))
             .setIntent(launchIntent)
             .setCategories(setOf(CATEGORY_SHARE_TARGET))
             .setPerson(person)
             .setLongLived(true)
-            .setRank(0)
+            .setRank(rank)
             .build()
     }
 
@@ -364,20 +412,20 @@ object DirectShareShortcutCoordinator {
         }
     }
 
-    private fun launcherOpenIntent(uri: Uri, extras: Intent.() -> Unit): Intent {
+    private fun launcherOpenIntent(context: Context, uri: Uri, extras: Intent.() -> Unit): Intent {
         return Intent(Intent.ACTION_VIEW).apply {
-            setClassName(appContext, MAIN_ACTIVITY_CLASS)
+            setClassName(context, MAIN_ACTIVITY_CLASS)
             data = uri
             extras()
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
     }
 
-    private fun buildShortcut(peer: PairedDeviceEntity, rank: Int): ShortcutInfoCompat {
+    private fun buildShortcut(context: Context, peer: PairedDeviceEntity, rank: Int): ShortcutInfoCompat {
         // Launcher long-press uses this VIEW + fileapex://open/… intent.
         // Direct Share still starts ACTION_SEND with EXTRA_SHORTCUT_ID from
         // shortcuts.xml, it does not use setIntent().
-        val launchIntent = launcherOpenIntent(deviceOpenUri(peer.deviceId)) {
+        val launchIntent = launcherOpenIntent(context, deviceOpenUri(peer.deviceId)) {
             putExtra(EXTRA_TARGET_DEVICE_ID, peer.deviceId)
         }
         val person = Person.Builder()
@@ -389,11 +437,11 @@ object DirectShareShortcutCoordinator {
         // Do NOT call setExcludedFromSurfaces(SURFACE_LAUNCHER): ShortcutManagerCompat
         // silently drops those shortcuts from setDynamicShortcuts / addDynamicShortcuts,
         // so the platform stores nothing (share sheet then shows only "FileApex").
-        return ShortcutInfoCompat.Builder(appContext, shortcutId(peer.deviceId))
+        return ShortcutInfoCompat.Builder(context, shortcutId(peer.deviceId))
             .setShortLabel(ShortcutLabel.of(peer.deviceName, com.fileapex.i18n.AppI18n.t("paired_device"), SHORT_LABEL_MAX))
             .setLongLabel(com.fileapex.i18n.AppI18n.t("send_to_device", peer.deviceName).take(LONG_LABEL_MAX))
-            .setIcon(ShortcutIconRenderer.device(appContext, peer))
-            .setActivity(ComponentName(appContext.packageName, MAIN_ACTIVITY_CLASS))
+            .setIcon(ShortcutIconRenderer.device(context, peer))
+            .setActivity(ComponentName(context.packageName, MAIN_ACTIVITY_CLASS))
             .setIntent(launchIntent)
             .setCategories(setOf(CATEGORY_SHARE_TARGET))
             .setPerson(person)

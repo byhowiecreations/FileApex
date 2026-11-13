@@ -44,10 +44,15 @@ fun isFileApexFreestyle(): Boolean =
 fun isFileApexCustomGlassTheme(): Boolean =
     LocalAppTheme.current.traits.glassChrome
 
-/** Top/bottom nav and title-strip background. Pure Black on Freestyle; Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent; Teal on Standard. */
+@Composable
+fun isFileApexSimpleModern(): Boolean =
+    LocalAppTheme.current == AppTheme.SIMPLE && !isFileApexFluentUi()
+
+/** Top/bottom nav and title-strip background. Pure Black on Freestyle; Dark slate-teal pill on Simple; Transparent on Flux Glass & Kinetic Sphere; light surface on Fluent; Teal on Clean. */
 @Composable
 fun fileApexChromeContainerColor(): Color = when {
     isFileApexFreestyle() -> Color.Black
+    isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.ChromeSurface
     isFileApexCustomGlassTheme() -> Color.Transparent
     isFileApexFluentUi() -> MaterialTheme.colorScheme.surface
     else -> FileApexTeal
@@ -56,6 +61,7 @@ fun fileApexChromeContainerColor(): Color = when {
 /** Icons and titles on chrome bars. */
 @Composable
 fun fileApexChromeContentColor(): Color = when {
+    isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.ChromeContent
     isFileApexCustomGlassTheme() -> Color.White
     isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurface
     else -> Color.White
@@ -81,6 +87,7 @@ fun fileApexHeaderActionTint(onChromeBar: Boolean = false): Color = when {
 
 @Composable
 fun fileApexNavSelectedBackgroundColor(): Color = when {
+    isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.PillTint
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent.copy(alpha = 0.22f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.primaryContainer
     else -> Color.White
@@ -88,6 +95,7 @@ fun fileApexNavSelectedBackgroundColor(): Color = when {
 
 @Composable
 fun fileApexNavSelectedIconColor(): Color = when {
+    isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMintSoft
     isFileApexCustomGlassTheme() -> FluxGlassPalette.accent
     isFileApexFluentUi() -> FileApexTeal
     else -> FileApexTealDark
@@ -95,6 +103,7 @@ fun fileApexNavSelectedIconColor(): Color = when {
 
 @Composable
 fun fileApexNavUnselectedIconColor(): Color = when {
+    isFileApexSimpleModern() -> Color(0xFFBFD4D6)
     isFileApexCustomGlassTheme() -> Color.White.copy(alpha = 0.72f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurfaceVariant
     else -> Color.White
@@ -102,6 +111,7 @@ fun fileApexNavUnselectedIconColor(): Color = when {
 
 @Composable
 fun fileApexNavSelectedTextColor(): Color = when {
+    isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMintSoft
     isFileApexCustomGlassTheme() -> Color.White
     isFileApexFluentUi() -> FileApexTeal
     else -> Color.White
@@ -109,6 +119,7 @@ fun fileApexNavSelectedTextColor(): Color = when {
 
 @Composable
 fun fileApexNavUnselectedTextColor(): Color = when {
+    isFileApexSimpleModern() -> com.fileapex.ui.adaptive.simple.SimpleModernPalette.TextSecondary
     isFileApexCustomGlassTheme() -> Color.White.copy(alpha = 0.72f)
     isFileApexFluentUi() -> MaterialTheme.colorScheme.onSurfaceVariant
     else -> Color.White.copy(alpha = 0.85f)
@@ -190,5 +201,21 @@ fun fileApexTileTint(): Color = if (isFileApexJadedSteel()) KineticStyleLook.ste
 fun Modifier.fileApexFloatingChrome(color: Color, radius: Dp = 22.dp, outer: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 4.dp)): Modifier {
     if (!isFileApexCleanCurved()) return this
     val shape = RoundedCornerShape(radius)
-    return padding(outer).shadow(3.dp, shape, clip = false).clip(shape).background(color)
+    val base = padding(outer).shadow(3.dp, shape, clip = false).clip(shape).background(color)
+    return if (isFileApexSimpleModern()) {
+        base.then(
+            Modifier.background(Color.Transparent)
+        ).let { m ->
+            m.drawBehind {
+                val strokeWidth = 1.dp.toPx()
+                drawRoundRect(
+                    color = com.fileapex.ui.adaptive.simple.SimpleModernPalette.ChromeBorder,
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx(), radius.toPx()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+                )
+            }
+        }
+    } else {
+        base
+    }
 }

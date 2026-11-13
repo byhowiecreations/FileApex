@@ -413,7 +413,7 @@ internal fun Modifier.androidPressThenRelease(
                 val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
                 if ((change.position - down.position).getDistance() > tolerance) dragged = true
                 if (!change.pressed) {
-                    if (!dragged) {
+                    if (!dragged && !change.isConsumed) {
                         change.consume()
                         onLongPressRelease()
                     }

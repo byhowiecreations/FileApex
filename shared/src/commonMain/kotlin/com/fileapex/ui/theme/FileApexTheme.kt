@@ -63,31 +63,31 @@ private val StandardColorScheme = lightColorScheme(
     onError = Color.White
 )
 
-/** Light text on the Jaded Steel background; panes are see-through, dialogs and menus keep opaque containers. */
+/** Light text on a smooth dark slate-obsidian & teal gradient; dialogs and menus keep opaque containers. */
 private val SimpleColorScheme = darkColorScheme(
-    primary = Color(0xFF5BB5AE),
-    onPrimary = Color(0xFF05100E),
-    primaryContainer = Color(0x335BB5AE),
-    onPrimaryContainer = Color(0xFF9FDDD6),
+    primary = com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMint,
+    onPrimary = com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentOnMint,
+    primaryContainer = com.fileapex.ui.adaptive.simple.SimpleModernPalette.PillTint,
+    onPrimaryContainer = com.fileapex.ui.adaptive.simple.SimpleModernPalette.AccentMintSoft,
     secondary = Color(0xFF7ECFF2),
     onSecondary = Color(0xFF05121A),
     secondaryContainer = Color(0x337ECFF2),
     onSecondaryContainer = Color(0xFFBFE8F8),
     background = Color.Transparent,
-    onBackground = Color(0xFFF4F7F6),
-    surface = Color(0x4D0F1A21),
-    onSurface = Color(0xFFF4F7F6),
-    surfaceVariant = Color(0x3328383F),
-    onSurfaceVariant = Color(0xFFCBD5E1),
-    outline = Color(0x55FFFFFF),
-    outlineVariant = Color(0x1FFFFFFF),
+    onBackground = com.fileapex.ui.adaptive.simple.SimpleModernPalette.TextPrimary,
+    surface = com.fileapex.ui.adaptive.simple.SimpleModernPalette.CardSurface,
+    onSurface = com.fileapex.ui.adaptive.simple.SimpleModernPalette.TextPrimary,
+    surfaceVariant = Color(0xCC1B2B31),
+    onSurfaceVariant = com.fileapex.ui.adaptive.simple.SimpleModernPalette.TextSecondary,
+    outline = com.fileapex.ui.adaptive.simple.SimpleModernPalette.CardBorder,
+    outlineVariant = Color(0x28FFFFFF),
     error = Color(0xFFFF6B6B),
     onError = Color(0xFF2B0000),
-    surfaceContainerLowest = Color(0xFF0D151A),
-    surfaceContainerLow = Color(0xFF121C22),
-    surfaceContainer = Color(0xFF16222A),
-    surfaceContainerHigh = Color(0xFF1B2931),
-    surfaceContainerHighest = Color(0xFF21313A)
+    surfaceContainerLowest = Color(0xFF0A1115),
+    surfaceContainerLow = Color(0xFF101C20),
+    surfaceContainer = Color(0xFF152227),
+    surfaceContainerHigh = Color(0xFF1A2C30),
+    surfaceContainerHighest = Color(0xFF21353A)
 )
 
 private val FluentColorScheme = lightColorScheme(

@@ -70,6 +70,7 @@ interface AppSettings {
     /** Pending LAN subnet scan waits, so a restart does not scan every peer again. Empty when none. */
     var lanScanBackoffState: String
     val desktopLayoutMode: StateFlow<DesktopLayoutMode>
+    val desktopNavPosition: StateFlow<DesktopNavPosition>
     val desktopSplitFraction: StateFlow<Float>
     val explorerSplitFraction: StateFlow<Float>
     /** Absolute paths of files and folders the user starred in the file manager. */
@@ -279,6 +280,9 @@ interface AppSettings {
 
     /** True once the one-time "check out the other themes" hint was shown or is no longer needed. */
     val otherThemesHintShown: StateFlow<Boolean>
+    /** True once the first-run welcome tutorial has been dismissed or skipped; survives Leave Cluster wipes. */
+    val welcomeTutorialShown: StateFlow<Boolean>
+    fun setWelcomeTutorialShown(shown: Boolean)
 
     /** Broadcast Notifications (phone side): all off until the user opts in. */
     val notificationBroadcastEnabled: StateFlow<Boolean>
@@ -325,6 +329,7 @@ interface AppSettings {
     fun setMembershipProtocolSinceEpochMs(epochMs: Long)
 
     fun setDesktopLayoutMode(mode: DesktopLayoutMode)
+    fun setDesktopNavPosition(position: DesktopNavPosition)
 
     /** [persist] false updates the flow only; drag gestures persist once on drag end. */
     fun setDesktopSplitFraction(fraction: Float, persist: Boolean = true)

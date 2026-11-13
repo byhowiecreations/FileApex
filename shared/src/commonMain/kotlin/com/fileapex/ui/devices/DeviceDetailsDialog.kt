@@ -69,8 +69,7 @@ internal fun ReachedByField(deviceId: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = kind?.let { DeviceListRow.reachedByDetail(it, IrohRuntime.livePath(deviceId)) }
-                ?: stringRes("reached_unknown"),
+            text = DeviceListRow.reachedByDisplay(deviceId, kind, IrohRuntime.livePath(deviceId)),
             style = MaterialTheme.typography.bodyMedium
         )
     }

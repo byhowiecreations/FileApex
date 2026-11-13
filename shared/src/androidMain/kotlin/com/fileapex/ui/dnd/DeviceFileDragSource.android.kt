@@ -1,17 +1,15 @@
 package com.fileapex.ui.dnd
 
-import com.fileapex.presentation.TransferDropUri
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Point
+import android.view.HapticFeedbackConstants
 import android.view.View
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
+import com.fileapex.presentation.TransferDropUri
 
 actual fun Modifier.deviceFileDragSource(
     absolutePath: String?,
@@ -25,35 +23,11 @@ actual fun Modifier.deviceFileDragSource(
     val safeName = fileName?.ifBlank { null }
         ?: absolutePath.substringAfterLast('/').ifBlank { absolutePath }
     val payload = TransferDropUri.build(sourceDeviceId, absolutePath, safeName, fileSize)
-    pointerInput(payload) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            val start = down.position
-            val slop = viewConfiguration.touchSlop
-            val deadline = System.nanoTime() + viewConfiguration.longPressTimeoutMillis * 1_000_000L
-            var held = true
-            while (System.nanoTime() < deadline) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                if (!change.pressed) {
-                    held = false
-                    break
-                }
-                if ((change.position - start).getDistance() > slop) return@awaitEachGesture
-            }
-            if (!held) return@awaitEachGesture
-            while (true) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                if (!change.pressed) return@awaitEachGesture
-                if ((change.position - start).getDistance() > slop) {
-                    change.consume()
-                    startFileDrag(view, payload, safeName, absolutePath)
-                    return@awaitEachGesture
-                }
-            }
-        }
-    }
+    holdAndDragAfterLongPress(
+        key = payload,
+        onHoldCommitted = { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) },
+        onDragStart = { startFileDrag(view, payload, safeName, absolutePath) }
+    )
 }
 
 private fun startFileDrag(view: View, payload: String, label: String, absolutePath: String) {
@@ -74,5 +48,5 @@ private fun startFileDrag(view: View, payload: String, label: String, absolutePa
         }
     }
     ActiveDrag.sourcePath = absolutePath
-    view.startDragAndDrop(clip, shadow, null, View.DRAG_FLAG_GLOBAL)
+    view.startDragAndDrop(clip, shadow, null, 0)
 }

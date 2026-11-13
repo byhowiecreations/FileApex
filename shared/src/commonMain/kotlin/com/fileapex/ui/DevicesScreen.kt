@@ -41,6 +41,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.traits
 import com.fileapex.di.FileApexServices
+import com.fileapex.domain.demo.DemoModeState
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.presentation.BrowseTarget
@@ -212,9 +213,8 @@ fun DevicesScreen(
                     onOpenTransferQueue = onOpenTransferQueue
                 )
             }
-            ClipboardAccessibilityBanner(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+            val isDemoActive by DemoModeState.isDemoModeActive.collectAsState()
+            DevicesScreenTopBanners(showDemoBanner = isDemoActive, onExitDemo = { DemoModeState.exitDemo() })
             if (isFreestyle) {
                 FreestyleDevicesView(
                     deviceRows = listRows,
@@ -331,4 +331,19 @@ fun DevicesScreen(
         onConfirmExitChange = { confirmExit = it },
         onExitApp = onExitApp
     )
+}
+
+@Composable
+internal fun DevicesScreenTopBanners(
+    showDemoBanner: Boolean,
+    onExitDemo: () -> Unit,
+    showClipboardBanner: Boolean = true,
+    bannerModifier: Modifier = Modifier
+) {
+    if (showClipboardBanner) {
+        ClipboardAccessibilityBanner(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    }
+    if (showDemoBanner) {
+        DemoModeBanner(onExitDemo = onExitDemo, modifier = bannerModifier)
+    }
 }

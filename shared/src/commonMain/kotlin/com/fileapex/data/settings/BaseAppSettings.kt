@@ -118,6 +118,9 @@ class BaseAppSettings(
     private val desktopLayout = MutableStateFlow(
         DesktopLayoutMode.fromStorage(store.getString(KEY_DESKTOP_LAYOUT, DesktopLayoutMode.DEFAULT.name))
     )
+    private val desktopNavPositionFlow = MutableStateFlow(
+        DesktopNavPosition.fromStorage(store.getString(KEY_DESKTOP_NAV_POSITION, DesktopNavPosition.DEFAULT.name))
+    )
     private val desktopSplitFractionFlow = MutableStateFlow(
         (store.getString(KEY_DESKTOP_SPLIT_FRACTION, "").toFloatOrNull() ?: 0.35f).coerceIn(0.20f, 0.65f)
     )
@@ -194,6 +197,8 @@ class BaseAppSettings(
 
     private val otherThemesHintShownFlow = MutableStateFlow(store.getBoolean(KEY_OTHER_THEMES_HINT_SHOWN, false))
     override val otherThemesHintShown: StateFlow<Boolean> = otherThemesHintShownFlow.asStateFlow()
+    private val welcomeTutorialShownFlow = MutableStateFlow(store.getBoolean(KEY_WELCOME_TUTORIAL_SHOWN, false))
+    override val welcomeTutorialShown: StateFlow<Boolean> = welcomeTutorialShownFlow.asStateFlow()
     private val notificationBroadcastEnabledFlow =
         MutableStateFlow(store.getBoolean(KEY_NOTIFICATION_BROADCAST_ENABLED, false))
     override val notificationBroadcastEnabled: StateFlow<Boolean> = notificationBroadcastEnabledFlow.asStateFlow()
@@ -475,6 +480,7 @@ class BaseAppSettings(
     override val clusterMembershipVersion: StateFlow<Long> = clusterMembershipVersionFlow.asStateFlow()
     override val membershipProtocolSinceEpochMs: StateFlow<Long> = membershipProtocolSinceFlow.asStateFlow()
     override val desktopLayoutMode: StateFlow<DesktopLayoutMode> = desktopLayout.asStateFlow()
+    override val desktopNavPosition: StateFlow<DesktopNavPosition> = desktopNavPositionFlow.asStateFlow()
     override val desktopUiStyle: StateFlow<DesktopUiStyle> = desktopUiStyleFlow.asStateFlow()
     override val explorerViewMode: StateFlow<ExplorerViewMode> = explorerViewModeFlow.asStateFlow()
     override val devicesViewMode: StateFlow<ExplorerViewMode> = devicesViewModeFlow.asStateFlow()
@@ -934,6 +940,11 @@ class BaseAppSettings(
         desktopLayout.value = mode
     }
 
+    override fun setDesktopNavPosition(position: DesktopNavPosition) {
+        store.putString(KEY_DESKTOP_NAV_POSITION, position.name)
+        desktopNavPositionFlow.value = position
+    }
+
     override fun setDesktopSplitFraction(fraction: Float, persist: Boolean) {
         val clamped = fraction.coerceIn(0.20f, 0.65f)
         desktopSplitFractionFlow.value = clamped
@@ -1008,6 +1019,11 @@ class BaseAppSettings(
     override fun setOtherThemesHintShown(shown: Boolean) {
         otherThemesHintShownFlow.value = shown
         store.putBoolean(KEY_OTHER_THEMES_HINT_SHOWN, shown)
+    }
+
+    override fun setWelcomeTutorialShown(shown: Boolean) {
+        welcomeTutorialShownFlow.value = shown
+        store.putBoolean(KEY_WELCOME_TUTORIAL_SHOWN, shown)
     }
 
     override fun setUpdateCheckPromptShown(shown: Boolean) {
@@ -1281,7 +1297,11 @@ class BaseAppSettings(
     }
 
     override fun resetToDefaults() {
+        val keepWelcomeTutorial = welcomeTutorialShownFlow.value || store.getBoolean(KEY_WELCOME_TUTORIAL_SHOWN, false)
         store.clear()
+        if (keepWelcomeTutorial) {
+            store.putBoolean(KEY_WELCOME_TUTORIAL_SHOWN, true)
+        }
         noticeSettings.reload()
         google.value = false
         googleEmail.value = ""
@@ -1326,11 +1346,13 @@ class BaseAppSettings(
         clusterMembershipVersionFlow.value = 0L
         membershipProtocolSinceFlow.value = 0L
         desktopLayout.value = DesktopLayoutMode.DEFAULT
+        desktopNavPositionFlow.value = DesktopNavPosition.DEFAULT
         desktopSplitFractionFlow.value = 0.35f
         explorerSplitFractionFlow.value = 0.38f
         explorerFavoritesFlow.value = emptyList()
         updateCheckPromptShownFlow.value = false
         otherThemesHintShownFlow.value = false
+        welcomeTutorialShownFlow.value = keepWelcomeTutorial
         simpleActiveDeviceIdFlow.value = ""
         notificationCompanionGrantFlow.value = ""
         notificationBroadcastEnabledFlow.value = false
@@ -1446,6 +1468,7 @@ class BaseAppSettings(
         const val KEY_NOTIFICATION_COMPANION_GRANT = "notification_companion_grant"
         const val KEY_SIMPLE_ACTIVE_DEVICE_ID = "simple_active_device_id"
         const val KEY_OTHER_THEMES_HINT_SHOWN = "other_themes_hint_shown"
+        const val KEY_WELCOME_TUTORIAL_SHOWN = "welcome_tutorial_shown"
         const val KEY_THEME_DEFAULT_MIGRATED = "theme_default_migrated"
         const val KEY_KINETIC_STYLE = "kinetic_style"
         const val KEY_BULLETIN_BOARD_STYLE = "bulletin_board_style"
@@ -1490,6 +1513,7 @@ class BaseAppSettings(
         const val KEY_MEMBERSHIP_PROTOCOL_SINCE = "membership_protocol_since_epoch_ms"
         const val KEY_LAN_SCAN_BACKOFF = "lan_scan_backoff"
         const val KEY_DESKTOP_LAYOUT = "desktop_layout_mode"
+        const val KEY_DESKTOP_NAV_POSITION = "desktop_nav_position"
         const val KEY_DESKTOP_SPLIT_FRACTION = "desktop_split_fraction"
         const val KEY_EXPLORER_SPLIT_FRACTION = "explorer_split_fraction"
         const val KEY_EXPLORER_FAVORITES = "explorer_favorites"
@@ -1536,58 +1560,5 @@ class BaseAppSettings(
         const val KEY_SETTINGS_GROUP_SECURITY_ACCOUNT = "settings_group_security_account_expanded"
         const val KEY_SETTINGS_GROUP_REMOTE_ACCESS = "settings_group_remote_access_expanded"
         const val KEY_SHOW_ADVANCED_SETTINGS = "show_advanced_settings"
-    }
-}
-
-internal fun decodeKineticOffsets(encoded: String): Map<String, Pair<Float, Float>> {
-    if (encoded.isBlank()) return emptyMap()
-    val map = mutableMapOf<String, Pair<Float, Float>>()
-    encoded.split(";").forEach { token ->
-        if (token.isBlank()) return@forEach
-        val pipeParts = token.split("|")
-        if (pipeParts.size == 3) {
-            val id = pipeParts[0]
-            val dx = pipeParts[1].toFloatOrNull()
-            val dy = pipeParts[2].toFloatOrNull()
-            if (id.isNotBlank() && dx != null && dy != null) {
-                map[id] = Pair(dx, dy)
-                if (id.startsWith("cmp_")) map["cmp:" + id.removePrefix("cmp_")] = Pair(dx, dy)
-                if (id.startsWith("exp_")) map["exp:" + id.removePrefix("exp_")] = Pair(dx, dy)
-            }
-        } else {
-            val colonParts = token.split(":")
-            if (colonParts.size == 3) {
-                val id = colonParts[0]
-                val dx = colonParts[1].toFloatOrNull()
-                val dy = colonParts[2].toFloatOrNull()
-                if (id.isNotBlank() && dx != null && dy != null) {
-                    map[id] = Pair(dx, dy)
-                    if (id.startsWith("cmp_")) map["cmp:" + id.removePrefix("cmp_")] = Pair(dx, dy)
-                    if (id.startsWith("exp_")) map["exp:" + id.removePrefix("exp_")] = Pair(dx, dy)
-                }
-            }
-        }
-    }
-    return map
-}
-
-private fun decodeStringMap(encoded: String): Map<String, String> {
-    if (encoded.isBlank()) return emptyMap()
-    val map = mutableMapOf<String, String>()
-    encoded.split(";").forEach { token ->
-        if (token.isBlank()) return@forEach
-        val parts = token.split("|", limit = 2)
-        if (parts.size == 2 && parts[0].isNotBlank()) {
-            map[parts[0]] = parts[1]
-        }
-    }
-    return map
-}
-
-private fun encodeStringMap(map: Map<String, String>): String {
-    return map.entries.joinToString(";") { (k, v) ->
-        val cleanKey = k.replace(";", "_").replace("|", "_")
-        val cleanVal = v.replace(";", "_")
-        "$cleanKey|$cleanVal"
     }
 }

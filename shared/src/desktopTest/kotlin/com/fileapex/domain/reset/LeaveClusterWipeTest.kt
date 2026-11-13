@@ -10,8 +10,13 @@ import com.fileapex.data.settings.DriveRelayMaxMb
 import com.fileapex.data.settings.PinIdleTimeout
 import com.fileapex.data.settings.SettingsKvStore
 import com.fileapex.domain.clipboard.ClipboardShareMode
+import com.fileapex.domain.diagnostics.DeviceDiagnosticsFormatter
 import com.fileapex.domain.pairing.RemovedDeviceRecord
+import com.fileapex.domain.presence.RouteKind
+import com.fileapex.platform.formatHostFileSize
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.update.currentAppVersionCode
+import com.fileapex.update.currentAppVersionName
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -154,5 +159,40 @@ class LeaveClusterWipeTest {
         assertEquals("MacBook Pro 16\"", demo.demoDeviceRows.value[0].deviceName)
         demo.exitDemo()
         assertFalse(demo.isDemoModeActive.value)
+    }
+
+    @Test
+    fun `demo devices expose memory, current app version, and network in diagnostics`() {
+        val demo = com.fileapex.domain.demo.DemoModeState
+        demo.launchDemo()
+        try {
+            val expectedVersion = currentAppVersionName()
+            val expectedCode = currentAppVersionCode()
+            assertEquals(2, demo.demoDeviceRows.value.size)
+            demo.demoDeviceRows.value.forEach { row ->
+                assertEquals(expectedVersion, row.appVersion)
+                assertEquals(expectedCode, row.appVersionCode)
+                assertEquals(RouteKind.Lan, row.reachedBy)
+            }
+            listOf("demo_macbook", "demo_tablet").forEach { id ->
+                val diag = demo.getDemoDeviceDiagnostics(id)
+                assertTrue("$id total memory > 0", (diag.memory.totalBytes ?: 0L) > 0L)
+                assertTrue("$id available memory > 0", (diag.memory.availableBytes ?: 0L) > 0L)
+                assertTrue("$id used memory > 0", (diag.memory.usedBytes ?: 0L) > 0L)
+                assertEquals(expectedVersion, diag.app.versionName)
+                assertEquals(expectedCode, diag.app.versionCode)
+                assertEquals("Wi-Fi", diag.network.interfaceType)
+            }
+            val tabletDiag = demo.getDemoDeviceDiagnostics("demo_tablet")
+            assertEquals("128 GB", formatHostFileSize(tabletDiag.storage.totalBytes!!, 1000))
+            assertEquals("46 GB", formatHostFileSize(tabletDiag.storage.usedBytes!!, 1000))
+            assertEquals("8 GB", formatHostFileSize(tabletDiag.memory.totalBytes!!, 1000))
+            val macDiag = demo.getDemoDeviceDiagnostics("demo_macbook")
+            assertEquals("1 TB", formatHostFileSize(macDiag.storage.totalBytes!!, 1000))
+            assertEquals("16 GB", formatHostFileSize(macDiag.memory.totalBytes!!, 1000))
+            assertTrue(DeviceDiagnosticsFormatter.memorySummary(tabletDiag.memory).contains("GB"))
+        } finally {
+            demo.exitDemo()
+        }
     }
 }

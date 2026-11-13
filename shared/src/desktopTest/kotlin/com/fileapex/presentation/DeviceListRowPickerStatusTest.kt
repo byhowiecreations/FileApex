@@ -52,4 +52,15 @@ class DeviceListRowPickerStatusTest {
         assertEquals(AppI18n.t("reached_iroh_relay"), DeviceListRow.reachedByDetail(RouteKind.Iroh, "relay"))
         assertEquals(AppI18n.t("reached_iroh_direct"), DeviceListRow.reachedByDetail(RouteKind.Iroh, "direct"))
     }
+
+    @Test
+    fun demoDevicesShowSimulatedDemoInsteadOfUnknownInReachedBy() {
+        val simulated = AppI18n.t("reached_simulated_demo")
+        assertNotEquals("reached_simulated_demo", simulated)
+        assertNotEquals(AppI18n.t("reached_unknown"), simulated)
+        assertEquals(simulated, DeviceListRow.reachedByDisplay("demo_macbook", reachedBy = null, irohPath = null))
+        assertEquals(simulated, DeviceListRow.reachedByDisplay("demo_tablet", reachedBy = null, irohPath = null))
+        assertEquals(AppI18n.t("reached_lan_direct"), DeviceListRow.reachedByDisplay("peer-1", reachedBy = RouteKind.Lan, irohPath = null))
+        assertEquals(AppI18n.t("reached_unknown"), DeviceListRow.reachedByDisplay("peer-1", reachedBy = null, irohPath = null))
+    }
 }

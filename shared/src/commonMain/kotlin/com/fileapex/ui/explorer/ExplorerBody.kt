@@ -112,7 +112,8 @@ internal fun ExplorerScope.ExplorerBody(dropHighlight: ExplorerDropHighlight, op
                     Column(modifier = Modifier.fillMaxSize()) {
                         ExplorerHeader()
                         val breadcrumbLabel = when {
-                            splitOpen && paneId == ExplorerPaneId.Primary -> stringRes("pane_local")
+                            splitOpen && paneId == ExplorerPaneId.Primary ->
+                                if (target is BrowseTarget.Local) stringRes("pane_local") else target.displayName
                             !paneLabel.isNullOrBlank() -> paneLabel
                             else -> null
                         }
@@ -231,12 +232,8 @@ internal fun ColumnScope.ExplorerPanes(
 ) {
     with(notes) { with(inputs) { with(frame) { with(live) {
         if (splitOpen) {
-            val secondaryLocal = remember(target.deviceId, target.rootPath, target.displayName) {
-                BrowseTarget.Local(
-                    deviceId = target.deviceId,
-                    displayName = target.displayName,
-                    rootPath = target.rootPath
-                )
+            val secondaryLocal = remember(target.deviceId) {
+                ExplorerSplitPolicy.defaultSecondaryLocalTarget()
             }
             val rightTarget = secondaryTarget ?: secondaryLocal
             val rightKey = if (rightTarget is BrowseTarget.Remote) {
@@ -271,7 +268,8 @@ internal fun ColumnScope.ExplorerPanes(
                             }
                         }
                 ) {
-                    PaneSourceLabel(stringRes("pane_local"))
+                    val leftLabel = if (target is BrowseTarget.Local) stringRes("pane_local") else target.displayName
+                    PaneSourceLabel(leftLabel)
                     Spacer(modifier = Modifier.height(3.dp))
                     ExplorerBreadcrumb(
                         label = null,
@@ -299,8 +297,8 @@ internal fun ColumnScope.ExplorerPanes(
                         canNavigateUp = state.canNavigateUp,
                         isSelectionMode = state.isSelectionMode,
                         selectedFileIds = state.selectedFileIds,
-                        isRemoteTarget = false,
-                        sourceDeviceId = null,
+                        isRemoteTarget = target is BrowseTarget.Remote,
+                        sourceDeviceId = (target as? BrowseTarget.Remote)?.deviceId,
                         loadingFolderPath = null,
                         isLoading = false,
                         onNavigateUp = viewModel::navigateUp,

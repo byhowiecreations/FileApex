@@ -2,13 +2,19 @@ package com.fileapex.domain.demo
 
 import com.fileapex.domain.diagnostics.BatteryDiagnostics
 import com.fileapex.domain.diagnostics.DeviceIdentityDiagnostics
+import com.fileapex.domain.diagnostics.MemoryDiagnostics
+import com.fileapex.domain.diagnostics.NetworkDiagnostics
 import com.fileapex.domain.diagnostics.PeerDeviceDiagnostics
 import com.fileapex.domain.diagnostics.ProcessorDiagnostics
 import com.fileapex.domain.diagnostics.StorageDiagnostics
 import com.fileapex.domain.model.RemoteFileItem
+import com.fileapex.domain.presence.RouteKind
 import com.fileapex.domain.transfer.TransferActivityGuard
+import com.fileapex.platform.collectAppDiagnostics
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DeviceListRow
+import com.fileapex.update.currentAppVersionCode
+import com.fileapex.update.currentAppVersionName
 import com.fileapex.util.TimeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,30 +28,36 @@ object DemoModeState {
     private val _isDemoModeActive = MutableStateFlow(false)
     val isDemoModeActive = _isDemoModeActive.asStateFlow()
 
-    private fun initialDemoDeviceRows(): List<DeviceListRow> = listOf(
-        DeviceListRow(
-            deviceId = "demo_macbook",
-            deviceName = "MacBook Pro 16\"",
-            online = true,
-            appVersion = "0.14.2a",
-            appVersionCode = 165,
-            os = "macOS",
-            platform = "Desktop",
-            deviceMake = "Apple",
-            deviceModel = "MacBookPro18,1"
-        ),
-        DeviceListRow(
-            deviceId = "demo_tablet",
-            deviceName = "Pixel Tablet",
-            online = true,
-            appVersion = "0.14.2a",
-            appVersionCode = 165,
-            os = "Android",
-            platform = "Android",
-            deviceMake = "Google",
-            deviceModel = "Pixel Tablet"
+    private fun initialDemoDeviceRows(): List<DeviceListRow> {
+        val versionName = currentAppVersionName()
+        val versionCode = currentAppVersionCode()
+        return listOf(
+            DeviceListRow(
+                deviceId = "demo_macbook",
+                deviceName = "MacBook Pro 16\"",
+                online = true,
+                appVersion = versionName,
+                appVersionCode = versionCode,
+                os = "macOS",
+                platform = "Desktop",
+                deviceMake = "Apple",
+                deviceModel = "MacBookPro18,1",
+                reachedBy = RouteKind.Lan
+            ),
+            DeviceListRow(
+                deviceId = "demo_tablet",
+                deviceName = "Pixel Tablet",
+                online = true,
+                appVersion = versionName,
+                appVersionCode = versionCode,
+                os = "Android",
+                platform = "Android",
+                deviceMake = "Google",
+                deviceModel = "Pixel Tablet",
+                reachedBy = RouteKind.Lan
+            )
         )
-    )
+    }
 
     private val _demoDeviceRows = MutableStateFlow(initialDemoDeviceRows())
     val demoDeviceRows: StateFlow<List<DeviceListRow>> = _demoDeviceRows.asStateFlow()
@@ -100,9 +112,16 @@ object DemoModeState {
                     lowPowerMode = false
                 ),
                 storage = StorageDiagnostics(
-                    usedBytes = 48_318_382_080L,
-                    totalBytes = 137_438_953_472L
-                )
+                    usedBytes = 46_000_000_000L,
+                    totalBytes = 128_000_000_000L
+                ),
+                network = NetworkDiagnostics(interfaceType = "Wi-Fi"),
+                memory = MemoryDiagnostics(
+                    totalBytes = 8_000_000_000L,
+                    availableBytes = 3_100_000_000L,
+                    usedBytes = 4_900_000_000L
+                ),
+                app = collectAppDiagnostics()
             )
         } else {
             PeerDeviceDiagnostics(
@@ -127,9 +146,16 @@ object DemoModeState {
                     lowPowerMode = false
                 ),
                 storage = StorageDiagnostics(
-                    usedBytes = 300_647_710_720L,
-                    totalBytes = 1_000_204_886_016L
-                )
+                    usedBytes = 312_000_000_000L,
+                    totalBytes = 1_000_000_000_000L
+                ),
+                network = NetworkDiagnostics(interfaceType = "Wi-Fi"),
+                memory = MemoryDiagnostics(
+                    totalBytes = 16_000_000_000L,
+                    availableBytes = 6_400_000_000L,
+                    usedBytes = 9_600_000_000L
+                ),
+                app = collectAppDiagnostics()
             )
         }
     }

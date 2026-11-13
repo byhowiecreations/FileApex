@@ -46,13 +46,14 @@ internal enum class SettingsPage(val parent: SettingsPage?) {
 }
 
 /** Settings pages other screens can open directly. */
-enum class SettingsDeepLink { Clipboard, Tailscale, Notifications, BroadcastNotifications }
+enum class SettingsDeepLink { Clipboard, Tailscale, Notifications, BroadcastNotifications, OnboardingPermissions }
 
 internal fun settingsPageFor(link: SettingsDeepLink): SettingsPage = when (link) {
     SettingsDeepLink.Clipboard -> SettingsPage.Clipboard
     SettingsDeepLink.Tailscale -> SettingsPage.Tailscale
     SettingsDeepLink.Notifications -> SettingsPage.Notifications
     SettingsDeepLink.BroadcastNotifications -> SettingsPage.BroadcastNotifications
+    SettingsDeepLink.OnboardingPermissions -> SettingsPage.OnboardingPermissions
 }
 
 enum class SettingsScreenLayoutMode {

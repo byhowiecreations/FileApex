@@ -27,6 +27,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.domain.pairing.PairingPayload
@@ -151,7 +152,8 @@ fun App(
     pendingClipboardOptInSender: String? = null,
     onClipboardOptInConsumed: () -> Unit = {},
     pendingOpenSettingsPage: String? = null,
-    onOpenSettingsPageConsumed: () -> Unit = {}
+    onOpenSettingsPageConsumed: () -> Unit = {},
+    desktopTopInset: Dp = 0.dp
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
     val devicesViewModel: DevicesViewModel = viewModel { DevicesViewModel() }
@@ -165,6 +167,12 @@ fun App(
     var previouslyWide by remember { mutableStateOf(false) }
     var simpleDestination by remember { mutableStateOf(SimpleDestination.Home) }
     var settingsDeepLink by remember { mutableStateOf<SettingsDeepLink?>(null) }
+    val welcomeTutorialShown by FileApexServices.settings.welcomeTutorialShown.collectAsState()
+    val clusterWiping by com.fileapex.domain.reset.ClusterResetManager.inProgress.collectAsState()
+    var showLocalFilesPermissionDialog by remember { mutableStateOf(false) }
+    val requestStoragePermissionOnDemand: () -> Unit = {
+        showLocalFilesPermissionDialog = true
+    }
 
     LaunchedEffect(pendingOpenSettingsPage, setupComplete) {
         val page = pendingOpenSettingsPage ?: return@LaunchedEffect
@@ -315,16 +323,7 @@ fun App(
         com.fileapex.friends.ui.FriendsHost()
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val widthClass = widthSizeClassFor(maxWidth)
-            val desktopLayoutMode = if (usesDesktopFileSelection()) {
-                FileApexServices.settings.desktopLayoutMode.collectAsState().value
-            } else {
-                null
-            }
-            val isWide = appTheme.traits.dockHome || when (desktopLayoutMode) {
-                DesktopLayoutMode.Compact -> false
-                DesktopLayoutMode.Expanded -> true
-                null -> widthClass.isWide
-            }
+            val isWide = appTheme.traits.dockHome || widthClass.isWide
 
             val onDevicesPage = if (isWide) {
                 route !is AppRoute.Explorer && route !is AppRoute.Settings &&
@@ -389,7 +388,8 @@ fun App(
                 Surface(
                     modifier = Modifier
                         .fillMaxSize()
-                        .safeDrawingPadding(),
+                        .safeDrawingPadding()
+                        .padding(top = desktopTopInset),
                     color = if (isCustomGlass || bgBrush != null || (appTheme == AppTheme.SIMPLE && !windowsFluent)) {
                         Color.Transparent
                     } else if (windowsFluent) {
@@ -401,7 +401,10 @@ fun App(
             ) {
 
 
-                if (!setupComplete && onboardingSteps.isNotEmpty()) {
+                if (!setupComplete &&
+                    com.fileapex.platform.OnDemandPermissionPolicy.blockLaunchWithPermissionScreen &&
+                    onboardingSteps.isNotEmpty()
+                ) {
                     OnboardingScreen(
                         steps = onboardingSteps,
                         deniedStepIds = deniedOnboardingStepIds,
@@ -500,16 +503,7 @@ fun App(
                             )
                             else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                 val widthClass = widthSizeClassFor(maxWidth)
-                                val desktopLayoutMode = if (usesDesktopFileSelection()) {
-                                    FileApexServices.settings.desktopLayoutMode.collectAsState().value
-                                } else {
-                                    null
-                                }
-                                val isWide = appTheme.traits.dockHome || when (desktopLayoutMode) {
-                                    DesktopLayoutMode.Compact -> false
-                                    DesktopLayoutMode.Expanded -> true
-                                    null -> widthClass.isWide
-                                }
+                                val isWide = appTheme.traits.dockHome || widthClass.isWide
 
                                 if (appTheme == AppTheme.SIMPLE) {
                                     // Overlay routes return to Devices; anything that asked for a browser or Settings maps onto Simple's own screens.
@@ -538,7 +532,7 @@ fun App(
                                         isWide = isWide,
                                         devicesViewModel = devicesViewModel,
                                         hasStoragePermission = hasStoragePermission,
-                                        onRequestStoragePermission = onRequestStoragePermission,
+                                        onRequestStoragePermission = requestStoragePermissionOnDemand,
                                         onGenerateQr = {
                                             onStartShareServer()
                                             route = AppRoute.GenerateQr
@@ -550,6 +544,7 @@ fun App(
                                         onExitApp = exitFileApex,
                                         onOpenTransferQueue = { route = AppRoute.TransferQueue },
                                         onOpenNotes = { route = AppRoute.Notes },
+                                        onboardingSteps = onboardingSteps,
                                         settingsDeepLink = settingsDeepLink,
                                         onSettingsDeepLinkChange = { settingsDeepLink = it },
                                         settingsContent = { deepLink, onDeepLinkConsumed ->
@@ -664,7 +659,7 @@ fun App(
                                         },
                                         onOpenLocalFiles = {
                                             if (!hasStoragePermission) {
-                                                 onRequestStoragePermission()
+                                                 requestStoragePermissionOnDemand()
                                             } else {
                                                  wideSelectedTarget = devicesViewModel.thisDeviceTarget()
                                                  wideHomeTab = HomeTab.Files
@@ -727,7 +722,7 @@ fun App(
                                         onOpenDevice = { route = AppRoute.Explorer(it) },
                                         onOpenLocalFiles = {
                                             if (!hasStoragePermission) {
-                                                onRequestStoragePermission()
+                                                requestStoragePermissionOnDemand()
                                             } else {
                                                 route = AppRoute.Explorer(devicesViewModel.thisDeviceTarget())
                                             }
@@ -780,7 +775,7 @@ fun App(
                             onLocalFiles = {
                                 route = AppRoute.Devices
                                 if (!hasStoragePermission) {
-                                    onRequestStoragePermission()
+                                    requestStoragePermissionOnDemand()
                                 } else {
                                     wideSelectedTarget = devicesViewModel.thisDeviceTarget()
                                     wideHomeTab = HomeTab.Files
@@ -801,6 +796,20 @@ fun App(
                                 wideHomeTab = HomeTab.Settings
                             },
                             modifier = Modifier.align(Alignment.BottomCenter)
+                        )
+                    }
+                    if (!welcomeTutorialShown && !showLanguagePrompt && !shareOverlay && !clusterWiping) {
+                        com.fileapex.ui.adaptive.simple.SimpleWelcomeTutorialOverlay(
+                            onDismiss = { FileApexServices.settings.setWelcomeTutorialShown(true) }
+                        )
+                    }
+                    if (showLocalFilesPermissionDialog) {
+                        com.fileapex.ui.adaptive.simple.OnDemandLocalFilesPermissionDialog(
+                            onGrant = {
+                                showLocalFilesPermissionDialog = false
+                                onRequestStoragePermission()
+                            },
+                            onDismiss = { showLocalFilesPermissionDialog = false }
                         )
                     }
                     }

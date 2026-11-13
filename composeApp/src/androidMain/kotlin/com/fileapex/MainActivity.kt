@@ -584,7 +584,11 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshPermissions() {
         onboardingSteps = AndroidOnboardingPermissions.buildSteps(this)
-        onboardingComplete = AndroidOnboardingPermissions.isComplete(this, onboardingSteps)
+        onboardingComplete = if (com.fileapex.platform.OnDemandPermissionPolicy.blockLaunchWithPermissionScreen) {
+            AndroidOnboardingPermissions.isComplete(this, onboardingSteps)
+        } else {
+            true
+        }
         hasStoragePermission = onboardingSteps
             .firstOrNull { it.id == AndroidOnboardingPermissions.ID_MANAGE_EXTERNAL_STORAGE }
             ?.granted

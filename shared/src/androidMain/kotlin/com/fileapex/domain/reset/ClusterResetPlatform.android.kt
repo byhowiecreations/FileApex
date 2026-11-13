@@ -65,6 +65,10 @@ actual object ClusterResetPlatform {
                 context.getSharedPreferences(pref, Context.MODE_PRIVATE).edit().clear().commit()
             }
         }
+        val keepWelcomeTutorial = cancellableCatching {
+            context.getSharedPreferences("fileapex_settings", Context.MODE_PRIVATE)
+                .getBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_WELCOME_TUTORIAL_SHOWN, false)
+        }.getOrDefault(false)
         cancellableCatching {
             val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
             if (sharedPrefsDir.isDirectory) {
@@ -78,10 +82,16 @@ actual object ClusterResetPlatform {
 
         // The loop above deleted the settings file that held the "default theme decided" marker; the database
         // file still exists, so without it the next launch counts as an old install and switches to Clean.
+        // The first-run tutorial dismissal also persists so Leave Cluster does not re-nag an experienced user.
         cancellableCatching {
             context.getSharedPreferences("fileapex_settings", Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_THEME_DEFAULT_MIGRATED, true)
+                .apply {
+                    if (keepWelcomeTutorial) {
+                        putBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_WELCOME_TUTORIAL_SHOWN, true)
+                    }
+                }
                 .commit()
         }
 

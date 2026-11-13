@@ -1,5 +1,6 @@
 package com.fileapex.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,9 +8,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -142,6 +143,13 @@ fun EmptyDevicesQuickStartCard(
     }
 }
 
+internal enum class DemoModeBannerButtonPlacement {
+    BelowText
+}
+
+internal fun resolveDemoModeBannerLayoutForTest(): DemoModeBannerButtonPlacement =
+    DemoModeBannerButtonPlacement.BelowText
+
 @Composable
 fun DemoModeBanner(
     onExitDemo: () -> Unit,
@@ -155,23 +163,29 @@ fun DemoModeBanner(
         color = MaterialTheme.colorScheme.tertiaryContainer,
         tonalElevation = 2.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = stringRes("demo_mode_banner"),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.width(8.dp))
             OutlinedButton(
-                onClick = onExitDemo
+                onClick = onExitDemo,
+                modifier = Modifier.align(Alignment.End),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                ),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.45f)
+                )
             ) {
                 Text(stringRes("exit_demo"))
             }

@@ -123,6 +123,12 @@ data class DeviceListRow(
             }
         }
 
+        fun reachedByDisplay(deviceId: String, reachedBy: RouteKind?, irohPath: String?): String = when {
+            reachedBy != null -> reachedByDetail(reachedBy, irohPath)
+            com.fileapex.domain.demo.DemoModeState.isDemoDeviceId(deviceId) -> AppI18n.t("reached_simulated_demo")
+            else -> AppI18n.t("reached_unknown")
+        }
+
         @Composable
         fun localizedOnlineLabel(reachedBy: RouteKind?): String {
             LocalAppLocale.current

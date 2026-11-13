@@ -32,16 +32,21 @@ object KineticStyleLook {
     val muted = Color(0xFFB7C4BE)
 }
 
-/** The Jaded Steel texture, faded very slightly. */
+/** Modern dark slate-obsidian backdrop with a soft upper-left emerald-teal atmospheric glow. */
 @Composable
-fun Modifier.simpleSteelBackground(): Modifier {
-    val painter = painterResource(Res.drawable.jaded_bg)
-    return this
-        .paint(painter, contentScale = ContentScale.Crop)
-        .background(Color.White.copy(alpha = SIMPLE_STEEL_VEIL_ALPHA))
-}
-
-private const val SIMPLE_STEEL_VEIL_ALPHA = 0.10f
+fun Modifier.simpleSteelBackground(): Modifier =
+    background(com.fileapex.ui.adaptive.simple.SimpleModernPalette.BackgroundDark)
+        .background(
+            androidx.compose.ui.graphics.Brush.radialGradient(
+                colorStops = arrayOf(
+                    0.0f to com.fileapex.ui.adaptive.simple.SimpleModernPalette.GlowTeal,
+                    0.42f to com.fileapex.ui.adaptive.simple.SimpleModernPalette.GlowMid,
+                    1.0f to androidx.compose.ui.graphics.Color.Transparent
+                ),
+                center = androidx.compose.ui.geometry.Offset(80f, 90f),
+                radius = 950f
+            )
+        )
 
 @Composable
 fun JadedSteelWash(

@@ -1,41 +1,17 @@
 package com.fileapex.ui.adaptive
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,22 +23,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.cloud.currentPlatformLabel
 import com.fileapex.data.identity.LocalIdentity
+import com.fileapex.data.settings.DesktopNavPosition
 import com.fileapex.di.FileApexServices
 import com.fileapex.domain.device.PhoneLocator
 import com.fileapex.domain.notifications.NotificationCompanion
@@ -70,24 +40,31 @@ import com.fileapex.domain.peer.PeerPlatform
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.FileApexBackHandler
+import com.fileapex.platform.OnboardingPermissionStep
+import com.fileapex.platform.usesDesktopFileSelection
 import com.fileapex.presentation.BrowseTarget
 import com.fileapex.presentation.DevicesViewModel
 import com.fileapex.presentation.ExplorerSplitSession
 import com.fileapex.presentation.ExplorerViewMode
+import com.fileapex.ui.DevicesSnackbars
 import com.fileapex.ui.ExplorerHeaderCommands
 import com.fileapex.ui.FileExplorerScreen
 import com.fileapex.ui.SettingsDeepLink
+import com.fileapex.ui.adaptive.simple.SimpleBackNavigationPolicy
 import com.fileapex.ui.adaptive.simple.SimpleCompactBottom
 import com.fileapex.ui.adaptive.simple.SimpleDropBox
+import com.fileapex.ui.adaptive.simple.SimpleHomeDialogs
+import com.fileapex.ui.adaptive.simple.SimpleHomePopoverLayer
+import com.fileapex.ui.adaptive.simple.SimpleHomeSplitState
 import com.fileapex.ui.adaptive.simple.SimpleInfo
-import com.fileapex.ui.adaptive.simple.SimpleManagementItem
+import com.fileapex.ui.adaptive.simple.SimpleNavPlacementPolicy
 import com.fileapex.ui.adaptive.simple.SimpleNoDeviceState
 import com.fileapex.ui.adaptive.simple.SimpleOverview
-import com.fileapex.ui.adaptive.simple.SimplePopoverHost
+import com.fileapex.ui.adaptive.simple.SimpleOverviewCardPolicy
 import com.fileapex.ui.adaptive.simple.SimpleRail
+import com.fileapex.ui.adaptive.simple.SimpleSplitViewPolicy
 import com.fileapex.ui.adaptive.simple.SimpleTopBar
-import com.fileapex.ui.dialogs.ClipboardTargetConfigDialog
-import com.fileapex.ui.DevicesSnackbars
+import com.fileapex.ui.adaptive.simple.fadeBottomEdge
 import kotlinx.coroutines.launch
 
 enum class SimpleDestination { Home, LocalFiles, Browse, Info, Settings }
@@ -107,6 +84,7 @@ fun SimpleHome(
     onExitApp: () -> Unit,
     onOpenTransferQueue: () -> Unit,
     onOpenNotes: () -> Unit,
+    onboardingSteps: List<OnboardingPermissionStep> = emptyList(),
     settingsDeepLink: SettingsDeepLink?,
     onSettingsDeepLinkChange: (SettingsDeepLink?) -> Unit,
     settingsContent: @Composable (deepLink: SettingsDeepLink?, onDeepLinkConsumed: () -> Unit) -> Unit
@@ -148,11 +126,27 @@ fun SimpleHome(
     val splitSession: ExplorerSplitSession = viewModel { ExplorerSplitSession() }
     val secondaryTarget by splitSession.secondaryTarget.collectAsState()
     val explorerViewMode by settings.explorerViewMode.collectAsState()
+    val homeSplitState = remember { SimpleHomeSplitState() }
+    LaunchedEffect(explorerViewMode) {
+        homeSplitState.onViewModeChanged(explorerViewMode)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            homeSplitState.onNavigateAway(settings.explorerViewMode.value, settings::setExplorerViewMode)
+        }
+    }
     var splitAutoSelectedFor by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(explorerViewMode, active?.deviceId, active?.online, destination) {
         val device = active
-        if (explorerViewMode != ExplorerViewMode.Split || destination != SimpleDestination.LocalFiles) {
+        if (explorerViewMode != ExplorerViewMode.Split || !SimpleSplitViewPolicy.isSplitSupported(destination)) {
             splitAutoSelectedFor = null
+            return@LaunchedEffect
+        }
+        if (destination == SimpleDestination.Browse) {
+            if (secondaryTarget != null && splitAutoSelectedFor != "local:${device?.deviceId}") {
+                splitAutoSelectedFor = "local:${device?.deviceId}"
+                splitSession.selectLocal()
+            }
             return@LaunchedEffect
         }
         // The right pane starts on the connected device; picking Local in its menu is left alone.
@@ -198,24 +192,39 @@ fun SimpleHome(
         when {
             next == SimpleDestination.LocalFiles && !hasStoragePermission -> onRequestStoragePermission()
             else -> {
+                if (destination != SimpleDestination.Home && next != destination) {
+                    homeSplitState.onNavigateAway(explorerViewMode, settings::setExplorerViewMode)
+                }
                 if (next != SimpleDestination.Settings) onSettingsDeepLinkChange(null)
                 onDestinationChange(next)
             }
         }
     }
     // Registered before SettingsScreen's own handler, so sub-pages still step back first.
-    FileApexBackHandler(enabled = destination == SimpleDestination.Settings) { goTo(SimpleDestination.Home) }
+    FileApexBackHandler(enabled = SimpleBackNavigationPolicy.shouldInterceptSystemBack(destination, browseTarget != null, popover != null)) { if (popover != null) popover = null else goTo(SimpleDestination.Home) }
     val sendClipboard: () -> Unit = devicesViewModel::sendClipboardNow
+
+    val navPositionPref by settings.desktopNavPosition.collectAsState()
+    val navPosition = SimpleNavPlacementPolicy.resolve(
+        isDesktop = usesDesktopFileSelection(),
+        windowIsWide = isWide,
+        desktopPosition = navPositionPref
+    )
+    val bulletinTracker by FileApexServices.bulletinUnread.collectAsState()
+    val bulletinUnread by remember(bulletinTracker) {
+        bulletinTracker?.unread ?: kotlinx.coroutines.flow.MutableStateFlow(0)
+    }.collectAsState()
 
     val onRefreshExplorer = if (explorerVisible) explorerRefresh else null
     val topBar: @Composable () -> Unit = {
         SimpleTopBar(
+            homeSelected = destination == SimpleDestination.Home,
             onOpenNotes = if (destination == SimpleDestination.Home) onOpenNotes else null,
             onHome = { goTo(SimpleDestination.Home) },
             onExit = onExitApp,
             onOpenTransferQueue = onOpenTransferQueue,
             explorerCommands = if (explorerVisible) explorerCommands else null,
-            splitAvailable = destination == SimpleDestination.LocalFiles,
+            splitAvailable = SimpleSplitViewPolicy.isSplitSupported(destination),
             onRefreshExplorer = onRefreshExplorer,
             explorerRefreshing = explorerRefreshing
         )
@@ -228,9 +237,35 @@ fun SimpleHome(
                 devicesViewModel = devicesViewModel,
                 rows = rows,
                 active = active,
-                onAddDevice = onGenerateQr, onJoinDevice = onJoinDevice,
-                onOpenPairedDevice = { id ->
-                    settings.setSimpleActiveDeviceId(id)
+                onboardingSteps = onboardingSteps,
+                onAddDevice = onGenerateQr,
+                onJoinDevice = onJoinDevice,
+                onBrowseDevice = { goTo(SimpleDestination.Browse) },
+                onOpenSplitView = {
+                    val splitDest = homeSplitState.launchFromHome(explorerViewMode, settings::setExplorerViewMode)
+                    goTo(splitDest)
+                },
+                onOpenBulletinBoard = onOpenNotes,
+                onOpenDeviceDetails = { goTo(SimpleDestination.Info) },
+                onLocateDevice = {
+                    val target = active?.takeIf { it.online }
+                    if (target == null) {
+                        scope.launch { snackbarHostState.showSnackbar(noDeviceMessage) }
+                    } else {
+                        scope.launch {
+                            val ok = PhoneLocator.start(target.deviceId, target.deviceName)
+                            snackbarHostState.showSnackbar(
+                                AppI18n.t(
+                                    if (ok) "locate_phone_sent" else "locate_phone_failed",
+                                    target.deviceName
+                                )
+                            )
+                        }
+                    }
+                },
+                onOpenBackgroundSetup = {
+                    onSettingsDeepLinkChange(SettingsDeepLink.OnboardingPermissions)
+                    goTo(SimpleDestination.Settings)
                 },
                 onFilesDropped = { paths ->
                     val device = active?.takeIf { it.online }
@@ -239,7 +274,10 @@ fun SimpleHome(
                     } else {
                         devicesViewModel.sendDroppedLocalFiles(device.deviceId, paths)
                     }
-                }
+                },
+                showDevicesCard = SimpleOverviewCardPolicy.showDevicesCard(navPosition),
+                onDevicesAnchor = { menuAnchor = it },
+                onOpenDevices = { popover = SimplePopover.DeviceManagement }
             )
             SimpleLocateCard(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp))
             }
@@ -312,6 +350,12 @@ fun SimpleHome(
                         },
                         onRegisterHeaderCommands = { explorerCommands = it },
                         showTopBar = false,
+                        secondaryTarget = secondaryTarget,
+                        readyDevices = rows.filter { it.online },
+                        onSelectSecondaryLocal = splitSession::selectLocal,
+                        onSelectSecondaryDevice = { deviceId ->
+                            devicesViewModel.openDeviceOrExplain(deviceId) { splitSession.select(it) }
+                        },
                         onDropBoxFiles = { paths ->
                             devicesViewModel.sendDroppedLocalFiles(LocalIdentity.LOCAL_DEVICE_ID, paths)
                         },
@@ -348,148 +392,108 @@ fun SimpleHome(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 topBar()
-                if (isWide) {
-                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        SimpleRail(
-                            destination = destination,
-                            popover = popover,
-                            onSelect = goTo,
-                            onSendClipboard = sendClipboard,
-                            onTogglePopover = { kind -> popover = if (popover == kind) null else kind },
-                            onMenuAnchor = { menuAnchor = it },
-                            onHiddenChanged = { hiddenEntries = it }
-                        )
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight().fadeBottomEdge()) { content() }
-                    }
-                } else {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth().fadeBottomEdge()) { content() }
-                    SimpleCompactBottom(
-                        destination = destination,
-                        popoverOpen = popover == SimplePopover.DeviceManagement,
-                        onSelect = goTo,
-                        onSendClipboard = sendClipboard,
-                        onToggleMenu = { popover = if (popover == SimplePopover.DeviceManagement) null else SimplePopover.DeviceManagement },
-                        onMenuAnchor = { menuAnchor = it }
-                    )
-                }
+                SimpleHomeNavContainer(
+                    navPosition = navPosition,
+                    destination = destination,
+                    popover = popover,
+                    bulletinUnreadCount = bulletinUnread,
+                    onSelect = goTo,
+                    onOpenNotes = onOpenNotes,
+                    onTogglePopover = { kind -> popover = if (popover == kind) null else kind },
+                    onMenuAnchor = { menuAnchor = it },
+                    onHiddenChanged = { hiddenEntries = it },
+                    content = content
+                )
             }
-            SimplePopoverHost(
-                visible = popover != null,
-                anchor = menuAnchor,
+            SimpleHomePopoverLayer(
+                popover = popover,
+                lastPopover = lastPopover,
+                menuAnchor = menuAnchor,
                 overlayOrigin = overlayOrigin,
-                anchoredBelow = isWide,
-                onDismiss = { popover = null }
-            ) {
-                when (popover ?: lastPopover) {
-                    SimplePopover.DeviceManagement -> {
-                        if (active != null) SimpleManagementItem(Icons.Filled.Info, stringRes("info")) { popover = null; goTo(SimpleDestination.Info) }
-                        if (active != null && active.online && PeerPlatform.isAndroid(active.os, active.platform)) {
-                            SimpleManagementItem(Icons.Filled.LocationOn, stringRes("locate_phone")) {
-                                popover = null
-                                scope.launch {
-                                    val ok = PhoneLocator.start(active.deviceId, active.deviceName)
-                                    snackbarHostState.showSnackbar(AppI18n.t(if (ok) "locate_phone_sent" else "locate_phone_failed", active.deviceName))
-                                }
-                            }
-                        }
-                        if (rows.size >= 2) SimpleManagementItem(Icons.Filled.SwapHoriz, stringRes("simple_switch_device")) { popover = null; showSwitchDialog = true }
-                        SimpleManagementItem(Icons.Filled.Add, stringRes("add_new_device")) { popover = null; onGenerateQr() }
-                        SimpleManagementItem(Icons.Filled.Link, stringRes("join_device")) { popover = null; onJoinDevice() }
-                        SimpleManagementItem(Icons.Filled.People, stringRes("friends_entry")) { popover = null; com.fileapex.friends.ui.FriendsUi.open() }
-                        if (active != null) SimpleManagementItem(Icons.Filled.Delete, stringRes("remove"), danger = true) { popover = null; confirmRemove = true }
+                anchoredBelow = navPosition != DesktopNavPosition.Bottom,
+                rows = rows,
+                active = active,
+                hiddenEntries = hiddenEntries,
+                onChangePopover = { popover = it },
+                onNavigate = goTo,
+                onLocateActive = { target ->
+                    scope.launch {
+                        val ok = PhoneLocator.start(target.deviceId, target.deviceName)
+                        snackbarHostState.showSnackbar(AppI18n.t(if (ok) "locate_phone_sent" else "locate_phone_failed", target.deviceName))
                     }
-                    SimplePopover.More -> {
-                        if (SimpleRailEntry.LocalFiles in hiddenEntries) SimpleManagementItem(Icons.Filled.Folder, stringRes("local_files")) { popover = null; goTo(SimpleDestination.LocalFiles) }
-                        if (SimpleRailEntry.Browse in hiddenEntries) SimpleManagementItem(Icons.Filled.Devices, stringRes("browse")) { popover = null; goTo(SimpleDestination.Browse) }
-                        if (SimpleRailEntry.Clipboard in hiddenEntries) SimpleManagementItem(Icons.Filled.ContentPaste, stringRes("send_clipboard")) { popover = null; sendClipboard() }
-                        if (SimpleRailEntry.DeviceManagement in hiddenEntries) SimpleManagementItem(Icons.Filled.Link, stringRes("simple_device_management")) { popover = SimplePopover.DeviceManagement }
-                        if (SimpleRailEntry.Settings in hiddenEntries) SimpleManagementItem(Icons.Filled.Settings, stringRes("settings")) { popover = null; goTo(SimpleDestination.Settings) }
-                    }
-                }
-            }
+                },
+                onSwitchDevice = { showSwitchDialog = true },
+                onGenerateQr = onGenerateQr,
+                onJoinDevice = onJoinDevice,
+                onConfirmRemove = { confirmRemove = true },
+                onSendClipboard = sendClipboard,
+                onOpenNotes = onOpenNotes
+            )
         }
     }
 
-    if (showSwitchDialog) {
-        AlertDialog(
-            onDismissRequest = { showSwitchDialog = false },
-            title = { Text(stringRes("simple_choose_device")) },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    rows.forEach { row ->
-                        ListItem(
-                            modifier = Modifier.clickable {
-                                settings.setSimpleActiveDeviceId(row.deviceId)
-                                showSwitchDialog = false
-                            },
-                            headlineContent = {
-                                Text(
-                                    row.deviceName,
-                                    fontWeight = if (row.deviceId == active?.deviceId) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            supportingContent = { Text(row.subtitle) },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                        )
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showSwitchDialog = false }) { Text(stringRes("close")) } }
-        )
-    }
-    val removeTarget = active
-    if (confirmRemove && removeTarget != null) {
-        AlertDialog(
-            onDismissRequest = { confirmRemove = false },
-            title = { Text(stringRes("remove_device")) },
-            text = { Text(stringRes("remove_device_body", removeTarget.deviceName)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    devicesViewModel.removeDevice(removeTarget.deviceId)
-                    confirmRemove = false
-                    goTo(SimpleDestination.Home)
-                }) { Text(stringRes("remove")) }
-            },
-            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringRes("cancel")) } }
-        )
-    }
-    if (showOtherThemesHint) {
-        AlertDialog(
-            onDismissRequest = { showOtherThemesHint = false },
-            title = { Text(stringRes("simple_other_themes_title")) },
-            text = { Text(stringRes("simple_other_themes_body")) },
-            confirmButton = { TextButton(onClick = { showOtherThemesHint = false }) { Text(stringRes("simple_got_it")) } }
-        )
-    }
-    if (state.showClipboardConfigDialog) {
-        val currentMode by settings.clipboardShareMode.collectAsState()
-        val currentTargets by settings.clipboardTargetDeviceIds.collectAsState()
-        ClipboardTargetConfigDialog(
-            initialMode = currentMode,
-            initialTargetIds = currentTargets,
-            peers = state.clipboardConfigPeers,
-            onConfirm = { mode, targets -> devicesViewModel.confirmClipboardConfig(mode, targets) },
-            onDismiss = devicesViewModel::dismissClipboardConfigDialog
-        )
-    }
+    SimpleHomeDialogs(
+        devicesViewModel = devicesViewModel,
+        rows = rows,
+        active = active,
+        showSwitchDialog = showSwitchDialog,
+        onDismissSwitch = { showSwitchDialog = false },
+        confirmRemove = confirmRemove,
+        onDismissRemove = { confirmRemove = false },
+        onAfterRemove = { goTo(SimpleDestination.Home) },
+        showOtherThemesHint = showOtherThemesHint,
+        onDismissOtherThemesHint = { showOtherThemesHint = false }
+    )
 }
 
-/** The panes are see-through; fading their bottom edge keeps them from ending in a hard line on the background. */
-private fun Modifier.fadeBottomEdge(height: Dp = 28.dp): Modifier = this
-
-    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-
-    .drawWithContent {
-        drawContent()
-        val fade = height.toPx().coerceAtMost(size.height)
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color.Black, Color.Transparent),
-                startY = size.height - fade,
-                endY = size.height
-            ),
-            topLeft = Offset(0f, size.height - fade),
-            size = androidx.compose.ui.geometry.Size(size.width, fade),
-            blendMode = BlendMode.DstIn
-        )
+@Composable
+private fun ColumnScope.SimpleHomeNavContainer(
+    navPosition: DesktopNavPosition,
+    destination: SimpleDestination,
+    popover: SimplePopover?,
+    bulletinUnreadCount: Int,
+    onSelect: (SimpleDestination) -> Unit,
+    onOpenNotes: () -> Unit,
+    onTogglePopover: (SimplePopover) -> Unit,
+    onMenuAnchor: (Rect) -> Unit,
+    onHiddenChanged: (Set<SimpleRailEntry>) -> Unit,
+    content: @Composable () -> Unit
+) {
+    when (navPosition) {
+        DesktopNavPosition.Left -> Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            SimpleRail(
+                destination = destination,
+                popover = popover,
+                bulletinUnreadCount = bulletinUnreadCount,
+                onSelect = onSelect,
+                onOpenNotes = onOpenNotes,
+                onTogglePopover = onTogglePopover,
+                onMenuAnchor = onMenuAnchor,
+                onHiddenChanged = onHiddenChanged
+            )
+            Box(modifier = Modifier.weight(1f).fillMaxHeight().fadeBottomEdge()) { content() }
+        }
+        DesktopNavPosition.Right -> Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            Box(modifier = Modifier.weight(1f).fillMaxHeight().fadeBottomEdge()) { content() }
+            SimpleRail(
+                destination = destination,
+                popover = popover,
+                bulletinUnreadCount = bulletinUnreadCount,
+                onSelect = onSelect,
+                onOpenNotes = onOpenNotes,
+                onTogglePopover = onTogglePopover,
+                onMenuAnchor = onMenuAnchor,
+                onHiddenChanged = onHiddenChanged
+            )
+        }
+        DesktopNavPosition.Bottom -> {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().fadeBottomEdge()) { content() }
+            SimpleCompactBottom(
+                destination = destination,
+                bulletinUnreadCount = bulletinUnreadCount,
+                onSelect = onSelect,
+                onOpenNotes = onOpenNotes
+            )
+        }
     }
+}

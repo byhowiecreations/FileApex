@@ -10,6 +10,7 @@ class SimpleRailLayoutTest {
         SimpleRailEntry.LocalFiles to 100,
         SimpleRailEntry.Browse to 140,
         SimpleRailEntry.Clipboard to 100,
+        SimpleRailEntry.BulletinBoard to 100,
         SimpleRailEntry.DeviceManagement to 140,
         SimpleRailEntry.Settings to 100
     )
@@ -17,12 +18,12 @@ class SimpleRailLayoutTest {
 
     @Test
     fun everythingStaysWhenThereIsRoom() {
-        assertTrue(hiddenRailEntries(heights, more, available = 580).isEmpty())
+        assertTrue(hiddenRailEntries(heights, more, available = 680).isEmpty())
     }
 
     @Test
     fun shortWindowKeepsPrimaryDestinationsAndMovesTheRestToMore() {
-        val hidden = hiddenRailEntries(heights, more, available = 380)
+        val hidden = hiddenRailEntries(heights, more, available = 480)
         assertEquals(
             setOf(SimpleRailEntry.Settings, SimpleRailEntry.Clipboard, SimpleRailEntry.DeviceManagement),
             hidden
@@ -31,7 +32,7 @@ class SimpleRailLayoutTest {
 
     @Test
     fun slightShortfallHidesOnlyTheLastActionsAndKeepsSettingsVisible() {
-        val hidden = hiddenRailEntries(heights, more, available = 570)
+        val hidden = hiddenRailEntries(heights, more, available = 670)
         assertEquals(setOf(SimpleRailEntry.DeviceManagement), hidden)
     }
 

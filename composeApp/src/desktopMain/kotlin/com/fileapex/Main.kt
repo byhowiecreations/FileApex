@@ -3,6 +3,9 @@ package com.fileapex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +37,7 @@ import com.fileapex.platform.DesktopCrashHandler
 import com.fileapex.platform.DesktopJvmStartup
 import com.fileapex.platform.DesktopLifecycleLog
 import com.fileapex.platform.DesktopMacTrayBridge
+import com.fileapex.platform.DesktopMacWindowChrome
 import com.fileapex.platform.DesktopMacWindowClosePolicy
 import com.fileapex.platform.DesktopPlatformPaths
 import com.fileapex.platform.MacLaunchSplash
@@ -74,6 +78,8 @@ private val DesktopWindowMinHeight = 560.dp
 private val DesktopWindowMaxHeight = 900.dp
 
 fun main(args: Array<String>) {
+    // Must be set before any AWT/AppKit initialization so macOS adopts dark chrome on first paint.
+    DesktopMacWindowChrome.applySystemAppearanceEarly()
     com.fileapex.platform.ThreadTuning.apply()
     com.fileapex.util.LogRedaction.install()
     DesktopCrashHandler.install()
@@ -128,9 +134,6 @@ private fun isCliInvocation(args: Array<String>): Boolean {
 }
 
 private fun startDesktopApplication() {
-    if (DesktopPlatformPaths.isMacOs()) {
-        System.setProperty("apple.awt.application.appearance", "NSAppearanceNameDarkAqua")
-    }
     MacLaunchSplash.show()
     // Decode Freestyle/Flux PNGs off the UI thread while the window comes up.
     ThemeDeviceIconPreloader.startFor(createAppSettings().themeIconStyle.value)
@@ -300,6 +303,14 @@ private fun startDesktopApplication() {
             // Windows: visible=false is the supported hide-to-tray path (CMP #2928).
             visible = if (DesktopPlatformPaths.isMacOs()) true else mainWindowVisible,
         ) {
+            // Configure seamless macOS full-window content before first frame so no white titlebar flashes.
+            remember(window) {
+                DesktopMacWindowChrome.apply(window)
+                true
+            }
+            LaunchedEffect(window) {
+                DesktopMacWindowChrome.apply(window)
+            }
             // Light shell first so splash hide + tray attach are not stuck behind Kinetic/PNG
             // first composition (that path was ~6 to 10s of Dock bounce / frozen splash).
             var mountApp by remember { mutableStateOf(false) }
@@ -397,32 +408,44 @@ private fun startDesktopApplication() {
                 DesktopWindowsBackdrop.applyMica(window, fluent)
             }
 
-            if (!servicesReady || !mountApp) {
-                // Same colour as the launch splash so the hand-off to the app is not visible.
-                Box(modifier = Modifier.fillMaxSize().background(Color(0xFF122A2A)))
-                return@Window
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (!servicesReady || !mountApp) {
+                    // Same colour as the launch splash so the hand-off to the app is not visible.
+                    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF122A2A)))
+                } else {
+                    val desktopClipboardOptInSender by com.fileapex.platform.DesktopClipboardOptInState.pendingSender.collectAsState()
+                    val desktopOpenDeviceId by com.fileapex.platform.DesktopOpenDeviceRequest.pendingDeviceId.collectAsState()
+
+                    App(
+                        hasStoragePermission = true,
+                        hasUnrestrictedBattery = true,
+                        onRequestStoragePermission = {},
+                        onOpenStorageSettings = {},
+                        onRequestBatteryUnrestricted = {},
+                        onStartShareServer = DesktopShareServerController::start,
+                        onStopShareServer = DesktopShareServerController::stop,
+                        onExitApp = { quitDesktop() },
+                        appVersionName = FileApexAppVersion.NAME,
+                        incomingShare = desktopIncomingShare,
+                        onIncomingShareConsumed = { desktopIncomingShare = null },
+                        pendingClipboardOptInSender = desktopClipboardOptInSender,
+                        onClipboardOptInConsumed = { com.fileapex.platform.DesktopClipboardOptInState.consume() },
+                        pendingOpenDeviceId = desktopOpenDeviceId,
+                        onOpenDeviceRequestConsumed = { com.fileapex.platform.DesktopOpenDeviceRequest.consume() },
+                        desktopTopInset = DesktopMacWindowChrome.topContentInsetDp().dp
+                    )
+                }
+                if (DesktopPlatformPaths.isMacOs()) {
+                    WindowDraggableArea(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(DesktopMacWindowChrome.topContentInsetDp().dp)
+                            .align(Alignment.TopStart)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize())
+                    }
+                }
             }
-
-            val desktopClipboardOptInSender by com.fileapex.platform.DesktopClipboardOptInState.pendingSender.collectAsState()
-            val desktopOpenDeviceId by com.fileapex.platform.DesktopOpenDeviceRequest.pendingDeviceId.collectAsState()
-
-            App(
-                hasStoragePermission = true,
-                hasUnrestrictedBattery = true,
-                onRequestStoragePermission = {},
-                onOpenStorageSettings = {},
-                onRequestBatteryUnrestricted = {},
-                onStartShareServer = DesktopShareServerController::start,
-                onStopShareServer = DesktopShareServerController::stop,
-                onExitApp = { quitDesktop() },
-                appVersionName = FileApexAppVersion.NAME,
-                incomingShare = desktopIncomingShare,
-                onIncomingShareConsumed = { desktopIncomingShare = null },
-                pendingClipboardOptInSender = desktopClipboardOptInSender,
-                onClipboardOptInConsumed = { com.fileapex.platform.DesktopClipboardOptInState.consume() },
-                pendingOpenDeviceId = desktopOpenDeviceId,
-                onOpenDeviceRequestConsumed = { com.fileapex.platform.DesktopOpenDeviceRequest.consume() }
-            )
         }
 
     }

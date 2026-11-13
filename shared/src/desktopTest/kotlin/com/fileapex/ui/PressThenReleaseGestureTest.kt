@@ -8,6 +8,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.Density
+import com.fileapex.ui.dnd.holdAndDragAfterLongPress
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -101,6 +102,82 @@ class PressThenReleaseGestureTest {
             send(PointerEventType.Release, at)
         }
         assertEquals(1, taps.clicks)
+        assertEquals(0, taps.menus)
+    }
+
+    private class CombinedTaps { var clicks = 0; var menus = 0; var drags = 0 }
+
+    private fun runCombined(
+        steps: (send: (PointerEventType, Offset) -> Unit, hold: () -> Unit) -> Unit
+    ): CombinedTaps {
+        val taps = CombinedTaps()
+        val scene = ImageComposeScene(width = 400, height = 400, density = Density(1f)) {
+            Box(
+                Modifier.fillMaxSize().holdAndDragAfterLongPress(
+                    key = "test-item",
+                    onDragStart = { taps.drags++ }
+                )
+            ) {
+                Box(
+                    Modifier.fillMaxSize().androidPressThenRelease(
+                        onClick = { taps.clicks++ },
+                        onLongPressRelease = { taps.menus++ }
+                    )
+                )
+            }
+        }
+        scene.render()
+        var time = 0L
+        val send: (PointerEventType, Offset) -> Unit = { type, at ->
+            scene.sendPointerEvent(type, at, timeMillis = time, type = PointerType.Touch)
+            scene.render()
+            Unit
+        }
+        val hold: () -> Unit = {
+            Thread.sleep(holdMs)
+            time += holdMs
+            scene.render()
+            Unit
+        }
+        steps(send, hold)
+        scene.close()
+        return taps
+    }
+
+    @Test
+    fun holdingStillThenSlidingStartsDragWithoutOpeningMenu() {
+        val taps = runCombined { send, hold ->
+            send(PointerEventType.Press, at)
+            hold()
+            send(PointerEventType.Move, at + Offset(0f, 60f))
+            send(PointerEventType.Release, at + Offset(0f, 60f))
+        }
+        assertEquals(1, taps.drags)
+        assertEquals(0, taps.menus)
+        assertEquals(0, taps.clicks)
+    }
+
+    @Test
+    fun holdingStillThenReleasingNearStartOpensMenuWithoutDragging() {
+        val taps = runCombined { send, hold ->
+            send(PointerEventType.Press, at)
+            hold()
+            send(PointerEventType.Move, at + Offset(0f, 6f))
+            send(PointerEventType.Release, at + Offset(0f, 6f))
+        }
+        assertEquals(0, taps.drags)
+        assertEquals(1, taps.menus)
+    }
+
+    @Test
+    fun immediateSwipeDoesNotStartDragOrOpenMenu() {
+        val taps = runCombined { send, hold ->
+            send(PointerEventType.Press, at)
+            send(PointerEventType.Move, at + Offset(0f, 120f))
+            hold()
+            send(PointerEventType.Release, at + Offset(0f, 120f))
+        }
+        assertEquals(0, taps.drags)
         assertEquals(0, taps.menus)
     }
 }

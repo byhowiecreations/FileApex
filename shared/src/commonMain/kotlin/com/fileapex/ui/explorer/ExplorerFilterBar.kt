@@ -45,6 +45,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fileapex.data.settings.AppTheme
@@ -56,10 +57,11 @@ import com.fileapex.i18n.stringRes
 import com.fileapex.platform.isDesktopHost
 import com.fileapex.presentation.ExplorerSortMode
 import com.fileapex.presentation.ExplorerUiState
+import com.fileapex.presentation.ExplorerViewMode
 import com.fileapex.presentation.ExplorerViewModel
-import com.fileapex.ui.DesktopLayoutToggle
 import com.fileapex.ui.ExplorerIcon
 import com.fileapex.ui.ExplorerViewModeToggle
+import com.fileapex.ui.NavDockPositionToggle
 import com.fileapex.ui.tools.ToolsHeaderButton
 import com.fileapex.ui.adaptive.JadedRaisedTile
 import com.fileapex.ui.explorerIcon
@@ -84,6 +86,13 @@ internal fun ExplorerTopBarActions(
 ) {
     val jadedOrbital = LocalAppTheme.current.traits.orbitalHome &&
         LocalKineticStyle.current == KineticStyle.JADED_STEEL
+    var shareLinkPath by remember { mutableStateOf<String?>(null) }
+    shareLinkPath?.let { path ->
+        com.fileapex.drop.ui.GuestDropDialog(
+            file = java.io.File(path),
+            onDismiss = { shareLinkPath = null }
+        )
+    }
     when {
         state.isSelectionMode -> {
             if (onPickFiles != null) {
@@ -104,9 +113,22 @@ internal fun ExplorerTopBarActions(
                         color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified
                     )
                 }
+            } else {
+                val singleLocalFile = (state.contentFiles + state.paneFiles)
+                    .filter { it.id in state.selectedFileIds }
+                    .singleOrNull()
+                    ?.takeIf { !it.isDirectory }
+                if (singleLocalFile != null) {
+                    TextButton(onClick = { shareLinkPath = singleLocalFile.absolutePath }) {
+                        Text(
+                            stringRes("share_link_page_title"),
+                            color = if (jadedOrbital) KineticStyleLook.steel else if (embeddedInCompactShell && isFileApexCleanCurved()) Color.White else Color.Unspecified
+                        )
+                    }
+                }
             }
             if (embeddedInCompactShell && isDesktopHost()) {
-                DesktopLayoutToggle()
+                NavDockPositionToggle()
             }
         }
         else -> {
@@ -134,13 +156,33 @@ internal fun ExplorerTopBarActions(
             }
             if (embeddedInCompactShell) {
                 val splitAllowed = onPickFiles == null
+                if (splitAllowed) {
+                    val splitOn = state.viewMode == ExplorerViewMode.Split
+                    TextButton(
+                        onClick = {
+                            if (splitOn) {
+                                viewModel.toggleViewMode(includeSplit = false)
+                            } else {
+                                com.fileapex.di.FileApexServices.settings.setExplorerViewMode(ExplorerViewMode.Split)
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = stringRes("split_view_label"),
+                            color = if (splitOn) MaterialTheme.colorScheme.primary
+                            else if (jadedOrbital) KineticStyleLook.steel
+                            else if (isFileApexCleanCurved()) Color.White
+                            else Color.Unspecified
+                        )
+                    }
+                }
                 ExplorerViewModeToggle(
                     viewMode = state.viewMode,
-                    onToggle = { viewModel.toggleViewMode(splitAllowed) },
-                    includeSplit = splitAllowed
+                    onToggle = { viewModel.toggleViewMode(includeSplit = false) },
+                    includeSplit = false
                 )
                 if (isDesktopHost() && splitAllowed) {
-                    DesktopLayoutToggle()
+                    NavDockPositionToggle()
                 }
             }
             if (!hasExternalRefresh) {
@@ -256,7 +298,7 @@ private fun SlidingFilterWithLeading(
             ) {
                 Icon(
                     Icons.Filled.Search,
-                    contentDescription = stringRes("filter_this_folder"),
+                    contentDescription = stringRes(ExplorerFilterLabelPolicy.placeholderKey()),
                     modifier = Modifier.size(22.dp)
                 )
                 if (showField) {
@@ -282,10 +324,12 @@ private fun SlidingFilterWithLeading(
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (query.isEmpty()) {
                                     Text(
-                                        stringRes("filter_this_folder"),
+                                        stringRes(ExplorerFilterLabelPolicy.placeholderKey()),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 inner()
@@ -378,9 +422,12 @@ internal fun ExplorerFilterBar(
                         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                             if (query.isEmpty()) {
                                 Text(
-                                    text = stringRes("filter_this_folder"),
+                                    text = stringRes(ExplorerFilterLabelPolicy.placeholderKey()),
                                     color = hint,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             inner()
@@ -399,7 +446,7 @@ internal fun ExplorerFilterBar(
                 onValueChange = onQueryChange,
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                placeholder = { Text(stringRes("filter_this_folder")) },
+                placeholder = { Text(stringRes(ExplorerFilterLabelPolicy.placeholderKey()), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
@@ -445,4 +492,8 @@ internal fun ExplorerFilterBar(
             }
         }
     }
+}
+
+object ExplorerFilterLabelPolicy {
+    fun placeholderKey(): String = "filter"
 }

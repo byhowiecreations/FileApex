@@ -4,6 +4,7 @@ import com.fileapex.i18n.stringRes
 
 import com.fileapex.i18n.AppI18n
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +20,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -192,23 +197,7 @@ fun ShareSendScreen(
                         }
                     }
                 }
-                state.isPreparing -> {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Text(
-                                text = stringRes("loading_devices"),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(top = 12.dp)
-                            )
-                        }
-                    }
-                }
+                state.isPreparing -> SharePreparingContent(modifier = Modifier.weight(1f).fillMaxWidth())
                 else -> {
                     Text(
                         text = stringRes("choose_destination"),
@@ -274,6 +263,8 @@ fun ShareSendScreen(
                 TransferProgressBlock(modifier = Modifier.padding(bottom = 8.dp))
             }
 
+            SingleFileShareLinkRow(payload = payload, eligible = state.filesReady && !state.isDirectSend)
+
             com.fileapex.friends.ui.ShareSendButton(
                 ready = state.filesReady && !state.isDirectSend && !state.isSending && !state.isPreparing,
                 devicesSelected = state.selectedDeviceIds.isNotEmpty(),
@@ -282,6 +273,66 @@ fun ShareSendScreen(
                 sendToDevices = viewModel::send,
                 finishWithoutDevices = { viewModel.cancelCleanup(); onFinished() }
             )
+        }
+    }
+}
+
+@Composable
+private fun SharePreparingContent(modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator()
+            Text(
+                text = stringRes("loading_devices"),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SingleFileShareLinkRow(payload: IncomingSharePayload, eligible: Boolean) {
+    val singleShareFile = if (eligible && payload.files.size == 1) {
+        java.io.File(payload.files[0].absolutePath)
+    } else {
+        null
+    } ?: return
+    var shareLinkTarget by remember { mutableStateOf<java.io.File?>(null) }
+    shareLinkTarget?.let { targetFile ->
+        com.fileapex.drop.ui.GuestDropDialog(
+            file = targetFile,
+            onDismiss = { shareLinkTarget = null }
+        )
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+            .clickable { shareLinkTarget = singleShareFile }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Link,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringRes("share_link_title"),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringRes("share_link_solo_sub"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

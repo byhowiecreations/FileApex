@@ -7,10 +7,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.fileapex.data.identity.LocalDeviceNameStore
+import com.fileapex.data.identity.LocalIdentity
 import com.fileapex.data.settings.KineticStyle
 import com.fileapex.data.settings.LocalAppTheme
 import com.fileapex.data.settings.LocalKineticStyle
 import com.fileapex.data.settings.traits
+import com.fileapex.di.FileApexServices
+import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.storageToolsSupported
 import com.fileapex.presentation.BrowseTarget
@@ -35,9 +39,7 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
 
 
     val paneFocus = LocalExplorerPaneFocus.current
-    val splitOpen = hostSplit &&
-        state.viewMode == ExplorerViewMode.Split &&
-        target is BrowseTarget.Local
+    val splitOpen = ExplorerSplitPolicy.isSplitOpen(hostSplit, state.viewMode, target)
     val folderPane = layoutExpanded && hostSplit && !splitOpen
     val backEnabled = when {
         paneFocus == null -> true
@@ -62,5 +64,24 @@ internal fun rememberExplorerScope(inputs: ExplorerInputs): ExplorerScope {
             openActionLabel, showInFolderLabel, ownedFocus, jadedOrbital, filterQueryState
         )
         return ExplorerScope(inputs, live, frame)
+    }
+}
+
+internal object ExplorerSplitPolicy {
+    fun isSplitOpen(
+        hostSplit: Boolean,
+        viewMode: ExplorerViewMode,
+        target: BrowseTarget
+    ): Boolean = hostSplit &&
+        viewMode == ExplorerViewMode.Split &&
+        (target is BrowseTarget.Local || target is BrowseTarget.Remote || target is BrowseTarget.Demo)
+
+    fun defaultSecondaryLocalTarget(): BrowseTarget.Local {
+        val identity = FileApexServices.localIdentity
+        return BrowseTarget.Local(
+            deviceId = LocalIdentity.LOCAL_DEVICE_ID,
+            displayName = AppI18n.t("this_device_named", LocalDeviceNameStore.current()),
+            rootPath = identity.rootPath
+        )
     }
 }

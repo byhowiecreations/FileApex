@@ -18,9 +18,16 @@ actual object ClusterResetPlatform {
     actual fun stateResetAndRestart() {
         cancellableCatching {
             val node = Preferences.userRoot().node("com.fileapex.settings")
+            val welcomeTutorialShown = node.getBoolean(
+                com.fileapex.data.settings.BaseAppSettings.KEY_WELCOME_TUTORIAL_SHOWN,
+                false
+            )
             node.clear()
             // The database file survives a wipe, so without this the next launch counts as an old install and gets Clean.
             node.putBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_THEME_DEFAULT_MIGRATED, true)
+            if (welcomeTutorialShown) {
+                node.putBoolean(com.fileapex.data.settings.BaseAppSettings.KEY_WELCOME_TUTORIAL_SHOWN, true)
+            }
             node.flush()
         }
         // Sign-in tokens are not settings, so clearing the settings node alone would leave them behind.

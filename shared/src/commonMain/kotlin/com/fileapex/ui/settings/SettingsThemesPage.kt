@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -176,77 +178,12 @@ internal fun ThemesSettingsPage(
             val carouselAvailable = rememberCarouselAvailable()
             AppTheme.entries.filter { it != AppTheme.CAROUSEL || carouselAvailable || state.appTheme == AppTheme.CAROUSEL }.forEach { theme ->
                 val selected = state.appTheme == theme
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onSelectTheme(theme) },
-                    color = if (isCustomTheme) {
-                        if (selected) FluxGlassPalette.accentSoft else FluxGlassPalette.unselectedFill
-                    } else {
-                        if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                    },
-                    border = BorderStroke(
-                        width = if (selected) 2.dp else 1.dp,
-                        color = if (isCustomTheme) {
-                            if (selected) FluxGlassPalette.accent else Color.White.copy(alpha = 0.2f)
-                        } else {
-                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                        }
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = localizedThemeName(theme),
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSurface
-                                )
-                                if (theme == AppTheme.DEFAULT) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Surface(
-                                        color = if (isCustomTheme) FluxGlassPalette.badgeScrim else MaterialTheme.colorScheme.secondaryContainer,
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            text = stringRes("default_badge"),
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = localizedThemeDescription(theme),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isCustomTheme) FluxGlassPalette.explorerMuted else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        RadioButton(
-                            selected = selected,
-                            onClick = { onSelectTheme(theme) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = if (isCustomTheme) FluxGlassPalette.accent else MaterialTheme.colorScheme.primary,
-                                unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
-                    }
-                }
+                AppThemeOptionRow(
+                    theme = theme,
+                    selected = selected,
+                    isCustomTheme = isCustomTheme,
+                    onClick = { onSelectTheme(theme) }
+                )
 
                 val supportedIcons = theme.supportedIconStyles()
                 if (selected && theme == AppTheme.KINETIC_SPHERE) {
@@ -379,4 +316,97 @@ internal fun ThemesSettingsPage(
             }
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AppThemeOptionRow(
+    theme: AppTheme,
+    selected: Boolean,
+    isCustomTheme: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        color = if (isCustomTheme) {
+            if (selected) FluxGlassPalette.accentSoft else FluxGlassPalette.unselectedFill
+        } else {
+            if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        },
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (isCustomTheme) {
+                if (selected) FluxGlassPalette.accent else Color.White.copy(alpha = 0.2f)
+            } else {
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            }
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            ThemePreviewThumbnail(theme = theme)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = localizedThemeName(theme),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+                    if (theme == AppTheme.DEFAULT) {
+                        Surface(
+                            color = if (isCustomTheme) FluxGlassPalette.badgeScrim else MaterialTheme.colorScheme.secondaryContainer,
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = stringRes("default_badge"),
+                                maxLines = ThemeBadgeLayoutPolicy.maxLines,
+                                softWrap = ThemeBadgeLayoutPolicy.softWrap,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                color = if (isCustomTheme) Color.White else MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = localizedThemeDescription(theme),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isCustomTheme) FluxGlassPalette.explorerMuted else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            RadioButton(
+                selected = selected,
+                onClick = onClick,
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = if (isCustomTheme) FluxGlassPalette.accent else MaterialTheme.colorScheme.primary,
+                    unselectedColor = if (isCustomTheme) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
+        }
+    }
+}
+
+internal object ThemeBadgeLayoutPolicy {
+    const val maxLines = 1
+    const val softWrap = false
 }

@@ -20,14 +20,22 @@ import com.fileapex.notice.NoticeCoordinator
 fun CriticalNoticeConsentHost() {
     val settings = FileApexServices.settings
     val notices = settings.noticeSettings
+    val welcomeTutorialShown by settings.welcomeTutorialShown.collectAsState()
     val choiceMade by notices.choiceMade.collectAsState()
     val updatePromptShown by settings.updateCheckPromptShown.collectAsState()
     val checkingForUpdates by settings.checkForUpdatesEnabled.collectAsState()
     val wiping by ClusterResetManager.inProgress.collectAsState()
     val wipeResult by ClusterResetManager.outcome.collectAsState()
-    if (choiceMade || wiping || wipeResult != null) return
-    // The update question comes first where it exists, so two dialogs never stack.
-    if (!FileApexServices.managedByStore && !updatePromptShown && !checkingForUpdates) return
+    if (!com.fileapex.ui.StartupPromptGate.canShowCriticalNoticeConsent(
+            welcomeTutorialShown = welcomeTutorialShown,
+            choiceMade = choiceMade,
+            managedByStore = FileApexServices.managedByStore,
+            updatePromptShown = updatePromptShown,
+            checkingForUpdates = checkingForUpdates,
+            wiping = wiping,
+            wipeOutcomePending = wipeResult != null
+        )
+    ) return
 
     fun answer(enabled: Boolean) {
         notices.setEnabled(enabled)

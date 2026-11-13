@@ -22,11 +22,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.fileapex.data.settings.UpdateCheckFrequency
+import com.fileapex.di.FileApexServices
 import com.fileapex.i18n.AppI18n
 import com.fileapex.i18n.stringRes
 import com.fileapex.platform.BackgroundPersistenceUiState
@@ -148,11 +150,20 @@ internal fun SettingsRootInputs.MenuRow(entry: SettingsMenuEntry, tailscale: com
                                     subtitle = stringRes("peer_telemetry_fields"),
                                     onClick = openRowPage
                                 )
-                                SettingsMenuIds.DESKTOP_LAYOUT -> SettingsNavItem(
-                                    title = stringRes("desktop_layout"),
-                                    subtitle = localizedDesktopLayout(state.desktopLayoutMode),
-                                    onClick = openRowPage
-                                )
+                                SettingsMenuIds.DESKTOP_LAYOUT -> {
+                                    val navPos by FileApexServices.settings.desktopNavPosition.collectAsState()
+                                    SettingsNavItem(
+                                        title = stringRes("nav_position_title"),
+                                        subtitle = stringRes(
+                                            when (navPos) {
+                                                com.fileapex.data.settings.DesktopNavPosition.Left -> "nav_position_left"
+                                                com.fileapex.data.settings.DesktopNavPosition.Bottom -> "nav_position_bottom"
+                                                com.fileapex.data.settings.DesktopNavPosition.Right -> "nav_position_right"
+                                            }
+                                        ),
+                                        onClick = openRowPage
+                                    )
+                                }
                                 SettingsMenuIds.WINDOWS_DESIGN -> SettingsNavItem(
                                     title = stringRes("windows_design"),
                                     subtitle = localizedDesktopUiStyle(state.desktopUiStyle),
