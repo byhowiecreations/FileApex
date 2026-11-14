@@ -153,6 +153,8 @@ fun App(
     onClipboardOptInConsumed: () -> Unit = {},
     pendingOpenSettingsPage: String? = null,
     onOpenSettingsPageConsumed: () -> Unit = {},
+    pendingOpenFriends: Boolean = false,
+    onOpenFriendsConsumed: () -> Unit = {},
     desktopTopInset: Dp = 0.dp
 ) {
     var route by remember { mutableStateOf<AppRoute>(AppRoute.Devices) }
@@ -240,6 +242,12 @@ fun App(
             route = AppRoute.Explorer(target)
         }
         onOpenDeviceRequestConsumed()
+    }
+
+    LaunchedEffect(pendingOpenFriends, setupComplete) {
+        if (!pendingOpenFriends || !setupComplete) return@LaunchedEffect
+        com.fileapex.friends.ui.FriendsUi.open()
+        onOpenFriendsConsumed()
     }
 
     val pendingUpdate by AppUpdateCoordinator.pendingUpdate.collectAsState()

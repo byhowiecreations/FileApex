@@ -80,6 +80,7 @@ object FileApexAndroidBootstrap {
                 ClipboardShizukuAccess.start()
             }
             BatteryBulletinCoordinator.onProcessStart(appContext)
+            com.fileapex.widget.WidgetEventSync.start(appContext)
             Log.i(TAG, "Android process init complete")
             return true
         }

@@ -48,6 +48,8 @@ class ShortcutIconRendererTest {
         samples.forEach { sample ->
             assertNotNull("Expected icon for ${sample.deviceName}", ShortcutIconRenderer.device(context, sample))
         }
+        val sizePx = ShortcutIconRenderer.targetBitmapSizePx(context, densityOverride = 4.0f)
+        org.junit.Assert.assertTrue("Shortcut bitmap size $sizePx exceeds binder-safe cap", sizePx <= 192)
     }
 
     private fun assertEqualsKind(expected: DeviceIconKind, peer: PairedDeviceEntity) {

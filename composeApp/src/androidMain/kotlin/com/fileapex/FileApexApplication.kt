@@ -31,6 +31,44 @@ class FileApexApplication : Application(), Configuration.Provider {
         com.fileapex.platform.ClipboardShareChrome.listener = {
             ShareServerForegroundNotification.refreshLocalizedCopy(this)
         }
+        com.fileapex.widget.AndroidWidgetBridge.onRefreshAllWidgets = { ctx ->
+            com.fileapex.widget.WidgetUiFormatter.updateAllWidgets(ctx)
+        }
+        com.fileapex.widget.AndroidWidgetBridge.onRefreshBulletinWidgets = { ctx ->
+            com.fileapex.widget.WidgetUiFormatter.updateBulletinWidgets(ctx)
+        }
+        com.fileapex.widget.AndroidWidgetBridge.onOpenMainActivityDestination = { ctx, dest ->
+            val launchIntent = android.content.Intent(ctx, MainActivity::class.java).apply {
+                addFlags(
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+                when (dest) {
+                    com.fileapex.widget.WidgetDeepLinks.MainDestination.BulletinBoard ->
+                        putExtra(
+                            com.fileapex.widget.WidgetDeepLinks.EXTRA_WIDGET_ROUTE,
+                            com.fileapex.widget.WidgetDeepLinks.ROUTE_BULLETIN
+                        )
+                    com.fileapex.widget.WidgetDeepLinks.MainDestination.Friends ->
+                        putExtra(
+                            com.fileapex.widget.WidgetDeepLinks.EXTRA_WIDGET_ROUTE,
+                            com.fileapex.widget.WidgetDeepLinks.ROUTE_FRIENDS
+                        )
+                    is com.fileapex.widget.WidgetDeepLinks.MainDestination.BrowseDevice -> {
+                        putExtra(
+                            com.fileapex.widget.WidgetDeepLinks.EXTRA_WIDGET_ROUTE,
+                            com.fileapex.widget.WidgetDeepLinks.ROUTE_BROWSE_DEVICE
+                        )
+                        putExtra(
+                            com.fileapex.platform.DirectShareShortcutCoordinator.EXTRA_TARGET_DEVICE_ID,
+                            dest.deviceId
+                        )
+                    }
+                }
+            }
+            ctx.startActivity(launchIntent)
+        }
         if (!isUserStorageUnlocked(this)) {
             // Pre-unlock process start (should be rare now that LOCKED_BOOT_COMPLETED is not
             // registered). Credential-encrypted storage throws until unlock, skip full init.

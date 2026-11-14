@@ -9,4 +9,12 @@
     <string name="clipboard_tile_label">Send clipboard</string>
     <string name="clipboard_accessibility_label">FileApex clipboard</string>
     <string name="clipboard_accessibility_description">FileApex uses Accessibility to detect copy events so clipboard can sync while the app is in the background. FileApex does not read screen content for any other purpose.</string>
+    <string name="widget_label_quick_actions">Quick actions</string>
+    <string name="widget_desc_quick_actions">Expandable 1 to 4 customizable FileApex actions bound to a device, all online devices, or ask each time.</string>
+    <string name="widget_label_device_card">Device card</string>
+    <string name="widget_desc_device_card">Paired device card with online status, cached battery pill, tap-to-browse, and on-demand refresh.</string>
+    <string name="widget_label_drop_target">Drop target</string>
+    <string name="widget_desc_drop_target">One-tap file picker to send files directly to a chosen device or all online devices.</string>
+    <string name="widget_label_bulletin_board">Bulletin Board (3x2)</string>
+    <string name="widget_desc_bulletin_board">Live Bulletin Board notes and interactive checklists with quick post.</string>
 </resources>

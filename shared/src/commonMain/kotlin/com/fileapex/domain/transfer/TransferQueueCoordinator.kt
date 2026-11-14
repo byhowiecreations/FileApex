@@ -87,10 +87,7 @@ class TransferQueueCoordinator(
     private val presenceMonitor: PeerPresenceMonitor,
     private val scope: CoroutineScope
 ) {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val drainMutex = Mutex()
     private var drainWatcherStarted = false
     private var pendingDrainJob: Job? = null
@@ -220,6 +217,9 @@ class TransferQueueCoordinator(
         job.cancel()
         return true
     }
+
+    suspend fun togglePauseAll(): Boolean? =
+        toggleQueuePauseAll(dao, ::cancelSending, ::scheduleDrain, USER_CANCELLED)
 
     /** Re-queues a paused or failed row and drains immediately, skipping the retry backoff. */
     suspend fun retryNow(id: String) {

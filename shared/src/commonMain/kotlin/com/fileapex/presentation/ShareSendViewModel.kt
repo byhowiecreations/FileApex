@@ -204,7 +204,15 @@ class ShareSendViewModel(
                 }
                 val batch = outcome.batch
                 if (batch != null && !batch.allFailed) {
-                    recordDirectShareOnSuccess?.let { recordDirectShareTargetUsed(it) }
+                    val succeededIds = batch.results.flatMap { it.succeededDeviceIds }.toSet()
+                    val failedIds = selected.map { it.deviceId }.toSet() - succeededIds
+                    if (recordDirectShareOnSuccess != null) {
+                        recordDirectShareTargetUsed(recordDirectShareOnSuccess)
+                    } else {
+                        ShareSendUsageTracker.recordSuccessfulPeerSends(selected, failedIds)
+                    }
+                } else if (outcome.hadQueue || outcome.hadRelay) {
+                    ShareSendUsageTracker.recordSuccessfulPeerSends(selected, emptySet())
                 }
                 val allFailed = batch?.allFailed == true && !outcome.hadQueue && !outcome.hadRelay
                 val confirmOnly = outcome.needsCellularConfirm
@@ -241,5 +249,19 @@ class ShareSendViewModel(
         ShareStagingCleanup.deleteSessionRootsForPaths(
             payload.files.map { it.absolutePath }
         )
+    }
+}
+
+internal object ShareSendUsageTracker {
+    fun recordSuccessfulPeerSends(
+        selected: List<MultiCopyDeviceOption>,
+        failedDeviceIds: Set<String>,
+        recorder: (String) -> Unit = ::recordDirectShareTargetUsed
+    ) {
+        selected.asSequence()
+            .filter { !it.isLocal && it.deviceId !in failedDeviceIds }
+            .map { it.deviceId }
+            .distinct()
+            .forEach(recorder)
     }
 }

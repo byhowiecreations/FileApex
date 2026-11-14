@@ -399,6 +399,7 @@ fun SimpleHome(
                     bulletinUnreadCount = bulletinUnread,
                     onSelect = goTo,
                     onOpenNotes = onOpenNotes,
+                    onOpenTransferQueue = onOpenTransferQueue,
                     onTogglePopover = { kind -> popover = if (popover == kind) null else kind },
                     onMenuAnchor = { menuAnchor = it },
                     onHiddenChanged = { hiddenEntries = it },
@@ -454,6 +455,7 @@ private fun ColumnScope.SimpleHomeNavContainer(
     bulletinUnreadCount: Int,
     onSelect: (SimpleDestination) -> Unit,
     onOpenNotes: () -> Unit,
+    onOpenTransferQueue: () -> Unit,
     onTogglePopover: (SimplePopover) -> Unit,
     onMenuAnchor: (Rect) -> Unit,
     onHiddenChanged: (Set<SimpleRailEntry>) -> Unit,
@@ -471,10 +473,22 @@ private fun ColumnScope.SimpleHomeNavContainer(
                 onMenuAnchor = onMenuAnchor,
                 onHiddenChanged = onHiddenChanged
             )
-            Box(modifier = Modifier.weight(1f).fillMaxHeight().fadeBottomEdge()) { content() }
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                Box(modifier = Modifier.fillMaxSize().fadeBottomEdge()) { content() }
+                com.fileapex.ui.LiveTransferBanner(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onOpenTransferQueue = onOpenTransferQueue
+                )
+            }
         }
         DesktopNavPosition.Right -> Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            Box(modifier = Modifier.weight(1f).fillMaxHeight().fadeBottomEdge()) { content() }
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                Box(modifier = Modifier.fillMaxSize().fadeBottomEdge()) { content() }
+                com.fileapex.ui.LiveTransferBanner(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onOpenTransferQueue = onOpenTransferQueue
+                )
+            }
             SimpleRail(
                 destination = destination,
                 popover = popover,
@@ -487,7 +501,13 @@ private fun ColumnScope.SimpleHomeNavContainer(
             )
         }
         DesktopNavPosition.Bottom -> {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth().fadeBottomEdge()) { content() }
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxSize().fadeBottomEdge()) { content() }
+                com.fileapex.ui.LiveTransferBanner(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onOpenTransferQueue = onOpenTransferQueue
+                )
+            }
             SimpleCompactBottom(
                 destination = destination,
                 bulletinUnreadCount = bulletinUnreadCount,

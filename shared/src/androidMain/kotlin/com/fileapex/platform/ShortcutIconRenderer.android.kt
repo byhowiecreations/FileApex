@@ -97,8 +97,7 @@ internal object ShortcutIconRenderer {
         synchronized(cache) {
             cache[key]?.let { return it }
         }
-        val density = context.resources.displayMetrics.density
-        val size = (VIEWPORT_DP * density).toInt().coerceAtLeast(108)
+        val size = targetBitmapSizePx(context)
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(background)
@@ -109,6 +108,17 @@ internal object ShortcutIconRenderer {
         }
         return icon
     }
+
+    internal fun targetBitmapSizePx(context: Context, densityOverride: Float? = null): Int {
+        val density = densityOverride ?: context.resources.displayMetrics.density
+        val desired = (VIEWPORT_DP * density).toInt().coerceAtLeast(96)
+        val maxW = androidx.core.content.pm.ShortcutManagerCompat.getIconMaxWidth(context)
+        val maxH = androidx.core.content.pm.ShortcutManagerCompat.getIconMaxHeight(context)
+        val sysCap = listOf(maxW, maxH).filter { it > 0 }.minOrNull() ?: MAX_BITMAP_PX
+        return minOf(desired, sysCap, MAX_BITMAP_PX).coerceAtLeast(72)
+    }
+
+    private const val MAX_BITMAP_PX = 192
 
     private fun drawBitmapGlyph(canvas: Canvas, size: Int, glyph: Bitmap) {
         val inset = size * GLYPH_INSET_FRACTION

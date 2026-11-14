@@ -1262,6 +1262,7 @@ private fun Project.stageFirefoxExtension(stageDir: File) {
     val srcDir = rootProject.file("browser-extension")
     check(srcDir.isDirectory) { "Missing browser-extension at ${srcDir.absolutePath}" }
     stageDir.deleteRecursively()
+    val stagedSet = firefoxExtensionFiles.toSet()
     firefoxExtensionFiles.forEach { rel ->
         val src = srcDir.resolve(rel)
         check(src.isFile) { "Missing extension file: ${src.absolutePath}" }
@@ -1270,6 +1271,15 @@ private fun Project.stageFirefoxExtension(stageDir: File) {
         if (rel == "manifest.json") {
             @Suppress("UNCHECKED_CAST")
             val manifest = JsonSlurper().parseText(src.readText()) as MutableMap<String, Any?>
+            val popup = (manifest["action"] as? Map<*, *>)?.get("default_popup") as? String
+            if (!popup.isNullOrBlank()) {
+                check(popup in stagedSet) { "manifest default_popup '$popup' is missing from firefoxExtensionFiles" }
+            }
+            val scripts = ((manifest["background"] as? Map<*, *>)?.get("scripts") as? List<*>)
+                ?.filterIsInstance<String>().orEmpty()
+            scripts.forEach { script ->
+                check(script in stagedSet) { "manifest background script '$script' is missing from firefoxExtensionFiles" }
+            }
             manifest["version"] = fileapexExtensionVersion
             dest.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)))
         } else {

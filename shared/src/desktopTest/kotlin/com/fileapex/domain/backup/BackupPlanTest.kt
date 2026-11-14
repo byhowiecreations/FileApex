@@ -48,4 +48,52 @@ class BackupPlanTest {
         assertEquals(config, BackupConfig.decode(config.encode()))
         assertEquals(BackupConfig(), BackupConfig.decode("not json"))
     }
+
+    @Test
+    fun defaultConfigIsDisabledAndRevealsSectionsProgressively() {
+        val off = BackupConfig()
+        assertFalse(off.enabled)
+        assertEquals(
+            BackupPageVisibility(
+                showDestination = false,
+                shouldAutoExpandDestination = false,
+                showFolders = false,
+                showFrequencyAndOptions = false
+            ),
+            BackupPageVisibility.from(off)
+        )
+
+        val onNoDest = off.copy(enabled = true)
+        assertEquals(
+            BackupPageVisibility(
+                showDestination = true,
+                shouldAutoExpandDestination = true,
+                showFolders = false,
+                showFrequencyAndOptions = false
+            ),
+            BackupPageVisibility.from(onNoDest)
+        )
+
+        val withDestNoFolders = onNoDest.copy(destinationDeviceId = "mac-1")
+        assertEquals(
+            BackupPageVisibility(
+                showDestination = true,
+                shouldAutoExpandDestination = false,
+                showFolders = true,
+                showFrequencyAndOptions = false
+            ),
+            BackupPageVisibility.from(withDestNoFolders)
+        )
+
+        val withFolders = withDestNoFolders.withSource("/storage/emulated/0/DCIM/Camera")
+        assertEquals(
+            BackupPageVisibility(
+                showDestination = true,
+                shouldAutoExpandDestination = false,
+                showFolders = true,
+                showFrequencyAndOptions = true
+            ),
+            BackupPageVisibility.from(withFolders)
+        )
+    }
 }

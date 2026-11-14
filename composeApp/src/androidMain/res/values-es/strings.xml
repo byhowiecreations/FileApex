@@ -9,4 +9,12 @@
     <string name="clipboard_tile_label">Enviar portapapeles</string>
     <string name="clipboard_accessibility_label">Portapapeles de FileApex</string>
     <string name="clipboard_accessibility_description">FileApex usa Accesibilidad para detectar copias y sincronizar el portapapeles en segundo plano. No lee el contenido de la pantalla para ningún otro fin.</string>
+    <string name="widget_label_quick_actions">Acciones rápidas</string>
+    <string name="widget_desc_quick_actions">De 1 a 4 acciones configurables de FileApex vinculadas a un dispositivo, todos en línea o preguntar.</string>
+    <string name="widget_label_device_card">Tarjeta de dispositivo</string>
+    <string name="widget_desc_device_card">Estado en línea, batería en caché con hora, acceso directo y actualización manual.</string>
+    <string name="widget_label_drop_target">Envío directo</string>
+    <string name="widget_desc_drop_target">Selector de archivos con un toque hacia un dispositivo o todos en línea.</string>
+    <string name="widget_label_bulletin_board">Tablón de anuncios (3x2)</string>
+    <string name="widget_desc_bulletin_board">Últimas notas y listas interactivas del tablón con publicación rápida.</string>
 </resources>

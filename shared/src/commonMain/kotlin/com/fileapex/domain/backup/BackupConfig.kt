@@ -37,3 +37,23 @@ data class BackupConfig(
             if (raw.isBlank()) BackupConfig() else runCatching { json.decodeFromString(serializer(), raw) }.getOrDefault(BackupConfig())
     }
 }
+
+/** Progressive disclosure state for Backup & Sync settings sections. */
+data class BackupPageVisibility(
+    val showDestination: Boolean,
+    val shouldAutoExpandDestination: Boolean,
+    val showFolders: Boolean,
+    val showFrequencyAndOptions: Boolean
+) {
+    companion object {
+        fun from(config: BackupConfig): BackupPageVisibility {
+            val hasDestination = config.enabled && config.destinationDeviceId.isNotBlank()
+            return BackupPageVisibility(
+                showDestination = config.enabled,
+                shouldAutoExpandDestination = config.enabled && config.destinationDeviceId.isBlank(),
+                showFolders = hasDestination,
+                showFrequencyAndOptions = hasDestination && config.sources.isNotEmpty()
+            )
+        }
+    }
+}

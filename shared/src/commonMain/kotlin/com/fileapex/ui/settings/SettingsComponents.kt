@@ -398,14 +398,12 @@ internal fun rememberAdvancedSettingsInUse(state: SettingsUiState): Set<String> 
     val settings = FileApexServices.settings
     val tailscaleOn by settings.tailscaleEnabled.collectAsState()
     val irohOn by settings.irohEnabled.collectAsState()
-    val backup by settings.backupConfig.collectAsState()
     return buildSet {
         if (tailscaleOn) add(SettingsMenuIds.TAILSCALE)
         if (irohOn) add(SettingsMenuIds.IROH)
         if (state.googleDriveRelayEnabled) add(SettingsMenuIds.DRIVE_RELAY)
         if (state.googleAccountLinkEnabled) add(SettingsMenuIds.GOOGLE_ACCOUNT)
         if (state.pinRequiredEnabled) add(SettingsMenuIds.PIN_REQUIRED)
-        if (backup.enabled) add(SettingsMenuIds.BACKUP_SYNC)
     }
 }
 

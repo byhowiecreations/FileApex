@@ -9,4 +9,12 @@
     <string name="clipboard_tile_label">发送剪贴板</string>
     <string name="clipboard_accessibility_label">FileApex 剪贴板</string>
     <string name="clipboard_accessibility_description">FileApex 使用无障碍功能检测复制事件，以便在后台同步剪贴板。不会将屏幕内容用于其他目的。</string>
+    <string name="widget_label_quick_actions">快捷操作</string>
+    <string name="widget_desc_quick_actions">可扩展 1 至 4 个 FileApex 快捷操作，支持绑定指定设备、所有在线或每次询问。</string>
+    <string name="widget_label_device_card">设备卡片</string>
+    <string name="widget_desc_device_card">显示设备在线状态、上次刷新的电量与时间，点击浏览或手动刷新电量。</string>
+    <string name="widget_label_drop_target">快捷投放发送</string>
+    <string name="widget_desc_drop_target">一键选择文件并发送到绑定设备或所有在线设备。</string>
+    <string name="widget_label_bulletin_board">留言板实时组件 (3x2)</string>
+    <string name="widget_desc_bulletin_board">显示最新 5 条留言与可勾选清单，支持桌面快速发布。</string>
 </resources>

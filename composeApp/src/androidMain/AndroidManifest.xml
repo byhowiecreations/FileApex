@@ -140,29 +140,25 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="fileapex" android:host="open" />
             </intent-filter>
-            <!-- Sharesheet: single target activity; Direct Share bubbles come from ShortcutManagerCompat. -->
+            <!-- Sharesheet: single target activity; Direct Share bubbles come from ShortcutManagerCompat + shortcuts.xml. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="com.fileapex.category.SHARE_TARGET" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="com.fileapex.category.SHARE_TARGET" />
                 <data android:mimeType="image/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="com.fileapex.category.SHARE_TARGET" />
                 <data android:mimeType="*/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="com.fileapex.category.SHARE_TARGET" />
                 <data android:mimeType="*/*" />
             </intent-filter>
             <meta-data
@@ -338,6 +334,125 @@
                 <action android:name="android.intent.action.PACKAGE_REPLACED" />
                 <data android:scheme="package" />
             </intent-filter>
+        </receiver>
+
+        <activity
+            android:name=".widget.BulletinQuickPostActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize">
+            <intent-filter>
+                <action android:name="com.fileapex.action.WIDGET_QUICK_POST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".widget.WidgetFilePickActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.fileapex.action.WIDGET_PICK_FILE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".widget.WidgetDevicePickActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.fileapex.action.WIDGET_PICK_DEVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".widget.WidgetBatteryPopupActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.fileapex.action.WIDGET_BATTERY_POPUP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".widget.WidgetConfigureActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".widget.WidgetActionReceiver"
+            android:exported="false" />
+
+        <service
+            android:name=".widget.BulletinWidgetRemoteViewsService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <receiver
+            android:name=".widget.QuickActionsWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_label_quick_actions">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_actions_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.DeviceCardWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_label_device_card">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/device_card_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.DropTargetWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_label_drop_target">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/drop_target_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.BulletinBoardWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_label_bulletin_board">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bulletin_board_widget_info" />
         </receiver>
     </application>
 </manifest>

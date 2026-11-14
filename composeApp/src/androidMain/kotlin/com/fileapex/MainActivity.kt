@@ -99,6 +99,7 @@ class MainActivity : ComponentActivity() {
     private var sharePrepareError by mutableStateOf<String?>(null)
     private var pendingClipboardOptInSender by mutableStateOf<String?>(null)
     private var pendingOpenSettingsPage by mutableStateOf<String?>(null)
+    private var pendingOpenFriends by mutableStateOf(false)
 
     /** True when this activity instance was brought up primarily for ACTION_SEND*. */
     private var openedFromShareSheet = false
@@ -229,7 +230,9 @@ class MainActivity : ComponentActivity() {
                     pendingClipboardOptInSender = pendingClipboardOptInSender,
                     onClipboardOptInConsumed = { pendingClipboardOptInSender = null },
                     pendingOpenSettingsPage = pendingOpenSettingsPage,
-                    onOpenSettingsPageConsumed = { pendingOpenSettingsPage = null }
+                    onOpenSettingsPageConsumed = { pendingOpenSettingsPage = null },
+                    pendingOpenFriends = pendingOpenFriends,
+                    onOpenFriendsConsumed = { pendingOpenFriends = false }
                 )
                 com.fileapex.platform.LiveTransferCapsuleOverlay()
             }
@@ -521,6 +524,27 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyLauncherShortcutIntent(intent: Intent?): Boolean {
+        val widgetDest = com.fileapex.widget.WidgetDeepLinks.parseMainDestination(intent)
+        if (widgetDest != null) {
+            when (widgetDest) {
+                com.fileapex.widget.WidgetDeepLinks.MainDestination.BulletinBoard -> {
+                    pendingOpenBulletinBoard = true
+                    pendingOpenDeviceId = null
+                    pendingOpenFriends = false
+                }
+                is com.fileapex.widget.WidgetDeepLinks.MainDestination.BrowseDevice -> {
+                    pendingOpenBulletinBoard = false
+                    pendingOpenDeviceId = widgetDest.deviceId
+                    pendingOpenFriends = false
+                }
+                com.fileapex.widget.WidgetDeepLinks.MainDestination.Friends -> {
+                    pendingOpenBulletinBoard = false
+                    pendingOpenDeviceId = null
+                    pendingOpenFriends = true
+                }
+            }
+            return true
+        }
         val destination = DirectShareShortcutCoordinator.parseLauncherDestination(intent)
             ?: return false
         when (destination) {

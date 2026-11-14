@@ -52,6 +52,7 @@ import com.fileapex.domain.backup.BackupConfig
 import com.fileapex.domain.backup.BackupEngine
 import com.fileapex.domain.backup.BackupFolderPresets
 import com.fileapex.domain.backup.BackupManifest
+import com.fileapex.domain.backup.BackupPageVisibility
 import com.fileapex.domain.backup.BackupStatus
 import com.fileapex.domain.backup.BackupSummary
 import com.fileapex.i18n.stringRes
@@ -121,7 +122,8 @@ internal fun BackupSyncSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack
     val config by settings.backupConfig.collectAsState()
     val devices by FileApexServices.deviceRepository.observeDevices().collectAsState(initial = emptyList())
     val status by BackupEngine.status.collectAsState()
-    var destinationOpen by remember { mutableStateOf(false) }
+    val visibility = BackupPageVisibility.from(config)
+    var destinationOpen by remember { mutableStateOf(visibility.shouldAutoExpandDestination) }
     var addOpen by remember { mutableStateOf(false) }
     val liveSummary by BackupEngine.lastSummary.collectAsState()
     val savedSummary by produceState<BackupSummary?>(null, config.destinationDeviceId) {
@@ -142,10 +144,18 @@ internal fun BackupSyncSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack
                 headlineContent = { Text(stringRes("backup_to_device"), softWrap = true) },
                 supportingContent = { Text(stringRes("backup_intro"), softWrap = true) },
                 trailingContent = {
-                    Switch(checked = config.enabled, onCheckedChange = { on -> update { it.copy(enabled = on) } })
+                    Switch(
+                        checked = config.enabled,
+                        onCheckedChange = { on ->
+                            if (on && config.destinationDeviceId.isBlank()) {
+                                destinationOpen = true
+                            }
+                            update { it.copy(enabled = on) }
+                        }
+                    )
                 }
             )
-            if (!config.enabled) return@Column
+            if (!visibility.showDestination) return@Column
             HorizontalDivider()
 
             DestinationCard(
@@ -159,69 +169,74 @@ internal fun BackupSyncSettingsPage(layoutMode: SettingsScreenLayoutMode, onBack
                 }
             )
 
-            FileApexPaneSectionHeader(title = stringRes("backup_sources"))
-            if (config.sources.isEmpty()) {
-                Text(
-                    stringRes("backup_no_sources"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-            }
-            config.sources.forEach { path ->
-                ListItem(
-                    headlineContent = { Text(path.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = { Text(path, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                    trailingContent = {
-                        IconButton(onClick = { update { it.withoutSource(path) } }) {
-                            Icon(Icons.Filled.Close, contentDescription = stringRes("backup_remove"))
-                        }
-                    }
-                )
-            }
-            TextButton(onClick = { addOpen = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                Text(stringRes("backup_add_folder"))
-            }
-            BackupPresetsAndHints(
-                existingSources = config.sources,
-                onAddSource = { path -> update { it.withSource(path) } }
-            )
-            HorizontalDivider()
-
-            ListItem(
-                headlineContent = { Text(stringRes("backup_wifi_only")) },
-                supportingContent = { Text(stringRes("backup_wifi_only_desc")) },
-                trailingContent = {
-                    Switch(checked = config.wifiOnly, onCheckedChange = { on -> update { it.copy(wifiOnly = on) } })
+            if (visibility.showFolders) {
+                FileApexPaneSectionHeader(title = stringRes("backup_sources"))
+                if (config.sources.isEmpty()) {
+                    Text(
+                        stringRes("backup_no_sources"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
                 }
-            )
-            Text(
-                stringRes("backup_frequency"),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                BackupConfig.intervalChoices.forEach { hours ->
-                    val label = stringRes(
-                        when (hours) {
-                            1 -> "backup_every_hour"
-                            6 -> "backup_every_6_hours"
-                            else -> "backup_daily"
+                config.sources.forEach { path ->
+                    ListItem(
+                        headlineContent = { Text(path.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(path, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        trailingContent = {
+                            IconButton(onClick = { update { it.withoutSource(path) } }) {
+                                Icon(Icons.Filled.Close, contentDescription = stringRes("backup_remove"))
+                            }
                         }
                     )
-                    if (hours == config.intervalHours) {
-                        Button(onClick = {}) { Text(label) }
-                    } else {
-                        OutlinedButton(onClick = { update { it.copy(intervalHours = hours) } }) { Text(label) }
+                }
+                TextButton(onClick = { addOpen = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    Text(stringRes("backup_add_folder"))
+                }
+                BackupPresetsRow(
+                    existingSources = config.sources,
+                    onAddSource = { path -> update { it.withSource(path) } }
+                )
+            }
+
+            if (visibility.showFrequencyAndOptions) {
+                HorizontalDivider()
+
+                ListItem(
+                    headlineContent = { Text(stringRes("backup_wifi_only")) },
+                    supportingContent = { Text(stringRes("backup_wifi_only_desc")) },
+                    trailingContent = {
+                        Switch(checked = config.wifiOnly, onCheckedChange = { on -> update { it.copy(wifiOnly = on) } })
+                    }
+                )
+                Text(
+                    stringRes("backup_frequency"),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    BackupConfig.intervalChoices.forEach { hours ->
+                        val label = stringRes(
+                            when (hours) {
+                                1 -> "backup_every_hour"
+                                6 -> "backup_every_6_hours"
+                                else -> "backup_daily"
+                            }
+                        )
+                        if (hours == config.intervalHours) {
+                            Button(onClick = {}) { Text(label) }
+                        } else {
+                            OutlinedButton(onClick = { update { it.copy(intervalHours = hours) } }) { Text(label) }
+                        }
                     }
                 }
-            }
-            HorizontalDivider()
+                HorizontalDivider()
 
-            StatusBlock(config = config, status = status, lastRun = lastRun)
+                StatusBlock(config = config, status = status, lastRun = lastRun)
+            }
         }
         }
     }
@@ -282,7 +297,7 @@ private fun DestinationCard(
 }
 
 @Composable
-private fun BackupPresetsAndHints(
+private fun BackupPresetsRow(
     existingSources: List<String>,
     onAddSource: (String) -> Unit
 ) {
@@ -291,7 +306,6 @@ private fun BackupPresetsAndHints(
     val missingPresets = remember(presets, existingSources) {
         presets.filter { preset -> preset.path !in existingSources }
     }
-    var showScreenshotsInfo by remember { mutableStateOf(false) }
 
     if (missingPresets.isNotEmpty()) {
         Row(
@@ -308,20 +322,6 @@ private fun BackupPresetsAndHints(
                 }
             }
         }
-    }
-    TextButton(
-        onClick = { showScreenshotsInfo = !showScreenshotsInfo },
-        modifier = Modifier.padding(horizontal = 8.dp)
-    ) {
-        Text(stringRes("backup_what_about_screenshots"))
-    }
-    if (showScreenshotsInfo) {
-        Text(
-            text = stringRes("backup_screenshots_explanation"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
-        )
     }
 }
 
